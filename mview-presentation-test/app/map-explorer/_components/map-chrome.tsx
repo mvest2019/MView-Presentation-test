@@ -51,9 +51,9 @@ type MapChromeProps = {
   onPrint: () => void;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
-  /** True while the draw tool is waiting for a drag on the map. */
-  drawArmed: boolean;
-  onStartDrawArea: () => void;
+  /** The tool waiting for a drag on the map, if any. */
+  activeTool: string | null;
+  onSelectTool: (id: "draw-area" | "measure-distance") => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onHome: () => void;
@@ -76,8 +76,8 @@ export function MapChrome({
   onPrint,
   isFullscreen,
   onToggleFullscreen,
-  drawArmed,
-  onStartDrawArea,
+  activeTool,
+  onSelectTool,
   onZoomIn,
   onZoomOut,
   onHome,
@@ -208,9 +208,12 @@ export function MapChrome({
       <div ref={toolsRef}>
         {toolsOpen ? (
           <ToolsPanel
-            activeId={drawArmed ? "draw-area" : undefined}
+            activeId={activeTool ?? undefined}
             onSelect={(id) => {
-              if (id === "draw-area") onStartDrawArea();
+              // The other two tools have no implementation yet.
+              if (id === "draw-area" || id === "measure-distance") {
+                onSelectTool(id);
+              }
             }}
             onCollapse={() => setToolsOpen(false)}
             className="pointer-events-auto absolute right-0 top-16"

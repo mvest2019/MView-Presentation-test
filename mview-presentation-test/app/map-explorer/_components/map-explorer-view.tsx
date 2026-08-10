@@ -11,6 +11,7 @@ import {
 import { AreaSelectionBar } from "./area-selection";
 import { loadArcgisModules } from "./arcgis-loader";
 import { MapChrome } from "./map-chrome";
+import { MeasureBar } from "./measure-bar";
 import {
   CLUSTER_FILL,
   clusterDiameter,
@@ -79,6 +80,15 @@ type PointCtor = new (props: {
   spatialReference: { wkid: number };
 }) => unknown;
 
+type GeodesicUtils = {
+  /** Ellipsoidal, not great-circle — worth ~0.5% over a few hundred miles. */
+  geodesicDistance(
+    from: unknown,
+    to: unknown,
+    unit: "meters",
+  ): { distance: number };
+};
+
 type MapCtor = new (props: { basemap: string; layers?: unknown[] }) => EsriMap;
 
 type MapViewCtor = new (props: {
@@ -108,7 +118,18 @@ const HOME_SCALE = 7_262_011;
 /** A drawn rectangle, in degrees. */
 type Area = { west: number; south: number; east: number; north: number };
 
+/** A measured line and its ellipsoidal length in metres. */
+type Measurement = { from: LonLat; to: LonLat; meters: number };
+
+/** Which map tool is armed and waiting for a drag. One at a time. */
+type ActiveTool = "draw-area" | "measure-distance" | null;
+
+type ScreenPoint = { x: number; y: number };
+
 const AREA_CSV_FILENAME = "mineral-view-area.csv";
+
+/** The dashed blue both tools draw in. */
+const TOOL_BLUE: [number, number, number] = [37, 99, 235];
 
 /**
  * Esri's World Topographic Map — the cream land, green national forests, blue
@@ -220,17 +241,22 @@ export function MapExplorerView() {
    * held in refs; the state beside each ref exists only to re-render the React
    * side. `areaLayer` and `ctors` are filled in once the SDK has loaded.
    */
-  const [drawArmed, setDrawArmed] = useState(false);
+  const [activeTool, setActiveTool] = useState<ActiveTool>(null);
   const [area, setArea] = useState<Area | null>(null);
-  const [areaAnchor, setAreaAnchor] = useState<{ x: number; y: number } | null>(
-    null,
-  );
-  const drawArmedRef = useRef(false);
+  const [areaAnchor, setAreaAnchor] = useState<ScreenPoint | null>(null);
+  const [measurement, setMeasurement] = useState<Measurement | null>(null);
+  const [measureAnchor, setMeasureAnchor] = useState<ScreenPoint | null>(null);
+
+  const activeToolRef = useRef<ActiveTool>(null);
   const areaRef = useRef<Area | null>(null);
+  const measurementRef = useRef<Measurement | null>(null);
   const areaLayerRef = useRef<EsriGraphicsLayer | null>(null);
-  const ctorsRef = useRef<{ Graphic: GraphicCtor; Point: PointCtor } | null>(
-    null,
-  );
+  const measureLayerRef = useRef<EsriGraphicsLayer | null>(null);
+  const ctorsRef = useRef<{
+    Graphic: GraphicCtor;
+    Point: PointCtor;
+    geodesic: GeodesicUtils;
+  } | null>(null);
   const [readout, setReadout] = useState({
     scale: HOME_SCALE,
     center: { longitude: HOME_CENTER[0], latitude: HOME_CENTER[1] },
@@ -266,31 +292,99 @@ export function MapExplorerView() {
         symbol: {
           type: "simple-fill",
           color: [255, 255, 255, 0.22],
-          outline: { color: [37, 99, 235], width: 1.5, style: "dash" },
+          outline: { color: TOOL_BLUE, width: 1.5, style: "dash" },
         },
       }),
     );
   }, []);
 
-  /** Puts the bar over the middle of the rectangle's top edge. */
-  const anchorAreaBar = useCallback(() => {
-    const view = viewRef.current;
+  /** Redraws the measured line and its two end dots. */
+  const drawMeasurement = useCallback((next: Measurement | null) => {
+    const layer = measureLayerRef.current;
     const ctors = ctorsRef.current;
-    const current = areaRef.current;
+    if (!layer || !ctors) return;
 
-    if (!view || !ctors || !current) {
-      setAreaAnchor(null);
-      return;
-    }
+    layer.removeAll();
+    if (!next) return;
 
-    const screen = view.toScreen(
-      new ctors.Point({
-        longitude: (current.west + current.east) / 2,
-        latitude: current.north,
-        spatialReference: { wkid: 4326 },
+    layer.add(
+      new ctors.Graphic({
+        geometry: {
+          type: "polyline",
+          paths: [
+            [
+              [next.from.longitude, next.from.latitude],
+              [next.to.longitude, next.to.latitude],
+            ],
+          ],
+          spatialReference: { wkid: 4326 },
+        },
+        symbol: {
+          type: "simple-line",
+          color: TOOL_BLUE,
+          width: 1.5,
+          style: "dash",
+        },
       }),
     );
-    setAreaAnchor(screen ? { x: screen.x, y: screen.y } : null);
+
+    for (const end of [next.from, next.to]) {
+      layer.add(
+        new ctors.Graphic({
+          geometry: {
+            type: "point",
+            longitude: end.longitude,
+            latitude: end.latitude,
+          },
+          symbol: {
+            type: "simple-marker",
+            size: 7,
+            color: [255, 255, 255],
+            outline: { color: TOOL_BLUE, width: 1.5 },
+          },
+        }),
+      );
+    }
+  }, []);
+
+  /** Re-projects both on-map bars — they are React, so they do not follow. */
+  const anchorBars = useCallback(() => {
+    const view = viewRef.current;
+    const ctors = ctorsRef.current;
+    if (!view || !ctors) return;
+
+    const project = (longitude: number, latitude: number) => {
+      const screen = view.toScreen(
+        new ctors.Point({
+          longitude,
+          latitude,
+          spatialReference: { wkid: 4326 },
+        }),
+      );
+      return screen ? { x: screen.x, y: screen.y } : null;
+    };
+
+    // The area bar rides the middle of the rectangle's top edge…
+    const currentArea = areaRef.current;
+    setAreaAnchor(
+      currentArea
+        ? project(
+            (currentArea.west + currentArea.east) / 2,
+            currentArea.north,
+          )
+        : null,
+    );
+
+    // …and the distance bar sits on the midpoint of the line.
+    const currentMeasure = measurementRef.current;
+    setMeasureAnchor(
+      currentMeasure
+        ? project(
+            (currentMeasure.from.longitude + currentMeasure.to.longitude) / 2,
+            (currentMeasure.from.latitude + currentMeasure.to.latitude) / 2,
+          )
+        : null,
+    );
   }, []);
 
   useEffect(() => {
@@ -304,15 +398,23 @@ export function MapExplorerView() {
 
     void (async () => {
       try {
-        const [EsriMap, MapView, GraphicsLayer, Graphic, Point] =
+        const [EsriMap, MapView, GraphicsLayer, Graphic, Point, geodesic] =
           await loadArcgisModules<
-            [MapCtor, MapViewCtor, GraphicsLayerCtor, GraphicCtor, PointCtor]
+            [
+              MapCtor,
+              MapViewCtor,
+              GraphicsLayerCtor,
+              GraphicCtor,
+              PointCtor,
+              GeodesicUtils,
+            ]
           >([
             "esri/Map",
             "esri/views/MapView",
             "esri/layers/GraphicsLayer",
             "esri/Graphic",
             "esri/geometry/Point",
+            "esri/geometry/support/geodesicUtils",
           ]);
 
         if (cancelled || !containerRef.current) return;
@@ -320,16 +422,19 @@ export function MapExplorerView() {
         const clusters = new GraphicsLayer({ id: "well-clusters" });
         clusters.addMany(buildClusterGraphics(Graphic));
 
-        // Above the clusters, so the rectangle's outline is never buried.
+        // Above the clusters, so tool output is never buried. One layer each,
+        // so clearing an area does not wipe a measurement and vice versa.
         const areaLayer = new GraphicsLayer({ id: "drawn-area" });
+        const measureLayer = new GraphicsLayer({ id: "measured-distance" });
         areaLayerRef.current = areaLayer;
-        ctorsRef.current = { Graphic, Point };
+        measureLayerRef.current = measureLayer;
+        ctorsRef.current = { Graphic, Point, geodesic };
 
         // Held so the basemap picker can swap `map.basemap` later. The cluster
         // layer is a sibling of the basemap, so it survives the swap.
         const map = new EsriMap({
           basemap: DEFAULT_BASEMAP,
-          layers: [clusters, areaLayer],
+          layers: [clusters, areaLayer, measureLayer],
         });
         mapRef.current = map;
 
@@ -364,37 +469,62 @@ export function MapExplorerView() {
         };
         watcher = view.watch(["scale", "center"], () => {
           syncReadout();
-          // The rectangle is a map graphic and moves itself; the bar above it
-          // is React, so it has to be re-projected as the view moves.
-          anchorAreaBar();
+          // Tool graphics are on the map and move themselves; the bars above
+          // them are React, so they have to be re-projected as the view moves.
+          anchorBars();
         });
 
         dragHandle = view.on("drag", (event) => {
-          if (!drawArmedRef.current || !view) return;
+          const tool = activeToolRef.current;
+          if (!tool || !view) return;
 
-          // Without this the drag pans the map underneath the rectangle.
+          // Without this the drag pans the map underneath the drawing.
           event.stopPropagation();
 
           const from = view.toMap(event.origin);
           const to = view.toMap({ x: event.x, y: event.y });
           if (!from || !to) return;
 
-          const next: Area = {
-            west: Math.min(from.longitude, to.longitude),
-            east: Math.max(from.longitude, to.longitude),
-            south: Math.min(from.latitude, to.latitude),
-            north: Math.max(from.latitude, to.latitude),
-          };
+          if (tool === "draw-area") {
+            const next: Area = {
+              west: Math.min(from.longitude, to.longitude),
+              east: Math.max(from.longitude, to.longitude),
+              south: Math.min(from.latitude, to.latitude),
+              north: Math.max(from.latitude, to.latitude),
+            };
+            areaRef.current = next;
+            setArea(next);
+            drawArea(next);
+          } else {
+            const ctors = ctorsRef.current;
+            if (!ctors) return;
 
-          areaRef.current = next;
-          setArea(next);
-          drawArea(next);
-          anchorAreaBar();
+            const ends = [from, to].map(
+              ({ longitude, latitude }) =>
+                new ctors.Point({
+                  longitude,
+                  latitude,
+                  spatialReference: { wkid: 4326 },
+                }),
+            );
+
+            const next: Measurement = {
+              from: { longitude: from.longitude, latitude: from.latitude },
+              to: { longitude: to.longitude, latitude: to.latitude },
+              meters: ctors.geodesic.geodesicDistance(ends[0], ends[1], "meters")
+                .distance,
+            };
+            measurementRef.current = next;
+            setMeasurement(next);
+            drawMeasurement(next);
+          }
+
+          anchorBars();
 
           if (event.action === "end") {
-            // One rectangle per activation — the tool disarms on release.
-            drawArmedRef.current = false;
-            setDrawArmed(false);
+            // One shape per activation — the tool disarms on release.
+            activeToolRef.current = null;
+            setActiveTool(null);
           }
         });
 
@@ -411,30 +541,48 @@ export function MapExplorerView() {
       watcher?.remove();
       dragHandle?.remove();
       areaLayerRef.current = null;
+      measureLayerRef.current = null;
       ctorsRef.current = null;
       viewRef.current = null;
       view?.destroy();
     };
-    // Both are stable, so the view is still built exactly once.
-  }, [drawArea, anchorAreaBar]);
+    // All three are stable, so the view is still built exactly once.
+  }, [drawArea, drawMeasurement, anchorBars]);
 
-  const startDrawArea = useCallback(() => {
-    drawArmedRef.current = true;
-    setDrawArmed(true);
-    areaRef.current = null;
-    setArea(null);
-    setAreaAnchor(null);
-    drawArea(null);
-  }, [drawArea]);
+  /** Arms a tool, clearing whatever that same tool drew last time. */
+  const startTool = useCallback(
+    (tool: ActiveTool) => {
+      activeToolRef.current = tool;
+      setActiveTool(tool);
+
+      if (tool === "draw-area") {
+        areaRef.current = null;
+        setArea(null);
+        setAreaAnchor(null);
+        drawArea(null);
+      } else if (tool === "measure-distance") {
+        measurementRef.current = null;
+        setMeasurement(null);
+        setMeasureAnchor(null);
+        drawMeasurement(null);
+      }
+    },
+    [drawArea, drawMeasurement],
+  );
 
   const clearArea = useCallback(() => {
-    drawArmedRef.current = false;
-    setDrawArmed(false);
     areaRef.current = null;
     setArea(null);
     setAreaAnchor(null);
     drawArea(null);
   }, [drawArea]);
+
+  const clearMeasurement = useCallback(() => {
+    measurementRef.current = null;
+    setMeasurement(null);
+    setMeasureAnchor(null);
+    drawMeasurement(null);
+  }, [drawMeasurement]);
 
   const exportArea = useCallback(() => {
     if (areaRef.current) downloadAreaCsv(areaRef.current);
@@ -509,7 +657,7 @@ export function MapExplorerView() {
     <div
       ref={rootRef}
       className={`mv-map relative h-full w-full bg-[#efe7d8] ${
-        drawArmed ? "cursor-crosshair" : ""
+        activeTool ? "cursor-crosshair" : ""
       }`}
     >
       {/*
@@ -531,6 +679,14 @@ export function MapExplorerView() {
         />
       )}
 
+      {status === "ready" && measurement && measureAnchor && (
+        <MeasureBar
+          meters={measurement.meters}
+          at={measureAnchor}
+          onClear={clearMeasurement}
+        />
+      )}
+
       {status === "ready" ? (
         <MapChrome
           scale={readout.scale}
@@ -541,8 +697,8 @@ export function MapExplorerView() {
           onPrint={printMap}
           isFullscreen={isFullscreen}
           onToggleFullscreen={toggleFullscreen}
-          drawArmed={drawArmed}
-          onStartDrawArea={startDrawArea}
+          activeTool={activeTool}
+          onSelectTool={startTool}
           onZoomIn={zoomIn}
           onZoomOut={zoomOut}
           onHome={goHome}
