@@ -51,15 +51,20 @@ type MapChromeProps = {
   onPrint: () => void;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
+  /** Which of Map / Table / Insights is showing. Owned by the view. */
+  viewTab: ViewTab;
+  onViewTabChange: (tab: ViewTab) => void;
   /** The tool waiting for a drag on the map, if any. */
   activeTool: string | null;
-  onSelectTool: (id: "draw-area" | "measure-distance") => void;
+  onSelectTool: (
+    id: "draw-area" | "measure-distance" | "whats-near-my-land",
+  ) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onHome: () => void;
 };
 
-type ViewTab = "map" | "table" | "insights";
+export type ViewTab = "map" | "table" | "insights";
 
 const VIEW_TABS: { id: ViewTab; label: string; icon: typeof MapIcon }[] = [
   { id: "map", label: "Map", icon: MapIcon },
@@ -76,13 +81,14 @@ export function MapChrome({
   onPrint,
   isFullscreen,
   onToggleFullscreen,
+  viewTab,
+  onViewTabChange,
   activeTool,
   onSelectTool,
   onZoomIn,
   onZoomOut,
   onHome,
 }: MapChromeProps) {
-  const [activeTab, setActiveTab] = useState<ViewTab>("map");
   const [basemapOpen, setBasemapOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   // Filters opens with the map. It is the panel people work from, and the
@@ -210,8 +216,12 @@ export function MapChrome({
           <ToolsPanel
             activeId={activeTool ?? undefined}
             onSelect={(id) => {
-              // The other two tools have no implementation yet.
-              if (id === "draw-area" || id === "measure-distance") {
+              // Measure area has no implementation yet.
+              if (
+                id === "draw-area" ||
+                id === "measure-distance" ||
+                id === "whats-near-my-land"
+              ) {
                 onSelectTool(id);
               }
             }}
@@ -237,10 +247,10 @@ export function MapChrome({
             <button
               key={id}
               type="button"
-              aria-pressed={activeTab === id}
-              onClick={() => setActiveTab(id)}
+              aria-pressed={viewTab === id}
+              onClick={() => onViewTabChange(id)}
               className={`inline-flex shrink-0 cursor-pointer items-center gap-[6px] rounded-lg px-3 py-[6px] text-[13px] font-semibold leading-tight transition-colors ${
-                activeTab === id
+                viewTab === id
                   ? "bg-mv-green-deep text-white"
                   : "text-mv-slate hover:bg-[#f2f8f5] hover:text-mv-green-deep"
               }`}

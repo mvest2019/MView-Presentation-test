@@ -10,8 +10,14 @@ import {
 
 import { AreaSelectionBar } from "./area-selection";
 import { loadArcgisModules } from "./arcgis-loader";
-import { MapChrome } from "./map-chrome";
+import { MapChrome, type ViewTab } from "./map-chrome";
 import { MeasureBar } from "./measure-bar";
+import {
+  NearbyPanel,
+  NearbyPrompt,
+  type NearbyStats,
+} from "./nearby-panel";
+import { WellsTable } from "./wells-table";
 import {
   CLUSTER_FILL,
   clusterDiameter,
@@ -55,6 +61,10 @@ interface EsriView {
   when(): Promise<unknown>;
   watch(paths: string | string[], callback: () => void): EsriHandle;
   on(event: "drag", handler: (event: EsriDragEvent) => void): EsriHandle;
+  on(
+    event: "immediate-click",
+    handler: (event: EsriClickEvent) => void,
+  ): EsriHandle;
   toMap(screenPoint: { x: number; y: number }): LonLat | null;
   toScreen(mapPoint: unknown): { x: number; y: number } | null;
   goTo(target: unknown): Promise<unknown>;
@@ -80,6 +90,8 @@ type PointCtor = new (props: {
   spatialReference: { wkid: number };
 }) => unknown;
 
+type EsriClickEvent = { mapPoint: LonLat | null; stopPropagation(): void };
+
 type GeodesicUtils = {
   /** Ellipsoidal, not great-circle — worth ~0.5% over a few hundred miles. */
   geodesicDistance(
@@ -87,6 +99,8 @@ type GeodesicUtils = {
     to: unknown,
     unit: "meters",
   ): { distance: number };
+  /** `azimuth` is degrees clockwise from north. */
+  pointFromDistance(from: unknown, meters: number, azimuth: number): LonLat;
 };
 
 type MapCtor = new (props: { basemap: string; layers?: unknown[] }) => EsriMap;
@@ -121,12 +135,32 @@ type Area = { west: number; south: number; east: number; north: number };
 /** A measured line and its ellipsoidal length in metres. */
 type Measurement = { from: LonLat; to: LonLat; meters: number };
 
-/** Which map tool is armed and waiting for a drag. One at a time. */
-type ActiveTool = "draw-area" | "measure-distance" | null;
+/** Which map tool is armed. One at a time. */
+type ActiveTool =
+  | "draw-area"
+  | "measure-distance"
+  | "whats-near-my-land"
+  | null;
+
+/**
+ * A watched spot: where, how far out, and what is inside. The stats live here
+ * rather than being derived at render time, because working them out needs the
+ * Esri modules, and those are held in a ref.
+ */
+type Nearby = { at: LonLat; radiusMiles: number; stats: NearbyStats };
+
+const METRES_PER_MILE = 1609.344;
+
+/** Vertices around a watch circle. 6° steps read as smooth at any zoom. */
+const CIRCLE_STEP_DEGREES = 6;
+
+/** The radius the watch card opens on, matching the mock. */
+const DEFAULT_WATCH_RADIUS_MILES = 2;
 
 type ScreenPoint = { x: number; y: number };
 
 const AREA_CSV_FILENAME = "mineral-view-area.csv";
+const WATCH_CSV_FILENAME = "mineral-view-nearby.csv";
 
 /** The dashed blue both tools draw in. */
 const TOOL_BLUE: [number, number, number] = [37, 99, 235];
@@ -169,6 +203,147 @@ function clustersInArea(area: Area) {
       latitude >= area.south &&
       latitude <= area.north,
   );
+}
+
+/**
+ * What the watch card reports.
+ *
+ * Same caveat as the drawn area: the map holds aggregated bubbles, not
+ * individual bores, so "wells" counts whole clusters falling inside the circle
+ * and "nearest bore" measures to a cluster centre. Permits are always zero —
+ * there is no permit layer to read. All three become real queries once the well
+ * layer lands; only the numbers change, not this card.
+ */
+function nearbyStats(
+  at: LonLat,
+  radiusMiles: number,
+  geodesic: GeodesicUtils,
+  Point: PointCtor,
+): NearbyStats {
+  const centre = new Point({
+    longitude: at.longitude,
+    latitude: at.latitude,
+    spatialReference: { wkid: 4326 },
+  });
+
+  const radiusMetres = radiusMiles * METRES_PER_MILE;
+  let wells = 0;
+  let inside = 0;
+  let newestYear: number | null = null;
+  let nearest = Infinity;
+
+  for (const cluster of wellClusters) {
+    const metres = geodesic.geodesicDistance(
+      centre,
+      new Point({
+        longitude: cluster.at[0],
+        latitude: cluster.at[1],
+        spatialReference: { wkid: 4326 },
+      }),
+      "meters",
+    ).distance;
+
+    if (metres <= radiusMetres) {
+      wells += cluster.count;
+      inside += 1;
+      if (newestYear === null || cluster.newestYear > newestYear) {
+        newestYear = cluster.newestYear;
+      }
+    }
+    if (metres < nearest) nearest = metres;
+  }
+
+  return {
+    permits: 0,
+    wells,
+    nearestBoreMiles: nearest === Infinity ? null : nearest / METRES_PER_MILE,
+    // The clusters carry no operator attribution, so everything inside falls
+    // into the same catch-all bucket the county list uses.
+    operators: inside ? [{ name: "All other operators", count: inside }] : [],
+    newestYear,
+  };
+}
+
+/**
+ * The county the point sits in.
+ *
+ * NOTE: this is Esri's public *sample* server — fine for a prototype, not
+ * something to ship against. Swap in the counties layer the live map already
+ * uses (`mview-portal.mineralview.com/gis/counties.geojson`) before release.
+ * Returns null on any failure; the card just drops the "· County" suffix.
+ */
+const COUNTY_QUERY_URL =
+  "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/3/query";
+
+async function lookupCounty(at: LonLat): Promise<string | null> {
+  const params = new URLSearchParams({
+    f: "json",
+    returnGeometry: "false",
+    outFields: "NAME",
+    geometryType: "esriGeometryPoint",
+    inSR: "4326",
+    spatialRel: "esriSpatialRelIntersects",
+    geometry: JSON.stringify({
+      x: at.longitude,
+      y: at.latitude,
+      spatialReference: { wkid: 4326 },
+    }),
+  });
+
+  try {
+    const response = await fetch(`${COUNTY_QUERY_URL}?${params}`);
+    const body = await response.json();
+
+    // Field casing is not guaranteed — this service echoes `NAME` back as
+    // `name`. Take whichever key came home rather than assuming.
+    const attributes: Record<string, unknown> =
+      body?.features?.[0]?.attributes ?? {};
+    const name = attributes.NAME ?? attributes.name;
+    return typeof name === "string" ? name : null;
+  } catch {
+    return null;
+  }
+}
+
+function downloadNearbyCsv(watch: Nearby, geodesic: GeodesicUtils, Point: PointCtor): void {
+  const centre = new Point({
+    longitude: watch.at.longitude,
+    latitude: watch.at.latitude,
+    spatialReference: { wkid: 4326 },
+  });
+  const radiusMetres = watch.radiusMiles * METRES_PER_MILE;
+
+  const rows: (string | number)[][] = [
+    ["longitude", "latitude", "wells", "newest_year"],
+  ];
+
+  for (const cluster of wellClusters) {
+    const metres = geodesic.geodesicDistance(
+      centre,
+      new Point({
+        longitude: cluster.at[0],
+        latitude: cluster.at[1],
+        spatialReference: { wkid: 4326 },
+      }),
+      "meters",
+    ).distance;
+    if (metres <= radiusMetres) {
+      rows.push([cluster.at[0], cluster.at[1], cluster.count, cluster.newestYear]);
+    }
+  }
+
+  const url = URL.createObjectURL(
+    new Blob([rows.map((row) => row.join(",")).join("\r\n")], {
+      type: "text/csv;charset=utf-8",
+    }),
+  );
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = WATCH_CSV_FILENAME;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function wellsInArea(area: Area): number {
@@ -234,6 +409,7 @@ export function MapExplorerView() {
 
   const [status, setStatus] = useState<Status>("loading");
   const [basemap, setBasemap] = useState(DEFAULT_BASEMAP);
+  const [viewTab, setViewTab] = useState<ViewTab>("map");
 
   /*
    * Area drawing. The Esri drag handler is registered once and outlives every
@@ -246,12 +422,22 @@ export function MapExplorerView() {
   const [areaAnchor, setAreaAnchor] = useState<ScreenPoint | null>(null);
   const [measurement, setMeasurement] = useState<Measurement | null>(null);
   const [measureAnchor, setMeasureAnchor] = useState<ScreenPoint | null>(null);
+  const [nearby, setNearby] = useState<Nearby | null>(null);
+  const [nearbyAnchor, setNearbyAnchor] = useState<ScreenPoint | null>(null);
+  /** Undefined while the county lookup is in flight. */
+  const [nearbyCounty, setNearbyCounty] = useState<string | null | undefined>(
+    undefined,
+  );
+  /** Guards against a slow lookup landing after a newer pick. */
+  const countyRequestRef = useRef(0);
 
   const activeToolRef = useRef<ActiveTool>(null);
   const areaRef = useRef<Area | null>(null);
   const measurementRef = useRef<Measurement | null>(null);
+  const nearbyRef = useRef<Nearby | null>(null);
   const areaLayerRef = useRef<EsriGraphicsLayer | null>(null);
   const measureLayerRef = useRef<EsriGraphicsLayer | null>(null);
+  const nearbyLayerRef = useRef<EsriGraphicsLayer | null>(null);
   const ctorsRef = useRef<{
     Graphic: GraphicCtor;
     Point: PointCtor;
@@ -347,7 +533,63 @@ export function MapExplorerView() {
     }
   }, []);
 
-  /** Re-projects both on-map bars — they are React, so they do not follow. */
+  /** Redraws the watch circle and the dot at its centre. */
+  const drawNearby = useCallback((next: Nearby | null) => {
+    const layer = nearbyLayerRef.current;
+    const ctors = ctorsRef.current;
+    if (!layer || !ctors) return;
+
+    layer.removeAll();
+    if (!next) return;
+
+    const centre = new ctors.Point({
+      longitude: next.at.longitude,
+      latitude: next.at.latitude,
+      spatialReference: { wkid: 4326 },
+    });
+
+    // A true geodesic circle, walked round by azimuth. A plain square-degree
+    // buffer would come out visibly oval this far north.
+    const metres = next.radiusMiles * METRES_PER_MILE;
+    const ring: number[][] = [];
+    for (let azimuth = 0; azimuth <= 360; azimuth += CIRCLE_STEP_DEGREES) {
+      const edge = ctors.geodesic.pointFromDistance(centre, metres, azimuth);
+      ring.push([edge.longitude, edge.latitude]);
+    }
+
+    layer.add(
+      new ctors.Graphic({
+        geometry: {
+          type: "polygon",
+          rings: [ring],
+          spatialReference: { wkid: 4326 },
+        },
+        symbol: {
+          type: "simple-fill",
+          color: [84, 191, 150, 0.18],
+          outline: { color: [46, 143, 109], width: 1.5, style: "dash" },
+        },
+      }),
+    );
+
+    layer.add(
+      new ctors.Graphic({
+        geometry: {
+          type: "point",
+          longitude: next.at.longitude,
+          latitude: next.at.latitude,
+        },
+        symbol: {
+          type: "simple-marker",
+          size: 9,
+          color: [255, 255, 255],
+          outline: { color: [46, 143, 109], width: 2 },
+        },
+      }),
+    );
+  }, []);
+
+  /** Re-projects the on-map cards — they are React, so they do not follow. */
   const anchorBars = useCallback(() => {
     const view = viewRef.current;
     const ctors = ctorsRef.current;
@@ -375,7 +617,7 @@ export function MapExplorerView() {
         : null,
     );
 
-    // …and the distance bar sits on the midpoint of the line.
+    // …the distance bar sits on the midpoint of the line…
     const currentMeasure = measurementRef.current;
     setMeasureAnchor(
       currentMeasure
@@ -385,6 +627,26 @@ export function MapExplorerView() {
           )
         : null,
     );
+
+    // …and the watch card hangs off the bottom of the circle, so it is
+    // projected from the circle's south edge rather than its centre.
+    const currentNearby = nearbyRef.current;
+    if (!currentNearby) {
+      setNearbyAnchor(null);
+      return;
+    }
+
+    const south = ctors.geodesic.pointFromDistance(
+      new ctors.Point({
+        longitude: currentNearby.at.longitude,
+        latitude: currentNearby.at.latitude,
+        spatialReference: { wkid: 4326 },
+      }),
+      currentNearby.radiusMiles * METRES_PER_MILE,
+      180,
+    );
+    const anchor = project(south.longitude, south.latitude);
+    setNearbyAnchor(anchor ? { x: anchor.x, y: anchor.y + 12 } : null);
   }, []);
 
   useEffect(() => {
@@ -394,6 +656,7 @@ export function MapExplorerView() {
     let view: EsriView | undefined;
     let watcher: EsriHandle | undefined;
     let dragHandle: EsriHandle | undefined;
+    let clickHandle: EsriHandle | undefined;
     let frame = 0;
 
     void (async () => {
@@ -426,15 +689,17 @@ export function MapExplorerView() {
         // so clearing an area does not wipe a measurement and vice versa.
         const areaLayer = new GraphicsLayer({ id: "drawn-area" });
         const measureLayer = new GraphicsLayer({ id: "measured-distance" });
+        const nearbyLayer = new GraphicsLayer({ id: "watch-circle" });
         areaLayerRef.current = areaLayer;
         measureLayerRef.current = measureLayer;
+        nearbyLayerRef.current = nearbyLayer;
         ctorsRef.current = { Graphic, Point, geodesic };
 
         // Held so the basemap picker can swap `map.basemap` later. The cluster
         // layer is a sibling of the basemap, so it survives the swap.
         const map = new EsriMap({
           basemap: DEFAULT_BASEMAP,
-          layers: [clusters, areaLayer, measureLayer],
+          layers: [clusters, areaLayer, measureLayer, nearbyLayer],
         });
         mapRef.current = map;
 
@@ -474,8 +739,55 @@ export function MapExplorerView() {
           anchorBars();
         });
 
+        // `immediate-click` rather than `click`: the latter is held back to see
+        // whether a double-click follows, and there is no double-click
+        // behaviour here to wait for — the delay would just feel sluggish.
+        clickHandle = view.on("immediate-click", (event) => {
+          const ctors = ctorsRef.current;
+          if (activeToolRef.current !== "whats-near-my-land") return;
+          if (!event.mapPoint || !ctors) return;
+
+          event.stopPropagation();
+
+          const at = {
+            longitude: event.mapPoint.longitude,
+            latitude: event.mapPoint.latitude,
+          };
+          const next: Nearby = {
+            at,
+            radiusMiles: DEFAULT_WATCH_RADIUS_MILES,
+            stats: nearbyStats(
+              at,
+              DEFAULT_WATCH_RADIUS_MILES,
+              ctors.geodesic,
+              ctors.Point,
+            ),
+          };
+
+          nearbyRef.current = next;
+          setNearby(next);
+          drawNearby(next);
+          anchorBars();
+
+          const request = ++countyRequestRef.current;
+          setNearbyCounty(undefined);
+          void lookupCounty(at).then((name) => {
+            // Ignore a result that a newer pick has already superseded.
+            if (request === countyRequestRef.current) setNearbyCounty(name);
+          });
+
+          activeToolRef.current = null;
+          setActiveTool(null);
+        });
+
         dragHandle = view.on("drag", (event) => {
           const tool = activeToolRef.current;
+          // This tool takes a click, not a drag; a stray drag must not pan the
+          // map out from under the prompt either.
+          if (tool === "whats-near-my-land") {
+            event.stopPropagation();
+            return;
+          }
           if (!tool || !view) return;
 
           // Without this the drag pans the map underneath the drawing.
@@ -540,14 +852,30 @@ export function MapExplorerView() {
       if (frame) cancelAnimationFrame(frame);
       watcher?.remove();
       dragHandle?.remove();
+      clickHandle?.remove();
       areaLayerRef.current = null;
       measureLayerRef.current = null;
+      nearbyLayerRef.current = null;
       ctorsRef.current = null;
       viewRef.current = null;
       view?.destroy();
     };
-    // All three are stable, so the view is still built exactly once.
-  }, [drawArea, drawMeasurement, anchorBars]);
+    // All stable, so the view is still built exactly once.
+  }, [drawArea, drawMeasurement, drawNearby, anchorBars]);
+
+  // Esc backs out of an armed tool — the prompt says so.
+  useEffect(() => {
+    if (!activeTool) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      activeToolRef.current = null;
+      setActiveTool(null);
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [activeTool]);
 
   /** Arms a tool, clearing whatever that same tool drew last time. */
   const startTool = useCallback(
@@ -565,10 +893,61 @@ export function MapExplorerView() {
         setMeasurement(null);
         setMeasureAnchor(null);
         drawMeasurement(null);
+      } else if (tool === "whats-near-my-land") {
+        nearbyRef.current = null;
+        setNearby(null);
+        setNearbyAnchor(null);
+        drawNearby(null);
       }
     },
-    [drawArea, drawMeasurement],
+    [drawArea, drawMeasurement, drawNearby],
   );
+
+  const changeWatchRadius = useCallback(
+    (radiusMiles: number) => {
+      const current = nearbyRef.current;
+      const ctors = ctorsRef.current;
+      if (!current || !ctors) return;
+
+      const next: Nearby = {
+        ...current,
+        radiusMiles,
+        stats: nearbyStats(
+          current.at,
+          radiusMiles,
+          ctors.geodesic,
+          ctors.Point,
+        ),
+      };
+      nearbyRef.current = next;
+      setNearby(next);
+      drawNearby(next);
+      anchorBars();
+    },
+    [drawNearby, anchorBars],
+  );
+
+  const clearNearby = useCallback(() => {
+    countyRequestRef.current += 1;
+    nearbyRef.current = null;
+    setNearby(null);
+    setNearbyAnchor(null);
+    setNearbyCounty(undefined);
+    drawNearby(null);
+  }, [drawNearby]);
+
+  /** Insights has no view yet, so selecting it is ignored rather than faked. */
+  const changeViewTab = useCallback((tab: ViewTab) => {
+    if (tab === "map" || tab === "table") setViewTab(tab);
+  }, []);
+
+  const downloadNearby = useCallback(() => {
+    const current = nearbyRef.current;
+    const ctors = ctorsRef.current;
+    if (current && ctors) {
+      downloadNearbyCsv(current, ctors.geodesic, ctors.Point);
+    }
+  }, []);
 
   const clearArea = useCallback(() => {
     areaRef.current = null;
@@ -687,6 +1066,33 @@ export function MapExplorerView() {
         />
       )}
 
+      {status === "ready" && activeTool === "whats-near-my-land" && (
+        <NearbyPrompt />
+      )}
+
+      {status === "ready" && nearby && nearbyAnchor && (
+        <NearbyPanel
+          at={nearbyAnchor}
+          coordinates={nearby.at}
+          county={nearbyCounty}
+          radiusMiles={nearby.radiusMiles}
+          stats={nearby.stats}
+          onRadiusChange={changeWatchRadius}
+          onDownload={downloadNearby}
+          onClose={clearNearby}
+        />
+      )}
+
+      {/* The map stays mounted underneath — unmounting it would destroy the
+          Esri view and pay for a full re-initialisation on the way back. */}
+      {status === "ready" && viewTab === "table" && (
+        <WellsTable
+          activeTab={viewTab}
+          onTabChange={changeViewTab}
+          onShowOnMap={() => setViewTab("map")}
+        />
+      )}
+
       {status === "ready" ? (
         <MapChrome
           scale={readout.scale}
@@ -697,6 +1103,8 @@ export function MapExplorerView() {
           onPrint={printMap}
           isFullscreen={isFullscreen}
           onToggleFullscreen={toggleFullscreen}
+          viewTab={viewTab}
+          onViewTabChange={changeViewTab}
           activeTool={activeTool}
           onSelectTool={startTool}
           onZoomIn={zoomIn}
