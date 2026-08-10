@@ -506,11 +506,21 @@ export function MapExplorerView() {
   }, []);
 
   return (
-    <div ref={rootRef} className="mv-map relative h-full w-full bg-[#efe7d8]">
-      <div
-        ref={containerRef}
-        className={`h-full w-full ${drawArmed ? "cursor-crosshair" : ""}`}
-      />
+    <div
+      ref={rootRef}
+      className={`mv-map relative h-full w-full bg-[#efe7d8] ${
+        drawArmed ? "cursor-crosshair" : ""
+      }`}
+    >
+      {/*
+       * The className here must stay static. ArcGIS writes its own classes onto
+       * the container it is given — `esri-view`, plus the `esri-view-width-*`
+       * and `esri-view-height-*` breakpoints it keeps in step with the element's
+       * size — and React sets className wholesale, so any dynamic class on this
+       * element silently deletes them. The draw cursor lives on the root above
+       * for exactly that reason.
+       */}
+      <div ref={containerRef} className="h-full w-full" />
 
       {status === "ready" && area && areaAnchor && (
         <AreaSelectionBar
