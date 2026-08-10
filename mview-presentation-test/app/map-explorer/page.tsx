@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { h1Class } from "@/app/_components/typography";
 
 /*
  * Placeholder map page. The interactive explorer is not built yet — this holds
@@ -18,7 +19,7 @@ export default function MapExplorer() {
       <span className="rounded-full border border-[#bfe9d8] bg-mv-mint px-[14px] py-[6px] text-[11px] font-extrabold uppercase tracking-[.12em] text-mv-green-deep">
         Coming soon
       </span>
-      <h1 className="mt-6">Coming Soon</h1>
+      <h1 className={`${h1Class} mt-6`}>Coming Soon</h1>
       <p className="mt-4 max-w-[520px] text-mv-muted">
         The map explorer is on its way.
       </p>

@@ -17,8 +17,10 @@ import {
  * not filler — they say what Mineral View is not. Do not trim them.
  */
 
+// `hover:underline` is explicit now: the prototype gets it from a global
+// `a:hover` rule, which no longer exists.
 const footerLink =
-  "block py-1 text-[13.5px] text-[#cbd5e1] no-underline hover:text-mv-green";
+  "block py-1 text-[13.5px] text-[#cbd5e1] no-underline hover:text-mv-green hover:underline";
 
 export function SiteFooter() {
   return (
@@ -92,7 +94,9 @@ export function SiteFooter() {
 
 function FooterHeading({ children }: { children: React.ReactNode }) {
   return (
-    <h4 className="mb-3 text-[13px] uppercase tracking-[.08em] text-white">
+    // `h4` is not in the design's serif heading group, so it keeps the body
+    // stack; only the 700 weight came from the global rule.
+    <h4 className="mb-3 text-[13px] font-bold uppercase tracking-[.08em] text-white">
       {children}
     </h4>
   );

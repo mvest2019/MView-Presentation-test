@@ -21,8 +21,14 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${lexendDeca.variable} h-full antialiased`}>
-      <body className="flex min-h-full flex-col">
+    // The page defaults the prototype sets on `html` and `body` in CSS live here
+    // as utilities instead. Body size and leading are inherited by everything
+    // that does not override them, so they have to sit on `body` itself.
+    <html
+      lang="en"
+      className={`${lexendDeca.variable} h-full scroll-smooth antialiased`}
+    >
+      <body className="flex min-h-full flex-col bg-mv-bg font-sans text-[15px] leading-[1.55] text-mv-ink max-[767px]:text-[14px]">
         <SiteHeader />
         <main id="main" className="flex-1">
           {children}
