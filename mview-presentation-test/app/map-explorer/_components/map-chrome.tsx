@@ -19,6 +19,8 @@ import {
 import { useEffect, useRef, useState } from "react";
 
 import { BasemapGallery } from "./basemap-gallery";
+import { ShareMenu } from "./share-menu";
+import { ToolsPanel } from "./tools-panel";
 import { WELLS_STATEWIDE } from "./well-clusters";
 
 /*
@@ -43,6 +45,8 @@ type MapChromeProps = {
   /** Active basemap id, so the gallery can mark its tile. */
   basemap: string;
   onBasemapChange: (id: string) => void;
+  onSaveImage: () => void;
+  onPrint: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onHome: () => void;
@@ -61,14 +65,45 @@ export function MapChrome({
   center,
   basemap,
   onBasemapChange,
+  onSaveImage,
+  onPrint,
   onZoomIn,
   onZoomOut,
   onHome,
 }: MapChromeProps) {
   const [activeTab, setActiveTab] = useState<ViewTab>("map");
   const [basemapOpen, setBasemapOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareAnchor, setShareAnchor] = useState({ top: 60, right: 16 });
   const basemapRef = useRef<HTMLDivElement>(null);
+  const toolsRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const shareButtonRef = useRef<HTMLSpanElement>(null);
   const bar = scaleBar(scale);
+
+  /**
+   * Opens the share menu under the Share button. The offsets are measured
+   * rather than hard-coded because the button's position moves with the
+   * toolbar — the bar is right-aligned above 919px and centred below it, and
+   * the statewide count changes width with the number.
+   */
+  const toggleShare = () => {
+    if (shareOpen) {
+      setShareOpen(false);
+      return;
+    }
+
+    const toolbar = toolbarRef.current?.getBoundingClientRect();
+    const button = shareButtonRef.current?.getBoundingClientRect();
+    if (toolbar && button) {
+      setShareAnchor({
+        top: Math.round(button.bottom - toolbar.top + 8),
+        right: Math.round(toolbar.right - button.right),
+      });
+    }
+    setShareOpen(true);
+  };
 
   // Close the basemap gallery on an outside click or Escape — the same
   // handling the site header gives its Learn dropdown.
@@ -92,15 +127,76 @@ export function MapChrome({
     };
   }, [basemapOpen]);
 
+  // Same for the tools panel. Kept as its own effect rather than folded into a
+  // shared hook because that is how the site header handles its two overlays.
+  useEffect(() => {
+    if (!toolsOpen) return;
+
+    function onPointerDown(event: MouseEvent) {
+      if (!toolsRef.current?.contains(event.target as Node)) setToolsOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setToolsOpen(false);
+    }
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [toolsOpen]);
+
+  // And the share menu. Its outside-click test covers the toolbar wrapper,
+  // which holds both the button and the menu.
+  useEffect(() => {
+    if (!shareOpen) return;
+
+    function onPointerDown(event: MouseEvent) {
+      if (!toolbarRef.current?.contains(event.target as Node)) {
+        setShareOpen(false);
+      }
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setShareOpen(false);
+    }
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [shareOpen]);
+
   return (
     /* The layer is click-through so the map keeps its drag; each control opts
        itself back in with `pointer-events-auto`. */
     <div className="pointer-events-none absolute inset-0 z-20">
       <EdgeTab side="left" label="Filters" />
-      <EdgeTab side="right" label="Tools" />
+
+      {/* The panel takes the tab's place rather than sitting beside it, so the
+          right edge never shows both. */}
+      <div ref={toolsRef}>
+        {toolsOpen ? (
+          <ToolsPanel
+            onCollapse={() => setToolsOpen(false)}
+            className="pointer-events-auto absolute right-0 top-16"
+          />
+        ) : (
+          <EdgeTab
+            side="right"
+            label="Tools"
+            onClick={() => setToolsOpen(true)}
+          />
+        )}
+      </div>
 
       {/* ---------------- top toolbar ---------------- */}
-      <div className="absolute inset-x-0 top-0 flex justify-end p-4 max-[919px]:justify-center">
+      <div
+        ref={toolbarRef}
+        className="absolute inset-x-0 top-0 flex justify-end p-4 max-[919px]:justify-center"
+      >
         <div className="pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-mv-line bg-white/97 px-2 py-[5px] shadow-mv-lg backdrop-blur-[6px]">
           {VIEW_TABS.map(({ id, label, icon: Icon }) => (
             <button
@@ -139,7 +235,14 @@ export function MapChrome({
               Pro
             </span>
           </ToolbarButton>
-          <ToolbarButton icon={Share2} label="Share" />
+          <span ref={shareButtonRef} className="shrink-0">
+            <ToolbarButton
+              icon={Share2}
+              label="Share"
+              onClick={toggleShare}
+              expanded={shareOpen}
+            />
+          </span>
 
           <div className="ml-1 flex shrink-0 items-center gap-2 rounded-lg border border-mv-line bg-white py-[5px] pl-3 pr-2">
             <label htmlFor="map-search" className="sr-only">
@@ -154,6 +257,27 @@ export function MapChrome({
             <Search size={15} className="text-mv-muted" aria-hidden="true" />
           </div>
         </div>
+
+        {/* Sibling of the bar, not a child: the bar scrolls horizontally on
+            narrow viewports, and `overflow-x` clips on both axes, so a dropdown
+            nested inside it would be cut off. Anchored by measurement instead —
+            see `toggleShare`. */}
+        {shareOpen && (
+          <ShareMenu
+            // Dismiss first: the capture should not have to wait on the menu,
+            // and the print dialog must not open behind it.
+            onSaveImage={() => {
+              setShareOpen(false);
+              onSaveImage();
+            }}
+            onPrint={() => {
+              setShareOpen(false);
+              onPrint();
+            }}
+            className="pointer-events-auto absolute"
+            style={{ top: shareAnchor.top, right: shareAnchor.right }}
+          />
+        )}
       </div>
 
       {/* ---------------- scale + coordinates ---------------- */}
@@ -240,14 +364,20 @@ function ToolbarButton({
   icon: Icon,
   label,
   children,
+  onClick,
+  expanded,
 }: {
   icon: typeof MapIcon;
   label: string;
   children?: React.ReactNode;
+  onClick?: () => void;
+  expanded?: boolean;
 }) {
   return (
     <button
       type="button"
+      onClick={onClick}
+      aria-expanded={expanded}
       className="inline-flex shrink-0 cursor-pointer items-center gap-[6px] rounded-lg px-[10px] py-[6px] text-[13px] font-semibold leading-tight text-mv-slate transition-colors hover:bg-[#f2f8f5] hover:text-mv-green-deep"
     >
       <Icon size={15} strokeWidth={2} aria-hidden="true" />
@@ -290,10 +420,19 @@ function IconButton({
 }
 
 /** The vertical FILTERS / TOOLS tabs clipped to the left and right edges. */
-function EdgeTab({ side, label }: { side: "left" | "right"; label: string }) {
+function EdgeTab({
+  side,
+  label,
+  onClick,
+}: {
+  side: "left" | "right";
+  label: string;
+  onClick?: () => void;
+}) {
   return (
     <button
       type="button"
+      onClick={onClick}
       className={`pointer-events-auto absolute cursor-pointer border border-mv-line bg-white px-[5px] py-[11px] shadow-mv hover:bg-[#f2f8f5] ${
         side === "left"
           ? "left-0 top-6 rounded-r-lg border-l-0"

@@ -38,6 +38,11 @@ interface EsriView {
   when(): Promise<unknown>;
   watch(paths: string | string[], callback: () => void): EsriHandle;
   goTo(target: unknown): Promise<unknown>;
+  /** Captures the map surface only — the React chrome is not in the canvas. */
+  takeScreenshot(options?: {
+    format?: "png" | "jpg";
+    quality?: number;
+  }): Promise<{ dataUrl: string }>;
   destroy(): void;
 }
 
@@ -84,6 +89,8 @@ const HOME_SCALE = 7_262_011;
  * stops there — which is what made the first build look washed out.
  */
 const DEFAULT_BASEMAP = "topo-vector";
+
+const SCREENSHOT_FILENAME = "mineral-view-map.png";
 
 type Status = "loading" | "ready" | "error";
 
@@ -193,6 +200,38 @@ export function MapExplorerView() {
     if (mapRef.current) mapRef.current.basemap = id;
   }, []);
 
+  const saveImage = useCallback(async () => {
+    const view = viewRef.current;
+    if (!view) return;
+
+    try {
+      const { dataUrl } = await view.takeScreenshot({ format: "png" });
+
+      // Anchor rather than `window.open`: a data URL in a new tab trips popup
+      // blockers, and `download` names the file.
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = SCREENSHOT_FILENAME;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      console.error("Could not capture the map.", error);
+    }
+  }, []);
+
+  const printMap = useCallback(async () => {
+    const view = viewRef.current;
+    if (!view) return;
+
+    try {
+      const { dataUrl } = await view.takeScreenshot({ format: "png" });
+      printImage(dataUrl);
+    } catch (error) {
+      console.error("Could not capture the map for printing.", error);
+    }
+  }, []);
+
   return (
     <div className="mv-map relative h-full w-full bg-[#efe7d8]">
       <div ref={containerRef} className="h-full w-full" />
@@ -203,6 +242,8 @@ export function MapExplorerView() {
           center={readout.center}
           basemap={basemap}
           onBasemapChange={changeBasemap}
+          onSaveImage={saveImage}
+          onPrint={printMap}
           onZoomIn={zoomIn}
           onZoomOut={zoomOut}
           onHome={goHome}
@@ -218,6 +259,54 @@ export function MapExplorerView() {
       )}
     </div>
   );
+}
+
+/**
+ * Prints a captured map through an off-screen iframe.
+ *
+ * `window.print()` on the page itself is not an option: the map is a WebGL
+ * canvas, which print renderers capture unreliably, and it would drag the site
+ * header, the toolbar and every panel onto the paper. Printing a flat PNG in
+ * its own document sidesteps both. An iframe rather than a popup window, so
+ * there is no blocker to trip over.
+ */
+function printImage(dataUrl: string): void {
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.cssText =
+    "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
+  document.body.appendChild(frame);
+
+  const doc = frame.contentDocument;
+  if (!doc) {
+    frame.remove();
+    return;
+  }
+
+  const style = doc.createElement("style");
+  style.textContent =
+    "@page{margin:12mm}html,body{margin:0;padding:0}" +
+    "img{width:100%;height:auto;display:block}";
+  doc.head.appendChild(style);
+
+  // Built as a node, not written as HTML — the data URL never has to survive
+  // being interpolated into markup.
+  const image = doc.createElement("img");
+  image.alt = "Map";
+  image.src = dataUrl;
+  doc.body.appendChild(image);
+
+  const print = () => {
+    frame.contentWindow?.focus();
+    frame.contentWindow?.print();
+    // The print dialog is modal but `print()` returns immediately in some
+    // browsers, so the frame outlives the call briefly rather than being torn
+    // out from under it.
+    setTimeout(() => frame.remove(), 1000);
+  };
+
+  if (image.complete) print();
+  else image.addEventListener("load", print, { once: true });
 }
 
 /**
