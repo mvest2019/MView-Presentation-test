@@ -1,26 +1,120 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ============================================================================
+   MINERAL VIEW — DESIGN TOKENS
+
+   Mirrored verbatim from the redesign document's `next/styles/tokens.css`,
+   which was itself extracted from the `marketing/v44.html` prototype's :root.
+
+   EXTRACTED, NOT AUTHORED. This is the only place a colour may be defined. If
+   a value looks wrong it is wrong in the design and must be changed there
+   first, or the prototype and the build stop agreeing.
+
+   Names are `mv-` prefixed so they never collide with Tailwind's own palette
+   (`bg-mv-green` is the brand green; `bg-green-500` is Tailwind's).
+   ============================================================================ */
+@theme {
+  /* Brand */
+  --color-mv-green: #54bf96;
+  --color-mv-green-ink: #04231a;
+  --color-mv-green-deep: #2e8f6d;
+  --color-mv-mint: #e6fff5;
+
+  /* Text and surface */
+  --color-mv-ink: #0d0e17;
+  --color-mv-slate: #1e293b;
+  --color-mv-muted: #6b7280;
+  --color-mv-bg: #f6f7f9;
+  --color-mv-card: #ffffff;
+  --color-mv-line: #e5e7eb;
+
+  /* Status */
+  --color-mv-amber: #b45309;
+  --color-mv-amber-bg: #fef3c7;
+  --color-mv-red: #b91c1c;
+  --color-mv-red-bg: #fee2e2;
+  --color-mv-blue: #1d4ed8;
+  --color-mv-blue-bg: #dbeafe;
+
+  /* Type — Lexend Deca throughout (Nikhil, 2026-07-20); the prototype points
+     both the serif and sans stacks at it. */
+  --font-sans:
+    var(--font-lexend-deca), -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-serif:
+    var(--font-lexend-deca), -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* Elevation and shape */
+  --shadow-mv: 0 1px 3px rgba(13, 14, 23, 0.07), 0 4px 14px rgba(13, 14, 23, 0.05);
+  --shadow-mv-lg: 0 4px 10px rgba(13, 14, 23, 0.08), 0 16px 40px rgba(13, 14, 23, 0.1);
+  --radius-mv: 12px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ============================================================================
+   BASE — the prototype's global type and surface rules, ported as-is.
+   ============================================================================ */
+@layer base {
+  html {
+    scroll-behavior: smooth;
   }
-}
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  body {
+    font-family: var(--font-sans);
+    background: var(--color-mv-bg);
+    color: var(--color-mv-ink);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a {
+    color: var(--color-mv-green-deep);
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    line-height: 1.18;
+    letter-spacing: -0.01em;
+  }
+
+  h1 {
+    font-size: 44px;
+  }
+  h2 {
+    font-size: 30px;
+  }
+  h3 {
+    font-size: 20px;
+  }
+  h4 {
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  @media (max-width: 1024px) {
+    h1 {
+      font-size: 36px;
+    }
+  }
+
+  @media (max-width: 767px) {
+    body {
+      font-size: 14px;
+    }
+    h1 {
+      font-size: 30px;
+    }
+    h2 {
+      font-size: 24px;
+    }
+  }
 }
