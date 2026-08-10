@@ -45,7 +45,7 @@ export const learnNav: NavLink[] = [
 /** Sits below a divider in the Learn dropdown. */
 export const learnNavFooterLink: NavLink = {
   label: "Operator directory — free lookup",
-  href: "/kyo",
+  href: "/operators",
 };
 
 /** Mobile drawer "Explore" section — mirrors the bar with fuller labels. */
@@ -70,7 +70,7 @@ export const footerColumns: FooterColumn[] = [
       { label: "For professionals — workspaces", href: "/professionals" },
       { label: "Pricing — free to start", href: "/pricing" },
       { label: "Lease Audit", href: "/lease-audit" },
-      { label: "Know Your Operators", href: "/kyo" },
+      { label: "Know Your Operators", href: "/operators" },
       {
         label: "Data for business — coverage, downloads & lookup",
         href: "/data",
