@@ -16,8 +16,9 @@ import {
   Table2,
   Zap,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { BasemapGallery } from "./basemap-gallery";
 import { WELLS_STATEWIDE } from "./well-clusters";
 
 /*
@@ -39,6 +40,9 @@ type MapChromeProps = {
   /** Live map scale denominator — the `1 : n` in the readout. */
   scale: number;
   center: { longitude: number; latitude: number };
+  /** Active basemap id, so the gallery can mark its tile. */
+  basemap: string;
+  onBasemapChange: (id: string) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onHome: () => void;
@@ -55,12 +59,38 @@ const VIEW_TABS: { id: ViewTab; label: string; icon: typeof MapIcon }[] = [
 export function MapChrome({
   scale,
   center,
+  basemap,
+  onBasemapChange,
   onZoomIn,
   onZoomOut,
   onHome,
 }: MapChromeProps) {
   const [activeTab, setActiveTab] = useState<ViewTab>("map");
+  const [basemapOpen, setBasemapOpen] = useState(false);
+  const basemapRef = useRef<HTMLDivElement>(null);
   const bar = scaleBar(scale);
+
+  // Close the basemap gallery on an outside click or Escape — the same
+  // handling the site header gives its Learn dropdown.
+  useEffect(() => {
+    if (!basemapOpen) return;
+
+    function onPointerDown(event: MouseEvent) {
+      if (!basemapRef.current?.contains(event.target as Node)) {
+        setBasemapOpen(false);
+      }
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setBasemapOpen(false);
+    }
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [basemapOpen]);
 
   return (
     /* The layer is click-through so the map keeps its drag; each control opts
@@ -150,7 +180,29 @@ export function MapChrome({
 
       {/* ---------------- navigation stack ---------------- */}
       <div className="absolute bottom-4 right-4 flex flex-col items-end gap-2">
-        <IconButton icon={Grid2x2} label="Basemap gallery" />
+        <div ref={basemapRef} className="relative">
+          {basemapOpen && (
+            <BasemapGallery
+              selected={basemap}
+              onSelect={(id) => {
+                onBasemapChange(id);
+                setBasemapOpen(false);
+              }}
+              // Left of the button, tops aligned — the button is 30px wide, so
+              // 38px clears it with an 8px gap.
+              className="pointer-events-auto absolute right-[38px] top-0"
+            />
+          )}
+
+          <IconButton
+            icon={Grid2x2}
+            label="Basemap"
+            active={basemapOpen}
+            expanded={basemapOpen}
+            onClick={() => setBasemapOpen((open) => !open)}
+          />
+        </div>
+
         <IconButton icon={Layers} label="Layers" />
         <IconButton icon={Maximize} label="Full screen" />
 
@@ -209,18 +261,28 @@ function IconButton({
   icon: Icon,
   label,
   onClick,
+  active = false,
+  expanded,
 }: {
   icon: typeof MapIcon;
   label: string;
   onClick?: () => void;
+  /** Filled green while the control's panel is open. */
+  active?: boolean;
+  expanded?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={label}
+      aria-expanded={expanded}
       title={label}
-      className="pointer-events-auto grid h-[30px] w-[30px] cursor-pointer place-items-center rounded-lg border border-mv-line bg-white text-mv-slate shadow-mv hover:bg-[#f2f8f5] hover:text-mv-green-deep"
+      className={`pointer-events-auto grid h-[30px] w-[30px] cursor-pointer place-items-center rounded-lg border shadow-mv ${
+        active
+          ? "border-mv-green-deep bg-mv-green-deep text-white"
+          : "border-mv-line bg-white text-mv-slate hover:bg-[#f2f8f5] hover:text-mv-green-deep"
+      }`}
     >
       <Icon size={15} aria-hidden="true" />
     </button>

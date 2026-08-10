@@ -23,7 +23,8 @@ import {
  */
 
 interface EsriMap {
-  readonly basemap: unknown;
+  /** Assigning a well-known id is enough — ArcGIS autocasts the string. */
+  basemap: unknown;
 }
 
 interface EsriHandle {
@@ -82,15 +83,17 @@ const HOME_SCALE = 7_262_011;
  * `terrain` renders pure white over Texas and Oklahoma — its relief data simply
  * stops there — which is what made the first build look washed out.
  */
-const BASEMAP = "topo-vector";
+const DEFAULT_BASEMAP = "topo-vector";
 
 type Status = "loading" | "ready" | "error";
 
 export function MapExplorerView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EsriView | null>(null);
+  const mapRef = useRef<EsriMap | null>(null);
 
   const [status, setStatus] = useState<Status>("loading");
+  const [basemap, setBasemap] = useState(DEFAULT_BASEMAP);
   const [readout, setReadout] = useState({
     scale: HOME_SCALE,
     center: { longitude: HOME_CENTER[0], latitude: HOME_CENTER[1] },
@@ -121,9 +124,14 @@ export function MapExplorerView() {
         const clusters = new GraphicsLayer({ id: "well-clusters" });
         clusters.addMany(buildClusterGraphics(Graphic));
 
+        // Held so the basemap picker can swap `map.basemap` later. The cluster
+        // layer is a sibling of the basemap, so it survives the swap.
+        const map = new EsriMap({ basemap: DEFAULT_BASEMAP, layers: [clusters] });
+        mapRef.current = map;
+
         view = new MapView({
           container: containerRef.current,
-          map: new EsriMap({ basemap: BASEMAP, layers: [clusters] }),
+          map,
           center: HOME_CENTER,
           scale: HOME_SCALE,
           // Below zoom 3 the world repeats and the terrain turns to mush.
@@ -180,6 +188,11 @@ export function MapExplorerView() {
     void viewRef.current?.goTo({ center: HOME_CENTER, scale: HOME_SCALE });
   }, []);
 
+  const changeBasemap = useCallback((id: string) => {
+    setBasemap(id);
+    if (mapRef.current) mapRef.current.basemap = id;
+  }, []);
+
   return (
     <div className="mv-map relative h-full w-full bg-[#efe7d8]">
       <div ref={containerRef} className="h-full w-full" />
@@ -188,6 +201,8 @@ export function MapExplorerView() {
         <MapChrome
           scale={readout.scale}
           center={readout.center}
+          basemap={basemap}
+          onBasemapChange={changeBasemap}
           onZoomIn={zoomIn}
           onZoomOut={zoomOut}
           onHome={goHome}
