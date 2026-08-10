@@ -362,60 +362,6 @@ export function MapExplorerView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** Redraws the dashed rectangle on the map. */
-  const drawArea = useCallback((next: Area | null) => {
-    const layer = areaLayerRef.current;
-    const ctors = ctorsRef.current;
-    if (!layer || !ctors) return;
-
-    layer.removeAll();
-    if (!next) return;
-
-    layer.add(
-      new ctors.Graphic({
-        geometry: {
-          type: "polygon",
-          rings: [
-            [
-              [next.west, next.north],
-              [next.east, next.north],
-              [next.east, next.south],
-              [next.west, next.south],
-              [next.west, next.north],
-            ],
-          ],
-          spatialReference: { wkid: 4326 },
-        },
-        symbol: {
-          type: "simple-fill",
-          color: [255, 255, 255, 0.22],
-          outline: { color: [37, 99, 235], width: 1.5, style: "dash" },
-        },
-      }),
-    );
-  }, []);
-
-  /** Puts the bar over the middle of the rectangle's top edge. */
-  const anchorAreaBar = useCallback(() => {
-    const view = viewRef.current;
-    const ctors = ctorsRef.current;
-    const current = areaRef.current;
-
-    if (!view || !ctors || !current) {
-      setAreaAnchor(null);
-      return;
-    }
-
-    const screen = view.toScreen(
-      new ctors.Point({
-        longitude: (current.west + current.east) / 2,
-        latitude: current.north,
-        spatialReference: { wkid: 4326 },
-      }),
-    );
-    setAreaAnchor(screen ? { x: screen.x, y: screen.y } : null);
-  }, []);
-
   const startDrawArea = useCallback(() => {
     drawArmedRef.current = true;
     setDrawArmed(true);
