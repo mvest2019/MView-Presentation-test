@@ -48,6 +48,8 @@ export const MAP_TOOLS: MapTool[] = [
 ];
 
 type ToolsPanelProps = {
+  /** The tool currently armed, if any — its button reads as pressed. */
+  activeId?: string;
   onSelect?: (id: string) => void;
   /** The chevron in the header — collapses the panel back to the tab. */
   onCollapse?: () => void;
@@ -57,6 +59,7 @@ type ToolsPanelProps = {
 };
 
 export function ToolsPanel({
+  activeId,
   onSelect,
   onCollapse,
   className = "",
@@ -85,8 +88,13 @@ export function ToolsPanel({
           <button
             key={id}
             type="button"
+            aria-pressed={id === activeId}
             onClick={() => onSelect?.(id)}
-            className="flex w-full cursor-pointer items-center gap-[10px] rounded-[10px] border border-mv-line bg-white px-3 py-[10px] text-left transition-colors hover:border-mv-green-deep hover:bg-[#f2f8f5] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+            className={`flex w-full cursor-pointer items-center gap-[10px] rounded-[10px] border px-3 py-[10px] text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep ${
+              id === activeId
+                ? "border-mv-green-deep bg-mv-mint"
+                : "border-mv-line bg-white hover:border-mv-green-deep hover:bg-[#f2f8f5]"
+            }`}
           >
             <Icon
               size={16}

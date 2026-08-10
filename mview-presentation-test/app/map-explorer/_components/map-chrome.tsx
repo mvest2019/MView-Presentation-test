@@ -9,6 +9,7 @@ import {
   Layers,
   Map as MapIcon,
   Maximize,
+  Minimize,
   Minus,
   Plus,
   Search,
@@ -48,6 +49,11 @@ type MapChromeProps = {
   onBasemapChange: (id: string) => void;
   onSaveImage: () => void;
   onPrint: () => void;
+  isFullscreen: boolean;
+  onToggleFullscreen: () => void;
+  /** True while the draw tool is waiting for a drag on the map. */
+  drawArmed: boolean;
+  onStartDrawArea: () => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onHome: () => void;
@@ -68,6 +74,10 @@ export function MapChrome({
   onBasemapChange,
   onSaveImage,
   onPrint,
+  isFullscreen,
+  onToggleFullscreen,
+  drawArmed,
+  onStartDrawArea,
   onZoomIn,
   onZoomOut,
   onHome,
@@ -75,7 +85,9 @@ export function MapChrome({
   const [activeTab, setActiveTab] = useState<ViewTab>("map");
   const [basemapOpen, setBasemapOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  // Filters opens with the map. It is the panel people work from, and the
+  // chevron collapses it back to the edge tab when they want the width.
+  const [filtersOpen, setFiltersOpen] = useState(true);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareAnchor, setShareAnchor] = useState({ top: 60, right: 16 });
   const basemapRef = useRef<HTMLDivElement>(null);
@@ -196,6 +208,10 @@ export function MapChrome({
       <div ref={toolsRef}>
         {toolsOpen ? (
           <ToolsPanel
+            activeId={drawArmed ? "draw-area" : undefined}
+            onSelect={(id) => {
+              if (id === "draw-area") onStartDrawArea();
+            }}
             onCollapse={() => setToolsOpen(false)}
             className="pointer-events-auto absolute right-0 top-16"
           />
@@ -296,8 +312,14 @@ export function MapChrome({
         )}
       </div>
 
-      {/* ---------------- scale + coordinates ---------------- */}
-      <div className="pointer-events-auto absolute bottom-6 left-3 w-[252px] overflow-hidden rounded-lg border border-mv-line bg-white/97 shadow-mv">
+      {/* ---------------- scale + coordinates ----------------
+          Steps aside when the filters panel is open rather than hiding under
+          it: 12px gutter + the panel's 252px + another 12px gutter. */}
+      <div
+        className={`pointer-events-auto absolute bottom-6 w-[252px] overflow-hidden rounded-lg border border-mv-line bg-white/97 shadow-mv ${
+          filtersOpen ? "left-[276px]" : "left-3"
+        }`}
+      >
         <div className="px-3 pb-[6px] pt-2 text-[12px] font-semibold text-mv-ink">
           1 : {Math.round(scale).toLocaleString("en-US")}
         </div>
@@ -344,7 +366,12 @@ export function MapChrome({
         </div>
 
         <IconButton icon={Layers} label="Layers" />
-        <IconButton icon={Maximize} label="Full screen" />
+        <IconButton
+          icon={isFullscreen ? Minimize : Maximize}
+          label={isFullscreen ? "Exit full screen" : "Full screen"}
+          active={isFullscreen}
+          onClick={onToggleFullscreen}
+        />
 
         <div className="pointer-events-auto flex flex-col overflow-hidden rounded-lg border border-mv-line bg-white shadow-mv">
           <button
@@ -366,7 +393,7 @@ export function MapChrome({
           </button>
         </div>
 
-        <IconButton icon={Expand} label="Reset to Texas" onClick={onHome} />
+        <IconButton icon={Expand} label="Reset view" onClick={onHome} />
       </div>
     </div>
   );
@@ -449,14 +476,14 @@ function EdgeTab({
     <button
       type="button"
       onClick={onClick}
-      className={`pointer-events-auto absolute cursor-pointer border border-mv-line bg-white px-[5px] py-[11px] shadow-mv hover:bg-[#f2f8f5] ${
+      className={`pointer-events-auto absolute cursor-pointer border border-mv-line bg-white px-[6px] py-[13px] shadow-mv hover:bg-[#f2f8f5] ${
         side === "left"
           ? "left-0 top-6 rounded-r-lg border-l-0"
           : "right-0 top-16 rounded-l-lg border-r-0"
       }`}
     >
       {/* `vertical-rl` runs top-to-bottom; the flip makes it read upwards. */}
-      <span className="block rotate-180 text-[10px] font-extrabold uppercase leading-none tracking-[.12em] text-mv-green-deep [writing-mode:vertical-rl]">
+      <span className="block rotate-180 text-[12px] font-extrabold uppercase leading-none tracking-[.12em] text-mv-green-deep [writing-mode:vertical-rl]">
         {label}
       </span>
     </button>
