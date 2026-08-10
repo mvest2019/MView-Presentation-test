@@ -19,6 +19,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 
 import { BasemapGallery } from "./basemap-gallery";
+import { FiltersPanel } from "./filters-panel";
 import { ShareMenu } from "./share-menu";
 import { ToolsPanel } from "./tools-panel";
 import { WELLS_STATEWIDE } from "./well-clusters";
@@ -74,6 +75,7 @@ export function MapChrome({
   const [activeTab, setActiveTab] = useState<ViewTab>("map");
   const [basemapOpen, setBasemapOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareAnchor, setShareAnchor] = useState({ top: 60, right: 16 });
   const basemapRef = useRef<HTMLDivElement>(null);
@@ -173,7 +175,21 @@ export function MapChrome({
     /* The layer is click-through so the map keeps its drag; each control opts
        itself back in with `pointer-events-auto`. */
     <div className="pointer-events-none absolute inset-0 z-20">
-      <EdgeTab side="left" label="Filters" />
+      {/* Filters is a standing panel, not a dropdown — it stays open while you
+          work the map, so no outside-click dismissal. The chevron closes it.
+          `z-10` lifts it over the scale card, which shares this corner. */}
+      {filtersOpen ? (
+        <FiltersPanel
+          onCollapse={() => setFiltersOpen(false)}
+          className="pointer-events-auto absolute bottom-6 left-3 top-3 z-10"
+        />
+      ) : (
+        <EdgeTab
+          side="left"
+          label="Filters"
+          onClick={() => setFiltersOpen(true)}
+        />
+      )}
 
       {/* The panel takes the tab's place rather than sitting beside it, so the
           right edge never shows both. */}
