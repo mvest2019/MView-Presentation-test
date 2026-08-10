@@ -236,6 +236,63 @@ export function MapExplorerView() {
     center: { longitude: HOME_CENTER[0], latitude: HOME_CENTER[1] },
   });
 
+  /**
+   * Redraws the dashed rectangle. Declared above the effect that installs the
+   * drag handler, because that handler calls it.
+   */
+  const drawArea = useCallback((next: Area | null) => {
+    const layer = areaLayerRef.current;
+    const ctors = ctorsRef.current;
+    if (!layer || !ctors) return;
+
+    layer.removeAll();
+    if (!next) return;
+
+    layer.add(
+      new ctors.Graphic({
+        geometry: {
+          type: "polygon",
+          rings: [
+            [
+              [next.west, next.north],
+              [next.east, next.north],
+              [next.east, next.south],
+              [next.west, next.south],
+              [next.west, next.north],
+            ],
+          ],
+          spatialReference: { wkid: 4326 },
+        },
+        symbol: {
+          type: "simple-fill",
+          color: [255, 255, 255, 0.22],
+          outline: { color: [37, 99, 235], width: 1.5, style: "dash" },
+        },
+      }),
+    );
+  }, []);
+
+  /** Puts the bar over the middle of the rectangle's top edge. */
+  const anchorAreaBar = useCallback(() => {
+    const view = viewRef.current;
+    const ctors = ctorsRef.current;
+    const current = areaRef.current;
+
+    if (!view || !ctors || !current) {
+      setAreaAnchor(null);
+      return;
+    }
+
+    const screen = view.toScreen(
+      new ctors.Point({
+        longitude: (current.west + current.east) / 2,
+        latitude: current.north,
+        spatialReference: { wkid: 4326 },
+      }),
+    );
+    setAreaAnchor(screen ? { x: screen.x, y: screen.y } : null);
+  }, []);
+
   useEffect(() => {
     // StrictMode mounts the effect twice in dev; `cancelled` stops the first
     // pass building a view into a container the second pass owns.
@@ -358,9 +415,8 @@ export function MapExplorerView() {
       viewRef.current = null;
       view?.destroy();
     };
-    // `drawArea` and `anchorAreaBar` only read refs, so the view is built once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    // Both are stable, so the view is still built exactly once.
+  }, [drawArea, anchorAreaBar]);
 
   const startDrawArea = useCallback(() => {
     drawArmedRef.current = true;
