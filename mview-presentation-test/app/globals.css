@@ -118,3 +118,19 @@
     }
   }
 }
+
+/* ============================================================================
+   MAP EXPLORER — the one ArcGIS internal Tailwind cannot reach.
+
+   Every control on the map is our own markup except the attribution, which the
+   SDK renders itself and its terms of use require us to keep. Out of the box it
+   is a full-width grey bar; the mock has it as plain small text in the corner,
+   under the scale card. Scoped to `.mv-map` so it cannot leak.
+   ============================================================================ */
+.mv-map .esri-attribution {
+  background: transparent;
+  color: var(--color-mv-muted);
+  font-size: 10px;
+  padding: 0 8px 2px;
+}
+
