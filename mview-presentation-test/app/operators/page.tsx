@@ -6,27 +6,33 @@ import {
   displayLgClass,
   displaySmClass,
   eyebrowClass,
+  h3Class,
   inlineLink,
 } from "@/app/_components/typography";
 
 import { CountyDirectory } from "./_components/county-directory";
-import { OperatorDirectory } from "./_components/operator-directory";
-import { OperatorFeatureCards } from "./_components/operator-feature-cards";
+import { OperatorPage } from "./operator-page";
 
 /**
  * Know Your Operators — the prototype's `route:operators`.
  *
- * A server component. The only interactive part of the page is the directory
- * workspace, which is a client island of its own, so the heading, breadcrumb,
- * feature cards and closing notice all render on the server.
+ * The route shell: metadata, breadcrumb, page heading, the three feature cards,
+ * the county section and the closing notice. All server-rendered — the only
+ * client component on the route is `<OperatorPage>`, which owns the interactive
+ * listing (filters, table, pagination) and its state.
  *
- * There is no Operator API yet. The table reads a local fixture through
+ * The feature cards live here rather than in their own file: they are three
+ * static links used only by this page, and a server component is exactly where
+ * they belong — moving them into `operator-page.tsx` would ship them to the
+ * browser for no reason.
+ *
+ * There is no Operator API yet. The listing reads a local fixture through
  * `useOperatorDirectory` — see the seam documented there — and no endpoint is
  * called or assumed anywhere on this route.
  *
  * The design's "PUBLIC RECORDS · FREE TO BROWSE" eyebrow above the h1 is
- * dropped on request. The page states its name once: in the breadcrumb trail as
- * the current page, and once as the h1.
+ * dropped on request. The page states its name once in the breadcrumb as the
+ * current page, and once as the h1.
  */
 
 export const metadata: Metadata = {
@@ -35,7 +41,32 @@ export const metadata: Metadata = {
     "Search, filter and rank Texas oil & gas operators by reported production, activity and coverage. Free to browse — built from Railroad Commission public records.",
 };
 
-export default function OperatorsPage() {
+/** The three operator feature cards (`.psvc-card`), unchanged from the design. */
+const FEATURE_CARDS = [
+  {
+    href: "/operators/compare-production",
+    icon: "▮▮",
+    title: "Compare Operator Production",
+    body: "Put 2–4 operators side by side on reported production — real figures, ranked within their play.",
+    cta: "Open the comparison →",
+  },
+  {
+    href: "/operators/compare-statistics",
+    icon: "≡",
+    title: "Compare Operator Statistics",
+    body: "Company statistics side by side — leases, counties, rank, and production intensity.",
+    cta: "Open the comparison →",
+  },
+  {
+    href: "/operators/presentations",
+    icon: "▣",
+    title: "Operator Presentations",
+    body: "A clean, shareable one-page profile of any operator — built from the public record.",
+    cta: "Build a presentation →",
+  },
+];
+
+export default function OperatorsRoute() {
   return (
     <div className="pb-16 pt-[18px] max-[767px]:pb-11">
       <div className="mx-auto max-w-[1200px] px-7 max-[767px]:px-4">
@@ -54,9 +85,29 @@ export default function OperatorsPage() {
           </p>
         </div>
 
-        <OperatorDirectory />
+        <OperatorPage />
 
-        <OperatorFeatureCards />
+        {/* The hrefs are the paths the prototype points at. None of those routes
+            exists yet — same situation as most of `site-nav.ts`, where every path
+            but the built ones is a placeholder. */}
+        <div className="mt-[18px] grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] items-stretch gap-4">
+          {FEATURE_CARDS.map((card) => (
+            <Link
+              key={card.href}
+              href={card.href}
+              className="block rounded-2xl border border-mv-line bg-white px-[22px] py-5 !no-underline shadow-mv transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-[0_10px_24px_rgba(13,14,23,.09)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+            >
+              <div aria-hidden="true" className="text-xl text-mv-green-deep">
+                {card.icon}
+              </div>
+              <h3 className={`${h3Class} mb-[6px] mt-2`}>{card.title}</h3>
+              <p className="m-0 text-sm text-mv-muted">{card.body}</p>
+              <span className="mt-[10px] inline-block text-[13.5px] font-semibold text-mv-green-deep">
+                {card.cta}
+              </span>
+            </Link>
+          ))}
+        </div>
 
         <section className="mt-[46px]">
           <div className={eyebrowClass}>By county · public records</div>

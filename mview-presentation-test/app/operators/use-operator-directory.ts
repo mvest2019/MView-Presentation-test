@@ -1,13 +1,15 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 
 import { OPERATORS_BY_PLAY } from "@/lib/operator-mock-data";
 import { queryAllMatching, queryOperators, toCsv } from "@/lib/operator-query";
 import {
   ALL_PLAYS,
+  DEFAULT_COLUMNS,
   DEFAULT_QUERY,
   QUICK_FILTERS,
+  type OperatorColumns,
   type OperatorPage,
   type OperatorQuery,
   type OperatorSortKey,
@@ -15,16 +17,14 @@ import {
   type QuickFilterKey,
 } from "@/lib/operator-types";
 
-import { useColumnPreferences } from "./use-column-preferences";
-
 /**
  * ============================================================================
  * THE API SEAM
  *
  * This hook is the only place in the operator UI that knows where rows come
  * from. Today it runs `queryOperators` over the local fixture; when the real
- * endpoint exists, the `useMemo` below becomes a fetch and everything else in
- * this file and every component under it stays as it is.
+ * endpoint exists, the `useMemo` below becomes a fetch and `operator-page.tsx`
+ * does not change at all.
  *
  *   today:  filters -> queryOperators(OPERATORS_BY_PLAY, query) -> OperatorPage
  *   later:  filters -> fetchOperators(query)                    -> OperatorPage
@@ -32,8 +32,12 @@ import { useColumnPreferences } from "./use-column-preferences";
  * That works because `OperatorPage` is already shaped like a server response —
  * `total` is independent of `items.length`, and the filter-bar counts arrive
  * with the payload instead of being recomputed in the view. The only additions
- * a real request needs are `isLoading` and `error` alongside `page`; no
- * component below has to be restructured to receive them.
+ * a real request needs are `isLoading` and `error` alongside `page`; no markup
+ * has to be restructured to receive them.
+ *
+ * It is deliberately the one thing kept out of `operator-page.tsx`: that file is
+ * the page's markup, this is its data logic, and the whole point of the seam is
+ * that swapping the fixture for the API touches one file with no JSX in it.
  * ============================================================================
  */
 
@@ -51,9 +55,91 @@ const SORT_LABELS: Record<OperatorSortKey, string> = {
   cty: "Counties",
 };
 
+/* ---------------------------------------------------------------------------
+   Column preferences — a `localStorage`-backed external store.
+
+   Read through `useSyncExternalStore` rather than copied into state inside an
+   effect. Two reasons: the server has no `localStorage`, so the server snapshot
+   has to be the defaults for the markup to hydrate cleanly; and setting state
+   from an effect body triggers a second render on every mount, which is what
+   `react-hooks/set-state-in-effect` exists to catch.
+
+   `current` is the source of truth and is handed out by reference, which keeps
+   `getSnapshot` stable — returning a freshly parsed object each call would
+   re-render forever. It also means a browser with storage blocked still toggles
+   columns for the session; the choice just does not outlive the tab.
+   --------------------------------------------------------------------------- */
+
+const STORAGE_KEY = "mv_kyo_cols";
+
+let storedColumns: OperatorColumns | null = null;
+const columnListeners = new Set<() => void>();
+
+function parseColumns(raw: string | null): OperatorColumns {
+  if (!raw) return DEFAULT_COLUMNS;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && "oil" in parsed) {
+      // Spread over the defaults so a blob written by an older shape cannot
+      // leave a column undefined.
+      return { ...DEFAULT_COLUMNS, ...(parsed as Partial<OperatorColumns>) };
+    }
+  } catch {
+    // Corrupt value — fall through to the defaults.
+  }
+  return DEFAULT_COLUMNS;
+}
+
+function readColumnStorage(): string | null {
+  try {
+    return window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function getColumnSnapshot(): OperatorColumns {
+  storedColumns ??= parseColumns(readColumnStorage());
+  return storedColumns;
+}
+
+function subscribeToColumns(onStoreChange: () => void): () => void {
+  columnListeners.add(onStoreChange);
+
+  // Keeps two tabs in step. Does not fire in the tab that wrote the value,
+  // hence the explicit notify in `writeColumns`.
+  function onStorage(event: StorageEvent) {
+    if (event.key !== STORAGE_KEY) return;
+    storedColumns = parseColumns(readColumnStorage());
+    onStoreChange();
+  }
+
+  window.addEventListener("storage", onStorage);
+  return () => {
+    columnListeners.delete(onStoreChange);
+    window.removeEventListener("storage", onStorage);
+  };
+}
+
+function writeColumns(next: OperatorColumns): void {
+  storedColumns = next;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // Storage unavailable — the in-memory value still drives the UI.
+  }
+  for (const listener of columnListeners) listener();
+}
+
+/* ------------------------------------------------------------------------- */
+
 export function useOperatorDirectory() {
   const [query, setQuery] = useState<OperatorQuery>(DEFAULT_QUERY);
-  const [columns, setColumns] = useColumnPreferences();
+  const columns = useSyncExternalStore(
+    subscribeToColumns,
+    getColumnSnapshot,
+    () => DEFAULT_COLUMNS,
+  );
 
   const page: OperatorPage = useMemo(
     () => queryOperators(OPERATORS_BY_PLAY, query),
@@ -72,10 +158,7 @@ export function useOperatorDirectory() {
     [],
   );
 
-  const setSearch = useCallback(
-    (search: string) => patch({ search }),
-    [patch],
-  );
+  const setSearch = useCallback((search: string) => patch({ search }), [patch]);
   const setPlay = useCallback((play: string) => patch({ play }), [patch]);
   const setStatus = useCallback(
     (status: OperatorStatus | "") => patch({ status }),
@@ -83,16 +166,13 @@ export function useOperatorDirectory() {
   );
   const setCounty = useCallback((county: string) => patch({ county }), [patch]);
 
-  const toggleQuick = useCallback(
-    (key: QuickFilterKey) => {
-      setQuery((current) => ({
-        ...current,
-        quick: current.quick === key ? "" : key,
-        page: 1,
-      }));
-    },
-    [],
-  );
+  const toggleQuick = useCallback((key: QuickFilterKey) => {
+    setQuery((current) => ({
+      ...current,
+      quick: current.quick === key ? "" : key,
+      page: 1,
+    }));
+  }, []);
 
   /** Re-clicking a column flips direction; a new column starts on its natural one. */
   const toggleSort = useCallback((key: OperatorSortKey) => {
@@ -208,7 +288,7 @@ export function useOperatorDirectory() {
     toggleSort,
     setPage,
     setPageSize,
-    setColumns,
+    setColumns: writeColumns,
     clearFilters,
     exportCsv,
   };
