@@ -6,6 +6,12 @@ const nextConfig: NextConfig = {
     // production repo's next.config.ts; override in .env.local to point at
     // another environment (prod is https://mview-info.mineralview.com).
     BASE_URL: process.env.BASE_URL || "https://testing-paymentapi.mineralview.com",
+
+    // Map API host — counties, wells and everything else `lib/map-api.ts`
+    // calls. The `/api/v1` prefix belongs to the client, not to this value, so
+    // pointing at another environment is a host swap and nothing more.
+    MAP_BASE_URL:
+      process.env.MAP_BASE_URL || "https://mview-dev-api.mineralview.com",
   },
   images: {
     // Cloudinary serves both the Mineral View logo and every article/news

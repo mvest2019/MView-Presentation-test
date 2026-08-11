@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { getCountyListMap } from "@/lib/map-api";
+
 import { WELLS_STATEWIDE } from "./well-clusters";
 
 /*
@@ -214,6 +216,31 @@ type FiltersPanelProps = {
 };
 
 export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) {
+  /* The live county list, with the two states any request has besides its
+     result. `loading` starts true because the request starts on mount. */
+  const [counties, setCounties] = useState<string[]>([]);
+  const [countiesLoading, setCountiesLoading] = useState(true);
+  const [countiesError, setCountiesError] = useState<string | null>(null);
+
+
+  /*
+   * The live county list replaces the section's items. It arrives as a prop
+   * from a server fetch, so it is here on the first render and the state
+   * initialisers below can seed themselves from it — no empty first paint, no
+   * effect to reconcile afterwards.
+   *
+   * The API returns names only, so these rows carry no count and no dot.
+   */
+  const sections = useMemo<FilterSection[]>(
+    () =>
+      FILTER_SECTIONS.map((section) =>
+        section.id === "county"
+          ? { ...section, items: counties.map((name) => ({ name })) }
+          : section,
+      ),
+    [counties],
+  );
+
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for the commented-out My leases section
   const [selectedLease, setSelectedLease] = useState<string | null>(
     MY_LEASES[0].id,
@@ -224,7 +251,7 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
   const [openSections, setOpenSections] = useState<Set<string>>(
     () =>
       new Set(
-        FILTER_SECTIONS.filter((section) => section.defaultOpen).map(
+        sections.filter((section) => section.defaultOpen).map(
           (section) => section.id,
         ),
       ),
@@ -233,12 +260,41 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
   // Everything starts ticked, so the panel opens showing the whole map.
   const [checked, setChecked] = useState<Record<string, Set<string>>>(() =>
     Object.fromEntries(
-      FILTER_SECTIONS.map((section) => [
+      sections.map((section) => [
         section.id,
         new Set(section.items.map((item) => item.name)),
       ]),
     ),
   );
+
+  useEffect(() => {
+    // `cancelled` rather than an AbortController: the panel can unmount while
+    // the request is in flight, and the only thing that must not happen then
+    // is a setState on a component that has gone.
+    let cancelled = false;
+
+    getCountyListMap()
+      .then((list) => {
+        if (cancelled) return;
+        setCounties(list);
+        // Counties arrive unticked — 270 of them ticked reads as a filter
+        // already applied. All · None is right above the list.
+        setCountiesError(null);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setCountiesError(
+          error instanceof Error ? error.message : "Could not load counties.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setCountiesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [query, setQuery] = useState("");
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
@@ -262,7 +318,7 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
       }
     }
 
-    for (const section of FILTER_SECTIONS) {
+    for (const section of sections) {
       if (!SEARCHED_SECTIONS.has(section.id)) continue;
       for (const item of section.items) {
         if (item.name.toLowerCase().includes(needle)) {
@@ -277,7 +333,7 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
     }
 
     return hits.slice(0, MAX_SUGGESTIONS);
-  }, [query]);
+  }, [query, sections]);
 
   // Dismiss the suggestions on an outside click, as the map's other overlays do.
   useEffect(() => {
@@ -507,10 +563,17 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
         */}
 
         {/* ---------------- the checkbox sections ---------------- */}
-        {FILTER_SECTIONS.map((section) => (
+        {sections.map((section) => (
           <CheckboxSection
             key={section.id}
             section={section}
+            notice={
+              section.id === "county"
+                ? countiesLoading
+                  ? "Loading counties…"
+                  : countiesError
+                : undefined
+            }
             open={openSections.has(section.id)}
             onToggle={() => toggleSection(section.id)}
             checked={checked[section.id]}
@@ -540,6 +603,7 @@ function CheckboxSection({
   checked,
   onToggleItem,
   onSetAll,
+  notice,
 }: {
   section: FilterSection;
   open: boolean;
@@ -547,6 +611,8 @@ function CheckboxSection({
   checked: Set<string>;
   onToggleItem: (name: string) => void;
   onSetAll: (on: boolean) => void;
+  /** Shown in place of the list — "loading", or why there is nothing. */
+  notice?: string | null;
 }) {
   const [query, setQuery] = useState("");
 
@@ -590,7 +656,20 @@ function CheckboxSection({
         </div>
       )}
 
-      {visible.map((item) => (
+      {notice ? (
+        <p className="py-2 text-[11px] lg:text-[12px] text-mv-muted">{notice}</p>
+      ) : null}
+
+      {/* The long lists scroll inside the section rather than stretching it —
+          270 counties would otherwise push every section below them out of
+          reach. A Find… box is what marks a list as one of the long ones. */}
+      <div
+        className={
+          section.searchable ? "mv-thin-scroll max-h-[248px] overflow-y-auto" : ""
+        }
+      >
+      {!notice &&
+        visible.map((item) => (
         <label
           key={item.name}
           className="flex cursor-pointer items-center gap-2 py-[5px]"
@@ -623,10 +702,12 @@ function CheckboxSection({
               {item.count.toLocaleString("en-US")}
             </span>
           )}
-        </label>
-      ))}
+          </label>
+        ))}
 
-      {visible.length === 0 && (
+      </div>
+
+      {!notice && visible.length === 0 && (
         <p className="py-2 text-[11px] lg:text-[12px] text-mv-muted">Nothing matches.</p>
       )}
     </SectionShell>
