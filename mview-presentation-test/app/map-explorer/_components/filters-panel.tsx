@@ -68,7 +68,12 @@ const MY_LEASES: Lease[] = [
   },
 ];
 
-type FilterItem = { name: string; count: number; dot: string };
+/*
+ * A count and a colour dot are optional: some lists are plain sets of choices
+ * with no tally behind them, and a "0" or a grey dot would read as data rather
+ * than as an absence of it.
+ */
+type FilterItem = { name: string; count?: number; dot?: string };
 
 type FilterSection = {
   id: string;
@@ -124,29 +129,30 @@ export const FILTER_SECTIONS: FilterSection[] = [
     ],
   },
   {
-    // Only the tail is legible in the mock — Service 4 and Water Supply 1. The
-    // rows above them are filled in.
     id: "well-type",
     label: "Well type",
     items: [
-      { name: "Oil", count: 612430, dot: DOT.green },
-      { name: "Gas", count: 358120, dot: DOT.amber },
-      { name: "Injection / Disposal", count: 121455, dot: DOT.blue },
-      { name: "Dry Hole", count: 88204, dot: DOT.grey },
-      { name: "Service", count: 4, dot: DOT.green },
-      { name: "Water Supply", count: 1, dot: DOT.blue },
+      { name: "Oil Well" },
+      { name: "Gas Well" },
+      { name: "Oil / Gas Well" },
+      { name: "Injection / Disposal Well" },
+      { name: "Storage Well" },
+      { name: "Service Well" },
+      { name: "Observation Well" },
+      { name: "Brine Mining Well" },
+      { name: "Water Supply Well" },
+      { name: "Geothermal Well" },
     ],
   },
   {
-    // Confirmed: these five match the map's COLOR — STATUS legend exactly.
     id: "status",
     label: "Status",
     items: [
-      { name: "Producing", count: 514812, dot: DOT.green },
-      { name: "Shut-In Producer", count: 347296, dot: DOT.amber },
-      { name: "Inactive", count: 172478, dot: DOT.grey },
-      { name: "Plugged", count: 172291, dot: DOT.slate },
-      { name: "Permitted", count: 10394, dot: DOT.brown },
+      { name: "Permitted Location" },
+      { name: "Producing" },
+      { name: "Non-Producing" },
+      { name: "Dry Hole" },
+      { name: "Canceled / Abandoned Location" },
     ],
   },
   {
@@ -596,17 +602,27 @@ function CheckboxSection({
             onChange={() => onToggleItem(item.name)}
           />
           <Checkbox checked={checked.has(item.name)} />
+          {item.dot && (
+            <span
+              aria-hidden="true"
+              className="h-[7px] w-[7px] shrink-0 rounded-full"
+              style={{ background: item.dot }}
+            />
+          )}
+          {/* Without a count to keep clear of, a long name may wrap rather
+              than be cut off. */}
           <span
-            aria-hidden="true"
-            className="h-[7px] w-[7px] shrink-0 rounded-full"
-            style={{ background: item.dot }}
-          />
-          <span className="flex-1 truncate text-[11.5px] lg:text-[12.5px] text-mv-ink">
+            className={`flex-1 text-[11.5px] lg:text-[12.5px] text-mv-ink ${
+              item.count === undefined ? "leading-tight" : "truncate"
+            }`}
+          >
             {item.name}
           </span>
-          <span className="shrink-0 text-[11px] lg:text-[12px] tabular-nums text-mv-muted">
-            {item.count.toLocaleString("en-US")}
-          </span>
+          {item.count !== undefined && (
+            <span className="shrink-0 text-[11px] lg:text-[12px] tabular-nums text-mv-muted">
+              {item.count.toLocaleString("en-US")}
+            </span>
+          )}
         </label>
       ))}
 
