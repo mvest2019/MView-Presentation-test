@@ -98,6 +98,7 @@ export function MapChrome({
   onHome,
 }: MapChromeProps) {
   const [basemapOpen, setBasemapOpen] = useState(false);
+  const [legendsOpen, setLegendsOpen] = useState(true);
   const [toolsOpen, setToolsOpen] = useState(false);
   /*
    * Filters is open or closed per view, not globally. On the map it is the
@@ -465,7 +466,7 @@ export function MapChrome({
           filtersOpen ? "left-[276px]" : "left-3"
         }`}
       >
-      <LegendsPanel className="pointer-events-auto" />
+      {legendsOpen && <LegendsPanel className="pointer-events-auto" />}
 
       <div className="pointer-events-auto w-[252px] overflow-hidden rounded-lg border border-mv-line bg-white/97 shadow-mv">
         <div className="px-3 pb-[6px] pt-2 text-[12px] font-semibold text-mv-ink">
@@ -514,7 +515,16 @@ export function MapChrome({
           />
         </div>
 
-        <IconButton icon={Layers} label="Layers" />
+        {/* Labelled for what it does. The layers glyph is the mock's, but the
+            button toggles the legend, and a tooltip reading "Layers" over a
+            control that shows and hides the legend would just mislead. */}
+        <IconButton
+          icon={Layers}
+          label="Legends"
+          active={legendsOpen}
+          expanded={legendsOpen}
+          onClick={() => setLegendsOpen((open) => !open)}
+        />
         <IconButton
           icon={isFullscreen ? Minimize : Maximize}
           label={isFullscreen ? "Exit full screen" : "Full screen"}

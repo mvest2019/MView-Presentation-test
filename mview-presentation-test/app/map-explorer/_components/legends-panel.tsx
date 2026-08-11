@@ -80,7 +80,7 @@ export function LegendsPanel({
       </button>
 
       {open && (
-        <ul className="max-h-[292px] overflow-y-auto py-1">
+        <ul className="mv-thin-scroll max-h-[292px] overflow-y-auto py-1">
           {LEGEND_ITEMS.map(({ kind, label }) => (
             <li
               key={kind}

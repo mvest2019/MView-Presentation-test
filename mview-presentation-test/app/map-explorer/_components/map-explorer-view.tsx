@@ -10,6 +10,7 @@ import {
 
 import { AreaSelectionBar } from "./area-selection";
 import { loadArcgisModules } from "./arcgis-loader";
+import { ClusterTooltip } from "./cluster-tooltip";
 import { InsightsPanel } from "./insights-panel";
 import { MapChrome, type ViewTab } from "./map-chrome";
 import { type Place } from "./map-search";
@@ -67,6 +68,10 @@ interface EsriView {
     event: "immediate-click",
     handler: (event: EsriClickEvent) => void,
   ): EsriHandle;
+  on(
+    event: "pointer-move",
+    handler: (event: { x: number; y: number }) => void,
+  ): EsriHandle;
   toMap(screenPoint: { x: number; y: number }): LonLat | null;
   toScreen(mapPoint: unknown): { x: number; y: number } | null;
   goTo(target: unknown): Promise<unknown>;
@@ -92,7 +97,13 @@ type PointCtor = new (props: {
   spatialReference: { wkid: number };
 }) => unknown;
 
-type EsriClickEvent = { mapPoint: LonLat | null; stopPropagation(): void };
+type EsriClickEvent = {
+  mapPoint: LonLat | null;
+  /** Screen position within the view container. */
+  x: number;
+  y: number;
+  stopPropagation(): void;
+};
 
 type GeodesicUtils = {
   /** Ellipsoidal, not great-circle — worth ~0.5% over a few hundred miles. */
@@ -170,6 +181,9 @@ const MAX_SPLIT = 0.78;
 
 /** Fraction of the width one arrow-key press moves the divider. */
 const SPLIT_KEY_STEP = 0.02;
+
+/** Where clicking a well-count bubble settles — county-ish. */
+const CLUSTER_ZOOM_SCALE = 900_000;
 
 type ScreenPoint = { x: number; y: number };
 
@@ -440,6 +454,13 @@ export function MapExplorerView() {
   const [measureAnchor, setMeasureAnchor] = useState<ScreenPoint | null>(null);
   const [nearby, setNearby] = useState<Nearby | null>(null);
   const [nearbyAnchor, setNearbyAnchor] = useState<ScreenPoint | null>(null);
+  /** Cluster under the pointer, with its bubble's top edge on screen. */
+  const [hoveredCluster, setHoveredCluster] = useState<
+    { index: number; x: number; y: number } | null
+  >(null);
+  const hoveredClusterRef = useRef<{ index: number; x: number; y: number } | null>(
+    null,
+  );
   /** Undefined while the county lookup is in flight. */
   const [nearbyCounty, setNearbyCounty] = useState<string | null | undefined>(
     undefined,
@@ -673,6 +694,7 @@ export function MapExplorerView() {
     let watcher: EsriHandle | undefined;
     let dragHandle: EsriHandle | undefined;
     let clickHandle: EsriHandle | undefined;
+    let pointerHandle: EsriHandle | undefined;
     let frame = 0;
 
     void (async () => {
@@ -758,8 +780,90 @@ export function MapExplorerView() {
         // `immediate-click` rather than `click`: the latter is held back to see
         // whether a double-click follows, and there is no double-click
         // behaviour here to wait for — the delay would just feel sluggish.
+        /**
+         * Which bubble is under a screen point, or -1.
+         *
+         * Geometric rather than `view.hitTest`: the bubbles are circles of a
+         * known pixel radius, so the test is exact and synchronous — hitTest
+         * returns a promise, and one per pointer-move would need race
+         * handling for no gain. Walked back to front so the topmost bubble
+         * wins where they overlap, which is what the eye picks.
+         */
+        const clusterAt = (x: number, y: number): number => {
+          const ctors = ctorsRef.current;
+          if (!view || !ctors) return -1;
+
+          for (let index = wellClusters.length - 1; index >= 0; index--) {
+            const cluster = wellClusters[index];
+            const screen = view.toScreen(
+              new ctors.Point({
+                longitude: cluster.at[0],
+                latitude: cluster.at[1],
+                spatialReference: { wkid: 4326 },
+              }),
+            );
+            if (!screen) continue;
+
+            const radius = clusterDiameter(cluster.count) / 2;
+            const dx = x - screen.x;
+            const dy = y - screen.y;
+            if (dx * dx + dy * dy <= radius * radius) return index;
+          }
+          return -1;
+        };
+
+        const screenTopOf = (index: number): ScreenPoint | null => {
+          const ctors = ctorsRef.current;
+          if (!view || !ctors) return null;
+          const cluster = wellClusters[index];
+          const screen = view.toScreen(
+            new ctors.Point({
+              longitude: cluster.at[0],
+              latitude: cluster.at[1],
+              spatialReference: { wkid: 4326 },
+            }),
+          );
+          if (!screen) return null;
+          return {
+            x: Math.round(screen.x),
+            y: Math.round(screen.y - clusterDiameter(cluster.count) / 2),
+          };
+        };
+
+        pointerHandle = view.on("pointer-move", (event) => {
+          // A tool takes precedence — no hover cards mid-draw.
+          const index = activeToolRef.current ? -1 : clusterAt(event.x, event.y);
+          const top = index === -1 ? null : screenTopOf(index);
+          const next = top ? { index, x: top.x, y: top.y } : null;
+
+          const previous = hoveredClusterRef.current;
+          const same =
+            next?.index === previous?.index &&
+            next?.x === previous?.x &&
+            next?.y === previous?.y;
+          if (same) return;
+
+          hoveredClusterRef.current = next;
+          setHoveredCluster(next);
+        });
+
         clickHandle = view.on("immediate-click", (event) => {
           const ctors = ctorsRef.current;
+
+          // With no tool armed, a click on a bubble opens that area — which is
+          // what the hover card promises.
+          if (!activeToolRef.current) {
+            const index = clusterAt(event.x, event.y);
+            if (index !== -1 && view) {
+              event.stopPropagation();
+              const cluster = wellClusters[index];
+              view
+                .goTo({ center: cluster.at, scale: CLUSTER_ZOOM_SCALE })
+                .catch(ignoreInterrupted);
+            }
+            return;
+          }
+
           if (activeToolRef.current !== "whats-near-my-land") return;
           if (!event.mapPoint || !ctors) return;
 
@@ -869,6 +973,7 @@ export function MapExplorerView() {
       watcher?.remove();
       dragHandle?.remove();
       clickHandle?.remove();
+      pointerHandle?.remove();
       areaLayerRef.current = null;
       measureLayerRef.current = null;
       nearbyLayerRef.current = null;
@@ -1126,7 +1231,7 @@ export function MapExplorerView() {
     <div
       ref={rootRef}
       className={`mv-map relative h-full w-full bg-[#efe7d8] ${
-        activeTool ? "cursor-crosshair" : ""
+        activeTool ? "cursor-crosshair" : hoveredCluster ? "cursor-pointer" : ""
       }`}
     >
       {/*
@@ -1156,6 +1261,15 @@ export function MapExplorerView() {
         }
       >
       <div ref={containerRef} className="h-full w-full" />
+
+      {status === "ready" && hoveredCluster && (
+        <ClusterTooltip
+          name={wellClusters[hoveredCluster.index].name}
+          wells={wellClusters[hoveredCluster.index].count}
+          oilShare={wellClusters[hoveredCluster.index].oilShare}
+          at={{ x: hoveredCluster.x, y: hoveredCluster.y }}
+        />
+      )}
 
       {status === "ready" && area && areaAnchor && (
         <AreaSelectionBar

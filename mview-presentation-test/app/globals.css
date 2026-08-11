@@ -134,3 +134,35 @@
   padding: 0 8px 2px;
 }
 
+/* ----------------------------------------------------------------------------
+   Slim scrollbars for the floating panels.
+
+   The platform default is ~15px, which is a lot of furniture inside a 204px
+   legend or a 252px filter rail. Scrollbars are one of the few things Tailwind
+   has no utility for, hence plain CSS. `scrollbar-width` is the standard
+   property (Chromium 121+, Firefox); the `::-webkit-` rules cover older
+   WebKit, where the two are mutually exclusive so there is no double-styling.
+   ---------------------------------------------------------------------------- */
+.mv-thin-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #d3d7dd transparent;
+}
+
+.mv-thin-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.mv-thin-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mv-thin-scroll::-webkit-scrollbar-thumb {
+  background: #d3d7dd;
+  border-radius: 999px;
+}
+
+.mv-thin-scroll::-webkit-scrollbar-thumb:hover {
+  background: #b9bec6;
+}
+

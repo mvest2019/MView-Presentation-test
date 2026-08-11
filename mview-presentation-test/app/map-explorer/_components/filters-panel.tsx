@@ -359,7 +359,7 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
     <div
       className={`flex max-h-full w-[252px] flex-col overflow-hidden rounded-xl border border-mv-line bg-white shadow-mv-lg ${className}`}
     >
-      <div className="min-h-0 flex-1 overflow-y-auto px-[14px]">
+      <div className="mv-thin-scroll min-h-0 flex-1 overflow-y-auto px-[14px]">
         {/* ---------------- header ---------------- */}
         <div className="flex items-center gap-2 pb-3 pt-[14px]">
           <h2 className="text-[15px] font-bold leading-none text-mv-ink">
