@@ -20,6 +20,7 @@ import {
 } from "./measure-area-panel";
 import { MeasureBar } from "./measure-bar";
 import {
+  NEARBY_RADII,
   NearbyPanel,
   NearbyPrompt,
   type NearbyStats,
@@ -64,6 +65,9 @@ type EsriDragEvent = {
 interface EsriView {
   scale: number;
   zoom: number;
+  /** Viewport size in pixels; 0 until the view has a laid-out container. */
+  width: number;
+  height: number;
   center: { longitude: number; latitude: number };
   when(): Promise<unknown>;
   watch(paths: string | string[], callback: () => void): EsriHandle;
@@ -691,6 +695,36 @@ export function MapExplorerView() {
     }
   }, []);
 
+  /*
+   * Zooms so the circle is actually readable.
+   *
+   * At statewide scale a 10-mile radius is about eight pixels — geometrically
+   * right and visually useless, indistinguishable from the dot at its centre.
+   *
+   * It frames the WIDEST radius on offer, once, when the point is picked, and
+   * never again: scaling to whatever radius is selected would draw every
+   * option at the same size on screen, which tells you nothing. Framed to 10
+   * miles, the 1 mi circle is a tenth of the 10 mi one — as it should be.
+   *
+   * Esri scale is metres on the ground per metre on a 96-dpi screen, hence the
+   * 0.0254/96 metres-per-pixel conversion.
+   */
+  const frameRadius = useCallback((at: LonLat) => {
+    const view = viewRef.current;
+    if (!view?.width || !view?.height) return;
+
+    const widest = NEARBY_RADII[NEARBY_RADII.length - 1];
+    const span = Math.min(view.width, view.height) * 0.55;
+    const metresPerPixel = (2 * widest * METRES_PER_MILE) / span;
+
+    view
+      .goTo({
+        center: [at.longitude, at.latitude],
+        scale: (metresPerPixel * 96) / 0.0254,
+      })
+      .catch(ignoreInterrupted);
+  }, []);
+
   /** Redraws the watch circle and the dot at its centre. */
   const drawNearby = useCallback((next: Nearby | null) => {
     const layer = nearbyLayerRef.current;
@@ -745,6 +779,7 @@ export function MapExplorerView() {
         },
       }),
     );
+
   }, []);
 
   /**
@@ -1100,6 +1135,7 @@ export function MapExplorerView() {
           nearbyRef.current = next;
           setNearby(next);
           drawNearby(next);
+          frameRadius(at);
           anchorBars();
 
           const request = ++countyRequestRef.current;
@@ -1196,7 +1232,7 @@ export function MapExplorerView() {
       view?.destroy();
     };
     // All stable, so the view is still built exactly once.
-  }, [drawArea, drawMeasurement, drawNearby, drawTract, anchorBars]);
+  }, [drawArea, drawMeasurement, drawNearby, drawTract, frameRadius, anchorBars]);
 
   // Esc backs out of an armed tool — the prompt says so.
   useEffect(() => {
