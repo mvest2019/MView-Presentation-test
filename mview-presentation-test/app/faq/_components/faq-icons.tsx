@@ -27,6 +27,8 @@ const T = {
   sand: "var(--color-mv-art-sand)",
   sky: "var(--color-mv-art-sky)",
   skyLight: "var(--color-mv-art-sky-light)",
+  violet: "var(--color-mv-art-violet)",
+  violetDeep: "var(--color-mv-art-violet-deep)",
   ink: "var(--color-mv-ink)",
   slate: "var(--color-mv-slate)",
   card: "var(--color-mv-card)",
@@ -48,36 +50,58 @@ function Art({
   );
 }
 
-/** Most asked — a speech bubble with a question in it. */
+/**
+ * Most asked — a speech bubble with a question in it.
+ *
+ * The tail is drawn first and deliberately overshoots into the bubble, so the
+ * bubble covers all of it but the point: one shape, no seam to line up.
+ */
 export function MostAskedArt({ className }: FaqIconProps) {
   return (
     <Art className={className}>
+      <path d="M15 28h11L15 42Z" fill={T.violetDeep} />
+      <rect x="6" y="7" width="36" height="28" rx="9" fill={T.violet} />
       <path
-        d="M11 6h26a7 7 0 0 1 7 7v14a7 7 0 0 1-7 7H24l-9 7.5V34h-4a7 7 0 0 1-7-7V13a7 7 0 0 1 7-7Z"
-        fill={T.green}
-      />
-      <path
-        d="M19.5 16.2a4.7 4.7 0 1 1 8.2 3.2c-1.9 2.1-3.7 2.5-3.7 5"
+        d="M20 16a4.4 4.4 0 1 1 7.7 3c-1.8 2-3.7 2.3-3.7 4.6"
         stroke={T.card}
-        strokeWidth="4.2"
+        strokeWidth="4"
         strokeLinecap="round"
       />
-      <circle cx="24" cy="29.8" r="2.5" fill={T.card} />
+      <circle cx="24" cy="28.6" r="2.4" fill={T.card} />
     </Art>
   );
 }
 
-/** General — an oil barrel: the industry the whole site is about. */
+/** General — a verified record: what this is, and that it checks out. */
 export function GeneralArt({ className }: FaqIconProps) {
   return (
     <Art className={className}>
-      <rect x="9" y="9" width="25" height="32" rx="7" fill={T.orange} />
-      <rect x="9" y="17.4" width="25" height="5" fill={T.orangeDeep} />
-      <rect x="9" y="28.4" width="25" height="5" fill={T.orangeDeep} />
-      <ellipse cx="21.5" cy="9" rx="12.5" ry="4" fill={T.sand} />
       <path
-        d="M40 9.5s4.2 4.8 4.2 6.9a4.2 4.2 0 0 1-8.4 0c0-2.1 4.2-6.9 4.2-6.9Z"
+        d="M8 12a4 4 0 0 1 4-4h12l8 8v20a4 4 0 0 1-4 4H12a4 4 0 0 1-4-4V12Z"
         fill={T.green}
+      />
+      {/* Folded corner, so the shape reads as paper and not as a tile. */}
+      <path d="M24 8l8 8h-6a2 2 0 0 1-2-2V8Z" fill={T.mint} />
+      <path
+        d="M14 22h9M14 27.5h12M14 33h8"
+        stroke={T.card}
+        strokeWidth="2.6"
+        strokeLinecap="round"
+      />
+      <circle
+        cx="36"
+        cy="35"
+        r="8.4"
+        fill={T.greenDeep}
+        stroke={T.card}
+        strokeWidth="2.2"
+      />
+      <path
+        d="M32.3 35.2l2.7 2.7 5.1-5.4"
+        stroke={T.card}
+        strokeWidth="2.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </Art>
   );
