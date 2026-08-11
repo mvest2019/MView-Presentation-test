@@ -1,26 +1,21 @@
 import Link from "next/link";
 import { selectedControlClass } from "@/app/_components/button";
+import { learnNav } from "@/app/_components/site-nav";
 
 /**
- * The Resources pill-tab row the design puts at the top of the library pages
- * (`.pill-tabs` in the prototype). Blog, News and Glossary are built; the rest
- * resolve once their pages land.
+ * The pill-tab row at the top of the library pages (`.pill-tabs` in the
+ * prototype).
  *
- * The design has a single "Blog & News" tab with an in-page view switch behind
- * it. This build gives each its own tab and route instead, so the row is eight
- * entries rather than seven.
+ * The four entries are deliberately the SAME four as the header's Learn menu
+ * (Ryan, 2026-08-11) — the row and the menu are two routes into one set, so they
+ * must not disagree. The design's row also carried Resources, Watch & Listen,
+ * Community Q&A and Contact; those were dropped from Learn earlier and are
+ * dropped here for the same reason. Contact and the rest remain in the footer.
+ *
+ * Sourced from `learnNav` rather than restated, so trimming one trims both.
  */
 
-const TABS = [
-  { label: "Resources", href: "/resources" },
-  { label: "Blog", href: "/blog" },
-  { label: "News", href: "/news" },
-  { label: "Glossary", href: "/glossary" },
-  { label: "Watch & Listen", href: "/media" },
-  { label: "Community Q&A", href: "/qa" },
-  { label: "FAQ", href: "/faq" },
-  { label: "Contact", href: "/contact" },
-];
+const TABS = learnNav;
 
 export function ResourceTabs({ active }: { active: string }) {
   return (

@@ -243,11 +243,21 @@ export const footerCompanyLinksBottom: NavLink[] = [
  * The real Mineral View logo — the Cloudinary asset the live site uses. Never
  * hand-recreate it as SVG. The non-green part of the mark must be dark on
  * light surfaces and white on dark ones, hence the two transforms.
+ *
+ * The source asset is green "MINERAL" plus WHITE "VIEW", which is why the plain
+ * URL suits dark surfaces and every production use of it sits on black. The
+ * light-surface variant recolours only that white word — `e_replace_color` takes
+ * `to:tolerance:from`, so this reads "replace #ffffff with the brand ink". The
+ * green is untouched: decoded, both variants carry the identical rgb(0,200,160).
+ *
+ * The target used to be #0F1B16, an off-brand near-black that came from the
+ * prototype. It is now `--color-mv-green-ink` (#04231A) — the same dark the CTA
+ * uses for text on green (Ryan, 2026-08-11). Keep it in step with that token.
  */
 export const logo = {
-  /** Light surfaces (the header, the drawer) — "VIEW" renders dark. */
+  /** Light surfaces (the header, the drawer) — "VIEW" renders brand ink. */
   onLight:
-    "https://res.cloudinary.com/mview/image/upload/e_replace_color:0f1b16:48:ffffff/f_auto,q_auto,w_320/f_auto/icons/mineralview-logo.png",
+    "https://res.cloudinary.com/mview/image/upload/e_replace_color:04231a:48:ffffff/f_auto,q_auto,w_320/f_auto/icons/mineralview-logo.png",
   /** Dark surfaces (the footer) — "VIEW" renders white. */
   onDark:
     "https://res.cloudinary.com/mview/image/upload/f_auto/f_auto,q_auto,w_320/icons/mineralview-logo.png",

@@ -39,8 +39,15 @@ type OpenMenu = "explore" | "learn" | null;
  * width. The wrap cannot grow without breaking alignment with the footer and the
  * article column, so the type comes down instead. One scale, no breakpoint.
  */
+/*
+ * `leading-[1.2]` is deliberate. Without it these inherit the body's 1.55, which
+ * made the "Find your record" pill 43px tall against the mockup's 38 — the same
+ * 9px padding round a line box 5px taller than it should be. The prototype sets
+ * `line-height:1.2` on `.btn` for exactly this reason; the mockup gets it free
+ * because its own body sets no line-height.
+ */
 const navLinkBase =
-  "whitespace-nowrap rounded-[10px] border-2 border-transparent px-[10px] py-[9px] text-[13.5px] font-semibold text-mv-slate no-underline transition-colors hover:bg-[#f2f8f5] hover:text-mv-green-deep hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep";
+  "whitespace-nowrap rounded-[10px] border-2 border-transparent px-[10px] py-[9px] text-[13.5px] font-semibold leading-[1.2] text-mv-slate no-underline transition-colors hover:bg-[#f2f8f5] hover:text-mv-green-deep hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep";
 
 /** The menu triggers match `.nl` exactly, so they sit level with the links. */
 const menuButtonBase = `${navLinkBase} inline-flex cursor-pointer items-center gap-[5px] bg-transparent font-sans`;
@@ -115,7 +122,14 @@ export function SiteHeader() {
         {/* `relative` so the Explore panel can span the bar's full width: that
             panel's wrapper is `static`, letting `left-0` resolve against this
             element rather than against the trigger. */}
-        <div className="relative mx-auto flex h-16 max-w-[1200px] items-center gap-[26px] px-7 max-[1180px]:gap-3 max-[1180px]:px-4">
+        {/* Breakpoints are measured, not the design's. With the prototype's
+            heavier CTA the bar needs 1132px of content at the roomy scale plus
+            56px padding — 1188px of wrap — so the roomy scale only fits from
+            ~1204px up; below that the tighter gap and padding take over, which
+            needs 1112px and holds down to ~1127px. Hence 1240 and 1140 with a
+            little slack either side. The mockup's single 1180px threshold was
+            sized for a lighter six-item bar and overflowed 87px at 1024. */}
+        <div className="relative mx-auto flex h-16 max-w-[1200px] items-center gap-[26px] px-7 max-[1239px]:gap-3 max-[1239px]:px-4">
           <Link href="/" aria-label="Mineral View home" className="shrink-0">
             <Image
               src={logo.onLight}
@@ -131,15 +145,25 @@ export function SiteHeader() {
               on the hamburger below. */}
           <nav
             ref={navRef}
-            className="ml-2 flex items-center gap-[6px] max-[1180px]:gap-[2px] max-[1023px]:hidden"
+            className="ml-2 flex items-center gap-[6px] max-[1239px]:gap-[2px] max-[1139px]:hidden"
           >
-            {/* The single filled CTA in the bar. 13.5px/700 in a slightly wider
-                pill, per the mockup, and without the prototype's ✚ — the icon
-                stays on the mobile sheet, where the row needs the affordance. */}
+            {/* The single filled CTA in the bar, on the PROTOTYPE's treatment
+                rather than the mockup's (Ryan, 2026-08-11): `.mk-claim` is 14px
+                at weight 800 with 12px side padding and the ✚ at weight 900,
+                which makes it read heavier than the nav links either side. The
+                mockup had stepped it down to 13.5/700 and dropped the icon. */}
+            {/* Filled with the LOGO's green, not `mv-green`. The design's sage
+                #54bf96 sat next to a #00cd95 mark and the two read as different
+                greens; this is the one control close enough to the logo for that
+                to show, so it is the only place the brand green is used. See the
+                token comment in `globals.css`. */}
             <Link
               href="/claim"
-              className={`${navLinkBase} !border-mv-green !bg-mv-green !px-[14px] !font-bold !text-mv-green-ink hover:!border-mv-green-deep hover:!bg-mv-green-deep hover:!text-white`}
+              className={`${navLinkBase} !border-mv-green-brand !bg-mv-green-brand !px-3 !text-sm !font-extrabold !text-mv-green-ink hover:!border-mv-green-brand-deep hover:!bg-mv-green-brand-deep hover:!text-white`}
             >
+              <span aria-hidden="true" className="mr-1 font-black">
+                ✚
+              </span>
               Find your record
             </Link>
 
@@ -193,16 +217,15 @@ export function SiteHeader() {
               Free account
             </Link>
 
-            {/* Collapses at 1024px. The mockup does not set a breakpoint, and the
-                design's 919px is too late: measured, this bar needs ~990px of
-                content, so below 1024 the actions block runs off the right edge
-                and the page scrolls sideways. */}
+            {/* Collapses at 1140px — see the note on the bar above for how that
+                figure is derived. The mockup sets no breakpoint and the design's
+                919px is far too late for a seven-item bar. */}
             <button
               type="button"
               onClick={() => setDrawerOpen(true)}
               aria-label="Menu"
               aria-expanded={drawerOpen}
-              className="hidden shrink-0 cursor-pointer rounded-lg border border-mv-line px-[10px] py-[7px] text-base leading-none text-mv-slate max-[1023px]:block"
+              className="hidden shrink-0 cursor-pointer rounded-lg border border-mv-line px-[10px] py-[7px] text-base leading-none text-mv-slate max-[1139px]:block"
             >
               ☰
             </button>
@@ -239,7 +262,11 @@ export function SiteHeader() {
             <Link
               href="/claim"
               onClick={closeDrawer}
-              className={`${ctaPrimary} mb-2 text-center`}
+              /* Same control as the bar's CTA, and the sheet shows the logo
+                 directly above it, so it carries the same brand green. Without
+                 the override this one button would be two different greens
+                 depending on viewport width. */
+              className={`${ctaPrimary} mb-2 !border-mv-green-brand !bg-mv-green-brand text-center hover:!bg-mv-green-brand-deep hover:!text-white`}
             >
               ✚ Find your record
             </Link>

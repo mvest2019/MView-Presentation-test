@@ -30,6 +30,26 @@
   --color-mv-green-deep: #2e8f6d;
   --color-mv-mint: #e6fff5;
 
+  /* The LOGO's green, and a hover shade of it.
+     SAMPLED, NOT AUTHORED — #00cd95 is decoded straight out of the Cloudinary
+     logo asset (measured #00ce93/#00cf91 across its pixels) and is the brand
+     green the memory record names. It is NOT the same as `--color-mv-green`
+     above: the design and the mockup both specify #54bf96, a muted sage, for UI
+     fills, so the mark and the buttons have never agreed.
+
+     USE THIS ONLY WHERE UI SITS DIRECTLY BESIDE THE MARK — today that is the
+     header's "Find your record" CTA and nothing else (Ryan, 2026-08-11). The
+     rest of the site keeps the design's sage palette deliberately; widening this
+     to `--color-mv-green` would repaint every chip, pill, letter heading and
+     focus ring, which is a separate decision.
+
+     The `-deep` hover is derived, not sampled: #00cd95 darkened until white text
+     on it clears 4.5:1 (it reaches 4.53). Both states beat what they replace —
+     ink on #00cd95 is 8.07:1 against 7.35, and this hover is 4.53:1 against the
+     3.99 that #2e8f6d managed. */
+  --color-mv-green-brand: #00cd95;
+  --color-mv-green-brand-deep: #00875f;
+
   /* Text and surface */
   --color-mv-ink: #0d0e17;
   --color-mv-slate: #1e293b;
