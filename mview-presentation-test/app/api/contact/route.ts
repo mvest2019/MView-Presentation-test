@@ -7,6 +7,9 @@ import { contactSchema } from "@/app/contact/_components/contact-schema";
  * then (TODO) forwards the message to the support inbox / NewsFramework backend
  * — the blog/glossary clients POST to `{BASE_URL}/NewsFramework/...`; wire the
  * contact endpoint the same way once its name/fields are confirmed.
+ *
+ * Body: `{ firstName, lastName, email, phone, message }` — the name is two
+ * fields, so a backend expecting a single `name` needs them joined here.
  */
 export async function POST(request: Request) {
   let body: unknown;
