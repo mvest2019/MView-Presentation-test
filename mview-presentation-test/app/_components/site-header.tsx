@@ -239,7 +239,7 @@ export function SiteHeader() {
             <Link
               href="/claim"
               onClick={closeDrawer}
-              className={`${btnBase} ${btnPrimary} mb-2 text-center`}
+              className={`${ctaPrimary} mb-2 text-center`}
             >
               ✚ Find your record
             </Link>
