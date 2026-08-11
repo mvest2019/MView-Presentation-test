@@ -1,14 +1,14 @@
 "use client";
 
 import {
-  Book,
-  CreditCard,
-  Info,
-  Layers,
-  Monitor,
+  BadgeDollarSign,
+  BookOpenText,
+  Boxes,
+  Compass,
+  MousePointerClick,
   Search,
-  Star,
-  Tag,
+  Sparkles,
+  Wallet,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -29,14 +29,17 @@ import {
 const MOST_ASKED_TAB = "Most asked";
 type Tab = FaqCategory | typeof MOST_ASKED_TAB;
 
-const TAB_ICON: Record<Tab, typeof Info> = {
-  [MOST_ASKED_TAB]: Star,
-  General: Info,
-  Products: Layers,
-  Payments: CreditCard,
-  Pricing: Tag,
-  Terminology: Book,
-  "Portal Action": Monitor,
+/* Each icon says something specific about its section — a compass for "who we
+   are and how this works", a click for the portal how-tos — rather than the
+   generic circle/rectangle shapes these started as. */
+const TAB_ICON: Record<Tab, typeof Compass> = {
+  [MOST_ASKED_TAB]: Sparkles,
+  General: Compass,
+  Products: Boxes,
+  Payments: Wallet,
+  Pricing: BadgeDollarSign,
+  Terminology: BookOpenText,
+  "Portal Action": MousePointerClick,
 };
 
 /* Search matches what the visitor can read — the prototype filters on
@@ -160,16 +163,20 @@ export function FaqExplorer() {
                 type="button"
                 aria-pressed={on}
                 onClick={() => setActive(tab)}
-                className={`flex cursor-pointer flex-col items-center gap-[9px] rounded-[14px] border-[1.5px] px-[10px] pb-[13px] pt-4 text-center text-mv-ink transition ${
+                className={`group flex cursor-pointer flex-col items-center gap-[9px] rounded-[14px] border-[1.5px] px-[10px] pb-[13px] pt-4 text-center text-mv-ink transition ${
                   on
                     ? "border-mv-green-deep bg-mv-mint"
                     : "border-mv-line bg-white hover:border-[#9ed8c0] hover:shadow-[0_6px_18px_rgba(6,20,15,.08)]"
                 }`}
               >
                 <span
-                  className={`flex h-[44px] w-[44px] items-center justify-center rounded-[12px] text-mv-green-deep ${on ? "bg-white" : "bg-mv-mint"}`}
+                  className={`flex h-[46px] w-[46px] items-center justify-center rounded-[13px] shadow-[inset_0_1px_0_rgba(255,255,255,.9)] ring-1 transition ${
+                    on
+                      ? "bg-white text-mv-green-deep ring-mv-green/40"
+                      : "bg-gradient-to-br from-mv-mint to-[#c7f0dd] text-mv-green-deep ring-[#b7e7d1]/60 group-hover:from-[#d9fbec] group-hover:to-[#aee6cd]"
+                  }`}
                 >
-                  <Icon className="h-[22px] w-[22px]" />
+                  <Icon strokeWidth={1.75} className="h-[23px] w-[23px]" />
                 </span>
                 <span className="text-[13px] font-bold leading-[1.2]">
                   {tab}
