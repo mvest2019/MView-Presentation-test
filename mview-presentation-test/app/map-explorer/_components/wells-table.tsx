@@ -2,6 +2,7 @@
 
 import {
   Activity,
+  ArrowLeft,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -283,8 +284,23 @@ export function WellsTable({
        and its summary in the first, the grid and its pager in the second. */
     <div className="absolute inset-0 z-40 overflow-y-auto bg-mv-bg p-4">
       <div className="overflow-hidden rounded-xl border border-mv-line bg-white">
-      {/* ---------------- heading ---------------- */}
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-6 pt-5">
+      {/* ---------------- heading ----------------
+          Back sits on the heading's own row rather than a row of its own: the
+          table fills the screen, so the map is otherwise only reachable from
+          the view switch on the far right, but a 116px button does not earn a
+          full-width band when this row already has ~880px going spare. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-6 pt-5">
+        <button
+          type="button"
+          onClick={() => onTabChange("map")}
+          className="inline-flex shrink-0 cursor-pointer items-center gap-[6px] rounded-lg border border-mv-line px-3 py-[6px] text-[12.5px] font-semibold text-mv-green-deep hover:border-mv-green-deep hover:bg-[#f2f8f5]"
+        >
+          <ArrowLeft size={14} aria-hidden="true" />
+          Back to map
+        </button>
+
+        <span aria-hidden="true" className="h-5 w-px shrink-0 bg-mv-line" />
+
         <h2 className="text-[19px] font-bold leading-none text-mv-ink">
           <span className="text-mv-green-deep">
             {summary.total.toLocaleString("en-US")}
@@ -520,7 +536,7 @@ export function WellsTable({
                   <button
                     type="button"
                     onClick={() => toggleSort(key)}
-                    className="inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-[10.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate hover:text-mv-green-deep"
+                    className="inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-[12.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate hover:text-mv-green-deep"
                   >
                     {label}
                     <SortMark
@@ -533,7 +549,7 @@ export function WellsTable({
 
               <th
                 scope="col"
-                className="whitespace-nowrap py-[8px] pl-4 pr-6 text-[10.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate"
+                className="whitespace-nowrap py-[8px] pl-4 pr-6 text-[12.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate"
               >
                 View on map
               </th>
@@ -891,14 +907,18 @@ function SummaryCard({
         <Icon size={15} />
       </span>
       <div className="min-w-0">
-        <div className="text-[9.5px] font-extrabold uppercase leading-none tracking-[.08em] text-mv-muted">
+        <div className="text-[11.5px] font-extrabold uppercase leading-none tracking-[.08em] text-mv-muted">
           {label}
         </div>
-        <div className="mt-[6px] text-[21px] font-bold leading-none text-mv-ink">
-          {value.toLocaleString("en-US")}
-        </div>
-        <div className="mt-[5px] text-[11px] leading-none text-mv-muted">
-          {note}
+        {/* Value and note share a line — there is room to the right of the
+            number, and stacking them cost a row of height for nothing. */}
+        <div className="mt-[6px] flex flex-wrap items-baseline gap-x-2 gap-y-[3px]">
+          <span className="text-[21px] font-bold leading-none text-mv-ink">
+            {value.toLocaleString("en-US")}
+          </span>
+          <span className="text-[11.5px] leading-none text-mv-muted">
+            {note}
+          </span>
         </div>
       </div>
     </div>

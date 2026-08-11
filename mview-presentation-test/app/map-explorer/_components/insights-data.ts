@@ -134,5 +134,3 @@ export const TOTALS = [
   { label: "Water", qualifier: "(to date)", value: "107,097,548,587", unit: "bbl" },
   { label: "Total BOE", qualifier: "(to date)", value: "72,096,785,965", unit: "boe" },
 ] as const;
-
-export const REPORTED_THROUGH = "May 2026";

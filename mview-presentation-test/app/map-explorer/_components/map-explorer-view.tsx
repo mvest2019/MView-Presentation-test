@@ -12,6 +12,7 @@ import { AreaSelectionBar } from "./area-selection";
 import { loadArcgisModules } from "./arcgis-loader";
 import { InsightsPanel } from "./insights-panel";
 import { MapChrome, type ViewTab } from "./map-chrome";
+import { type Place } from "./map-search";
 import { MeasureBar } from "./measure-bar";
 import {
   NearbyPanel,
@@ -157,6 +158,18 @@ const CIRCLE_STEP_DEGREES = 6;
 
 /** The radius the watch card opens on, matching the mock. */
 const DEFAULT_WATCH_RADIUS_MILES = 2;
+
+/**
+ * Insights opens on an even split. The bounds stop the drag from collapsing
+ * either side to nothing — a map you cannot see is not a map, and the summary
+ * cards stop making sense much under a quarter of the page.
+ */
+const DEFAULT_SPLIT = 0.5;
+const MIN_SPLIT = 0.22;
+const MAX_SPLIT = 0.78;
+
+/** Fraction of the width one arrow-key press moves the divider. */
+const SPLIT_KEY_STEP = 0.02;
 
 type ScreenPoint = { x: number; y: number };
 
@@ -411,6 +424,8 @@ export function MapExplorerView() {
   const [status, setStatus] = useState<Status>("loading");
   const [basemap, setBasemap] = useState(DEFAULT_BASEMAP);
   const [viewTab, setViewTab] = useState<ViewTab>("map");
+  const [splitRatio, setSplitRatio] = useState(DEFAULT_SPLIT);
+  const draggingSplitRef = useRef(false);
 
   /*
    * Area drawing. The Esri drag handler is registered once and outlives every
@@ -939,6 +954,76 @@ export function MapExplorerView() {
 
   const changeViewTab = useCallback((tab: ViewTab) => setViewTab(tab), []);
 
+  /*
+   * The Insights divider. Pointer capture rather than window listeners: the
+   * drag keeps following the pointer even when it leaves the 7px handle, and
+   * the browser cleans the capture up for us if the gesture is interrupted.
+   */
+  const splitFromPointer = useCallback((clientX: number) => {
+    const bounds = rootRef.current?.getBoundingClientRect();
+    if (!bounds || !bounds.width) return;
+    const ratio = (clientX - bounds.left) / bounds.width;
+    setSplitRatio(Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, ratio)));
+  }, []);
+
+  const onSplitPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      // Arm the drag before asking for capture: `setPointerCapture` can throw
+      // if the pointer is already gone, and it must not take the drag with it.
+      draggingSplitRef.current = true;
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // Capture is an optimisation — the drag still tracks without it.
+      }
+    },
+    [],
+  );
+
+  const onSplitPointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (draggingSplitRef.current) splitFromPointer(event.clientX);
+    },
+    [splitFromPointer],
+  );
+
+  const onSplitPointerUp = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      draggingSplitRef.current = false;
+      try {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+      } catch {
+        // Already released, or never captured.
+      }
+    },
+    [],
+  );
+
+  const onSplitKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      const step =
+        event.key === "ArrowLeft"
+          ? -SPLIT_KEY_STEP
+          : event.key === "ArrowRight"
+            ? SPLIT_KEY_STEP
+            : 0;
+
+      if (step) {
+        event.preventDefault();
+        setSplitRatio((current) =>
+          Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, current + step)),
+        );
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        setSplitRatio(DEFAULT_SPLIT);
+      }
+    },
+    [],
+  );
+
   const downloadNearby = useCallback(() => {
     const current = nearbyRef.current;
     const ctors = ctorsRef.current;
@@ -991,6 +1076,13 @@ export function MapExplorerView() {
     } else {
       rootRef.current?.requestFullscreen().catch(reportFullscreenFailure);
     }
+  }, []);
+
+  /** Search result picked — fly the map to it. */
+  const goToPlace = useCallback((place: Place) => {
+    viewRef.current
+      ?.goTo({ center: place.at, scale: place.scale })
+      .catch(ignoreInterrupted);
   }, []);
 
   const changeBasemap = useCallback((id: string) => {
@@ -1054,8 +1146,13 @@ export function MapExplorerView() {
       <div
         className={
           viewTab === "insights"
-            ? "absolute inset-y-0 left-0 w-1/2 overflow-hidden"
+            ? "absolute inset-y-0 left-0 overflow-hidden"
             : "absolute inset-0"
+        }
+        style={
+          viewTab === "insights"
+            ? { width: `${splitRatio * 100}%` }
+            : undefined
         }
       >
       <div ref={containerRef} className="h-full w-full" />
@@ -1107,6 +1204,7 @@ export function MapExplorerView() {
           viewTab={viewTab}
           onViewTabChange={changeViewTab}
           compact={viewTab === "insights"}
+          onSelectPlace={goToPlace}
           activeTool={activeTool}
           onSelectTool={startTool}
           onZoomIn={zoomIn}
@@ -1125,9 +1223,41 @@ export function MapExplorerView() {
       </div>
 
       {status === "ready" && viewTab === "insights" && (
-        <div className="absolute inset-y-0 right-0 w-1/2 border-l border-mv-line">
-          <InsightsPanel />
-        </div>
+        <>
+          <div
+            className="absolute inset-y-0 right-0 border-l border-mv-line"
+            style={{ width: `${(1 - splitRatio) * 100}%` }}
+          >
+            <InsightsPanel />
+          </div>
+
+          {/* The 7px hit area is wider than the 1px seam it sits on, so the
+              handle is grabbable without a visible bar. `title` gives the
+              hint; the browser's own tooltip is what the mock shows. */}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize map and insights"
+            aria-valuenow={Math.round(splitRatio * 100)}
+            aria-valuemin={Math.round(MIN_SPLIT * 100)}
+            aria-valuemax={Math.round(MAX_SPLIT * 100)}
+            tabIndex={0}
+            title="Drag to resize · double-click to reset"
+            onPointerDown={onSplitPointerDown}
+            onPointerMove={onSplitPointerMove}
+            onPointerUp={onSplitPointerUp}
+            onPointerCancel={onSplitPointerUp}
+            onDoubleClick={() => setSplitRatio(DEFAULT_SPLIT)}
+            onKeyDown={onSplitKeyDown}
+            className="group absolute inset-y-0 z-30 -ml-[3px] w-[7px] cursor-col-resize touch-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-mv-green-deep"
+            style={{ left: `${splitRatio * 100}%` }}
+          >
+            <span
+              aria-hidden="true"
+              className="absolute left-1/2 top-1/2 h-10 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#c7cbd1] group-hover:bg-mv-green-deep"
+            />
+          </div>
+        </>
       )}
 
       {/* The map stays mounted underneath — unmounting it would destroy the

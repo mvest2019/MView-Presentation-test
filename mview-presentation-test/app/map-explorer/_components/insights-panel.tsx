@@ -19,7 +19,6 @@ import {
   PRODUCTION_MONTHS,
   PRODUCTION_OIL,
   PRODUCTION_ROLLING,
-  REPORTED_THROUGH,
   TOP_COUNTIES,
   TOP_OPERATORS,
   TOTALS,
@@ -324,10 +323,13 @@ export function InsightsPanel() {
         </div>
       </div>
 
-      {/* ---------------- totals ---------------- */}
-      <div className="mt-4 flex flex-wrap items-start gap-6 rounded-xl border border-mv-line bg-white px-5 py-4">
+      {/* ---------------- totals ----------------
+          `gap-px` over a line-coloured background is the divider: each cell
+          keeps its own white fill and the 1px seams between them read as rules,
+          without a border that would double up at the card's edge. */}
+      <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-mv-line bg-mv-line sm:grid-cols-3 xl:grid-cols-5">
         {TOTALS.map((total) => (
-          <div key={total.label} className="min-w-[132px]">
+          <div key={total.label} className="bg-white px-5 py-4">
             <div className="text-[11.5px] text-mv-slate">
               <span className="font-bold text-mv-ink">{total.label}</span>{" "}
               <span className="text-mv-muted">{total.qualifier}</span>
@@ -340,15 +342,6 @@ export function InsightsPanel() {
             </div>
           </div>
         ))}
-
-        <div className="ml-auto text-right">
-          <div className="text-[9.5px] font-extrabold uppercase tracking-[.09em] text-mv-muted">
-            Reported through
-          </div>
-          <div className="mt-[6px] text-[13px] font-bold text-mv-ink">
-            {REPORTED_THROUGH}
-          </div>
-        </div>
       </div>
     </div>
   );

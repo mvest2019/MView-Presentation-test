@@ -4,8 +4,8 @@ import {
   ChartColumn,
   Clock,
   Download,
-  Expand,
   Grid2x2,
+  House,
   Layers,
   Map as MapIcon,
   Maximize,
@@ -21,6 +21,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { BasemapGallery } from "./basemap-gallery";
 import { FiltersPanel } from "./filters-panel";
+import { PlaceResults, matchPlaces, type Place } from "./map-search";
 import { ShareMenu } from "./share-menu";
 import { ToolsPanel } from "./tools-panel";
 import { WELLS_STATEWIDE } from "./well-clusters";
@@ -56,6 +57,8 @@ type MapChromeProps = {
   onViewTabChange: (tab: ViewTab) => void;
   /** Insights halves the map, so the toolbar sheds what will not fit. */
   compact?: boolean;
+  /** Fired when a place is chosen from the search box. */
+  onSelectPlace: (place: Place) => void;
   /** The tool waiting for a drag on the map, if any. */
   activeTool: string | null;
   onSelectTool: (
@@ -86,6 +89,7 @@ export function MapChrome({
   viewTab,
   onViewTabChange,
   compact = false,
+  onSelectPlace,
   activeTool,
   onSelectTool,
   onZoomIn,
@@ -112,6 +116,14 @@ export function MapChrome({
     setFiltersOpenByTab((current) => ({ ...current, [viewTab]: open }));
   const [shareOpen, setShareOpen] = useState(false);
   const [shareAnchor, setShareAnchor] = useState({ top: 60, right: 16 });
+
+  const [placeQuery, setPlaceQuery] = useState("");
+  const [placeOpen, setPlaceOpen] = useState(false);
+  const [placeIndex, setPlaceIndex] = useState(0);
+  const [placeAnchor, setPlaceAnchor] = useState({ top: 60, left: 0, width: 220 });
+  const searchBoxRef = useRef<HTMLDivElement>(null);
+
+  const places = matchPlaces(placeQuery);
   const basemapRef = useRef<HTMLDivElement>(null);
   const toolsRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -139,6 +151,44 @@ export function MapChrome({
       });
     }
     setShareOpen(true);
+  };
+
+  /** Same anchoring problem as the share menu — measured, not nested. */
+  const anchorPlaceResults = () => {
+    const toolbar = toolbarRef.current?.getBoundingClientRect();
+    const box = searchBoxRef.current?.getBoundingClientRect();
+    if (!toolbar || !box) return;
+
+    setPlaceAnchor({
+      top: Math.round(box.bottom - toolbar.top + 6),
+      left: Math.round(box.left - toolbar.left),
+      width: Math.round(box.width),
+    });
+  };
+
+  const pickPlace = (place: Place) => {
+    setPlaceQuery(place.name);
+    setPlaceOpen(false);
+    onSelectPlace(place);
+  };
+
+  const onPlaceKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") {
+      setPlaceOpen(false);
+      return;
+    }
+    if (!placeOpen || places.length === 0) return;
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setPlaceIndex((index) => Math.min(index + 1, places.length - 1));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setPlaceIndex((index) => Math.max(index - 1, 0));
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      pickPlace(places[placeIndex]);
+    }
   };
 
   // Close the basemap gallery on an outside click or Escape — the same
@@ -182,6 +232,20 @@ export function MapChrome({
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [toolsOpen]);
+
+  // The place results live in the toolbar wrapper too, so the same test works.
+  useEffect(() => {
+    if (!placeOpen) return;
+
+    function onPointerDown(event: MouseEvent) {
+      if (!toolbarRef.current?.contains(event.target as Node)) {
+        setPlaceOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [placeOpen]);
 
   // And the share menu. Its outside-click test covers the toolbar wrapper,
   // which holds both the button and the menu.
@@ -317,13 +381,37 @@ export function MapChrome({
             />
           </span>
 
-          <div className="ml-1 flex shrink-0 items-center gap-2 rounded-lg border border-mv-line bg-white py-[5px] pl-3 pr-2">
+          <div
+            ref={searchBoxRef}
+            className="ml-1 flex shrink-0 items-center gap-2 rounded-lg border border-mv-line bg-white py-[5px] pl-3 pr-2 focus-within:border-mv-green focus-within:ring-1 focus-within:ring-mv-green"
+          >
             <label htmlFor="map-search" className="sr-only">
               Search by town, ZIP or API number
             </label>
             <input
               id="map-search"
-              type="search"
+              type="text"
+              role="combobox"
+              autoComplete="off"
+              aria-expanded={placeOpen && places.length > 0}
+              aria-controls="map-search-results"
+              aria-activedescendant={
+                placeOpen && places.length > 0
+                  ? `map-search-option-${placeIndex}`
+                  : undefined
+              }
+              value={placeQuery}
+              onChange={(event) => {
+                setPlaceQuery(event.target.value);
+                setPlaceIndex(0);
+                setPlaceOpen(true);
+                anchorPlaceResults();
+              }}
+              onFocus={() => {
+                setPlaceOpen(true);
+                anchorPlaceResults();
+              }}
+              onKeyDown={onPlaceKeyDown}
               placeholder="Town, ZIP or API number"
               className="w-[168px] border-0 bg-transparent text-[13px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted"
             />
@@ -335,6 +423,20 @@ export function MapChrome({
             narrow viewports, and `overflow-x` clips on both axes, so a dropdown
             nested inside it would be cut off. Anchored by measurement instead —
             see `toggleShare`. */}
+        {placeOpen && placeQuery.trim() !== "" && (
+          <PlaceResults
+            results={places}
+            activeIndex={placeIndex}
+            onHover={setPlaceIndex}
+            onPick={pickPlace}
+            style={{
+              top: placeAnchor.top,
+              left: placeAnchor.left,
+              width: placeAnchor.width,
+            }}
+          />
+        )}
+
         {shareOpen && (
           <ShareMenu
             // Dismiss first: the capture should not have to wait on the menu,
@@ -434,7 +536,9 @@ export function MapChrome({
           </button>
         </div>
 
-        <IconButton icon={Expand} label="Reset view" onClick={onHome} />
+        {/* A house, not another expand glyph — the previous icon was a near
+            twin of the full-screen control two buttons up. */}
+        <IconButton icon={House} label="Reset view" onClick={onHome} />
       </div>
     </div>
   );
