@@ -357,12 +357,12 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
 
   return (
     <div
-      className={`flex max-h-full w-[252px] flex-col overflow-hidden rounded-xl border border-mv-line bg-white shadow-mv-lg ${className}`}
+      className={`flex max-h-full w-[196px] flex-col md:w-[224px] lg:w-[252px] overflow-hidden rounded-xl border border-mv-line bg-white shadow-mv-lg ${className}`}
     >
       <div className="mv-thin-scroll min-h-0 flex-1 overflow-y-auto px-[14px]">
         {/* ---------------- header ---------------- */}
         <div className="flex items-center gap-2 pb-3 pt-[14px]">
-          <h2 className="text-[15px] font-bold leading-none text-mv-ink">
+          <h2 className="text-[14px] lg:text-[15px] font-bold leading-none text-mv-ink">
             Search &amp; filters
           </h2>
           <ProBadge />
@@ -402,7 +402,7 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
               onFocus={() => setSuggestionsOpen(true)}
               onKeyDown={onSearchKeyDown}
               placeholder="Lease, operator, or county"
-              className="min-w-0 flex-1 border-0 bg-transparent text-[12.5px] leading-tight text-mv-ink outline-none placeholder:text-mv-muted"
+              className="min-w-0 flex-1 border-0 bg-transparent text-[11.5px] lg:text-[12.5px] leading-tight text-mv-ink outline-none placeholder:text-mv-muted"
             />
             <Search
               size={14}
@@ -433,10 +433,10 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
                       index === activeSuggestion ? "bg-[#f2f8f5]" : ""
                     }`}
                   >
-                    <span className="min-w-0 flex-1 truncate text-[13px] text-mv-slate">
+                    <span className="min-w-0 flex-1 truncate text-[12px] lg:text-[13px] text-mv-slate">
                       <Highlighted text={suggestion.label} query={query} />
                     </span>
-                    <span className="shrink-0 rounded bg-[#f1f2f4] px-[7px] py-[3px] text-[9.5px] font-bold uppercase tracking-[.06em] text-mv-muted">
+                    <span className="shrink-0 rounded bg-[#f1f2f4] px-[7px] py-[3px] text-[8.5px] lg:text-[9.5px] font-bold uppercase tracking-[.06em] text-mv-muted">
                       {suggestion.kind}
                     </span>
                   </button>
@@ -444,7 +444,7 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
               ))}
 
               {suggestions.length === 0 && (
-                <li className="px-3 py-[9px] text-[13px] text-mv-muted">
+                <li className="px-3 py-[9px] text-[12px] lg:text-[13px] text-mv-muted">
                   No matches
                 </li>
               )}
@@ -479,13 +479,13 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
               />
               <Radio checked={selectedLease === lease.id} />
               <span className="min-w-0">
-                <span className="text-[12.5px] font-bold text-mv-ink">
+                <span className="text-[11.5px] lg:text-[12.5px] font-bold text-mv-ink">
                   {lease.name}
                 </span>{" "}
-                <span className="text-[12px] text-mv-muted">
+                <span className="text-[11px] lg:text-[12px] text-mv-muted">
                   ({lease.number})
                 </span>
-                <span className="mt-[2px] block text-[11.5px] leading-tight text-mv-muted">
+                <span className="mt-[2px] block text-[10.5px] lg:text-[11.5px] leading-tight text-mv-muted">
                   {lease.location}
                 </span>
               </span>
@@ -510,7 +510,7 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
       </div>
 
       {/* ---------------- match count ---------------- */}
-      <div className="border-t border-mv-line px-[14px] py-[10px] text-[12.5px] leading-snug text-mv-muted">
+      <div className="border-t border-mv-line px-[14px] py-[10px] text-[11.5px] lg:text-[12.5px] leading-snug text-mv-muted">
         <span className="font-bold text-mv-ink">
           {WELLS_STATEWIDE.toLocaleString("en-US")}
         </span>{" "}
@@ -554,7 +554,7 @@ function CheckboxSection({
     >
       <div className="flex items-center justify-end gap-[6px] pb-[10px]">
         <BulkAction onClick={() => onSetAll(true)}>All</BulkAction>
-        <span aria-hidden="true" className="text-[11px] text-mv-muted">
+        <span aria-hidden="true" className="text-[10px] lg:text-[11px] text-mv-muted">
           ·
         </span>
         <BulkAction onClick={() => onSetAll(false)}>None</BulkAction>
@@ -572,7 +572,7 @@ function CheckboxSection({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Find…"
-            className="min-w-0 flex-1 border-0 bg-transparent text-[12.5px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted"
+            className="min-w-0 flex-1 border-0 bg-transparent text-[11.5px] lg:text-[12.5px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted"
           />
         </div>
       )}
@@ -594,17 +594,17 @@ function CheckboxSection({
             className="h-[7px] w-[7px] shrink-0 rounded-full"
             style={{ background: item.dot }}
           />
-          <span className="flex-1 truncate text-[12.5px] text-mv-ink">
+          <span className="flex-1 truncate text-[11.5px] lg:text-[12.5px] text-mv-ink">
             {item.name}
           </span>
-          <span className="shrink-0 text-[12px] tabular-nums text-mv-muted">
+          <span className="shrink-0 text-[11px] lg:text-[12px] tabular-nums text-mv-muted">
             {item.count.toLocaleString("en-US")}
           </span>
         </label>
       ))}
 
       {visible.length === 0 && (
-        <p className="py-2 text-[12px] text-mv-muted">Nothing matches.</p>
+        <p className="py-2 text-[11px] lg:text-[12px] text-mv-muted">Nothing matches.</p>
       )}
     </SectionShell>
   );
@@ -633,16 +633,16 @@ function SectionShell({
         aria-expanded={open}
         className="flex w-full cursor-pointer items-center gap-2 text-left"
       >
-        <span className="text-[10.5px] font-extrabold uppercase tracking-[.1em] text-mv-ink">
+        <span className="text-[9.5px] lg:text-[10.5px] font-extrabold uppercase tracking-[.1em] text-mv-ink">
           {label}
         </span>
         {count !== undefined && (
-          <span className="text-[11px] font-semibold text-mv-muted">
+          <span className="text-[10px] lg:text-[11px] font-semibold text-mv-muted">
             {count}
           </span>
         )}
         {note && (
-          <span className="rounded bg-mv-amber-bg px-[5px] py-[2px] text-[8.5px] font-extrabold uppercase tracking-[.06em] text-mv-amber">
+          <span className="rounded bg-mv-amber-bg px-[5px] py-[2px] text-[7.5px] lg:text-[8.5px] font-extrabold uppercase tracking-[.06em] text-mv-amber">
             {note}
           </span>
         )}
@@ -699,7 +699,7 @@ function BulkAction({
     <button
       type="button"
       onClick={onClick}
-      className="cursor-pointer text-[11.5px] font-bold text-mv-green-deep hover:underline"
+      className="cursor-pointer text-[10.5px] lg:text-[11.5px] font-bold text-mv-green-deep hover:underline"
     >
       {children}
     </button>
@@ -745,7 +745,7 @@ function Checkbox({ checked }: { checked: boolean }) {
 
 function ProBadge() {
   return (
-    <span className="inline-flex shrink-0 items-center gap-[3px] rounded bg-mv-amber-bg px-[5px] py-[2px] text-[9px] font-extrabold uppercase leading-none tracking-[.06em] text-mv-amber">
+    <span className="inline-flex shrink-0 items-center gap-[3px] rounded bg-mv-amber-bg px-[5px] py-[2px] text-[8px] lg:text-[9px] font-extrabold uppercase leading-none tracking-[.06em] text-mv-amber">
       <Lock size={8} strokeWidth={3} aria-hidden="true" />
       Pro
     </span>

@@ -67,10 +67,10 @@ export function ToolsPanel({
 }: ToolsPanelProps) {
   return (
     <div
-      className={`w-[196px] rounded-l-xl border border-r-0 border-mv-line bg-white p-3 shadow-mv-lg ${className}`}
+      className={`w-[164px] rounded-l-xl border border-r-0 border-mv-line bg-white p-[10px] md:w-[178px] lg:w-[196px] lg:p-3 shadow-mv-lg ${className}`}
     >
-      <div className="mb-[10px] flex items-center justify-between gap-2">
-        <h2 className="text-[15px] font-semibold leading-none text-mv-ink">
+      <div className="mb-2 flex items-center justify-between gap-2 lg:mb-[10px]">
+        <h2 className="text-[14px] lg:text-[15px] font-semibold leading-none text-mv-ink">
           Tools
         </h2>
         <button
@@ -83,14 +83,14 @@ export function ToolsPanel({
         </button>
       </div>
 
-      <div className="flex flex-col gap-[10px]">
+      <div className="flex flex-col gap-2 lg:gap-[10px]">
         {tools.map(({ id, label, icon: Icon, pro }) => (
           <button
             key={id}
             type="button"
             aria-pressed={id === activeId}
             onClick={() => onSelect?.(id)}
-            className={`flex w-full cursor-pointer items-center gap-[10px] rounded-[10px] border px-3 py-[10px] text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep ${
+            className={`flex w-full cursor-pointer items-center gap-2 rounded-[10px] border px-[10px] py-[7px] text-left lg:gap-[10px] lg:px-3 lg:py-[10px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep ${
               id === activeId
                 ? "border-mv-green-deep bg-mv-mint"
                 : "border-mv-line bg-white hover:border-mv-green-deep hover:bg-[#f2f8f5]"
@@ -102,7 +102,7 @@ export function ToolsPanel({
               className="shrink-0 text-mv-slate"
               aria-hidden="true"
             />
-            <span className="flex-1 text-[13px] font-semibold leading-[1.25] text-mv-ink">
+            <span className="flex-1 text-[12px] lg:text-[13px] font-semibold leading-[1.25] text-mv-ink">
               {label}
             </span>
             {pro && <ProBadge />}
@@ -119,7 +119,7 @@ export function ToolsPanel({
  */
 function ProBadge() {
   return (
-    <span className="inline-flex shrink-0 items-center gap-[3px] rounded bg-mv-amber-bg px-[5px] py-[2px] text-[9px] font-extrabold uppercase leading-none tracking-[.06em] text-mv-amber">
+    <span className="inline-flex shrink-0 items-center gap-[3px] rounded bg-mv-amber-bg px-[5px] py-[2px] text-[8px] lg:text-[9px] font-extrabold uppercase leading-none tracking-[.06em] text-mv-amber">
       <Lock size={8} strokeWidth={3} aria-hidden="true" />
       Pro
     </span>

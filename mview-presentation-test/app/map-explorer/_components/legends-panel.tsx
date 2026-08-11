@@ -60,7 +60,7 @@ export function LegendsPanel({
 
   return (
     <div
-      className={`w-[204px] overflow-hidden rounded-xl border border-mv-line bg-white shadow-mv ${className}`}
+      className={`w-[168px] overflow-hidden md:w-[186px] lg:w-[204px] rounded-xl border border-mv-line bg-white shadow-mv ${className}`}
     >
       <button
         type="button"
@@ -69,7 +69,7 @@ export function LegendsPanel({
         className="flex w-full cursor-pointer items-center gap-2 bg-mv-green-deep px-3 py-[9px] text-left text-white hover:brightness-105"
       >
         <Layers size={15} aria-hidden="true" />
-        <span className="flex-1 text-[14px] font-bold leading-none">
+        <span className="flex-1 text-[13px] lg:text-[14px] font-bold leading-none">
           Legends
         </span>
         <ChevronDown
@@ -87,7 +87,7 @@ export function LegendsPanel({
               className="flex items-start gap-[10px] px-3 py-[5px]"
             >
               <WellSymbol kind={kind} />
-              <span className="text-[12.5px] leading-[1.35] text-mv-ink">
+              <span className="text-[11.5px] lg:text-[12.5px] leading-[1.35] text-mv-ink">
                 {label}
               </span>
             </li>
