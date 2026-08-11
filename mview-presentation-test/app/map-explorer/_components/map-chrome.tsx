@@ -364,14 +364,17 @@ export function MapChrome({
         <div className="pointer-events-auto flex w-full max-w-full flex-col items-stretch gap-2 md:w-auto md:flex-row md:flex-nowrap md:items-center md:gap-1 md:overflow-x-auto md:rounded-xl md:border md:border-mv-line md:bg-white/97 md:px-[6px] md:py-[4px] md:shadow-mv-lg md:backdrop-blur-[6px]">
           {/* A segmented control: the grey track groups the three views and
               makes the filled one read as the raised tab. */}
-          <div className="flex w-full shrink-0 items-center justify-center gap-1 rounded-xl border border-mv-line bg-white/97 p-[5px] shadow-mv-lg backdrop-blur-[6px] md:w-auto md:justify-start md:rounded-lg md:border-0 md:bg-[#f1f2f4] md:p-[3px] md:shadow-none">
+          <div className="flex w-full shrink-0 items-center gap-1 rounded-xl border border-mv-line bg-white/97 p-1 shadow-mv-lg backdrop-blur-[6px] md:w-auto md:justify-start md:rounded-lg md:border-0 md:bg-[#f1f2f4] md:p-[3px] md:shadow-none">
           {VIEW_TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
               aria-pressed={viewTab === id}
               onClick={() => onViewTabChange(id)}
-              className={`inline-flex shrink-0 cursor-pointer items-center gap-[6px] rounded-lg px-[10px] py-[5px] text-[12.5px] font-semibold leading-tight transition-colors ${
+              /* Each tab takes a third of the card on a phone: three equal
+                 targets read as one control, where content-width buttons in a
+                 full-width card read as three loose chips with a gap. */
+              className={`inline-flex flex-1 shrink-0 cursor-pointer items-center justify-center gap-[6px] rounded-lg px-[10px] py-[7px] text-[13px] font-semibold leading-tight transition-colors md:flex-none md:py-[5px] md:text-[12.5px] ${
                 viewTab === id
                   ? "bg-mv-green-deep text-white shadow-mv"
                   : "text-mv-slate hover:bg-white/70 hover:text-mv-green-deep"
@@ -537,10 +540,15 @@ export function MapChrome({
       {/* ---------------- legend + scale ----------------
           One bottom-left stack, so the two keep their spacing whatever the
           legend is doing. It steps aside when the filters panel is open rather
-          than hiding under it: 12px gutter + the panel's 252px + 12px again. */}
+          than hiding under it: 12px gutter + the panel's 252px + 12px again.
+
+          Below lg there is nowhere to step aside to — the panel takes most of
+          the width — so the stack gets out of the way entirely until the
+          filters are closed again. Display lives in the branches rather than
+          the base, so `hidden` and `flex` never both apply. */}
       <div
-        className={`absolute bottom-6 flex flex-col items-start gap-2 ${
-          filtersOpen ? "left-[276px]" : "left-3"
+        className={`absolute bottom-6 flex-col items-start gap-2 ${
+          filtersOpen ? "left-[276px] hidden lg:flex" : "left-3 flex"
         }`}
       >
       {legendsOpen && (

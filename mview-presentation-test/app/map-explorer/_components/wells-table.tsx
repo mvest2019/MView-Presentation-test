@@ -265,7 +265,7 @@ export function WellsTable({
   return (
     /* Two cards on the page background, not one flat sheet: the result header
        and its summary in the first, the grid and its pager in the second. */
-    <div className="absolute inset-0 z-40 overflow-y-auto bg-mv-bg p-4">
+    <div className="absolute inset-0 z-40 overflow-y-auto bg-mv-bg p-3 lg:p-4">
       {/* No `overflow-hidden` here — the filter dropdowns open past the card's
           bottom edge and it would slice them off. The summary strip rounds its
           own bottom corners instead, which is all the clipping was for. */}
@@ -275,7 +275,7 @@ export function WellsTable({
           table fills the screen, so the map is otherwise only reachable from
           the view switch on the far right, but a 116px button does not earn a
           full-width band when this row already has ~880px going spare. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-6 pt-5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 pt-4 lg:px-6 lg:pt-5">
         <button
           type="button"
           onClick={() => onTabChange("map")}
@@ -287,7 +287,7 @@ export function WellsTable({
 
         <span aria-hidden="true" className="h-5 w-px shrink-0 bg-mv-line" />
 
-        <h2 className="text-[19px] font-bold leading-none text-mv-ink">
+        <h2 className="text-[16px] font-bold leading-tight text-mv-ink lg:text-[19px] lg:leading-none">
           <span className="text-mv-green-deep">
             {summary.total.toLocaleString("en-US")}
           </span>{" "}
@@ -305,9 +305,9 @@ export function WellsTable({
           collapsed this into a three-line block on a narrow viewport. */}
       <div
         ref={filterBarRef}
-        className="flex items-center gap-2 px-6 py-4"
+        className="flex flex-wrap items-center gap-2 px-4 py-3 lg:flex-nowrap lg:px-6 lg:py-4"
       >
-        <div className="flex shrink-0 items-center gap-2 rounded-lg border border-mv-line px-3 py-[7px]">
+        <div className="flex w-full items-center gap-2 rounded-lg border border-mv-line px-3 py-[7px] lg:w-auto lg:shrink-0">
           <Search size={14} className="text-mv-muted" aria-hidden="true" />
           <label htmlFor="table-search" className="sr-only">
             Search API, operator or lease
@@ -321,7 +321,7 @@ export function WellsTable({
               setPage(1);
             }}
             placeholder="Search API, operator, lease,"
-            className="w-[172px] border-0 bg-transparent text-[12.5px] leading-tight text-mv-ink outline-none placeholder:text-mv-muted"
+            className="w-full min-w-0 border-0 bg-transparent text-[12.5px] leading-tight text-mv-ink outline-none placeholder:text-mv-muted lg:w-[172px]"
           />
         </div>
 
@@ -372,8 +372,8 @@ export function WellsTable({
           </button>
         )}
 
-        <div className="ml-auto flex shrink-0 items-center gap-2 pl-2">
-          <div className="flex items-center gap-1 rounded-lg border border-mv-line bg-white p-1">
+        <div className="flex w-full shrink-0 flex-wrap items-center gap-2 lg:ml-auto lg:w-auto lg:flex-nowrap lg:pl-2">
+          <div className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-mv-line bg-white p-1 lg:flex-none lg:justify-start">
             <TabButton
               icon={MapIcon}
               label="Map"
@@ -396,7 +396,7 @@ export function WellsTable({
 
           <button
             type="button"
-            className="inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-mv-line px-[14px] py-[8px] text-[12.5px] font-semibold text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep"
+            className="inline-flex w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-mv-line px-[14px] py-[8px] text-[12.5px] font-semibold text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep lg:w-auto"
           >
             <Download size={14} aria-hidden="true" />
             Export full list
@@ -410,7 +410,7 @@ export function WellsTable({
 
       {/* ---------------- applied filters ---------------- */}
       {chips.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 px-6 pb-4">
+        <div className="flex flex-wrap items-center gap-2 px-4 pb-3 lg:px-6 lg:pb-4">
           {chips.map((chip) => (
             <span
               key={`${chip.key}:${chip.value}`}
@@ -485,7 +485,7 @@ export function WellsTable({
 
       {/* ---------------- table ---------------- */}
       <div className="mt-4 overflow-hidden rounded-xl border border-mv-line bg-white">
-      <div className="overflow-x-auto">
+      <div className="mv-thin-scroll overflow-x-auto">
         <table className="w-full min-w-[1000px] border-collapse text-left">
           <thead>
             <tr className="border-b border-mv-line bg-[#f8f9fa]">
@@ -602,63 +602,75 @@ export function WellsTable({
       </div>
 
       {/* ---------------- pager ---------------- */}
-      <div className="flex flex-wrap items-center justify-end gap-2 px-6 py-3">
-        <span className="mr-2 text-[12.5px] text-mv-muted">
+      <div className="flex flex-col items-center gap-2 px-4 py-3 lg:flex-row lg:flex-wrap lg:justify-end lg:px-6">
+        <span className="text-[12.5px] text-mv-muted lg:mr-2">
           {firstShown.toLocaleString("en-US")}–
           {lastShown.toLocaleString("en-US")} of{" "}
           {summary.total.toLocaleString("en-US")}
         </span>
 
-        <PagerButton
-          label="First page"
-          icon={ChevronsLeft}
-          disabled={safePage === 1}
-          onClick={() => setPage(1)}
-        />
-        <PagerButton
-          label="Previous page"
-          icon={ChevronLeft}
-          disabled={safePage === 1}
-          onClick={() => setPage(Math.max(1, safePage - 1))}
-        />
+        <div className="flex flex-wrap items-center justify-center gap-[6px] lg:contents">
+          <PagerButton
+            label="First page"
+            icon={ChevronsLeft}
+            disabled={safePage === 1}
+            onClick={() => setPage(1)}
+          />
+          <PagerButton
+            label="Previous page"
+            icon={ChevronLeft}
+            disabled={safePage === 1}
+            onClick={() => setPage(Math.max(1, safePage - 1))}
+          />
 
-        {pageWindow(safePage, totalPages).map((entry, index) =>
-          entry === null ? (
-            <span
-              key={`gap-${index}`}
-              className="px-1 text-[12.5px] text-mv-muted"
-            >
-              …
-            </span>
-          ) : (
-            <button
-              key={entry}
-              type="button"
-              aria-current={entry === safePage ? "page" : undefined}
-              onClick={() => setPage(entry)}
-              className={`h-[28px] min-w-[28px] cursor-pointer rounded-lg border px-2 text-[12.5px] font-semibold ${
-                entry === safePage
-                  ? "border-mv-green-deep bg-mv-green-deep text-white"
-                  : "border-mv-line text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep"
-              }`}
-            >
-              {entry}
-            </button>
-          ),
-        )}
+          {pageWindow(safePage, totalPages).map((entry, index) =>
+            entry === null ? (
+              <span
+                key={`gap-${index}`}
+                className="px-1 text-[12.5px] text-mv-muted"
+              >
+                …
+              </span>
+            ) : (
+              <button
+                key={entry}
+                type="button"
+                aria-current={entry === safePage ? "page" : undefined}
+                onClick={() => setPage(entry)}
+                /* A phone fits one row of pager controls, not two, so below
+                   lg the window narrows to the current page and its nearest
+                   neighbours — the ends and the ellipses stay, since they are
+                   what makes the gap readable as a gap. */
+                className={`h-[28px] min-w-[28px] cursor-pointer rounded-lg border px-2 text-[12.5px] font-semibold ${
+                  entry === 1 ||
+                  entry === totalPages ||
+                  Math.abs(entry - safePage) <= 2
+                    ? ""
+                    : "hidden lg:inline-block"
+                } ${
+                  entry === safePage
+                    ? "border-mv-green-deep bg-mv-green-deep text-white"
+                    : "border-mv-line text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep"
+                }`}
+              >
+                {entry}
+              </button>
+            ),
+          )}
 
-        <PagerButton
-          label="Next page"
-          icon={ChevronRight}
-          disabled={safePage === totalPages}
-          onClick={() => setPage(Math.min(totalPages, safePage + 1))}
-        />
-        <PagerButton
-          label="Last page"
-          icon={ChevronsRight}
-          disabled={safePage === totalPages}
-          onClick={() => setPage(totalPages)}
-        />
+          <PagerButton
+            label="Next page"
+            icon={ChevronRight}
+            disabled={safePage === totalPages}
+            onClick={() => setPage(Math.min(totalPages, safePage + 1))}
+          />
+          <PagerButton
+            label="Last page"
+            icon={ChevronsRight}
+            disabled={safePage === totalPages}
+            onClick={() => setPage(totalPages)}
+          />
+        </div>
       </div>
       </div>
     </div>
@@ -859,7 +871,7 @@ function SummaryCard({
   note: string;
 }) {
   return (
-    <div className="flex items-start gap-3 bg-white px-6 py-[13px]">
+    <div className="flex items-start gap-2 bg-white px-3 py-[11px] lg:gap-3 lg:px-6 lg:py-[13px]">
       <span
         aria-hidden="true"
         className={`grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg ${TINTS[tint]}`}
@@ -867,13 +879,13 @@ function SummaryCard({
         <Icon size={15} />
       </span>
       <div className="min-w-0">
-        <div className="text-[11.5px] font-extrabold uppercase leading-none tracking-[.08em] text-mv-muted">
+        <div className="text-[10.5px] font-extrabold uppercase leading-[1.2] tracking-[.08em] text-mv-muted lg:text-[11.5px]">
           {label}
         </div>
         {/* Value and note share a line — there is room to the right of the
             number, and stacking them cost a row of height for nothing. */}
         <div className="mt-[6px] flex flex-wrap items-baseline gap-x-2 gap-y-[3px]">
-          <span className="text-[21px] font-bold leading-none text-mv-ink">
+          <span className="text-[18px] font-bold leading-none text-mv-ink lg:text-[21px]">
             {value.toLocaleString("en-US")}
           </span>
           <span className="text-[11.5px] leading-none text-mv-muted">

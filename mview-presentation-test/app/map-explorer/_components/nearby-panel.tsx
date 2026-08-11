@@ -32,10 +32,10 @@ export function NearbyPrompt() {
     /* `bottom-6` puts it on the same baseline as the scale card and the legend
        stack, rather than floating above them. */
     <div className="pointer-events-none absolute bottom-6 left-1/2 z-30 w-[302px] -translate-x-1/2 rounded-xl border border-mv-line bg-white px-5 py-[14px] text-center shadow-mv-lg">
-      <p className="text-[13px] font-bold leading-snug text-mv-ink">
+      <p className="text-[11.5px] lg:text-[13px] font-bold leading-snug text-mv-ink">
         Click the spot on the map you want to watch — usually your own land.
       </p>
-      <p className="mt-[6px] text-[12px] leading-none text-mv-muted">
+      <p className="mt-[6px] text-[10.5px] lg:text-[12px] leading-none text-mv-muted">
         Esc to cancel
       </p>
     </div>
@@ -79,7 +79,7 @@ export function NearbyPanel({
        way, scrolling within itself if the viewport is short. */
     <div
       ref={cardRef}
-      className={`mv-thin-scroll pointer-events-auto z-30 flex max-h-[calc(100%-48px)] w-[344px] flex-col overflow-y-auto rounded-xl border border-mv-line bg-white shadow-mv-lg ${className}`}
+      className={`mv-thin-scroll pointer-events-auto z-30 flex max-h-[calc(100%-48px)] w-[min(344px,calc(100vw-24px))] flex-col overflow-y-auto rounded-xl border border-mv-line bg-white shadow-mv-lg ${className}`}
       style={style}
     >
       {/* The grab handle. Wide hit area, thin bar — the bar alone would be a
@@ -93,7 +93,7 @@ export function NearbyPanel({
 
       <div className="px-[18px] pb-[18px] pt-1">
         <div className="flex items-start gap-2">
-          <h2 className="flex-1 text-[15px] font-bold leading-snug text-mv-ink">
+          <h2 className="flex-1 text-[13.5px] lg:text-[15px] font-bold leading-snug text-mv-ink">
             Within {radiusMiles} {radiusMiles === 1 ? "mile" : "miles"} of this
             point
           </h2>
@@ -107,12 +107,12 @@ export function NearbyPanel({
           </button>
         </div>
 
-        <p className="mt-[6px] text-[12.5px] leading-snug text-mv-muted">
+        <p className="mt-[6px] text-[11px] lg:text-[12.5px] leading-snug text-mv-muted">
           Counts wells whose <strong className="font-bold text-mv-slate">bore</strong>{" "}
           reaches inside — not just nearby surface holes.
         </p>
 
-        <p className="mt-[6px] text-[12px] leading-none text-mv-muted">
+        <p className="mt-[6px] text-[10.5px] lg:text-[12px] leading-none text-mv-muted">
           {coordinates.latitude.toFixed(4)}, {coordinates.longitude.toFixed(4)}
           {county ? ` · ${county}` : ""}
         </p>
@@ -125,7 +125,7 @@ export function NearbyPanel({
               type="button"
               aria-pressed={miles === radiusMiles}
               onClick={() => onRadiusChange(miles)}
-              className={`cursor-pointer rounded-lg border py-[7px] text-[12.5px] font-semibold transition-colors ${
+              className={`cursor-pointer rounded-lg border py-[7px] text-[11px] lg:text-[12.5px] font-semibold transition-colors ${
                 miles === radiusMiles
                   ? "border-mv-green-deep bg-mv-green-deep text-white"
                   : "border-mv-line bg-white text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep"
@@ -155,7 +155,7 @@ export function NearbyPanel({
         </div>
 
         <div className="mt-3 border-t border-mv-line pt-3">
-          <p className="text-[12.5px] leading-snug text-mv-muted">
+          <p className="text-[11px] lg:text-[12.5px] leading-snug text-mv-muted">
             {hasPermits
               ? `${stats.permits.toLocaleString("en-US")} permit${stats.permits === 1 ? "" : "s"} inside this area.`
               : "No permits inside this area right now."}
@@ -163,7 +163,7 @@ export function NearbyPanel({
 
           {hasWells && (
             <>
-              <p className="mt-[10px] text-[12.5px] leading-snug text-mv-slate">
+              <p className="mt-[10px] text-[11px] lg:text-[12.5px] leading-snug text-mv-slate">
                 Operators here:{" "}
                 <strong className="font-bold text-mv-ink">
                   {stats.operators[0]?.name ?? "Unknown"}
@@ -171,7 +171,7 @@ export function NearbyPanel({
                 ({stats.operators.length})
               </p>
               {stats.newestYear !== null && (
-                <p className="mt-[3px] text-[12.5px] leading-snug text-mv-slate">
+                <p className="mt-[3px] text-[11px] lg:text-[12.5px] leading-snug text-mv-slate">
                   Newest well or permit here: {stats.newestYear}
                 </p>
               )}
@@ -183,7 +183,7 @@ export function NearbyPanel({
           type="button"
           onClick={hasWells ? onDownload : undefined}
           disabled={!hasWells}
-          className={`mt-3 flex w-full items-center justify-center gap-2 rounded-lg py-[10px] text-[13px] font-semibold ${
+          className={`mt-3 flex w-full items-center justify-center gap-2 rounded-lg py-[10px] text-[11.5px] lg:text-[13px] font-semibold ${
             hasWells
               ? "cursor-pointer bg-mv-green-deep text-white hover:brightness-105"
               : "cursor-not-allowed bg-[#f1f2f4] text-mv-muted"
@@ -199,7 +199,7 @@ export function NearbyPanel({
           type="button"
           onClick={() => setEmailOpen((open) => !open)}
           aria-expanded={emailOpen}
-          className="mt-2 w-full cursor-pointer rounded-lg border border-mv-line py-[10px] text-[13px] font-bold text-mv-green-deep hover:bg-[#f2f8f5]"
+          className="mt-2 w-full cursor-pointer rounded-lg border border-mv-line py-[10px] text-[11.5px] lg:text-[13px] font-bold text-mv-green-deep hover:bg-[#f2f8f5]"
         >
           {emailOpen ? "Hide email settings" : "Email me when this changes"}
         </button>
@@ -221,11 +221,11 @@ function Stat({
 }) {
   return (
     <div>
-      <div className="text-[9.5px] font-extrabold uppercase leading-none tracking-[.08em] text-mv-muted">
+      <div className="text-[8px] lg:text-[9.5px] font-extrabold uppercase leading-none tracking-[.08em] text-mv-muted">
         {label}
       </div>
       <div
-        className={`mt-[6px] text-[17px] font-bold leading-none ${
+        className={`mt-[6px] text-[15.5px] lg:text-[17px] font-bold leading-none ${
           tone === "ink" ? "text-mv-ink" : "text-mv-amber"
         } ${tone === "muted-amber" ? "opacity-70" : ""}`}
       >
@@ -286,18 +286,18 @@ function EmailSettings({ onSaved }: { onSaved: () => void }) {
             setSaved(false);
           }}
           placeholder="you@example.com"
-          className="min-w-0 flex-1 rounded-lg border border-mv-line px-3 py-[8px] text-[12.5px] leading-tight text-mv-ink outline-none focus:border-mv-green-deep placeholder:text-mv-muted"
+          className="min-w-0 flex-1 rounded-lg border border-mv-line px-3 py-[8px] text-[11px] lg:text-[12.5px] leading-tight text-mv-ink outline-none focus:border-mv-green-deep placeholder:text-mv-muted"
         />
         <button
           type="button"
           onClick={save}
-          className="shrink-0 cursor-pointer rounded-lg bg-mv-green-deep px-[14px] py-[9px] text-[12.5px] font-semibold leading-tight text-white hover:brightness-105"
+          className="shrink-0 cursor-pointer rounded-lg bg-mv-green-deep px-[14px] py-[9px] text-[11px] lg:text-[12.5px] font-semibold leading-tight text-white hover:brightness-105"
         >
           {saved ? "Saved" : "Save watch"}
         </button>
       </div>
 
-      <p className="mt-[10px] text-[11.5px] leading-snug text-mv-muted">
+      <p className="mt-[10px] text-[10px] lg:text-[11.5px] leading-snug text-mv-muted">
         Email delivery isn&apos;t connected yet. Saving keeps this watch in the
         page link, so you can share it or come back to it.
       </p>
@@ -332,7 +332,7 @@ function Toggle({
       >
         {checked && <Check size={11} strokeWidth={3.5} />}
       </span>
-      <span className="text-[12.5px] leading-snug text-mv-ink">{children}</span>
+      <span className="text-[11px] lg:text-[12.5px] leading-snug text-mv-ink">{children}</span>
     </label>
   );
 }
