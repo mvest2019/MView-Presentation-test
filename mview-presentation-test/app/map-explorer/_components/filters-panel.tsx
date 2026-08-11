@@ -208,9 +208,11 @@ type FiltersPanelProps = {
 };
 
 export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for the commented-out My leases section
   const [selectedLease, setSelectedLease] = useState<string | null>(
     MY_LEASES[0].id,
   );
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for the commented-out My leases section
   const [leasesOpen, setLeasesOpen] = useState(true);
 
   const [openSections, setOpenSections] = useState<Set<string>>(
@@ -452,7 +454,11 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
           )}
         </div>
 
-        {/* ---------------- my leases ---------------- */}
+        {/* ---------------- my leases ----------------
+            Commented out rather than deleted — the section is expected back,
+            so it stays here with its markup intact. Its state and helpers are
+            left in place above for the same reason.
+
         <SectionShell
           label="My leases"
           count={MY_LEASES.length}
@@ -492,6 +498,7 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
             </label>
           ))}
         </SectionShell>
+        */}
 
         {/* ---------------- the checkbox sections ---------------- */}
         {FILTER_SECTIONS.map((section) => (
@@ -713,6 +720,7 @@ function BulkAction({
  * in `sr-only`, so keyboard and screen-reader behaviour is the browser's.
  */
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for the commented-out My leases section
 function Radio({ checked }: { checked: boolean }) {
   return (
     <span
