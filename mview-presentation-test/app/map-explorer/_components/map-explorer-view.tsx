@@ -150,6 +150,25 @@ type GraphicCtor = new (props: Record<string, unknown>) => unknown;
 const HOME_CENTER: [number, number] = [-100.0199, 31.2534];
 const HOME_SCALE = 7_262_011;
 
+/*
+ * The mock's scale was drawn for a desktop canvas. On a phone the viewport is
+ * a third of the width, so the same scale opens on the middle of Texas with
+ * the coast and the panhandle both off-screen — the shape people orient by is
+ * exactly what gets cropped. Narrow screens open further out instead.
+ *
+ * Read at view-creation time rather than watched: this is the opening view,
+ * and a rotation should not throw away wherever someone has panned to.
+ */
+const HOME_SCALE_TABLET = 9_800_000;
+const HOME_SCALE_PHONE = 13_500_000;
+
+function homeScale(): number {
+  if (typeof window === "undefined") return HOME_SCALE;
+  if (window.matchMedia("(max-width: 767px)").matches) return HOME_SCALE_PHONE;
+  if (window.matchMedia("(max-width: 1023px)").matches) return HOME_SCALE_TABLET;
+  return HOME_SCALE;
+}
+
 /** A drawn rectangle, in degrees. */
 type Area = { west: number; south: number; east: number; north: number };
 
@@ -980,7 +999,7 @@ export function MapExplorerView() {
           container: containerRef.current,
           map,
           center: HOME_CENTER,
-          scale: HOME_SCALE,
+          scale: homeScale(),
           // Below zoom 3 the world repeats and the terrain turns to mush.
           constraints: { minZoom: 3, snapToZoom: false },
           // Attribution only — every other control is React chrome on top.
@@ -1486,7 +1505,7 @@ export function MapExplorerView() {
   /** Back to the opening view — the Texas extent at 1:7,262,011. */
   const goHome = useCallback(() => {
     viewRef.current
-      ?.goTo({ center: HOME_CENTER, scale: HOME_SCALE })
+      ?.goTo({ center: HOME_CENTER, scale: homeScale() })
       .catch(ignoreInterrupted);
   }, []);
 
