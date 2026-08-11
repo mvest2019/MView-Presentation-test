@@ -5,14 +5,15 @@ import { contactConfig as cfg } from "./contact-config";
 /**
  * Right-hand "Get in touch" card — static details + business hours.
  *
- * Matches the form card's height, but the rows stay at their content size: the
- * spare height goes into one gap above Business Hours instead of being shared
- * out across the rows. Letting the rows flex-grow instead is what made them
- * airy — ~106px of row for ~65px of content.
+ * Sized to its content (`self-start`, no `h-full`), which is the only way to get
+ * tight rows AND no dead space: stretched to the form card's height, the spare
+ * ~100px has to surface somewhere — inflating the rows to ~106px, or opening a
+ * gap above Business Hours. Consequence: this card ends higher than the form
+ * card, which is accepted here because the form card must not change.
  */
 export function ContactInfo() {
   return (
-    <div className="flex h-full flex-col rounded-mv border border-mv-line bg-mv-card p-[20px] shadow-mv">
+    <div className="flex flex-col self-start rounded-mv border border-mv-line bg-mv-card p-[20px] shadow-mv">
       <div className="mb-1.5 text-[11.5px] font-bold uppercase tracking-[.12em] text-mv-green-deep">
         Get in touch
       </div>
@@ -71,8 +72,7 @@ export function ContactInfo() {
         </div>
       </div>
 
-      {/* Absorbs the leftover height, so it sits on the card's bottom edge. */}
-      <div className="mt-auto rounded-xl bg-mv-green-ink p-[16px] text-[#eafff6]">
+      <div className="mt-3 rounded-xl bg-mv-green-ink p-[16px] text-[#eafff6]">
         <div className="mb-[9px] text-[11.5px] font-extrabold uppercase tracking-[.09em] text-[#7fd4ae]">
           Business hours
         </div>
