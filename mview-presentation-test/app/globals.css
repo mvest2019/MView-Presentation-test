@@ -10,8 +10,18 @@
    a value looks wrong it is wrong in the design and must be changed there
    first, or the prototype and the build stop agreeing.
 
+   `@theme` is Tailwind v4's configuration directive — the replacement for
+   tailwind.config.js, not hand-written CSS. Each entry generates the utilities
+   the components use (`--color-mv-green` -> `bg-mv-green`, `text-mv-green`,
+   `border-mv-green`, …). Delete an entry and those classes stop existing.
+
    Names are `mv-` prefixed so they never collide with Tailwind's own palette
    (`bg-mv-green` is the brand green; `bg-green-500` is Tailwind's).
+
+   There is deliberately no `@layer base` block: element defaults live as
+   utilities on the elements themselves. See `app/_components/typography.ts` for
+   the heading and prose-link classes, and `app/layout.tsx` for the page
+   defaults that used to sit on `html` and `body`.
    ============================================================================ */
 @theme {
   /* Brand */
@@ -20,13 +30,61 @@
   --color-mv-green-deep: #2e8f6d;
   --color-mv-mint: #e6fff5;
 
+  /* The LOGO's green, and a hover shade of it.
+     SAMPLED, NOT AUTHORED — #00cd95 is decoded straight out of the Cloudinary
+     logo asset (measured #00ce93/#00cf91 across its pixels) and is the brand
+     green the memory record names. It is NOT the same as `--color-mv-green`
+     above: the design and the mockup both specify #54bf96, a muted sage, for UI
+     fills, so the mark and the buttons have never agreed.
+
+     USE THIS ONLY WHERE UI SITS DIRECTLY BESIDE THE MARK — today that is the
+     header's "Find your record" CTA and nothing else (Ryan, 2026-08-11). The
+     rest of the site keeps the design's sage palette deliberately; widening this
+     to `--color-mv-green` would repaint every chip, pill, letter heading and
+     focus ring, which is a separate decision.
+
+     The `-deep` hover is derived, not sampled: #00cd95 darkened until white text
+     on it clears 4.5:1 (it reaches 4.53). Both states beat what they replace —
+     ink on #00cd95 is 8.07:1 against 7.35, and this hover is 4.53:1 against the
+     3.99 that #2e8f6d managed. */
+  --color-mv-green-brand: #00cd95;
+  --color-mv-green-brand-deep: #00875f;
+
   /* Text and surface */
   --color-mv-ink: #0d0e17;
   --color-mv-slate: #1e293b;
   --color-mv-muted: #6b7280;
+  --color-mv-placeholder: #9aa3ae;
   --color-mv-bg: #f6f7f9;
   --color-mv-card: #ffffff;
   --color-mv-line: #e5e7eb;
+
+  /* Second-tier surfaces and hairlines. Extracted like everything else here —
+     these are the operator directory prototype's `--line2`, `--hover`, its row
+     hover, its `--teal-tint`, and `--mint-line`, plus the mint button edge from
+     the marketing shell. They were repeated as literals across a dozen call
+     sites before being named; see the note above about where colour may live. */
+  --color-mv-line-soft: #eef1f4;
+  --color-mv-line-strong: #d5dae0;
+  --color-mv-mint-line: #bfe6d3;
+  --color-mv-mint-edge: #bfe9d8;
+  --color-mv-tint: #e6f6ee;
+  --color-mv-hover: #f4f6f8;
+  --color-mv-row-hover: #fafbfc;
+  --color-mv-table-head: #1f2937;
+  /* Illustration accents — for filled artwork (the FAQ category icons), NOT for
+     UI. The status colours below are tuned for text contrast, so as large flat
+     fills they read muddy; these are the same hues at illustration brightness.
+     AUTHORED HERE, unlike everything else in this file — they have no prototype
+     equivalent because the prototype had no illustrations. Design sign-off
+     pending; if the palette lands elsewhere, these are the values to replace. */
+  --color-mv-art-orange: #f59e0b;
+  --color-mv-art-orange-deep: #c2620a;
+  --color-mv-art-sand: #fde9b5;
+  --color-mv-art-sky: #3b82f6;
+  --color-mv-art-sky-light: #9dc6fd;
+  --color-mv-art-violet: #7c6ff0;
+  --color-mv-art-violet-deep: #5a49d6;
 
   /* Status */
   --color-mv-amber: #b45309;
@@ -36,14 +94,30 @@
   --color-mv-blue: #1d4ed8;
   --color-mv-blue-bg: #dbeafe;
 
-  /* Type — Lexend Deca throughout (Nikhil, 2026-07-20); the prototype points
-     both the serif and sans stacks at it. */
+  /* Type — Lexend Deca throughout (Nikhil, 2026-07-20).
+     `--font-lexend-deca` is set by `next/font/google` in `app/layout.tsx`, which
+     self-hosts the face; it is loaded there once and must not be loaded again.
+     `font-sans` on `<body>` is what makes every element inherit it, form
+     controls included — Tailwind's preflight sets `font: inherit` on button,
+     input, select, optgroup and textarea, so no component needs to restate it.
+
+     `--font-serif` resolves to the same face. The prototype pointed both stacks
+     at Lexend Deca, and the alias is kept so a stray `font-serif` still renders
+     brand type — but application code should use `font-sans`, since naming a
+     sans face "serif" reads as a mistake. Nothing in `app/` uses it now. */
   --font-sans:
     var(--font-lexend-deca), -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-serif:
     var(--font-lexend-deca), -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Tailwind's preflight points `code`, `kbd`, `samp` and `pre` at this stack.
+     Nothing in the app asks for monospace, but the CMS could publish a <code>
+     block at any time and it would arrive in a second typeface. Aimed at Lexend
+     Deca so the site stays one font throughout; restore Tailwind's default
+     stack here if real monospace is ever wanted. */
+  --font-mono:
+    var(--font-lexend-deca), ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* Elevation and shape */
   --shadow-mv: 0 1px 3px rgba(13, 14, 23, 0.07), 0 4px 14px rgba(13, 14, 23, 0.05);
