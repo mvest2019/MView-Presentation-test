@@ -18,6 +18,16 @@ const nextConfig: NextConfig = {
     OPERATOR_API_BASE_URL:
       process.env.OPERATOR_API_BASE_URL ||
       "https://mview-dev-api.mineralview.com",
+
+    // Same host, exposed to the browser so the client can call the operator API
+    // directly rather than through a same-origin forwarder. `NEXT_PUBLIC_` is
+    // required for a value the client bundle reads; it means the API host is
+    // visible in shipped JavaScript, which is the trade of calling it from the
+    // browser. Kept pointing at the same default so the two never disagree.
+    NEXT_PUBLIC_OPERATOR_API_BASE_URL:
+      process.env.NEXT_PUBLIC_OPERATOR_API_BASE_URL ||
+      process.env.OPERATOR_API_BASE_URL ||
+      "https://mview-dev-api.mineralview.com",
   },
   images: {
     // Cloudinary serves both the Mineral View logo and every article/news

@@ -1,6 +1,13 @@
 "use client";
 
-import { ChevronDown, Search, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  ChevronsUpDown,
+  Search,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { memo, useEffect, useId, useRef, useState } from "react";
 
@@ -10,21 +17,18 @@ import {
   panelTitleClass,
   tinyClass,
 } from "@/app/_components/typography";
-import { OPERATORS_BY_PLAY } from "@/lib/operator-mock-data";
-import { formatProduction, resolvePlayKey } from "@/lib/operator-query";
 import {
   ALL_PLAYS,
   QUICK_FILTERS,
-  type Operator,
-  type OperatorColumns,
-  // Aliased: this module exports a *component* called `OperatorPage`, and the
-  // type of one page of results cannot share the binding. The alias is local —
-  // `lib/operator-types` still calls it `OperatorPage`.
-  type OperatorPage as ResultsPage,
+  QUICK_FILTER_KEYS,
+  type OperatorFilters,
+  type OperatorResultPage,
+  type OperatorRow as OperatorRowData,
   type OperatorSortKey,
-  type OperatorStatus,
+  type OperatorStatusFilter,
   type QuickFilterKey,
-} from "@/lib/operator-types";
+} from "@/lib/operator-search";
+import type { OperatorColumns } from "@/lib/operator-types";
 import { TEXAS_COUNTIES } from "@/lib/texas-counties";
 
 import {
@@ -61,10 +65,6 @@ import {
  * search row. The gaps here are 12px and 12px.
  */
 
-/** Illustrative-field tooltip, repeated verbatim from the design. */
-const STATUS_NOTE =
-  "Illustrative placeholder — active/inactive wires from the live P-5 status";
-
 export function OperatorPage({
   /**
    * Play Type options from `GET /api/v1/operators/playtypes`, fetched by the
@@ -73,31 +73,34 @@ export function OperatorPage({
    * page is affected.
    */
   playTypes,
+  /** The `guestUserID` cookie value, read server-side in `page.tsx`. */
+  visitorId,
 }: {
   playTypes: string[];
+  visitorId: string;
 }) {
   const {
-    query,
+    filters,
+    searchInput,
     page,
+    pageSize,
     columns,
     appliedFilters,
-    isNumericSearch,
+    isLoading,
+    hasError,
+    hasLoadedOnce,
     setSearch,
     setPlay,
     setStatus,
     setCounty,
     toggleQuick,
     toggleSort,
-    setPage,
+    goToPage,
     setColumns,
     clearFilters,
+    retry,
     exportCsv,
-  } = useOperatorDirectory();
-
-  const scope =
-    query.play === ALL_PLAYS
-      ? "all plays — statewide (de-duplicated)"
-      : query.play;
+  } = useOperatorDirectory({ playTypes, visitorId });
 
   return (
     <section
@@ -110,20 +113,15 @@ export function OperatorPage({
           Operators directory
         </h2>
 
-        <QuickFilters
-          active={query.quick}
-          counts={page.quickCounts}
-          onToggle={toggleQuick}
-        />
+        <QuickFilters selected={filters.quick} onToggle={toggleQuick} />
 
         <div className="mt-3">
           <FindBar
-            search={query.search}
-            play={query.play}
+            search={searchInput}
+            play={filters.play}
             playTypes={playTypes}
-            status={query.status}
-            county={query.county}
-            statusCounts={page.statusCounts}
+            status={filters.status}
+            county={filters.county}
             onSearch={setSearch}
             onPlay={setPlay}
             onStatus={setStatus}
@@ -146,14 +144,21 @@ export function OperatorPage({
             aria-live="polite"
             className={`${tinyClass} m-0 min-w-0 text-mv-muted`}
           >
-            {page.total > 0 ? (
+            {/* `hasError` is tested first on purpose: the previous page's totals
+                are still in state when a request fails, and printing them beside
+                an error would present stale numbers as the current result. */}
+            {hasError ? (
+              "Results unavailable"
+            ) : isLoading && !hasLoadedOnce ? (
+              "Loading operators…"
+            ) : page.total > 0 ? (
               <>
                 <strong className="font-bold text-mv-ink">
                   Showing {page.from + 1}–
-                  {Math.min(page.from + page.pageSize, page.total)} of{" "}
-                  {page.total} operator{page.total === 1 ? "" : "s"}
+                  {Math.min(page.from + pageSize, page.total)} of {page.total}{" "}
+                  operator{page.total === 1 ? "" : "s"}
                 </strong>{" "}
-                · {scope} — ranked by reported production (BOE)
+                · ranked by reported production
               </>
             ) : (
               "0 operators match the current filters"
@@ -170,14 +175,17 @@ export function OperatorPage({
         <ResultsTable
           page={page}
           columns={columns}
-          sortKey={query.sortKey}
-          sortDir={query.sortDir}
-          isNumericSearch={isNumericSearch}
+          sortKey={filters.sortKey}
+          sortDir={filters.sortDir}
+          isLoading={isLoading}
+          hasError={hasError}
+          hasLoadedOnce={hasLoadedOnce}
           onSort={toggleSort}
           onClearFilters={clearFilters}
+          onRetry={retry}
         />
 
-        <Pager page={page} onPage={setPage} />
+        {!hasError && <Pager page={page} onPage={goToPage} />}
       </div>
     </section>
   );
@@ -192,25 +200,23 @@ export function OperatorPage({
    tightened, leaving a wide empty band under the pills. There is no grow here:
    the pills are one `flex-wrap` group that packs from the left, wraps only when
    the viewport genuinely runs out of room, and keeps the same `gap-[10px]`
-   rhythm on both axes. One pill is active at a time — clicking the active one
-   clears it, the prototype's toggle behaviour.
+   rhythm on both axes.
+
+   MULTI-SELECT. Each pill is an independent boolean now, because the search
+   endpoint accepts all four at once and expects `false` for the unselected ones.
+   The pills previously behaved as a single choice; the visuals are unchanged —
+   only how many can be on at the same time.
+
+   The trailing match counts are gone: they were computed from the local fixture,
+   and the search endpoint returns one `total_count` for the query rather than a
+   count per filter. Sourcing them would mean four extra requests per render.
    ========================================================================== */
 
-const QUICK_KEYS = Object.keys(QUICK_FILTERS) as QuickFilterKey[];
-
-/** Only this pill's label needs more than its own text to be honest. */
-const QUICK_TITLES: Partial<Record<QuickFilterKey, string>> = {
-  recent:
-    "Illustrative activity placeholder — switches to reported activity when the operator API wires",
-};
-
 function QuickFilters({
-  active,
-  counts,
+  selected,
   onToggle,
 }: {
-  active: QuickFilterKey | "";
-  counts: ResultsPage["quickCounts"];
+  selected: OperatorFilters["quick"];
   onToggle: (key: QuickFilterKey) => void;
 }) {
   return (
@@ -222,15 +228,13 @@ function QuickFilters({
         aria-label="Quick filters"
         className="flex flex-wrap items-center gap-[10px]"
       >
-        {QUICK_KEYS.map((key) => (
+        {QUICK_FILTER_KEYS.map((key) => (
           <FilterPill
             key={key}
-            active={active === key}
-            count={counts[key]}
-            srLabel={QUICK_FILTERS[key]}
+            active={selected[key]}
             onClick={() => onToggle(key)}
           >
-            <span title={QUICK_TITLES[key]}>{QUICK_FILTERS[key]}</span>
+            {QUICK_FILTERS[key]}
           </FilterPill>
         ))}
       </div>
@@ -258,18 +262,9 @@ const CONTROL_TINT = "border-mv-mint-line shadow-[0_1px_2px_rgba(13,14,23,.04)]"
 const SELECT_CLASS =
   "w-full cursor-pointer appearance-none rounded-[10px] border bg-white py-2 pl-[14px] pr-9 text-sm font-medium text-mv-ink outline-none transition-colors hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)]";
 
-/**
- * The option label, keeping the design's trailing row count.
- *
- * The count is only shown when the loaded row data actually has that play — the
- * play *names* now come from the API while the *rows* are still the local
- * fixture, and printing a count for a play with no rows would be a made-up
- * number. Once both come from the API every option carries one again.
- */
-function playOptionLabel(name: string): string {
-  const key = resolvePlayKey(OPERATORS_BY_PLAY, name);
-  return key ? `${name} (${OPERATORS_BY_PLAY[key].length})` : name;
-}
+/* The Play Type and Status options no longer carry trailing counts. Those came
+   from the local fixture, and the search endpoint reports a single `total_count`
+   for the whole query rather than a count per option value. */
 
 function FindBar({
   search,
@@ -277,7 +272,6 @@ function FindBar({
   playTypes,
   status,
   county,
-  statusCounts,
   onSearch,
   onPlay,
   onStatus,
@@ -286,12 +280,11 @@ function FindBar({
   search: string;
   play: string;
   playTypes: string[];
-  status: OperatorStatus | "";
+  status: OperatorStatusFilter;
   county: string;
-  statusCounts: ResultsPage["statusCounts"];
   onSearch: (value: string) => void;
   onPlay: (value: string) => void;
-  onStatus: (value: OperatorStatus | "") => void;
+  onStatus: (value: OperatorStatusFilter) => void;
   onCounty: (value: string) => void;
 }) {
   const searchId = useId();
@@ -334,20 +327,22 @@ function FindBar({
         <option value={ALL_PLAYS}>Select Play type</option>
         {playTypes.map((name) => (
           <option key={name} value={name}>
-            {playOptionLabel(name)}
+            {name}
           </option>
         ))}
       </SelectControl>
 
+      {/* `""` is the API's "all statuses" value, which is what this default
+          option has always meant — verified: active + inactive totals sum to it. */}
       <SelectControl
         label="Filter by status"
         value={status}
-        onChange={(value) => onStatus(value as OperatorStatus | "")}
+        onChange={(value) => onStatus(value as OperatorStatusFilter)}
         className="min-w-[180px] max-[767px]:min-w-full"
       >
         <option value="">Select status</option>
-        <option value="active">Active ({statusCounts.active})</option>
-        <option value="inactive">Inactive ({statusCounts.inactive})</option>
+        <option value="active">Active</option>
+        <option value="inactive">Inactive</option>
       </SelectControl>
 
       <SelectControl
@@ -579,50 +574,81 @@ function TableControls({
 type SortableColumn = {
   key: OperatorSortKey;
   label: string;
-  subhead?: string;
-  /** Which optional column toggle governs this one, if any. */
-  column?: keyof OperatorColumns;
+  /** Which optional column toggle governs this one. */
+  column: keyof OperatorColumns;
 };
 
+/**
+ * The three columns the API can sort by, all wired to `sort.propertyName`.
+ *
+ * The "illustrative" sub-labels are gone — these figures are now reported data,
+ * and so is Status. The unit sub-labels went with them because the API returns
+ * each value pre-formatted with its own unit ("57,323.230 (MBBL)"), so the unit
+ * is in the cell rather than the header.
+ *
+ * Operator Name is deliberately not in this list: `operator_name`,
+ * `cleaned_operator_name` and `status` all return byte-identical results to a
+ * bogus field name, so the endpoint does not sort by name. Its header stays a
+ * plain label rather than a button that would do nothing.
+ */
 const SORTABLE: SortableColumn[] = [
-  { key: "oil", label: "Oil Produced", subhead: "bbl · illustrative", column: "oil" },
-  { key: "gas", label: "Gas Produced", subhead: "Mcf · illustrative", column: "gas" },
+  { key: "oil", label: "Oil Produced", column: "oil" },
+  { key: "gas", label: "Gas Produced", column: "gas" },
   { key: "cty", label: "Counties", column: "cty" },
 ];
+
+/**
+ * The header text, with the column's unit appended for the two production
+ * columns. Units come from the response, so the header reflects what the API
+ * actually sent rather than a hard-coded guess.
+ */
+function columnLabel(
+  col: SortableColumn,
+  units: OperatorResultPage["units"],
+): string {
+  if (col.key === "oil" && units.oil) return `${col.label} (${units.oil})`;
+  if (col.key === "gas" && units.gas) return `${col.label} (${units.gas})`;
+  return col.label;
+}
 
 const TH_CLASS =
   "whitespace-nowrap px-[18px] py-[15px] text-[13px] font-semibold text-white";
 
-const SUBHEAD_CLASS =
-  "mt-[2px] block text-[10.5px] font-normal tracking-[.02em] text-white/70";
 
 function ResultsTable({
   page,
   columns,
   sortKey,
   sortDir,
-  isNumericSearch,
+  isLoading,
+  hasError,
+  hasLoadedOnce,
   onSort,
   onClearFilters,
+  onRetry,
 }: {
-  page: ResultsPage;
+  page: OperatorResultPage;
   columns: OperatorColumns;
-  sortKey: OperatorSortKey | "";
-  sortDir: 1 | -1;
-  /** Drives the honest empty-state note for operator-number searches. */
-  isNumericSearch: boolean;
+  sortKey: OperatorSortKey;
+  sortDir: "asc" | "desc";
+  isLoading: boolean;
+  hasError: boolean;
+  /** Suppresses the empty state until a response has actually arrived. */
+  hasLoadedOnce: boolean;
   onSort: (key: OperatorSortKey) => void;
   onClearFilters: () => void;
+  /** Re-issues the same request; the filter dedupe would otherwise skip it. */
+  onRetry: () => void;
 }) {
-  const visibleSortable = SORTABLE.filter(
-    (col) => !col.column || columns[col.column],
-  );
+  const visibleSortable = SORTABLE.filter((col) => columns[col.column]);
   // `#` + name + the visible optional columns, for the empty row's colspan.
   const columnCount = 2 + visibleSortable.length + (columns.status ? 1 : 0);
 
   function ariaSort(key: OperatorSortKey) {
     if (sortKey !== key) return "none" as const;
-    return sortDir > 0 ? ("ascending" as const) : ("descending" as const);
+    return sortDir === "asc"
+      ? ("ascending" as const)
+      : ("descending" as const);
   }
 
   return (
@@ -630,8 +656,7 @@ function ResultsTable({
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] border-collapse">
           <caption className="sr-only">
-            Texas oil and gas operators, ranked by reported production. Oil, gas
-            and status figures are illustrative placeholders.
+            Texas oil and gas operators, ranked by reported production.
           </caption>
 
           <thead>
@@ -643,17 +668,9 @@ function ResultsTable({
                 #
               </th>
 
-              <th
-                scope="col"
-                aria-sort={ariaSort("name")}
-                className={`${TH_CLASS} text-left`}
-              >
-                <SortButton
-                  label="Operator Name (operator no.)"
-                  active={sortKey === "name"}
-                  dir={sortDir}
-                  onClick={() => onSort("name")}
-                />
+              {/* Plain label, not a button: the API cannot sort by name. */}
+              <th scope="col" className={`${TH_CLASS} text-left`}>
+                Operator Name (operator no.)
               </th>
 
               {visibleSortable.map((col) => (
@@ -664,45 +681,52 @@ function ResultsTable({
                   className={`${TH_CLASS} text-right`}
                 >
                   <SortButton
-                    label={col.label}
+                    // The unit lives here rather than on every row: it never
+                    // varies down the column, so repeating it 10 times only
+                    // crowded the figures.
+                    label={columnLabel(col, page.units)}
                     active={sortKey === col.key}
                     dir={sortDir}
                     onClick={() => onSort(col.key)}
                   />
-                  {col.subhead && (
-                    <span className={SUBHEAD_CLASS}>{col.subhead}</span>
-                  )}
                 </th>
               ))}
 
               {columns.status && (
-                <th
-                  scope="col"
-                  title={STATUS_NOTE}
-                  className={`${TH_CLASS} text-left`}
-                >
+                <th scope="col" className={`${TH_CLASS} text-left`}>
                   Status
-                  <span className={SUBHEAD_CLASS}>illustrative</span>
                 </th>
               )}
             </tr>
           </thead>
 
           <tbody>
-            {page.items.length === 0 ? (
+            {hasError ? (
               <tr>
                 <td colSpan={columnCount} className="whitespace-normal bg-white">
-                  <EmptyState
-                    isNumericSearch={isNumericSearch}
-                    onClearFilters={onClearFilters}
-                  />
+                  <ErrorState onRetry={onRetry} />
+                </td>
+              </tr>
+            ) : isLoading ? (
+              // Skeleton rows rather than an emptied body: the card keeps its
+              // height, so nothing shifts, and stale rows are never presented as
+              // if they were the new results.
+              <SkeletonRows
+                rows={Math.max(page.rows.length, 5)}
+                columns={columns}
+                sortableCount={visibleSortable.length}
+              />
+            ) : page.rows.length === 0 && hasLoadedOnce ? (
+              <tr>
+                <td colSpan={columnCount} className="whitespace-normal bg-white">
+                  <EmptyState onClearFilters={onClearFilters} />
                 </td>
               </tr>
             ) : (
-              page.items.map((operator, index) => (
+              page.rows.map((row, index) => (
                 <OperatorRow
-                  key={`${operator.play}-${operator.name}`}
-                  operator={operator}
+                  key={row.key}
+                  row={row}
                   rank={page.from + index + 1}
                   columns={columns}
                 />
@@ -722,19 +746,14 @@ function ResultsTable({
  * the rest.
  */
 const OperatorRow = memo(function OperatorRow({
-  operator,
+  row,
   rank,
   columns,
 }: {
-  operator: Operator;
+  row: OperatorRowData;
   rank: number;
   columns: OperatorColumns;
 }) {
-  // Provisional href. The operator detail route does not exist yet and its slug
-  // contract arrives with the API, so this is the design's link target expressed
-  // as a path rather than a real destination.
-  const href = `/operators/${encodeURIComponent(slugify(operator.name))}`;
-
   const cellClass =
     "whitespace-nowrap border-b border-mv-line-soft bg-white px-[18px] py-4 text-[14.5px] text-mv-ink group-last:border-b-0 group-hover:bg-mv-row-hover";
   const numericCell = `${cellClass} text-right tabular-nums`;
@@ -746,46 +765,62 @@ const OperatorRow = memo(function OperatorRow({
       </td>
 
       <td className={cellClass}>
-        <Link
-          href={href}
-          className="font-bold text-mv-green-deep no-underline hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
-        >
-          {operator.name}
-        </Link>
+        {/* A gated row has no slug, so its name is plain text rather than a link
+            to nowhere. Everything else about the cell is unchanged. */}
+        {row.href ? (
+          <Link
+            href={row.href}
+            className="font-bold text-mv-green-deep no-underline hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+          >
+            {row.name}
+          </Link>
+        ) : (
+          <strong className="font-bold text-mv-muted">{row.name}</strong>
+        )}
         <span className="mt-[2px] block text-xs font-normal text-mv-muted">
-          No. {operator.operatorNo} · {operator.play} · rank #
-          {operator.playRank}
+          No. {row.operatorNumber}
         </span>
       </td>
 
-      {columns.oil && (
-        <td className={numericCell}>{formatProduction(operator.oilBbl)}</td>
-      )}
+      {columns.oil && <td className={numericCell}>{row.oil}</td>}
 
-      {columns.gas && (
-        <td className={numericCell}>{formatProduction(operator.gasMcf)}</td>
-      )}
+      {columns.gas && <td className={numericCell}>{row.gas}</td>}
 
-      {columns.cty && <td className={numericCell}>{operator.counties}</td>}
+      {columns.cty && <td className={numericCell}>{row.counties}</td>}
 
       {columns.status && (
         <td className={cellClass}>
-          <span
-            title={STATUS_NOTE}
-            className={`inline-block whitespace-nowrap rounded-full px-3 py-[5px] text-[12.5px] font-semibold leading-none ${
-              operator.status === "active"
-                ? "bg-mv-tint text-mv-green-deep"
-                : "bg-mv-line-soft text-mv-muted"
-            }`}
-          >
-            {operator.status === "active" ? "Active" : "Inactive"}
-          </span>
+          {row.masked ? (
+            <span className="text-mv-muted">{row.status}</span>
+          ) : (
+            <span
+              className={`inline-block whitespace-nowrap rounded-full px-3 py-[5px] text-[12.5px] font-semibold leading-none ${
+                row.status === "active"
+                  ? "bg-mv-tint text-mv-green-deep"
+                  : "bg-mv-line-soft text-mv-muted"
+              }`}
+            >
+              {row.status === "active" ? "Active" : "Inactive"}
+            </span>
+          )}
         </td>
       )}
     </tr>
   );
 });
 
+/**
+ * A sortable column header.
+ *
+ * Every sortable column carries an icon, not just the sorted one: an unsorted
+ * column shows a dimmed `⇅` so it reads as sortable before it is clicked, and the
+ * sorted column shows its direction at full strength. Clicking the sorted column
+ * flips it; clicking another switches to it descending.
+ *
+ * The icon is `aria-hidden` because the `<th>` already carries `aria-sort`, which
+ * is what a screen reader announces. `title` names the next action rather than the
+ * current state, so the tooltip is useful on a column that is already sorted.
+ */
 function SortButton({
   label,
   active,
@@ -794,50 +829,122 @@ function SortButton({
 }: {
   label: string;
   active: boolean;
-  dir: 1 | -1;
+  dir: "asc" | "desc";
   onClick: () => void;
 }) {
+  const nextDir = active && dir === "desc" ? "ascending" : "descending";
+
+  // `lucide-react` rather than the `▲`/`▼`/`⇅` characters this used before: glyph
+  // arrows inherit the font's own metrics, so they sat off the text baseline and
+  // rendered at inconsistent weights across platforms. These are the same icon set
+  // the selects and search field already use, so they match the rest of the page.
+  const Icon = active ? (dir === "asc" ? ArrowUp : ArrowDown) : ChevronsUpDown;
+
   return (
     <button
       type="button"
       onClick={onClick}
-      title={`Sort by ${label}`}
-      className="cursor-pointer border-0 bg-transparent p-0 text-[13px] font-semibold text-white hover:underline hover:underline-offset-[3px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+      title={`Sort by ${label} ${nextDir}`}
+      className="group/sort inline-flex cursor-pointer items-center gap-[5px] border-0 bg-transparent p-0 text-[13px] font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
     >
-      {label}
-      {active && <span aria-hidden="true">{dir > 0 ? " ▲" : " ▼"}</span>}
+      <span className="group-hover/sort:underline group-hover/sort:underline-offset-[3px]">
+        {label}
+      </span>
+      <Icon
+        aria-hidden="true"
+        strokeWidth={2.5}
+        className={`h-[13px] w-[13px] shrink-0 ${
+          active ? "text-white" : "text-white/50 group-hover/sort:text-white/80"
+        }`}
+      />
     </button>
   );
 }
 
-function EmptyState({
-  isNumericSearch,
-  onClearFilters,
+/**
+ * Loading rows — the prototype's `.skel` shimmer, which is this table's approved
+ * loading treatment. Drawn as real `<tr>`s at the same cell padding as data rows
+ * so the card holds its height and the layout does not move when results land.
+ */
+function SkeletonRows({
+  rows,
+  columns,
+  sortableCount,
 }: {
-  isNumericSearch: boolean;
-  onClearFilters: () => void;
+  rows: number;
+  columns: OperatorColumns;
+  sortableCount: number;
 }) {
+  const cellClass =
+    "whitespace-nowrap border-b border-mv-line-soft bg-white px-[18px] py-4 text-[14.5px] group-last:border-b-0";
+  const bar =
+    "inline-block h-3 animate-pulse rounded-md bg-mv-line-soft align-middle";
+
+  return (
+    <>
+      {Array.from({ length: rows }, (_, index) => (
+        <tr key={index} className="group" aria-hidden="true">
+          <td className={cellClass}>
+            <span className={`${bar} w-5`} />
+          </td>
+          <td className={cellClass}>
+            <span className={`${bar} w-[180px]`} />
+            <span className={`${bar} mt-[6px] block w-[110px] !h-2`} />
+          </td>
+          {Array.from({ length: sortableCount }, (_, cell) => (
+            <td key={cell} className={`${cellClass} text-right`}>
+              <span className={`${bar} w-14`} />
+            </td>
+          ))}
+          {columns.status && (
+            <td className={cellClass}>
+              <span className={`${bar} w-16`} />
+            </td>
+          )}
+        </tr>
+      ))}
+    </>
+  );
+}
+
+/** Shown only after a completed request returned zero records. */
+function EmptyState({ onClearFilters }: { onClearFilters: () => void }) {
   return (
     <div className="px-5 py-[34px] text-center">
       <div aria-hidden="true" className="mb-2 text-[28px]">
         🔍
       </div>
-      <p className="mb-[6px] text-sm font-bold">
-        No operators match these filters
-      </p>
+      <p className="mb-[6px] text-sm font-bold">No results available</p>
       <p className="mx-auto mb-[14px] max-w-[460px] text-[12.5px] text-mv-muted">
-        {isNumericSearch ? (
-          <>
-            That looks like an operator <strong>number</strong> — numbers are not
-            in this extract, and that search activates when the live directory
-            wires. Try the operator&apos;s name instead.
-          </>
-        ) : (
-          "Try removing one of the applied filters above, or clearing the Play type filter."
-        )}
+        No operators match these filters. Try removing one of the applied filters
+        above, or widening the search.
       </p>
       <FilterPill active={false} onClick={onClearFilters}>
         Clear all filters ✕
+      </FilterPill>
+    </div>
+  );
+}
+
+/**
+ * Request failed. Says what the visitor can do and nothing about why — the
+ * technical detail is logged server-side by the action.
+ */
+function ErrorState({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="px-5 py-[34px] text-center">
+      <div aria-hidden="true" className="mb-2 text-[28px]">
+        ⚠
+      </div>
+      <p className="mb-[6px] text-sm font-bold">
+        We couldn&apos;t load operators just now
+      </p>
+      <p className="mx-auto mb-[14px] max-w-[460px] text-[12.5px] text-mv-muted">
+        The operator directory is temporarily unavailable. Your filters are still
+        here — try again in a moment.
+      </p>
+      <FilterPill active={false} onClick={onRetry}>
+        Try again
       </FilterPill>
     </div>
   );
@@ -861,7 +968,7 @@ function Pager({
   page,
   onPage,
 }: {
-  page: ResultsPage;
+  page: OperatorResultPage;
   onPage: (page: number) => void;
 }) {
   if (page.total === 0) return null;
@@ -968,22 +1075,11 @@ function PageButton({
 function FilterPill({
   children,
   active,
-  count,
-  srLabel,
   onClick,
   className = "",
 }: {
   children: React.ReactNode;
   active: boolean;
-  /** Rendered as the trailing badge. Omit for pills that carry no count. */
-  count?: number;
-  /**
-   * Plain-text label for the accessible name. Worth passing whenever `count` is
-   * set: the badge sits in its own element, so the name computed from contents
-   * runs the two together ("Top 10 producers10") and the bare number reads as
-   * part of the label rather than as a match count.
-   */
-  srLabel?: string;
   onClick: () => void;
   className?: string;
 }) {
@@ -991,11 +1087,6 @@ function FilterPill({
     <button
       type="button"
       aria-pressed={active}
-      aria-label={
-        srLabel && count !== undefined
-          ? `${srLabel}, ${count} matches`
-          : undefined
-      }
       onClick={onClick}
       className={`group inline-flex cursor-pointer items-center rounded-full border px-4 py-[9px] text-[13.5px] shadow-[0_1px_1px_rgba(13,14,23,.03)] transition-[background,border-color,color,box-shadow,transform] duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep ${
         active
@@ -1004,25 +1095,7 @@ function FilterPill({
       } ${className}`}
     >
       {children}
-      {count !== undefined && (
-        <span
-          className={`ml-[6px] rounded-full px-2 py-px text-[11.5px] font-bold tracking-[.01em] ${
-            active
-              ? "bg-white text-mv-green-deep"
-              : "bg-mv-line-soft text-mv-muted group-hover:bg-white group-hover:text-mv-green-deep"
-          }`}
-        >
-          {count}
-        </span>
-      )}
     </button>
   );
 }
 
-/** Provisional slug — replaced by whatever key the API exposes. */
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}

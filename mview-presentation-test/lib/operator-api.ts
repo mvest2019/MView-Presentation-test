@@ -2,6 +2,16 @@ import "server-only";
 
 import { unstable_cache } from "next/cache";
 
+import {
+  OPERATOR_ENDPOINTS,
+  type OperatorPlayTypesResponse,
+  type OperatorSearchRequest,
+  type OperatorSearchResponse,
+} from "./operator-api-types";
+
+// Re-exported so callers have one import site for the operator API surface.
+export * from "./operator-api-types";
+
 /**
  * Client for the Mineral View operator API (`/api/v1/operators/*`).
  *
@@ -44,6 +54,61 @@ function baseUrl(): string {
   return url.replace(/\/+$/, "");
 }
 
+/**
+ * True for a cancellation, as opposed to a real failure.
+ *
+ * `fetch` rejects with a `DOMException` named `AbortError` when its signal fires,
+ * and `AbortSignal.timeout` uses `TimeoutError`. A supersession is expected and
+ * must never reach the user as an error; a timeout is a genuine fault.
+ */
+export function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+async function postJson<T>(
+  path: string,
+  payload: unknown,
+  signal?: AbortSignal,
+): Promise<T> {
+  // The caller's signal cancels; the timeout is our own backstop against a hung
+  // origin. `AbortSignal.any` fires on whichever comes first, so one does not
+  // disable the other.
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
+
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl()}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: combined,
+      // Results depend on the visitor's filters, so there is nothing to cache.
+      cache: "no-store",
+    });
+  } catch (cause) {
+    // A cancellation is rethrown untouched so callers can recognise it with
+    // `isAbortError` instead of reporting it as a failed request.
+    if (isAbortError(cause)) throw cause;
+    throw new Error(`POST ${path} failed to reach the operator API`, { cause });
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `POST ${path} responded ${response.status} ${response.statusText}`,
+    );
+  }
+
+  try {
+    return (await response.json()) as T;
+  } catch (cause) {
+    throw new Error(`POST ${path} returned a body that is not JSON`, { cause });
+  }
+}
+
 async function getJson<T>(path: string): Promise<T> {
   let response: Response;
   try {
@@ -76,19 +141,9 @@ async function getJson<T>(path: string): Promise<T> {
 }
 
 /**
- * `GET /api/v1/operators/playtypes`.
- *
- * The live response, confirmed against the dev host rather than assumed:
- *
- *   { "playtypes": ["BARNETT SHALE", "EAGLE FORD SHALE", "GRANITE WASH",
- *                   "HAYNESVILLE/BOSSIER SHALE", "PERMIAN BASIN"] }
- *
- * A bare array of strings under one key — not `{ id, name }` objects, and not a
- * top-level array. Values arrive upper-cased.
+ * `GET /api/v1/operators/playtypes`. Response shape and field notes live in
+ * `operator-api-types.ts`.
  */
-export interface OperatorPlayTypesResponse {
-  playtypes: string[];
-}
 
 /**
  * Play type names for the directory's filter, in the order the API returns them.
@@ -99,7 +154,7 @@ export interface OperatorPlayTypesResponse {
  */
 export const getOperatorPlayTypes = unstable_cache(
   async (): Promise<string[]> => {
-    const payload = await getJson<unknown>("/api/v1/operators/playtypes");
+    const payload = await getJson<unknown>(OPERATOR_ENDPOINTS.playTypes);
 
     if (
       !payload ||
@@ -130,3 +185,41 @@ export const getOperatorPlayTypes = unstable_cache(
   ["operator-play-types"],
   { revalidate: REVALIDATE_SECONDS, tags: ["operators"] },
 );
+
+/* ==========================================================================
+   POST /api/v1/operators/search
+   ========================================================================== */
+
+/**
+ * `POST /api/v1/operators/search`.
+ *
+ * Live response shape, confirmed against the dev host:
+ *   { "result": OperatorSearchRecord[], "total_count": 3095 }
+ *
+ * Throws on transport failure, non-2xx, non-JSON, or a body missing `result` /
+ * `total_count`. Cancellation is rethrown as-is so callers can tell a supersession
+ * from a fault with `isAbortError`.
+ */
+export async function searchOperators(
+  request: OperatorSearchRequest,
+  signal?: AbortSignal,
+): Promise<OperatorSearchResponse> {
+  const payload = await postJson<unknown>(
+    OPERATOR_ENDPOINTS.search,
+    request,
+    signal,
+  );
+
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !Array.isArray((payload as OperatorSearchResponse).result) ||
+    typeof (payload as OperatorSearchResponse).total_count !== "number"
+  ) {
+    throw new Error(
+      "POST /api/v1/operators/search did not return { result: [], total_count: number }",
+    );
+  }
+
+  return payload as OperatorSearchResponse;
+}

@@ -11,6 +11,7 @@ import {
 } from "@/app/_components/typography";
 
 import { getOperatorPlayTypes } from "@/lib/operator-api";
+import { getVisitorId } from "@/lib/visitor-id";
 
 import { CountyDirectory } from "./_components/county-directory";
 import { OperatorPage } from "./operator-page";
@@ -143,7 +144,22 @@ async function loadPlayTypes(): Promise<string[]> {
 }
 
 export default async function OperatorsRoute() {
-  const playTypes = await loadPlayTypes();
+  // Both reads are server-side: the play types because the API blocks browser
+  // origins, the visitor id because `cookies()` is server-only. Handing the id to
+  // the client lets it build the complete search payload; the route handler still
+  // re-asserts it from the cookie so it cannot be spoofed.
+  //
+  // THIS ROUTE IS INTENTIONALLY DYNAMIC. Reading a cookie opts it out of static
+  // prerendering, which is a deliberate trade (Akshay, 2026-08-11): the client
+  // needs the visitor id to build the exact contract payload. It costs little —
+  // the play types still come from `unstable_cache`, so a request adds no upstream
+  // call, only the render. If someone later moves the cookie read to the client to
+  // win the prerender back, that is a real option, not a bug fix; do not "restore"
+  // static by dropping the id from the payload.
+  const [playTypes, visitorId] = await Promise.all([
+    loadPlayTypes(),
+    getVisitorId(),
+  ]);
 
   return (
     <div className="pb-16 pt-[18px] max-[767px]:pb-11">
@@ -170,7 +186,7 @@ export default async function OperatorsRoute() {
           </p>
         </div>
 
-        <OperatorPage playTypes={playTypes} />
+        <OperatorPage playTypes={playTypes} visitorId={visitorId} />
 
         {/* The hrefs are the paths the prototype points at. None of those routes
             exists yet — same situation as most of `site-nav.ts`, where every path
