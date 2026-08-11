@@ -23,8 +23,8 @@ const ARTICLE_BODY = [
   // Headings. The serif stack, 600 weight, leading and tracking are spelled out
   // because they came from the prototype's global `h1,h2,h3` rule, which this
   // build no longer has — Tailwind's preflight resets both size and weight.
-  "[&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:font-serif [&_h2]:font-semibold [&_h2]:leading-[1.18] [&_h2]:tracking-[-.01em] [&_h2]:text-[21px] [&_h2]:text-mv-ink",
-  "[&_h3]:mt-[14px] [&_h3]:mb-[6px] [&_h3]:font-serif [&_h3]:font-semibold [&_h3]:leading-[1.18] [&_h3]:tracking-[-.01em] [&_h3]:text-[16px] [&_h3]:text-mv-ink",
+  "[&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:font-sans [&_h2]:font-semibold [&_h2]:leading-[1.18] [&_h2]:tracking-[-.01em] [&_h2]:text-[21px] [&_h2]:text-mv-ink",
+  "[&_h3]:mt-[14px] [&_h3]:mb-[6px] [&_h3]:font-sans [&_h3]:font-semibold [&_h3]:leading-[1.18] [&_h3]:tracking-[-.01em] [&_h3]:text-[16px] [&_h3]:text-mv-ink",
   // Links — 10 per article on average, and previously styled by the global
   // `a` rule. Underlined on hover only, matching the design.
   "[&_a]:text-mv-green-deep [&_a]:no-underline [&_a]:hover:underline",

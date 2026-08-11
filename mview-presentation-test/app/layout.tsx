@@ -13,7 +13,17 @@ const lexendDeca = Lexend_Deca({
   subsets: ["latin"],
 });
 
+/**
+ * `metadataBase` is what lets pages declare a relative canonical or Open Graph
+ * URL and have Next resolve it to an absolute one — without it, `alternates` and
+ * `openGraph.url` are dropped from the rendered head. Override
+ * `NEXT_PUBLIC_SITE_URL` per environment so preview deployments do not advertise
+ * production as their canonical.
+ */
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.mineralview.com",
+  ),
   title: "Mineral View — A clearer view of your minerals",
   description:
     "Public-record intelligence, plain-English briefings, and a community of mineral owners like you.",

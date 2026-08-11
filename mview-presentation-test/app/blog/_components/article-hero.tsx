@@ -25,7 +25,7 @@ export function ArticleHero({
 
   if (!isOptimizableImage(src) || failed) {
     return (
-      <div className="my-[6px] mb-[14px] flex aspect-video items-center justify-center rounded-[14px] border border-mv-line bg-[linear-gradient(135deg,#0e2b21,#2e8f6d)] font-serif text-xl font-bold tracking-[.06em] text-[#bfeeda]">
+      <div className="my-[6px] mb-[14px] flex aspect-video items-center justify-center rounded-[14px] border border-mv-line bg-[linear-gradient(135deg,#0e2b21,#2e8f6d)] font-sans text-xl font-bold tracking-[.06em] text-[#bfeeda]">
         MINERAL VIEW
       </div>
     );
