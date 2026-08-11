@@ -38,6 +38,18 @@
   --color-mv-card: #ffffff;
   --color-mv-line: #e5e7eb;
 
+  /* Illustration accents — for filled artwork (the FAQ category icons), NOT for
+     UI. The status colours below are tuned for text contrast, so as large flat
+     fills they read muddy; these are the same hues at illustration brightness.
+     AUTHORED HERE, unlike everything else in this file — they have no prototype
+     equivalent because the prototype had no illustrations. Design sign-off
+     pending; if the palette lands elsewhere, these are the values to replace. */
+  --color-mv-art-orange: #f59e0b;
+  --color-mv-art-orange-deep: #c2620a;
+  --color-mv-art-sand: #fde9b5;
+  --color-mv-art-sky: #3b82f6;
+  --color-mv-art-sky-light: #9dc6fd;
+
   /* Status */
   --color-mv-amber: #b45309;
   --color-mv-amber-bg: #fef3c7;

@@ -1,15 +1,6 @@
 "use client";
 
-import {
-  BadgeDollarSign,
-  BookOpenText,
-  Boxes,
-  Compass,
-  MousePointerClick,
-  Search,
-  Sparkles,
-  Wallet,
-} from "lucide-react";
+import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import {
@@ -18,6 +9,16 @@ import {
   MOST_ASKED,
   type FaqCategory,
 } from "./faq-data";
+import {
+  type FaqIconProps,
+  GeneralArt,
+  MostAskedArt,
+  PaymentsArt,
+  PortalActionArt,
+  PricingArt,
+  ProductsArt,
+  TerminologyArt,
+} from "./faq-icons";
 
 /**
  * The interactive FAQ — the prototype's `route:faq` behavior, with "Most asked"
@@ -29,17 +30,14 @@ import {
 const MOST_ASKED_TAB = "Most asked";
 type Tab = FaqCategory | typeof MOST_ASKED_TAB;
 
-/* Each icon says something specific about its section — a compass for "who we
-   are and how this works", a click for the portal how-tos — rather than the
-   generic circle/rectangle shapes these started as. */
-const TAB_ICON: Record<Tab, typeof Compass> = {
-  [MOST_ASKED_TAB]: Sparkles,
-  General: Compass,
-  Products: Boxes,
-  Payments: Wallet,
-  Pricing: BadgeDollarSign,
-  Terminology: BookOpenText,
-  "Portal Action": MousePointerClick,
+const TAB_ART: Record<Tab, (props: FaqIconProps) => React.ReactElement> = {
+  [MOST_ASKED_TAB]: MostAskedArt,
+  General: GeneralArt,
+  Products: ProductsArt,
+  Payments: PaymentsArt,
+  Pricing: PricingArt,
+  Terminology: TerminologyArt,
+  "Portal Action": PortalActionArt,
 };
 
 /* Search matches what the visitor can read — the prototype filters on
@@ -155,7 +153,7 @@ export function FaqExplorer() {
           className="mb-[26px] mt-[18px] grid grid-cols-7 gap-3 max-[1024px]:grid-cols-4 max-[820px]:grid-cols-3 max-[480px]:grid-cols-2"
         >
           {sections.map(({ tab, entries }) => {
-            const Icon = TAB_ICON[tab];
+            const Art = TAB_ART[tab];
             const on = tab === active;
             return (
               <button
@@ -163,22 +161,18 @@ export function FaqExplorer() {
                 type="button"
                 aria-pressed={on}
                 onClick={() => setActive(tab)}
-                className={`group flex cursor-pointer flex-col items-center gap-[9px] rounded-[14px] border-[1.5px] px-[10px] pb-[13px] pt-4 text-center text-mv-ink transition ${
+                className={`group flex cursor-pointer flex-col items-center gap-[7px] rounded-[16px] border-[1.5px] bg-mv-card px-2 pb-3 pt-[15px] text-center transition ${
                   on
-                    ? "border-mv-green-deep bg-mv-mint"
-                    : "border-mv-line bg-white hover:border-[#9ed8c0] hover:shadow-[0_6px_18px_rgba(6,20,15,.08)]"
+                    ? "border-mv-green shadow-[0_6px_18px_rgba(46,143,109,.14)]"
+                    : "border-mv-line hover:border-[#9ed8c0] hover:shadow-[0_6px_18px_rgba(6,20,15,.08)]"
                 }`}
               >
+                <Art className="h-12 w-12 transition-transform duration-150 group-hover:scale-[1.07]" />
                 <span
-                  className={`flex h-[46px] w-[46px] items-center justify-center rounded-[13px] shadow-[inset_0_1px_0_rgba(255,255,255,.9)] ring-1 transition ${
-                    on
-                      ? "bg-white text-mv-green-deep ring-mv-green/40"
-                      : "bg-gradient-to-br from-mv-mint to-[#c7f0dd] text-mv-green-deep ring-[#b7e7d1]/60 group-hover:from-[#d9fbec] group-hover:to-[#aee6cd]"
+                  className={`rounded-full px-[10px] py-[3px] text-[13px] font-bold leading-[1.2] transition ${
+                    on ? "bg-mv-green text-white" : "text-mv-ink"
                   }`}
                 >
-                  <Icon strokeWidth={1.75} className="h-[23px] w-[23px]" />
-                </span>
-                <span className="text-[13px] font-bold leading-[1.2]">
                   {tab}
                 </span>
                 <span
