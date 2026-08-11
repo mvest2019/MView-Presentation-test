@@ -14,6 +14,10 @@ import { ClusterTooltip } from "./cluster-tooltip";
 import { InsightsPanel } from "./insights-panel";
 import { MapChrome, type ViewTab } from "./map-chrome";
 import { type Place } from "./map-search";
+import {
+  MeasureAreaPanel,
+  type AreaMeasurement,
+} from "./measure-area-panel";
 import { MeasureBar } from "./measure-bar";
 import {
   NearbyPanel,
@@ -153,6 +157,7 @@ type ActiveTool =
   | "draw-area"
   | "measure-distance"
   | "whats-near-my-land"
+  | "measure-area"
   | null;
 
 /**
@@ -374,6 +379,82 @@ function downloadNearbyCsv(watch: Nearby, geodesic: GeodesicUtils, Point: PointC
   URL.revokeObjectURL(url);
 }
 
+/**
+ * Area, perimeter and contents of a closed tract.
+ *
+ * The area uses the spherical-excess formula rather than Esri's
+ * `geodesicAreas`, which would mean loading two more geometry modules to get a
+ * result that differs by well under a percent at these sizes. The perimeter is
+ * a sum of great-circle hops between corners.
+ */
+function measureTract(points: LonLat[]): AreaMeasurement {
+  const R = 6378137;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+
+  let sum = 0;
+  let perimetreMetres = 0;
+
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+
+    sum +=
+      (toRad(b.longitude) - toRad(a.longitude)) *
+      (2 + Math.sin(toRad(a.latitude)) + Math.sin(toRad(b.latitude)));
+
+    // Haversine — the corners are far apart, so a flat approximation would
+    // drift badly across a tract this size.
+    const dLat = toRad(b.latitude - a.latitude);
+    const dLon = toRad(b.longitude - a.longitude);
+    const h =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(a.latitude)) *
+        Math.cos(toRad(b.latitude)) *
+        Math.sin(dLon / 2) ** 2;
+    perimetreMetres += 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+
+  const squareMetres = Math.abs((sum * R * R) / 2);
+  const squareMiles = squareMetres / 2_589_988.11;
+  const acres = squareMetres / 4046.856;
+
+  let wellsInside = 0;
+  for (const cluster of wellClusters) {
+    if (pointInRing(cluster.at[0], cluster.at[1], points)) {
+      wellsInside += cluster.count;
+    }
+  }
+
+  return {
+    acres,
+    squareMiles,
+    perimeterMiles: perimetreMetres / METRES_PER_MILE,
+    wellsInside,
+    // No permit layer to read, same as the watch card.
+    permitsInside: 0,
+    // A section is one square mile.
+    wellsPerSection: squareMiles ? wellsInside / squareMiles : 0,
+  };
+}
+
+/** Ray casting, on plain lon/lat — exact enough for a hand-drawn tract. */
+function pointInRing(lon: number, lat: number, ring: LonLat[]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i].longitude;
+    const yi = ring[i].latitude;
+    const xj = ring[j].longitude;
+    const yj = ring[j].latitude;
+    if (
+      yi > lat !== yj > lat &&
+      lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi
+    ) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
 function wellsInArea(area: Area): number {
   return clustersInArea(area).reduce((total, { count }) => total + count, 0);
 }
@@ -452,8 +533,11 @@ export function MapExplorerView() {
   const [areaAnchor, setAreaAnchor] = useState<ScreenPoint | null>(null);
   const [measurement, setMeasurement] = useState<Measurement | null>(null);
   const [measureAnchor, setMeasureAnchor] = useState<ScreenPoint | null>(null);
+  const [tractResult, setTractResult] = useState<AreaMeasurement | null>(null);
+  const tractRef = useRef<LonLat[]>([]);
+  const tractLayerRef = useRef<EsriGraphicsLayer | null>(null);
+
   const [nearby, setNearby] = useState<Nearby | null>(null);
-  const [nearbyAnchor, setNearbyAnchor] = useState<ScreenPoint | null>(null);
   /** Cluster under the pointer, with its bubble's top edge on screen. */
   const [hoveredCluster, setHoveredCluster] = useState<
     { index: number; x: number; y: number } | null
@@ -626,6 +710,67 @@ export function MapExplorerView() {
     );
   }, []);
 
+  /**
+   * Draws the tract as it is built: a line through the corners while open, a
+   * filled ring once closed, with a dot on every corner either way.
+   */
+  const drawTract = useCallback((points: LonLat[], closed: boolean) => {
+    const layer = tractLayerRef.current;
+    const ctors = ctorsRef.current;
+    if (!layer || !ctors) return;
+
+    layer.removeAll();
+    if (points.length === 0) return;
+
+    const ring = points.map((p) => [p.longitude, p.latitude]);
+
+    if (closed && points.length >= 3) {
+      layer.add(
+        new ctors.Graphic({
+          geometry: {
+            type: "polygon",
+            rings: [[...ring, ring[0]]],
+            spatialReference: { wkid: 4326 },
+          },
+          symbol: {
+            type: "simple-fill",
+            color: [84, 191, 150, 0.22],
+            outline: { color: [46, 143, 109], width: 2 },
+          },
+        }),
+      );
+    } else if (points.length >= 2) {
+      layer.add(
+        new ctors.Graphic({
+          geometry: {
+            type: "polyline",
+            paths: [ring],
+            spatialReference: { wkid: 4326 },
+          },
+          symbol: { type: "simple-line", color: [46, 143, 109], width: 2 },
+        }),
+      );
+    }
+
+    for (const point of points) {
+      layer.add(
+        new ctors.Graphic({
+          geometry: {
+            type: "point",
+            longitude: point.longitude,
+            latitude: point.latitude,
+          },
+          symbol: {
+            type: "simple-marker",
+            size: 9,
+            color: [255, 255, 255],
+            outline: { color: [46, 143, 109], width: 2 },
+          },
+        }),
+      );
+    }
+  }, []);
+
   /** Re-projects the on-map cards — they are React, so they do not follow. */
   const anchorBars = useCallback(() => {
     const view = viewRef.current;
@@ -665,25 +810,8 @@ export function MapExplorerView() {
         : null,
     );
 
-    // …and the watch card hangs off the bottom of the circle, so it is
-    // projected from the circle's south edge rather than its centre.
-    const currentNearby = nearbyRef.current;
-    if (!currentNearby) {
-      setNearbyAnchor(null);
-      return;
-    }
-
-    const south = ctors.geodesic.pointFromDistance(
-      new ctors.Point({
-        longitude: currentNearby.at.longitude,
-        latitude: currentNearby.at.latitude,
-        spatialReference: { wkid: 4326 },
-      }),
-      currentNearby.radiusMiles * METRES_PER_MILE,
-      180,
-    );
-    const anchor = project(south.longitude, south.latitude);
-    setNearbyAnchor(anchor ? { x: anchor.x, y: anchor.y + 12 } : null);
+    // The watch card is not projected — it holds the bottom of the map
+    // whatever the circle does.
   }, []);
 
   useEffect(() => {
@@ -728,6 +856,8 @@ export function MapExplorerView() {
         const areaLayer = new GraphicsLayer({ id: "drawn-area" });
         const measureLayer = new GraphicsLayer({ id: "measured-distance" });
         const nearbyLayer = new GraphicsLayer({ id: "watch-circle" });
+        const tractLayer = new GraphicsLayer({ id: "measured-tract" });
+        tractLayerRef.current = tractLayer;
         areaLayerRef.current = areaLayer;
         measureLayerRef.current = measureLayer;
         nearbyLayerRef.current = nearbyLayer;
@@ -737,7 +867,7 @@ export function MapExplorerView() {
         // layer is a sibling of the basemap, so it survives the swap.
         const map = new EsriMap({
           basemap: DEFAULT_BASEMAP,
-          layers: [clusters, areaLayer, measureLayer, nearbyLayer],
+          layers: [clusters, areaLayer, measureLayer, nearbyLayer, tractLayer],
         });
         mapRef.current = map;
 
@@ -812,6 +942,19 @@ export function MapExplorerView() {
           return -1;
         };
 
+        const screenOf = (point: LonLat): ScreenPoint | null => {
+          const ctors = ctorsRef.current;
+          if (!view || !ctors) return null;
+          const screen = view.toScreen(
+            new ctors.Point({
+              longitude: point.longitude,
+              latitude: point.latitude,
+              spatialReference: { wkid: 4326 },
+            }),
+          );
+          return screen ? { x: screen.x, y: screen.y } : null;
+        };
+
         const screenTopOf = (index: number): ScreenPoint | null => {
           const ctors = ctorsRef.current;
           if (!view || !ctors) return null;
@@ -861,6 +1004,39 @@ export function MapExplorerView() {
                 .goTo({ center: cluster.at, scale: CLUSTER_ZOOM_SCALE })
                 .catch(ignoreInterrupted);
             }
+            return;
+          }
+
+          if (activeToolRef.current === "measure-area") {
+            if (!event.mapPoint || !view) return;
+            event.stopPropagation();
+
+            const points = tractRef.current;
+            const next: LonLat = {
+              longitude: event.mapPoint.longitude,
+              latitude: event.mapPoint.latitude,
+            };
+
+            // Clicking the first corner again closes the ring — within 12px on
+            // screen, so it forgives an imprecise click on a 9px dot.
+            if (points.length >= 3) {
+              const first = screenOf(points[0]);
+              if (first) {
+                const dx = event.x - first.x;
+                const dy = event.y - first.y;
+                if (dx * dx + dy * dy <= 144) {
+                  drawTract(points, true);
+                  setTractResult(measureTract(points));
+                  activeToolRef.current = null;
+                  setActiveTool(null);
+                  return;
+                }
+              }
+            }
+
+            const grown = [...points, next];
+            tractRef.current = grown;
+            drawTract(grown, false);
             return;
           }
 
@@ -977,12 +1153,13 @@ export function MapExplorerView() {
       areaLayerRef.current = null;
       measureLayerRef.current = null;
       nearbyLayerRef.current = null;
+      tractLayerRef.current = null;
       ctorsRef.current = null;
       viewRef.current = null;
       view?.destroy();
     };
     // All stable, so the view is still built exactly once.
-  }, [drawArea, drawMeasurement, drawNearby, anchorBars]);
+  }, [drawArea, drawMeasurement, drawNearby, drawTract, anchorBars]);
 
   // Esc backs out of an armed tool — the prompt says so.
   useEffect(() => {
@@ -1017,11 +1194,14 @@ export function MapExplorerView() {
       } else if (tool === "whats-near-my-land") {
         nearbyRef.current = null;
         setNearby(null);
-        setNearbyAnchor(null);
         drawNearby(null);
+      } else if (tool === "measure-area") {
+        tractRef.current = [];
+        setTractResult(null);
+        drawTract([], false);
       }
     },
-    [drawArea, drawMeasurement, drawNearby],
+    [drawArea, drawMeasurement, drawNearby, drawTract],
   );
 
   const changeWatchRadius = useCallback(
@@ -1052,7 +1232,6 @@ export function MapExplorerView() {
     countyRequestRef.current += 1;
     nearbyRef.current = null;
     setNearby(null);
-    setNearbyAnchor(null);
     setNearbyCounty(undefined);
     drawNearby(null);
   }, [drawNearby]);
@@ -1292,9 +1471,23 @@ export function MapExplorerView() {
         <NearbyPrompt />
       )}
 
-      {status === "ready" && nearby && nearbyAnchor && (
+      {status === "ready" &&
+        (activeTool === "measure-area" || tractResult) && (
+          <MeasureAreaPanel
+            className="absolute bottom-6 left-1/2"
+            result={tractResult}
+            onClose={() => {
+              tractRef.current = [];
+                    setTractResult(null);
+              drawTract([], false);
+              startTool(null);
+            }}
+          />
+        )}
+
+      {status === "ready" && nearby && (
         <NearbyPanel
-          at={nearbyAnchor}
+          className="absolute bottom-6 left-1/2"
           coordinates={nearby.at}
           county={nearbyCounty}
           radiusMiles={nearby.radiusMiles}

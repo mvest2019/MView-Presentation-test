@@ -63,7 +63,11 @@ type MapChromeProps = {
   /** The tool waiting for a drag on the map, if any. */
   activeTool: string | null;
   onSelectTool: (
-    id: "draw-area" | "measure-distance" | "whats-near-my-land",
+    id:
+      | "draw-area"
+      | "measure-distance"
+      | "whats-near-my-land"
+      | "measure-area",
   ) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -298,11 +302,11 @@ export function MapChrome({
           <ToolsPanel
             activeId={activeTool ?? undefined}
             onSelect={(id) => {
-              // Measure area has no implementation yet.
               if (
                 id === "draw-area" ||
                 id === "measure-distance" ||
-                id === "whats-near-my-land"
+                id === "whats-near-my-land" ||
+                id === "measure-area"
               ) {
                 onSelectTool(id);
               }
