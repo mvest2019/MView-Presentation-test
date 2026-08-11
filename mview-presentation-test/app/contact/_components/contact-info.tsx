@@ -13,7 +13,7 @@ export function ContactInfo() {
         Reach us directly
       </h2>
 
-      <div className="flex items-start gap-[13px] border-b border-mv-line py-[11px]">
+      <div className="flex items-center gap-[13px] border-b border-mv-line py-[14px] min-[861px]:flex-1 min-[861px]:basis-0">
         <span className="flex h-[42px] w-[42px] flex-none items-center justify-center rounded-[11px] bg-mv-mint text-mv-green-deep">
           <Phone className="h-5 w-5" />
         </span>
@@ -29,7 +29,7 @@ export function ContactInfo() {
         </div>
       </div>
 
-      <div className="flex items-start gap-[13px] border-b border-mv-line py-[11px]">
+      <div className="flex items-center gap-[13px] border-b border-mv-line py-[14px] min-[861px]:flex-1 min-[861px]:basis-0">
         <span className="flex h-[42px] w-[42px] flex-none items-center justify-center rounded-[11px] bg-mv-mint text-mv-green-deep">
           <Mail className="h-5 w-5" />
         </span>
@@ -45,7 +45,7 @@ export function ContactInfo() {
         </div>
       </div>
 
-      <div className="flex items-start gap-[13px] py-[11px]">
+      <div className="flex items-center gap-[13px] py-[14px] min-[861px]:flex-1 min-[861px]:basis-0">
         <span className="flex h-[42px] w-[42px] flex-none items-center justify-center rounded-[11px] bg-mv-mint text-mv-green-deep">
           <MapPin className="h-5 w-5" />
         </span>
@@ -64,8 +64,9 @@ export function ContactInfo() {
         </div>
       </div>
 
-      {/* Pinned to the bottom of the (equal-height) card. */}
-      <div className="mt-auto rounded-xl bg-mv-green-ink p-[18px] text-[#eafff6]">
+      {/* Rows above flex-grow evenly on desktop, so this sits right after the
+          address with no dead gap while the card stays equal-height. */}
+      <div className="mt-3 rounded-xl bg-mv-green-ink p-[18px] text-[#eafff6]">
         <div className="mb-[9px] text-[11.5px] font-extrabold uppercase tracking-[.09em] text-[#7fd4ae]">
           Business hours
         </div>

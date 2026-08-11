@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { headingBase } from "../_components/typography";
 import { ContactForm } from "./_components/contact-form";
@@ -13,8 +14,19 @@ export const metadata: Metadata = {
 /** Contact — the prototype's `route:contact`. Form + get-in-touch panel. */
 export default function ContactPage() {
   return (
-    <div className="py-16 pt-[52px] max-[767px]:py-11">
+    <div className="py-16 pt-[26px] max-[767px]:pb-11">
       <div className="mx-auto max-w-[1140px] px-7 max-[767px]:px-4">
+        <nav aria-label="Breadcrumb" className="mb-6 text-[13px]">
+          <Link
+            href="/"
+            className="font-semibold text-mv-green-deep no-underline hover:underline"
+          >
+            Home
+          </Link>
+          <span className="mx-2 text-mv-muted">›</span>
+          <span className="font-bold text-mv-ink">Contact</span>
+        </nav>
+
         <div className="mx-auto mb-3 max-w-[640px] text-center">
           <h1 className={`${headingBase} text-[clamp(28px,4vw,40px)] leading-[1.12]`}>
             Contact Us
