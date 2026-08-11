@@ -38,7 +38,10 @@ export function ArticleHero({
       width={1600}
       height={900}
       priority
-      sizes="(max-width: 767px) 100vw, (min-width: 1016px) 904px, 92vw"
+      /* Tracks the article column: full width on a phone, the whole wrap while
+         the contents rail is stacked below 1024, then wrap minus the 300px rail
+         and its 40px gap once they sit side by side. */
+      sizes="(max-width: 767px) 100vw, (max-width: 1023px) 92vw, (min-width: 1256px) 804px, calc(100vw - 396px)"
       onError={() => setFailed(true)}
       className="my-[6px] mb-[14px] h-auto w-full rounded-[14px] border border-mv-line"
     />

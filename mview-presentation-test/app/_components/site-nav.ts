@@ -8,13 +8,15 @@
  * those routes will occupy. Only the home page exists today — every other
  * path is a placeholder until its page is built.
  *
- * Two menu decisions in the document are load-bearing and should not be
- * "tidied" away:
- *   · Data keeps its own top-level slot. Folding it under "For professionals"
- *     shipped once and was reverted within the hour — a data buyer scans the
- *     bar for the category, not the page for an audience.
- *   · "Find your record" is the single filled CTA in the bar; "Free account"
- *     steps back to mint so the two funnel steps stop competing.
+ * One decision from the document still holds: "Find your record" is the single
+ * filled CTA in the bar, and "Free account" steps back to mint so the two funnel
+ * steps stop competing.
+ *
+ * The bar itself now follows `header-mockup.html` (Ryan, 2026-08-11): six items,
+ * with the eleven data and operator destinations gathered into an Explore mega
+ * menu instead of a `Data` tab, and `Map` no longer in the bar. Note that the
+ * document records a failed experiment against removing the Data tab — see the
+ * comment on `barNav` before restoring anything here.
  */
 
 export type NavLink = {
@@ -22,45 +24,152 @@ export type NavLink = {
   href: string;
 };
 
-/** Top-level bar items, left to right, after the "Find your record" CTA. */
-export const primaryNav: NavLink[] = [
-  { label: "For owners", href: "/owners" },
-  { label: "For professionals", href: "/professionals" },
-  { label: "Data", href: "/data" },
-  { label: "Map", href: "/map-explorer" },
-  { label: "Pricing", href: "/pricing" },
+/** A mega-menu entry: a link with a one-line description underneath. */
+export type MegaLink = NavLink & {
+  sub: string;
+  /** Draws a hairline above this item, as the mockup does before Free samples. */
+  dividerBefore?: boolean;
+};
+
+export type MegaColumn = {
+  heading: string;
+  links: MegaLink[];
+};
+
+/**
+ * Top-level bar items, left to right, after the "Find your record" CTA.
+ *
+ * HISTORY WORTH READING BEFORE EDITING. The document's v133 folded `Data` out of
+ * the bar and it failed within the hour — "Now there is no way to see how to get
+ * to the Data Sales" — because a data buyer scans the bar for the CATEGORY. The
+ * mockup's answer is different from v133's (the data links are one hover away
+ * under Explore, not buried under an audience page), but `Explore` is still not
+ * the word a data buyer is looking for. If Data Sales traffic drops, this is the
+ * first place to look.
+ *
+ * `Map` is also gone from the bar, and appears in no menu or footer column, so
+ * `/map-explorer` currently has no route into it at all.
+ */
+export type BarItem =
+  | { kind: "link"; label: string; href: string }
+  | { kind: "menu"; label: string; menu: "explore" | "learn" };
+
+export const barNav: BarItem[] = [
+  { kind: "link", label: "For owners", href: "/owners" },
+  { kind: "link", label: "For professionals", href: "/professionals" },
+  { kind: "menu", label: "Explore", menu: "explore" },
+  // Restored to the bar (Ryan, 2026-08-11), in the slot the design gives it —
+  // after the data destinations, before Pricing. The design's reason for a
+  // first-class slot still stands: the map is the only nav item a visitor can
+  // use before deciding anything.
+  { kind: "link", label: "Map", href: "/map-explorer" },
+  { kind: "link", label: "Pricing", href: "/pricing" },
+  { kind: "menu", label: "Learn", menu: "learn" },
 ];
 
 /**
- * The "Learn" dropdown — the library only, the pages people reach for.
+ * The Explore mega menu — three columns, thirteen destinations.
  *
- * The design lists a single "Blog & News"; Blog and News are separate routes in
- * this build, so both are listed.
+ * Labels and descriptions are the mockup's. The hrefs are NOT: the mockup links
+ * every item to `#`, so these paths are inferred from the route names the design
+ * document uses (`data-lookup`, `data-package`, `data-sample`,
+ * `operators-compare-production`, `kyo`, …). None of these pages exist yet, so
+ * they need checking against the real route map before launch.
+ */
+export const exploreNav: MegaColumn[] = [
+  {
+    heading: "Data coverage",
+    links: [
+      {
+        label: "Mineral owners",
+        href: "/data/mineral-owners",
+        sub: "Mineral ownership records",
+      },
+      {
+        label: "Production",
+        href: "/data/production",
+        sub: "Volumes by lease and well",
+      },
+      {
+        label: "Completions",
+        href: "/data/completions",
+        sub: "Completion records for wells",
+      },
+      {
+        label: "Permits",
+        href: "/data/permits",
+        sub: "Drilling permit records",
+      },
+    ],
+  },
+  {
+    heading: "Know your operators",
+    links: [
+      {
+        label: "Oil and gas companies",
+        href: "/operators",
+        sub: "The full operator directory",
+      },
+      {
+        label: "Compare performance",
+        href: "/operators/compare-performance",
+        sub: "Compare operator performance",
+      },
+      {
+        label: "Compare statistics",
+        href: "/operators/compare-statistics",
+        sub: "Compare operator stats",
+      },
+      {
+        label: "Operator presentation",
+        href: "/operators/presentation",
+        sub: "Shareable operator presentation",
+      },
+    ],
+  },
+  {
+    heading: "Data download",
+    links: [
+      {
+        label: "Packages by region",
+        href: "/data/packages",
+        sub: "Delaware, Anadarko, statewide",
+      },
+      {
+        label: "Filter and download",
+        href: "/data/download",
+        sub: "Pick your rows, export",
+      },
+      {
+        label: "Free samples",
+        href: "/data/samples",
+        sub: "Try before you buy",
+        dividerBefore: true,
+      },
+    ],
+  },
+];
+
+/**
+ * The "Learn" dropdown, and the drawer's Learn section that mirrors it.
+ *
+ * Four entries by request (Ryan, 2026-08-11). The design's dropdown carried
+ * eight plus a free operator lookup below a divider; Resources, Watch & Listen,
+ * Community Q&A, Contact and the operator lookup were dropped from the bar. No
+ * route was removed — only where it is surfaced:
+ *   · Contact, Resources, Watch & Listen and the operator directory are all
+ *     still linked from the footer.
+ *   · Community Q&A (/qa) now has no nav entry at all. Worth a footer link when
+ *     that page is built.
+ *
+ * The design lists a single "Blog & News"; they are separate routes here, so
+ * both appear.
  */
 export const learnNav: NavLink[] = [
-  { label: "Guides — start here", href: "/resources" },
   { label: "Blog", href: "/blog" },
   { label: "News", href: "/news" },
   { label: "Glossary", href: "/glossary" },
-  { label: "Watch & Listen", href: "/media" },
-  { label: "Community Q&A", href: "/qa" },
   { label: "FAQ", href: "/faq" },
-  { label: "Contact", href: "/contact" },
-];
-
-/** Sits below a divider in the Learn dropdown. */
-export const learnNavFooterLink: NavLink = {
-  label: "Operator directory — free lookup",
-  href: "/kyo",
-};
-
-/** Mobile drawer "Explore" section — mirrors the bar with fuller labels. */
-export const drawerExploreNav: NavLink[] = [
-  { label: "For owners — every feature", href: "/owners" },
-  { label: "For professionals", href: "/professionals" },
-  { label: "Data — licensed county datasets", href: "/data" },
-  { label: "Map — explore free", href: "/map-explorer" },
-  { label: "Pricing", href: "/pricing" },
 ];
 
 export type FooterColumn = {

@@ -2,11 +2,12 @@
 
 import { useEffect, useRef } from "react";
 
-import { sanitizeHtml } from "@/lib/sanitize-html";
-
 /**
- * The full glossary article — CMS HTML from the Glossary endpoints, sanitized on
- * the way in.
+ * The full glossary article — CMS HTML from the Glossary endpoints.
+ *
+ * Takes ALREADY-PREPARED html: `prepareArticle` in `lib/toc.ts` sanitizes it and
+ * writes the heading anchors the contents list links to. Do not pass a raw
+ * `details.content` here — it would reach the DOM unsanitized.
  *
  * Styled with Tailwind arbitrary descendant variants, mirroring the prototype's
  * `.gl-full` rule set. That covers the plain prose tags plus the CMS's own
@@ -22,7 +23,7 @@ import { sanitizeHtml } from "@/lib/sanitize-html";
 
 const GLOSSARY_BODY = [
   // Prose
-  "[&_h2]:mt-[18px] [&_h2]:mb-2 [&_h2]:font-serif [&_h2]:font-semibold [&_h2]:leading-[1.18] [&_h2]:tracking-[-.01em] [&_h2]:text-[20px] [&_h2]:text-mv-ink",
+  "[&_h2]:mt-[18px] [&_h2]:mb-2 [&_h2]:scroll-mt-[88px] [&_h2]:font-serif [&_h2]:font-semibold [&_h2]:leading-[1.18] [&_h2]:tracking-[-.01em] [&_h2]:text-[20px] [&_h2]:text-mv-ink",
   "[&_h3]:mt-[14px] [&_h3]:mb-[6px] [&_h3]:font-serif [&_h3]:font-semibold [&_h3]:leading-[1.18] [&_h3]:tracking-[-.01em] [&_h3]:text-[15.5px] [&_h3]:text-mv-ink",
   // The design caps paragraphs at 72ch, which was a mild limit inside its 760px
   // column. This build's article column is 1200px, where that cap left ~490px
@@ -67,7 +68,7 @@ const GLOSSARY_BODY = [
   "[&_.faq-item.open_.faq-answer]:block",
 ].join(" ");
 
-export function GlossaryContent({ html }: { html: string | undefined }) {
+export function GlossaryContent({ preparedHtml }: { preparedHtml: string }) {
   const root = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -94,13 +95,13 @@ export function GlossaryContent({ html }: { html: string | undefined }) {
 
     el.addEventListener("click", onClick);
     return () => el.removeEventListener("click", onClick);
-  }, [html]);
+  }, [preparedHtml]);
 
   return (
     <div
       ref={root}
       className={GLOSSARY_BODY}
-      dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }}
+      dangerouslySetInnerHTML={{ __html: preparedHtml }}
     />
   );
 }
