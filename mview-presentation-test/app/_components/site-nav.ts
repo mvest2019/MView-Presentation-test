@@ -31,10 +31,16 @@ export const primaryNav: NavLink[] = [
   { label: "Pricing", href: "/pricing" },
 ];
 
-/** The "Learn" dropdown — the library only, seven pages people reach for. */
+/**
+ * The "Learn" dropdown — the library only, the pages people reach for.
+ *
+ * The design lists a single "Blog & News"; Blog and News are separate routes in
+ * this build, so both are listed.
+ */
 export const learnNav: NavLink[] = [
   { label: "Guides — start here", href: "/resources" },
-  { label: "Blog & News", href: "/blog" },
+  { label: "Blog", href: "/blog" },
+  { label: "News", href: "/news" },
   { label: "Glossary", href: "/glossary" },
   { label: "Watch & Listen", href: "/media" },
   { label: "Community Q&A", href: "/qa" },
@@ -97,7 +103,8 @@ export const footerColumns: FooterColumn[] = [
     heading: "Learn",
     links: [
       { label: "Resources", href: "/resources" },
-      { label: "Blog & News", href: "/blog" },
+      { label: "Blog", href: "/blog" },
+      { label: "News", href: "/news" },
       { label: "Watch & Listen", href: "/media" },
       { label: "Glossary", href: "/glossary" },
       { label: "FAQ", href: "/faq" },

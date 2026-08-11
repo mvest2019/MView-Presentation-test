@@ -16,7 +16,7 @@ import {
  * Marketing header — a port of `marketing/src/shell/chunk-005.html` and the
  * `.mk-header` / `.mk-drawer` rules in the prototype stylesheet. Every size,
  * colour and breakpoint below is the document's; the two odd-looking
- * breakpoints (919px and 1180px) are the prototype's, not Tailwind's, so they
+ * breakpoints (1180px and 767px) are the prototype's, not Tailwind's, so they
  * are written as arbitrary max-width variants rather than rounded to `lg`.
  *
  * The prototype swaps the right-hand actions on auth state (`data-auth`).
@@ -99,7 +99,12 @@ export function SiteHeader() {
             />
           </Link>
 
-          <nav className="ml-2 flex items-center gap-[10px] max-[1180px]:gap-[2px] max-[919px]:hidden">
+          {/* Collapses to the hamburger below 1140px, not the design's 919px.
+              Measured at 1024px: logo 149 + nav 635 + actions 192 + two 26px
+              gaps needs 1084px of content, so the actions block was pushed 55px
+              past the right edge and the whole page scrolled sideways. 1140
+              leaves ~56px of slack. */}
+          <nav className="ml-2 flex items-center gap-[10px] max-[1180px]:gap-[2px] max-[1139px]:hidden">
             {/* One primary CTA in the bar — the record finder keeps the fill. */}
             <Link
               href="/claim"
@@ -183,7 +188,7 @@ export function SiteHeader() {
               onClick={() => setDrawerOpen(true)}
               aria-label="Menu"
               aria-expanded={drawerOpen}
-              className="hidden shrink-0 cursor-pointer rounded-lg border border-mv-line px-[10px] py-[7px] text-base leading-none text-mv-slate max-[919px]:block"
+              className="hidden shrink-0 cursor-pointer rounded-lg border border-mv-line px-[10px] py-[7px] text-base leading-none text-mv-slate max-[1139px]:block"
             >
               ☰
             </button>

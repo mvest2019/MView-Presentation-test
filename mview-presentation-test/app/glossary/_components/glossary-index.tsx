@@ -59,9 +59,18 @@ export function GlossaryIndex({ terms }: { terms: GlossaryTermSummary[] }) {
     <>
       {/* Sticky below the 64px header, as the design's `.azbar` is. Hidden while
           searching, when the letters would not match what is listed. */}
-      {!searching && (
-        <div className="sticky top-16 z-40 flex flex-wrap gap-1 border-b border-mv-line bg-[rgba(246,247,249,.96)] py-[10px] backdrop-blur-[6px]">
-          {ALPHABET.map((letter) =>
+      {/* Rail and search share ONE sticky container. They used to be two, both
+          pinned to `top: 64px` with the same z-index, so on scroll they landed on
+          the same line and the search box painted over the rail. Sticking the
+          pair keeps their spacing automatic, whatever height the rail wraps to.
+          Sticky only from 1024px up. The 26 letter chips need ~828px to sit on
+          one row; below that the rail wraps and the block grows to 135px (two
+          rows) or more, which under a 64px header is too much of a small screen
+          to give up permanently. */}
+      <div className="sticky top-16 z-40 bg-mv-bg max-[1023px]:static">
+        {!searching && (
+          <div className="flex flex-wrap gap-1 border-b border-mv-line bg-[rgba(246,247,249,.96)] py-[10px] backdrop-blur-[6px]">
+            {ALPHABET.map((letter) =>
             populated.has(letter) ? (
               <a
                 key={letter}
@@ -78,34 +87,35 @@ export function GlossaryIndex({ terms }: { terms: GlossaryTermSummary[] }) {
               >
                 {letter}
               </span>
-            ),
+              ),
+            )}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-[10px] py-2">
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            aria-label="Search glossary terms"
+            placeholder="Search terms… (name, topic or definition)"
+            className="min-w-[220px] flex-1 rounded-full border border-mv-line bg-white px-[14px] py-2 text-[13px] outline-none focus-visible:border-mv-green-deep"
+          />
+          {searching && (
+            <>
+              <span className="text-xs text-mv-muted">
+                {matches.length} of {terms.length}
+              </span>
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                className="cursor-pointer rounded-full border border-mv-line bg-white px-3 py-[6px] text-[13px] font-semibold text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep"
+              >
+                Clear
+              </button>
+            </>
           )}
         </div>
-      )}
-
-      <div className="sticky top-16 z-40 flex flex-wrap items-center gap-[10px] bg-mv-bg py-2 max-[767px]:top-[54px]">
-        <input
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          aria-label="Search glossary terms"
-          placeholder="Search terms… (name, topic or definition)"
-          className="min-w-[220px] flex-1 rounded-full border border-mv-line bg-white px-[14px] py-2 text-[13px] outline-none focus-visible:border-mv-green-deep"
-        />
-        {searching && (
-          <>
-            <span className="text-xs text-mv-muted">
-              {matches.length} of {terms.length}
-            </span>
-            <button
-              type="button"
-              onClick={() => setQuery("")}
-              className="cursor-pointer rounded-full border border-mv-line bg-white px-3 py-[6px] text-[13px] font-semibold text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep"
-            >
-              Clear
-            </button>
-          </>
-        )}
       </div>
 
       {matches.length === 0 ? (
@@ -123,7 +133,11 @@ export function GlossaryIndex({ terms }: { terms: GlossaryTermSummary[] }) {
         // Two columns, as the design's `#glossList` is, collapsing at 820px.
         <div className="mt-2 columns-2 gap-x-[30px] max-[820px]:columns-1">
           {groups.map((group) => (
-            <div key={group.letter}>
+            // `break-inside-avoid` on the GROUP, not just the cards. Without it
+            // a letter can split across the column break: its heading stays at
+            // the foot of column one while its terms carry on at the head of
+            // column two, which then opens mid-alphabet with no letter above it.
+            <div key={group.letter} className="break-inside-avoid">
               {/* `font-serif font-bold` rather than `headingBase`: the design's
                   `.gl-letter` is weight 700, and headingBase's `font-semibold`
                   would collide — two utilities on one property resolve by
@@ -190,7 +204,7 @@ function TermCard({ term }: { term: GlossaryTermSummary }) {
             place would be a duplicate for anyone tabbing or using a screen
             reader. Kept as text so the affordance still reads. */}
         <span className="whitespace-nowrap font-semibold text-mv-green-deep group-hover:underline">
-          Full definition →
+          Read more →
         </span>
       </dd>
     </div>

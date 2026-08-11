@@ -69,7 +69,9 @@ export default async function GlossaryTermPage({
 
   return (
     <div className="py-16 pt-[26px] max-[767px]:py-11">
-      <div className="mx-auto max-w-[760px] px-7 max-[767px]:px-4">
+      {/* 960px — matches the article pages; see the note in `article-page.tsx`
+          for why this sits between the design's 760 and the listings' 1200. */}
+      <div className="mx-auto max-w-[960px] px-7 max-[767px]:px-4">
         <Link href="/glossary" className={`${inlineLink} text-[13px]`}>
           ← Glossary
         </Link>

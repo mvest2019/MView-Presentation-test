@@ -1,14 +1,19 @@
 import Link from "next/link";
 
 /**
- * The Resources pill-tab row the design puts at the top of all seven library
- * pages (`.pill-tabs` in the prototype). Only Blog & News is built so far; the
- * rest resolve once their pages land.
+ * The Resources pill-tab row the design puts at the top of the library pages
+ * (`.pill-tabs` in the prototype). Blog, News and Glossary are built; the rest
+ * resolve once their pages land.
+ *
+ * The design has a single "Blog & News" tab with an in-page view switch behind
+ * it. This build gives each its own tab and route instead, so the row is eight
+ * entries rather than seven.
  */
 
 const TABS = [
   { label: "Resources", href: "/resources" },
-  { label: "Blog & News", href: "/blog" },
+  { label: "Blog", href: "/blog" },
+  { label: "News", href: "/news" },
   { label: "Glossary", href: "/glossary" },
   { label: "Watch & Listen", href: "/media" },
   { label: "Community Q&A", href: "/qa" },

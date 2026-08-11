@@ -54,6 +54,13 @@
   --font-serif:
     var(--font-lexend-deca), -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Tailwind's preflight points `code`, `kbd`, `samp` and `pre` at this stack.
+     Nothing in the app asks for monospace, but the CMS could publish a <code>
+     block at any time and it would arrive in a second typeface. Aimed at Lexend
+     Deca so the site stays one font throughout; restore Tailwind's default
+     stack here if real monospace is ever wanted. */
+  --font-mono:
+    var(--font-lexend-deca), ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* Elevation and shape */
   --shadow-mv: 0 1px 3px rgba(13, 14, 23, 0.07), 0 4px 14px rgba(13, 14, 23, 0.05);

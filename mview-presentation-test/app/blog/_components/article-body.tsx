@@ -34,10 +34,14 @@ const ARTICLE_BODY = [
   "[&_li]:my-1",
   // Inline images
   "[&_img]:my-2 [&_img]:h-auto [&_img]:max-w-full [&_img]:rounded-[10px] [&_img]:border [&_img]:border-mv-line",
-  // Tables
+  // Tables. `table-fixed` below 1024px for the same reason as the glossary body:
+  // `w-full` loses to a table's min-content width under `table-layout:auto`, so
+  // a table with long cells overflows its container and scrolls the page
+  // sideways on a phone. See the note in `glossary-content.tsx`.
   "[&_table]:my-[10px] [&_table]:w-full [&_table]:border-collapse [&_table]:text-[13px]",
-  "[&_th]:border [&_th]:border-mv-line [&_th]:px-[9px] [&_th]:py-[7px] [&_th]:text-left [&_th]:bg-[#f6f9f7]",
-  "[&_td]:border [&_td]:border-mv-line [&_td]:px-[9px] [&_td]:py-[7px] [&_td]:text-left",
+  "max-[1023px]:[&_table]:table-fixed",
+  "[&_th]:border [&_th]:border-mv-line [&_th]:px-[9px] [&_th]:py-[7px] [&_th]:text-left [&_th]:break-words [&_th]:bg-[#f6f9f7]",
+  "[&_td]:border [&_td]:border-mv-line [&_td]:px-[9px] [&_td]:py-[7px] [&_td]:text-left [&_td]:break-words",
 ].join(" ");
 
 export function ArticleBody({ html }: { html: string | undefined }) {

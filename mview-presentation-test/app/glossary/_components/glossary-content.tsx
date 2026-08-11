@@ -24,7 +24,11 @@ const GLOSSARY_BODY = [
   // Prose
   "[&_h2]:mt-[18px] [&_h2]:mb-2 [&_h2]:font-serif [&_h2]:font-semibold [&_h2]:leading-[1.18] [&_h2]:tracking-[-.01em] [&_h2]:text-[20px] [&_h2]:text-mv-ink",
   "[&_h3]:mt-[14px] [&_h3]:mb-[6px] [&_h3]:font-serif [&_h3]:font-semibold [&_h3]:leading-[1.18] [&_h3]:tracking-[-.01em] [&_h3]:text-[15.5px] [&_h3]:text-mv-ink",
-  "[&_p]:mb-[10px] [&_p]:max-w-[72ch] [&_p]:text-[14px] [&_p]:text-mv-slate",
+  // The design caps paragraphs at 72ch, which was a mild limit inside its 760px
+  // column. This build's article column is 1200px, where that cap left ~490px
+  // of empty space to the right of every paragraph. Dropped so the text fills
+  // the card, matching the blog and news article body.
+  "[&_p]:mb-[10px] [&_p]:text-[14px] [&_p]:text-mv-slate",
   "[&_ul]:mb-3 [&_ul]:ml-5 [&_ul]:list-disc [&_ul]:text-[14px] [&_ul]:text-mv-slate",
   "[&_ol]:mb-3 [&_ol]:ml-5 [&_ol]:list-decimal [&_ol]:text-[14px] [&_ol]:text-mv-slate",
   "[&_li]:my-1",
@@ -33,10 +37,17 @@ const GLOSSARY_BODY = [
   "[&_img]:my-2 [&_img]:block [&_img]:h-auto [&_img]:max-w-full [&_img]:rounded-[10px] [&_img]:border [&_img]:border-mv-line",
   "[&_figure]:my-3",
   "[&_figcaption]:mt-[2px] [&_figcaption]:text-xs [&_figcaption]:text-mv-muted",
-  // Tables
+  // Tables. `w-full` alone is not enough: under the default `table-layout:auto`
+  // a table's min-content width beats `width:100%`, so cells with long copy push
+  // it wider than its container. On the JOA term that put a 436px table inside a
+  // 299px box and forced the whole page to scroll sideways on a phone. Below
+  // 1024px the layout is fixed so columns must fit and cells wrap instead —
+  // the same trade the design makes for its one wide table at mobile. Desktop
+  // keeps auto layout, where content-sized columns read better and fit anyway.
   "[&_table]:my-[10px] [&_table]:w-full [&_table]:border-collapse [&_table]:text-[13px]",
-  "[&_th]:border [&_th]:border-mv-line [&_th]:px-[9px] [&_th]:py-[7px] [&_th]:text-left [&_th]:align-top [&_th]:bg-[#f6f9f7]",
-  "[&_td]:border [&_td]:border-mv-line [&_td]:px-[9px] [&_td]:py-[7px] [&_td]:text-left [&_td]:align-top",
+  "max-[1023px]:[&_table]:table-fixed",
+  "[&_th]:border [&_th]:border-mv-line [&_th]:px-[9px] [&_th]:py-[7px] [&_th]:text-left [&_th]:align-top [&_th]:break-words [&_th]:bg-[#f6f9f7]",
+  "[&_td]:border [&_td]:border-mv-line [&_td]:px-[9px] [&_td]:py-[7px] [&_td]:text-left [&_td]:align-top [&_td]:break-words",
   // CMS wrapper blocks
   "[&_.glossary-callout]:my-[10px] [&_.glossary-callout]:rounded-[10px] [&_.glossary-callout]:border [&_.glossary-callout]:border-[#cdeede] [&_.glossary-callout]:bg-mv-mint [&_.glossary-callout]:px-3 [&_.glossary-callout]:py-[10px]",
   "[&_.glossary-note]:my-[10px] [&_.glossary-note]:rounded-[10px] [&_.glossary-note]:border [&_.glossary-note]:border-[#cdeede] [&_.glossary-note]:bg-mv-mint [&_.glossary-note]:px-3 [&_.glossary-note]:py-[10px]",
