@@ -2,10 +2,17 @@ import { Mail, MapPin, Phone } from "lucide-react";
 
 import { contactConfig as cfg } from "./contact-config";
 
-/** Right-hand "Get in touch" card — static details + business hours. */
+/**
+ * Right-hand "Get in touch" card — static details + business hours.
+ *
+ * Matches the form card's height, but the rows stay at their content size: the
+ * spare height goes into one gap above Business Hours instead of being shared
+ * out across the rows. Letting the rows flex-grow instead is what made them
+ * airy — ~106px of row for ~65px of content.
+ */
 export function ContactInfo() {
   return (
-    <div className="flex h-full flex-col rounded-mv border border-mv-line bg-mv-card p-[22px] shadow-mv">
+    <div className="flex h-full flex-col rounded-mv border border-mv-line bg-mv-card p-[20px] shadow-mv">
       <div className="mb-1.5 text-[11.5px] font-bold uppercase tracking-[.12em] text-mv-green-deep">
         Get in touch
       </div>
@@ -13,7 +20,7 @@ export function ContactInfo() {
         Reach us directly
       </h2>
 
-      <div className="flex items-center gap-[13px] border-b border-mv-line py-[14px] min-[861px]:flex-1 min-[861px]:basis-0">
+      <div className="flex items-center gap-[13px] border-b border-mv-line py-[11px]">
         <span className="flex h-[42px] w-[42px] flex-none items-center justify-center rounded-[11px] bg-mv-mint text-mv-green-deep">
           <Phone className="h-5 w-5" />
         </span>
@@ -29,7 +36,7 @@ export function ContactInfo() {
         </div>
       </div>
 
-      <div className="flex items-center gap-[13px] border-b border-mv-line py-[14px] min-[861px]:flex-1 min-[861px]:basis-0">
+      <div className="flex items-center gap-[13px] border-b border-mv-line py-[11px]">
         <span className="flex h-[42px] w-[42px] flex-none items-center justify-center rounded-[11px] bg-mv-mint text-mv-green-deep">
           <Mail className="h-5 w-5" />
         </span>
@@ -45,7 +52,7 @@ export function ContactInfo() {
         </div>
       </div>
 
-      <div className="flex items-center gap-[13px] py-[14px] min-[861px]:flex-1 min-[861px]:basis-0">
+      <div className="flex items-center gap-[13px] py-[11px]">
         <span className="flex h-[42px] w-[42px] flex-none items-center justify-center rounded-[11px] bg-mv-mint text-mv-green-deep">
           <MapPin className="h-5 w-5" />
         </span>
@@ -64,9 +71,8 @@ export function ContactInfo() {
         </div>
       </div>
 
-      {/* Rows above flex-grow evenly on desktop, so this sits right after the
-          address with no dead gap while the card stays equal-height. */}
-      <div className="mt-3 rounded-xl bg-mv-green-ink p-[18px] text-[#eafff6]">
+      {/* Absorbs the leftover height, so it sits on the card's bottom edge. */}
+      <div className="mt-auto rounded-xl bg-mv-green-ink p-[16px] text-[#eafff6]">
         <div className="mb-[9px] text-[11.5px] font-extrabold uppercase tracking-[.09em] text-[#7fd4ae]">
           Business hours
         </div>
