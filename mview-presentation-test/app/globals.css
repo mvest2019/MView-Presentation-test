@@ -30,25 +30,12 @@
   --color-mv-green-deep: #2e8f6d;
   --color-mv-mint: #e6fff5;
 
-  /* The LOGO's green, and a hover shade of it.
-     SAMPLED, NOT AUTHORED — #00cd95 is decoded straight out of the Cloudinary
-     logo asset (measured #00ce93/#00cf91 across its pixels) and is the brand
-     green the memory record names. It is NOT the same as `--color-mv-green`
-     above: the design and the mockup both specify #54bf96, a muted sage, for UI
-     fills, so the mark and the buttons have never agreed.
-
-     USE THIS ONLY WHERE UI SITS DIRECTLY BESIDE THE MARK — today that is the
-     header's "Find your record" CTA and nothing else (Ryan, 2026-08-11). The
-     rest of the site keeps the design's sage palette deliberately; widening this
-     to `--color-mv-green` would repaint every chip, pill, letter heading and
-     focus ring, which is a separate decision.
-
-     The `-deep` hover is derived, not sampled: #00cd95 darkened until white text
-     on it clears 4.5:1 (it reaches 4.53). Both states beat what they replace —
-     ink on #00cd95 is 8.07:1 against 7.35, and this hover is 4.53:1 against the
-     3.99 that #2e8f6d managed. */
-  --color-mv-green-brand: #00cd95;
-  --color-mv-green-brand-deep: #00875f;
+  /* NOTE: the logo asset ships a vivid #00cd95 green, which the memory record
+     names as the brand green and which does NOT match `--color-mv-green` above.
+     Rather than add a second green here, the header's logo transform recolours
+     the mark to `--color-mv-green-deep` so the wordmark and the CTA agree — see
+     `logo.onLight` in `_components/site-nav.ts`. Deliberate: the design and the
+     mockup both specify the sage palette, and the palette stays extracted. */
 
   /* Text and surface */
   --color-mv-ink: #0d0e17;
@@ -64,6 +51,11 @@
      hover, its `--teal-tint`, and `--mint-line`, plus the mint button edge from
      the marketing shell. They were repeated as literals across a dozen call
      sites before being named; see the note above about where colour may live. */
+  /* The nav's own hover/active wash — the mockup's `--mv-hover`, which `.nl:hover`
+     and `.nl.active` both use. Distinct from `--color-mv-hover` below (#f4f6f8,
+     the operator prototype's neutral grey): this one is faintly green, which is
+     what makes a highlighted nav item read as brand rather than as disabled. */
+  --color-mv-nav-hover: #f2f8f5;
   --color-mv-line-soft: #eef1f4;
   --color-mv-line-strong: #d5dae0;
   --color-mv-mint-line: #bfe6d3;

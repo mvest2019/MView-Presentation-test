@@ -250,14 +250,30 @@ export const footerCompanyLinksBottom: NavLink[] = [
  * `to:tolerance:from`, so this reads "replace #ffffff with the brand ink". The
  * green is untouched: decoded, both variants carry the identical rgb(0,200,160).
  *
- * The target used to be #0F1B16, an off-brand near-black that came from the
- * prototype. It is now `--color-mv-green-ink` (#04231A) — the same dark the CTA
- * uses for text on green (Ryan, 2026-08-11). Keep it in step with that token.
+ * TWO transforms are chained on the light variant, both taking their targets
+ * from `header-mockup.html` (Ryan, 2026-08-11), which colours the wordmark
+ * MINERAL `--mv-green-deep` and VIEW `--mv-green-ink`:
+ *   1. #ffffff -> #04231a   the VIEW word, brand ink
+ *   2. #00cd95 -> #2e8f6d   the MINERAL word, green-deep
+ *
+ * Step 2 moves the mark OFF the brand green the asset ships (#00CD95, and the
+ * value the memory record names) onto the mockup's deeper green, so the wordmark
+ * and the header CTA sit in one family. Worth knowing that the mockup's logo is
+ * a hand-drawn placeholder using whatever CSS tokens it had to hand, so this may
+ * be an approximation rather than a brand decision — it is one line to drop if
+ * the vivid green is meant to stay.
+ *
+ * Order and tolerance are not arbitrary: chained at tolerance 45 the second pass
+ * dragged VIEW to #091513 instead of #04231A. Decoded, this pair lands both words
+ * exactly on target. Re-check with a pixel sample if you touch either.
+ *
+ * The dark variant is deliberately left alone — the mockup only shows the light
+ * header, and #2E8F6D on the footer's #0D0E17 would be muddy.
  */
 export const logo = {
-  /** Light surfaces (the header, the drawer) — "VIEW" renders brand ink. */
+  /** Light surfaces (the header, the drawer) — MINERAL green-deep, VIEW ink. */
   onLight:
-    "https://res.cloudinary.com/mview/image/upload/e_replace_color:04231a:48:ffffff/f_auto,q_auto,w_320/f_auto/icons/mineralview-logo.png",
+    "https://res.cloudinary.com/mview/image/upload/e_replace_color:04231a:48:ffffff/e_replace_color:2e8f6d:25:00cd95/f_auto,q_auto,w_320/f_auto/icons/mineralview-logo.png",
   /** Dark surfaces (the footer) — "VIEW" renders white. */
   onDark:
     "https://res.cloudinary.com/mview/image/upload/f_auto/f_auto,q_auto,w_320/icons/mineralview-logo.png",

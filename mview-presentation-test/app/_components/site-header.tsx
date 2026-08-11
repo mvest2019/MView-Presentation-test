@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { buttonClass } from "./button";
@@ -47,10 +48,21 @@ type OpenMenu = "explore" | "learn" | null;
  * because its own body sets no line-height.
  */
 const navLinkBase =
-  "whitespace-nowrap rounded-[10px] border-2 border-transparent px-[10px] py-[9px] text-[13.5px] font-semibold leading-[1.2] text-mv-slate no-underline transition-colors hover:bg-[#f2f8f5] hover:text-mv-green-deep hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep";
+  "whitespace-nowrap rounded-[10px] border-2 border-transparent px-[10px] py-[9px] text-[13.5px] font-semibold leading-[1.2] text-mv-slate no-underline transition-colors hover:bg-mv-nav-hover hover:text-mv-green-deep hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep";
+
+/**
+ * The mockup's `.nl.active` — the current page's bar item, and whichever menu is
+ * open, carry the same faint green wash as hover. Without it nothing in the bar
+ * says where you are: on /glossary every item read as inactive.
+ */
+/* `!` on both properties on purpose. `navLinkBase` sets `text-mv-slate` and the
+   menu triggers used to set `bg-transparent`, and two utilities touching one
+   property resolve by stylesheet order rather than by where they sit in the class
+   string — so without these the wash and the green text both silently lost. */
+const navLinkActive = "!bg-mv-nav-hover !text-mv-green-deep";
 
 /** The menu triggers match `.nl` exactly, so they sit level with the links. */
-const menuButtonBase = `${navLinkBase} inline-flex cursor-pointer items-center gap-[5px] bg-transparent font-sans`;
+const menuButtonBase = `${navLinkBase} inline-flex cursor-pointer items-center gap-[5px] font-sans`;
 
 /** One item inside either dropdown — the mockup's `.pi`. */
 const panelItem =
@@ -67,6 +79,23 @@ export function SiteHeader() {
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const navRef = useRef<HTMLElement>(null);
+  const pathname = usePathname();
+
+  /*
+   * A bar item is current when the path is it, or sits beneath it — so
+   * /blog/some-article keeps Learn lit, and /glossary/api-gravity too. The `"/"`
+   * guard matters: without it `startsWith("/")` would match every route and light
+   * up whichever item pointed at the home page.
+   */
+  const isCurrent = (href: string) =>
+    href === "/"
+      ? pathname === "/"
+      : pathname === href || pathname.startsWith(`${href}/`);
+
+  const exploreCurrent = exploreNav.some((column) =>
+    column.links.some((link) => isCurrent(link.href)),
+  );
+  const learnCurrent = learnNav.some((link) => isCurrent(link.href));
 
   // Close whichever menu is open on an outside click or Escape. Both also open
   // on hover, which is a `group-hover` rule on the trigger's wrapper.
@@ -152,14 +181,14 @@ export function SiteHeader() {
                 at weight 800 with 12px side padding and the ✚ at weight 900,
                 which makes it read heavier than the nav links either side. The
                 mockup had stepped it down to 13.5/700 and dropped the icon. */}
-            {/* Filled with the LOGO's green, not `mv-green`. The design's sage
-                #54bf96 sat next to a #00cd95 mark and the two read as different
-                greens; this is the one control close enough to the logo for that
-                to show, so it is the only place the brand green is used. See the
-                token comment in `globals.css`. */}
+            {/* Colours are the mockup's `.claim`: `--mv-green` fill and border,
+                `--mv-green-ink` text, hovering to `--mv-green-deep` on white. The
+                logo's MINERAL is transformed to green-deep to sit in the same
+                family, so no bespoke brand-green token is needed here.
+                Size stays the prototype's 14px/800 with the ✚. */}
             <Link
               href="/claim"
-              className={`${navLinkBase} !border-mv-green-brand !bg-mv-green-brand !px-3 !text-sm !font-extrabold !text-mv-green-ink hover:!border-mv-green-brand-deep hover:!bg-mv-green-brand-deep hover:!text-white`}
+              className={`${navLinkBase} !border-mv-green !bg-mv-green !px-3 !text-sm !font-extrabold !text-mv-green-ink hover:!border-mv-green-deep hover:!bg-mv-green-deep hover:!text-white`}
             >
               <span aria-hidden="true" className="mr-1 font-black">
                 ✚
@@ -169,13 +198,19 @@ export function SiteHeader() {
 
             {barNav.map((item) =>
               item.kind === "link" ? (
-                <Link key={item.href} href={item.href} className={navLinkBase}>
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={isCurrent(item.href) ? "page" : undefined}
+                  className={`${navLinkBase} ${isCurrent(item.href) ? navLinkActive : ""}`}
+                >
                   {item.label}
                 </Link>
               ) : item.menu === "explore" ? (
                 <ExploreMenu
                   key={item.label}
                   label={item.label}
+                  current={exploreCurrent}
                   open={openMenu === "explore"}
                   onToggle={() =>
                     setOpenMenu((current) =>
@@ -188,6 +223,7 @@ export function SiteHeader() {
                 <LearnMenu
                   key={item.label}
                   label={item.label}
+                  current={learnCurrent}
                   open={openMenu === "learn"}
                   onToggle={() =>
                     setOpenMenu((current) =>
@@ -262,11 +298,9 @@ export function SiteHeader() {
             <Link
               href="/claim"
               onClick={closeDrawer}
-              /* Same control as the bar's CTA, and the sheet shows the logo
-                 directly above it, so it carries the same brand green. Without
-                 the override this one button would be two different greens
-                 depending on viewport width. */
-              className={`${ctaPrimary} mb-2 !border-mv-green-brand !bg-mv-green-brand text-center hover:!bg-mv-green-brand-deep hover:!text-white`}
+              /* `ctaPrimary` is already the mockup's green fill on ink, so the
+                 sheet's CTA needs no colour override to agree with the bar's. */
+              className={`${ctaPrimary} mb-2 text-center`}
             >
               ✚ Find your record
             </Link>
@@ -332,21 +366,26 @@ export function SiteHeader() {
 /* ------------------------------------------------------------------ menus --- */
 
 /**
- * The Explore mega menu: three bordered columns, 660px wide, anchored to the
- * left edge of the bar rather than to its trigger.
+ * The Explore mega menu: three bordered columns, 660px wide, centred under the
+ * bar rather than aligned to its left edge.
  *
  * The wrapper is `static` on purpose. `absolute` positioning resolves against
  * the nearest positioned ancestor, so with a `relative` wrapper the panel would
  * hang off the trigger and run past the viewport on the right; `static` lets it
- * resolve against the bar, which is `relative`.
+ * resolve against the bar, which is `relative`. Centring is then
+ * `left-1/2 -translate-x-1/2` against that same box. The mockup anchors it
+ * `left:0`; centred was asked for (Ryan, 2026-08-11).
  */
 function ExploreMenu({
   label,
+  current,
   open,
   onToggle,
   onNavigate,
 }: {
   label: string;
+  /** True when the open page lives inside this menu — lights the trigger. */
+  current: boolean;
   open: boolean;
   onToggle: () => void;
   onNavigate: () => void;
@@ -357,7 +396,7 @@ function ExploreMenu({
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className={menuButtonBase}
+        className={`${menuButtonBase} ${open || current ? navLinkActive : ""}`}
       >
         {label}
         <span aria-hidden="true" className="text-[10px]">
@@ -367,7 +406,7 @@ function ExploreMenu({
 
       <div
         aria-label={label}
-        className={`absolute left-0 top-[calc(100%+8px)] z-[80] w-[660px] max-w-[calc(100vw-40px)] flex-wrap rounded-xl border border-mv-line bg-white p-[14px] shadow-[0_12px_30px_rgba(13,14,23,.14)] group-hover:flex ${
+        className={`absolute left-1/2 top-[calc(100%+8px)] z-[80] w-[660px] max-w-[calc(100vw-40px)] -translate-x-1/2 flex-wrap rounded-xl border border-mv-line bg-white p-[14px] shadow-[0_12px_30px_rgba(13,14,23,.14)] group-hover:flex ${
           open ? "flex" : "hidden"
         }`}
       >
@@ -431,11 +470,14 @@ function MegaColumnBlock({
 /** The Learn dropdown: four reading destinations, right-aligned to its trigger. */
 function LearnMenu({
   label,
+  current,
   open,
   onToggle,
   onNavigate,
 }: {
   label: string;
+  /** True when the open page lives inside this menu — lights the trigger. */
+  current: boolean;
   open: boolean;
   onToggle: () => void;
   onNavigate: () => void;
@@ -449,7 +491,7 @@ function LearnMenu({
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className={menuButtonBase}
+        className={`${menuButtonBase} ${open || current ? navLinkActive : ""}`}
       >
         {label}
         <span aria-hidden="true" className="text-[10px]">
