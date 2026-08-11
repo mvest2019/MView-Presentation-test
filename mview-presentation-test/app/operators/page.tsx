@@ -10,6 +10,8 @@ import {
   inlineLink,
 } from "@/app/_components/typography";
 
+import { getOperatorPlayTypes } from "@/lib/operator-api";
+
 import { CountyDirectory } from "./_components/county-directory";
 import { OperatorPage } from "./operator-page";
 
@@ -115,7 +117,34 @@ const FEATURE_CARDS = [
   },
 ];
 
-export default function OperatorsRoute() {
+/**
+ * The Play Type filter's options.
+ *
+ * Fetched here rather than in the dropdown for two reasons. The operator API
+ * sends no `Access-Control-Allow-Origin`, so a browser fetch is blocked by CORS
+ * and the call has to happen server-side regardless. And doing it here means the
+ * options are already in the HTML: no client request, no spinner, no layout shift
+ * as the list arrives, and the route stays prerendered.
+ *
+ * The failure is swallowed *here*, not in the service — `getOperatorPlayTypes`
+ * throws so nothing is hidden, and this boundary decides that a filter which
+ * cannot load its options must not take the page down with it. The dropdown then
+ * renders with just its default option and every other filter keeps working.
+ * Measured upstream reliability makes this a real path, not a formality: one
+ * connection timeout and one 522 in four cold calls.
+ */
+async function loadPlayTypes(): Promise<string[]> {
+  try {
+    return await getOperatorPlayTypes();
+  } catch (error) {
+    console.error("[operators] play types unavailable:", error);
+    return [];
+  }
+}
+
+export default async function OperatorsRoute() {
+  const playTypes = await loadPlayTypes();
+
   return (
     <div className="pb-16 pt-[18px] max-[767px]:pb-11">
       <script
@@ -141,7 +170,7 @@ export default function OperatorsRoute() {
           </p>
         </div>
 
-        <OperatorPage />
+        <OperatorPage playTypes={playTypes} />
 
         {/* The hrefs are the paths the prototype points at. None of those routes
             exists yet — same situation as most of `site-nav.ts`, where every path

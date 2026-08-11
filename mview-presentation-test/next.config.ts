@@ -6,6 +6,18 @@ const nextConfig: NextConfig = {
     // production repo's next.config.ts; override in .env.local to point at
     // another environment (prod is https://mview-info.mineralview.com).
     BASE_URL: process.env.BASE_URL || "https://testing-paymentapi.mineralview.com",
+
+    // Mineral View operator API host — `/api/v1/operators/*`. Declared here, next
+    // to BASE_URL, so the domain lives in exactly one place; `lib/operator-api.ts`
+    // is the only module that reads it.
+    //
+    // Deliberately NOT `NEXT_PUBLIC_`: the operator endpoints send no
+    // `Access-Control-Allow-Origin`, so a browser fetch is blocked by CORS and
+    // every call has to be server-side anyway. Keeping the name unprefixed means
+    // the host is never inlined into the client bundle.
+    OPERATOR_API_BASE_URL:
+      process.env.OPERATOR_API_BASE_URL ||
+      "https://mview-dev-api.mineralview.com",
   },
   images: {
     // Cloudinary serves both the Mineral View logo and every article/news

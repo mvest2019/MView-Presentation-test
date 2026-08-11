@@ -10,8 +10,8 @@ import {
   panelTitleClass,
   tinyClass,
 } from "@/app/_components/typography";
-import { OPERATORS_BY_PLAY, PLAY_NAMES } from "@/lib/operator-mock-data";
-import { formatProduction } from "@/lib/operator-query";
+import { OPERATORS_BY_PLAY } from "@/lib/operator-mock-data";
+import { formatProduction, resolvePlayKey } from "@/lib/operator-query";
 import {
   ALL_PLAYS,
   QUICK_FILTERS,
@@ -65,7 +65,17 @@ import {
 const STATUS_NOTE =
   "Illustrative placeholder — active/inactive wires from the live P-5 status";
 
-export function OperatorPage() {
+export function OperatorPage({
+  /**
+   * Play Type options from `GET /api/v1/operators/playtypes`, fetched by the
+   * server component in `page.tsx`. An empty array means the API was unreachable;
+   * the dropdown then offers its default option only, and nothing else on the
+   * page is affected.
+   */
+  playTypes,
+}: {
+  playTypes: string[];
+}) {
   const {
     query,
     page,
@@ -110,6 +120,7 @@ export function OperatorPage() {
           <FindBar
             search={query.search}
             play={query.play}
+            playTypes={playTypes}
             status={query.status}
             county={query.county}
             statusCounts={page.statusCounts}
@@ -247,9 +258,23 @@ const CONTROL_TINT = "border-mv-mint-line shadow-[0_1px_2px_rgba(13,14,23,.04)]"
 const SELECT_CLASS =
   "w-full cursor-pointer appearance-none rounded-[10px] border bg-white py-2 pl-[14px] pr-9 text-sm font-medium text-mv-ink outline-none transition-colors hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)]";
 
+/**
+ * The option label, keeping the design's trailing row count.
+ *
+ * The count is only shown when the loaded row data actually has that play — the
+ * play *names* now come from the API while the *rows* are still the local
+ * fixture, and printing a count for a play with no rows would be a made-up
+ * number. Once both come from the API every option carries one again.
+ */
+function playOptionLabel(name: string): string {
+  const key = resolvePlayKey(OPERATORS_BY_PLAY, name);
+  return key ? `${name} (${OPERATORS_BY_PLAY[key].length})` : name;
+}
+
 function FindBar({
   search,
   play,
+  playTypes,
   status,
   county,
   statusCounts,
@@ -260,6 +285,7 @@ function FindBar({
 }: {
   search: string;
   play: string;
+  playTypes: string[];
   status: OperatorStatus | "";
   county: string;
   statusCounts: ResultsPage["statusCounts"];
@@ -295,6 +321,10 @@ function FindBar({
         />
       </div>
 
+      {/* Options come from the API; the default option is always present, so the
+          filter stays usable even when the request failed and `playTypes` is
+          empty. `disabled` in that case would trap a visitor who had already
+          picked a play, so the control stays live. */}
       <SelectControl
         label="Choose a play type"
         value={play}
@@ -302,9 +332,9 @@ function FindBar({
         className="min-w-[180px] max-[767px]:min-w-full"
       >
         <option value={ALL_PLAYS}>Select Play type</option>
-        {PLAY_NAMES.map((name) => (
+        {playTypes.map((name) => (
           <option key={name} value={name}>
-            {name} ({OPERATORS_BY_PLAY[name].length})
+            {playOptionLabel(name)}
           </option>
         ))}
       </SelectControl>
