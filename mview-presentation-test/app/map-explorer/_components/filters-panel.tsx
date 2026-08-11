@@ -148,7 +148,7 @@ export const FILTER_SECTIONS: FilterSection[] = [
   },
   {
     id: "status",
-    label: "Status",
+    label: "Well status",
     items: [
       { name: "Permitted Location" },
       { name: "Producing" },
