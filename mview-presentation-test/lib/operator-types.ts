@@ -94,6 +94,12 @@ export const DEFAULT_QUERY: OperatorQuery = {
   pageSize: 10,
 };
 
+/**
+ * Page sizes the directory supports. No control exposes these right now — the
+ * pager's left slot reports the total record count instead — but `pageSize`
+ * remains part of `OperatorQuery`, so this is what a rows-per-page select would
+ * offer if one returns, and what the API should accept.
+ */
 export const PAGE_SIZES = [10, 25, 50, 100] as const;
 
 /** Which optional columns the table shows. Persisted client-side. */

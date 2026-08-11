@@ -7,10 +7,10 @@ import Link from "next/link";
  * for one page: pass the trail, leave `href` off the last item. Kept as a
  * server component; there is no interactive state here.
  *
- * The `›` separators are CSS `::before` content on each item after the first,
- * so they are decoration rather than text a screen reader announces between
- * every link. The list itself is a real `<ol>` inside a labelled `<nav>`, and
- * the leaf carries `aria-current="page"`.
+ * The `›` separators are `aria-hidden` spans on each item after the first, so
+ * they are decoration rather than text announced between every link. The list
+ * itself is a real `<ol>` inside a labelled `<nav>`, and the leaf carries
+ * `aria-current="page"`.
  */
 
 export type Crumb = {
@@ -28,18 +28,24 @@ export function Breadcrumbs({
 }) {
   return (
     <nav aria-label="Breadcrumb" className={className}>
-      {/* Wraps rather than overflows on narrow screens; `min-w-0` lets the
-          leaf truncate instead of pushing the page sideways. */}
-      <ol className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-mv-muted">
+      {/* Each item is its own flex row so the separator and the label always sit
+          side by side. The trail wraps between items on narrow screens; the
+          label wraps by word rather than truncating, because an ellipsis on a
+          two-word page name reads worse than a second line. */}
+      <ol className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] leading-[1.5] text-mv-muted">
         {items.map((item, index) => (
           <li
             key={`${item.label}-${index}`}
-            className={
-              index === 0
-                ? "min-w-0"
-                : "min-w-0 before:mr-2 before:text-mv-muted before:content-['›']"
-            }
+            className="flex min-w-0 items-center gap-2"
           >
+            {/* A real element rather than a CSS `::before`: some screen readers
+                announce generated content, and this stays reliably hidden. */}
+            {index > 0 && (
+              <span aria-hidden="true" className="shrink-0">
+                ›
+              </span>
+            )}
+
             {item.href ? (
               <Link
                 href={item.href}
@@ -48,7 +54,7 @@ export function Breadcrumbs({
                 {item.label}
               </Link>
             ) : (
-              <span aria-current="page" className="block truncate">
+              <span aria-current="page" className="min-w-0">
                 {item.label}
               </span>
             )}

@@ -38,7 +38,6 @@ export function OperatorDirectory() {
     toggleQuick,
     toggleSort,
     setPage,
-    setPageSize,
     setColumns,
     clearFilters,
     exportCsv,
@@ -56,14 +55,9 @@ export function OperatorDirectory() {
     >
       {/* ---- filter zone ---- */}
       <div className="relative bg-[linear-gradient(180deg,#f3faf6_0%,#ffffff_82%)] p-6 before:absolute before:inset-x-0 before:top-0 before:h-[3px] before:bg-[linear-gradient(90deg,var(--color-mv-green),var(--color-mv-green-deep))] before:content-[''] max-[767px]:p-4">
-        <div className="mb-3">
-          <h2 className="m-0 text-[19px] font-semibold tracking-[-.01em] text-mv-ink">
-            Operators directory
-          </h2>
-          <p className="mt-[3px] text-[13.5px] text-mv-muted">
-            Find an operator, then narrow by play, activity, or size.
-          </p>
-        </div>
+        <h2 className="mb-3 text-[19px] font-semibold tracking-[-.01em] text-mv-ink">
+          Operators directory
+        </h2>
 
         <OperatorQuickFilters
           active={query.quick}
@@ -134,11 +128,7 @@ export function OperatorDirectory() {
           onClearFilters={clearFilters}
         />
 
-        <OperatorPager
-          page={page}
-          onPage={setPage}
-          onPageSize={setPageSize}
-        />
+        <OperatorPager page={page} onPage={setPage} />
       </div>
     </section>
   );

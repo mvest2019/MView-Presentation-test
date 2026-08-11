@@ -1,29 +1,31 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
-
-import { PAGE_SIZES, type OperatorPage } from "@/lib/operator-types";
+import type { OperatorPage } from "@/lib/operator-types";
 
 /**
- * Pagination — the design's `.pager`: rows-per-page on the left, page buttons
- * on the right, both wrapping on narrow screens.
+ * Pagination — the design's `.pager`: the record count on the left, page
+ * buttons on the right, both wrapping on narrow screens.
  *
  * The page window is the prototype's: first, last, and the pages either side of
- * the current one, with `…` standing in for the gaps. The "Showing x–y of N"
- * line is not repeated here — it sits once above the table as the results
- * summary — so this row carries controls only.
+ * the current one, with `…` standing in for the gaps.
  *
- * Hidden entirely when there are no results, since paging nothing is noise.
+ * The left slot held a rows-per-page select in the prototype; it now reports the
+ * total instead. `page.total` is the count for the filters currently applied, so
+ * it tracks the data rather than restating the fixture's size — the same number
+ * a paginated API response would carry. Page size is still part of
+ * `OperatorQuery`, so a rows-per-page control can return without touching this
+ * component's shape.
+ *
+ * Hidden entirely when there are no results, since paging nothing is noise and
+ * the table's empty state already reports zero.
  */
 
 export function OperatorPager({
   page,
   onPage,
-  onPageSize,
 }: {
   page: OperatorPage;
   onPage: (page: number) => void;
-  onPageSize: (size: number) => void;
 }) {
   if (page.total === 0) return null;
 
@@ -41,33 +43,10 @@ export function OperatorPager({
       aria-label="Directory pages"
       className="flex flex-wrap items-center justify-between gap-3 px-[2px] pb-[2px] pt-4"
     >
-      <span className="flex items-center gap-2">
-        <label
-          htmlFor="operator-page-size"
-          className="text-[12.5px] text-mv-muted"
-        >
-          Rows per page
-        </label>
-        <span className="relative">
-          <select
-            id="operator-page-size"
-            value={page.pageSize}
-            onChange={(event) => onPageSize(Number(event.target.value))}
-            className="min-h-9 cursor-pointer appearance-none rounded-[10px] border border-mv-line bg-white py-[5px] pl-3 pr-[30px] font-sans text-[13.5px] font-medium text-mv-ink outline-none hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)]"
-          >
-            {PAGE_SIZES.map((size) => (
-              <option key={size} value={size}>
-                {size}
-              </option>
-            ))}
-          </select>
-          <ChevronDown
-            aria-hidden="true"
-            className="pointer-events-none absolute right-[11px] top-1/2 h-[7px] w-[11px] -translate-y-1/2 text-mv-muted"
-            strokeWidth={1.8}
-          />
-        </span>
-      </span>
+      <p className="m-0 text-[12.5px] text-mv-muted">
+        Total records:{" "}
+        <b className="font-bold tabular-nums text-mv-ink">{page.total}</b>
+      </p>
 
       <span className="flex flex-wrap items-center gap-[5px]">
         <PageButton
