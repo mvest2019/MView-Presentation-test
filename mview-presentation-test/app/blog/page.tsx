@@ -4,7 +4,8 @@ import Link from "next/link";
 import { getBlogList, getCategoryFacets } from "@/lib/blog-api";
 import { isBlogMode, type BlogMode } from "@/lib/blog-types";
 
-import { headingBase, inlineLink } from "../_components/typography";
+import { buttonClass } from "../_components/button";
+import { displayMdClass, eyebrowClass, inlineLink } from "../_components/typography";
 
 import { BlogCard } from "./_components/blog-card";
 import { BlogToolbar } from "./_components/blog-toolbar";
@@ -64,13 +65,9 @@ export default async function BlogPage({ searchParams }: PageProps<"/blog">) {
     <div className="py-16 pt-[52px] max-[767px]:py-11">
       <div className="mx-auto max-w-[1200px] px-7 max-[767px]:px-4">
         <div className="min-h-[150px] max-[767px]:min-h-0">
-          <div className="text-[11.5px] font-bold uppercase tracking-[.12em] text-mv-green-deep">
-            Blog &amp; News
-          </div>
-          {/* Its own size and leading — the design's `.res-h` override. */}
-          <h2
-            className={`${headingBase} my-2 text-[clamp(26px,3vw,34px)] leading-[1.16]`}
-          >
+          <div className={eyebrowClass}>Blog &amp; News</div>
+          {/* The design's `.res-h` override, now named in the type scale. */}
+          <h2 className={`${displayMdClass} my-2`}>
             Owner guides &amp; Texas news
           </h2>
           <p className="m-0 max-w-[620px] text-mv-muted">
@@ -118,7 +115,7 @@ export default async function BlogPage({ searchParams }: PageProps<"/blog">) {
             <Link
               href={moreHref}
               scroll={false}
-              className="inline-flex items-center justify-center gap-2 rounded-[10px] border border-mv-line bg-white px-[18px] py-[10px] text-sm font-semibold text-mv-slate !no-underline hover:bg-mv-bg"
+              className={buttonClass({ variant: "outline", size: "lg" })}
             >
               Load more articles ▾
             </Link>

@@ -1,5 +1,6 @@
 "use client";
 
+import { panelTitleClass, tinyClass } from "@/app/_components/typography";
 import { ALL_PLAYS } from "@/lib/operator-types";
 
 import { OperatorAppliedTags } from "./operator-applied-tags";
@@ -55,7 +56,7 @@ export function OperatorDirectory() {
     >
       {/* ---- filter zone ---- */}
       <div className="relative bg-[linear-gradient(180deg,#f3faf6_0%,#ffffff_82%)] p-6 before:absolute before:inset-x-0 before:top-0 before:h-[3px] before:bg-[linear-gradient(90deg,var(--color-mv-green),var(--color-mv-green-deep))] before:content-[''] max-[767px]:p-4">
-        <h2 className="mb-3 text-[19px] font-semibold tracking-[-.01em] text-mv-ink">
+        <h2 className={`${panelTitleClass} mb-3 text-mv-ink`}>
           Operators directory
         </h2>
 
@@ -85,7 +86,7 @@ export function OperatorDirectory() {
         />
       </div>
 
-      <div className="h-px bg-[#eef1f4]" />
+      <div className="h-px bg-mv-line-soft" />
 
       {/* ---- results zone ---- */}
       <div className="px-6 pb-[22px] pt-4 max-[767px]:px-4">
@@ -95,7 +96,7 @@ export function OperatorDirectory() {
         <div className="mb-[14px] flex flex-wrap items-center justify-between gap-3">
           <p
             aria-live="polite"
-            className="m-0 min-w-0 text-[12.5px] text-mv-muted"
+            className={`${tinyClass} m-0 min-w-0 text-mv-muted`}
           >
             {page.total > 0 ? (
               <>

@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
+import { buttonClass } from "./button";
 import {
   drawerExploreNav,
   learnNav,
@@ -26,13 +27,12 @@ import {
 const navLinkBase =
   "whitespace-nowrap rounded-[10px] border-2 border-transparent px-3 py-[9px] text-sm font-semibold text-mv-slate no-underline transition-colors hover:bg-[#f2f8f5] hover:text-mv-green-deep hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep max-[1180px]:px-2 max-[1180px]:text-[13.5px]";
 
-const btnBase =
-  "inline-flex cursor-pointer items-center justify-center gap-2 rounded-[10px] border border-transparent px-[18px] py-[10px] text-sm font-semibold leading-[1.2] !no-underline transition-[filter,background]";
-
-const btnMint =
-  "border-[#bfe9d8] bg-mv-mint text-mv-green-ink hover:brightness-[1.03]";
-
-const btnPrimary = "bg-mv-green text-mv-green-ink hover:brightness-[1.05]";
+/* The two CTA treatments now come from the shared button variants. The local
+   `btnBase`/`btnMint`/`btnPrimary` trio they replace was the original home of
+   these colours; it moved to `_components/button.tsx` so the blog, the operator
+   toolbar and this header stop each carrying their own copy. */
+const ctaMint = buttonClass({ variant: "mint", size: "lg" });
+const ctaPrimary = buttonClass({ variant: "primary", size: "lg" });
 
 export function SiteHeader() {
   const [learnOpen, setLearnOpen] = useState(false);
@@ -173,7 +173,7 @@ export function SiteHeader() {
                 account" breaks onto two lines and pushes the bar off 64px. */}
             <Link
               href="/signup"
-              className={`${btnBase} ${btnMint} whitespace-nowrap max-[767px]:px-[10px] max-[767px]:py-2 max-[767px]:text-xs`}
+              className={`${ctaMint} whitespace-nowrap max-[767px]:px-[10px] max-[767px]:py-2 max-[767px]:text-xs`}
             >
               Free account
             </Link>
@@ -220,14 +220,14 @@ export function SiteHeader() {
             <Link
               href="/claim"
               onClick={() => setDrawerOpen(false)}
-              className={`${btnBase} ${btnPrimary} mb-2 border-b-0 text-center`}
+              className={`${ctaPrimary} mb-2 text-center`}
             >
               ✚ Find &amp; claim your record
             </Link>
             <Link
               href="/signup"
               onClick={() => setDrawerOpen(false)}
-              className={`${btnBase} ${btnMint} mb-1 border-b-0 text-center`}
+              className={`${ctaMint} mb-1 text-center`}
             >
               Free account
             </Link>

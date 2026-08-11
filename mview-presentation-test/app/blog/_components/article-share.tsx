@@ -2,14 +2,13 @@
 
 import { useState } from "react";
 
+import { Button } from "@/app/_components/button";
+
 /**
  * Share row from the design (`v33ShareCopy` / `v33ShareVia`). The URL is read
  * from the browser at click time rather than reconstructed from an env var, so
  * it is right on every host the app runs on.
  */
-
-const btn =
-  "inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-mv-line bg-white px-3 py-[6px] text-[13px] font-semibold text-mv-slate hover:bg-mv-bg";
 
 export function ArticleShare({ title }: { title: string }) {
   const [copied, setCopied] = useState(false);
@@ -42,18 +41,18 @@ export function ArticleShare({ title }: { title: string }) {
       className="mt-[18px] flex flex-wrap items-center gap-2"
     >
       <span className="text-xs font-bold text-mv-muted">Share:</span>
-      <button type="button" className={btn} onClick={copyLink}>
+      <Button size="sm" onClick={copyLink}>
         🔗 {copied ? "Link copied ✓" : "Copy link"}
-      </button>
-      <button type="button" className={btn} onClick={() => shareVia("email")}>
+      </Button>
+      <Button size="sm" onClick={() => shareVia("email")}>
         ✉ Email
-      </button>
-      <button type="button" className={btn} onClick={() => shareVia("x")}>
+      </Button>
+      <Button size="sm" onClick={() => shareVia("x")}>
         𝕏 Post
-      </button>
-      <button type="button" className={btn} onClick={() => shareVia("facebook")}>
+      </Button>
+      <Button size="sm" onClick={() => shareVia("facebook")}>
         ⓕ Facebook
-      </button>
+      </Button>
     </div>
   );
 }

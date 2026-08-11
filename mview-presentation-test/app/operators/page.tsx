@@ -2,7 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { Breadcrumbs } from "@/app/_components/breadcrumbs";
-import { headingBase, inlineLink } from "@/app/_components/typography";
+import {
+  displayLgClass,
+  displaySmClass,
+  eyebrowClass,
+  inlineLink,
+} from "@/app/_components/typography";
 
 import { CountyDirectory } from "./_components/county-directory";
 import { OperatorDirectory } from "./_components/operator-directory";
@@ -42,11 +47,7 @@ export default function OperatorsPage() {
         />
 
         <div className="pt-7">
-          <h1
-            className={`${headingBase} text-[clamp(28px,4vw,40px)] leading-[1.18]`}
-          >
-            Know Your Operators
-          </h1>
+          <h1 className={displayLgClass}>Know Your Operators</h1>
           <p className="mt-[6px] max-w-[640px] text-[15.5px] text-mv-muted">
             Search, filter, and rank Texas oil &amp; gas operators by reported
             production, activity, and coverage.
@@ -58,12 +59,8 @@ export default function OperatorsPage() {
         <OperatorFeatureCards />
 
         <section className="mt-[46px]">
-          <div className="text-xs font-bold uppercase tracking-[.14em] text-mv-green-deep">
-            By county · public records
-          </div>
-          <h2
-            className={`${headingBase} mt-[7px] text-[clamp(22px,2.6vw,30px)] leading-[1.18]`}
-          >
+          <div className={eyebrowClass}>By county · public records</div>
+          <h2 className={`${displaySmClass} mt-[7px]`}>
             Browse operators by county
           </h2>
           <p className="mt-[7px] max-w-[660px] text-sm text-mv-muted">
@@ -75,7 +72,7 @@ export default function OperatorsPage() {
         </section>
 
         {/* The design's `.notice.slate` — the page's one conversion prompt. */}
-        <aside className="mt-6 flex gap-3 rounded-[14px] border border-[#dfe4e9] bg-[#eef1f4] px-[18px] py-4 text-sm leading-[1.55] text-[#33404e]">
+        <aside className="mt-6 flex gap-3 rounded-[14px] border border-[#dfe4e9] bg-mv-line-soft px-[18px] py-4 text-sm leading-[1.55] text-[#33404e]">
           <span aria-hidden="true">ℹ</span>
           <div>
             Numbers above come from Railroad Commission of Texas filings and are

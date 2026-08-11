@@ -2,12 +2,11 @@
  * The rounded filter pill from the prototype's `.fp` rule, with its optional
  * count badge (`.fp .cnt`).
  *
- * `#e6f6ee` is written out rather than reaching for `bg-mv-mint`: the token is
- * `#e6fff5`, a visibly cooler mint, and the prototype's selected pill is the
- * warmer green tint. Same reason `#eef1f4` appears for the badge — the design's
- * `--line2` has no token. Neither is added to `@theme`; per `globals.css` a
- * colour may only be defined there if it exists in the design system, and these
- * two are page-level values.
+ * The selected state uses `bg-mv-tint`, not `bg-mv-mint`: the mint token is
+ * `#e6fff5`, a visibly cooler mint, while the prototype's selected pill is the
+ * warmer `#e6f6ee` green tint. Both are tokens in `globals.css` now, along with
+ * `mv-line-soft` for the count badge — they were repeated as literals across the
+ * directory before being named.
  */
 
 export function FilterPill({
@@ -42,9 +41,9 @@ export function FilterPill({
           : undefined
       }
       onClick={onClick}
-      className={`group inline-flex cursor-pointer items-center rounded-full border px-4 py-[9px] font-sans text-[13.5px] shadow-[0_1px_1px_rgba(13,14,23,.03)] transition-[background,border-color,color,box-shadow,transform] duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep ${
+      className={`group inline-flex cursor-pointer items-center rounded-full border px-4 py-[9px] text-[13.5px] shadow-[0_1px_1px_rgba(13,14,23,.03)] transition-[background,border-color,color,box-shadow,transform] duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep ${
         active
-          ? "border-mv-green bg-[#e6f6ee] font-bold text-mv-green-deep shadow-[0_5px_14px_rgba(47,138,102,.16)]"
+          ? "border-mv-green bg-mv-tint font-bold text-mv-green-deep shadow-[0_5px_14px_rgba(47,138,102,.16)]"
           : "border-mv-line bg-white font-medium text-mv-ink hover:-translate-y-px hover:border-mv-green hover:text-mv-green-deep hover:shadow-[0_5px_12px_rgba(47,138,102,.12)]"
       } ${className}`}
     >
@@ -54,7 +53,7 @@ export function FilterPill({
           className={`ml-[6px] rounded-full px-2 py-px text-[11.5px] font-bold tracking-[.01em] ${
             active
               ? "bg-white text-mv-green-deep"
-              : "bg-[#eef1f4] text-mv-muted group-hover:bg-white group-hover:text-mv-green-deep"
+              : "bg-mv-line-soft text-mv-muted group-hover:bg-white group-hover:text-mv-green-deep"
           }`}
         >
           {count}

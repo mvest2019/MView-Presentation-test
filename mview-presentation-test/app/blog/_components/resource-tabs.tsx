@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { selectedControlClass } from "@/app/_components/button";
 
 /**
  * The Resources pill-tab row the design puts at the top of all seven library
@@ -28,7 +29,7 @@ export function ResourceTabs({ active }: { active: string }) {
             aria-current={isActive ? "page" : undefined}
             className={`rounded-full border px-[15px] py-[7px] text-[13px] font-semibold no-underline hover:no-underline ${
               isActive
-                ? "border-mv-green-deep bg-mv-green-deep text-white"
+                ? selectedControlClass
                 : "border-mv-line bg-white text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep"
             }`}
           >

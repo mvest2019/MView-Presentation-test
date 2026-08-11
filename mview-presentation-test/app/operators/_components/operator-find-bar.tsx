@@ -26,11 +26,11 @@ import {
  * every control goes full width so nothing is squeezed under a usable size.
  */
 
-/** `#bfe6d3` is the design's `--mint-line`; no token exists for it. */
-const CONTROL_TINT = "border-[#bfe6d3] shadow-[0_1px_2px_rgba(13,14,23,.04)]";
+/** The mint-edged control border and lift — the design's `--mint-line`. */
+const CONTROL_TINT = "border-mv-mint-line shadow-[0_1px_2px_rgba(13,14,23,.04)]";
 
 const SELECT_CLASS =
-  "w-full cursor-pointer appearance-none rounded-[10px] border bg-white py-2 pl-[14px] pr-9 font-sans text-sm font-medium text-mv-ink outline-none transition-colors hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)]";
+  "w-full cursor-pointer appearance-none rounded-[10px] border bg-white py-2 pl-[14px] pr-9 text-sm font-medium text-mv-ink outline-none transition-colors hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)]";
 
 export function OperatorFindBar({
   search,
@@ -76,7 +76,7 @@ export function OperatorFindBar({
           value={search}
           onChange={(event) => onSearch(event.target.value)}
           placeholder="Search by Operator Name or Operator Number…"
-          className={`w-full rounded-xl border bg-white py-[13px] pl-11 pr-[14px] font-sans text-[15px] text-mv-ink outline-none transition-colors placeholder:text-[#9aa3ae] hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)] ${CONTROL_TINT}`}
+          className={`w-full rounded-xl border bg-white py-[13px] pl-11 pr-[14px] text-[15px] text-mv-ink outline-none transition-colors placeholder:text-mv-placeholder hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)] ${CONTROL_TINT}`}
         />
       </div>
 

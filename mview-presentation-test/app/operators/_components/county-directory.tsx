@@ -9,6 +9,7 @@ import {
   COUNTY_LETTERS_PRESENT,
   TEXAS_COUNTIES,
 } from "@/lib/texas-counties";
+import { selectedControlClass } from "@/app/_components/button";
 
 /**
  * "Browse operators by county" — the design's v46 county directory: an A–Z
@@ -62,9 +63,9 @@ export function CountyDirectory() {
                 disabled={disabled}
                 aria-pressed={active}
                 onClick={() => setLetter(value)}
-                className={`min-w-[34px] cursor-pointer rounded-[9px] border px-[9px] py-[7px] font-sans text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep disabled:cursor-not-allowed disabled:opacity-40 ${
+                className={`min-w-[34px] cursor-pointer rounded-[9px] border px-[9px] py-[7px] text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep disabled:cursor-not-allowed disabled:opacity-40 ${
                   active
-                    ? "border-mv-green-deep bg-mv-green-deep text-white"
+                    ? selectedControlClass
                     : "border-mv-line bg-white text-mv-ink enabled:hover:border-mv-green enabled:hover:text-mv-green-deep"
                 }`}
               >
@@ -80,7 +81,7 @@ export function CountyDirectory() {
           </label>
           <Search
             aria-hidden="true"
-            className="pointer-events-none absolute left-[13px] top-1/2 h-4 w-4 -translate-y-1/2 text-[#9aa3ae]"
+            className="pointer-events-none absolute left-[13px] top-1/2 h-4 w-4 -translate-y-1/2 text-mv-placeholder"
             strokeWidth={1.8}
           />
           <input
@@ -89,7 +90,7 @@ export function CountyDirectory() {
             value={term}
             onChange={(event) => setTerm(event.target.value)}
             placeholder="Search a county…"
-            className="h-[42px] w-full rounded-[10px] border border-mv-line bg-white py-2 pl-[38px] pr-[14px] font-sans text-sm text-mv-ink outline-none focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)]"
+            className="h-[42px] w-full rounded-[10px] border border-mv-line bg-white py-2 pl-[38px] pr-[14px] text-sm text-mv-ink outline-none focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)]"
           />
         </div>
       </div>
@@ -109,7 +110,7 @@ export function CountyDirectory() {
               >
                 <MapPin
                   aria-hidden="true"
-                  className="h-[15px] w-[15px] shrink-0 text-[#9aa3ae] group-hover:text-mv-green-deep"
+                  className="h-[15px] w-[15px] shrink-0 text-mv-placeholder group-hover:text-mv-green-deep"
                   strokeWidth={1.7}
                 />
                 <span className="min-w-0 flex-1 truncate">
@@ -131,7 +132,7 @@ export function CountyDirectory() {
           <button
             type="button"
             onClick={reset}
-            className="cursor-pointer border-0 bg-transparent p-0 font-sans text-[13.5px] font-semibold text-mv-green-deep hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+            className="cursor-pointer border-0 bg-transparent p-0 text-[13.5px] font-semibold text-mv-green-deep hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
           >
             Clear filter
           </button>

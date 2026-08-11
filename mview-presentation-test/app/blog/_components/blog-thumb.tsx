@@ -54,7 +54,7 @@ export function BlogThumb({
           className="block h-full w-full object-cover"
         />
       ) : (
-        <div className="absolute inset-0 flex items-center justify-center font-serif text-xl font-bold tracking-[.06em] text-[#bfeeda]">
+        <div className="absolute inset-0 flex items-center justify-center font-sans text-xl font-bold tracking-[.06em] text-[#bfeeda]">
           MINERAL VIEW
         </div>
       )}

@@ -34,9 +34,24 @@
   --color-mv-ink: #0d0e17;
   --color-mv-slate: #1e293b;
   --color-mv-muted: #6b7280;
+  --color-mv-placeholder: #9aa3ae;
   --color-mv-bg: #f6f7f9;
   --color-mv-card: #ffffff;
   --color-mv-line: #e5e7eb;
+
+  /* Second-tier surfaces and hairlines. Extracted like everything else here —
+     these are the operator directory prototype's `--line2`, `--hover`, its row
+     hover, its `--teal-tint`, and `--mint-line`, plus the mint button edge from
+     the marketing shell. They were repeated as literals across a dozen call
+     sites before being named; see the note above about where colour may live. */
+  --color-mv-line-soft: #eef1f4;
+  --color-mv-line-strong: #d5dae0;
+  --color-mv-mint-line: #bfe6d3;
+  --color-mv-mint-edge: #bfe9d8;
+  --color-mv-tint: #e6f6ee;
+  --color-mv-hover: #f4f6f8;
+  --color-mv-row-hover: #fafbfc;
+  --color-mv-table-head: #1f2937;
 
   /* Status */
   --color-mv-amber: #b45309;
@@ -46,14 +61,21 @@
   --color-mv-blue: #1d4ed8;
   --color-mv-blue-bg: #dbeafe;
 
-  /* Type — Lexend Deca throughout (Nikhil, 2026-07-20); the prototype points
-     both the serif and sans stacks at it. */
+  /* Type — Lexend Deca throughout (Nikhil, 2026-07-20).
+     `--font-lexend-deca` is set by `next/font/google` in `app/layout.tsx`, which
+     self-hosts the face; it is loaded there once and must not be loaded again.
+     `font-sans` on `<body>` is what makes every element inherit it, form
+     controls included — Tailwind's preflight sets `font: inherit` on button,
+     input, select, optgroup and textarea, so no component needs to restate it.
+
+     `--font-serif` resolves to the same face. The prototype pointed both stacks
+     at Lexend Deca, and the alias is kept so a stray `font-serif` still renders
+     brand type — but application code should use `font-sans`, since naming a
+     sans face "serif" reads as a mistake. Nothing in `app/` uses it now. */
   --font-sans:
     var(--font-lexend-deca), -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-serif:
-    var(--font-lexend-deca), -apple-system, BlinkMacSystemFont, "Segoe UI",
-    Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-serif: var(--font-sans);
 
   /* Elevation and shape */
   --shadow-mv: 0 1px 3px rgba(13, 14, 23, 0.07), 0 4px 14px rgba(13, 14, 23, 0.05);

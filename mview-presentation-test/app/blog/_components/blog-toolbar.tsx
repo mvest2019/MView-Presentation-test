@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
 import type { BlogMode, CategoryFacet } from "@/lib/blog-types";
+import { selectedControlClass } from "@/app/_components/button";
 
 /**
  * The listing controls from the prototype: a Blog/News view switch, a search
@@ -103,7 +104,7 @@ export function BlogToolbar({
                     params.delete("category");
                   })
                 }
-                className={`cursor-pointer whitespace-nowrap rounded-lg border-0 px-3 py-[6px] font-sans text-xs font-bold ${
+                className={`cursor-pointer whitespace-nowrap rounded-lg border-0 px-3 py-[6px] text-xs font-bold ${
                   active
                     ? "bg-mv-green text-mv-green-ink"
                     : "bg-transparent text-mv-slate"
@@ -162,9 +163,9 @@ function ChipButton({
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`cursor-pointer rounded-full border px-[15px] py-[7px] font-sans text-[13px] font-semibold ${
+      className={`cursor-pointer rounded-full border px-[15px] py-[7px] text-[13px] font-semibold ${
         active
-          ? "border-mv-green-deep bg-mv-green-deep text-white"
+          ? selectedControlClass
           : "border-mv-line bg-white text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep"
       }`}
     >

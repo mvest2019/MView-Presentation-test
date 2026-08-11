@@ -24,7 +24,7 @@ export function OperatorAppliedTags({
   if (filters.length === 0) return null;
 
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#eef1f4] pt-4">
+    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-mv-line-soft pt-4">
       <span className="text-[12.5px] font-extrabold uppercase tracking-[.07em] text-mv-muted">
         Applied:
       </span>
@@ -32,7 +32,7 @@ export function OperatorAppliedTags({
       {filters.map((filter) => (
         <span
           key={filter.id}
-          className="inline-flex items-center gap-[6px] rounded-full border border-[#bfe6d3] bg-[#e6f6ee] py-[5px] pl-3 pr-2 text-[12.5px] font-semibold text-mv-green-deep"
+          className="inline-flex items-center gap-[6px] rounded-full border border-mv-mint-line bg-mv-tint py-[5px] pl-3 pr-2 text-[12.5px] font-semibold text-mv-green-deep"
         >
           {filter.label}
           <button

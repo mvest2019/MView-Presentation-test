@@ -14,8 +14,8 @@ import { FilterPill } from "./filter-pill";
 
 /**
  * The directory table — the prototype's "Recent wells & permits" treatment:
- * dark `#1f2937` header, hairline row rules, teal operator links, pill status
- * badges.
+ * dark `mv-table-head` header, hairline row rules, teal operator links, pill
+ * status badges.
  *
  * RESPONSIVE: the horizontal scroll lives on the wrapper immediately around
  * the `<table>`, and the table keeps the design's `min-w-[760px]`. So the
@@ -87,7 +87,7 @@ export function OperatorTable({
           </caption>
 
           <thead>
-            <tr className="bg-[#1f2937]">
+            <tr className="bg-mv-table-head">
               <th
                 scope="col"
                 className="w-[58px] min-w-[58px] px-[18px] py-[15px] text-left text-[13px] font-semibold text-white"
@@ -195,17 +195,17 @@ function OperatorRow({
   const href = `/operators/${encodeURIComponent(slugify(operator.name))}`;
 
   const cellClass =
-    "whitespace-nowrap border-b border-[#eef1f4] bg-white px-[18px] py-4 text-[14.5px] text-mv-ink group-last:border-b-0";
+    "whitespace-nowrap border-b border-mv-line-soft bg-white px-[18px] py-4 text-[14.5px] text-mv-ink group-last:border-b-0";
 
   return (
-    <tr className="group transition-colors hover:bg-[#fafbfc]">
+    <tr className="group transition-colors hover:bg-mv-row-hover">
       <td
-        className={`${cellClass} text-[12.5px] tabular-nums text-mv-muted group-hover:bg-[#fafbfc]`}
+        className={`${cellClass} text-[12.5px] tabular-nums text-mv-muted group-hover:bg-mv-row-hover`}
       >
         {rank}
       </td>
 
-      <td className={`${cellClass} group-hover:bg-[#fafbfc]`}>
+      <td className={`${cellClass} group-hover:bg-mv-row-hover`}>
         <Link
           href={href}
           className="font-bold text-mv-green-deep no-underline hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
@@ -220,7 +220,7 @@ function OperatorRow({
 
       {showOil && (
         <td
-          className={`${cellClass} text-right tabular-nums group-hover:bg-[#fafbfc]`}
+          className={`${cellClass} text-right tabular-nums group-hover:bg-mv-row-hover`}
         >
           {formatProduction(operator.oilBbl)}
         </td>
@@ -228,7 +228,7 @@ function OperatorRow({
 
       {showGas && (
         <td
-          className={`${cellClass} text-right tabular-nums group-hover:bg-[#fafbfc]`}
+          className={`${cellClass} text-right tabular-nums group-hover:bg-mv-row-hover`}
         >
           {formatProduction(operator.gasMcf)}
         </td>
@@ -236,20 +236,20 @@ function OperatorRow({
 
       {showCounties && (
         <td
-          className={`${cellClass} text-right tabular-nums group-hover:bg-[#fafbfc]`}
+          className={`${cellClass} text-right tabular-nums group-hover:bg-mv-row-hover`}
         >
           {operator.counties}
         </td>
       )}
 
       {columns.status && (
-        <td className={`${cellClass} group-hover:bg-[#fafbfc]`}>
+        <td className={`${cellClass} group-hover:bg-mv-row-hover`}>
           <span
             title={STATUS_NOTE}
             className={`inline-block whitespace-nowrap rounded-full px-3 py-[5px] text-[12.5px] font-semibold leading-none ${
               operator.status === "active"
-                ? "bg-[#e6f6ee] text-mv-green-deep"
-                : "bg-[#eef1f4] text-mv-muted"
+                ? "bg-mv-tint text-mv-green-deep"
+                : "bg-mv-line-soft text-mv-muted"
             }`}
           >
             {operator.status === "active" ? "Active" : "Inactive"}
@@ -276,7 +276,7 @@ function SortButton({
       type="button"
       onClick={onClick}
       title={`Sort by ${label}`}
-      className="cursor-pointer border-0 bg-transparent p-0 font-sans text-[13px] font-semibold text-white hover:underline hover:underline-offset-[3px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+      className="cursor-pointer border-0 bg-transparent p-0 text-[13px] font-semibold text-white hover:underline hover:underline-offset-[3px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
     >
       {label}
       {active && (

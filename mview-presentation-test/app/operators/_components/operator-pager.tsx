@@ -1,6 +1,7 @@
 "use client";
 
 import type { OperatorPage } from "@/lib/operator-types";
+import { selectedControlClass } from "@/app/_components/button";
 
 /**
  * Pagination — the design's `.pager`: the record count on the left, page
@@ -106,10 +107,10 @@ function PageButton({
       disabled={disabled}
       aria-label={label}
       aria-current={current ? "page" : undefined}
-      className={`min-w-[34px] cursor-pointer rounded-[9px] border px-[10px] py-[6px] font-sans text-[13.5px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep disabled:cursor-not-allowed disabled:opacity-40 ${
+      className={`min-w-[34px] cursor-pointer rounded-[9px] border px-[10px] py-[6px] text-[13.5px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep disabled:cursor-not-allowed disabled:opacity-40 ${
         current
-          ? "border-mv-green-deep bg-mv-green-deep text-white"
-          : "border-mv-line bg-white text-mv-ink enabled:hover:bg-[#f4f6f8]"
+          ? selectedControlClass
+          : "border-mv-line bg-white text-mv-ink enabled:hover:bg-mv-hover"
       }`}
     >
       {children}

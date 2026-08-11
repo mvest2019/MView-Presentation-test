@@ -1,3 +1,4 @@
+import { fieldGroupLabelClass } from "@/app/_components/typography";
 import {
   QUICK_FILTERS,
   type QuickFilterKey,
@@ -41,9 +42,7 @@ export function OperatorQuickFilters({
 }) {
   return (
     <div>
-      <h4 className="mb-[10px] inline-flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[.12em] text-mv-green-deep before:h-[2px] before:w-4 before:rounded-sm before:bg-mv-green before:content-['']">
-        Quick filters
-      </h4>
+      <h4 className={`${fieldGroupLabelClass} mb-[10px]`}>Quick filters</h4>
 
       <div
         role="group"

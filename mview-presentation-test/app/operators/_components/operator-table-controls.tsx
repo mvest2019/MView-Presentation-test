@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { Button } from "@/app/_components/button";
 import type { OperatorColumns } from "@/lib/operator-types";
 
 /**
@@ -16,9 +17,6 @@ import type { OperatorColumns } from "@/lib/operator-types";
  * The Operator Name column is checked and disabled: the table is meaningless
  * without it, which is the design's `.pop label.lock`.
  */
-
-const BUTTON_CLASS =
-  "inline-flex cursor-pointer items-center gap-2 rounded-[10px] border border-mv-line bg-white px-4 py-[9px] font-sans text-[15px] font-semibold text-mv-ink transition-colors hover:border-[#d5dae0] hover:bg-[#f4f6f8] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep max-[767px]:text-sm";
 
 const COLUMN_LABELS: { key: keyof OperatorColumns; label: string }[] = [
   { key: "oil", label: "Oil Produced" },
@@ -63,19 +61,18 @@ export function OperatorTableControls({
   return (
     <div className="flex flex-wrap items-center gap-[10px]">
       <div ref={wrapRef} className="relative inline-block">
-        <button
+        <Button
           ref={triggerRef}
-          type="button"
           aria-expanded={open}
           aria-haspopup="true"
           onClick={() => setOpen((value) => !value)}
-          className={BUTTON_CLASS}
+          className="max-[767px]:text-sm"
         >
           Columns
           <span aria-hidden="true" className="text-[11px]">
             ▾
           </span>
-        </button>
+        </Button>
 
         {open && (
           // Anchored right on desktop; flipped to the left edge under 480px so a
@@ -114,10 +111,10 @@ export function OperatorTableControls({
         )}
       </div>
 
-      <button type="button" onClick={onExport} className={BUTTON_CLASS}>
+      <Button onClick={onExport} className="max-[767px]:text-sm">
         Export CSV
         <span aria-hidden="true">↓</span>
-      </button>
+      </Button>
     </div>
   );
 }
