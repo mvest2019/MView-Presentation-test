@@ -21,6 +21,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { BasemapGallery } from "./basemap-gallery";
 import { FiltersPanel } from "./filters-panel";
+import { LegendsPanel } from "./legends-panel";
 import { PlaceResults, matchPlaces, type Place } from "./map-search";
 import { ShareMenu } from "./share-menu";
 import { ToolsPanel } from "./tools-panel";
@@ -455,14 +456,18 @@ export function MapChrome({
         )}
       </div>
 
-      {/* ---------------- scale + coordinates ----------------
-          Steps aside when the filters panel is open rather than hiding under
-          it: 12px gutter + the panel's 252px + another 12px gutter. */}
+      {/* ---------------- legend + scale ----------------
+          One bottom-left stack, so the two keep their spacing whatever the
+          legend is doing. It steps aside when the filters panel is open rather
+          than hiding under it: 12px gutter + the panel's 252px + 12px again. */}
       <div
-        className={`pointer-events-auto absolute bottom-6 w-[252px] overflow-hidden rounded-lg border border-mv-line bg-white/97 shadow-mv ${
+        className={`absolute bottom-6 flex flex-col items-start gap-2 ${
           filtersOpen ? "left-[276px]" : "left-3"
         }`}
       >
+      <LegendsPanel className="pointer-events-auto" />
+
+      <div className="pointer-events-auto w-[252px] overflow-hidden rounded-lg border border-mv-line bg-white/97 shadow-mv">
         <div className="px-3 pb-[6px] pt-2 text-[12px] font-semibold text-mv-ink">
           1 : {Math.round(scale).toLocaleString("en-US")}
         </div>
@@ -481,6 +486,7 @@ export function MapChrome({
           Latitude: {center.latitude.toFixed(4)}, Longitude:{" "}
           {center.longitude.toFixed(4)}
         </div>
+      </div>
       </div>
 
       {/* ---------------- navigation stack ---------------- */}
@@ -516,24 +522,31 @@ export function MapChrome({
           onClick={onToggleFullscreen}
         />
 
-        <div className="pointer-events-auto flex flex-col overflow-hidden rounded-lg border border-mv-line bg-white shadow-mv">
-          <button
-            type="button"
-            onClick={onZoomIn}
-            aria-label="Zoom in"
-            className="grid h-[30px] w-[30px] cursor-pointer place-items-center text-mv-slate hover:bg-[#f2f8f5] hover:text-mv-green-deep"
-          >
-            <Plus size={15} aria-hidden="true" />
-          </button>
+        {/* No `overflow-hidden` on this group: it would clip the tooltips that
+            sit outside it. The two buttons round their own outer corners
+            instead — 7px, the container's 8px less its 1px border. */}
+        <div className="pointer-events-auto flex flex-col rounded-lg border border-mv-line bg-white shadow-mv">
+          <Tooltip label="Zoom in">
+            <button
+              type="button"
+              onClick={onZoomIn}
+              aria-label="Zoom in"
+              className="grid h-[30px] w-[30px] cursor-pointer place-items-center rounded-t-[7px] text-mv-slate hover:bg-[#f2f8f5] hover:text-mv-green-deep"
+            >
+              <Plus size={15} aria-hidden="true" />
+            </button>
+          </Tooltip>
           <span className="h-px bg-mv-line" />
-          <button
-            type="button"
-            onClick={onZoomOut}
-            aria-label="Zoom out"
-            className="grid h-[30px] w-[30px] cursor-pointer place-items-center text-mv-slate hover:bg-[#f2f8f5] hover:text-mv-green-deep"
-          >
-            <Minus size={15} aria-hidden="true" />
-          </button>
+          <Tooltip label="Zoom out">
+            <button
+              type="button"
+              onClick={onZoomOut}
+              aria-label="Zoom out"
+              className="grid h-[30px] w-[30px] cursor-pointer place-items-center rounded-b-[7px] text-mv-slate hover:bg-[#f2f8f5] hover:text-mv-green-deep"
+            >
+              <Minus size={15} aria-hidden="true" />
+            </button>
+          </Tooltip>
         </div>
 
         {/* A house, not another expand glyph — the previous icon was a near
@@ -580,6 +593,35 @@ function ToolbarButton({
   );
 }
 
+/**
+ * Hover/focus label for the icon-only controls, sitting to their left.
+ *
+ * Replaces the native `title`, which never appears for keyboard users and
+ * cannot be styled. `group-focus-within` covers the keyboard case, since the
+ * whole stack is tab-reachable. The button keeps its `aria-label`; this is
+ * decoration, hence `aria-hidden`.
+ */
+function Tooltip({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className="group pointer-events-auto relative flex">
+      {children}
+
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute right-full top-1/2 z-50 mr-2 -translate-y-1/2 whitespace-nowrap rounded-md bg-[#1b2430] px-[9px] py-[5px] text-[11.5px] font-semibold leading-none text-white opacity-0 shadow-mv-lg transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100"
+      >
+        {label}
+      </span>
+    </span>
+  );
+}
+
 function IconButton({
   icon: Icon,
   label,
@@ -595,20 +637,21 @@ function IconButton({
   expanded?: boolean;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      aria-expanded={expanded}
-      title={label}
-      className={`pointer-events-auto grid h-[30px] w-[30px] cursor-pointer place-items-center rounded-lg border shadow-mv ${
-        active
-          ? "border-mv-green-deep bg-mv-green-deep text-white"
-          : "border-mv-line bg-white text-mv-slate hover:bg-[#f2f8f5] hover:text-mv-green-deep"
-      }`}
-    >
-      <Icon size={15} aria-hidden="true" />
-    </button>
+    <Tooltip label={label}>
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        aria-expanded={expanded}
+        className={`grid h-[30px] w-[30px] cursor-pointer place-items-center rounded-lg border shadow-mv ${
+          active
+            ? "border-mv-green-deep bg-mv-green-deep text-white"
+            : "border-mv-line bg-white text-mv-slate hover:bg-[#f2f8f5] hover:text-mv-green-deep"
+        }`}
+      >
+        <Icon size={15} aria-hidden="true" />
+      </button>
+    </Tooltip>
   );
 }
 
