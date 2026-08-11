@@ -7,6 +7,7 @@ import {
   Layers,
   Monitor,
   Search,
+  Star,
   Tag,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -19,13 +20,17 @@ import {
 } from "./faq-data";
 
 /**
- * The interactive FAQ — the prototype's `route:faq` behavior, verbatim:
- * 6 category cards (General default) that show one category at a time, an
- * always-visible "Most asked" block, and a search that filters across every
- * category (and the featured block) while hiding the cards.
+ * The interactive FAQ — the prototype's `route:faq` behavior, with "Most asked"
+ * promoted to a card of its own so every card sits in one row at the top. One
+ * section shows at a time (Most asked is the default); search filters across
+ * every section at once and hides the cards while active.
  */
 
-const CATEGORY_ICON: Record<FaqCategory, typeof Info> = {
+const MOST_ASKED_TAB = "Most asked";
+type Tab = FaqCategory | typeof MOST_ASKED_TAB;
+
+const TAB_ICON: Record<Tab, typeof Info> = {
+  [MOST_ASKED_TAB]: Star,
   General: Info,
   Products: Layers,
   Payments: CreditCard,
@@ -80,52 +85,44 @@ function FaqItem({
   );
 }
 
-function CatHead({ label, count }: { label: string; count: number }) {
-  return (
-    <div className="mb-[14px] mt-1 border-b-2 border-mv-line pb-[9px] text-[18px] font-extrabold text-mv-ink">
-      {label}{" "}
-      <span className="ml-[7px] text-[13px] font-bold text-mv-muted">
-        {count}
-      </span>
-    </div>
-  );
-}
-
 export function FaqExplorer() {
-  const [active, setActive] = useState<FaqCategory>("General");
+  const [active, setActive] = useState<Tab>(MOST_ASKED_TAB);
   const [query, setQuery] = useState("");
 
-  const byCategory = useMemo(
-    () =>
-      FAQ_CATEGORIES.map((category) => ({
-        category,
-        entries: FAQ_ENTRIES.filter((e) => e.category === category),
+  /* Most asked first, then the six categories — one flat list, so the cards and
+     the sections below them stay in step. */
+  const sections = useMemo(
+    () => [
+      {
+        tab: MOST_ASKED_TAB as Tab,
+        entries: MOST_ASKED.map((e) => ({
+          question: e.question,
+          answerHtml: e.answerHtml,
+        })),
+      },
+      ...FAQ_CATEGORIES.map((category) => ({
+        tab: category as Tab,
+        entries: FAQ_ENTRIES.filter((e) => e.category === category).map((e) => ({
+          question: e.question,
+          answerHtml: e.answerHtml,
+        })),
       })),
+    ],
     [],
   );
 
   const q = query.trim().toLowerCase();
-  const matches = (question: string, answerHtml: string) =>
-    q === "" ||
-    question.toLowerCase().includes(q) ||
-    toPlainText(answerHtml).toLowerCase().includes(q);
-
-  const featuredHits = MOST_ASKED.filter((e) =>
-    matches(e.question, e.answerHtml),
-  );
-  const blockHits = byCategory.map(({ category, entries }) => ({
-    category,
-    entries: entries.filter((e) => matches(e.question, e.answerHtml)),
-  }));
-  const total =
-    featuredHits.length + blockHits.reduce((n, b) => n + b.entries.length, 0);
-
   const searching = q !== "";
 
-  function selectCategory(category: FaqCategory) {
-    setActive(category);
-    setQuery("");
-  }
+  const hits = sections.map((section) => ({
+    ...section,
+    matched: section.entries.filter(
+      (e) =>
+        e.question.toLowerCase().includes(q) ||
+        toPlainText(e.answerHtml).toLowerCase().includes(q),
+    ),
+  }));
+  const total = hits.reduce((n, s) => n + s.matched.length, 0);
 
   return (
     <div>
@@ -140,38 +137,29 @@ export function FaqExplorer() {
           className="flex-1 border-0 bg-transparent text-[15px] text-mv-ink outline-none placeholder:text-[#9aa3ae]"
         />
       </div>
-      <p aria-live="polite" className="mb-[6px] min-h-[16px] text-xs text-mv-muted">
+      <p
+        aria-live="polite"
+        className="mb-[6px] min-h-[16px] text-xs text-mv-muted"
+      >
         {searching
           ? `${total} ${total === 1 ? "question matches" : "questions match"} “${query.trim()}”`
           : ""}
       </p>
 
-      {(!searching || featuredHits.length > 0) && (
-        <div className="mb-2">
-          <CatHead
-            label="Most asked"
-            count={searching ? featuredHits.length : MOST_ASKED.length}
-          />
-          {featuredHits.map((e) => (
-            <FaqItem key={e.question} {...e} />
-          ))}
-        </div>
-      )}
-
       {!searching && (
         <nav
           aria-label="FAQ categories"
-          className="mb-[26px] mt-[18px] grid grid-cols-6 gap-3 max-[820px]:grid-cols-3 max-[480px]:grid-cols-2"
+          className="mb-[26px] mt-[18px] grid grid-cols-7 gap-3 max-[1024px]:grid-cols-4 max-[820px]:grid-cols-3 max-[480px]:grid-cols-2"
         >
-          {byCategory.map(({ category, entries }) => {
-            const Icon = CATEGORY_ICON[category];
-            const on = category === active;
+          {sections.map(({ tab, entries }) => {
+            const Icon = TAB_ICON[tab];
+            const on = tab === active;
             return (
               <button
-                key={category}
+                key={tab}
                 type="button"
                 aria-pressed={on}
-                onClick={() => selectCategory(category)}
+                onClick={() => setActive(tab)}
                 className={`flex cursor-pointer flex-col items-center gap-[9px] rounded-[14px] border-[1.5px] px-[10px] pb-[13px] pt-4 text-center text-mv-ink transition ${
                   on
                     ? "border-mv-green-deep bg-mv-mint"
@@ -184,7 +172,7 @@ export function FaqExplorer() {
                   <Icon className="h-[22px] w-[22px]" />
                 </span>
                 <span className="text-[13px] font-bold leading-[1.2]">
-                  {category}
+                  {tab}
                 </span>
                 <span
                   className={`text-[11px] font-bold ${on ? "text-mv-green-deep" : "text-mv-muted"}`}
@@ -197,16 +185,25 @@ export function FaqExplorer() {
         </nav>
       )}
 
-      {blockHits.map(({ category, entries }) => {
-        const visible = searching ? entries.length > 0 : category === active;
+      {hits.map(({ tab, matched }) => {
+        const visible = searching ? matched.length > 0 : tab === active;
         if (!visible) return null;
         return (
-          /* Keyed by search state so switching category (or clearing a
-             search) closes any open answers, matching the prototype. */
-          <div key={`${category}${searching ? "-search" : ""}`}>
-            <CatHead label={category} count={entries.length} />
-            {entries.map((e) => (
-              <FaqItem key={e.question} question={e.question} answerHtml={e.answerHtml} />
+          /* Keyed by search state so switching card (or clearing a search)
+             closes any answer left open, matching the prototype. */
+          <div key={`${tab}${searching ? "-search" : ""}`}>
+            <div className="mb-[14px] mt-1 border-b-2 border-mv-line pb-[9px] text-[18px] font-extrabold text-mv-ink">
+              {tab}{" "}
+              <span className="ml-[7px] text-[13px] font-bold text-mv-muted">
+                {matched.length}
+              </span>
+            </div>
+            {matched.map((e) => (
+              <FaqItem
+                key={e.question}
+                question={e.question}
+                answerHtml={e.answerHtml}
+              />
             ))}
           </div>
         );

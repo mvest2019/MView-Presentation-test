@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { headingBase } from "../_components/typography";
-import { ResourceTabs } from "../blog/_components/resource-tabs";
 import { FaqExplorer } from "./_components/faq-explorer";
 
 /**
@@ -17,8 +17,19 @@ export const metadata: Metadata = {
 
 export default function FaqPage() {
   return (
-    <div className="py-16 pt-[52px] max-[767px]:py-11">
+    <div className="py-16 pt-[26px] max-[767px]:pb-11">
       <div className="mx-auto max-w-[1200px] px-7 max-[767px]:px-4">
+        <nav aria-label="Breadcrumb" className="mb-6 text-[13px]">
+          <Link
+            href="/"
+            className="font-semibold text-mv-green-deep no-underline hover:underline"
+          >
+            Home
+          </Link>
+          <span className="mx-2 text-mv-muted">›</span>
+          <span className="font-bold text-mv-ink">FAQ</span>
+        </nav>
+
         <div>
           <h2
             className={`${headingBase} my-2 text-[clamp(26px,3vw,34px)] leading-[1.16]`}
@@ -30,8 +41,6 @@ export default function FaqPage() {
             handled. Free to read — no account required.
           </p>
         </div>
-
-        <ResourceTabs active="/faq" />
 
         <div className="mt-4">
           <FaqExplorer />
