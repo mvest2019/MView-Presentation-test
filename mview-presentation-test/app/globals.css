@@ -82,3 +82,119 @@
   --shadow-mv-lg: 0 4px 10px rgba(13, 14, 23, 0.08), 0 16px 40px rgba(13, 14, 23, 0.1);
   --radius-mv: 12px;
 }
+
+/* ============================================================================
+   BASE — the prototype's global type and surface rules, ported as-is.
+   ============================================================================ */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background: var(--color-mv-bg);
+    color: var(--color-mv-ink);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a {
+    color: var(--color-mv-green-deep);
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    line-height: 1.18;
+    letter-spacing: -0.01em;
+  }
+
+  h1 {
+    font-size: 44px;
+  }
+  h2 {
+    font-size: 30px;
+  }
+  h3 {
+    font-size: 20px;
+  }
+  h4 {
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  @media (max-width: 1024px) {
+    h1 {
+      font-size: 36px;
+    }
+  }
+
+  @media (max-width: 767px) {
+    body {
+      font-size: 14px;
+    }
+    h1 {
+      font-size: 30px;
+    }
+    h2 {
+      font-size: 24px;
+    }
+  }
+}
+
+/* ============================================================================
+   MAP EXPLORER — the one ArcGIS internal Tailwind cannot reach.
+
+   Every control on the map is our own markup except the attribution, which the
+   SDK renders itself and its terms of use require us to keep. Out of the box it
+   is a full-width grey bar; the mock has it as plain small text in the corner,
+   under the scale card. Scoped to `.mv-map` so it cannot leak.
+   ============================================================================ */
+.mv-map .esri-attribution {
+  background: transparent;
+  color: var(--color-mv-muted);
+  font-size: 10px;
+  padding: 0 8px 2px;
+}
+
+/* ----------------------------------------------------------------------------
+   Slim scrollbars for the floating panels.
+
+   The platform default is ~15px, which is a lot of furniture inside a 204px
+   legend or a 252px filter rail. Scrollbars are one of the few things Tailwind
+   has no utility for, hence plain CSS. `scrollbar-width` is the standard
+   property (Chromium 121+, Firefox); the `::-webkit-` rules cover older
+   WebKit, where the two are mutually exclusive so there is no double-styling.
+   ---------------------------------------------------------------------------- */
+.mv-thin-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #d3d7dd transparent;
+}
+
+.mv-thin-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.mv-thin-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mv-thin-scroll::-webkit-scrollbar-thumb {
+  background: #d3d7dd;
+  border-radius: 999px;
+}
+
+.mv-thin-scroll::-webkit-scrollbar-thumb:hover {
+  background: #b9bec6;
+}
+
