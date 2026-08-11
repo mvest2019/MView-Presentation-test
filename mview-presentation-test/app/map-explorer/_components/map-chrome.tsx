@@ -54,6 +54,8 @@ type MapChromeProps = {
   /** Which of Map / Table / Insights is showing. Owned by the view. */
   viewTab: ViewTab;
   onViewTabChange: (tab: ViewTab) => void;
+  /** Insights halves the map, so the toolbar sheds what will not fit. */
+  compact?: boolean;
   /** The tool waiting for a drag on the map, if any. */
   activeTool: string | null;
   onSelectTool: (
@@ -83,6 +85,7 @@ export function MapChrome({
   onToggleFullscreen,
   viewTab,
   onViewTabChange,
+  compact = false,
   activeTool,
   onSelectTool,
   onZoomIn,
@@ -91,9 +94,22 @@ export function MapChrome({
 }: MapChromeProps) {
   const [basemapOpen, setBasemapOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
-  // Filters opens with the map. It is the panel people work from, and the
-  // chevron collapses it back to the edge tab when they want the width.
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  /*
+   * Filters is open or closed per view, not globally. On the map it is the
+   * panel people work from, so it opens with the page; alongside Insights the
+   * map is only half as wide and the summary is the point, so it starts
+   * collapsed to its edge tab. Keeping a flag per tab also means each view
+   * remembers what you last did in it, instead of one view's choice following
+   * you into the other.
+   */
+  const [filtersOpenByTab, setFiltersOpenByTab] = useState<
+    Record<ViewTab, boolean>
+  >({ map: true, insights: false, table: false });
+
+  const filtersOpen = filtersOpenByTab[viewTab];
+
+  const setFiltersOpen = (open: boolean) =>
+    setFiltersOpenByTab((current) => ({ ...current, [viewTab]: open }));
   const [shareOpen, setShareOpen] = useState(false);
   const [shareAnchor, setShareAnchor] = useState({ top: 60, right: 16 });
   const basemapRef = useRef<HTMLDivElement>(null);
@@ -260,30 +276,42 @@ export function MapChrome({
             </button>
           ))}
 
-          <Divider />
+          {/* The statewide count and Export CSV are the first to go when the
+              map is only half the page — the mock drops them too, and Share
+              falls back to its icon. */}
+          {!compact && (
+            <>
+              <Divider />
 
-          <div className="shrink-0 px-2">
-            <div className="text-[9px] font-extrabold uppercase leading-none tracking-[.09em] text-mv-muted">
-              Wells statewide
-            </div>
-            <div className="mt-[3px] text-[15px] font-extrabold leading-none text-mv-ink">
-              {WELLS_STATEWIDE.toLocaleString("en-US")}
-            </div>
-          </div>
+              <div className="shrink-0 px-2">
+                <div className="text-[9px] font-extrabold uppercase leading-none tracking-[.09em] text-mv-muted">
+                  Wells statewide
+                </div>
+                <div className="mt-[3px] text-[15px] font-extrabold leading-none text-mv-ink">
+                  {WELLS_STATEWIDE.toLocaleString("en-US")}
+                </div>
+              </div>
+            </>
+          )}
 
           <Divider />
 
           <ToolbarButton icon={Clock} label="Time-lapse" />
-          <ToolbarButton icon={Download} label="Export CSV">
-            <span className="inline-flex items-center gap-[2px] rounded bg-mv-amber-bg px-[5px] py-[2px] text-[9px] font-extrabold uppercase tracking-[.06em] text-mv-amber">
-              <Zap size={8} fill="currentColor" strokeWidth={0} aria-hidden="true" />
-              Pro
-            </span>
-          </ToolbarButton>
+
+          {!compact && (
+            <ToolbarButton icon={Download} label="Export CSV">
+              <span className="inline-flex items-center gap-[2px] rounded bg-mv-amber-bg px-[5px] py-[2px] text-[9px] font-extrabold uppercase tracking-[.06em] text-mv-amber">
+                <Zap size={8} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+                Pro
+              </span>
+            </ToolbarButton>
+          )}
+
           <span ref={shareButtonRef} className="shrink-0">
             <ToolbarButton
               icon={Share2}
-              label="Share"
+              label={compact ? "" : "Share"}
+              title="Share"
               onClick={toggleShare}
               expanded={shareOpen}
             />
@@ -422,18 +450,23 @@ function ToolbarButton({
   children,
   onClick,
   expanded,
+  title,
 }: {
   icon: typeof MapIcon;
+  /** Empty renders icon-only; `title` then carries the accessible name. */
   label: string;
   children?: React.ReactNode;
   onClick?: () => void;
   expanded?: boolean;
+  title?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-expanded={expanded}
+      aria-label={label ? undefined : title}
+      title={title}
       className="inline-flex shrink-0 cursor-pointer items-center gap-[6px] rounded-lg px-[10px] py-[6px] text-[13px] font-semibold leading-tight text-mv-slate transition-colors hover:bg-[#f2f8f5] hover:text-mv-green-deep"
     >
       <Icon size={15} strokeWidth={2} aria-hidden="true" />

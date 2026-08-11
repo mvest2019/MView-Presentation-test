@@ -10,6 +10,7 @@ import {
 
 import { AreaSelectionBar } from "./area-selection";
 import { loadArcgisModules } from "./arcgis-loader";
+import { InsightsPanel } from "./insights-panel";
 import { MapChrome, type ViewTab } from "./map-chrome";
 import { MeasureBar } from "./measure-bar";
 import {
@@ -936,10 +937,7 @@ export function MapExplorerView() {
     drawNearby(null);
   }, [drawNearby]);
 
-  /** Insights has no view yet, so selecting it is ignored rather than faked. */
-  const changeViewTab = useCallback((tab: ViewTab) => {
-    if (tab === "map" || tab === "table") setViewTab(tab);
-  }, []);
+  const changeViewTab = useCallback((tab: ViewTab) => setViewTab(tab), []);
 
   const downloadNearby = useCallback(() => {
     const current = nearbyRef.current;
@@ -1047,6 +1045,19 @@ export function MapExplorerView() {
        * element silently deletes them. The draw cursor lives on the root above
        * for exactly that reason.
        */}
+      {/*
+       * Insights splits the surface in half. Everything that belongs to the map
+       * — the Esri container and every overlay anchored to it — goes inside
+       * this wrapper, so the chrome, the tool bars and `view.toScreen` all
+       * measure against the map half rather than the whole page.
+       */}
+      <div
+        className={
+          viewTab === "insights"
+            ? "absolute inset-y-0 left-0 w-1/2 overflow-hidden"
+            : "absolute inset-0"
+        }
+      >
       <div ref={containerRef} className="h-full w-full" />
 
       {status === "ready" && area && areaAnchor && (
@@ -1083,16 +1094,6 @@ export function MapExplorerView() {
         />
       )}
 
-      {/* The map stays mounted underneath — unmounting it would destroy the
-          Esri view and pay for a full re-initialisation on the way back. */}
-      {status === "ready" && viewTab === "table" && (
-        <WellsTable
-          activeTab={viewTab}
-          onTabChange={changeViewTab}
-          onShowOnMap={() => setViewTab("map")}
-        />
-      )}
-
       {status === "ready" ? (
         <MapChrome
           scale={readout.scale}
@@ -1105,6 +1106,7 @@ export function MapExplorerView() {
           onToggleFullscreen={toggleFullscreen}
           viewTab={viewTab}
           onViewTabChange={changeViewTab}
+          compact={viewTab === "insights"}
           activeTool={activeTool}
           onSelectTool={startTool}
           onZoomIn={zoomIn}
@@ -1119,6 +1121,23 @@ export function MapExplorerView() {
         >
           {status === "loading" ? "Loading map…" : "The map could not be loaded."}
         </div>
+      )}
+      </div>
+
+      {status === "ready" && viewTab === "insights" && (
+        <div className="absolute inset-y-0 right-0 w-1/2 border-l border-mv-line">
+          <InsightsPanel />
+        </div>
+      )}
+
+      {/* The map stays mounted underneath — unmounting it would destroy the
+          Esri view and pay for a full re-initialisation on the way back. */}
+      {status === "ready" && viewTab === "table" && (
+        <WellsTable
+          activeTab={viewTab}
+          onTabChange={changeViewTab}
+          onShowOnMap={() => setViewTab("map")}
+        />
       )}
     </div>
   );
