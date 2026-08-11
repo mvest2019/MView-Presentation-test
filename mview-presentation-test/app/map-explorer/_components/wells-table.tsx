@@ -65,14 +65,25 @@ type WellsTableProps = {
   onShowOnMap: (row: WellRow) => void;
 };
 
-const COLUMNS: { key: SortKey; label: string; align?: "right" }[] = [
-  { key: "api", label: "API" },
-  { key: "operator", label: "Operator" },
-  { key: "lease", label: "Lease" },
-  { key: "type", label: "Type" },
-  { key: "status", label: "Status" },
-  { key: "county", label: "County" },
-  { key: "boe", label: "Reported BOE", align: "right" },
+/**
+ * Widths are shares of the table, taken from the mock's own column ratios.
+ * Left to `table-layout: auto` the slack all lands on one column — whichever
+ * happens to hold the longest string — which is what left a canyon between
+ * County and Reported BOE.
+ */
+const COLUMNS: {
+  key: SortKey;
+  label: string;
+  align?: "right";
+  width: string;
+}[] = [
+  { key: "api", label: "API", width: "w-[11%]" },
+  { key: "operator", label: "Operator", width: "w-[12%]" },
+  { key: "lease", label: "Lease", width: "w-[23%]" },
+  { key: "type", label: "Type", width: "w-[8%]" },
+  { key: "status", label: "Status", width: "w-[15%]" },
+  { key: "county", label: "County", width: "w-[15%]" },
+  { key: "boe", label: "Reported BOE", align: "right", width: "w-[8%]" },
 ];
 
 const FACETS: {
@@ -268,9 +279,12 @@ export function WellsTable({
     summary.total ? ((count / summary.total) * 100).toFixed(1) : "0.0";
 
   return (
-    <div className="absolute inset-0 z-40 overflow-y-auto bg-white">
+    /* Two cards on the page background, not one flat sheet: the result header
+       and its summary in the first, the grid and its pager in the second. */
+    <div className="absolute inset-0 z-40 overflow-y-auto bg-mv-bg p-4">
+      <div className="overflow-hidden rounded-xl border border-mv-line bg-white">
       {/* ---------------- heading ---------------- */}
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-6 pt-6">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-6 pt-5">
         <h2 className="text-[19px] font-bold leading-none text-mv-ink">
           <span className="text-mv-green-deep">
             {summary.total.toLocaleString("en-US")}
@@ -414,8 +428,9 @@ export function WellsTable({
         </div>
       )}
 
-      {/* ---------------- summary strip ---------------- */}
-      <div className="grid grid-cols-2 gap-px border-y border-mv-line bg-mv-line md:grid-cols-3 xl:grid-cols-6">
+      {/* ---------------- summary strip ----------------
+          Top border only — the card's own edge closes it off below. */}
+      <div className="grid grid-cols-2 gap-px border-t border-mv-line bg-mv-line md:grid-cols-3 xl:grid-cols-6">
         <SummaryCard
           icon={FlaskConical}
           tint="green"
@@ -464,7 +479,10 @@ export function WellsTable({
         />
       </div>
 
+      </div>
+
       {/* ---------------- table ---------------- */}
+      <div className="mt-4 overflow-hidden rounded-xl border border-mv-line bg-white">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1000px] border-collapse text-left">
           <thead>
@@ -484,7 +502,7 @@ export function WellsTable({
                 </label>
               </th>
 
-              {COLUMNS.map(({ key, label, align }) => (
+              {COLUMNS.map(({ key, label, align, width }) => (
                 <th
                   key={key}
                   scope="col"
@@ -495,14 +513,14 @@ export function WellsTable({
                         : "descending"
                       : "none"
                   }
-                  className={`px-4 py-[8px] ${align === "right" ? "text-right" : ""}`}
+                  className={`whitespace-nowrap px-4 py-[8px] ${width} ${
+                    align === "right" ? "text-right" : ""
+                  }`}
                 >
                   <button
                     type="button"
                     onClick={() => toggleSort(key)}
-                    className={`inline-flex cursor-pointer items-center gap-1 text-[10.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate hover:text-mv-green-deep ${
-                      align === "right" ? "flex-row-reverse" : ""
-                    }`}
+                    className="inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-[10.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate hover:text-mv-green-deep"
                   >
                     {label}
                     <SortMark
@@ -515,7 +533,7 @@ export function WellsTable({
 
               <th
                 scope="col"
-                className="py-[8px] pl-4 pr-6 text-[10.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate"
+                className="whitespace-nowrap py-[8px] pl-4 pr-6 text-[10.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate"
               >
                 View on map
               </th>
@@ -608,7 +626,7 @@ export function WellsTable({
       </div>
 
       {/* ---------------- pager ---------------- */}
-      <div className="flex flex-wrap items-center justify-end gap-2 px-6 py-4">
+      <div className="flex flex-wrap items-center justify-end gap-2 px-6 py-3">
         <span className="mr-2 text-[12.5px] text-mv-muted">
           {firstShown.toLocaleString("en-US")}–
           {lastShown.toLocaleString("en-US")} of{" "}
@@ -665,6 +683,7 @@ export function WellsTable({
           disabled={safePage === totalPages}
           onClick={() => setPage(totalPages)}
         />
+      </div>
       </div>
     </div>
   );
