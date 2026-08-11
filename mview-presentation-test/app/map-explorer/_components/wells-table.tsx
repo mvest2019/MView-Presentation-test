@@ -67,10 +67,15 @@ type WellsTableProps = {
 };
 
 /**
- * Widths are shares of the table, taken from the mock's own column ratios.
- * Left to `table-layout: auto` the slack all lands on one column — whichever
- * happens to hold the longest string — which is what left a canyon between
- * County and Reported BOE.
+ * Widths are shares of the table. Left to `table-layout: auto` the slack all
+ * lands on one column — whichever holds the longest string — which opens a
+ * canyon between County and Reported BOE.
+ *
+ * On a wide screen the table has several hundred pixels more than its content
+ * needs, and that slack has to land somewhere. Concentrating it in any one
+ * column opens a visible canyon — Lease at 28% did exactly that. These shares
+ * track each column's real content width instead, so the surplus is spread as
+ * an even gutter between every pair of columns rather than a hole after one.
  */
 const COLUMNS: {
   key: SortKey;
@@ -79,12 +84,12 @@ const COLUMNS: {
   width: string;
 }[] = [
   { key: "api", label: "API", width: "w-[11%]" },
-  { key: "operator", label: "Operator", width: "w-[12%]" },
-  { key: "lease", label: "Lease", width: "w-[23%]" },
-  { key: "type", label: "Type", width: "w-[8%]" },
-  { key: "status", label: "Status", width: "w-[15%]" },
-  { key: "county", label: "County", width: "w-[15%]" },
-  { key: "boe", label: "Reported BOE", align: "right", width: "w-[8%]" },
+  { key: "operator", label: "Operator", width: "w-[15%]" },
+  { key: "lease", label: "Lease", width: "w-[16%]" },
+  { key: "type", label: "Type", width: "w-[11%]" },
+  { key: "status", label: "Status", width: "w-[13%]" },
+  { key: "county", label: "County", width: "w-[11%]" },
+  { key: "boe", label: "Reported BOE", align: "right", width: "w-[12%]" },
 ];
 
 const FACETS: {
@@ -120,7 +125,6 @@ export function WellsTable({
   const [boeOnly, setBoeOnly] = useState(false);
   const [facets, setFacets] = useState<Facets>(emptyFacets);
   const [openFacet, setOpenFacet] = useState<FacetKey | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const filterBarRef = useRef<HTMLDivElement>(null);
 
   // Close an open dropdown on an outside click, as the map overlays do.
@@ -214,9 +218,6 @@ export function WellsTable({
 
   const firstShown = sorted.length ? (safePage - 1) * PER_PAGE + 1 : 0;
   const lastShown = Math.min(safePage * PER_PAGE, sorted.length);
-  const allOnPageSelected =
-    rows.length > 0 && rows.every((row) => selected.has(row.api));
-
   const chips = [
     ...FACETS.flatMap(({ key, label }) =>
       [...facets[key]].map((value) => ({ key, label, value })),
@@ -258,24 +259,6 @@ export function WellsTable({
     setPage(1);
   }
 
-  function toggleRow(api: string) {
-    setSelected((current) => {
-      const next = new Set(current);
-      if (next.has(api)) next.delete(api);
-      else next.add(api);
-      return next;
-    });
-  }
-
-  function togglePage() {
-    setSelected((current) => {
-      const next = new Set(current);
-      if (allOnPageSelected) rows.forEach((row) => next.delete(row.api));
-      else rows.forEach((row) => next.add(row.api));
-      return next;
-    });
-  }
-
   const share = (count: number) =>
     summary.total ? ((count / summary.total) * 100).toFixed(1) : "0.0";
 
@@ -283,7 +266,10 @@ export function WellsTable({
     /* Two cards on the page background, not one flat sheet: the result header
        and its summary in the first, the grid and its pager in the second. */
     <div className="absolute inset-0 z-40 overflow-y-auto bg-mv-bg p-4">
-      <div className="overflow-hidden rounded-xl border border-mv-line bg-white">
+      {/* No `overflow-hidden` here — the filter dropdowns open past the card's
+          bottom edge and it would slice them off. The summary strip rounds its
+          own bottom corners instead, which is all the clipping was for. */}
+      <div className="rounded-xl border border-mv-line bg-white">
       {/* ---------------- heading ----------------
           Back sits on the heading's own row rather than a row of its own: the
           table fills the screen, so the map is otherwise only reachable from
@@ -446,7 +432,7 @@ export function WellsTable({
 
       {/* ---------------- summary strip ----------------
           Top border only — the card's own edge closes it off below. */}
-      <div className="grid grid-cols-2 gap-px border-t border-mv-line bg-mv-line md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-b-xl border-t border-mv-line bg-mv-line md:grid-cols-3 xl:grid-cols-6">
         <SummaryCard
           icon={FlaskConical}
           tint="green"
@@ -503,22 +489,9 @@ export function WellsTable({
         <table className="w-full min-w-[1000px] border-collapse text-left">
           <thead>
             <tr className="border-b border-mv-line bg-[#f8f9fa]">
-              {/* First and last cells carry the page's 24px gutter, so the grid
-                  lines up with the heading above it. */}
-              <th scope="col" className="w-12 py-[8px] pl-6 pr-4">
-                <label className="flex cursor-pointer items-center">
-                  <input
-                    type="checkbox"
-                    className="sr-only"
-                    checked={allOnPageSelected}
-                    onChange={togglePage}
-                  />
-                  <Box checked={allOnPageSelected} />
-                  <span className="sr-only">Select all rows on this page</span>
-                </label>
-              </th>
-
-              {COLUMNS.map(({ key, label, align, width }) => (
+              {/* The first and last cells carry the page's 24px gutter, so the
+                  grid lines up with the heading above it. */}
+              {COLUMNS.map(({ key, label, align, width }, index) => (
                 <th
                   key={key}
                   scope="col"
@@ -529,9 +502,9 @@ export function WellsTable({
                         : "descending"
                       : "none"
                   }
-                  className={`whitespace-nowrap px-4 py-[8px] ${width} ${
-                    align === "right" ? "text-right" : ""
-                  }`}
+                  className={`whitespace-nowrap py-[8px] ${
+                    index === 0 ? "pl-6 pr-4" : "px-4"
+                  } ${width} ${align === "right" ? "text-right" : ""}`}
                 >
                   <button
                     type="button"
@@ -549,7 +522,7 @@ export function WellsTable({
 
               <th
                 scope="col"
-                className="whitespace-nowrap py-[8px] pl-4 pr-6 text-[12.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate"
+                className="whitespace-nowrap py-[8px] pl-4 pr-6 text-center text-[12.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate"
               >
                 View on map
               </th>
@@ -563,19 +536,6 @@ export function WellsTable({
                 className="border-b border-mv-line hover:bg-[#fafbfa]"
               >
                 <td className="py-[14px] pl-6 pr-4">
-                  <label className="flex cursor-pointer items-center">
-                    <input
-                      type="checkbox"
-                      className="sr-only"
-                      checked={selected.has(row.api)}
-                      onChange={() => toggleRow(row.api)}
-                    />
-                    <Box checked={selected.has(row.api)} />
-                    <span className="sr-only">Select {row.api}</span>
-                  </label>
-                </td>
-
-                <td className="px-4 py-[14px]">
                   <span className="text-[13px] font-semibold text-mv-green-deep underline underline-offset-2">
                     {row.api}
                   </span>
@@ -619,7 +579,7 @@ export function WellsTable({
                     onClick={() => onShowOnMap(row)}
                     aria-label={`Show ${row.api} on the map`}
                     title="View on map"
-                    className="grid h-[26px] w-[26px] cursor-pointer place-items-center rounded-lg border border-mv-line text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep"
+                    className="mx-auto grid h-[26px] w-[26px] cursor-pointer place-items-center rounded-lg border border-mv-line text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep"
                   >
                     <MapPin size={13} aria-hidden="true" />
                   </button>
@@ -630,7 +590,7 @@ export function WellsTable({
             {rows.length === 0 && (
               <tr>
                 <td
-                  colSpan={COLUMNS.length + 2}
+                  colSpan={COLUMNS.length + 1}
                   className="px-6 py-10 text-center text-[13px] text-mv-muted"
                 >
                   No wells match these filters.

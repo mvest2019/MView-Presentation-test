@@ -199,18 +199,13 @@ const WATCH_CSV_FILENAME = "mineral-view-nearby.csv";
 const TOOL_BLUE: [number, number, number] = [37, 99, 235];
 
 /**
- * Esri's World Topographic Map — the cream land, green national forests, blue
- * river labels and letterspaced physical-feature labels (COLORADO PLATEAU,
- * SONORAN DESERT, OZARK PLATEAU) in the mock.
+ * Esri's Streets basemap.
  *
- * Taken from the live map at mineralview.com/map, whose basemap picker offers
- * exactly satellite / streets / topo-vector ("Topographic") / dark-gray-vector
- * / osm. Guessing from the screenshot cost two wrong turns before that: both
- * `terrain` and National Geographic look plausibly tan in description, but
- * `terrain` renders pure white over Texas and Oklahoma — its relief data simply
- * stops there — which is what made the first build look washed out.
+ * `"streets"` rather than `"streets-vector"` so it matches the id on the
+ * gallery's Streets tile — otherwise the picker opens with nothing marked as
+ * current, even though Streets is what is on screen.
  */
-const DEFAULT_BASEMAP = "topo-vector";
+const DEFAULT_BASEMAP = "streets";
 
 const SCREENSHOT_FILENAME = "mineral-view-map.png";
 

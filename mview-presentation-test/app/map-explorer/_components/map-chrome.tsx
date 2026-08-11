@@ -328,23 +328,27 @@ export function MapChrome({
         ref={toolbarRef}
         className="absolute inset-x-0 top-0 flex justify-end p-4 max-[919px]:justify-center"
       >
-        <div className="pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-mv-line bg-white/97 px-2 py-[5px] shadow-mv-lg backdrop-blur-[6px]">
+        <div className="pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-mv-line bg-white/97 px-[6px] py-[4px] shadow-mv-lg backdrop-blur-[6px]">
+          {/* A segmented control: the grey track groups the three views and
+              makes the filled one read as the raised tab. */}
+          <div className="flex shrink-0 items-center gap-1 rounded-lg bg-[#f1f2f4] p-[3px]">
           {VIEW_TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
               aria-pressed={viewTab === id}
               onClick={() => onViewTabChange(id)}
-              className={`inline-flex shrink-0 cursor-pointer items-center gap-[6px] rounded-lg px-3 py-[6px] text-[13px] font-semibold leading-tight transition-colors ${
+              className={`inline-flex shrink-0 cursor-pointer items-center gap-[6px] rounded-lg px-[10px] py-[5px] text-[12.5px] font-semibold leading-tight transition-colors ${
                 viewTab === id
-                  ? "bg-mv-green-deep text-white"
-                  : "text-mv-slate hover:bg-[#f2f8f5] hover:text-mv-green-deep"
+                  ? "bg-mv-green-deep text-white shadow-mv"
+                  : "text-mv-slate hover:bg-white/70 hover:text-mv-green-deep"
               }`}
             >
               <Icon size={15} strokeWidth={2} aria-hidden="true" />
               {label}
             </button>
           ))}
+          </div>
 
           {/* The statewide count and Export CSV are the first to go when the
               map is only half the page — the mock drops them too, and Share
@@ -353,11 +357,11 @@ export function MapChrome({
             <>
               <Divider />
 
-              <div className="shrink-0 px-2">
+              <div className="shrink-0 px-[6px]">
                 <div className="text-[9px] font-extrabold uppercase leading-none tracking-[.09em] text-mv-muted">
                   Wells statewide
                 </div>
-                <div className="mt-[3px] text-[15px] font-extrabold leading-none text-mv-ink">
+                <div className="mt-[3px] text-[14px] font-extrabold leading-none text-mv-ink">
                   {WELLS_STATEWIDE.toLocaleString("en-US")}
                 </div>
               </div>
@@ -368,6 +372,8 @@ export function MapChrome({
 
           <ToolbarButton icon={Clock} label="Time-lapse" />
 
+          <Divider />
+
           {!compact && (
             <ToolbarButton icon={Download} label="Export CSV">
               <span className="inline-flex items-center gap-[2px] rounded bg-mv-amber-bg px-[5px] py-[2px] text-[9px] font-extrabold uppercase tracking-[.06em] text-mv-amber">
@@ -376,6 +382,8 @@ export function MapChrome({
               </span>
             </ToolbarButton>
           )}
+
+          {!compact && <Divider />}
 
           <span ref={shareButtonRef} className="shrink-0">
             <ToolbarButton
@@ -387,9 +395,11 @@ export function MapChrome({
             />
           </span>
 
+          <Divider />
+
           <div
             ref={searchBoxRef}
-            className="ml-1 flex shrink-0 items-center gap-2 rounded-lg border border-mv-line bg-white py-[5px] pl-3 pr-2 focus-within:border-mv-green focus-within:ring-1 focus-within:ring-mv-green"
+            className="ml-1 flex shrink-0 items-center gap-2 rounded-lg border border-mv-line bg-white py-[4px] pl-[10px] pr-[6px] focus-within:border-mv-green focus-within:ring-1 focus-within:ring-mv-green"
           >
             <label htmlFor="map-search" className="sr-only">
               Search by town, ZIP or API number
@@ -419,7 +429,7 @@ export function MapChrome({
               }}
               onKeyDown={onPlaceKeyDown}
               placeholder="Town, ZIP or API number"
-              className="w-[168px] border-0 bg-transparent text-[13px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted"
+              className="w-[148px] border-0 bg-transparent text-[12.5px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted"
             />
             <Search size={15} className="text-mv-muted" aria-hidden="true" />
           </div>
@@ -572,7 +582,7 @@ export function MapChrome({
 }
 
 function Divider() {
-  return <span aria-hidden="true" className="mx-1 h-7 w-px shrink-0 bg-mv-line" />;
+  return <span aria-hidden="true" className="mx-[2px] h-6 w-px shrink-0 bg-mv-line" />;
 }
 
 function ToolbarButton({
@@ -598,7 +608,7 @@ function ToolbarButton({
       aria-expanded={expanded}
       aria-label={label ? undefined : title}
       title={title}
-      className="inline-flex shrink-0 cursor-pointer items-center gap-[6px] rounded-lg px-[10px] py-[6px] text-[13px] font-semibold leading-tight text-mv-slate transition-colors hover:bg-[#f2f8f5] hover:text-mv-green-deep"
+      className="inline-flex shrink-0 cursor-pointer items-center gap-[6px] rounded-lg px-[9px] py-[5px] text-[12.5px] font-semibold leading-tight text-mv-slate transition-colors hover:bg-[#f2f8f5] hover:text-mv-green-deep"
     >
       <Icon size={15} strokeWidth={2} aria-hidden="true" />
       {label}
@@ -683,14 +693,14 @@ function EdgeTab({
     <button
       type="button"
       onClick={onClick}
-      className={`pointer-events-auto absolute cursor-pointer border border-mv-line bg-white px-[6px] py-[13px] shadow-mv hover:bg-[#f2f8f5] ${
+      className={`pointer-events-auto absolute cursor-pointer border border-mv-green-deep bg-mv-mint px-[11px] py-[15px] shadow-mv hover:bg-mv-green-deep hover:text-white ${
         side === "left"
           ? "left-0 top-6 rounded-r-lg border-l-0"
           : "right-0 top-16 rounded-l-lg border-r-0"
       }`}
     >
       {/* `vertical-rl` runs top-to-bottom; the flip makes it read upwards. */}
-      <span className="block rotate-180 text-[12px] font-extrabold uppercase leading-none tracking-[.12em] text-mv-green-deep [writing-mode:vertical-rl]">
+      <span className="block rotate-180 text-[12px] font-extrabold uppercase leading-none tracking-[.12em] [writing-mode:vertical-rl]">
         {label}
       </span>
     </button>
