@@ -22,6 +22,7 @@ import {
   TOP_COUNTIES,
   TOP_OPERATORS,
   TOTALS,
+  TOTALS_REPORTED_THROUGH,
   WELLS_DRILLED,
   WELL_MIX,
 } from "./insights-data";
@@ -45,19 +46,42 @@ export function InsightsPanel() {
   const [series, setSeries] = useState<"Oil" | "Gas" | "BOE">("BOE");
   const [range, setRange] = useState<"1Y" | "2Y" | "5Y">("2Y");
   const [grain, setGrain] = useState("Monthly");
+  /*
+   * Stacked under the map, the four headline cards are the whole summary most
+   * people want; the chart, the three-up cards and the totals are another few
+   * screens of scrolling past them. They stay behind a toggle until asked for,
+   * and are simply always there once the panel has a column of its own.
+   */
+  const [showAll, setShowAll] = useState(false);
+
+  const summaryToggle = (
+    <button
+      type="button"
+      onClick={() => setShowAll((current) => !current)}
+      aria-expanded={showAll}
+      className="mt-4 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-mv-line bg-white px-4 py-[13px] text-[14px] font-bold text-mv-green-deep hover:border-mv-green-deep xl:hidden"
+    >
+      {showAll ? "Less summary" : "Show full summary"}
+      <ChevronDown
+        size={16}
+        aria-hidden="true"
+        className={`transition-transform ${showAll ? "rotate-180" : ""}`}
+      />
+    </button>
+  );
 
   return (
     <div className="h-full overflow-y-auto bg-mv-bg p-4">
       {/* ---------------- header ---------------- */}
-      <div className="relative overflow-hidden rounded-xl border border-mv-line bg-white p-5">
+      <div className="relative overflow-hidden rounded-xl border border-mv-line bg-white p-4 lg:p-5">
         <div className="pointer-events-none absolute inset-y-0 right-0 w-[42%] bg-gradient-to-l from-[#eaf7f0] to-transparent" />
 
-        <div className="relative flex flex-wrap items-start gap-4">
-          <div className="min-w-0 flex-1">
+        <div className="relative flex flex-wrap items-start gap-3 lg:gap-4">
+          <div className="min-w-0 flex-1 basis-full lg:basis-0">
             <div className="text-[11px] font-semibold text-mv-muted">
               {INSIGHTS_HEADER.region}
             </div>
-            <h2 className="mt-[3px] text-[22px] font-bold leading-none text-mv-ink">
+            <h2 className="mt-[3px] text-[19px] font-bold leading-tight text-mv-ink lg:text-[22px] lg:leading-none">
               {INSIGHTS_HEADER.title}
             </h2>
 
@@ -65,7 +89,7 @@ export function InsightsPanel() {
               {INSIGHTS_HEADER.chips.map((chip, index) => (
                 <span
                   key={chip}
-                  className="inline-flex items-center gap-[6px] rounded-full border border-mv-line bg-white px-[11px] py-[5px] text-[12px] font-semibold text-mv-slate"
+                  className="inline-flex items-center gap-[6px] rounded-full border border-mv-line bg-white px-[9px] py-[4px] text-[11.5px] font-semibold text-mv-slate lg:px-[11px] lg:py-[5px] lg:text-[12px]"
                 >
                   {index > 0 && (
                     <span
@@ -79,13 +103,13 @@ export function InsightsPanel() {
               ))}
             </div>
 
-            <p className="mt-3 text-[12px] text-mv-muted">
+            <p className="mt-[10px] text-[11.5px] text-mv-muted lg:mt-3 lg:text-[12px]">
               {INSIGHTS_HEADER.meta}
             </p>
           </div>
 
-          <div className="flex flex-col items-end gap-3">
-            <div className="text-right">
+          <div className="flex w-full flex-col gap-[10px] lg:w-auto lg:items-end lg:gap-3">
+            <div className="w-full text-left lg:text-right">
               <div className="text-[9.5px] font-extrabold uppercase tracking-[.1em] text-mv-muted">
                 {INSIGHTS_HEADER.trendLabel}
               </div>
@@ -97,17 +121,17 @@ export function InsightsPanel() {
               />
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 [&>button]:flex-1 lg:[&>button]:flex-none">
               <button
                 type="button"
-                className="inline-flex cursor-pointer items-center gap-[6px] rounded-lg border border-mv-line bg-white px-[13px] py-[7px] text-[12.5px] font-semibold text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep"
+                className="inline-flex cursor-pointer items-center justify-center gap-[6px] rounded-lg border border-mv-line bg-white px-[11px] py-[7px] text-[12px] font-semibold text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep lg:px-[13px] lg:text-[12.5px]"
               >
                 <Search size={13} aria-hidden="true" />
                 Reset view
               </button>
               <button
                 type="button"
-                className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-mv-green-deep px-[13px] py-[7px] text-[12.5px] font-semibold text-white hover:brightness-105"
+                className="inline-flex cursor-pointer items-center justify-center gap-[6px] rounded-lg bg-mv-green-deep px-[11px] py-[7px] text-[12px] font-semibold text-white hover:brightness-105 lg:gap-2 lg:px-[13px] lg:text-[12.5px]"
               >
                 <Download size={13} aria-hidden="true" />
                 Export area
@@ -122,11 +146,11 @@ export function InsightsPanel() {
       </div>
 
       {/* ---------------- headline cards ---------------- */}
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         {HEADLINE_CARDS.map((card, index) => (
           <div
             key={card.label}
-            className="flex flex-col rounded-xl border border-mv-line bg-white p-4"
+            className="flex flex-col rounded-xl border border-mv-line bg-white p-3 sm:p-4"
           >
             <div className="flex items-center gap-2">
               <span
@@ -148,8 +172,8 @@ export function InsightsPanel() {
               </span>
             </div>
 
-            <div className="mt-3 flex items-baseline gap-[5px]">
-              <span className="text-[24px] font-bold leading-none text-mv-ink">
+            <div className="mt-3 flex flex-wrap items-baseline gap-x-[5px]">
+              <span className="text-[20px] font-bold leading-none text-mv-ink sm:text-[24px]">
                 {card.value}
               </span>
               {card.unit && (
@@ -170,7 +194,7 @@ export function InsightsPanel() {
               />
             )}
 
-            <div className="mt-auto flex items-baseline justify-between gap-2 border-t border-mv-line pt-[10px] text-[11.5px] [margin-top:14px]">
+            <div className="mt-auto flex flex-wrap items-baseline justify-between gap-x-2 border-t border-mv-line pt-[10px] text-[11px] [margin-top:14px] sm:text-[11.5px]">
               <span className="text-mv-muted">{card.footLabel}</span>
               <span className="font-semibold text-mv-ink">{card.footValue}</span>
             </div>
@@ -178,171 +202,197 @@ export function InsightsPanel() {
         ))}
       </div>
 
-      {/* ---------------- aggregate production ---------------- */}
-      <div className="mt-4 rounded-xl border border-mv-line bg-white">
-        <div className="flex flex-wrap items-center gap-3 px-5 pt-4">
-          <h3 className="flex-1 text-[15px] font-bold leading-none text-mv-ink">
-            Aggregate production
-          </h3>
-          <Segmented
-            options={["Oil", "Gas", "BOE"]}
-            value={series}
-            onChange={(next) => setSeries(next as typeof series)}
-          />
-          <Segmented
-            options={["1Y", "2Y", "5Y"]}
-            value={range}
-            onChange={(next) => setRange(next as typeof range)}
-          />
-        </div>
+      {/* Collapsed, it sits under the cards as the way in; expanded, it moves
+          to the foot of what it opened, so closing does not mean scrolling
+          back up past everything first. Only below xl, where the cards are
+          two-up and the rest is off-screen. */}
+      {!showAll && summaryToggle}
 
-        <div className="flex flex-wrap items-center gap-4 px-5 pt-3 text-[11.5px] text-mv-slate">
-          <LegendKey color={OIL} label="Oil (bbl)" />
-          <LegendKey color={GAS} label="Gas (Mcf)" />
-          <span className="inline-flex items-center gap-2">
-            <span
-              aria-hidden="true"
-              className="h-0 w-5 border-t-2 border-dashed border-mv-muted"
+      <div className={showAll ? "contents" : "hidden xl:contents"}>
+        {/* ---------------- aggregate production ---------------- */}
+        <div className="mt-4 rounded-xl border border-mv-line bg-white">
+          <div className="flex flex-wrap items-center gap-3 px-5 pt-4">
+            <h3 className="flex-1 text-[15px] font-bold leading-none text-mv-ink">
+              Aggregate production
+            </h3>
+            <Segmented
+              options={["Oil", "Gas", "BOE"]}
+              value={series}
+              onChange={(next) => setSeries(next as typeof series)}
             />
-            3-month rolling average
-          </span>
+            <Segmented
+              options={["1Y", "2Y", "5Y"]}
+              value={range}
+              onChange={(next) => setRange(next as typeof range)}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-4 px-5 pt-3 text-[11.5px] text-mv-slate">
+            <LegendKey color={OIL} label="Oil (bbl)" />
+            <LegendKey color={GAS} label="Gas (Mcf)" />
+            <span className="inline-flex items-center gap-2">
+              <span
+                aria-hidden="true"
+                className="h-0 w-5 border-t-2 border-dashed border-mv-muted"
+              />
+              3-month rolling average
+            </span>
+          </div>
+
+          <ProductionChart />
+
+          <div className="flex flex-wrap items-center gap-3 border-t border-mv-line px-5 py-3">
+            <span className="rounded bg-[#e6f6ee] px-2 py-[3px] text-[11.5px] font-semibold text-mv-green-deep">
+              {PRODUCTION_FOOTER.wells}
+            </span>
+            <span className="text-[11.5px] text-mv-slate">
+              {PRODUCTION_FOOTER.oil}
+            </span>
+            <span className="text-[11.5px] text-mv-slate">
+              {PRODUCTION_FOOTER.gas}
+            </span>
+
+            <label className="ml-auto inline-flex cursor-pointer items-center gap-2 rounded-lg border border-mv-line px-[11px] py-[6px] text-[12px] font-semibold text-mv-slate">
+              <span className="sr-only">Time grain</span>
+              <select
+                value={grain}
+                onChange={(event) => setGrain(event.target.value)}
+                className="cursor-pointer appearance-none bg-transparent pr-1 outline-none"
+              >
+                <option>Monthly</option>
+                <option>Quarterly</option>
+                <option>Yearly</option>
+              </select>
+              <ChevronDown size={13} aria-hidden="true" />
+            </label>
+          </div>
         </div>
 
-        <ProductionChart />
+        {/* ---------------- three-up ---------------- */}
+        <div className="mt-4 grid gap-4 xl:grid-cols-3">
+          {/* well mix */}
+          <div className="rounded-xl border border-mv-line bg-white p-5">
+            <h3 className="text-[15px] font-bold leading-none text-mv-ink">
+              Well mix
+            </h3>
 
-        <div className="flex flex-wrap items-center gap-3 border-t border-mv-line px-5 py-3">
-          <span className="rounded bg-[#e6f6ee] px-2 py-[3px] text-[11.5px] font-semibold text-mv-green-deep">
-            {PRODUCTION_FOOTER.wells}
-          </span>
-          <span className="text-[11.5px] text-mv-slate">
-            {PRODUCTION_FOOTER.oil}
-          </span>
-          <span className="text-[11.5px] text-mv-slate">
-            {PRODUCTION_FOOTER.gas}
-          </span>
+            <div className="mt-4 flex items-center gap-5">
+              <Donut share={WELL_MIX.oilShare} />
+              <div className="min-w-0 flex-1">
+                {WELL_MIX.legend.map((row) => (
+                  <div
+                    key={row.label}
+                    className="flex items-center gap-2 py-[5px] text-[12.5px]"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="h-[8px] w-[8px] shrink-0 rounded-[2px]"
+                      style={{ background: row.color }}
+                    />
+                    <span className="flex-1 truncate text-mv-slate">
+                      {row.label}
+                    </span>
+                    <span className="font-bold text-mv-ink">{row.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-          <label className="ml-auto inline-flex cursor-pointer items-center gap-2 rounded-lg border border-mv-line px-[11px] py-[6px] text-[12px] font-semibold text-mv-slate">
-            <span className="sr-only">Time grain</span>
-            <select
-              value={grain}
-              onChange={(event) => setGrain(event.target.value)}
-              className="cursor-pointer appearance-none bg-transparent pr-1 outline-none"
-            >
-              <option>Monthly</option>
-              <option>Quarterly</option>
-              <option>Yearly</option>
-            </select>
-            <ChevronDown size={13} aria-hidden="true" />
-          </label>
-        </div>
-      </div>
-
-      {/* ---------------- three-up ---------------- */}
-      <div className="mt-4 grid gap-4 xl:grid-cols-3">
-        {/* well mix */}
-        <div className="rounded-xl border border-mv-line bg-white p-5">
-          <h3 className="text-[15px] font-bold leading-none text-mv-ink">
-            Well mix
-          </h3>
-
-          <div className="mt-4 flex items-center gap-5">
-            <Donut share={WELL_MIX.oilShare} />
-            <div className="min-w-0 flex-1">
-              {WELL_MIX.legend.map((row) => (
-                <div
-                  key={row.label}
-                  className="flex items-center gap-2 py-[5px] text-[12.5px]"
-                >
-                  <span
-                    aria-hidden="true"
-                    className="h-[8px] w-[8px] shrink-0 rounded-[2px]"
-                    style={{ background: row.color }}
-                  />
-                  <span className="flex-1 truncate text-mv-slate">
-                    {row.label}
-                  </span>
-                  <span className="font-bold text-mv-ink">{row.value}</span>
-                </div>
+            <div className="mt-4 text-[9.5px] font-extrabold uppercase tracking-[.09em] text-mv-muted">
+              Status
+            </div>
+            <div className="mt-2">
+              {WELL_MIX.status.map((row) => (
+                <BarRow key={row.label} {...row} color="#7aa7d9" />
               ))}
             </div>
           </div>
 
-          <div className="mt-4 text-[9.5px] font-extrabold uppercase tracking-[.09em] text-mv-muted">
-            Status
+          {/* top operators */}
+          <div className="flex flex-col rounded-xl border border-mv-line bg-white p-5">
+            <div className="flex items-center gap-2">
+              <h3 className="flex-1 text-[15px] font-bold leading-none text-mv-ink">
+                Top operators
+              </h3>
+              <Badge>By wells</Badge>
+            </div>
+
+            <div className="mt-4">
+              {TOP_OPERATORS.rows.map((row) => (
+                <BarRow key={row.label} {...row} color={OIL} />
+              ))}
+            </div>
+
+            <div className="mt-auto border-t border-mv-line pt-3 text-[12px] text-mv-slate [margin-top:16px]">
+              {TOP_OPERATORS.footer.label}{" "}
+              <span className="font-bold text-mv-ink">
+                {TOP_OPERATORS.footer.value}
+              </span>{" "}
+              <span className="text-mv-muted">{TOP_OPERATORS.footer.unit}</span>
+            </div>
           </div>
-          <div className="mt-2">
-            {WELL_MIX.status.map((row) => (
-              <BarRow key={row.label} {...row} color="#7aa7d9" />
-            ))}
+
+          {/* wells drilled */}
+          <div className="rounded-xl border border-mv-line bg-white p-5">
+            <div className="flex items-center gap-2">
+              <h3 className="flex-1 text-[15px] font-bold leading-none text-mv-ink">
+                Wells drilled
+              </h3>
+              <Badge>5-yr</Badge>
+            </div>
+
+            <DrilledChart />
+
+            <div className="mt-4 text-[9.5px] font-extrabold uppercase tracking-[.09em] text-mv-muted">
+              Counties
+            </div>
+            <div className="mt-2">
+              {TOP_COUNTIES.map((row) => (
+                <BarRow key={row.label} {...row} color={OIL} />
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* top operators */}
-        <div className="flex flex-col rounded-xl border border-mv-line bg-white p-5">
-          <div className="flex items-center gap-2">
-            <h3 className="flex-1 text-[15px] font-bold leading-none text-mv-ink">
-              Top operators
-            </h3>
-            <Badge>By wells</Badge>
-          </div>
+        {/* ---------------- totals ----------------
+            `gap-px` over a line-coloured background is the divider: each cell
+            keeps its own white fill and the 1px seams between them read as rules,
+            without a border that would double up at the card's edge. */}
+        <div className="mt-4 grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-mv-line bg-mv-line xl:grid-cols-5">
+          {TOTALS.map((total) => (
+            <div
+              key={total.label}
+              /* One figure per row until there is room for five abreast: these
+                 run to twelve digits, and a column narrow enough to fit five of
+                 them on a phone would not fit one. `xl:block` puts the cells
+                 back to label-over-value. */
+              className="flex flex-wrap items-baseline gap-x-2 bg-white px-4 py-[11px] xl:block xl:px-5 xl:py-4"
+            >
+              <div className="flex-1 text-[11.5px] text-mv-slate">
+                <span className="font-bold text-mv-ink">{total.label}</span>{" "}
+                <span className="text-mv-muted">{total.qualifier}</span>
+              </div>
+              <div className="text-[15px] font-bold leading-none tabular-nums text-mv-ink xl:mt-[6px] xl:text-[17px]">
+                {total.value}
+              </div>
+              <div className="text-[11px] text-mv-muted xl:mt-[4px]">
+                {total.unit}
+              </div>
+            </div>
+          ))}
 
-          <div className="mt-4">
-            {TOP_OPERATORS.rows.map((row) => (
-              <BarRow key={row.label} {...row} color={OIL} />
-            ))}
-          </div>
-
-          <div className="mt-auto border-t border-mv-line pt-3 text-[12px] text-mv-slate [margin-top:16px]">
-            {TOP_OPERATORS.footer.label}{" "}
-            <span className="font-bold text-mv-ink">
-              {TOP_OPERATORS.footer.value}
-            </span>{" "}
-            <span className="text-mv-muted">{TOP_OPERATORS.footer.unit}</span>
-          </div>
-        </div>
-
-        {/* wells drilled */}
-        <div className="rounded-xl border border-mv-line bg-white p-5">
-          <div className="flex items-center gap-2">
-            <h3 className="flex-1 text-[15px] font-bold leading-none text-mv-ink">
-              Wells drilled
-            </h3>
-            <Badge>5-yr</Badge>
-          </div>
-
-          <DrilledChart />
-
-          <div className="mt-4 text-[9.5px] font-extrabold uppercase tracking-[.09em] text-mv-muted">
-            Counties
-          </div>
-          <div className="mt-2">
-            {TOP_COUNTIES.map((row) => (
-              <BarRow key={row.label} {...row} color={OIL} />
-            ))}
+          <div className="flex items-baseline justify-between gap-2 bg-white px-4 py-[11px] xl:col-span-5 xl:px-5">
+            <span className="text-[9.5px] font-extrabold uppercase tracking-[.09em] text-mv-muted">
+              Reported through
+            </span>
+            <span className="text-[12.5px] font-bold text-mv-ink">
+              {TOTALS_REPORTED_THROUGH}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* ---------------- totals ----------------
-          `gap-px` over a line-coloured background is the divider: each cell
-          keeps its own white fill and the 1px seams between them read as rules,
-          without a border that would double up at the card's edge. */}
-      <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-mv-line bg-mv-line sm:grid-cols-3 xl:grid-cols-5">
-        {TOTALS.map((total) => (
-          <div key={total.label} className="bg-white px-5 py-4">
-            <div className="text-[11.5px] text-mv-slate">
-              <span className="font-bold text-mv-ink">{total.label}</span>{" "}
-              <span className="text-mv-muted">{total.qualifier}</span>
-            </div>
-            <div className="mt-[6px] text-[17px] font-bold leading-none tabular-nums text-mv-ink">
-              {total.value}
-            </div>
-            <div className="mt-[4px] text-[11px] text-mv-muted">
-              {total.unit}
-            </div>
-          </div>
-        ))}
-      </div>
+      {showAll && summaryToggle}
     </div>
   );
 }

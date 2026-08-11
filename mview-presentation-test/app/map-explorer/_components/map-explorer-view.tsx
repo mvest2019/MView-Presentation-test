@@ -181,6 +181,15 @@ const DEFAULT_WATCH_RADIUS_MILES = 2;
  * cards stop making sense much under a quarter of the page.
  */
 const DEFAULT_SPLIT = 0.5;
+
+/*
+ * Stacked, the map takes the larger share. An even split reads differently on
+ * the two axes: half the width still shows a recognisable stretch of Texas,
+ * half the height on a phone shows a band too short to pan around in, while
+ * the cards below simply scroll — they lose far less to being shorter than
+ * the map does.
+ */
+const STACKED_DEFAULT_SPLIT = 0.67;
 const MIN_SPLIT = 0.22;
 const MAX_SPLIT = 0.78;
 
@@ -480,6 +489,26 @@ function subscribeToFullscreen(onChange: () => void) {
   return () => document.removeEventListener("fullscreenchange", onChange);
 }
 
+/*
+ * Below lg the Insights split runs top-to-bottom instead of side-by-side —
+ * half of a phone or tablet's width is no width at all, for the map or for
+ * the cards.
+ *
+ * The split's geometry is an inline percentage, so a media query cannot reach
+ * it; the breakpoint has to be a value React can branch on. It is read live
+ * rather than once on mount because the map measures itself against this
+ * wrapper — `view.toScreen`, the tool bars and every anchored overlay — so a
+ * rotation that changed the axis without re-rendering would put the map's idea
+ * of its own bounds a screen away from the truth.
+ */
+const STACK_QUERY = "(max-width: 1023px)";
+
+function subscribeToStackQuery(onChange: () => void) {
+  const query = window.matchMedia(STACK_QUERY);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
 /**
  * Fullscreen is refused without a real user gesture, and can be blocked by
  * permissions policy in an iframe. Both reject, and an uncaught rejection puts
@@ -511,10 +540,23 @@ export function MapExplorerView() {
     () => false,
   );
 
+  const stacked = useSyncExternalStore(
+    subscribeToStackQuery,
+    () => window.matchMedia(STACK_QUERY).matches,
+    () => false,
+  );
+
   const [status, setStatus] = useState<Status>("loading");
   const [basemap, setBasemap] = useState(DEFAULT_BASEMAP);
   const [viewTab, setViewTab] = useState<ViewTab>("map");
   const [splitRatio, setSplitRatio] = useState(DEFAULT_SPLIT);
+  /*
+   * Until the divider is actually moved the ratio is the axis's own default,
+   * not the stored number — the stacked and side-by-side defaults differ, and
+   * `useState` cannot pick between them because the breakpoint is not known
+   * until after hydration.
+   */
+  const [splitTouched, setSplitTouched] = useState(false);
   const draggingSplitRef = useRef(false);
 
   /*
@@ -1238,12 +1280,28 @@ export function MapExplorerView() {
    * drag keeps following the pointer even when it leaves the 7px handle, and
    * the browser cleans the capture up for us if the gesture is interrupted.
    */
-  const splitFromPointer = useCallback((clientX: number) => {
-    const bounds = rootRef.current?.getBoundingClientRect();
-    if (!bounds || !bounds.width) return;
-    const ratio = (clientX - bounds.left) / bounds.width;
-    setSplitRatio(Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, ratio)));
-  }, []);
+  const split = splitTouched
+    ? splitRatio
+    : stacked
+      ? STACKED_DEFAULT_SPLIT
+      : DEFAULT_SPLIT;
+
+  const splitFromPointer = useCallback(
+    (clientX: number, clientY: number) => {
+      const bounds = rootRef.current?.getBoundingClientRect();
+      if (!bounds) return;
+
+      const span = stacked ? bounds.height : bounds.width;
+      if (!span) return;
+
+      const ratio = stacked
+        ? (clientY - bounds.top) / span
+        : (clientX - bounds.left) / span;
+      setSplitTouched(true);
+      setSplitRatio(Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, ratio)));
+    },
+    [stacked],
+  );
 
   const onSplitPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -1262,7 +1320,9 @@ export function MapExplorerView() {
 
   const onSplitPointerMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      if (draggingSplitRef.current) splitFromPointer(event.clientX);
+      if (draggingSplitRef.current) {
+        splitFromPointer(event.clientX, event.clientY);
+      }
     },
     [splitFromPointer],
   );
@@ -1283,24 +1343,27 @@ export function MapExplorerView() {
 
   const onSplitKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
+      const back = stacked ? "ArrowUp" : "ArrowLeft";
+      const forward = stacked ? "ArrowDown" : "ArrowRight";
       const step =
-        event.key === "ArrowLeft"
+        event.key === back
           ? -SPLIT_KEY_STEP
-          : event.key === "ArrowRight"
+          : event.key === forward
             ? SPLIT_KEY_STEP
             : 0;
 
       if (step) {
         event.preventDefault();
+        setSplitTouched(true);
         setSplitRatio((current) =>
           Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, current + step)),
         );
       } else if (event.key === "Home") {
         event.preventDefault();
-        setSplitRatio(DEFAULT_SPLIT);
+        setSplitTouched(false);
       }
     },
-    [],
+    [stacked],
   );
 
   const downloadNearby = useCallback(() => {
@@ -1424,14 +1487,18 @@ export function MapExplorerView() {
        */}
       <div
         className={
-          viewTab === "insights"
-            ? "absolute inset-y-0 left-0 overflow-hidden"
-            : "absolute inset-0"
+          viewTab !== "insights"
+            ? "absolute inset-0"
+            : stacked
+              ? "absolute inset-x-0 top-0 overflow-hidden"
+              : "absolute inset-y-0 left-0 overflow-hidden"
         }
         style={
-          viewTab === "insights"
-            ? { width: `${splitRatio * 100}%` }
-            : undefined
+          viewTab !== "insights"
+            ? undefined
+            : stacked
+              ? { height: `${split * 100}%` }
+              : { width: `${split * 100}%` }
         }
       >
       <div ref={containerRef} className="h-full w-full" />
@@ -1527,8 +1594,16 @@ export function MapExplorerView() {
       {status === "ready" && viewTab === "insights" && (
         <>
           <div
-            className="absolute inset-y-0 right-0 border-l border-mv-line"
-            style={{ width: `${(1 - splitRatio) * 100}%` }}
+            className={
+              stacked
+                ? "absolute inset-x-0 bottom-0 border-t border-mv-line"
+                : "absolute inset-y-0 right-0 border-l border-mv-line"
+            }
+            style={
+              stacked
+                ? { height: `${(1 - split) * 100}%` }
+                : { width: `${(1 - split) * 100}%` }
+            }
           >
             <InsightsPanel />
           </div>
@@ -1538,9 +1613,9 @@ export function MapExplorerView() {
               hint; the browser's own tooltip is what the mock shows. */}
           <div
             role="separator"
-            aria-orientation="vertical"
+            aria-orientation={stacked ? "horizontal" : "vertical"}
             aria-label="Resize map and insights"
-            aria-valuenow={Math.round(splitRatio * 100)}
+            aria-valuenow={Math.round(split * 100)}
             aria-valuemin={Math.round(MIN_SPLIT * 100)}
             aria-valuemax={Math.round(MAX_SPLIT * 100)}
             tabIndex={0}
@@ -1549,14 +1624,20 @@ export function MapExplorerView() {
             onPointerMove={onSplitPointerMove}
             onPointerUp={onSplitPointerUp}
             onPointerCancel={onSplitPointerUp}
-            onDoubleClick={() => setSplitRatio(DEFAULT_SPLIT)}
+            onDoubleClick={() => setSplitTouched(false)}
             onKeyDown={onSplitKeyDown}
-            className="group absolute inset-y-0 z-30 -ml-[3px] w-[7px] cursor-col-resize touch-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-mv-green-deep"
-            style={{ left: `${splitRatio * 100}%` }}
+            className={`group absolute z-30 touch-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-mv-green-deep ${
+              stacked
+                ? "inset-x-0 -mt-[3px] h-[7px] cursor-row-resize"
+                : "inset-y-0 -ml-[3px] w-[7px] cursor-col-resize"
+            }`}
+            style={stacked ? { top: `${split * 100}%` } : { left: `${split * 100}%` }}
           >
             <span
               aria-hidden="true"
-              className="absolute left-1/2 top-1/2 h-10 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#c7cbd1] group-hover:bg-mv-green-deep"
+              className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#c7cbd1] group-hover:bg-mv-green-deep ${
+                stacked ? "h-[3px] w-10" : "h-10 w-[3px]"
+              }`}
             />
           </div>
         </>

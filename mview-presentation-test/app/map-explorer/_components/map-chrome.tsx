@@ -550,22 +550,22 @@ export function MapChrome({
         />
       )}
 
-      <div className="pointer-events-auto w-[252px] overflow-hidden rounded-lg border border-mv-line bg-white/97 shadow-mv">
-        <div className="px-3 pb-[6px] pt-2 text-[12px] font-semibold text-mv-ink">
+      <div className="pointer-events-auto w-[214px] overflow-hidden rounded-lg border border-mv-line bg-white/97 shadow-mv lg:w-[252px]">
+        <div className="px-[10px] pb-[3px] pt-[5px] text-[11px] font-semibold text-mv-ink lg:px-3 lg:pb-[6px] lg:pt-2 lg:text-[12px]">
           1 : {Math.round(scale).toLocaleString("en-US")}
         </div>
-        <div className="flex items-center gap-[10px] px-3 pb-[9px]">
+        <div className="flex items-center gap-2 px-[10px] pb-[6px] lg:gap-[10px] lg:px-3 lg:pb-[9px]">
           {/* A bracket, not a line — the mock's bar has end ticks. */}
           <span
             aria-hidden="true"
             className="h-[7px] border-x border-b border-mv-slate/70"
             style={{ width: `${bar.width}px` }}
           />
-          <span className="text-[11px] leading-none text-mv-slate">
+          <span className="text-[10px] leading-none text-mv-slate lg:text-[11px]">
             {bar.miles} mi · {bar.km} km
           </span>
         </div>
-        <div className="border-t border-mv-line px-3 py-[7px] text-[11px] text-mv-slate">
+        <div className="border-t border-mv-line px-[10px] py-[4px] text-[10px] text-mv-slate lg:px-3 lg:py-[7px] lg:text-[11px]">
           Latitude: {center.latitude.toFixed(4)}, Longitude:{" "}
           {center.longitude.toFixed(4)}
         </div>
