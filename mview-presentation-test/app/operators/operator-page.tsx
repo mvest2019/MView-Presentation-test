@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  ArrowDown,
-  ArrowUp,
-  ChevronDown,
-  ChevronsUpDown,
-  Search,
-  X,
-} from "lucide-react";
+import { ChevronDown, ChevronsUpDown, Search, X } from "lucide-react";
 import Link from "next/link";
 import { memo, useEffect, useId, useRef, useState } from "react";
 
@@ -86,6 +79,7 @@ export function OperatorPage({
     pageSize,
     columns,
     appliedFilters,
+    canClearFilters,
     isLoading,
     hasError,
     hasLoadedOnce,
@@ -129,7 +123,11 @@ export function OperatorPage({
           />
         </div>
 
-        <AppliedTags filters={appliedFilters} onClearAll={clearFilters} />
+        <AppliedTags
+          filters={appliedFilters}
+          canClearAll={canClearFilters}
+          onClearAll={clearFilters}
+        />
       </div>
 
       <div className="h-px bg-mv-line-soft" />
@@ -404,9 +402,12 @@ function SelectControl({
 
 function AppliedTags({
   filters,
+  canClearAll,
   onClearAll,
 }: {
   filters: AppliedFilter[];
+  /** False when every filter is already at its default — see the hook. */
+  canClearAll: boolean;
   onClearAll: () => void;
 }) {
   if (filters.length === 0) return null;
@@ -434,9 +435,11 @@ function AppliedTags({
         </span>
       ))}
 
-      <FilterPill active={false} onClick={onClearAll} className="!py-[7px]">
-        Clear all ✕
-      </FilterPill>
+      {canClearAll && (
+        <FilterPill active={false} onClick={onClearAll} className="!py-[7px]">
+          Clear all ✕
+        </FilterPill>
+      )}
     </div>
   );
 }
@@ -834,12 +837,6 @@ function SortButton({
 }) {
   const nextDir = active && dir === "desc" ? "ascending" : "descending";
 
-  // `lucide-react` rather than the `▲`/`▼`/`⇅` characters this used before: glyph
-  // arrows inherit the font's own metrics, so they sat off the text baseline and
-  // rendered at inconsistent weights across platforms. These are the same icon set
-  // the selects and search field already use, so they match the rest of the page.
-  const Icon = active ? (dir === "asc" ? ArrowUp : ArrowDown) : ChevronsUpDown;
-
   return (
     <button
       type="button"
@@ -850,11 +847,21 @@ function SortButton({
       <span className="group-hover/sort:underline group-hover/sort:underline-offset-[3px]">
         {label}
       </span>
-      <Icon
+      {/* One icon shape on every sortable column — swapping in an up/down arrow on
+          the sorted one made that header look like a different control. Colour
+          carries the direction instead: brand green ascending, grey descending, and
+          a neutral tint while unsorted. `mv-placeholder` is the design system's
+          light grey, which stays legible on the dark header where `mv-muted` would
+          sink into it. */}
+      <ChevronsUpDown
         aria-hidden="true"
         strokeWidth={2.5}
-        className={`h-[13px] w-[13px] shrink-0 ${
-          active ? "text-white" : "text-white/50 group-hover/sort:text-white/80"
+        className={`h-4 w-4 shrink-0 ${
+          active
+            ? dir === "asc"
+              ? "text-mv-green"
+              : "text-mv-placeholder"
+            : "text-white/50 group-hover/sort:text-white/80"
         }`}
       />
     </button>

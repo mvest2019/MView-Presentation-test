@@ -408,25 +408,36 @@ export function useOperatorDirectory({
       });
     }
     /**
-     * Only when it differs from the default.
+     * Shown whenever a status is actually constraining the results, including the
+     * default `active` — that IS a filter narrowing 24,744 operators to 3,095, so
+     * it belongs in the applied row rather than being invisible.
      *
-     * `active` IS the default, so testing `!== ""` showed a "Status: Active" tag
-     * on a page with nothing applied. Clear All then reset the filters, left that
-     * tag standing, and the button beside it stopped responding — `setFilters`
-     * with the same `DEFAULT_FILTERS` reference is a no-op, so nothing re-rendered.
-     * Comparing against the default means a clean page has no tags, the row hides
-     * itself, and Clear All goes with it.
+     * `""` means "all statuses", which is the absence of a constraint, so it gets
+     * no tag. Removing this one therefore sets `""`: the × widens the results
+     * rather than bouncing back to the same value it already had.
+     *
+     * The dead "Clear all" this used to cause is handled by `canClearFilters`
+     * instead — that button only appears when something is genuinely non-default,
+     * so a page showing only "Status: Active" no longer offers a no-op click.
      */
-    if (filters.status !== DEFAULT_FILTERS.status) {
-      tags.push({
-        id: "status",
-        label:
-          filters.status === ""
-            ? "Status: All"
-            : `Status: ${filters.status === "active" ? "Active" : "Inactive"}`,
-        onRemove: () => setStatus(DEFAULT_FILTERS.status),
-      });
-    }
+    tags.push(
+      filters.status === ""
+        ? {
+            // "All statuses" is still a choice the visitor made, and showing it
+            // keeps the applied row on screen so "Clear all" stays reachable.
+            // Its × goes back to the default rather than widening further.
+            id: "status",
+            label: "Status: All statuses",
+            onRemove: () => setStatus(DEFAULT_FILTERS.status),
+          }
+        : {
+            id: "status",
+            label: `Status: ${
+              filters.status === "active" ? "Active" : "Inactive"
+            }`,
+            onRemove: () => setStatus(""),
+          },
+    );
     if (filters.county) {
       tags.push({
         id: "county",
@@ -456,6 +467,17 @@ export function useOperatorDirectory({
     return tags;
   }, [filters, patch, setPlay, setStatus, setCounty, toggleQuick]);
 
+  /**
+   * Whether "Clear all" has anything to do.
+   *
+   * `setFilters(DEFAULT_FILTERS)` is a no-op when state already holds that same
+   * reference, so offering the button on an untouched page produced a click that
+   * visibly did nothing. It now renders only when some filter really is
+   * non-default, which lets the applied row still show the default status tag.
+   */
+  const canClearFilters =
+    JSON.stringify(filters) !== JSON.stringify(DEFAULT_FILTERS);
+
   return {
     filters,
     searchInput,
@@ -464,6 +486,7 @@ export function useOperatorDirectory({
     pageSize: PAGE_SIZE,
     columns,
     appliedFilters,
+    canClearFilters,
     isLoading,
     hasError,
     hasLoadedOnce,
