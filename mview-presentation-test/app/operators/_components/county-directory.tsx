@@ -2,7 +2,7 @@
 
 import { MapPin, Search } from "lucide-react";
 import Link from "next/link";
-import { useId, useMemo, useState } from "react";
+import { memo, useDeferredValue, useId, useMemo, useState } from "react";
 
 import {
   COUNTY_LETTERS,
@@ -28,8 +28,16 @@ export function CountyDirectory() {
   const [term, setTerm] = useState("");
   const searchId = useId();
 
+  /**
+   * PERFORMANCE — INP. The grid renders all 254 counties, which is the bulk of
+   * this page's DOM. Filtering reads the *deferred* term so the input paints on
+   * the keystroke and the 254-item reconcile runs at low priority; `CountyLink`
+   * is memoised so only items entering or leaving the list do any work.
+   */
+  const deferredTerm = useDeferredValue(term);
+
   const visible = useMemo(() => {
-    const query = term.trim().toLowerCase();
+    const query = deferredTerm.trim().toLowerCase();
     return TEXAS_COUNTIES.filter((county) => {
       if (letter !== "ALL" && county[0].toUpperCase() !== letter) return false;
       if (query && !`${county} county, texas`.toLowerCase().includes(query)) {
@@ -37,7 +45,7 @@ export function CountyDirectory() {
       }
       return true;
     });
-  }, [letter, term]);
+  }, [letter, deferredTerm]);
 
   function reset() {
     setTerm("");
@@ -103,27 +111,7 @@ export function CountyDirectory() {
       {visible.length > 0 ? (
         <ul className="mt-[14px] grid list-none grid-cols-[repeat(auto-fill,minmax(215px,1fr))] gap-[10px] p-0 max-[560px]:grid-cols-2 max-[560px]:gap-2">
           {visible.map((county) => (
-            <li key={county}>
-              <Link
-                href={`/operators/county/${encodeURIComponent(county.toLowerCase().replace(/\s+/g, "-"))}`}
-                className="group flex items-center gap-[10px] rounded-[11px] border border-mv-line bg-white px-[13px] py-[11px] text-sm font-medium text-mv-ink !no-underline transition-[border-color,color,box-shadow,transform] hover:-translate-y-px hover:border-mv-green hover:text-mv-green-deep hover:shadow-[0_5px_14px_rgba(47,138,102,.10)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep max-[560px]:px-[11px] max-[560px]:py-[10px] max-[560px]:text-[13px]"
-              >
-                <MapPin
-                  aria-hidden="true"
-                  className="h-[15px] w-[15px] shrink-0 text-mv-placeholder group-hover:text-mv-green-deep"
-                  strokeWidth={1.7}
-                />
-                <span className="min-w-0 flex-1 truncate">
-                  {county} County, Texas
-                </span>
-                <span
-                  aria-hidden="true"
-                  className="text-[15px] font-semibold text-[#c4cbd3] group-hover:text-mv-green-deep"
-                >
-                  ›
-                </span>
-              </Link>
-            </li>
+            <CountyLink key={county} county={county} />
           ))}
         </ul>
       ) : (
@@ -141,3 +129,35 @@ export function CountyDirectory() {
     </div>
   );
 }
+
+/**
+ * One county tile. Memoised on a single string prop, so re-filtering reconciles
+ * only the items whose membership changed rather than all 254.
+ */
+const CountyLink = memo(function CountyLink({ county }: { county: string }) {
+  const href = `/operators/county/${encodeURIComponent(
+    county.toLowerCase().replace(/\s+/g, "-"),
+  )}`;
+
+  return (
+    <li>
+      <Link
+        href={href}
+        className="group flex items-center gap-[10px] rounded-[11px] border border-mv-line bg-white px-[13px] py-[11px] text-sm font-medium text-mv-ink !no-underline transition-[border-color,color,box-shadow,transform] hover:-translate-y-px hover:border-mv-green hover:text-mv-green-deep hover:shadow-[0_5px_14px_rgba(47,138,102,.10)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep max-[560px]:px-[11px] max-[560px]:py-[10px] max-[560px]:text-[13px]"
+      >
+        <MapPin
+          aria-hidden="true"
+          className="h-[15px] w-[15px] shrink-0 text-mv-placeholder group-hover:text-mv-green-deep"
+          strokeWidth={1.7}
+        />
+        <span className="min-w-0 flex-1 truncate">{county} County, Texas</span>
+        <span
+          aria-hidden="true"
+          className="text-[15px] font-semibold text-[#c4cbd3] group-hover:text-mv-green-deep"
+        >
+          ›
+        </span>
+      </Link>
+    </li>
+  );
+});

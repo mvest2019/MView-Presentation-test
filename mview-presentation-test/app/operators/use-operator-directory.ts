@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { OPERATORS_BY_PLAY } from "@/lib/operator-mock-data";
 import { queryAllMatching, queryOperators, toCsv } from "@/lib/operator-query";
@@ -38,6 +44,25 @@ import {
  * It is deliberately the one thing kept out of `operator-page.tsx`: that file is
  * the page's markup, this is its data logic, and the whole point of the seam is
  * that swapping the fixture for the API touches one file with no JSX in it.
+ *
+ * WHAT THE REAL REQUEST MUST ADD (all of it inside this file):
+ *
+ *  1. Debounce the search term — roughly 300ms, matching `blog-toolbar.tsx`.
+ *     `useDeferredValue` below keeps typing smooth against a synchronous local
+ *     query, but it does not coalesce network calls: without a debounce, "permian"
+ *     is seven requests. Debounce the value handed to the fetch, not `query`
+ *     itself, so the input stays instant.
+ *  2. Abort superseded requests with an `AbortController` in the effect cleanup.
+ *     Otherwise a slow early response can land after a fast later one and show
+ *     rows for a filter the user has already changed.
+ *  3. Return `isLoading` and `error` alongside `page`, and keep the previous
+ *     `items` on screen while the next set is in flight. Emptying the table
+ *     between requests collapses the card's height and costs CLS — the metric
+ *     this page currently scores 0 on.
+ *  4. Fetch on the server where possible. Today the whole fixture is bundled
+ *     into the client because this file is `"use client"` and imports it (~29 KB
+ *     of source). Moving the read to a server component or route handler drops
+ *     that from the browser entirely.
  * ============================================================================
  */
 
@@ -141,9 +166,24 @@ export function useOperatorDirectory() {
     () => DEFAULT_COLUMNS,
   );
 
+  /**
+   * PERFORMANCE — INP.
+   *
+   * The controlled inputs read `query`, so a keystroke paints immediately. The
+   * expensive subtree (the table, the four pill counts, the status counts) reads
+   * the *deferred* query, so React renders it at low priority and yields to
+   * further input instead of blocking on it. No artificial delay and no visible
+   * change: the deferred pass usually lands in the same frame, and only under
+   * load does the table trail the caret by a beat.
+   *
+   * When the fetch replaces this `useMemo`, this is also the right seam for
+   * request coalescing — see the note at the top of the file.
+   */
+  const deferredQuery = useDeferredValue(query);
+
   const page: OperatorPage = useMemo(
-    () => queryOperators(OPERATORS_BY_PLAY, query),
-    [query],
+    () => queryOperators(OPERATORS_BY_PLAY, deferredQuery),
+    [deferredQuery],
   );
 
   /** Any filter change restarts at page 1; paging alone does not. */

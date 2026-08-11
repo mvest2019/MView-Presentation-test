@@ -2,7 +2,7 @@
 
 import { ChevronDown, Search, X } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useId, useRef, useState } from "react";
+import { memo, useEffect, useId, useRef, useState } from "react";
 
 import { Button, selectedControlClass } from "@/app/_components/button";
 import {
@@ -685,7 +685,13 @@ function ResultsTable({
   );
 }
 
-function OperatorRow({
+/**
+ * Memoised: `Operator` objects come from the fixture and keep the same identity
+ * across queries, and `columns` only changes when a checkbox is toggled. So a
+ * re-render caused by typing reconciles the rows that actually changed and skips
+ * the rest.
+ */
+const OperatorRow = memo(function OperatorRow({
   operator,
   rank,
   columns,
@@ -748,7 +754,7 @@ function OperatorRow({
       )}
     </tr>
   );
-}
+});
 
 function SortButton({
   label,

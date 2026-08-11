@@ -35,10 +35,59 @@ import { OperatorPage } from "./operator-page";
  * current page, and once as the h1.
  */
 
+const PAGE_TITLE =
+  "Know Your Operators — Texas oil & gas operator directory | Mineral View";
+
+const PAGE_DESCRIPTION =
+  "Search, filter and rank Texas oil & gas operators by reported production, activity and coverage. Free to browse — built from Railroad Commission public records.";
+
+/**
+ * `alternates.canonical` matters here specifically: the listing is a filterable
+ * view, so it is reachable with query strings appended once filters move into the
+ * URL. A self-referencing canonical keeps those from being indexed as duplicates.
+ * Resolved against `metadataBase` in `app/layout.tsx`.
+ */
 export const metadata: Metadata = {
-  title: "Know Your Operators — Texas oil & gas operator directory | Mineral View",
-  description:
-    "Search, filter and rank Texas oil & gas operators by reported production, activity and coverage. Free to browse — built from Railroad Commission public records.",
+  title: PAGE_TITLE,
+  description: PAGE_DESCRIPTION,
+  alternates: { canonical: "/operators" },
+  openGraph: {
+    title: PAGE_TITLE,
+    description: PAGE_DESCRIPTION,
+    url: "/operators",
+    siteName: "Mineral View",
+    type: "website",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: PAGE_TITLE,
+    description: PAGE_DESCRIPTION,
+  },
+};
+
+/**
+ * Breadcrumb structured data, matching the visible trail exactly — Google needs
+ * the markup to agree with what the user sees. This is what turns the SERP path
+ * from a bare URL into "Mineral View › Know Your Operators".
+ *
+ * Emitted as a plain `<script type="application/ld+json">` from a server
+ * component, which is the documented App Router approach; no `dangerouslySet`
+ * risk beyond these two hard-coded strings.
+ */
+const SITE_URL = (
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.mineralview.com"
+).replace(/\/+$/, "");
+
+const BREADCRUMB_JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    // `item` must be absolute to validate. The trailing crumb omits it, which is
+    // what Google expects for the page you are already on.
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}/` },
+    { "@type": "ListItem", position: 2, name: "Know Your Operators" },
+  ],
 };
 
 /** The three operator feature cards (`.psvc-card`), unchanged from the design. */
@@ -69,6 +118,13 @@ const FEATURE_CARDS = [
 export default function OperatorsRoute() {
   return (
     <div className="pb-16 pt-[18px] max-[767px]:pb-11">
+      <script
+        type="application/ld+json"
+        // Serialised from the object literal above, so there is no user input in
+        // it. Rendered inert by the browser — it paints nothing and shifts nothing.
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(BREADCRUMB_JSON_LD) }}
+      />
+
       <div className="mx-auto max-w-[1200px] px-7 max-[767px]:px-4">
         <Breadcrumbs
           items={[
