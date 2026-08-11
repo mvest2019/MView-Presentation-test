@@ -27,9 +27,10 @@ export function BlogThumb({
   alt,
   className = "aspect-video",
   priority = false,
-  // The grid is one column below 768px and three columns above it — there is no
-  // two-column step, so a 50vw hint would fetch the wrong width.
-  sizes = "(max-width: 767px) 100vw, (min-width: 1240px) 380px, 33vw",
+  // Mirrors the grid: one column below 768px, two to 1023px, three above, and a
+  // fixed 380px once the 1200px container stops growing. A hint that disagrees
+  // with the layout makes the browser fetch the wrong width.
+  sizes = "(max-width: 767px) 100vw, (max-width: 1023px) 50vw, (min-width: 1240px) 380px, 33vw",
 }: {
   src: string | null | undefined;
   alt: string;

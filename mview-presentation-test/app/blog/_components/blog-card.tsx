@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { slugFromUrlTitle } from "@/lib/blog-api";
-import type { BlogListItem } from "@/lib/blog-types";
+import { sectionPath, type BlogListItem } from "@/lib/blog-types";
 import { htmlToText } from "@/lib/sanitize-html";
 
 import { headingBase } from "../../_components/typography";
@@ -53,8 +53,10 @@ export function BlogCard({
   const excerpt = htmlToText(article.blog) || article.metaDescription || "";
 
   return (
+    // Each article lives under its own section, so a News item found in a
+    // blog article's related list still links to `/news/…`.
     <Link
-      href={`/blog/${slugFromUrlTitle(article.urlTitle)}`}
+      href={`${sectionPath(article.type)}/${slugFromUrlTitle(article.urlTitle)}`}
       className="flex flex-col overflow-hidden rounded-[12px] border border-mv-line bg-mv-card text-inherit no-underline shadow-mv transition-shadow hover:shadow-[0_6px_18px_rgba(13,14,23,.10)] hover:no-underline"
     >
       <BlogThumb
