@@ -786,7 +786,14 @@ export function MapExplorerView() {
    * Draws the tract as it is built: a line through the corners while open, a
    * filled ring once closed, with a dot on every corner either way.
    */
-  const drawTract = useCallback((points: LonLat[], closed: boolean) => {
+  /*
+   * `hint` is the cursor: while the tract is open, the edge from the last
+   * corner to wherever the pointer is now is drawn dashed, so the next click
+   * is previewed rather than guessed at. It is not part of the tract — it is
+   * discarded on the next redraw.
+   */
+  const drawTract = useCallback(
+    (points: LonLat[], closed: boolean, hint?: LonLat | null) => {
     const layer = tractLayerRef.current;
     const ctors = ctorsRef.current;
     if (!layer || !ctors) return;
@@ -795,6 +802,30 @@ export function MapExplorerView() {
     if (points.length === 0) return;
 
     const ring = points.map((p) => [p.longitude, p.latitude]);
+
+    if (!closed && hint) {
+      const last = points[points.length - 1];
+      layer.add(
+        new ctors.Graphic({
+          geometry: {
+            type: "polyline",
+            paths: [
+              [
+                [last.longitude, last.latitude],
+                [hint.longitude, hint.latitude],
+              ],
+            ],
+            spatialReference: { wkid: 4326 },
+          },
+          symbol: {
+            type: "simple-line",
+            color: [46, 143, 109],
+            width: 1.5,
+            style: "dash",
+          },
+        }),
+      );
+    }
 
     if (closed && points.length >= 3) {
       layer.add(
@@ -841,7 +872,9 @@ export function MapExplorerView() {
         }),
       );
     }
-  }, []);
+  },
+  [],
+  );
 
   /** Re-projects the on-map cards — they are React, so they do not follow. */
   const anchorBars = useCallback(() => {
@@ -1046,6 +1079,14 @@ export function MapExplorerView() {
         };
 
         pointerHandle = view.on("pointer-move", (event) => {
+          // Mid-tract, the pointer is the next corner until it is clicked.
+          if (activeToolRef.current === "measure-area") {
+            const points = tractRef.current;
+            if (points.length > 0) {
+              drawTract(points, false, view?.toMap(event) ?? null);
+            }
+          }
+
           // A tool takes precedence — no hover cards mid-draw.
           const index = activeToolRef.current ? -1 : clusterAt(event.x, event.y);
           const top = index === -1 ? null : screenTopOf(index);
@@ -1151,9 +1192,12 @@ export function MapExplorerView() {
 
         dragHandle = view.on("drag", (event) => {
           const tool = activeToolRef.current;
-          // This tool takes a click, not a drag; a stray drag must not pan the
-          // map out from under the prompt either.
-          if (tool === "whats-near-my-land") {
+          // These two take clicks, not drags — the corner tool because a tract
+          // is placed corner by corner, the watch tool because it is a single
+          // point. A pointer that slides a few pixels between press and
+          // release still fires `drag`, and that must not be read as a
+          // gesture, nor pan the map out from under the prompt.
+          if (tool === "whats-near-my-land" || tool === "measure-area") {
             event.stopPropagation();
             return;
           }
@@ -1176,7 +1220,7 @@ export function MapExplorerView() {
             areaRef.current = next;
             setArea(next);
             drawArea(next);
-          } else {
+          } else if (tool === "measure-distance") {
             const ctors = ctorsRef.current;
             if (!ctors) return;
 
@@ -1198,6 +1242,9 @@ export function MapExplorerView() {
             measurementRef.current = next;
             setMeasurement(next);
             drawMeasurement(next);
+          } else {
+            // A tool with no drag behaviour. Nothing to draw.
+            return;
           }
 
           anchorBars();
