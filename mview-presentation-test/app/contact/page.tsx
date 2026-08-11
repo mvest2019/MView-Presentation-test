@@ -33,7 +33,12 @@ export default function ContactPage() {
           </h1>
         </div>
 
-        <div className="mx-auto mt-3 grid max-w-[1080px] grid-cols-1 items-stretch gap-[22px] min-[861px]:grid-cols-[2fr_1fr]">
+        {/* The form column is narrower than the 2fr/1fr split it started as, and
+            the get-in-touch column is pinned at the 353px it already occupied —
+            a fixed track rather than a second `fr`, because sharing the space
+            proportionally would have widened the right card as the left shrank,
+            and that card is meant to stay exactly where it was. */}
+        <div className="mx-auto mt-3 grid max-w-[1015px] grid-cols-1 items-stretch gap-[22px] min-[861px]:grid-cols-[minmax(0,1fr)_353px]">
           <ContactForm />
           <ContactInfo />
         </div>
