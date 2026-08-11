@@ -28,16 +28,15 @@ export default function ContactPage() {
         </nav>
 
         <div className="mx-auto mb-3 max-w-[640px] text-center">
-          <h1 className={`${headingBase} text-[clamp(28px,4vw,40px)] leading-[1.12]`}>
+          {/* 30px ceiling, down from 40px: at 40px the heading dwarfed the cards. */}
+          <h1 className={`${headingBase} text-[clamp(23px,2.6vw,30px)] leading-[1.15]`}>
             Contact Us
           </h1>
         </div>
 
-        {/* The form column is narrower than the 2fr/1fr split it started as, and
-            the get-in-touch column is pinned at the 353px it already occupied —
-            a fixed track rather than a second `fr`, because sharing the space
-            proportionally would have widened the right card as the left shrank,
-            and that card is meant to stay exactly where it was. */}
+        {/* Form column flexes; the get-in-touch column is a fixed 353px track
+            rather than a second `fr`, so it keeps its width whatever the form
+            does. */}
         <div className="mx-auto mt-3 grid max-w-[1015px] grid-cols-1 items-stretch gap-[22px] min-[861px]:grid-cols-[minmax(0,1fr)_353px]">
           <ContactForm />
           <ContactInfo />

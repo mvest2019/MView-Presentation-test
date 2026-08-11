@@ -5,16 +5,29 @@ import { Send } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
-import { inlineLink } from "../../_components/typography";
 import { contactConfig as cfg } from "./contact-config";
 import { contactSchema, type ContactValues } from "./contact-schema";
 
+/**
+ * Left card — the message form, following `contact_page_proposed.html`.
+ *
+ * Two things about the proposed layout are deliberate and worth not "fixing":
+ * the intro, the reply promise and the required-field note are one line rather
+ * than three, because the three-line version cost ~60px the right-hand card had
+ * no content to match; and errors sit in `empty:hidden` slots rather than the
+ * reserved fixed-height ones this form used to have, so the card is shorter at
+ * rest and grows when a message appears.
+ */
+
 const inputBase =
-  "w-full rounded-[9px] border bg-white px-3 py-[9px] text-sm text-mv-ink outline-none placeholder:text-[#9aa3ae] focus:ring-2";
+  "w-full rounded-[9px] border bg-white px-3 py-[10px] text-sm text-mv-ink outline-none placeholder:text-[#9aa3ae] focus:ring-2";
 const okBorder = "border-[#cbd5e1] focus:border-mv-green-deep focus:ring-mv-green/25";
 const errBorder = "border-mv-red ring-2 ring-mv-red/10 focus:ring-mv-red/20";
+const labelClass = "mb-[5px] block text-[12.5px] font-bold text-mv-slate";
+const errClass =
+  "block text-[12.5px] font-semibold leading-[16px] text-mv-red empty:hidden";
+const req = <span className="font-extrabold text-mv-red">*</span>;
 
-/** Left card — the message form. react-hook-form + zod, matching the prototype. */
 export function ContactForm() {
   const {
     register,
@@ -22,12 +35,16 @@ export function ContactForm() {
     formState: { errors, isSubmitting },
   } = useForm<ContactValues>({
     resolver: zodResolver(contactSchema),
-    defaultValues: { name: "", email: "", phone: "", message: "" },
+    defaultValues: {
+      firstName: "",
+      lastName: "",
+      email: "",
+      phone: "",
+      message: "",
+    },
   });
   const [status, setStatus] = useState<"idle" | "sent" | "error">("idle");
   const [done, setDone] = useState("");
-
-  const errorCount = Object.keys(errors).length;
 
   async function onValid(values: ContactValues) {
     setStatus("idle");
@@ -46,13 +63,6 @@ export function ContactForm() {
     }
   }
 
-  // Fixed-height error slot under each field, so showing a message never shifts the card.
-  const slot = (id: string, msg?: string) => (
-    <span id={id} className="mt-[5px] block min-h-[16px] text-[12.5px] font-semibold leading-[16px] text-mv-red">
-      {msg ?? ""}
-    </span>
-  );
-
   const sent = status === "sent";
 
   return (
@@ -63,111 +73,132 @@ export function ContactForm() {
       <h2 className="mb-1.5 font-serif text-[19px] font-semibold leading-[1.25] tracking-[-.01em] text-mv-ink">
         Have a question or comment?
       </h2>
-      <p className="m-0 mb-3 text-xs text-mv-muted">
-        Send us a message — a person, not a bot, replies within{" "}
-        <strong>one business day</strong>. Prefer email? Write to{" "}
-        <a className={inlineLink} href={cfg.email.href}>
+
+      <p className="m-0 mb-[14px] text-xs text-mv-muted">
+        A person, not a bot — we reply within{" "}
+        <strong className="font-semibold text-mv-slate">one business day</strong>.
+        Prefer email?{" "}
+        <a
+          className="text-mv-green-deep no-underline hover:underline"
+          href={cfg.email.href}
+        >
           {cfg.supportEmail}
-        </a>{" "}
-        and you reach the same desk.
+        </a>
+        .{/* Own line with a little air above it, rather than wrapping tight
+             against the sentence it follows. */}
+        <span className="mt-[6px] block whitespace-nowrap">{req} Required.</span>
       </p>
 
-      <form noValidate onSubmit={handleSubmit(onValid)}>
-        {/* One fixed-height line: the required-field hint, or the error summary when invalid.
-            Merging them removes the extra gap above the first field and never shifts height. */}
-        <p role="alert" aria-live="polite" className="mt-0 mb-3 min-h-[16px] text-[12.5px] leading-[16px]">
-          {errorCount > 0 ? (
-            <span className="font-semibold text-mv-red">
-              {errorCount === 1
-                ? "One field needs your attention before this can send."
-                : `${errorCount} fields need your attention before this can send.`}
+      <form noValidate onSubmit={handleSubmit(onValid)} className="flex flex-1 flex-col">
+        <div className="mb-[14px] grid grid-cols-1 gap-[14px] min-[521px]:grid-cols-2">
+          <div>
+            <label htmlFor="ctFirst" className={labelClass}>
+              First Name {req}
+            </label>
+            <input
+              id="ctFirst"
+              type="text"
+              autoComplete="given-name"
+              placeholder="Enter First Name"
+              aria-invalid={!!errors.firstName}
+              aria-describedby="ctFirstErr"
+              className={`${inputBase} ${errors.firstName ? errBorder : okBorder}`}
+              {...register("firstName")}
+            />
+            <span id="ctFirstErr" className={errClass}>
+              {errors.firstName?.message}
             </span>
-          ) : (
-            <span className="text-mv-muted">
-              <span className="font-extrabold text-mv-red">*</span> Required field
-            </span>
-          )}
-        </p>
+          </div>
 
-        {/* Your name */}
-        <div>
-          <label htmlFor="ctName" className="text-[12.5px] font-bold text-mv-slate">
-            Your name <span className="font-extrabold text-mv-red">*</span>
-          </label>
-          <input
-            id="ctName"
-            type="text"
-            autoComplete="name"
-            placeholder="Name"
-            aria-invalid={!!errors.name}
-            aria-describedby="ctNameErr"
-            className={`${inputBase} ${errors.name ? errBorder : okBorder}`}
-            {...register("name")}
-          />
-          {slot("ctNameErr", errors.name?.message)}
+          <div>
+            <label htmlFor="ctLast" className={labelClass}>
+              Last Name {req}
+            </label>
+            <input
+              id="ctLast"
+              type="text"
+              autoComplete="family-name"
+              placeholder="Enter Last Name"
+              aria-invalid={!!errors.lastName}
+              aria-describedby="ctLastErr"
+              className={`${inputBase} ${errors.lastName ? errBorder : okBorder}`}
+              {...register("lastName")}
+            />
+            <span id="ctLastErr" className={errClass}>
+              {errors.lastName?.message}
+            </span>
+          </div>
         </div>
 
-        {/* Email + Phone */}
-        <div className="grid grid-cols-1 gap-[14px] min-[521px]:grid-cols-2">
+        <div className="mb-[14px] grid grid-cols-1 gap-[14px] min-[521px]:grid-cols-2">
           <div>
-            <label htmlFor="ctEmail" className="text-[12.5px] font-bold text-mv-slate">
-              Email <span className="font-extrabold text-mv-red">*</span>
+            <label htmlFor="ctEmail" className={labelClass}>
+              Email {req}
             </label>
             <input
               id="ctEmail"
               type="email"
               autoComplete="email"
-              placeholder="you@example.com"
+              placeholder="Enter Email Address"
               aria-invalid={!!errors.email}
               aria-describedby="ctEmailErr"
               className={`${inputBase} ${errors.email ? errBorder : okBorder}`}
               {...register("email")}
             />
-            {slot("ctEmailErr", errors.email?.message)}
+            <span id="ctEmailErr" className={errClass}>
+              {errors.email?.message}
+            </span>
           </div>
 
           <div>
-            <label htmlFor="ctPhone" className="text-[12.5px] font-bold text-mv-slate">
-              Phone <span className="text-xs font-normal text-mv-muted">(optional)</span>
+            <label htmlFor="ctPhone" className={labelClass}>
+              Phone{" "}
+              <span className="text-xs font-normal text-mv-muted">(optional)</span>
             </label>
             <input
               id="ctPhone"
               type="tel"
               autoComplete="tel"
-              placeholder="(555) 555-5555"
+              placeholder="Enter Phone Number"
               aria-invalid={!!errors.phone}
               aria-describedby="ctPhoneErr"
               className={`${inputBase} ${errors.phone ? errBorder : okBorder}`}
               {...register("phone")}
             />
-            {slot("ctPhoneErr", errors.phone?.message)}
+            <span id="ctPhoneErr" className={errClass}>
+              {errors.phone?.message}
+            </span>
           </div>
         </div>
 
-        {/* Message */}
         <div>
-          <label htmlFor="ctMsg" className="text-[12.5px] font-bold text-mv-slate">
-            Message <span className="font-extrabold text-mv-red">*</span>
+          <label htmlFor="ctMsg" className={labelClass}>
+            What&rsquo;s your question or comment about? {req}
           </label>
           <textarea
             id="ctMsg"
-            rows={4}
-            placeholder="How can we help?"
+            rows={3}
+            placeholder="Enter Comments"
             aria-invalid={!!errors.message}
-            aria-describedby="ctMsgHint ctMsgErr"
-            className={`${inputBase} ${errors.message ? errBorder : okBorder}`}
+            aria-describedby="ctMsgErr"
+            className={`${inputBase} min-h-[76px] resize-y leading-[20px] ${
+              errors.message ? errBorder : okBorder
+            }`}
             {...register("message")}
           />
-          <span id="ctMsgHint" className="mt-[5px] block text-xs text-mv-muted">
-            Never send a password, a bank account, or a social security number.
+          <span id="ctMsgErr" className={errClass}>
+            {errors.message?.message}
           </span>
-          {slot("ctMsgErr", errors.message?.message)}
         </div>
 
+        {/* `mt-auto` pins this to the card's bottom, which is what keeps the two
+            cards reading as one row; auto-width from 521px up, per the proposal. */}
         <button
           type="submit"
           disabled={isSubmitting || sent}
-          className="mt-1 inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[10px] border border-mv-green bg-mv-green px-[18px] py-2.5 text-sm font-semibold text-mv-green-ink transition hover:brightness-95 disabled:cursor-default disabled:opacity-80"
+          /* `cursor-pointer` is explicit because Tailwind v4's preflight sets
+             buttons to `cursor: default`, which read as not-clickable. */
+          className="mt-auto inline-flex min-h-[42px] w-full cursor-pointer items-center justify-center gap-2 self-start rounded-[10px] border border-mv-green bg-mv-green px-[22px] py-2.5 text-sm font-semibold text-mv-green-ink transition hover:brightness-95 disabled:cursor-default disabled:opacity-80 min-[521px]:w-auto"
         >
           {isSubmitting ? (
             "Sending…"
@@ -175,7 +206,7 @@ export function ContactForm() {
             "Message sent ✓"
           ) : (
             <>
-              Send message
+              Send Message
               <Send className="h-4 w-4" />
             </>
           )}
@@ -183,7 +214,10 @@ export function ContactForm() {
       </form>
 
       {done && (
-        <p role="status" className={`mt-2.5 text-xs ${status === "error" ? "text-mv-red" : "text-mv-muted"}`}>
+        <p
+          role="status"
+          className={`mt-2.5 text-xs ${status === "error" ? "text-mv-red" : "text-mv-muted"}`}
+        >
           {done}
         </p>
       )}
