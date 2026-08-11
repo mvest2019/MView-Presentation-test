@@ -1,8 +1,8 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Send } from "lucide-react";
-import { useState } from "react";
+import { Info, Send } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { inlineLink } from "../../_components/typography";
@@ -26,6 +26,30 @@ export function ContactForm() {
   });
   const [status, setStatus] = useState<"idle" | "sent" | "error">("idle");
   const [done, setDone] = useState("");
+
+  // The intro copy lives behind the ⓘ button. It opens as an overlay rather
+  // than in flow: in flow it would grow the card, and the card's height is
+  // pinned by the equal-height pairing with "Get in touch".
+  const [introOpen, setIntroOpen] = useState(false);
+  const introRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!introOpen) return;
+
+    function onPointerDown(event: MouseEvent) {
+      if (!introRef.current?.contains(event.target as Node)) setIntroOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setIntroOpen(false);
+    }
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [introOpen]);
 
   const errorCount = Object.keys(errors).length;
 
@@ -60,17 +84,38 @@ export function ContactForm() {
       <div className="mb-1.5 text-[11.5px] font-bold uppercase tracking-[.12em] text-mv-green-deep">
         Send a message
       </div>
-      <h2 className="mb-1.5 font-serif text-[19px] font-semibold leading-[1.25] tracking-[-.01em] text-mv-ink">
-        Have a question or comment?
-      </h2>
-      <p className="m-0 mb-3 text-xs text-mv-muted">
-        Send us a message — a person, not a bot, replies within{" "}
-        <strong>one business day</strong>. Prefer email? Write to{" "}
-        <a className={inlineLink} href={cfg.email.href}>
-          {cfg.supportEmail}
-        </a>{" "}
-        and you reach the same desk.
-      </p>
+      <div ref={introRef} className="relative mb-3 flex items-start gap-[7px]">
+        <h2 className="font-serif text-[19px] font-semibold leading-[1.25] tracking-[-.01em] text-mv-ink">
+          Have a question or comment?
+        </h2>
+        <button
+          type="button"
+          onClick={() => setIntroOpen((open) => !open)}
+          aria-expanded={introOpen}
+          aria-controls="ctIntro"
+          aria-label="How soon do we reply?"
+          className={`mt-[5px] flex h-[17px] w-[17px] flex-none cursor-pointer items-center justify-center rounded-full border transition ${
+            introOpen
+              ? "border-mv-green-deep bg-mv-green-deep text-white"
+              : "border-mv-green-deep/45 text-mv-green-deep hover:border-mv-green-deep hover:bg-mv-mint"
+          }`}
+        >
+          <Info className="h-[11px] w-[11px]" strokeWidth={2.6} />
+        </button>
+
+        <div
+          id="ctIntro"
+          hidden={!introOpen}
+          className="absolute left-0 top-full z-20 mt-[6px] w-[min(360px,100%)] rounded-[10px] border border-mv-line bg-mv-card p-3 text-xs leading-[1.55] text-mv-slate shadow-mv-lg"
+        >
+          Send us a message — a person, not a bot, replies within{" "}
+          <strong>one business day</strong>. Prefer email? Write to{" "}
+          <a className={inlineLink} href={cfg.email.href}>
+            {cfg.supportEmail}
+          </a>{" "}
+          and you reach the same desk.
+        </div>
+      </div>
 
       <form noValidate onSubmit={handleSubmit(onValid)}>
         {/* One fixed-height line: the required-field hint, or the error summary when invalid.
