@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { headingBase } from "../_components/typography";
 import { ContactForm } from "./_components/contact-form";
 import { ContactInfo } from "./_components/contact-info";
+import { Breadcrumb } from "../_components/breadcrumb";
 
 export const metadata: Metadata = {
   title: "Contact Us | Mineral View",
@@ -16,20 +16,13 @@ export default function ContactPage() {
   return (
     <div className="py-16 pt-[26px] max-[767px]:pb-11">
       <div className="mx-auto max-w-[1140px] px-7 max-[767px]:px-4">
-        <nav aria-label="Breadcrumb" className="mb-6 text-[13px]">
-          <Link
-            href="/"
-            className="font-semibold text-mv-green-deep no-underline hover:underline"
-          >
-            Home
-          </Link>
-          <span className="mx-2 text-mv-muted">›</span>
-          <span className="font-bold text-mv-ink">Contact</span>
-        </nav>
+        <Breadcrumb trail={[{ label: "Contact" }]} />
 
         <div className="mx-auto mb-3 max-w-[640px] text-center">
           {/* 30px ceiling, down from 40px: at 40px the heading dwarfed the cards. */}
-          <h1 className={`${headingBase} text-[clamp(23px,2.6vw,30px)] leading-[1.15]`}>
+          <h1
+            className={`${headingBase} text-[clamp(23px,2.6vw,30px)] leading-[1.15]`}
+          >
             Contact Us
           </h1>
         </div>

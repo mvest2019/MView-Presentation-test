@@ -5,6 +5,7 @@ import { getGlossaryTerms } from "@/lib/glossary-api";
 import { headingBase } from "../../_components/typography";
 import { ResourceTabs } from "../../blog/_components/resource-tabs";
 import { GlossaryIndex } from "../_components/glossary-index";
+import { Breadcrumb } from "../../_components/breadcrumb";
 
 /**
  * Glossary index — the prototype's `route:glossary`.
@@ -33,12 +34,11 @@ export default async function GlossaryPage() {
   return (
     <div className="py-16 pt-[26px] max-[767px]:py-11">
       <div className="mx-auto max-w-[1200px] px-7 max-[767px]:px-4">
+        <Breadcrumb trail={[{ label: "Glossary" }]} />
         {/* Matches the listing pages — see the note in `article-listing.tsx`
             for why the design's `.res-head` floor is dropped. */}
+        {/* No kicker — the breadcrumb above already says Glossary. */}
         <div>
-          <div className="text-[11.5px] font-bold uppercase tracking-[.12em] text-mv-green-deep">
-            Glossary
-          </div>
           <h2
             className={`${headingBase} my-2 text-[clamp(26px,3vw,34px)] leading-[1.16]`}
           >
