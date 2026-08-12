@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getCountyListMap,
   getOperatorListMap,
+  getWellStatusListMap,
   getWellTypeListMap,
   type MapFilterItem,
 } from "@/lib/map-api";
@@ -236,6 +237,12 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
   const [wellTypesLoading, setWellTypesLoading] = useState(true);
   const [wellTypesError, setWellTypesError] = useState<string | null>(null);
 
+  const [wellStatuses, setWellStatuses] = useState<MapFilterItem[]>([]);
+  const [wellStatusesLoading, setWellStatusesLoading] = useState(true);
+  const [wellStatusesError, setWellStatusesError] = useState<string | null>(
+    null,
+  );
+
 
   /*
    * The live county list replaces the section's items. It arrives as a prop
@@ -269,9 +276,18 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
             })),
           };
         }
+        if (section.id === "status") {
+          return {
+            ...section,
+            items: wellStatuses.map(({ value, count }) => ({
+              name: value,
+              count,
+            })),
+          };
+        }
         return section;
       }),
-    [counties, operators, wellTypes],
+    [counties, operators, wellTypes, wellStatuses],
   );
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for the commented-out My leases section
@@ -322,6 +338,32 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
       })
       .finally(() => {
         if (!cancelled) setCountiesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getWellStatusListMap()
+      .then((list) => {
+        if (cancelled) return;
+        setWellStatuses(list);
+        setWellStatusesError(null);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setWellStatusesError(
+          error instanceof Error
+            ? error.message
+            : "Could not load well statuses.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setWellStatusesLoading(false);
       });
 
     return () => {
@@ -661,7 +703,11 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
                     ? wellTypesLoading
                       ? "Loading well types…"
                       : wellTypesError
-                    : undefined
+                    : section.id === "status"
+                      ? wellStatusesLoading
+                        ? "Loading well statuses…"
+                        : wellStatusesError
+                      : undefined
             }
             open={openSections.has(section.id)}
             onToggle={() => toggleSection(section.id)}
