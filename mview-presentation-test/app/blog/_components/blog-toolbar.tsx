@@ -48,14 +48,31 @@ export function BlogToolbar({
   const [term, setTerm] = useState(search);
   const [syncedSearch, setSyncedSearch] = useState(search);
 
-  // Keep the box in step when the URL changes from outside — the back button, or
-  // a chip click that cleared the search. Adjusted during render rather than in
-  // an effect: React re-runs this component before touching the DOM, so the
-  // input never paints a stale value, and typing is not interrupted the way a
-  // remount via `key` would interrupt it.
+  /*
+   * The last value this component pushed into the URL.
+   *
+   * WHY THIS EXISTS. The sync below adopts the URL's `search` into the input, so
+   * the back button and a "clear the filters" link both work. But the URL also
+   * echoes back what we just pushed, and that echo arrives late — the debounce
+   * waits 300ms and the API answers in about a second. Anything typed inside that
+   * window was overwritten when the echo landed: type "royalty" and the box
+   * would snap back to "r", losing every character after the first request went
+   * out. Comparing against what we pushed tells our own echo apart from a genuine
+   * external change, so only the latter touches the input.
+   *
+   * State, not a ref: this is read while rendering, and a ref read during render
+   * is not safe under concurrent rendering (and `react-hooks/refs` rejects it).
+   */
+  const [pushed, setPushed] = useState(search);
+
+  // Keep the box in step when the URL changes from OUTSIDE — the back button, or
+  // a link that cleared the query. Adjusted during render rather than in an
+  // effect: React re-runs this component before touching the DOM, so the input
+  // never paints a stale value, and typing is not interrupted the way a remount
+  // via `key` would interrupt it.
   if (search !== syncedSearch) {
     setSyncedSearch(search);
-    setTerm(search);
+    if (search !== pushed) setTerm(search);
   }
 
   function navigate(mutate: (params: URLSearchParams) => void) {
@@ -74,8 +91,11 @@ export function BlogToolbar({
   useEffect(() => {
     if (term === search) return;
     const timer = setTimeout(() => {
+      const next = term.trim();
+      // Record it BEFORE navigating, so the echo is recognised when it returns.
+      setPushed(next);
       navigate((params) => {
-        if (term.trim()) params.set("q", term.trim());
+        if (next) params.set("q", next);
         else params.delete("q");
       });
     }, 300);

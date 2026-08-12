@@ -80,7 +80,6 @@ export const SECTIONS = {
   blog: {
     path: "/blog",
     tab: "Blog",
-    kicker: "Blog",
     heading: "Blogs",
     lede: "Get the latest updates, tips, and insights on mineral rights, oil, and gas.",
     searchLabel: "Search articles",
@@ -91,7 +90,6 @@ export const SECTIONS = {
   news: {
     path: "/news",
     tab: "News",
-    kicker: "News",
     heading: "Oil & Gas Industry News",
     lede: "Get real-time updates and insights on the oil and gas sector & mineral rights.",
     searchLabel: "Search news",

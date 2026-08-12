@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getBlogList, getCategoryFacets } from "@/lib/blog-api";
 import { SECTIONS, type BlogMode } from "@/lib/blog-types";
 
+import { Breadcrumb } from "../../_components/breadcrumb";
 import { headingBase, inlineLink } from "../../_components/typography";
 import { BlogCard } from "./blog-card";
 import { BlogToolbar } from "./blog-toolbar";
@@ -65,16 +66,16 @@ export async function ArticleListing({
   return (
     <div className="py-16 pt-[26px] max-[767px]:py-11">
       <div className="mx-auto max-w-[1200px] px-7 max-[767px]:px-4">
+        <Breadcrumb trail={[{ label: section.tab }]} />
         {/* No `min-height` here. The design gives `.res-head` a 150px floor so
             the pill row cannot bounce between library pages, but with the live
             copy Blog, News and Glossary all measure the same 97px, so the floor
             only left blank space under the lede. If a future library page gets
             a taller header and the row starts moving between tabs, put a floor
             back at that page's height rather than raising this one blindly. */}
+        {/* No all-caps kicker above the heading. The breadcrumb directly above
+            already names the section, so it was the same word twice. */}
         <div>
-          <div className="text-[11.5px] font-bold uppercase tracking-[.12em] text-mv-green-deep">
-            {section.kicker}
-          </div>
           {/* Its own size and leading — the design's `.res-h` override. */}
           <h2
             className={`${headingBase} my-2 text-[clamp(26px,3vw,34px)] leading-[1.16]`}
