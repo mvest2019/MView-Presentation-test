@@ -137,3 +137,31 @@ export const getLegendListMap = async (): Promise<MapLegend[]> => {
     throw new Error(String(error) || "Failed to fetch legend list");
   }
 };
+
+/** One hit from the combined search — a lease, an operator or a county. */
+export type MapSearchResult = {
+  type: string;
+  value: string;
+  /** The display name. Counties carry theirs in `value` instead. */
+  label?: string;
+};
+
+/** GET /api/v1/map/search?q={query} -> { query, results: [{ type, value, label }] } */
+export const getMapSearch = async (
+  query: string,
+): Promise<MapSearchResult[]> => {
+  try {
+    const response = await fetch(
+      `${process.env.MAP_BASE_URL}/api/v1/map/search?q=${encodeURIComponent(query)}`,
+    );
+    const data = await response.json();
+
+    if (response.ok && Array.isArray(data?.results)) {
+      return data.results as MapSearchResult[];
+    } else {
+      throw new Error("Failed to search");
+    }
+  } catch (error) {
+    throw new Error(String(error) || "Failed to search");
+  }
+};

@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getCountyListMap,
   getFieldListMap,
+  getMapSearch,
   getOperatorListMap,
   getPlayTypeListMap,
   getWellStatusListMap,
@@ -204,9 +205,20 @@ export const FILTER_SECTIONS: FilterSection[] = [
  * operator, or county" — so status, well type, play type and field stay out of
  * it, which is also why "Water Supply" does not answer a search for "up".
  */
-const SEARCHED_SECTIONS = new Set(["county", "operator"]);
+/** Below this the search box stays quiet — the endpoint is slow and vague. */
+const SEARCH_MIN_CHARS = 3;
 
-const MAX_SUGGESTIONS = 8;
+/** The API's `type` as the badge beside a result, and the section it belongs to. */
+const SEARCH_KINDS: Record<string, string> = {
+  lease: "Lease",
+  operator: "Operator",
+  county: "County",
+};
+
+const SEARCH_SECTIONS: Record<string, string | undefined> = {
+  operator: "operator",
+  county: "county",
+};
 
 type Suggestion = {
   key: string;
@@ -515,43 +527,82 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
   }, []);
 
   const [query, setQuery] = useState("");
+  /*
+   * What the search API returned for the box at the top of the panel. Only
+   * this box goes to the network — the Find… box inside each section still
+   * filters the rows already on screen.
+   */
+  const [searchHits, setSearchHits] = useState<Suggestion[]>([]);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  /*
+   * The query these results answer. Anything else in the box means an answer
+   * is still coming — which covers the debounce window as well as the request
+   * itself. A plain `loading` flag cannot: it only goes up when the timer
+   * fires, so for those 300ms the box looked settled and empty and said "No
+   * matches" before it said "Searching…".
+   */
+  const [searchedFor, setSearchedFor] = useState("");
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  const suggestions = useMemo<Suggestion[]>(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return [];
+  /* The dropdown is the API's answer and nothing else — no local matching
+     against the loaded rows, no lease list. */
+  const suggestions = searchHits;
 
-    const hits: Suggestion[] = [];
+  /* Typed enough to search, and the results on hand are for something else. */
+  const searching =
+    query.trim().length >= SEARCH_MIN_CHARS && query.trim() !== searchedFor;
 
-    for (const lease of MY_LEASES) {
-      if (lease.name.toLowerCase().includes(needle)) {
-        hits.push({
-          key: `lease:${lease.id}`,
-          label: lease.name,
-          kind: "Lease",
-          leaseId: lease.id,
+  useEffect(() => {
+    const needle = query.trim();
+    let cancelled = false;
+
+    /*
+     * Below the minimum the box has nothing to ask for: two letters match
+     * thousands of rows and the endpoint takes seconds to answer. Debounced on
+     * top of that, so a word typed at speed is one request, not five.
+     */
+    const timer = setTimeout(() => {
+      if (needle.length < SEARCH_MIN_CHARS) {
+        setSearchHits([]);
+        setSearchError(null);
+        setSearchedFor(needle);
+        return;
+      }
+
+      getMapSearch(needle)
+        .then((results) => {
+          if (cancelled) return;
+          setSearchHits(
+            results.map((result, index) => ({
+              // Counties carry their name in `value`; the rest have an id
+              // there and the name in `label`.
+              key: `${result.type}:${result.value}:${index}`,
+              label: result.label ?? result.value,
+              kind: SEARCH_KINDS[result.type] ?? result.type,
+              sectionId: SEARCH_SECTIONS[result.type],
+            })),
+          );
+          setSearchError(null);
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          setSearchHits([]);
+          setSearchError(
+            error instanceof Error ? error.message : "Search failed.",
+          );
+        })
+        .finally(() => {
+          if (!cancelled) setSearchedFor(needle);
         });
-      }
-    }
+    }, needle.length < SEARCH_MIN_CHARS ? 0 : 300);
 
-    for (const section of sections) {
-      if (!SEARCHED_SECTIONS.has(section.id)) continue;
-      for (const item of section.items) {
-        if (item.name.toLowerCase().includes(needle)) {
-          hits.push({
-            key: `${section.id}:${item.name}`,
-            label: item.name,
-            kind: section.label,
-            sectionId: section.id,
-          });
-        }
-      }
-    }
-
-    return hits.slice(0, MAX_SUGGESTIONS);
-  }, [query, sections]);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query]);
 
   // Dismiss the suggestions on an outside click, as the map's other overlays do.
   useEffect(() => {
@@ -698,10 +749,31 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
               id="filters-search-results"
               role="listbox"
               aria-label="Search results"
-              className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-lg border border-mv-line bg-white py-1 shadow-mv-lg"
+              className="mv-thin-scroll absolute inset-x-0 top-full z-20 mt-1 max-h-[248px] overflow-y-auto rounded-lg border border-mv-line bg-white py-1 shadow-mv-lg"
             >
+              {/* Refining a search keeps the previous answer on screen, blurred
+                  and inert, with the spinner above it — the list stays where
+                  it was instead of emptying and reflowing, but nobody can
+                  click a result that is about to be replaced. */}
+              {searching && suggestions.length > 0 && (
+                <li className="flex items-center gap-2 border-b border-mv-line px-3 py-[6px] text-[10.5px] lg:text-[11.5px] font-semibold text-mv-muted">
+                  <span
+                    aria-hidden="true"
+                    className="h-[11px] w-[11px] shrink-0 animate-spin rounded-full border-[1.5px] border-mv-line border-t-mv-green-deep"
+                  />
+                  Searching…
+                </li>
+              )}
+
               {suggestions.map((suggestion, index) => (
-                <li key={suggestion.key}>
+                <li
+                  key={suggestion.key}
+                  className={
+                    searching
+                      ? "pointer-events-none select-none opacity-50 blur-[1.5px] transition-[filter,opacity] duration-150"
+                      : "transition-[filter,opacity] duration-150"
+                  }
+                >
                   <button
                     type="button"
                     id={`filters-search-option-${index}`}
@@ -727,9 +799,16 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
 
               {suggestions.length === 0 && (
                 <li className="px-3 py-[9px] text-[12px] lg:text-[13px] text-mv-muted">
-                  No matches
+                  {searching
+                    ? "Searching…"
+                    : searchError
+                      ? searchError
+                      : query.trim().length < SEARCH_MIN_CHARS
+                        ? `Type ${SEARCH_MIN_CHARS} letters to search`
+                        : "No matches"}
                 </li>
               )}
+
             </ul>
           )}
         </div>
