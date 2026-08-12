@@ -10,6 +10,16 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  getCountyListMap,
+  getFieldListMap,
+  getOperatorListMap,
+  getPlayTypeListMap,
+  getWellStatusListMap,
+  getWellTypeListMap,
+  type MapFilterItem,
+} from "@/lib/map-api";
+
 import { WELLS_STATEWIDE } from "./well-clusters";
 
 /*
@@ -68,7 +78,12 @@ const MY_LEASES: Lease[] = [
   },
 ];
 
-type FilterItem = { name: string; count: number; dot: string };
+/*
+ * A count and a colour dot are optional: some lists are plain sets of choices
+ * with no tally behind them, and a "0" or a grey dot would read as data rather
+ * than as an absence of it.
+ */
+type FilterItem = { name: string; count?: number; dot?: string };
 
 type FilterSection = {
   id: string;
@@ -124,29 +139,30 @@ export const FILTER_SECTIONS: FilterSection[] = [
     ],
   },
   {
-    // Only the tail is legible in the mock — Service 4 and Water Supply 1. The
-    // rows above them are filled in.
     id: "well-type",
     label: "Well type",
     items: [
-      { name: "Oil", count: 612430, dot: DOT.green },
-      { name: "Gas", count: 358120, dot: DOT.amber },
-      { name: "Injection / Disposal", count: 121455, dot: DOT.blue },
-      { name: "Dry Hole", count: 88204, dot: DOT.grey },
-      { name: "Service", count: 4, dot: DOT.green },
-      { name: "Water Supply", count: 1, dot: DOT.blue },
+      { name: "Oil Well" },
+      { name: "Gas Well" },
+      { name: "Oil / Gas Well" },
+      { name: "Injection / Disposal Well" },
+      { name: "Storage Well" },
+      { name: "Service Well" },
+      { name: "Observation Well" },
+      { name: "Brine Mining Well" },
+      { name: "Water Supply Well" },
+      { name: "Geothermal Well" },
     ],
   },
   {
-    // Confirmed: these five match the map's COLOR — STATUS legend exactly.
     id: "status",
-    label: "Status",
+    label: "Well status",
     items: [
-      { name: "Producing", count: 514812, dot: DOT.green },
-      { name: "Shut-In Producer", count: 347296, dot: DOT.amber },
-      { name: "Inactive", count: 172478, dot: DOT.grey },
-      { name: "Plugged", count: 172291, dot: DOT.slate },
-      { name: "Permitted", count: 10394, dot: DOT.brown },
+      { name: "Permitted Location" },
+      { name: "Producing" },
+      { name: "Non-Producing" },
+      { name: "Dry Hole" },
+      { name: "Canceled / Abandoned Location" },
     ],
   },
   {
@@ -208,15 +224,130 @@ type FiltersPanelProps = {
 };
 
 export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) {
+  /* The live county list, with the two states any request has besides its
+     result. `loading` starts true because the request starts on mount. */
+  const [counties, setCounties] = useState<MapFilterItem[]>([]);
+  const [countiesLoading, setCountiesLoading] = useState(true);
+  const [countiesError, setCountiesError] = useState<string | null>(null);
+
+  /* Operators arrive from the filters facet, so they carry counts as well. */
+  const [operators, setOperators] = useState<MapFilterItem[]>([]);
+  const [operatorsLoading, setOperatorsLoading] = useState(true);
+  const [operatorsError, setOperatorsError] = useState<string | null>(null);
+
+  const [wellTypes, setWellTypes] = useState<MapFilterItem[]>([]);
+  const [wellTypesLoading, setWellTypesLoading] = useState(true);
+  const [wellTypesError, setWellTypesError] = useState<string | null>(null);
+
+  const [fields, setFields] = useState<MapFilterItem[]>([]);
+  const [fieldsLoading, setFieldsLoading] = useState(true);
+  const [fieldsError, setFieldsError] = useState<string | null>(null);
+
+  const [playTypes, setPlayTypes] = useState<MapFilterItem[]>([]);
+  const [playTypesLoading, setPlayTypesLoading] = useState(true);
+  const [playTypesError, setPlayTypesError] = useState<string | null>(null);
+
+  const [wellStatuses, setWellStatuses] = useState<MapFilterItem[]>([]);
+  const [wellStatusesLoading, setWellStatusesLoading] = useState(true);
+  const [wellStatusesError, setWellStatusesError] = useState<string | null>(
+    null,
+  );
+
+
+  /*
+   * The live county list replaces the section's items. It arrives as a prop
+   * from a server fetch, so it is here on the first render and the state
+   * initialisers below can seed themselves from it — no empty first paint, no
+   * effect to reconcile afterwards.
+   *
+   * The API returns names only, so these rows carry no count and no dot.
+   */
+  /*
+   * What each API-backed section shows instead of its list: the loading line
+   * while the request is out, then the error if it failed, and nothing once
+   * the rows are in. A lookup rather than a ternary chain — one more facet
+   * should be one more line here, not another level of nesting.
+   */
+  const notices: Record<string, string | null | undefined> = {
+    county: countiesLoading ? "Loading counties…" : countiesError,
+    operator: operatorsLoading ? "Loading operators…" : operatorsError,
+    "well-type": wellTypesLoading ? "Loading well types…" : wellTypesError,
+    status: wellStatusesLoading ? "Loading well statuses…" : wellStatusesError,
+    "play-type": playTypesLoading ? "Loading play types…" : playTypesError,
+    field: fieldsLoading ? "Loading fields…" : fieldsError,
+  };
+
+  const sections = useMemo<FilterSection[]>(
+    () =>
+      FILTER_SECTIONS.map((section) => {
+        if (section.id === "county") {
+          return {
+            ...section,
+            items: counties.map(({ value, count }) => ({ name: value, count })),
+          };
+        }
+        if (section.id === "operator") {
+          return {
+            ...section,
+            items: operators.map(({ value, count }) => ({
+              name: value,
+              count,
+            })),
+          };
+        }
+        if (section.id === "well-type") {
+          return {
+            ...section,
+            items: wellTypes.map(({ value, count }) => ({
+              name: value,
+              count,
+            })),
+          };
+        }
+        if (section.id === "field") {
+          return {
+            ...section,
+            // Live data now, so the "No well data" flag comes off.
+            note: undefined,
+            items: fields.map(({ value, count }) => ({ name: value, count })),
+          };
+        }
+        if (section.id === "play-type") {
+          return {
+            ...section,
+            // The list is live now, so the "No well data" flag comes off.
+            note: undefined,
+            items: playTypes.map(({ value, count }) => ({
+              name: value,
+              count,
+            })),
+          };
+        }
+        if (section.id === "status") {
+          return {
+            ...section,
+            items: wellStatuses.map(({ value, count }) => ({
+              name: value,
+              count,
+            })),
+          };
+        }
+        return section;
+      }),
+    [counties, operators, wellTypes, wellStatuses, playTypes, fields],
+  );
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for the commented-out My leases section
   const [selectedLease, setSelectedLease] = useState<string | null>(
     MY_LEASES[0].id,
   );
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for the commented-out My leases section
   const [leasesOpen, setLeasesOpen] = useState(true);
 
   const [openSections, setOpenSections] = useState<Set<string>>(
     () =>
       new Set(
-        FILTER_SECTIONS.filter((section) => section.defaultOpen).map(
+        sections.filter((section) => section.defaultOpen).map(
           (section) => section.id,
         ),
       ),
@@ -225,12 +356,163 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
   // Everything starts ticked, so the panel opens showing the whole map.
   const [checked, setChecked] = useState<Record<string, Set<string>>>(() =>
     Object.fromEntries(
-      FILTER_SECTIONS.map((section) => [
+      sections.map((section) => [
         section.id,
         new Set(section.items.map((item) => item.name)),
       ]),
     ),
   );
+
+  useEffect(() => {
+    // `cancelled` rather than an AbortController: the panel can unmount while
+    // the request is in flight, and the only thing that must not happen then
+    // is a setState on a component that has gone.
+    let cancelled = false;
+
+    getCountyListMap()
+      .then((list) => {
+        if (cancelled) return;
+        setCounties(list);
+        // Counties arrive unticked — 270 of them ticked reads as a filter
+        // already applied. All · None is right above the list.
+        setCountiesError(null);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setCountiesError(
+          error instanceof Error ? error.message : "Could not load counties.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setCountiesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getFieldListMap()
+      .then((list) => {
+        if (cancelled) return;
+        setFields(list);
+        setFieldsError(null);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setFieldsError(
+          error instanceof Error ? error.message : "Could not load fields.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setFieldsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getPlayTypeListMap()
+      .then((list) => {
+        if (cancelled) return;
+        setPlayTypes(list);
+        setPlayTypesError(null);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setPlayTypesError(
+          error instanceof Error ? error.message : "Could not load play types.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setPlayTypesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getWellStatusListMap()
+      .then((list) => {
+        if (cancelled) return;
+        setWellStatuses(list);
+        setWellStatusesError(null);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setWellStatusesError(
+          error instanceof Error
+            ? error.message
+            : "Could not load well statuses.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setWellStatusesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getWellTypeListMap()
+      .then((list) => {
+        if (cancelled) return;
+        setWellTypes(list);
+        setWellTypesError(null);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setWellTypesError(
+          error instanceof Error ? error.message : "Could not load well types.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setWellTypesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getOperatorListMap()
+      .then((list) => {
+        if (cancelled) return;
+        setOperators(list);
+        setOperatorsError(null);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setOperatorsError(
+          error instanceof Error ? error.message : "Could not load operators.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setOperatorsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [query, setQuery] = useState("");
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
@@ -254,7 +536,7 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
       }
     }
 
-    for (const section of FILTER_SECTIONS) {
+    for (const section of sections) {
       if (!SEARCHED_SECTIONS.has(section.id)) continue;
       for (const item of section.items) {
         if (item.name.toLowerCase().includes(needle)) {
@@ -269,7 +551,7 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
     }
 
     return hits.slice(0, MAX_SUGGESTIONS);
-  }, [query]);
+  }, [query, sections]);
 
   // Dismiss the suggestions on an outside click, as the map's other overlays do.
   useEffect(() => {
@@ -357,12 +639,12 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
 
   return (
     <div
-      className={`flex max-h-full w-[252px] flex-col overflow-hidden rounded-xl border border-mv-line bg-white shadow-mv-lg ${className}`}
+      className={`flex max-h-full w-[196px] flex-col md:w-[224px] lg:w-[252px] overflow-hidden rounded-xl border border-mv-line bg-white shadow-mv-lg ${className}`}
     >
       <div className="mv-thin-scroll min-h-0 flex-1 overflow-y-auto px-[14px]">
         {/* ---------------- header ---------------- */}
         <div className="flex items-center gap-2 pb-3 pt-[14px]">
-          <h2 className="text-[15px] font-bold leading-none text-mv-ink">
+          <h2 className="text-[14px] lg:text-[15px] font-bold leading-none text-mv-ink">
             Search &amp; filters
           </h2>
           <ProBadge />
@@ -402,7 +684,7 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
               onFocus={() => setSuggestionsOpen(true)}
               onKeyDown={onSearchKeyDown}
               placeholder="Lease, operator, or county"
-              className="min-w-0 flex-1 border-0 bg-transparent text-[12.5px] leading-tight text-mv-ink outline-none placeholder:text-mv-muted"
+              className="min-w-0 flex-1 border-0 bg-transparent text-[11.5px] lg:text-[12.5px] leading-tight text-mv-ink outline-none placeholder:text-mv-muted"
             />
             <Search
               size={14}
@@ -433,10 +715,10 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
                       index === activeSuggestion ? "bg-[#f2f8f5]" : ""
                     }`}
                   >
-                    <span className="min-w-0 flex-1 truncate text-[13px] text-mv-slate">
+                    <span className="min-w-0 flex-1 truncate text-[12px] lg:text-[13px] text-mv-slate">
                       <Highlighted text={suggestion.label} query={query} />
                     </span>
-                    <span className="shrink-0 rounded bg-[#f1f2f4] px-[7px] py-[3px] text-[9.5px] font-bold uppercase tracking-[.06em] text-mv-muted">
+                    <span className="shrink-0 rounded bg-[#f1f2f4] px-[7px] py-[3px] text-[8.5px] lg:text-[9.5px] font-bold uppercase tracking-[.06em] text-mv-muted">
                       {suggestion.kind}
                     </span>
                   </button>
@@ -444,7 +726,7 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
               ))}
 
               {suggestions.length === 0 && (
-                <li className="px-3 py-[9px] text-[13px] text-mv-muted">
+                <li className="px-3 py-[9px] text-[12px] lg:text-[13px] text-mv-muted">
                   No matches
                 </li>
               )}
@@ -452,7 +734,11 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
           )}
         </div>
 
-        {/* ---------------- my leases ---------------- */}
+        {/* ---------------- my leases ----------------
+            Commented out rather than deleted — the section is expected back,
+            so it stays here with its markup intact. Its state and helpers are
+            left in place above for the same reason.
+
         <SectionShell
           label="My leases"
           count={MY_LEASES.length}
@@ -479,25 +765,27 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
               />
               <Radio checked={selectedLease === lease.id} />
               <span className="min-w-0">
-                <span className="text-[12.5px] font-bold text-mv-ink">
+                <span className="text-[11.5px] lg:text-[12.5px] font-bold text-mv-ink">
                   {lease.name}
                 </span>{" "}
-                <span className="text-[12px] text-mv-muted">
+                <span className="text-[11px] lg:text-[12px] text-mv-muted">
                   ({lease.number})
                 </span>
-                <span className="mt-[2px] block text-[11.5px] leading-tight text-mv-muted">
+                <span className="mt-[2px] block text-[10.5px] lg:text-[11.5px] leading-tight text-mv-muted">
                   {lease.location}
                 </span>
               </span>
             </label>
           ))}
         </SectionShell>
+        */}
 
         {/* ---------------- the checkbox sections ---------------- */}
-        {FILTER_SECTIONS.map((section) => (
+        {sections.map((section) => (
           <CheckboxSection
             key={section.id}
             section={section}
+            notice={notices[section.id]}
             open={openSections.has(section.id)}
             onToggle={() => toggleSection(section.id)}
             checked={checked[section.id]}
@@ -510,7 +798,7 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
       </div>
 
       {/* ---------------- match count ---------------- */}
-      <div className="border-t border-mv-line px-[14px] py-[10px] text-[12.5px] leading-snug text-mv-muted">
+      <div className="border-t border-mv-line px-[14px] py-[10px] text-[11.5px] lg:text-[12.5px] leading-snug text-mv-muted">
         <span className="font-bold text-mv-ink">
           {WELLS_STATEWIDE.toLocaleString("en-US")}
         </span>{" "}
@@ -527,6 +815,7 @@ function CheckboxSection({
   checked,
   onToggleItem,
   onSetAll,
+  notice,
 }: {
   section: FilterSection;
   open: boolean;
@@ -534,6 +823,8 @@ function CheckboxSection({
   checked: Set<string>;
   onToggleItem: (name: string) => void;
   onSetAll: (on: boolean) => void;
+  /** Shown in place of the list — "loading", or why there is nothing. */
+  notice?: string | null;
 }) {
   const [query, setQuery] = useState("");
 
@@ -554,7 +845,7 @@ function CheckboxSection({
     >
       <div className="flex items-center justify-end gap-[6px] pb-[10px]">
         <BulkAction onClick={() => onSetAll(true)}>All</BulkAction>
-        <span aria-hidden="true" className="text-[11px] text-mv-muted">
+        <span aria-hidden="true" className="text-[10px] lg:text-[11px] text-mv-muted">
           ·
         </span>
         <BulkAction onClick={() => onSetAll(false)}>None</BulkAction>
@@ -572,12 +863,25 @@ function CheckboxSection({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Find…"
-            className="min-w-0 flex-1 border-0 bg-transparent text-[12.5px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted"
+            className="min-w-0 flex-1 border-0 bg-transparent text-[11.5px] lg:text-[12.5px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted"
           />
         </div>
       )}
 
-      {visible.map((item) => (
+      {notice ? (
+        <p className="py-2 text-[11px] lg:text-[12px] text-mv-muted">{notice}</p>
+      ) : null}
+
+      {/* The long lists scroll inside the section rather than stretching it —
+          270 counties would otherwise push every section below them out of
+          reach. A Find… box is what marks a list as one of the long ones. */}
+      <div
+        className={
+          section.searchable ? "mv-thin-scroll max-h-[248px] overflow-y-auto" : ""
+        }
+      >
+      {!notice &&
+        visible.map((item) => (
         <label
           key={item.name}
           className="flex cursor-pointer items-center gap-2 py-[5px]"
@@ -589,22 +893,34 @@ function CheckboxSection({
             onChange={() => onToggleItem(item.name)}
           />
           <Checkbox checked={checked.has(item.name)} />
+          {item.dot && (
+            <span
+              aria-hidden="true"
+              className="h-[7px] w-[7px] shrink-0 rounded-full"
+              style={{ background: item.dot }}
+            />
+          )}
+          {/* Without a count to keep clear of, a long name may wrap rather
+              than be cut off. */}
           <span
-            aria-hidden="true"
-            className="h-[7px] w-[7px] shrink-0 rounded-full"
-            style={{ background: item.dot }}
-          />
-          <span className="flex-1 truncate text-[12.5px] text-mv-ink">
+            className={`flex-1 text-[11.5px] lg:text-[12.5px] text-mv-ink ${
+              item.count === undefined ? "leading-tight" : "truncate"
+            }`}
+          >
             {item.name}
           </span>
-          <span className="shrink-0 text-[12px] tabular-nums text-mv-muted">
-            {item.count.toLocaleString("en-US")}
-          </span>
-        </label>
-      ))}
+          {item.count !== undefined && (
+            <span className="shrink-0 rounded-full bg-mv-mint px-[7px] py-[2px] text-[10px] font-semibold tabular-nums leading-none text-mv-green-deep lg:text-[11px]">
+              {item.count.toLocaleString("en-US")}
+            </span>
+          )}
+          </label>
+        ))}
 
-      {visible.length === 0 && (
-        <p className="py-2 text-[12px] text-mv-muted">Nothing matches.</p>
+      </div>
+
+      {!notice && visible.length === 0 && (
+        <p className="py-2 text-[11px] lg:text-[12px] text-mv-muted">Nothing matches.</p>
       )}
     </SectionShell>
   );
@@ -633,16 +949,16 @@ function SectionShell({
         aria-expanded={open}
         className="flex w-full cursor-pointer items-center gap-2 text-left"
       >
-        <span className="text-[10.5px] font-extrabold uppercase tracking-[.1em] text-mv-ink">
+        <span className="text-[9.5px] lg:text-[10.5px] font-extrabold uppercase tracking-[.1em] text-mv-ink">
           {label}
         </span>
         {count !== undefined && (
-          <span className="text-[11px] font-semibold text-mv-muted">
+          <span className="text-[10px] lg:text-[11px] font-semibold text-mv-muted">
             {count}
           </span>
         )}
         {note && (
-          <span className="rounded bg-mv-amber-bg px-[5px] py-[2px] text-[8.5px] font-extrabold uppercase tracking-[.06em] text-mv-amber">
+          <span className="rounded bg-mv-amber-bg px-[5px] py-[2px] text-[7.5px] lg:text-[8.5px] font-extrabold uppercase tracking-[.06em] text-mv-amber">
             {note}
           </span>
         )}
@@ -699,7 +1015,7 @@ function BulkAction({
     <button
       type="button"
       onClick={onClick}
-      className="cursor-pointer text-[11.5px] font-bold text-mv-green-deep hover:underline"
+      className="cursor-pointer text-[10.5px] lg:text-[11.5px] font-bold text-mv-green-deep hover:underline"
     >
       {children}
     </button>
@@ -713,6 +1029,7 @@ function BulkAction({
  * in `sr-only`, so keyboard and screen-reader behaviour is the browser's.
  */
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for the commented-out My leases section
 function Radio({ checked }: { checked: boolean }) {
   return (
     <span
@@ -745,7 +1062,7 @@ function Checkbox({ checked }: { checked: boolean }) {
 
 function ProBadge() {
   return (
-    <span className="inline-flex shrink-0 items-center gap-[3px] rounded bg-mv-amber-bg px-[5px] py-[2px] text-[9px] font-extrabold uppercase leading-none tracking-[.06em] text-mv-amber">
+    <span className="inline-flex shrink-0 items-center gap-[3px] rounded bg-mv-amber-bg px-[5px] py-[2px] text-[8px] lg:text-[9px] font-extrabold uppercase leading-none tracking-[.06em] text-mv-amber">
       <Lock size={8} strokeWidth={3} aria-hidden="true" />
       Pro
     </span>

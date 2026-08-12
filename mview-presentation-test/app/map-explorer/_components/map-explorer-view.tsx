@@ -20,6 +20,7 @@ import {
 } from "./measure-area-panel";
 import { MeasureBar } from "./measure-bar";
 import {
+  NEARBY_RADII,
   NearbyPanel,
   NearbyPrompt,
   type NearbyStats,
@@ -64,6 +65,9 @@ type EsriDragEvent = {
 interface EsriView {
   scale: number;
   zoom: number;
+  /** Viewport size in pixels; 0 until the view has a laid-out container. */
+  width: number;
+  height: number;
   center: { longitude: number; latitude: number };
   when(): Promise<unknown>;
   watch(paths: string | string[], callback: () => void): EsriHandle;
@@ -135,6 +139,22 @@ type GraphicsLayerCtor = new (props?: {
   id?: string;
 }) => EsriGraphicsLayer;
 
+interface EsriExtent {
+  union(other: EsriExtent): EsriExtent;
+  expand(factor: number): EsriExtent;
+}
+
+interface EsriGeoJSONLayer {
+  /** Client-side query over the loaded features. */
+  queryExtent(query: {
+    where: string;
+  }): Promise<{ count: number; extent: EsriExtent | null }>;
+}
+
+type GeoJSONLayerCtor = new (
+  props: Record<string, unknown>,
+) => EsriGeoJSONLayer;
+
 type GraphicCtor = new (props: Record<string, unknown>) => unknown;
 
 /**
@@ -145,6 +165,42 @@ type GraphicCtor = new (props: Record<string, unknown>) => unknown;
  */
 const HOME_CENTER: [number, number] = [-100.0199, 31.2534];
 const HOME_SCALE = 7_262_011;
+
+/*
+ * The mock's scale was drawn for a desktop canvas. On a phone the viewport is
+ * a third of the width, so the same scale opens on the middle of Texas with
+ * the coast and the panhandle both off-screen — the shape people orient by is
+ * exactly what gets cropped. Narrow screens open further out instead.
+ *
+ * Read at view-creation time rather than watched: this is the opening view,
+ * and a rotation should not throw away wherever someone has panned to.
+ */
+const HOME_SCALE_TABLET = 9_800_000;
+const HOME_SCALE_PHONE = 13_500_000;
+
+function homeScale(): number {
+  if (typeof window === "undefined") return HOME_SCALE;
+  if (window.matchMedia("(max-width: 767px)").matches) return HOME_SCALE_PHONE;
+  if (window.matchMedia("(max-width: 1023px)").matches) return HOME_SCALE_TABLET;
+  return HOME_SCALE;
+}
+
+/*
+ * Boundary overlays, served as GeoJSON from Cloudinary.
+ *
+ * The counties are split across nine files: one file of that size blocks the
+ * first paint, and nine requests the browser runs in parallel do not. They are
+ * built in a loop and handed to the map together, so the map starts all nine
+ * at once rather than waiting on each in turn.
+ */
+const DISTRICT_LAYER_URL =
+  "https://res.cloudinary.com/mview/raw/upload/districts_-_Copy_jtgkgf.txt";
+const COUNTY_LAYER_URL = (index: number) =>
+  `https://res.cloudinary.com/mview/raw/upload/maps/newcounty${index}.txt`;
+const COUNTY_LAYER_COUNT = 9;
+
+/** County lines stay hidden above this scale — statewide they are a smear. */
+const COUNTY_MIN_SCALE = 4_000_000;
 
 /** A drawn rectangle, in degrees. */
 type Area = { west: number; south: number; east: number; north: number };
@@ -181,6 +237,15 @@ const DEFAULT_WATCH_RADIUS_MILES = 2;
  * cards stop making sense much under a quarter of the page.
  */
 const DEFAULT_SPLIT = 0.5;
+
+/*
+ * Stacked, the map takes the larger share. An even split reads differently on
+ * the two axes: half the width still shows a recognisable stretch of Texas,
+ * half the height on a phone shows a band too short to pan around in, while
+ * the cards below simply scroll — they lose far less to being shorter than
+ * the map does.
+ */
+const STACKED_DEFAULT_SPLIT = 0.67;
 const MIN_SPLIT = 0.22;
 const MAX_SPLIT = 0.78;
 
@@ -480,6 +545,26 @@ function subscribeToFullscreen(onChange: () => void) {
   return () => document.removeEventListener("fullscreenchange", onChange);
 }
 
+/*
+ * Below lg the Insights split runs top-to-bottom instead of side-by-side —
+ * half of a phone or tablet's width is no width at all, for the map or for
+ * the cards.
+ *
+ * The split's geometry is an inline percentage, so a media query cannot reach
+ * it; the breakpoint has to be a value React can branch on. It is read live
+ * rather than once on mount because the map measures itself against this
+ * wrapper — `view.toScreen`, the tool bars and every anchored overlay — so a
+ * rotation that changed the axis without re-rendering would put the map's idea
+ * of its own bounds a screen away from the truth.
+ */
+const STACK_QUERY = "(max-width: 1023px)";
+
+function subscribeToStackQuery(onChange: () => void) {
+  const query = window.matchMedia(STACK_QUERY);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
 /**
  * Fullscreen is refused without a real user gesture, and can be blocked by
  * permissions policy in an iframe. Both reject, and an uncaught rejection puts
@@ -501,6 +586,7 @@ export function MapExplorerView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EsriView | null>(null);
+  const countyLayersRef = useRef<EsriGeoJSONLayer[]>([]);
   const mapRef = useRef<EsriMap | null>(null);
 
   // Tracked through the browser rather than our own state: Escape and the
@@ -511,10 +597,23 @@ export function MapExplorerView() {
     () => false,
   );
 
+  const stacked = useSyncExternalStore(
+    subscribeToStackQuery,
+    () => window.matchMedia(STACK_QUERY).matches,
+    () => false,
+  );
+
   const [status, setStatus] = useState<Status>("loading");
   const [basemap, setBasemap] = useState(DEFAULT_BASEMAP);
   const [viewTab, setViewTab] = useState<ViewTab>("map");
   const [splitRatio, setSplitRatio] = useState(DEFAULT_SPLIT);
+  /*
+   * Until the divider is actually moved the ratio is the axis's own default,
+   * not the stored number — the stacked and side-by-side defaults differ, and
+   * `useState` cannot pick between them because the breakpoint is not known
+   * until after hydration.
+   */
+  const [splitTouched, setSplitTouched] = useState(false);
   const draggingSplitRef = useRef(false);
 
   /*
@@ -649,6 +748,36 @@ export function MapExplorerView() {
     }
   }, []);
 
+  /*
+   * Zooms so the circle is actually readable.
+   *
+   * At statewide scale a 10-mile radius is about eight pixels — geometrically
+   * right and visually useless, indistinguishable from the dot at its centre.
+   *
+   * It frames the WIDEST radius on offer, once, when the point is picked, and
+   * never again: scaling to whatever radius is selected would draw every
+   * option at the same size on screen, which tells you nothing. Framed to 10
+   * miles, the 1 mi circle is a tenth of the 10 mi one — as it should be.
+   *
+   * Esri scale is metres on the ground per metre on a 96-dpi screen, hence the
+   * 0.0254/96 metres-per-pixel conversion.
+   */
+  const frameRadius = useCallback((at: LonLat) => {
+    const view = viewRef.current;
+    if (!view?.width || !view?.height) return;
+
+    const widest = NEARBY_RADII[NEARBY_RADII.length - 1];
+    const span = Math.min(view.width, view.height) * 0.55;
+    const metresPerPixel = (2 * widest * METRES_PER_MILE) / span;
+
+    view
+      .goTo({
+        center: [at.longitude, at.latitude],
+        scale: (metresPerPixel * 96) / 0.0254,
+      })
+      .catch(ignoreInterrupted);
+  }, []);
+
   /** Redraws the watch circle and the dot at its centre. */
   const drawNearby = useCallback((next: Nearby | null) => {
     const layer = nearbyLayerRef.current;
@@ -703,13 +832,21 @@ export function MapExplorerView() {
         },
       }),
     );
+
   }, []);
 
   /**
    * Draws the tract as it is built: a line through the corners while open, a
    * filled ring once closed, with a dot on every corner either way.
    */
-  const drawTract = useCallback((points: LonLat[], closed: boolean) => {
+  /*
+   * `hint` is the cursor: while the tract is open, the edge from the last
+   * corner to wherever the pointer is now is drawn dashed, so the next click
+   * is previewed rather than guessed at. It is not part of the tract — it is
+   * discarded on the next redraw.
+   */
+  const drawTract = useCallback(
+    (points: LonLat[], closed: boolean, hint?: LonLat | null) => {
     const layer = tractLayerRef.current;
     const ctors = ctorsRef.current;
     if (!layer || !ctors) return;
@@ -718,6 +855,30 @@ export function MapExplorerView() {
     if (points.length === 0) return;
 
     const ring = points.map((p) => [p.longitude, p.latitude]);
+
+    if (!closed && hint) {
+      const last = points[points.length - 1];
+      layer.add(
+        new ctors.Graphic({
+          geometry: {
+            type: "polyline",
+            paths: [
+              [
+                [last.longitude, last.latitude],
+                [hint.longitude, hint.latitude],
+              ],
+            ],
+            spatialReference: { wkid: 4326 },
+          },
+          symbol: {
+            type: "simple-line",
+            color: [46, 143, 109],
+            width: 1.5,
+            style: "dash",
+          },
+        }),
+      );
+    }
 
     if (closed && points.length >= 3) {
       layer.add(
@@ -764,6 +925,51 @@ export function MapExplorerView() {
         }),
       );
     }
+  },
+  [],
+  );
+
+  /*
+   * Frames a county by name.
+   *
+   * All nine files are asked, because which one holds a given county is an
+   * accident of how the data was split. The three spellings in the `where`
+   * cover the field arriving as `county`, `COUNTY` or `County` — the live
+   * files use the first, but the query costs nothing extra and a re-export
+   * that changes the case would otherwise silently find nothing.
+   *
+   * A county can straddle two files, so the extents are unioned rather than
+   * first-one-wins.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- public helper, not yet called from the UI
+  const zoomToCounty = useCallback(async (countyName: string) => {
+    const view = viewRef.current;
+    const layers = countyLayersRef.current;
+    if (!view || layers.length === 0) return false;
+
+    // Doubling is how SQL escapes a quote — "O'Brien" would end the string.
+    const name = countyName.replace(/'/g, "''");
+    const where = `county = '${name}' OR COUNTY = '${name}' OR County = '${name}'`;
+
+    const results = await Promise.all(
+      layers.map((layer) =>
+        // A file that has not loaded, or has no such field, is simply a miss.
+        layer.queryExtent({ where }).catch(() => null),
+      ),
+    );
+
+    const extents = results
+      .filter((result) => result && result.count > 0 && result.extent)
+      .map((result) => result!.extent!);
+
+    if (extents.length === 0) return false;
+
+    const target = extents
+      .reduce((union, extent) => union.union(extent))
+      .expand(1.15);
+
+    await view.goTo(target).catch(ignoreInterrupted);
+    return true;
   }, []);
 
   /** Re-projects the on-map cards — they are React, so they do not follow. */
@@ -822,26 +1028,100 @@ export function MapExplorerView() {
 
     void (async () => {
       try {
-        const [EsriMap, MapView, GraphicsLayer, Graphic, Point, geodesic] =
-          await loadArcgisModules<
-            [
-              MapCtor,
-              MapViewCtor,
-              GraphicsLayerCtor,
-              GraphicCtor,
-              PointCtor,
-              GeodesicUtils,
-            ]
-          >([
-            "esri/Map",
-            "esri/views/MapView",
-            "esri/layers/GraphicsLayer",
-            "esri/Graphic",
-            "esri/geometry/Point",
-            "esri/geometry/support/geodesicUtils",
-          ]);
+        const [
+          EsriMap,
+          MapView,
+          GraphicsLayer,
+          GeoJSONLayer,
+          Graphic,
+          Point,
+          geodesic,
+        ] = await loadArcgisModules<
+          [
+            MapCtor,
+            MapViewCtor,
+            GraphicsLayerCtor,
+            GeoJSONLayerCtor,
+            GraphicCtor,
+            PointCtor,
+            GeodesicUtils,
+          ]
+        >([
+          "esri/Map",
+          "esri/views/MapView",
+          "esri/layers/GraphicsLayer",
+          "esri/layers/GeoJSONLayer",
+          "esri/Graphic",
+          "esri/geometry/Point",
+          "esri/geometry/support/geodesicUtils",
+        ]);
 
         if (cancelled || !containerRef.current) return;
+
+        const districtLayer = new GeoJSONLayer({
+          id: "rrc-districts",
+          url: DISTRICT_LAYER_URL,
+          title: "RRC districts",
+          // Outline only — a fill would hide the basemap the lines describe.
+          renderer: {
+            type: "simple",
+            symbol: {
+              type: "simple-fill",
+              color: [0, 0, 0, 0],
+              outline: { color: [37, 99, 235, 0.8], width: 2 },
+            },
+          },
+          labelsVisible: true,
+          labelingInfo: [
+            {
+              labelExpressionInfo: { expression: "$feature.dis_code" },
+              labelPlacement: "always-horizontal",
+              symbol: {
+                type: "text",
+                color: [37, 99, 235, 1],
+                haloColor: [255, 255, 255, 0.9],
+                haloSize: 1.5,
+                font: { size: 11, weight: "bold" },
+              },
+            },
+          ],
+        });
+
+        // Nine files, created together so the map requests them in parallel.
+        const countyLayers: EsriGeoJSONLayer[] = [];
+        for (let index = 1; index <= COUNTY_LAYER_COUNT; index += 1) {
+          countyLayers.push(
+            new GeoJSONLayer({
+              id: `counties-${index}`,
+              url: COUNTY_LAYER_URL(index),
+              title: `Counties ${index}`,
+              minScale: COUNTY_MIN_SCALE,
+              renderer: {
+                type: "simple",
+                symbol: {
+                  type: "simple-fill",
+                  color: [0, 0, 0, 0],
+                  outline: { color: [18, 0, 255, 0.9], width: 2 },
+                },
+              },
+              labelsVisible: true,
+              labelingInfo: [
+                {
+                  labelExpressionInfo: { expression: "$feature.county" },
+                  labelPlacement: "always-horizontal",
+                  symbol: {
+                    type: "text",
+                    color: [18, 0, 255, 1],
+                    haloColor: [255, 255, 255, 0.9],
+                    haloSize: 1.5,
+                    font: { size: 12 },
+                  },
+                },
+              ],
+            }),
+          );
+        }
+        countyLayersRef.current = countyLayers;
 
         const clusters = new GraphicsLayer({ id: "well-clusters" });
         clusters.addMany(buildClusterGraphics(Graphic));
@@ -862,7 +1142,17 @@ export function MapExplorerView() {
         // layer is a sibling of the basemap, so it survives the swap.
         const map = new EsriMap({
           basemap: DEFAULT_BASEMAP,
-          layers: [clusters, areaLayer, measureLayer, nearbyLayer, tractLayer],
+          // Districts first, counties over them, then the bubbles and every
+          // tool layer on top — boundaries are context, not content.
+          layers: [
+            districtLayer,
+            ...countyLayers,
+            clusters,
+            areaLayer,
+            measureLayer,
+            nearbyLayer,
+            tractLayer,
+          ],
         });
         mapRef.current = map;
 
@@ -870,7 +1160,7 @@ export function MapExplorerView() {
           container: containerRef.current,
           map,
           center: HOME_CENTER,
-          scale: HOME_SCALE,
+          scale: homeScale(),
           // Below zoom 3 the world repeats and the terrain turns to mush.
           constraints: { minZoom: 3, snapToZoom: false },
           // Attribution only — every other control is React chrome on top.
@@ -969,6 +1259,14 @@ export function MapExplorerView() {
         };
 
         pointerHandle = view.on("pointer-move", (event) => {
+          // Mid-tract, the pointer is the next corner until it is clicked.
+          if (activeToolRef.current === "measure-area") {
+            const points = tractRef.current;
+            if (points.length > 0) {
+              drawTract(points, false, view?.toMap(event) ?? null);
+            }
+          }
+
           // A tool takes precedence — no hover cards mid-draw.
           const index = activeToolRef.current ? -1 : clusterAt(event.x, event.y);
           const top = index === -1 ? null : screenTopOf(index);
@@ -1058,6 +1356,7 @@ export function MapExplorerView() {
           nearbyRef.current = next;
           setNearby(next);
           drawNearby(next);
+          frameRadius(at);
           anchorBars();
 
           const request = ++countyRequestRef.current;
@@ -1073,9 +1372,12 @@ export function MapExplorerView() {
 
         dragHandle = view.on("drag", (event) => {
           const tool = activeToolRef.current;
-          // This tool takes a click, not a drag; a stray drag must not pan the
-          // map out from under the prompt either.
-          if (tool === "whats-near-my-land") {
+          // These two take clicks, not drags — the corner tool because a tract
+          // is placed corner by corner, the watch tool because it is a single
+          // point. A pointer that slides a few pixels between press and
+          // release still fires `drag`, and that must not be read as a
+          // gesture, nor pan the map out from under the prompt.
+          if (tool === "whats-near-my-land" || tool === "measure-area") {
             event.stopPropagation();
             return;
           }
@@ -1098,7 +1400,7 @@ export function MapExplorerView() {
             areaRef.current = next;
             setArea(next);
             drawArea(next);
-          } else {
+          } else if (tool === "measure-distance") {
             const ctors = ctorsRef.current;
             if (!ctors) return;
 
@@ -1120,6 +1422,9 @@ export function MapExplorerView() {
             measurementRef.current = next;
             setMeasurement(next);
             drawMeasurement(next);
+          } else {
+            // A tool with no drag behaviour. Nothing to draw.
+            return;
           }
 
           anchorBars();
@@ -1154,7 +1459,7 @@ export function MapExplorerView() {
       view?.destroy();
     };
     // All stable, so the view is still built exactly once.
-  }, [drawArea, drawMeasurement, drawNearby, drawTract, anchorBars]);
+  }, [drawArea, drawMeasurement, drawNearby, drawTract, frameRadius, anchorBars]);
 
   // Esc backs out of an armed tool — the prompt says so.
   useEffect(() => {
@@ -1238,12 +1543,28 @@ export function MapExplorerView() {
    * drag keeps following the pointer even when it leaves the 7px handle, and
    * the browser cleans the capture up for us if the gesture is interrupted.
    */
-  const splitFromPointer = useCallback((clientX: number) => {
-    const bounds = rootRef.current?.getBoundingClientRect();
-    if (!bounds || !bounds.width) return;
-    const ratio = (clientX - bounds.left) / bounds.width;
-    setSplitRatio(Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, ratio)));
-  }, []);
+  const split = splitTouched
+    ? splitRatio
+    : stacked
+      ? STACKED_DEFAULT_SPLIT
+      : DEFAULT_SPLIT;
+
+  const splitFromPointer = useCallback(
+    (clientX: number, clientY: number) => {
+      const bounds = rootRef.current?.getBoundingClientRect();
+      if (!bounds) return;
+
+      const span = stacked ? bounds.height : bounds.width;
+      if (!span) return;
+
+      const ratio = stacked
+        ? (clientY - bounds.top) / span
+        : (clientX - bounds.left) / span;
+      setSplitTouched(true);
+      setSplitRatio(Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, ratio)));
+    },
+    [stacked],
+  );
 
   const onSplitPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -1262,7 +1583,9 @@ export function MapExplorerView() {
 
   const onSplitPointerMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      if (draggingSplitRef.current) splitFromPointer(event.clientX);
+      if (draggingSplitRef.current) {
+        splitFromPointer(event.clientX, event.clientY);
+      }
     },
     [splitFromPointer],
   );
@@ -1283,24 +1606,27 @@ export function MapExplorerView() {
 
   const onSplitKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
+      const back = stacked ? "ArrowUp" : "ArrowLeft";
+      const forward = stacked ? "ArrowDown" : "ArrowRight";
       const step =
-        event.key === "ArrowLeft"
+        event.key === back
           ? -SPLIT_KEY_STEP
-          : event.key === "ArrowRight"
+          : event.key === forward
             ? SPLIT_KEY_STEP
             : 0;
 
       if (step) {
         event.preventDefault();
+        setSplitTouched(true);
         setSplitRatio((current) =>
           Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, current + step)),
         );
       } else if (event.key === "Home") {
         event.preventDefault();
-        setSplitRatio(DEFAULT_SPLIT);
+        setSplitTouched(false);
       }
     },
-    [],
+    [stacked],
   );
 
   const downloadNearby = useCallback(() => {
@@ -1340,7 +1666,7 @@ export function MapExplorerView() {
   /** Back to the opening view — the Texas extent at 1:7,262,011. */
   const goHome = useCallback(() => {
     viewRef.current
-      ?.goTo({ center: HOME_CENTER, scale: HOME_SCALE })
+      ?.goTo({ center: HOME_CENTER, scale: homeScale() })
       .catch(ignoreInterrupted);
   }, []);
 
@@ -1424,14 +1750,18 @@ export function MapExplorerView() {
        */}
       <div
         className={
-          viewTab === "insights"
-            ? "absolute inset-y-0 left-0 overflow-hidden"
-            : "absolute inset-0"
+          viewTab !== "insights"
+            ? "absolute inset-0"
+            : stacked
+              ? "absolute inset-x-0 top-0 overflow-hidden"
+              : "absolute inset-y-0 left-0 overflow-hidden"
         }
         style={
-          viewTab === "insights"
-            ? { width: `${splitRatio * 100}%` }
-            : undefined
+          viewTab !== "insights"
+            ? undefined
+            : stacked
+              ? { height: `${split * 100}%` }
+              : { width: `${split * 100}%` }
         }
       >
       <div ref={containerRef} className="h-full w-full" />
@@ -1527,8 +1857,16 @@ export function MapExplorerView() {
       {status === "ready" && viewTab === "insights" && (
         <>
           <div
-            className="absolute inset-y-0 right-0 border-l border-mv-line"
-            style={{ width: `${(1 - splitRatio) * 100}%` }}
+            className={
+              stacked
+                ? "absolute inset-x-0 bottom-0 border-t border-mv-line"
+                : "absolute inset-y-0 right-0 border-l border-mv-line"
+            }
+            style={
+              stacked
+                ? { height: `${(1 - split) * 100}%` }
+                : { width: `${(1 - split) * 100}%` }
+            }
           >
             <InsightsPanel />
           </div>
@@ -1538,9 +1876,9 @@ export function MapExplorerView() {
               hint; the browser's own tooltip is what the mock shows. */}
           <div
             role="separator"
-            aria-orientation="vertical"
+            aria-orientation={stacked ? "horizontal" : "vertical"}
             aria-label="Resize map and insights"
-            aria-valuenow={Math.round(splitRatio * 100)}
+            aria-valuenow={Math.round(split * 100)}
             aria-valuemin={Math.round(MIN_SPLIT * 100)}
             aria-valuemax={Math.round(MAX_SPLIT * 100)}
             tabIndex={0}
@@ -1549,14 +1887,20 @@ export function MapExplorerView() {
             onPointerMove={onSplitPointerMove}
             onPointerUp={onSplitPointerUp}
             onPointerCancel={onSplitPointerUp}
-            onDoubleClick={() => setSplitRatio(DEFAULT_SPLIT)}
+            onDoubleClick={() => setSplitTouched(false)}
             onKeyDown={onSplitKeyDown}
-            className="group absolute inset-y-0 z-30 -ml-[3px] w-[7px] cursor-col-resize touch-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-mv-green-deep"
-            style={{ left: `${splitRatio * 100}%` }}
+            className={`group absolute z-30 touch-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-mv-green-deep ${
+              stacked
+                ? "inset-x-0 -mt-[3px] h-[7px] cursor-row-resize"
+                : "inset-y-0 -ml-[3px] w-[7px] cursor-col-resize"
+            }`}
+            style={stacked ? { top: `${split * 100}%` } : { left: `${split * 100}%` }}
           >
             <span
               aria-hidden="true"
-              className="absolute left-1/2 top-1/2 h-10 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#c7cbd1] group-hover:bg-mv-green-deep"
+              className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#c7cbd1] group-hover:bg-mv-green-deep ${
+                stacked ? "h-[3px] w-10" : "h-10 w-[3px]"
+              }`}
             />
           </div>
         </>

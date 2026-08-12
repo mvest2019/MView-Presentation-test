@@ -1,50 +1,21 @@
 "use client";
 
 import { ChevronDown, Layers } from "lucide-react";
-import { useState } from "react";
+import Image from "next/image";
+import { useEffect, useState } from "react";
+
+import { getLegendListMap, type MapLegend } from "@/lib/map-api";
 
 /*
- * The well-symbol legend.
+ * The well-symbol legend, served by the map API.
  *
- * Symbols are inline SVG rather than an image sprite: they are eleven small
- * geometric marks, they have to stay crisp at any zoom, and drawing them keeps
- * the colours in one place instead of baked into a bitmap.
+ * The symbols were inline SVG while there was no endpoint for them; they are
+ * now the same PNGs the map itself draws, which is the point — a legend that
+ * redraws its symbols is a legend that can disagree with the map.
  *
- * The three colours are the Railroad Commission's own convention — blue for a
- * hole with no production, green for oil, red for gas — not the app palette,
- * because a legend that recolours the industry's symbols stops being a legend.
+ * Ninety of them, so the list scrolls inside the panel rather than running off
+ * the bottom of the screen.
  */
-
-const BLUE = "#2f4fd8";
-const GREEN = "#12a13f";
-const RED = "#e2231a";
-
-type SymbolKind =
-  | "permitted"
-  | "dry-hole"
-  | "oil"
-  | "gas"
-  | "oil-gas"
-  | "plugged-oil"
-  | "plugged-gas"
-  | "canceled"
-  | "plugged-oil-gas"
-  | "injection"
-  | "core-test";
-
-const LEGEND_ITEMS: { kind: SymbolKind; label: string }[] = [
-  { kind: "permitted", label: "Permitted Location" },
-  { kind: "dry-hole", label: "Dry Hole" },
-  { kind: "oil", label: "Oil" },
-  { kind: "gas", label: "Gas" },
-  { kind: "oil-gas", label: "Oil / Gas" },
-  { kind: "plugged-oil", label: "Plugged Oil" },
-  { kind: "plugged-gas", label: "Plugged Gas" },
-  { kind: "canceled", label: "Canceled / Abandoned Location" },
-  { kind: "plugged-oil-gas", label: "Plugged Oil / Gas" },
-  { kind: "injection", label: "Injection / Disposal" },
-  { kind: "core-test", label: "Core Test" },
-];
 
 type LegendsPanelProps = {
   /** Positioning; the panel places itself nowhere on its own. */
@@ -58,9 +29,39 @@ export function LegendsPanel({
 }: LegendsPanelProps) {
   const [open, setOpen] = useState(defaultOpen);
 
+  const [legends, setLegends] = useState<MapLegend[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getLegendListMap()
+      .then((list) => {
+        if (cancelled) return;
+        setLegends(list);
+        setError(null);
+      })
+      .catch((failure: unknown) => {
+        if (cancelled) return;
+        setError(
+          failure instanceof Error
+            ? failure.message
+            : "Could not load the legend.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div
-      className={`w-[204px] overflow-hidden rounded-xl border border-mv-line bg-white shadow-mv ${className}`}
+      className={`w-[168px] overflow-hidden md:w-[186px] lg:w-[204px] rounded-xl border border-mv-line bg-white shadow-mv ${className}`}
     >
       <button
         type="button"
@@ -69,7 +70,7 @@ export function LegendsPanel({
         className="flex w-full cursor-pointer items-center gap-2 bg-mv-green-deep px-3 py-[9px] text-left text-white hover:brightness-105"
       >
         <Layers size={15} aria-hidden="true" />
-        <span className="flex-1 text-[14px] font-bold leading-none">
+        <span className="flex-1 text-[13px] lg:text-[14px] font-bold leading-none">
           Legends
         </span>
         <ChevronDown
@@ -79,140 +80,33 @@ export function LegendsPanel({
         />
       </button>
 
-      {open && (
-        <ul className="mv-thin-scroll max-h-[292px] overflow-y-auto py-1">
-          {LEGEND_ITEMS.map(({ kind, label }) => (
-            <li
-              key={kind}
-              className="flex items-start gap-[10px] px-3 py-[5px]"
-            >
-              <WellSymbol kind={kind} />
-              <span className="text-[12.5px] leading-[1.35] text-mv-ink">
-                {label}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+      {open &&
+        (loading || error ? (
+          <p className="px-3 py-[10px] text-[11.5px] leading-snug text-mv-muted">
+            {loading ? "Loading legend…" : error}
+          </p>
+        ) : (
+          <ul className="mv-thin-scroll max-h-[292px] overflow-y-auto py-1">
+            {legends.map(({ id, description, iconUrl }) => (
+              <li key={id} className="flex items-start gap-[10px] px-3 py-[5px]">
+                <Image
+                  src={iconUrl}
+                  alt=""
+                  width={18}
+                  height={18}
+                  aria-hidden="true"
+                  className="mt-[1px] h-[18px] w-[18px] shrink-0 object-contain"
+                  // Cloudinary already serves these at icon size; re-encoding
+                  // ninety of them through the optimiser buys nothing.
+                  unoptimized
+                />
+                <span className="text-[11.5px] lg:text-[12.5px] leading-[1.35] text-mv-ink">
+                  {description}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ))}
     </div>
-  );
-}
-
-/** Eight spokes from the centre — the RRC's "producing both" starburst. */
-function Starburst({ color }: { color: string }) {
-  return (
-    <g stroke={color} strokeWidth="1.6" strokeLinecap="round">
-      {Array.from({ length: 8 }, (_, index) => {
-        const angle = (index * Math.PI) / 4;
-        return (
-          <line
-            key={index}
-            x1={9 + Math.cos(angle) * 2.5}
-            y1={9 + Math.sin(angle) * 2.5}
-            x2={9 + Math.cos(angle) * 8}
-            y2={9 + Math.sin(angle) * 8}
-          />
-        );
-      })}
-    </g>
-  );
-}
-
-function WellSymbol({ kind }: { kind: SymbolKind }) {
-  return (
-    <svg
-      viewBox="0 0 18 18"
-      className="mt-[1px] h-[18px] w-[18px] shrink-0"
-      aria-hidden="true"
-    >
-      {kind === "permitted" && (
-        <circle cx="9" cy="9" r="5" fill="none" stroke={BLUE} strokeWidth="1.6" />
-      )}
-
-      {kind === "dry-hole" && (
-        <>
-          <circle cx="9" cy="9" r="5" fill="none" stroke={BLUE} strokeWidth="1.6" />
-          <g stroke={BLUE} strokeWidth="1.6" strokeLinecap="round">
-            <line x1="5.5" y1="5.5" x2="12.5" y2="12.5" />
-            <line x1="12.5" y1="5.5" x2="5.5" y2="12.5" />
-          </g>
-        </>
-      )}
-
-      {kind === "oil" && <circle cx="9" cy="9" r="5" fill={GREEN} />}
-
-      {kind === "gas" && <circle cx="9" cy="9" r="5" fill={RED} />}
-
-      {kind === "oil-gas" && (
-        <>
-          <Starburst color={RED} />
-          <circle cx="9" cy="9" r="2.6" fill={RED} />
-        </>
-      )}
-
-      {kind === "plugged-oil" && (
-        <>
-          <Starburst color={RED} />
-          <circle cx="9" cy="9" r="3.4" fill={GREEN} />
-        </>
-      )}
-
-      {kind === "plugged-gas" && (
-        <>
-          <Starburst color={RED} />
-          <circle cx="9" cy="9" r="3.4" fill="none" stroke={RED} strokeWidth="1.6" />
-        </>
-      )}
-
-      {kind === "canceled" && (
-        <>
-          <circle cx="9" cy="9" r="5" fill="none" stroke={BLUE} strokeWidth="1.6" />
-          <line
-            x1="5.2"
-            y1="12.8"
-            x2="12.8"
-            y2="5.2"
-            stroke={BLUE}
-            strokeWidth="1.6"
-            strokeLinecap="round"
-          />
-        </>
-      )}
-
-      {kind === "plugged-oil-gas" && (
-        <>
-          <Starburst color={RED} />
-          <circle cx="9" cy="9" r="3.4" fill={GREEN} />
-          <circle cx="9" cy="9" r="1.4" fill={RED} />
-        </>
-      )}
-
-      {kind === "injection" && (
-        <>
-          <circle cx="9" cy="9" r="5" fill="none" stroke={BLUE} strokeWidth="1.6" />
-          <line
-            x1="9"
-            y1="3.4"
-            x2="9"
-            y2="14.6"
-            stroke={BLUE}
-            strokeWidth="1.6"
-            strokeLinecap="round"
-          />
-        </>
-      )}
-
-      {kind === "core-test" && (
-        <rect
-          x="4.5"
-          y="4.5"
-          width="9"
-          height="9"
-          fill="none"
-          stroke={BLUE}
-          strokeWidth="1.6"
-        />
-      )}
-    </svg>
   );
 }

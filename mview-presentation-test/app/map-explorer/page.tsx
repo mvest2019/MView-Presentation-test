@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { h1Class } from "@/app/_components/typography";
 
 import { MapExplorerView } from "./_components/map-explorer-view";
 

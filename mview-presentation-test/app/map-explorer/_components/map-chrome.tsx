@@ -103,6 +103,17 @@ export function MapChrome({
 }: MapChromeProps) {
   const [basemapOpen, setBasemapOpen] = useState(false);
   const [legendsOpen, setLegendsOpen] = useState(true);
+
+  /*
+   * Wide screens only get the panels expanded on arrival. Read once, on mount:
+   * this is the opening state, not something that should re-fold a panel the
+   * moment someone turns their tablet.
+   */
+  const [wideScreen] = useState(
+    () =>
+      typeof window === "undefined" ||
+      window.matchMedia("(min-width: 1024px)").matches,
+  );
   const [toolsOpen, setToolsOpen] = useState(false);
   /*
    * Filters is open or closed per view, not globally. On the map it is the
@@ -114,7 +125,16 @@ export function MapChrome({
    */
   const [filtersOpenByTab, setFiltersOpenByTab] = useState<
     Record<ViewTab, boolean>
-  >({ map: true, insights: false, table: false });
+  >(() => ({
+    // Only wide screens have room to give the rail 252px and still show a
+    // usable map. On phones and tablets it starts collapsed to its edge tab.
+    map:
+      typeof window === "undefined" ||
+      window.matchMedia("(min-width: 1024px)").matches,
+
+    insights: false,
+    table: false,
+  }));
 
   const filtersOpen = filtersOpenByTab[viewTab];
 
@@ -128,6 +148,19 @@ export function MapChrome({
   const [placeIndex, setPlaceIndex] = useState(0);
   const [placeAnchor, setPlaceAnchor] = useState({ top: 60, left: 0, width: 220 });
   const searchBoxRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  /* Below md the field collapses to its magnifier — a full-width text input
+     costs more than a phone's toolbar can spare. Above md it is always open. */
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  const openSearch = () => {
+    setSearchOpen(true);
+    // After the input is laid out, or the typeahead anchors to a 32px box.
+    setTimeout(() => {
+      searchInputRef.current?.focus();
+      anchorPlaceResults();
+    }, 0);
+  };
 
   const places = matchPlaces(placeQuery);
   const basemapRef = useRef<HTMLDivElement>(null);
@@ -312,7 +345,7 @@ export function MapChrome({
               }
             }}
             onCollapse={() => setToolsOpen(false)}
-            className="pointer-events-auto absolute right-0 top-16"
+            className="pointer-events-auto absolute right-0 top-[104px] md:top-16"
           />
         ) : (
           <EdgeTab
@@ -328,17 +361,20 @@ export function MapChrome({
         ref={toolbarRef}
         className="absolute inset-x-0 top-0 flex justify-end p-4 max-[919px]:justify-center"
       >
-        <div className="pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-mv-line bg-white/97 px-[6px] py-[4px] shadow-mv-lg backdrop-blur-[6px]">
+        <div className="pointer-events-auto flex w-full max-w-full flex-col items-stretch gap-2 md:w-auto md:flex-row md:flex-nowrap md:items-center md:gap-1 md:overflow-x-auto md:rounded-xl md:border md:border-mv-line md:bg-white/97 md:px-[6px] md:py-[4px] md:shadow-mv-lg md:backdrop-blur-[6px]">
           {/* A segmented control: the grey track groups the three views and
               makes the filled one read as the raised tab. */}
-          <div className="flex shrink-0 items-center gap-1 rounded-lg bg-[#f1f2f4] p-[3px]">
+          <div className="flex w-full shrink-0 items-center gap-1 rounded-xl border border-mv-line bg-white/97 p-1 shadow-mv-lg backdrop-blur-[6px] md:w-auto md:justify-start md:rounded-lg md:border-0 md:bg-[#f1f2f4] md:p-[3px] md:shadow-none">
           {VIEW_TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
               aria-pressed={viewTab === id}
               onClick={() => onViewTabChange(id)}
-              className={`inline-flex shrink-0 cursor-pointer items-center gap-[6px] rounded-lg px-[10px] py-[5px] text-[12.5px] font-semibold leading-tight transition-colors ${
+              /* Each tab takes a third of the card on a phone: three equal
+                 targets read as one control, where content-width buttons in a
+                 full-width card read as three loose chips with a gap. */
+              className={`inline-flex flex-1 shrink-0 cursor-pointer items-center justify-center gap-[6px] rounded-lg px-[10px] py-[7px] text-[13px] font-semibold leading-tight transition-colors md:flex-none md:py-[5px] md:text-[12.5px] ${
                 viewTab === id
                   ? "bg-mv-green-deep text-white shadow-mv"
                   : "text-mv-slate hover:bg-white/70 hover:text-mv-green-deep"
@@ -353,8 +389,9 @@ export function MapChrome({
           {/* The statewide count and Export CSV are the first to go when the
               map is only half the page — the mock drops them too, and Share
               falls back to its icon. */}
+          <div className="flex flex-wrap items-center justify-end gap-2 md:contents">
           {!compact && (
-            <>
+            <div className="hidden shrink-0 items-center md:flex">
               <Divider />
 
               <div className="shrink-0 px-[6px]">
@@ -365,7 +402,7 @@ export function MapChrome({
                   {WELLS_STATEWIDE.toLocaleString("en-US")}
                 </div>
               </div>
-            </>
+            </div>
           )}
 
           <Divider />
@@ -397,41 +434,70 @@ export function MapChrome({
 
           <Divider />
 
-          <div
-            ref={searchBoxRef}
-            className="ml-1 flex shrink-0 items-center gap-2 rounded-lg border border-mv-line bg-white py-[4px] pl-[10px] pr-[6px] focus-within:border-mv-green focus-within:ring-1 focus-within:ring-mv-green"
+          <button
+            type="button"
+            onClick={openSearch}
+            aria-label="Search by town, ZIP or API number"
+            aria-expanded={searchOpen}
+            className="grid shrink-0 cursor-pointer place-items-center rounded-xl border border-mv-line bg-white/97 px-[9px] py-[7px] text-mv-slate shadow-mv-lg backdrop-blur-[6px] hover:text-mv-green-deep md:hidden"
           >
-            <label htmlFor="map-search" className="sr-only">
-              Search by town, ZIP or API number
-            </label>
-            <input
-              id="map-search"
-              type="text"
-              role="combobox"
-              autoComplete="off"
-              aria-expanded={placeOpen && places.length > 0}
-              aria-controls="map-search-results"
-              aria-activedescendant={
-                placeOpen && places.length > 0
-                  ? `map-search-option-${placeIndex}`
-                  : undefined
-              }
-              value={placeQuery}
-              onChange={(event) => {
-                setPlaceQuery(event.target.value);
-                setPlaceIndex(0);
-                setPlaceOpen(true);
-                anchorPlaceResults();
-              }}
-              onFocus={() => {
-                setPlaceOpen(true);
-                anchorPlaceResults();
-              }}
-              onKeyDown={onPlaceKeyDown}
-              placeholder="Town, ZIP or API number"
-              className="w-[148px] border-0 bg-transparent text-[12.5px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted"
-            />
-            <Search size={15} className="text-mv-muted" aria-hidden="true" />
+            <Search size={15} aria-hidden="true" />
+          </button>
+
+          {/* A full-width row is what pushes the box onto its own line below the
+              icons, so the trigger above never shifts — but the box inside it
+              is narrower than the row and right-aligned under the icons. The
+              row dissolves at md, putting the box back in the single-row bar. */}
+          <div
+            className={`w-full md:contents ${searchOpen ? "" : "hidden md:contents"}`}
+          >
+            <div
+              ref={searchBoxRef}
+              className={`ml-auto mr-8 w-[232px] max-w-full items-center gap-2 rounded-lg border border-mv-line bg-white/97 px-[9px] py-[7px] shadow-mv-lg backdrop-blur-[6px] focus-within:border-mv-green focus-within:ring-1 focus-within:ring-mv-green md:ml-1 md:mr-0 md:flex md:w-auto md:shrink-0 md:bg-white md:py-[4px] md:pl-[10px] md:pr-[6px] md:shadow-none md:backdrop-blur-none ${
+                searchOpen ? "flex" : "hidden md:flex"
+              }`}
+            >
+              <label htmlFor="map-search" className="sr-only">
+                Search by town, ZIP or API number
+              </label>
+              <input
+                ref={searchInputRef}
+                id="map-search"
+                type="text"
+                role="combobox"
+                autoComplete="off"
+                aria-expanded={placeOpen && places.length > 0}
+                aria-controls="map-search-results"
+                aria-activedescendant={
+                  placeOpen && places.length > 0
+                    ? `map-search-option-${placeIndex}`
+                    : undefined
+                }
+                value={placeQuery}
+                onChange={(event) => {
+                  setPlaceQuery(event.target.value);
+                  setPlaceIndex(0);
+                  setPlaceOpen(true);
+                  anchorPlaceResults();
+                }}
+                onFocus={() => {
+                  setPlaceOpen(true);
+                  anchorPlaceResults();
+                }}
+                onKeyDown={onPlaceKeyDown}
+                onBlur={() => {
+                  if (!placeQuery.trim()) setSearchOpen(false);
+                }}
+                placeholder="Town, ZIP or API number"
+                className="w-full min-w-0 border-0 bg-transparent text-[12.5px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted md:w-[148px]"
+              />
+              <Search
+                size={15}
+                aria-hidden="true"
+                className="hidden shrink-0 text-mv-muted md:block"
+              />
+            </div>
+          </div>
           </div>
         </div>
 
@@ -474,30 +540,40 @@ export function MapChrome({
       {/* ---------------- legend + scale ----------------
           One bottom-left stack, so the two keep their spacing whatever the
           legend is doing. It steps aside when the filters panel is open rather
-          than hiding under it: 12px gutter + the panel's 252px + 12px again. */}
+          than hiding under it: 12px gutter + the panel's 252px + 12px again.
+
+          Below lg there is nowhere to step aside to — the panel takes most of
+          the width — so the stack gets out of the way entirely until the
+          filters are closed again. Display lives in the branches rather than
+          the base, so `hidden` and `flex` never both apply. */}
       <div
-        className={`absolute bottom-6 flex flex-col items-start gap-2 ${
-          filtersOpen ? "left-[276px]" : "left-3"
+        className={`absolute bottom-6 flex-col items-start gap-2 ${
+          filtersOpen ? "left-[276px] hidden lg:flex" : "left-3 flex"
         }`}
       >
-      {legendsOpen && <LegendsPanel className="pointer-events-auto" />}
+      {legendsOpen && (
+        <LegendsPanel
+          defaultOpen={wideScreen}
+          className="pointer-events-auto"
+        />
+      )}
 
-      <div className="pointer-events-auto w-[252px] overflow-hidden rounded-lg border border-mv-line bg-white/97 shadow-mv">
-        <div className="px-3 pb-[6px] pt-2 text-[12px] font-semibold text-mv-ink">
+      <div className="pointer-events-auto w-[214px] overflow-hidden rounded-lg border border-mv-line bg-white/97 shadow-mv lg:w-[252px]">
+        <div className="px-[10px] pb-[3px] pt-[5px] text-[11px] font-semibold text-mv-ink lg:px-3 lg:pb-[6px] lg:pt-2 lg:text-[12px]">
           1 : {Math.round(scale).toLocaleString("en-US")}
         </div>
-        <div className="flex items-center gap-[10px] px-3 pb-[9px]">
+        <div className="flex items-center gap-2 px-[10px] pb-[6px] lg:gap-[10px] lg:px-3 lg:pb-[9px]">
           {/* A bracket, not a line — the mock's bar has end ticks. */}
           <span
             aria-hidden="true"
             className="h-[7px] border-x border-b border-mv-slate/70"
             style={{ width: `${bar.width}px` }}
           />
-          <span className="text-[11px] leading-none text-mv-slate">
+          <span className="text-[10px] leading-none text-mv-slate lg:text-[11px]">
             {bar.miles} mi · {bar.km} km
           </span>
         </div>
-        <div className="border-t border-mv-line px-3 py-[7px] text-[11px] text-mv-slate">
+        <div className="border-t border-mv-line px-[10px] py-[4px] text-[10px] text-mv-slate lg:px-3 lg:py-[7px] lg:text-[11px]">
           Latitude: {center.latitude.toFixed(4)}, Longitude:{" "}
           {center.longitude.toFixed(4)}
         </div>
@@ -582,7 +658,7 @@ export function MapChrome({
 }
 
 function Divider() {
-  return <span aria-hidden="true" className="mx-[2px] h-6 w-px shrink-0 bg-mv-line" />;
+  return <span aria-hidden="true" className="mx-[2px] hidden h-6 w-px shrink-0 bg-mv-line md:block" />;
 }
 
 function ToolbarButton({
@@ -606,12 +682,12 @@ function ToolbarButton({
       type="button"
       onClick={onClick}
       aria-expanded={expanded}
-      aria-label={label ? undefined : title}
-      title={title}
-      className="inline-flex shrink-0 cursor-pointer items-center gap-[6px] rounded-lg px-[9px] py-[5px] text-[12.5px] font-semibold leading-tight text-mv-slate transition-colors hover:bg-[#f2f8f5] hover:text-mv-green-deep"
+      aria-label={label || title}
+      title={title ?? label}
+      className="inline-flex shrink-0 cursor-pointer items-center gap-[6px] rounded-xl border border-mv-line bg-white/97 px-[9px] py-[7px] text-[12.5px] font-semibold leading-tight text-mv-slate shadow-mv-lg backdrop-blur-[6px] transition-colors hover:bg-[#f2f8f5] hover:text-mv-green-deep md:rounded-lg md:border-0 md:bg-transparent md:py-[5px] md:shadow-none md:backdrop-blur-none"
     >
       <Icon size={15} strokeWidth={2} aria-hidden="true" />
-      {label}
+      <span className="hidden md:inline">{label}</span>
       {children}
     </button>
   );
@@ -679,7 +755,12 @@ function IconButton({
   );
 }
 
-/** The vertical FILTERS / TOOLS tabs clipped to the left and right edges. */
+/**
+ * The vertical FILTERS / TOOLS tabs clipped to the left and right edges.
+ *
+ * Below md they start under the toolbar rather than beside it: the toolbar is
+ * two rows tall there and the tabs were sitting behind it.
+ */
 function EdgeTab({
   side,
   label,
@@ -693,14 +774,14 @@ function EdgeTab({
     <button
       type="button"
       onClick={onClick}
-      className={`pointer-events-auto absolute cursor-pointer border border-mv-green-deep bg-mv-mint px-[11px] py-[15px] shadow-mv hover:bg-mv-green-deep hover:text-white ${
+      className={`pointer-events-auto absolute cursor-pointer border border-mv-green-deep bg-mv-mint px-[8px] py-[11px] shadow-mv hover:bg-mv-green-deep hover:text-white lg:px-[11px] lg:py-[15px] ${
         side === "left"
-          ? "left-0 top-6 rounded-r-lg border-l-0"
-          : "right-0 top-16 rounded-l-lg border-r-0"
+          ? "left-0 top-[104px] rounded-r-lg border-l-0 md:top-6"
+          : "right-0 top-[104px] rounded-l-lg border-r-0 md:top-16"
       }`}
     >
       {/* `vertical-rl` runs top-to-bottom; the flip makes it read upwards. */}
-      <span className="block rotate-180 text-[12px] font-extrabold uppercase leading-none tracking-[.12em] [writing-mode:vertical-rl]">
+      <span className="block rotate-180 text-[10.5px] font-extrabold uppercase leading-none tracking-[.1em] [writing-mode:vertical-rl] lg:text-[12px] lg:tracking-[.12em]">
         {label}
       </span>
     </button>
