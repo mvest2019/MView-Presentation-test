@@ -44,3 +44,21 @@ export const getOperatorListMap = async (): Promise<MapFilterItem[]> => {
     throw new Error(String(error) || "Failed to fetch operator list");
   }
 };
+
+/** GET /api/v1/map/filters/wtype -> { facet, items: [{ value, count }] } */
+export const getWellTypeListMap = async (): Promise<MapFilterItem[]> => {
+  try {
+    const response = await fetch(
+      `${process.env.MAP_BASE_URL}/api/v1/map/filters/wtype`,
+    );
+    const data = await response.json();
+
+    if (response.ok && Array.isArray(data?.items)) {
+      return data.items as MapFilterItem[];
+    } else {
+      throw new Error("Failed to fetch well type list");
+    }
+  } catch (error) {
+    throw new Error(String(error) || "Failed to fetch well type list");
+  }
+};
