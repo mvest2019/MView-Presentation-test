@@ -4,6 +4,7 @@ import { unstable_cache } from "next/cache";
 
 import {
   OPERATOR_ENDPOINTS,
+  type OperatorCountiesResponse,
   type OperatorPlayTypesResponse,
   type OperatorSearchRequest,
   type OperatorSearchResponse,
@@ -183,6 +184,53 @@ export const getOperatorPlayTypes = unstable_cache(
     return names;
   },
   ["operator-play-types"],
+  { revalidate: REVALIDATE_SECONDS, tags: ["operators"] },
+);
+
+/**
+ * County names for the directory's filter and the county browse grid, in the
+ * order the API returns them (alphabetical, upper case).
+ *
+ * Deliberately a near-copy of `getOperatorPlayTypes` rather than a shared
+ * `{ key: string[] }` helper: the two are independent endpoints that happen to
+ * agree on shape today, and folding them together would mean touching the working
+ * play types reader. If a third list endpoint appears, that is the point to
+ * factor all three.
+ *
+ * Throws if the API is unreachable, answers non-2xx, or sends something that is
+ * not `{ counties: string[] }`. Callers decide how to degrade.
+ */
+export const getOperatorCounties = unstable_cache(
+  async (): Promise<string[]> => {
+    const payload = await getJson<unknown>(OPERATOR_ENDPOINTS.counties);
+
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      !("counties" in payload) ||
+      !Array.isArray((payload as OperatorCountiesResponse).counties)
+    ) {
+      throw new Error(
+        "GET /api/v1/operators/counties did not return { counties: string[] }",
+      );
+    }
+
+    const names = (payload as OperatorCountiesResponse).counties
+      // Defensive: one non-string or blank entry should not blank the filter.
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+
+    if (names.length === 0) {
+      console.warn(
+        "[operator-api] /counties returned no usable counties — the filter will " +
+          "show only its default option and the browse grid will be empty.",
+      );
+    }
+
+    return names;
+  },
+  ["operator-counties"],
   { revalidate: REVALIDATE_SECONDS, tags: ["operators"] },
 );
 

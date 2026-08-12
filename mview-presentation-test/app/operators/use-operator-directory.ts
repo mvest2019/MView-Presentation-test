@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   useTransition,
@@ -12,6 +13,7 @@ import {
 import {
   OPERATOR_ENDPOINTS,
   publicOperatorApiBaseUrl,
+  TEMP_MEMBER_ID,
   type OperatorSearchResponse,
 } from "@/lib/operator-api-types";
 import {
@@ -21,6 +23,7 @@ import {
   EMPTY_RESULT_PAGE,
   PAGE_SIZE,
   QUICK_FILTERS,
+  toOperatorRows,
   toResultPage,
   type OperatorFilters,
   type OperatorResultPage,
@@ -333,45 +336,82 @@ export function useOperatorDirectory({
    * is 310 requests). Exporting the current page is the honest version of the
    * same button; a real export needs a server-side endpoint.
    */
-  const exportCsv = useCallback(() => {
-    const header = [
-      "Rank",
-      "Operator Name",
-      "Operator No.",
-      "Oil Produced",
-      "Gas Produced",
-      "Counties",
-      "Status",
-    ];
-    const cell = (value: string) => `"${value.replace(/"/g, '""')}"`;
-    const lines = [header.join(",")];
+  /** In-flight guard, so a second click cannot start a duplicate export. */
+  const exporting = useRef(false);
 
-    page.rows.forEach((row, index) => {
-      lines.push(
-        [
-          page.from + index + 1,
-          cell(row.name),
-          cell(row.operatorNumber),
-          cell(row.oil),
-          cell(row.gas),
-          cell(row.counties),
-          cell(row.status),
-        ].join(","),
+  /**
+   * Export CSV.
+   *
+   * Calls the same search endpoint with the export payload — `{ member_id }` and
+   * nothing else, as specified — then writes the response out with the columns the
+   * table is currently showing, so the file matches what is on screen.
+   *
+   * The row set is whatever that payload returns; it is not the filtered view and
+   * not the current page. See the note in the report about how many records the
+   * endpoint actually sends back for this body.
+   */
+  const exportCsv = useCallback(async () => {
+    if (exporting.current) return;
+    exporting.current = true;
+
+    try {
+      const response = await fetch(
+        `${publicOperatorApiBaseUrl()}${OPERATOR_ENDPOINTS.search}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ member_id: TEMP_MEMBER_ID }),
+        },
       );
-    });
 
-    const blob = new Blob([lines.join("\n")], {
-      type: "text/csv;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "know-your-operators.csv";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  }, [page]);
+      if (!response.ok) throw new Error(`export responded ${response.status}`);
+
+      const { result } = (await response.json()) as OperatorSearchResponse;
+      const rows = toOperatorRows(result);
+
+      // Same columns as the table, honouring the Columns toggles so the file has
+      // the columns the visitor can see.
+      const header = ["Rank", "Operator Name", "Operator No."];
+      if (columns.oil) header.push("Oil Produced");
+      if (columns.gas) header.push("Gas Produced");
+      if (columns.cty) header.push("Counties");
+      if (columns.leases) header.push("Leases count");
+      if (columns.lastProduction) header.push("Last production");
+      if (columns.status) header.push("Status");
+
+      const cell = (value: string) => `"${value.replace(/"/g, '""')}"`;
+      const lines = [header.join(",")];
+
+      rows.forEach((row, index) => {
+        const line = [String(index + 1), cell(row.name), cell(row.operatorNumber)];
+        if (columns.oil) line.push(cell(row.oil));
+        if (columns.gas) line.push(cell(row.gas));
+        if (columns.cty) line.push(cell(row.counties));
+        if (columns.leases) line.push(cell(row.leases));
+        if (columns.lastProduction) line.push(cell(row.lastProduction));
+        if (columns.status) line.push(cell(row.status));
+        lines.push(line.join(","));
+      });
+
+      const blob = new Blob([lines.join("\n")], {
+        type: "text/csv;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "know-your-operators.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      // Logged rather than surfaced: the button has no error slot in the design,
+      // and a failed export must not disturb the table the visitor is reading.
+      console.error("[operators] CSV export failed", error);
+    } finally {
+      exporting.current = false;
+    }
+  }, [columns]);
 
   /* --- applied-filter tags ---------------------------------------------- */
 

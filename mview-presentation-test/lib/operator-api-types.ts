@@ -28,6 +28,34 @@ export interface OperatorPlayTypesResponse {
 }
 
 /* ==========================================================================
+   GET /api/v1/operators/counties
+   ========================================================================== */
+
+/**
+ * Live response:
+ *   { "counties": ["ANDERSON", "ANDREWS", …, "ZAVALA"] }
+ *
+ * Same shape as the play types endpoint — one key, a flat array of upper-case
+ * strings. 255 entries, and NOT the canonical list of 254 Texas counties:
+ *
+ *  · 14 are not counties at all but Railroad Commission offshore and bay
+ *    districts — `BRAZOS-LB`, `GALVESTON-SB`, `HIGH IS-LB`, `MATGRDA IS-SB`,
+ *    `MUSTANG IS-LB`, `N PADRE IS-LB`, `SABINE PASS` and friends, where LB/SB
+ *    are Large and Small Bay and IS is Island.
+ *  · 12 real counties are missing because no operator reports there — Bailey,
+ *    Burnet, Collin, Comal, El Paso, Gillespie, Hall, Lamar, Llano, Mason,
+ *    Parmer, Randall.
+ *  · `DE WITT` is spelled with a space, where the county is normally `DeWitt`.
+ *
+ * This list is authoritative for filtering regardless: `county` in the search
+ * payload matches these values, case-sensitively, so the filter has to offer
+ * exactly what the endpoint knows about.
+ */
+export interface OperatorCountiesResponse {
+  counties: string[];
+}
+
+/* ==========================================================================
    POST /api/v1/operators/search
    ========================================================================== */
 
@@ -38,6 +66,7 @@ export interface OperatorPlayTypesResponse {
  */
 export const OPERATOR_ENDPOINTS = {
   playTypes: "/api/v1/operators/playtypes",
+  counties: "/api/v1/operators/counties",
   search: "/api/v1/operators/search",
 } as const;
 

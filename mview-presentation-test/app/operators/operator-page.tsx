@@ -12,6 +12,7 @@ import {
 } from "@/app/_components/typography";
 import {
   ALL_PLAYS,
+  PAGE_SIZE,
   QUICK_FILTERS,
   QUICK_FILTER_KEYS,
   type OperatorFilters,
@@ -22,7 +23,6 @@ import {
   type QuickFilterKey,
 } from "@/lib/operator-search";
 import type { OperatorColumns } from "@/lib/operator-types";
-import { TEXAS_COUNTIES } from "@/lib/texas-counties";
 
 import {
   useOperatorDirectory,
@@ -66,10 +66,13 @@ export function OperatorPage({
    * page is affected.
    */
   playTypes,
+  /** County names from `GET /api/v1/operators/counties`, fetched in `page.tsx`. */
+  counties,
   /** The `guestUserID` cookie value, read server-side in `page.tsx`. */
   visitorId,
 }: {
   playTypes: string[];
+  counties: string[];
   visitorId: string;
 }) {
   const {
@@ -114,6 +117,7 @@ export function OperatorPage({
             search={searchInput}
             play={filters.play}
             playTypes={playTypes}
+            counties={counties}
             status={filters.status}
             county={filters.county}
             onSearch={setSearch}
@@ -268,6 +272,7 @@ function FindBar({
   search,
   play,
   playTypes,
+  counties,
   status,
   county,
   onSearch,
@@ -278,6 +283,7 @@ function FindBar({
   search: string;
   play: string;
   playTypes: string[];
+  counties: string[];
   status: OperatorStatusFilter;
   county: string;
   onSearch: (value: string) => void;
@@ -350,7 +356,7 @@ function FindBar({
         className="min-w-[180px] max-[767px]:min-w-full"
       >
         <option value="">Counties</option>
-        {TEXAS_COUNTIES.map((name) => (
+        {counties.map((name) => (
           <option key={name} value={name}>
             {name} County
           </option>
@@ -456,10 +462,19 @@ function AppliedTags({
    without it, which is the design's `.pop label.lock`.
    ========================================================================== */
 
+/**
+ * The toggleable columns, in the order they appear in the table.
+ *
+ * The locked "Operator Name (operator no.)" row that used to head this list is
+ * gone: it was permanently checked and disabled, so it offered nothing to click.
+ * That column is not optional and is simply always rendered.
+ */
 const COLUMN_LABELS: { key: keyof OperatorColumns; label: string }[] = [
   { key: "oil", label: "Oil Produced" },
   { key: "gas", label: "Gas Produced" },
   { key: "cty", label: "Counties" },
+  { key: "leases", label: "Leases count" },
+  { key: "lastProduction", label: "Last production" },
   { key: "status", label: "Status" },
 ];
 
@@ -519,16 +534,6 @@ function TableControls({
             aria-label="Manage columns"
             className="absolute right-0 top-[calc(100%+6px)] z-30 min-w-[220px] rounded-xl border border-mv-line bg-white px-[14px] py-3 shadow-[0_12px_30px_rgba(13,14,23,.14)] max-[480px]:left-0 max-[480px]:right-auto"
           >
-            <label className="flex cursor-not-allowed items-center gap-[9px] py-[6px] text-[13.5px] font-medium text-mv-muted">
-              <input
-                type="checkbox"
-                checked
-                disabled
-                className="h-4 w-4 accent-mv-green-deep"
-              />
-              Operator Name (operator no.)
-            </label>
-
             {COLUMN_LABELS.map(({ key, label }) => (
               <label
                 key={key}
@@ -645,7 +650,12 @@ function ResultsTable({
 }) {
   const visibleSortable = SORTABLE.filter((col) => columns[col.column]);
   // `#` + name + the visible optional columns, for the empty row's colspan.
-  const columnCount = 2 + visibleSortable.length + (columns.status ? 1 : 0);
+  const columnCount =
+    2 +
+    visibleSortable.length +
+    (columns.leases ? 1 : 0) +
+    (columns.lastProduction ? 1 : 0) +
+    (columns.status ? 1 : 0);
 
   function ariaSort(key: OperatorSortKey) {
     if (sortKey !== key) return "none" as const;
@@ -695,6 +705,20 @@ function ResultsTable({
                 </th>
               ))}
 
+              {/* Opt-in columns. Plain labels, not buttons — connecting them to
+                  `sort.propertyName` was not part of this change. */}
+              {columns.leases && (
+                <th scope="col" className={`${TH_CLASS} text-right`}>
+                  Leases count
+                </th>
+              )}
+
+              {columns.lastProduction && (
+                <th scope="col" className={`${TH_CLASS} text-left`}>
+                  Last production
+                </th>
+              )}
+
               {columns.status && (
                 <th scope="col" className={`${TH_CLASS} text-left`}>
                   Status
@@ -715,7 +739,10 @@ function ResultsTable({
               // height, so nothing shifts, and stale rows are never presented as
               // if they were the new results.
               <SkeletonRows
-                rows={Math.max(page.rows.length, 5)}
+                // A full page of placeholders, not five. On first load `rows` is
+                // empty, so five skeletons were replaced by ten data rows and the
+                // card grew — a layout shift on every cold visit.
+                rows={page.rows.length || PAGE_SIZE}
                 columns={columns}
                 sortableCount={visibleSortable.length}
               />
@@ -791,6 +818,12 @@ const OperatorRow = memo(function OperatorRow({
 
       {columns.cty && <td className={numericCell}>{row.counties}</td>}
 
+      {columns.leases && <td className={numericCell}>{row.leases}</td>}
+
+      {columns.lastProduction && (
+        <td className={cellClass}>{row.lastProduction}</td>
+      )}
+
       {columns.status && (
         <td className={cellClass}>
           {row.masked ? (
@@ -835,13 +868,22 @@ function SortButton({
   dir: "asc" | "desc";
   onClick: () => void;
 }) {
-  const nextDir = active && dir === "desc" ? "ascending" : "descending";
+  /**
+   * The tooltip states the direction currently applied, not the one the next click
+   * would apply. Describing the next action inverted it: a column sorted
+   * descending read "Sort by … ascending", and every unsorted column claimed
+   * "descending" before anything was sorted at all. An unsorted column names no
+   * direction, because none is in effect.
+   */
+  const title = active
+    ? `Sorted by ${label} ${dir === "asc" ? "ascending" : "descending"}`
+    : `Sort by ${label}`;
 
   return (
     <button
       type="button"
       onClick={onClick}
-      title={`Sort by ${label} ${nextDir}`}
+      title={title}
       className="group/sort inline-flex cursor-pointer items-center gap-[5px] border-0 bg-transparent p-0 text-[13px] font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
     >
       <span className="group-hover/sort:underline group-hover/sort:underline-offset-[3px]">
@@ -894,15 +936,31 @@ function SkeletonRows({
           <td className={cellClass}>
             <span className={`${bar} w-5`} />
           </td>
+          {/* The name cell mirrors the data row's two line boxes exactly — a
+              14.5px line for the name and a 12px line for the operator number.
+              Sizing the bars alone left this cell ~18px short, so the whole card
+              grew when real rows replaced it. */}
           <td className={cellClass}>
             <span className={`${bar} w-[180px]`} />
-            <span className={`${bar} mt-[6px] block w-[110px] !h-2`} />
+            <span className="mt-[2px] block text-xs">
+              <span className={`${bar} !h-2 w-[110px]`} />
+            </span>
           </td>
           {Array.from({ length: sortableCount }, (_, cell) => (
             <td key={cell} className={`${cellClass} text-right`}>
               <span className={`${bar} w-14`} />
             </td>
           ))}
+          {columns.leases && (
+            <td className={`${cellClass} text-right`}>
+              <span className={`${bar} w-12`} />
+            </td>
+          )}
+          {columns.lastProduction && (
+            <td className={cellClass}>
+              <span className={`${bar} w-20`} />
+            </td>
+          )}
           {columns.status && (
             <td className={cellClass}>
               <span className={`${bar} w-16`} />

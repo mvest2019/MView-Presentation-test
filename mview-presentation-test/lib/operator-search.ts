@@ -147,6 +147,10 @@ export interface OperatorRow {
   gas: string;
   gasUnit: string;
   counties: string;
+  /** `leaseCount` — `"****"` on a gated row. */
+  leases: string;
+  /** `end_productiondate`, e.g. `"May 2026"`. */
+  lastProduction: string;
   status: string;
   /** `null` on a gated row, which has no slug to link to. */
   href: string | null;
@@ -202,6 +206,8 @@ export function toOperatorRow(
     gas: gas.value,
     gasUnit: gas.unit,
     counties: numericCell(record.countie_count),
+    leases: numericCell(record.leaseCount),
+    lastProduction: record.end_productiondate,
     status: record.status,
     href: masked || !slug ? null : `/operators/${slug}`,
     masked,

@@ -10,7 +10,7 @@ import {
   inlineLink,
 } from "@/app/_components/typography";
 
-import { getOperatorPlayTypes } from "@/lib/operator-api";
+import { getOperatorCounties, getOperatorPlayTypes } from "@/lib/operator-api";
 import { getVisitorId } from "@/lib/visitor-id";
 
 import { CountyDirectory } from "./_components/county-directory";
@@ -143,6 +143,23 @@ async function loadPlayTypes(): Promise<string[]> {
   }
 }
 
+/**
+ * County names for the filter and the browse grid — the same read serves both,
+ * so the two can never disagree about which counties exist.
+ *
+ * Degrades the same way as the play types: an empty list leaves the County filter
+ * with just its default option and the browse grid with its own empty state, and
+ * the rest of the page is unaffected.
+ */
+async function loadCounties(): Promise<string[]> {
+  try {
+    return await getOperatorCounties();
+  } catch (error) {
+    console.error("[operators] counties unavailable:", error);
+    return [];
+  }
+}
+
 export default async function OperatorsRoute() {
   // Both reads are server-side: the play types because the API blocks browser
   // origins, the visitor id because `cookies()` is server-only. Handing the id to
@@ -156,8 +173,9 @@ export default async function OperatorsRoute() {
   // call, only the render. If someone later moves the cookie read to the client to
   // win the prerender back, that is a real option, not a bug fix; do not "restore"
   // static by dropping the id from the payload.
-  const [playTypes, visitorId] = await Promise.all([
+  const [playTypes, counties, visitorId] = await Promise.all([
     loadPlayTypes(),
+    loadCounties(),
     getVisitorId(),
   ]);
 
@@ -186,7 +204,11 @@ export default async function OperatorsRoute() {
           </p>
         </div>
 
-        <OperatorPage playTypes={playTypes} visitorId={visitorId} />
+        <OperatorPage
+          playTypes={playTypes}
+          counties={counties}
+          visitorId={visitorId}
+        />
 
         {/* The hrefs are the paths the prototype points at. None of those routes
             exists yet — same situation as most of `site-nav.ts`, where every path
@@ -220,7 +242,7 @@ export default async function OperatorsRoute() {
             Filter by letter or search to jump straight to a county — all 254.
           </p>
 
-          <CountyDirectory />
+          <CountyDirectory counties={counties} />
         </section>
 
         {/* The design's `.notice.slate` — the page's one conversion prompt. */}
