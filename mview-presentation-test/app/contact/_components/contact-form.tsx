@@ -32,6 +32,7 @@ export function ContactForm() {
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors, isSubmitting },
   } = useForm<ContactValues>({
     resolver: zodResolver(contactSchema),
@@ -40,7 +41,7 @@ export function ContactForm() {
       lastName: "",
       email: "",
       phone: "",
-      message: "",
+      comment: "",
     },
   });
   const [status, setStatus] = useState<"idle" | "sent" | "error">("idle");
@@ -49,15 +50,24 @@ export function ContactForm() {
   async function onValid(values: ContactValues) {
     setStatus("idle");
     try {
-      const res = await fetch("/api/contact", {
+      // Posted straight to the backend from the browser. `values` already
+      // matches the contract — { firstName, lastName, email, phone, comment } —
+      // so it goes as-is.
+      const res = await fetch(process.env.CONTACT_API_URL as string, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
       });
       if (!res.ok) throw new Error(String(res.status));
+      // Empty the fields, so the sent message is not left sitting in the form
+      // looking like it still needs sending. Only on success — on failure the
+      // text is kept so the visitor does not have to retype it.
+      reset();
       setStatus("sent");
       setDone("Thank you — a person replies within one business day.");
     } catch {
+      // Covers a rejected request and a blocked one alike: a CORS failure
+      // surfaces here as a TypeError, not as a status code.
       setStatus("error");
       setDone(`Something went wrong. Please email ${cfg.supportEmail}.`);
     }
@@ -89,7 +99,20 @@ export function ContactForm() {
         <span className="mt-[6px] block whitespace-nowrap">{req} Required.</span>
       </p>
 
-      <form noValidate onSubmit={handleSubmit(onValid)} className="flex flex-1 flex-col">
+      {/* Typing after a send clears the confirmation and re-enables the button,
+          so a second message is possible without reloading. The button stays
+          disabled until then, which is what stops a double submit. */}
+      <form
+        noValidate
+        onSubmit={handleSubmit(onValid)}
+        onChange={() => {
+          if (status !== "idle") {
+            setStatus("idle");
+            setDone("");
+          }
+        }}
+        className="flex flex-1 flex-col"
+      >
         <div className="mb-[14px] grid grid-cols-1 gap-[14px] min-[521px]:grid-cols-2">
           <div>
             <label htmlFor="ctFirst" className={labelClass}>
@@ -179,15 +202,15 @@ export function ContactForm() {
             id="ctMsg"
             rows={3}
             placeholder="Enter Comments"
-            aria-invalid={!!errors.message}
+            aria-invalid={!!errors.comment}
             aria-describedby="ctMsgErr"
             className={`${inputBase} min-h-[76px] resize-y leading-[20px] ${
-              errors.message ? errBorder : okBorder
+              errors.comment ? errBorder : okBorder
             }`}
-            {...register("message")}
+            {...register("comment")}
           />
           <span id="ctMsgErr" className={errClass}>
-            {errors.message?.message}
+            {errors.comment?.message}
           </span>
         </div>
 

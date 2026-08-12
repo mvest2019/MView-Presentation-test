@@ -1,12 +1,11 @@
 import { z } from "zod";
 
 /**
- * One schema, used by the client form (react-hook-form resolver) and the API
- * route (server-side re-validation).
+ * Shape of the contact form, and of the request body sent to the contact API.
  *
- * The name is two fields rather than one, matching the proposed layout — which
- * changes the POST body, so `app/api/contact/route.ts` and any backend mapping
- * move with it.
+ * Field names match the backend contract exactly — `comment`, not `message` —
+ * so the validated object can be posted as-is with no mapping step in between.
+ * Renaming a field here changes the request body.
  */
 export const contactSchema = z.object({
   firstName: z.string().trim().min(1, "Tell us your first name."),
@@ -24,7 +23,7 @@ export const contactSchema = z.object({
       (v) => v === "" || /^[-+().\s\d]{7,}$/.test(v),
       "That phone number looks off — digits only, please.",
     ),
-  message: z.string().trim().min(1, "Tell us what you need — a sentence is plenty."),
+  comment: z.string().trim().min(1, "Tell us what you need — a sentence is plenty."),
 });
 
 export type ContactValues = z.infer<typeof contactSchema>;
