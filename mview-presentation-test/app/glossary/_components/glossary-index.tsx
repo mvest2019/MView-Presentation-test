@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
+import { searchFieldClass } from "@/app/_components/field";
 import { ALPHABET, type GlossaryTermSummary } from "@/lib/glossary-types";
 
 /**
@@ -99,7 +100,7 @@ export function GlossaryIndex({ terms }: { terms: GlossaryTermSummary[] }) {
             onChange={(event) => setQuery(event.target.value)}
             aria-label="Search glossary terms"
             placeholder="Search terms… (name, topic or definition)"
-            className="min-w-[220px] flex-1 rounded-full border border-mv-line bg-white px-[14px] py-2 text-[13px] outline-none focus-visible:border-mv-green-deep"
+            className={searchFieldClass}
           />
           {searching && (
             <>
@@ -142,9 +143,16 @@ export function GlossaryIndex({ terms }: { terms: GlossaryTermSummary[] }) {
                   `.gl-letter` is weight 700, and headingBase's `font-semibold`
                   would collide — two utilities on one property resolve by
                   stylesheet order, not class order. */}
+              {/* `scroll-mt` has to clear BOTH sticky layers, or jumping to a
+                  letter parks its heading underneath them and you cannot see
+                  which letter you landed on. Measured: 65px header + 103px
+                  rail-and-search block = 168px occluded, and this was reserving
+                  120 — a 48px shortfall. 176 leaves the heading just clear.
+                  Below 1024 the rail block is static, so only the header is in
+                  the way and a smaller margin avoids a needless gap. */}
               <div
                 id={`gl-${group.letter}`}
-                className="scroll-mt-[120px] border-b-2 border-mv-green pb-1 pt-[22px] font-serif text-2xl font-bold text-mv-green-deep"
+                className="scroll-mt-[176px] border-b-2 border-mv-green pb-1 pt-[22px] font-serif text-2xl font-bold text-mv-green-deep max-[1023px]:scroll-mt-[80px]"
               >
                 {group.letter}
               </div>

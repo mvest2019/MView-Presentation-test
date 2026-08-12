@@ -5,6 +5,7 @@ import { useEffect, useState, useTransition } from "react";
 
 import type { CategoryFacet } from "@/lib/blog-types";
 import { selectedControlClass } from "@/app/_components/button";
+import { searchFieldClass, searchRowClass } from "@/app/_components/field";
 
 /**
  * The listing controls: a search box and a row of category chips carrying live
@@ -85,14 +86,14 @@ export function BlogToolbar({
 
   return (
     <>
-      <div className="mt-3 flex flex-wrap items-center gap-[10px]">
+      <div className={searchRowClass}>
         <input
           type="search"
           value={term}
           onChange={(event) => setTerm(event.target.value)}
           aria-label={searchLabel}
           placeholder={searchPlaceholder}
-          className="min-w-[220px] flex-1 rounded-full border border-mv-line bg-white px-[14px] py-2 text-[13px] outline-none focus-visible:border-mv-green-deep"
+          className={searchFieldClass}
         />
       </div>
 

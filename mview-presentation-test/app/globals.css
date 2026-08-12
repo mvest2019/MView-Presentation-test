@@ -56,6 +56,11 @@
      the operator prototype's neutral grey): this one is faintly green, which is
      what makes a highlighted nav item read as brand rather than as disabled. */
   --color-mv-nav-hover: #f2f8f5;
+  /* The grey used for a menu item's one-line description and for the mobile
+     sheet's group labels — the mockup's `.sub` and `.grp`. Lighter than
+     `--color-mv-muted`, which is body-copy grey and reads too strong under a
+     bold item label. Was repeated as the literal #94a3b8 at three call sites. */
+  --color-mv-sublabel: #94a3b8;
   --color-mv-line-soft: #eef1f4;
   --color-mv-line-strong: #d5dae0;
   --color-mv-mint-line: #bfe6d3;

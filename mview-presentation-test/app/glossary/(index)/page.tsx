@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 
 import { getGlossaryTerms } from "@/lib/glossary-api";
 
-import { headingBase } from "../_components/typography";
-import { ResourceTabs } from "../blog/_components/resource-tabs";
-import { GlossaryIndex } from "./_components/glossary-index";
+import { headingBase } from "../../_components/typography";
+import { ResourceTabs } from "../../blog/_components/resource-tabs";
+import { GlossaryIndex } from "../_components/glossary-index";
 
 /**
  * Glossary index — the prototype's `route:glossary`.

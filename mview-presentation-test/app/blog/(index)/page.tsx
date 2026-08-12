@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 import { SECTIONS } from "@/lib/blog-types";
 
-import { ArticleListing } from "./_components/article-listing";
+import { ArticleListing } from "../_components/article-listing";
 
 /** Blog listing — owner guides. News lives at `/news`. */
 

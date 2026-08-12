@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 import { SECTIONS } from "@/lib/blog-types";
 
-import { ArticleListing } from "../blog/_components/article-listing";
+import { ArticleListing } from "../../blog/_components/article-listing";
 
 /**
  * News listing — the API's `Oil & Gas News` type.

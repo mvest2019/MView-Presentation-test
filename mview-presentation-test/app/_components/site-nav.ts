@@ -164,12 +164,24 @@ export const exploreNav: MegaColumn[] = [
  *
  * The design lists a single "Blog & News"; they are separate routes here, so
  * both appear.
+ *
+ * Each carries a `sub` so the panel reads like the Explore one rather than a
+ * bare list of four words. These are CONDENSED from each page's own standfirst,
+ * not written fresh — the full lines are far too long for a dropdown row. If the
+ * page copy changes, shorten the new line rather than inventing a replacement:
+ *   Blog     "Get the latest updates, tips, and insights on mineral rights, oil, and gas."
+ *   News     "Get real-time updates and insights on the oil and gas sector & mineral rights."
+ *   Glossary "Key industry terms and definitions related to mineral rights, oil, and gas."
+ *   FAQ      "What Mineral View is, what it isn't, and how your data is handled."
+ *
+ * `sub` is optional on the type because the mobile sheet and the library tab row
+ * share this list and show labels only.
  */
-export const learnNav: NavLink[] = [
-  { label: "Blog", href: "/blog" },
-  { label: "News", href: "/news" },
-  { label: "Glossary", href: "/glossary" },
-  { label: "FAQ", href: "/faq" },
+export const learnNav: (NavLink & { sub: string })[] = [
+  { label: "Blog", href: "/blog", sub: "Updates, tips and insights" },
+  { label: "News", href: "/news", sub: "Oil and gas sector activity" },
+  { label: "Glossary", href: "/glossary", sub: "Key industry terms defined" },
+  { label: "FAQ", href: "/faq", sub: "What we are, and how data is handled" },
 ];
 
 export type FooterColumn = {

@@ -457,7 +457,7 @@ function MegaColumnBlock({
             className={`${panelItem} whitespace-normal`}
           >
             {link.label}
-            <span className="block pt-px text-[11px] font-normal leading-[1.35] text-[#94a3b8]">
+            <span className="block pt-px text-[11px] font-normal leading-[1.35] text-mv-sublabel">
               {link.sub}
             </span>
           </Link>
@@ -501,18 +501,26 @@ function LearnMenu({
 
       <div
         aria-label={label}
-        className={`absolute right-[-10px] top-[calc(100%+8px)] z-[80] min-w-[212px] rounded-xl border border-mv-line bg-white p-2 shadow-[0_12px_30px_rgba(13,14,23,.14)] group-hover:block ${
+        className={`absolute right-[-10px] top-[calc(100%+8px)] z-[80] w-[272px] rounded-xl border border-mv-line bg-white p-2 shadow-[0_12px_30px_rgba(13,14,23,.14)] group-hover:block ${
           open ? "block" : "hidden"
         }`}
       >
+        {/* Each row carries a one-line description, the same treatment the
+            Explore columns use. Four bare words beside that menu read as an
+            afterthought. Fixed 272px rather than the mockup's 212px min-width:
+            the descriptions need the room, and a fixed width stops the panel
+            resizing as the longest line changes. */}
         {learnNav.map((item) => (
           <Link
             key={item.href}
             href={item.href}
             onClick={onNavigate}
-            className={`${panelItem} whitespace-nowrap`}
+            className={`${panelItem} whitespace-normal`}
           >
             {item.label}
+            <span className="block pt-px text-[11px] font-normal leading-[1.35] text-mv-sublabel">
+              {item.sub}
+            </span>
           </Link>
         ))}
       </div>
@@ -524,7 +532,7 @@ function LearnMenu({
 
 function SheetGroup({ children }: { children: React.ReactNode }) {
   return (
-    <div className="px-[10px] pb-[3px] pt-2 text-[10.5px] font-semibold uppercase tracking-[.05em] text-[#94a3b8]">
+    <div className="px-[10px] pb-[3px] pt-2 text-[10.5px] font-semibold uppercase tracking-[.05em] text-mv-sublabel">
       {children}
     </div>
   );

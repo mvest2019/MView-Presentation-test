@@ -1,6 +1,5 @@
 "use client";
 
-import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import {
@@ -19,6 +18,7 @@ import {
   ProductsArt,
   TerminologyArt,
 } from "./faq-icons";
+import { searchFieldClass, searchRowClass } from "@/app/_components/field";
 
 /**
  * The interactive FAQ — the prototype's `route:faq` behavior, with "Most asked"
@@ -127,15 +127,17 @@ export function FaqExplorer() {
 
   return (
     <div>
-      <div className="my-[6px] flex max-w-[560px] items-center gap-[10px] rounded-full border border-mv-line bg-white px-[18px] py-3 shadow-[0_2px_10px_rgba(6,20,15,.05)]">
-        <Search className="h-[18px] w-[18px] flex-none text-mv-green-deep" />
+      {/* The same field as Blog, News and Glossary. This was a capped 560px pill
+          with a magnifier, thicker padding and a shadow, so one control looked
+          like two different things across the four library pages. */}
+      <div className={searchRowClass}>
         <input
-          type="text"
+          type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search the FAQ… e.g. claim a lease, MVestimate, payments"
           aria-label="Search FAQ"
-          className="flex-1 border-0 bg-transparent text-[15px] text-mv-ink outline-none placeholder:text-[#9aa3ae]"
+          className={searchFieldClass}
         />
       </div>
       <p
