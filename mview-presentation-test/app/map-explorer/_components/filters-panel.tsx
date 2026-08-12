@@ -10,7 +10,11 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { getCountyListMap } from "@/lib/map-api";
+import {
+  getCountyListMap,
+  getOperatorListMap,
+  type MapFilterItem,
+} from "@/lib/map-api";
 
 import { WELLS_STATEWIDE } from "./well-clusters";
 
@@ -222,6 +226,11 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
   const [countiesLoading, setCountiesLoading] = useState(true);
   const [countiesError, setCountiesError] = useState<string | null>(null);
 
+  /* Operators arrive from the filters facet, so they carry counts as well. */
+  const [operators, setOperators] = useState<MapFilterItem[]>([]);
+  const [operatorsLoading, setOperatorsLoading] = useState(true);
+  const [operatorsError, setOperatorsError] = useState<string | null>(null);
+
 
   /*
    * The live county list replaces the section's items. It arrives as a prop
@@ -233,12 +242,22 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
    */
   const sections = useMemo<FilterSection[]>(
     () =>
-      FILTER_SECTIONS.map((section) =>
-        section.id === "county"
-          ? { ...section, items: counties.map((name) => ({ name })) }
-          : section,
-      ),
-    [counties],
+      FILTER_SECTIONS.map((section) => {
+        if (section.id === "county") {
+          return { ...section, items: counties.map((name) => ({ name })) };
+        }
+        if (section.id === "operator") {
+          return {
+            ...section,
+            items: operators.map(({ value, count }) => ({
+              name: value,
+              count,
+            })),
+          };
+        }
+        return section;
+      }),
+    [counties, operators],
   );
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for the commented-out My leases section
@@ -289,6 +308,30 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
       })
       .finally(() => {
         if (!cancelled) setCountiesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getOperatorListMap()
+      .then((list) => {
+        if (cancelled) return;
+        setOperators(list);
+        setOperatorsError(null);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setOperatorsError(
+          error instanceof Error ? error.message : "Could not load operators.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setOperatorsLoading(false);
       });
 
     return () => {
@@ -572,7 +615,11 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
                 ? countiesLoading
                   ? "Loading counties…"
                   : countiesError
-                : undefined
+                : section.id === "operator"
+                  ? operatorsLoading
+                    ? "Loading operators…"
+                    : operatorsError
+                  : undefined
             }
             open={openSections.has(section.id)}
             onToggle={() => toggleSection(section.id)}
@@ -698,7 +745,7 @@ function CheckboxSection({
             {item.name}
           </span>
           {item.count !== undefined && (
-            <span className="shrink-0 text-[11px] lg:text-[12px] tabular-nums text-mv-muted">
+            <span className="shrink-0 rounded-full bg-mv-mint px-[7px] py-[2px] text-[10px] font-semibold tabular-nums leading-none text-mv-green-deep lg:text-[11px]">
               {item.count.toLocaleString("en-US")}
             </span>
           )}
