@@ -38,18 +38,6 @@ import { WELLS_STATEWIDE } from "./well-clusters";
  * first thing to replace when real filtering lands.
  */
 
-/** The legend dots. Fixed set so the six lists read as one system. */
-const DOT = {
-  green: "#10b981",
-  amber: "#f59e0b",
-  blue: "#3b82f6",
-  red: "#ef4444",
-  purple: "#8b5cf6",
-  grey: "#9ca3af",
-  slate: "#6b7280",
-  brown: "#a16207",
-} as const;
-
 type Lease = {
   id: string;
   /** Rendered as written — the mock's lease names carry their own casing. */
@@ -80,11 +68,10 @@ const MY_LEASES: Lease[] = [
 ];
 
 /*
- * A count and a colour dot are optional: some lists are plain sets of choices
- * with no tally behind them, and a "0" or a grey dot would read as data rather
- * than as an absence of it.
+ * The count is optional: a facet that returns no tally should show none, and a
+ * "0" would read as data rather than as the absence of it.
  */
-type FilterItem = { name: string; count?: number; dot?: string };
+type FilterItem = { name: string; count?: number };
 
 type FilterSection = {
   id: string;
@@ -98,106 +85,19 @@ type FilterSection = {
   defaultOpen?: boolean;
 };
 
+/*
+ * The sections themselves — id, label and how each behaves. Every list now
+ * comes from the API, so `items` starts empty and is filled in by `sections`
+ * below; the static rows that stood in for them while there was no endpoint
+ * are gone.
+ */
 export const FILTER_SECTIONS: FilterSection[] = [
-  {
-    id: "county",
-    label: "County",
-    searchable: true,
-    defaultOpen: true,
-    items: [
-      { name: "Midland", count: 412, dot: DOT.green },
-      { name: "Reeves", count: 388, dot: DOT.amber },
-      { name: "Ector", count: 305, dot: DOT.blue },
-      { name: "Karnes", count: 214, dot: DOT.red },
-      { name: "Martin", count: 198, dot: DOT.green },
-      { name: "Howard", count: 176, dot: DOT.purple },
-      { name: "Andrews", count: 152, dot: DOT.amber },
-      { name: "Upton", count: 141, dot: DOT.green },
-      { name: "Reagan", count: 128, dot: DOT.red },
-      { name: "Gaines", count: 119, dot: DOT.blue },
-      { name: "All other counties", count: 6767, dot: DOT.grey },
-    ],
-  },
-  {
-    // No screenshot shows this list open, so the operators and their counts are
-    // invented — plausible Permian names, not real figures. Replace wholesale.
-    id: "operator",
-    label: "Operator",
-    searchable: true,
-    items: [
-      { name: "Pioneer Natural Resources", count: 48210, dot: DOT.green },
-      { name: "Diamondback E&P", count: 41905, dot: DOT.amber },
-      { name: "ConocoPhillips", count: 33640, dot: DOT.blue },
-      { name: "Chevron U.S.A.", count: 29318, dot: DOT.red },
-      { name: "Apache Corporation", count: 24772, dot: DOT.purple },
-      { name: "Oxy USA", count: 22140, dot: DOT.green },
-      { name: "EOG Resources", count: 19884, dot: DOT.amber },
-      { name: "Devon Energy", count: 15301, dot: DOT.blue },
-      // These two are real — they surface in the mock's typeahead for "up".
-      { name: "UPP Operating", count: 9412, dot: DOT.red },
-      { name: "Supreme", count: 6880, dot: DOT.purple },
-      { name: "All other operators", count: 982100, dot: DOT.grey },
-    ],
-  },
-  {
-    id: "well-type",
-    label: "Well type",
-    items: [
-      { name: "Oil Well" },
-      { name: "Gas Well" },
-      { name: "Oil / Gas Well" },
-      { name: "Injection / Disposal Well" },
-      { name: "Storage Well" },
-      { name: "Service Well" },
-      { name: "Observation Well" },
-      { name: "Brine Mining Well" },
-      { name: "Water Supply Well" },
-      { name: "Geothermal Well" },
-    ],
-  },
-  {
-    id: "status",
-    label: "Well status",
-    items: [
-      { name: "Permitted Location" },
-      { name: "Producing" },
-      { name: "Non-Producing" },
-      { name: "Dry Hole" },
-      { name: "Canceled / Abandoned Location" },
-    ],
-  },
-  {
-    id: "play-type",
-    label: "Play type",
-    note: "No well data",
-    items: [
-      { name: "Permian – Midland", count: 2110, dot: DOT.green },
-      { name: "Permian – Delaware", count: 1340, dot: DOT.green },
-      { name: "Eagle Ford", count: 1020, dot: DOT.amber },
-      { name: "Barnett", count: 512, dot: DOT.green },
-      { name: "Haynesville", count: 305, dot: DOT.amber },
-      { name: "Granite Wash", count: 188, dot: DOT.purple },
-      { name: "Austin Chalk", count: 142, dot: DOT.red },
-      { name: "Conventional / other", count: 3383, dot: DOT.grey },
-    ],
-  },
-  {
-    // Spraberry and Wolfcamp are from the mock; the rest are filled in.
-    id: "field",
-    label: "Field",
-    note: "No well data",
-    searchable: true,
-    items: [
-      { name: "Spraberry (Trend)", count: 1240, dot: DOT.green },
-      { name: "Wolfcamp", count: 1105, dot: DOT.red },
-      { name: "Wolfbone", count: 940, dot: DOT.amber },
-      { name: "Bone Spring", count: 812, dot: DOT.blue },
-      { name: "Eagleville (Eagle Ford)", count: 705, dot: DOT.amber },
-      { name: "Phantom (Wolfcamp)", count: 588, dot: DOT.purple },
-      { name: "Panhandle, West", count: 341, dot: DOT.green },
-      { name: "All other fields", count: 4271, dot: DOT.grey },
-    ],
-  },
+  { id: "county", label: "County", searchable: true, defaultOpen: true, items: [] },
+  { id: "operator", label: "Operator", searchable: true, items: [] },
+  { id: "well-type", label: "Well type", items: [] },
+  { id: "status", label: "Well status", items: [] },
+  { id: "play-type", label: "Play type", items: [] },
+  { id: "field", label: "Field", searchable: true, items: [] },
 ];
 
 /**
@@ -319,16 +219,12 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
         if (section.id === "field") {
           return {
             ...section,
-            // Live data now, so the "No well data" flag comes off.
-            note: undefined,
             items: fields.map(({ value, count }) => ({ name: value, count })),
           };
         }
         if (section.id === "play-type") {
           return {
             ...section,
-            // The list is live now, so the "No well data" flag comes off.
-            note: undefined,
             items: playTypes.map(({ value, count }) => ({
               name: value,
               count,
@@ -972,13 +868,6 @@ function CheckboxSection({
             onChange={() => onToggleItem(item.name)}
           />
           <Checkbox checked={checked.has(item.name)} />
-          {item.dot && (
-            <span
-              aria-hidden="true"
-              className="h-[7px] w-[7px] shrink-0 rounded-full"
-              style={{ background: item.dot }}
-            />
-          )}
           {/* Without a count to keep clear of, a long name may wrap rather
               than be cut off. */}
           <span

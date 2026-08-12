@@ -25,7 +25,6 @@ import { LegendsPanel } from "./legends-panel";
 import { PlaceResults, matchPlaces, type Place } from "./map-search";
 import { ShareMenu } from "./share-menu";
 import { ToolsPanel } from "./tools-panel";
-import { WELLS_STATEWIDE } from "./well-clusters";
 
 /*
  * Every control that floats over the map, ported from the explorer mock: the
@@ -149,8 +148,8 @@ export function MapChrome({
   const [placeAnchor, setPlaceAnchor] = useState({ top: 60, left: 0, width: 220 });
   const searchBoxRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  /* Below md the field collapses to its magnifier — a full-width text input
-     costs more than a phone's toolbar can spare. Above md it is always open. */
+  /* Below lg the field collapses to its magnifier — a full-width text input
+     costs more than a narrow toolbar can spare. Above lg it is always open. */
   const [searchOpen, setSearchOpen] = useState(false);
 
   const openSearch = () => {
@@ -172,8 +171,7 @@ export function MapChrome({
   /**
    * Opens the share menu under the Share button. The offsets are measured
    * rather than hard-coded because the button's position moves with the
-   * toolbar — the bar is right-aligned above 919px and centred below it, and
-   * the statewide count changes width with the number.
+   * toolbar — the bar is right-aligned above 919px and centred below it.
    */
   const toggleShare = () => {
     if (shareOpen) {
@@ -345,7 +343,7 @@ export function MapChrome({
               }
             }}
             onCollapse={() => setToolsOpen(false)}
-            className="pointer-events-auto absolute right-0 top-[104px] md:top-16"
+            className="pointer-events-auto absolute right-0 top-[104px] lg:top-16"
           />
         ) : (
           <EdgeTab
@@ -361,10 +359,10 @@ export function MapChrome({
         ref={toolbarRef}
         className="absolute inset-x-0 top-0 flex justify-end p-4 max-[919px]:justify-center"
       >
-        <div className="pointer-events-auto flex w-full max-w-full flex-col items-stretch gap-2 md:w-auto md:flex-row md:flex-nowrap md:items-center md:gap-1 md:overflow-x-auto md:rounded-xl md:border md:border-mv-line md:bg-white/97 md:px-[6px] md:py-[4px] md:shadow-mv-lg md:backdrop-blur-[6px]">
+        <div className="pointer-events-auto flex w-full max-w-full flex-col items-stretch gap-2 lg:w-auto lg:flex-row lg:flex-nowrap lg:items-center lg:gap-1 lg:overflow-x-auto lg:rounded-xl lg:border lg:border-mv-line lg:bg-white/97 lg:px-[6px] lg:py-[4px] lg:shadow-mv-lg lg:backdrop-blur-[6px]">
           {/* A segmented control: the grey track groups the three views and
               makes the filled one read as the raised tab. */}
-          <div className="flex w-full shrink-0 items-center gap-1 rounded-xl border border-mv-line bg-white/97 p-1 shadow-mv-lg backdrop-blur-[6px] md:w-auto md:justify-start md:rounded-lg md:border-0 md:bg-[#f1f2f4] md:p-[3px] md:shadow-none">
+          <div className="flex w-full shrink-0 items-center gap-1 rounded-xl border border-mv-line bg-white/97 p-1 shadow-mv-lg backdrop-blur-[6px] lg:w-auto lg:justify-start lg:rounded-lg lg:border-0 lg:bg-[#f1f2f4] lg:p-[3px] lg:shadow-none">
           {VIEW_TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -374,7 +372,7 @@ export function MapChrome({
               /* Each tab takes a third of the card on a phone: three equal
                  targets read as one control, where content-width buttons in a
                  full-width card read as three loose chips with a gap. */
-              className={`inline-flex flex-1 shrink-0 cursor-pointer items-center justify-center gap-[6px] rounded-lg px-[10px] py-[7px] text-[13px] font-semibold leading-tight transition-colors md:flex-none md:py-[5px] md:text-[12.5px] ${
+              className={`inline-flex flex-1 shrink-0 cursor-pointer items-center justify-center gap-[6px] rounded-lg px-[10px] py-[7px] text-[13px] font-semibold leading-tight transition-colors lg:flex-none lg:py-[5px] lg:text-[12.5px] ${
                 viewTab === id
                   ? "bg-mv-green-deep text-white shadow-mv"
                   : "text-mv-slate hover:bg-white/70 hover:text-mv-green-deep"
@@ -386,26 +384,9 @@ export function MapChrome({
           ))}
           </div>
 
-          {/* The statewide count and Export CSV are the first to go when the
-              map is only half the page — the mock drops them too, and Share
-              falls back to its icon. */}
-          <div className="flex flex-wrap items-center justify-end gap-2 md:contents">
-          {!compact && (
-            <div className="hidden shrink-0 items-center md:flex">
-              <Divider />
-
-              <div className="shrink-0 px-[6px]">
-                <div className="text-[9px] font-extrabold uppercase leading-none tracking-[.09em] text-mv-muted">
-                  Wells statewide
-                </div>
-                <div className="mt-[3px] text-[14px] font-extrabold leading-none text-mv-ink">
-                  {WELLS_STATEWIDE.toLocaleString("en-US")}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <Divider />
+          {/* Export CSV is the first to go when the map is only half the page
+              — the mock drops it too, and Share falls back to its icon. */}
+          <div className="flex flex-wrap items-center justify-end gap-2 lg:contents">
 
           <ToolbarButton icon={Clock} label="Time-lapse" />
 
@@ -439,7 +420,7 @@ export function MapChrome({
             onClick={openSearch}
             aria-label="Search by town, ZIP or API number"
             aria-expanded={searchOpen}
-            className="grid shrink-0 cursor-pointer place-items-center rounded-xl border border-mv-line bg-white/97 px-[9px] py-[7px] text-mv-slate shadow-mv-lg backdrop-blur-[6px] hover:text-mv-green-deep md:hidden"
+            className="grid shrink-0 cursor-pointer place-items-center rounded-xl border border-mv-line bg-white/97 px-[9px] py-[7px] text-mv-slate shadow-mv-lg backdrop-blur-[6px] hover:text-mv-green-deep lg:hidden"
           >
             <Search size={15} aria-hidden="true" />
           </button>
@@ -447,14 +428,14 @@ export function MapChrome({
           {/* A full-width row is what pushes the box onto its own line below the
               icons, so the trigger above never shifts — but the box inside it
               is narrower than the row and right-aligned under the icons. The
-              row dissolves at md, putting the box back in the single-row bar. */}
+              row dissolves at lg, putting the box back in the single-row bar. */}
           <div
-            className={`w-full md:contents ${searchOpen ? "" : "hidden md:contents"}`}
+            className={`w-full lg:contents ${searchOpen ? "" : "hidden lg:contents"}`}
           >
             <div
               ref={searchBoxRef}
-              className={`ml-auto mr-8 w-[232px] max-w-full items-center gap-2 rounded-lg border border-mv-line bg-white/97 px-[9px] py-[7px] shadow-mv-lg backdrop-blur-[6px] focus-within:border-mv-green focus-within:ring-1 focus-within:ring-mv-green md:ml-1 md:mr-0 md:flex md:w-auto md:shrink-0 md:bg-white md:py-[4px] md:pl-[10px] md:pr-[6px] md:shadow-none md:backdrop-blur-none ${
-                searchOpen ? "flex" : "hidden md:flex"
+              className={`ml-auto mr-8 w-[232px] max-w-full items-center gap-2 rounded-lg border border-mv-line bg-white/97 px-[9px] py-[7px] shadow-mv-lg backdrop-blur-[6px] focus-within:border-mv-green focus-within:ring-1 focus-within:ring-mv-green lg:ml-1 lg:mr-0 lg:flex lg:w-auto lg:shrink-0 lg:bg-white lg:py-[4px] lg:pl-[10px] lg:pr-[6px] lg:shadow-none lg:backdrop-blur-none ${
+                searchOpen ? "flex" : "hidden lg:flex"
               }`}
             >
               <label htmlFor="map-search" className="sr-only">
@@ -489,12 +470,12 @@ export function MapChrome({
                   if (!placeQuery.trim()) setSearchOpen(false);
                 }}
                 placeholder="Town, ZIP or API number"
-                className="w-full min-w-0 border-0 bg-transparent text-[12.5px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted md:w-[148px]"
+                className="w-full min-w-0 border-0 bg-transparent text-[12.5px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted lg:w-[148px]"
               />
               <Search
                 size={15}
                 aria-hidden="true"
-                className="hidden shrink-0 text-mv-muted md:block"
+                className="hidden shrink-0 text-mv-muted lg:block"
               />
             </div>
           </div>
@@ -658,7 +639,7 @@ export function MapChrome({
 }
 
 function Divider() {
-  return <span aria-hidden="true" className="mx-[2px] hidden h-6 w-px shrink-0 bg-mv-line md:block" />;
+  return <span aria-hidden="true" className="mx-[2px] hidden h-6 w-px shrink-0 bg-mv-line lg:block" />;
 }
 
 function ToolbarButton({
@@ -684,10 +665,10 @@ function ToolbarButton({
       aria-expanded={expanded}
       aria-label={label || title}
       title={title ?? label}
-      className="inline-flex shrink-0 cursor-pointer items-center gap-[6px] rounded-xl border border-mv-line bg-white/97 px-[9px] py-[7px] text-[12.5px] font-semibold leading-tight text-mv-slate shadow-mv-lg backdrop-blur-[6px] transition-colors hover:bg-[#f2f8f5] hover:text-mv-green-deep md:rounded-lg md:border-0 md:bg-transparent md:py-[5px] md:shadow-none md:backdrop-blur-none"
+      className="inline-flex shrink-0 cursor-pointer items-center gap-[6px] rounded-xl border border-mv-line bg-white/97 px-[9px] py-[7px] text-[12.5px] font-semibold leading-tight text-mv-slate shadow-mv-lg backdrop-blur-[6px] transition-colors hover:bg-[#f2f8f5] hover:text-mv-green-deep lg:rounded-lg lg:border-0 lg:bg-transparent lg:py-[5px] lg:shadow-none lg:backdrop-blur-none"
     >
       <Icon size={15} strokeWidth={2} aria-hidden="true" />
-      <span className="hidden md:inline">{label}</span>
+      <span className="hidden lg:inline">{label}</span>
       {children}
     </button>
   );
@@ -776,8 +757,8 @@ function EdgeTab({
       onClick={onClick}
       className={`pointer-events-auto absolute cursor-pointer border border-mv-green-deep bg-mv-mint px-[8px] py-[11px] shadow-mv hover:bg-mv-green-deep hover:text-white lg:px-[11px] lg:py-[15px] ${
         side === "left"
-          ? "left-0 top-[104px] rounded-r-lg border-l-0 md:top-6"
-          : "right-0 top-[104px] rounded-l-lg border-r-0 md:top-16"
+          ? "left-0 top-[104px] rounded-r-lg border-l-0 lg:top-6"
+          : "right-0 top-[104px] rounded-l-lg border-r-0 lg:top-16"
       }`}
     >
       {/* `vertical-rl` runs top-to-bottom; the flip makes it read upwards. */}
