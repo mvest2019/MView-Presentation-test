@@ -48,6 +48,24 @@ export type ButtonSize = "sm" | "md" | "lg";
 const BASE =
   "inline-flex cursor-pointer items-center justify-center gap-2 rounded-[10px] border font-semibold leading-[1.2] !no-underline transition-[background,border-color,color,filter] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep disabled:cursor-not-allowed disabled:opacity-55";
 
+/**
+ * The primary fill, `!`-forced, for a control that cannot use `buttonClass`
+ * because it inherits geometry from somewhere else.
+ *
+ * The header's "Find your record" is the case: it takes its radius, padding and
+ * 2px border from `navLinkBase` so it sits level with the nav links, which also
+ * brings that class's `text-mv-slate` and its `hover:bg-mv-nav-hover` /
+ * `hover:text-mv-green-deep`. Two utilities on one property resolve by
+ * stylesheet order, so the fill needs `!` to land — including on the hover
+ * states, which otherwise revert to the nav wash.
+ *
+ * Exported rather than copied so the CTA's green cannot drift from every other
+ * primary button. It had its own `hover:bg-mv-green-deep` + white text, which
+ * made the same green behave one way in the bar and another everywhere else.
+ */
+export const primaryFillOverrideClass =
+  "!border-mv-green !bg-mv-green !text-mv-green-ink hover:!bg-mv-green hover:!text-mv-green-ink hover:brightness-[1.05] active:brightness-[.97]";
+
 const VARIANTS: Record<ButtonVariant, string> = {
   /** The one filled CTA — brand green on dark green ink. */
   primary:

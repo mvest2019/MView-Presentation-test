@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-import { buttonClass } from "./button";
+import { buttonClass, primaryFillOverrideClass } from "./button";
 import {
   barNav,
   exploreNav,
@@ -181,14 +181,14 @@ export function SiteHeader() {
                 at weight 800 with 12px side padding and the ✚ at weight 900,
                 which makes it read heavier than the nav links either side. The
                 mockup had stepped it down to 13.5/700 and dropped the icon. */}
-            {/* Colours are the mockup's `.claim`: `--mv-green` fill and border,
-                `--mv-green-ink` text, hovering to `--mv-green-deep` on white. The
-                logo's MINERAL is transformed to green-deep to sit in the same
-                family, so no bespoke brand-green token is needed here.
-                Size stays the prototype's 14px/800 with the ✚. */}
+            {/* Colour comes from `primaryFillOverrideClass`, the same green as
+                every other primary button, so the two cannot drift. This used to
+                carry its own hover — swapping to green-deep on white — which made
+                one green behave two different ways. Size stays the prototype's
+                14px/800 with the ✚. */}
             <Link
               href="/claim"
-              className={`${navLinkBase} !border-mv-green !bg-mv-green !px-3 !text-sm !font-extrabold !text-mv-green-ink hover:!border-mv-green-deep hover:!bg-mv-green-deep hover:!text-white`}
+              className={`${navLinkBase} ${primaryFillOverrideClass} !px-3 !text-sm !font-extrabold`}
             >
               <span aria-hidden="true" className="mr-1 font-black">
                 ✚
