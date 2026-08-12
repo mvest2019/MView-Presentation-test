@@ -1028,7 +1028,7 @@ function SectionShell({
         aria-expanded={open}
         className="flex w-full cursor-pointer items-center gap-2 text-left"
       >
-        <span className="text-[9.5px] lg:text-[10.5px] font-extrabold uppercase tracking-[.1em] text-mv-ink">
+        <span className="text-[11px] lg:text-[12px] font-extrabold uppercase tracking-[.1em] text-mv-ink">
           {label}
         </span>
         {count !== undefined && (
