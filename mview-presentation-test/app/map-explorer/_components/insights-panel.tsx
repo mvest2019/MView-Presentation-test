@@ -150,7 +150,7 @@ export function InsightsPanel() {
         {HEADLINE_CARDS.map((card, index) => (
           <div
             key={card.label}
-            className="flex flex-col rounded-xl border border-mv-line bg-white p-3 sm:p-4"
+            className="flex flex-col rounded-xl border border-mv-line bg-white p-3 sm:px-4 sm:py-[13px]"
           >
             <div className="flex items-center gap-2">
               <span
@@ -172,7 +172,7 @@ export function InsightsPanel() {
               </span>
             </div>
 
-            <div className="mt-3 flex flex-wrap items-baseline gap-x-[5px]">
+            <div className="mt-[9px] flex flex-wrap items-baseline gap-x-[5px]">
               <span className="text-[20px] font-bold leading-none text-mv-ink sm:text-[24px]">
                 {card.value}
               </span>
@@ -180,7 +180,7 @@ export function InsightsPanel() {
                 <span className="text-[12px] text-mv-muted">{card.unit}</span>
               )}
             </div>
-            <div className="mt-[6px] text-[11.5px] text-mv-muted">
+            <div className="mt-[4px] text-[11.5px] text-mv-muted">
               {card.note}
             </div>
 
@@ -188,13 +188,13 @@ export function InsightsPanel() {
               <Sparkline
                 values={PRODUCTION_GAS}
                 width={200}
-                height={34}
+                height={28}
                 stroke={OIL}
-                className="mt-2"
+                className="mt-[6px]"
               />
             )}
 
-            <div className="mt-auto flex flex-wrap items-baseline justify-between gap-x-2 border-t border-mv-line pt-[10px] text-[11px] [margin-top:14px] sm:text-[11.5px]">
+            <div className="mt-auto flex flex-wrap items-baseline justify-between gap-x-2 border-t border-mv-line pt-[7px] text-[11px] [margin-top:10px] sm:text-[11.5px]">
               <span className="text-mv-muted">{card.footLabel}</span>
               <span className="font-semibold text-mv-ink">{card.footValue}</span>
             </div>
