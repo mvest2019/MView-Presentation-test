@@ -774,14 +774,14 @@ function EdgeTab({
     <button
       type="button"
       onClick={onClick}
-      className={`pointer-events-auto absolute cursor-pointer border border-mv-green-deep bg-mv-mint px-[11px] py-[15px] shadow-mv hover:bg-mv-green-deep hover:text-white ${
+      className={`pointer-events-auto absolute cursor-pointer border border-mv-green-deep bg-mv-mint px-[8px] py-[11px] shadow-mv hover:bg-mv-green-deep hover:text-white lg:px-[11px] lg:py-[15px] ${
         side === "left"
           ? "left-0 top-[104px] rounded-r-lg border-l-0 md:top-6"
           : "right-0 top-[104px] rounded-l-lg border-r-0 md:top-16"
       }`}
     >
       {/* `vertical-rl` runs top-to-bottom; the flip makes it read upwards. */}
-      <span className="block rotate-180 text-[12px] font-extrabold uppercase leading-none tracking-[.12em] [writing-mode:vertical-rl]">
+      <span className="block rotate-180 text-[10.5px] font-extrabold uppercase leading-none tracking-[.1em] [writing-mode:vertical-rl] lg:text-[12px] lg:tracking-[.12em]">
         {label}
       </span>
     </button>

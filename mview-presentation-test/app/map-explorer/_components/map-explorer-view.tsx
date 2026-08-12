@@ -139,6 +139,22 @@ type GraphicsLayerCtor = new (props?: {
   id?: string;
 }) => EsriGraphicsLayer;
 
+interface EsriExtent {
+  union(other: EsriExtent): EsriExtent;
+  expand(factor: number): EsriExtent;
+}
+
+interface EsriGeoJSONLayer {
+  /** Client-side query over the loaded features. */
+  queryExtent(query: {
+    where: string;
+  }): Promise<{ count: number; extent: EsriExtent | null }>;
+}
+
+type GeoJSONLayerCtor = new (
+  props: Record<string, unknown>,
+) => EsriGeoJSONLayer;
+
 type GraphicCtor = new (props: Record<string, unknown>) => unknown;
 
 /**
@@ -168,6 +184,23 @@ function homeScale(): number {
   if (window.matchMedia("(max-width: 1023px)").matches) return HOME_SCALE_TABLET;
   return HOME_SCALE;
 }
+
+/*
+ * Boundary overlays, served as GeoJSON from Cloudinary.
+ *
+ * The counties are split across nine files: one file of that size blocks the
+ * first paint, and nine requests the browser runs in parallel do not. They are
+ * built in a loop and handed to the map together, so the map starts all nine
+ * at once rather than waiting on each in turn.
+ */
+const DISTRICT_LAYER_URL =
+  "https://res.cloudinary.com/mview/raw/upload/districts_-_Copy_jtgkgf.txt";
+const COUNTY_LAYER_URL = (index: number) =>
+  `https://res.cloudinary.com/mview/raw/upload/maps/newcounty${index}.txt`;
+const COUNTY_LAYER_COUNT = 9;
+
+/** County lines stay hidden above this scale — statewide they are a smear. */
+const COUNTY_MIN_SCALE = 4_000_000;
 
 /** A drawn rectangle, in degrees. */
 type Area = { west: number; south: number; east: number; north: number };
@@ -553,6 +586,7 @@ export function MapExplorerView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EsriView | null>(null);
+  const countyLayersRef = useRef<EsriGeoJSONLayer[]>([]);
   const mapRef = useRef<EsriMap | null>(null);
 
   // Tracked through the browser rather than our own state: Escape and the
@@ -895,6 +929,49 @@ export function MapExplorerView() {
   [],
   );
 
+  /*
+   * Frames a county by name.
+   *
+   * All nine files are asked, because which one holds a given county is an
+   * accident of how the data was split. The three spellings in the `where`
+   * cover the field arriving as `county`, `COUNTY` or `County` — the live
+   * files use the first, but the query costs nothing extra and a re-export
+   * that changes the case would otherwise silently find nothing.
+   *
+   * A county can straddle two files, so the extents are unioned rather than
+   * first-one-wins.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- public helper, not yet called from the UI
+  const zoomToCounty = useCallback(async (countyName: string) => {
+    const view = viewRef.current;
+    const layers = countyLayersRef.current;
+    if (!view || layers.length === 0) return false;
+
+    // Doubling is how SQL escapes a quote — "O'Brien" would end the string.
+    const name = countyName.replace(/'/g, "''");
+    const where = `county = '${name}' OR COUNTY = '${name}' OR County = '${name}'`;
+
+    const results = await Promise.all(
+      layers.map((layer) =>
+        // A file that has not loaded, or has no such field, is simply a miss.
+        layer.queryExtent({ where }).catch(() => null),
+      ),
+    );
+
+    const extents = results
+      .filter((result) => result && result.count > 0 && result.extent)
+      .map((result) => result!.extent!);
+
+    if (extents.length === 0) return false;
+
+    const target = extents
+      .reduce((union, extent) => union.union(extent))
+      .expand(1.15);
+
+    await view.goTo(target).catch(ignoreInterrupted);
+    return true;
+  }, []);
+
   /** Re-projects the on-map cards — they are React, so they do not follow. */
   const anchorBars = useCallback(() => {
     const view = viewRef.current;
@@ -951,26 +1028,100 @@ export function MapExplorerView() {
 
     void (async () => {
       try {
-        const [EsriMap, MapView, GraphicsLayer, Graphic, Point, geodesic] =
-          await loadArcgisModules<
-            [
-              MapCtor,
-              MapViewCtor,
-              GraphicsLayerCtor,
-              GraphicCtor,
-              PointCtor,
-              GeodesicUtils,
-            ]
-          >([
-            "esri/Map",
-            "esri/views/MapView",
-            "esri/layers/GraphicsLayer",
-            "esri/Graphic",
-            "esri/geometry/Point",
-            "esri/geometry/support/geodesicUtils",
-          ]);
+        const [
+          EsriMap,
+          MapView,
+          GraphicsLayer,
+          GeoJSONLayer,
+          Graphic,
+          Point,
+          geodesic,
+        ] = await loadArcgisModules<
+          [
+            MapCtor,
+            MapViewCtor,
+            GraphicsLayerCtor,
+            GeoJSONLayerCtor,
+            GraphicCtor,
+            PointCtor,
+            GeodesicUtils,
+          ]
+        >([
+          "esri/Map",
+          "esri/views/MapView",
+          "esri/layers/GraphicsLayer",
+          "esri/layers/GeoJSONLayer",
+          "esri/Graphic",
+          "esri/geometry/Point",
+          "esri/geometry/support/geodesicUtils",
+        ]);
 
         if (cancelled || !containerRef.current) return;
+
+        const districtLayer = new GeoJSONLayer({
+          id: "rrc-districts",
+          url: DISTRICT_LAYER_URL,
+          title: "RRC districts",
+          // Outline only — a fill would hide the basemap the lines describe.
+          renderer: {
+            type: "simple",
+            symbol: {
+              type: "simple-fill",
+              color: [0, 0, 0, 0],
+              outline: { color: [37, 99, 235, 0.8], width: 2 },
+            },
+          },
+          labelsVisible: true,
+          labelingInfo: [
+            {
+              labelExpressionInfo: { expression: "$feature.dis_code" },
+              labelPlacement: "always-horizontal",
+              symbol: {
+                type: "text",
+                color: [37, 99, 235, 1],
+                haloColor: [255, 255, 255, 0.9],
+                haloSize: 1.5,
+                font: { size: 11, weight: "bold" },
+              },
+            },
+          ],
+        });
+
+        // Nine files, created together so the map requests them in parallel.
+        const countyLayers: EsriGeoJSONLayer[] = [];
+        for (let index = 1; index <= COUNTY_LAYER_COUNT; index += 1) {
+          countyLayers.push(
+            new GeoJSONLayer({
+              id: `counties-${index}`,
+              url: COUNTY_LAYER_URL(index),
+              title: `Counties ${index}`,
+              minScale: COUNTY_MIN_SCALE,
+              renderer: {
+                type: "simple",
+                symbol: {
+                  type: "simple-fill",
+                  color: [0, 0, 0, 0],
+                  outline: { color: [18, 0, 255, 0.9], width: 2 },
+                },
+              },
+              labelsVisible: true,
+              labelingInfo: [
+                {
+                  labelExpressionInfo: { expression: "$feature.county" },
+                  labelPlacement: "always-horizontal",
+                  symbol: {
+                    type: "text",
+                    color: [18, 0, 255, 1],
+                    haloColor: [255, 255, 255, 0.9],
+                    haloSize: 1.5,
+                    font: { size: 12 },
+                  },
+                },
+              ],
+            }),
+          );
+        }
+        countyLayersRef.current = countyLayers;
 
         const clusters = new GraphicsLayer({ id: "well-clusters" });
         clusters.addMany(buildClusterGraphics(Graphic));
@@ -991,7 +1142,17 @@ export function MapExplorerView() {
         // layer is a sibling of the basemap, so it survives the swap.
         const map = new EsriMap({
           basemap: DEFAULT_BASEMAP,
-          layers: [clusters, areaLayer, measureLayer, nearbyLayer, tractLayer],
+          // Districts first, counties over them, then the bubbles and every
+          // tool layer on top — boundaries are context, not content.
+          layers: [
+            districtLayer,
+            ...countyLayers,
+            clusters,
+            areaLayer,
+            measureLayer,
+            nearbyLayer,
+            tractLayer,
+          ],
         });
         mapRef.current = map;
 
