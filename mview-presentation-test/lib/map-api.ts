@@ -116,3 +116,24 @@ export const getFieldListMap = async (): Promise<MapFilterItem[]> => {
     throw new Error(String(error) || "Failed to fetch field list");
   }
 };
+
+/** One legend symbol — its label and the icon the map draws for it. */
+export type MapLegend = { id: number; description: string; iconUrl: string };
+
+/** GET /api/v1/map/legends -> { legends: [{ id, description, iconUrl }] } */
+export const getLegendListMap = async (): Promise<MapLegend[]> => {
+  try {
+    const response = await fetch(
+      `${process.env.MAP_BASE_URL}/api/v1/map/legends`,
+    );
+    const data = await response.json();
+
+    if (response.ok && Array.isArray(data?.legends)) {
+      return data.legends as MapLegend[];
+    } else {
+      throw new Error("Failed to fetch legend list");
+    }
+  } catch (error) {
+    throw new Error(String(error) || "Failed to fetch legend list");
+  }
+};
