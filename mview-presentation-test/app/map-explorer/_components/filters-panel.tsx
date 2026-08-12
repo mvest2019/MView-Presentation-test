@@ -12,7 +12,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   getCountyListMap,
+  getFieldListMap,
   getOperatorListMap,
+  getPlayTypeListMap,
   getWellStatusListMap,
   getWellTypeListMap,
   type MapFilterItem,
@@ -224,7 +226,7 @@ type FiltersPanelProps = {
 export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) {
   /* The live county list, with the two states any request has besides its
      result. `loading` starts true because the request starts on mount. */
-  const [counties, setCounties] = useState<string[]>([]);
+  const [counties, setCounties] = useState<MapFilterItem[]>([]);
   const [countiesLoading, setCountiesLoading] = useState(true);
   const [countiesError, setCountiesError] = useState<string | null>(null);
 
@@ -236,6 +238,14 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
   const [wellTypes, setWellTypes] = useState<MapFilterItem[]>([]);
   const [wellTypesLoading, setWellTypesLoading] = useState(true);
   const [wellTypesError, setWellTypesError] = useState<string | null>(null);
+
+  const [fields, setFields] = useState<MapFilterItem[]>([]);
+  const [fieldsLoading, setFieldsLoading] = useState(true);
+  const [fieldsError, setFieldsError] = useState<string | null>(null);
+
+  const [playTypes, setPlayTypes] = useState<MapFilterItem[]>([]);
+  const [playTypesLoading, setPlayTypesLoading] = useState(true);
+  const [playTypesError, setPlayTypesError] = useState<string | null>(null);
 
   const [wellStatuses, setWellStatuses] = useState<MapFilterItem[]>([]);
   const [wellStatusesLoading, setWellStatusesLoading] = useState(true);
@@ -252,11 +262,29 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
    *
    * The API returns names only, so these rows carry no count and no dot.
    */
+  /*
+   * What each API-backed section shows instead of its list: the loading line
+   * while the request is out, then the error if it failed, and nothing once
+   * the rows are in. A lookup rather than a ternary chain — one more facet
+   * should be one more line here, not another level of nesting.
+   */
+  const notices: Record<string, string | null | undefined> = {
+    county: countiesLoading ? "Loading counties…" : countiesError,
+    operator: operatorsLoading ? "Loading operators…" : operatorsError,
+    "well-type": wellTypesLoading ? "Loading well types…" : wellTypesError,
+    status: wellStatusesLoading ? "Loading well statuses…" : wellStatusesError,
+    "play-type": playTypesLoading ? "Loading play types…" : playTypesError,
+    field: fieldsLoading ? "Loading fields…" : fieldsError,
+  };
+
   const sections = useMemo<FilterSection[]>(
     () =>
       FILTER_SECTIONS.map((section) => {
         if (section.id === "county") {
-          return { ...section, items: counties.map((name) => ({ name })) };
+          return {
+            ...section,
+            items: counties.map(({ value, count }) => ({ name: value, count })),
+          };
         }
         if (section.id === "operator") {
           return {
@@ -276,6 +304,25 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
             })),
           };
         }
+        if (section.id === "field") {
+          return {
+            ...section,
+            // Live data now, so the "No well data" flag comes off.
+            note: undefined,
+            items: fields.map(({ value, count }) => ({ name: value, count })),
+          };
+        }
+        if (section.id === "play-type") {
+          return {
+            ...section,
+            // The list is live now, so the "No well data" flag comes off.
+            note: undefined,
+            items: playTypes.map(({ value, count }) => ({
+              name: value,
+              count,
+            })),
+          };
+        }
         if (section.id === "status") {
           return {
             ...section,
@@ -287,7 +334,7 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
         }
         return section;
       }),
-    [counties, operators, wellTypes, wellStatuses],
+    [counties, operators, wellTypes, wellStatuses, playTypes, fields],
   );
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for the commented-out My leases section
@@ -338,6 +385,54 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
       })
       .finally(() => {
         if (!cancelled) setCountiesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getFieldListMap()
+      .then((list) => {
+        if (cancelled) return;
+        setFields(list);
+        setFieldsError(null);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setFieldsError(
+          error instanceof Error ? error.message : "Could not load fields.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setFieldsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getPlayTypeListMap()
+      .then((list) => {
+        if (cancelled) return;
+        setPlayTypes(list);
+        setPlayTypesError(null);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setPlayTypesError(
+          error instanceof Error ? error.message : "Could not load play types.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setPlayTypesLoading(false);
       });
 
     return () => {
@@ -690,25 +785,7 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
           <CheckboxSection
             key={section.id}
             section={section}
-            notice={
-              section.id === "county"
-                ? countiesLoading
-                  ? "Loading counties…"
-                  : countiesError
-                : section.id === "operator"
-                  ? operatorsLoading
-                    ? "Loading operators…"
-                    : operatorsError
-                  : section.id === "well-type"
-                    ? wellTypesLoading
-                      ? "Loading well types…"
-                      : wellTypesError
-                    : section.id === "status"
-                      ? wellStatusesLoading
-                        ? "Loading well statuses…"
-                        : wellStatusesError
-                      : undefined
-            }
+            notice={notices[section.id]}
             open={openSections.has(section.id)}
             onToggle={() => toggleSection(section.id)}
             checked={checked[section.id]}

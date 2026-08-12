@@ -6,16 +6,19 @@
  * dev, staging and production differ only in that value.
  */
 
-/** GET /api/v1/map/counties -> { counties: string[] } */
-export const getCountyListMap = async (): Promise<string[]> => {
+/** One row of a filter facet — the value and how many wells carry it. */
+export type MapFilterItem = { value: string; count: number };
+
+/** GET /api/v1/map/filters/county -> { facet, items: [{ value, count }] } */
+export const getCountyListMap = async (): Promise<MapFilterItem[]> => {
   try {
     const response = await fetch(
-      `${process.env.MAP_BASE_URL}/api/v1/map/counties`,
+      `${process.env.MAP_BASE_URL}/api/v1/map/filters/county`,
     );
     const data = await response.json();
 
-    if (response.ok && Array.isArray(data?.counties)) {
-      return data.counties as string[];
+    if (response.ok && Array.isArray(data?.items)) {
+      return data.items as MapFilterItem[];
     } else {
       throw new Error("Failed to fetch county list");
     }
@@ -23,9 +26,6 @@ export const getCountyListMap = async (): Promise<string[]> => {
     throw new Error(String(error) || "Failed to fetch county list");
   }
 };
-
-/** One row of a filter facet — the value and how many wells carry it. */
-export type MapFilterItem = { value: string; count: number };
 
 /** GET /api/v1/map/filters/operator -> { facet, items: [{ value, count }] } */
 export const getOperatorListMap = async (): Promise<MapFilterItem[]> => {
@@ -78,5 +78,41 @@ export const getWellStatusListMap = async (): Promise<MapFilterItem[]> => {
     }
   } catch (error) {
     throw new Error(String(error) || "Failed to fetch well status list");
+  }
+};
+
+/** GET /api/v1/map/filters/play -> { facet, items: [{ value, count }] } */
+export const getPlayTypeListMap = async (): Promise<MapFilterItem[]> => {
+  try {
+    const response = await fetch(
+      `${process.env.MAP_BASE_URL}/api/v1/map/filters/play`,
+    );
+    const data = await response.json();
+
+    if (response.ok && Array.isArray(data?.items)) {
+      return data.items as MapFilterItem[];
+    } else {
+      throw new Error("Failed to fetch play type list");
+    }
+  } catch (error) {
+    throw new Error(String(error) || "Failed to fetch play type list");
+  }
+};
+
+/** GET /api/v1/map/filters/field -> { facet, items: [{ value, count }] } */
+export const getFieldListMap = async (): Promise<MapFilterItem[]> => {
+  try {
+    const response = await fetch(
+      `${process.env.MAP_BASE_URL}/api/v1/map/filters/field`,
+    );
+    const data = await response.json();
+
+    if (response.ok && Array.isArray(data?.items)) {
+      return data.items as MapFilterItem[];
+    } else {
+      throw new Error("Failed to fetch field list");
+    }
+  } catch (error) {
+    throw new Error(String(error) || "Failed to fetch field list");
   }
 };
