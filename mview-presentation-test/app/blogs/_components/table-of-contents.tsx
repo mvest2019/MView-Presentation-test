@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown, ChevronRight, List } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type { TocItem } from "@/lib/toc";
@@ -74,10 +75,22 @@ export function TableOfContents({
       className="rounded-[12px] border border-mv-line bg-mv-card shadow-mv"
     >
       {isArticle ? (
+        /*
+         * ICONS, NOT TEXT GLYPHS. This row was `☰` and `⌄` (U+2304 DOWN
+         * ARROWHEAD) as characters. `items-center` centres the line BOX, and
+         * those two glyphs sit at different heights inside their own em boxes —
+         * the arrowhead in particular renders low and small — so the label and
+         * the toggle looked misaligned however the row was centred. An SVG has a
+         * square viewBox with the shape centred in it, so `items-center` lines it
+         * up with the text's optical middle and the result no longer depends on
+         * which font the browser resolved.
+         */
         <div className="flex items-center gap-[10px] px-4 py-[14px]">
-          <span aria-hidden="true" className="text-[13px] text-mv-muted">
-            ☰
-          </span>
+          <List
+            aria-hidden="true"
+            strokeWidth={2.25}
+            className="h-4 w-4 flex-none text-mv-muted"
+          />
           <span className="flex-1 text-[13px] font-extrabold uppercase tracking-[.08em] text-mv-ink">
             On this page
           </span>
@@ -85,9 +98,13 @@ export function TableOfContents({
             type="button"
             onClick={() => setCollapsed((value) => !value)}
             aria-expanded={!collapsed}
-            className="cursor-pointer border-0 bg-transparent px-1 text-[15px] leading-none text-mv-muted hover:text-mv-green-deep"
+            className="-mr-1 inline-flex cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-1 text-mv-muted hover:text-mv-green-deep"
           >
-            <span aria-hidden="true">{collapsed ? "›" : "⌄"}</span>
+            {collapsed ? (
+              <ChevronRight aria-hidden="true" className="h-4 w-4" />
+            ) : (
+              <ChevronDown aria-hidden="true" className="h-4 w-4" />
+            )}
             <span className="sr-only">
               {collapsed ? "Show contents" : "Hide contents"}
             </span>

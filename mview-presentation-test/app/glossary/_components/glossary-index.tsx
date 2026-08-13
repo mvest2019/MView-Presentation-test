@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 
 import { searchFieldClass } from "@/app/_components/field";
 import { ALPHABET, type GlossaryTermSummary } from "@/lib/glossary-types";
+import { decodeEntities } from "@/lib/sanitize-html";
 
 /**
  * The A–Z glossary index — the prototype's `route:glossary`: a sticky letter
@@ -132,13 +133,30 @@ export function GlossaryIndex({ terms }: { terms: GlossaryTermSummary[] }) {
         </p>
       ) : (
         // Two columns, as the design's `#glossList` is, collapsing at 820px.
-        <div className="mt-2 columns-2 gap-x-[30px] max-[820px]:columns-1">
+        //
+        // No top margin. The gap under the search box was the sum of three
+        // separate paddings — the search row's 8px, 8px here, and 22px on the
+        // letter heading — which stacked to 38px of empty band before the first
+        // letter. The heading's own padding is the only one that survives, so
+        // the spacing has one owner rather than three.
+        <div className="columns-2 gap-x-[30px] max-[820px]:columns-1">
           {groups.map((group) => (
-            // `break-inside-avoid` on the GROUP, not just the cards. Without it
-            // a letter can split across the column break: its heading stays at
-            // the foot of column one while its terms carry on at the head of
-            // column two, which then opens mid-alphabet with no letter above it.
-            <div key={group.letter} className="break-inside-avoid">
+            // Groups may SPLIT across the column break; only the heading is
+            // pinned to what follows it.
+            //
+            // This carried `break-inside-avoid` so a letter always stayed whole.
+            // The cost was a tall empty block at the foot of the first column:
+            // balanced columns aim for equal heights, and when the next letter
+            // was too tall to fit in what remained it moved wholesale to column
+            // two, leaving the space it would have used empty. M is 8 terms deep,
+            // so on the full A–Z that block ran to a few hundred pixels.
+            //
+            // `break-after-avoid` on the heading below keeps the guarantee that
+            // actually matters — a letter is never stranded alone at the foot of
+            // a column, away from its terms. What is given up is that a long
+            // letter can now continue at the top of column two without its
+            // heading repeated above it.
+            <div key={group.letter}>
               {/* `font-serif font-bold` rather than `headingBase`: the design's
                   `.gl-letter` is weight 700, and headingBase's `font-semibold`
                   would collide — two utilities on one property resolve by
@@ -150,13 +168,24 @@ export function GlossaryIndex({ terms }: { terms: GlossaryTermSummary[] }) {
                   120 — a 48px shortfall. 176 leaves the heading just clear.
                   Below 1024 the rail block is static, so only the header is in
                   the way and a smaller margin avoids a needless gap. */}
+              {/* `pt-[10px]`, down from 22. This padding is the ONLY gap above a
+                  letter now, so it does double duty: the space under the search
+                  box and the space between one letter's last card and the next
+                  letter. It has to stay on the heading rather than move to the
+                  first group, because under `columns-2` every column starts at
+                  the container's top edge — zeroing it for `:first-child` would
+                  lift A but not M, and the two letters would no longer line up. */}
               <div
                 id={`gl-${group.letter}`}
-                className="scroll-mt-[176px] border-b-2 border-mv-green pb-1 pt-[22px] font-serif text-2xl font-bold text-mv-green-deep max-[1023px]:scroll-mt-[80px]"
+                className="break-after-avoid scroll-mt-[176px] border-b-2 border-mv-green pb-1 pt-[10px] font-serif text-2xl font-bold text-mv-green-deep max-[1023px]:scroll-mt-[80px]"
               >
                 {group.letter}
               </div>
-              <dl>
+              {/* `mt-2` so the first card clears the heading's green rule. With
+                  the list flush (preflight zeroes `dl` margin) the card's own top
+                  border landed directly on that 2px rule, reading as one thick
+                  line cutting into the card. */}
+              <dl className="mt-2">
                 {group.terms.map((term) => (
                   <TermCard key={term._id} term={term} />
                 ))}
@@ -207,11 +236,17 @@ function TermCard({ term }: { term: GlossaryTermSummary }) {
         )}
       </dt>
       <dd className="mt-1 max-w-[700px] text-[14.5px] text-mv-slate">
-        {stripHtml(term.short_definition)}{" "}
+        {stripHtml(term.short_definition)}
         {/* Not a link: the card already is one, and a second anchor to the same
             place would be a duplicate for anyone tabbing or using a screen
-            reader. Kept as text so the affordance still reads. */}
-        <span className="whitespace-nowrap font-semibold text-mv-green-deep group-hover:underline">
+            reader. Kept as text so the affordance still reads.
+
+            `block`, so it always starts its own line. Inline, it simply followed
+            the last word of the definition, which is a different place in every
+            card — trailing a part-filled line here, wrapping onto a line of its
+            own there. Definitions are CMS copy of arbitrary length, so there is
+            no wording that would make an inline position land consistently. */}
+        <span className="mt-1 block font-semibold text-mv-green-deep group-hover:underline">
           Read more →
         </span>
       </dd>
@@ -224,17 +259,15 @@ function TermCard({ term }: { term: GlossaryTermSummary }) {
  * inside a `<dd>`, so the tags are stripped rather than injected — a block
  * element inside the definition would break the card's layout, and text needs no
  * `dangerouslySetInnerHTML`.
+ *
+ * Entity decoding is the shared `decodeEntities`, not a local list. This was the
+ * third hand-rolled decoder naming the same six entities; one of the others is
+ * what printed a literal `&#8217;` in the contents rail, and a definition
+ * containing any numeric entity would have printed it the same way here.
  */
 function stripHtml(html: string | undefined): string {
   if (!html) return "";
-  return html
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;|&#160;/gi, " ")
-    .replace(/&amp;|&#38;/gi, "&")
-    .replace(/&quot;|&#34;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&lt;|&#60;/gi, "<")
-    .replace(/&gt;|&#62;/gi, ">")
+  return decodeEntities(html.replace(/<[^>]*>/g, " "))
     .replace(/\s+/g, " ")
     .trim();
 }

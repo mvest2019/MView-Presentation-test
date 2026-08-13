@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { getGlossaryTerms } from "@/lib/glossary-api";
 
 import { headingBase } from "../../_components/typography";
-import { ResourceTabs } from "../../blog/_components/resource-tabs";
+import { ResourceTabs } from "../../blogs/_components/resource-tabs";
 import { GlossaryIndex } from "../_components/glossary-index";
 import { Breadcrumb } from "../../_components/breadcrumb";
 
@@ -48,10 +48,6 @@ export default async function GlossaryPage() {
         </div>
 
         <ResourceTabs active="/glossary" />
-
-        <p className="mt-[10px] text-xs text-mv-muted">
-          {terms.length} {terms.length === 1 ? "term" : "terms"}, A–Z.
-        </p>
 
         <GlossaryIndex terms={terms} />
       </div>

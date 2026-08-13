@@ -28,9 +28,11 @@ const ARTICLE_BODY = [
   // 64px header.
   "[&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:scroll-mt-[88px] [&_h2]:font-serif [&_h2]:font-semibold [&_h2]:leading-[1.18] [&_h2]:tracking-[-.01em] [&_h2]:text-[21px] [&_h2]:text-mv-ink",
   "[&_h3]:mt-[14px] [&_h3]:mb-[6px] [&_h3]:font-serif [&_h3]:font-semibold [&_h3]:leading-[1.18] [&_h3]:tracking-[-.01em] [&_h3]:text-[16px] [&_h3]:text-mv-ink",
-  // Links — 10 per article on average, and previously styled by the global
-  // `a` rule. Underlined on hover only, matching the design.
-  "[&_a]:text-mv-green-deep [&_a]:no-underline [&_a]:hover:underline",
+  // Links are BLUE inside the article body, not brand green (QA #8): green is
+  // the site's accent everywhere, so a green link inside green-accented prose
+  // did not read as clickable. Blue is the one colour readers already treat as
+  // a link. Underlined on hover, as elsewhere.
+  "[&_a]:text-mv-blue [&_a]:no-underline [&_a]:hover:underline",
   // Lists
   "[&_ul]:mb-3 [&_ul]:ml-5 [&_ul]:list-disc",
   "[&_ol]:mb-3 [&_ol]:ml-5 [&_ol]:list-decimal",

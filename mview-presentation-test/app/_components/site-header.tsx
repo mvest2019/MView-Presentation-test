@@ -83,7 +83,7 @@ export function SiteHeader() {
 
   /*
    * A bar item is current when the path is it, or sits beneath it — so
-   * /blog/some-article keeps Learn lit, and /glossary/api-gravity too. The `"/"`
+   * /blogs/some-article keeps Learn lit, and /glossary/api-gravity too. The `"/"`
    * guard matters: without it `startsWith("/")` would match every route and light
    * up whichever item pointed at the home page.
    */
@@ -258,105 +258,84 @@ export function SiteHeader() {
                 919px is far too late for a seven-item bar. */}
             <button
               type="button"
-              onClick={() => setDrawerOpen(true)}
-              aria-label="Menu"
+              onClick={() => setDrawerOpen((open) => !open)}
+              aria-label={drawerOpen ? "Close menu" : "Menu"}
               aria-expanded={drawerOpen}
               className="hidden shrink-0 cursor-pointer rounded-lg border border-mv-line px-[10px] py-[7px] text-base leading-none text-mv-slate max-[1139px]:block"
             >
-              ☰
+              {drawerOpen ? "✕" : "☰"}
             </button>
           </div>
         </div>
       </header>
 
       {/* ---------------- mobile sheet ---------------- */}
+      {/* Full width, docked under the 64px header, rather than the 82%-wide
+          right-hand drawer this replaced (QA #3). The drawer left a strip of the
+          page showing down one side with the header's OWN logo still in it, so
+          the sheet's logo made two logos on screen at once; and a narrow overlay
+          squeezed the three "Explore ·" group labels. The header stays visible
+          and its burger becomes the close control, so the sheet needs neither a
+          logo nor a close button of its own. */}
       {drawerOpen && (
-        <div
-          className="fixed inset-0 z-[90] bg-[rgba(13,14,23,.5)]"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) closeDrawer();
-          }}
-        >
-          <div className="absolute right-0 top-0 flex h-full w-[82%] max-w-[340px] flex-col overflow-y-auto bg-white p-[22px]">
-            <button
-              type="button"
-              onClick={closeDrawer}
-              aria-label="Close menu"
-              className="absolute right-[10px] top-[10px] h-[34px] w-[34px] cursor-pointer rounded-full border border-[rgba(128,128,128,.35)] bg-transparent text-[15px] leading-none hover:bg-[rgba(128,128,128,.15)]"
-            >
-              ✕
-            </button>
+        <div className="fixed inset-x-0 bottom-0 top-16 z-[90] overflow-y-auto border-t border-mv-line bg-white px-4 pb-8 pt-3">
+          <Link
+            href="/claim"
+            onClick={closeDrawer}
+            className={`${ctaPrimary} mb-2 w-full text-center`}
+          >
+            ✚ Find your record
+          </Link>
 
-            <Image
-              src={logo.onLight}
-              alt="Mineral View"
-              width={logo.width}
-              height={logo.height}
-              className="mb-[14px] block h-[26px] w-auto"
-            />
+          {barNav.map((item) =>
+            item.kind === "link" ? (
+              <SheetLink
+                key={item.href}
+                href={item.href}
+                onNavigate={closeDrawer}
+              >
+                {item.label}
+              </SheetLink>
+            ) : item.menu === "explore" ? (
+              <div key={item.label}>
+                {exploreNav.map((column) => (
+                  <div key={column.heading}>
+                    <SheetGroup>
+                      Explore · {column.heading.toLowerCase()}
+                    </SheetGroup>
+                    {column.links.map((link) => (
+                      <SheetLink
+                        key={link.href}
+                        href={link.href}
+                        onNavigate={closeDrawer}
+                      >
+                        {link.label}
+                      </SheetLink>
+                    ))}
+                  </div>
+                ))}
+                <SheetDivider />
+              </div>
+            ) : (
+              <div key={item.label}>
+                <SheetGroup>Learn</SheetGroup>
+                {learnNav.map((link) => (
+                  <SheetLink
+                    key={link.href}
+                    href={link.href}
+                    onNavigate={closeDrawer}
+                  >
+                    {link.label}
+                  </SheetLink>
+                ))}
+                <SheetDivider />
+              </div>
+            ),
+          )}
 
-            <Link
-              href="/claim"
-              onClick={closeDrawer}
-              /* `ctaPrimary` is already the mockup's green fill on ink, so the
-                 sheet's CTA needs no colour override to agree with the bar's. */
-              className={`${ctaPrimary} mb-2 text-center`}
-            >
-              ✚ Find your record
-            </Link>
-
-            {/* Same order as the bar: the two audience links, the Explore groups,
-                Pricing, then Learn — so the sheet and the bar agree. */}
-            {barNav.map((item) =>
-              item.kind === "link" ? (
-                <SheetLink
-                  key={item.href}
-                  href={item.href}
-                  onNavigate={closeDrawer}
-                >
-                  {item.label}
-                </SheetLink>
-              ) : item.menu === "explore" ? (
-                <div key={item.label}>
-                  {exploreNav.map((column) => (
-                    <div key={column.heading}>
-                      <SheetGroup>
-                        Explore · {column.heading.toLowerCase()}
-                      </SheetGroup>
-                      {column.links.map((link) => (
-                        <SheetLink
-                          key={link.href}
-                          href={link.href}
-                          onNavigate={closeDrawer}
-                        >
-                          {link.label}
-                        </SheetLink>
-                      ))}
-                    </div>
-                  ))}
-                  <SheetDivider />
-                </div>
-              ) : (
-                <div key={item.label}>
-                  <SheetGroup>Learn</SheetGroup>
-                  {learnNav.map((link) => (
-                    <SheetLink
-                      key={link.href}
-                      href={link.href}
-                      onNavigate={closeDrawer}
-                    >
-                      {link.label}
-                    </SheetLink>
-                  ))}
-                  <SheetDivider />
-                </div>
-              ),
-            )}
-
-            <SheetLink href="/login" onNavigate={closeDrawer}>
-              Sign in
-            </SheetLink>
-          </div>
+          <SheetLink href="/login" onNavigate={closeDrawer}>
+            Sign in
+          </SheetLink>
         </div>
       )}
     </>

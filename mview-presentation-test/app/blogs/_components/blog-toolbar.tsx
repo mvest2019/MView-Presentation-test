@@ -33,7 +33,7 @@ export function BlogToolbar({
   activeCategory,
   search,
 }: {
-  /** The section this toolbar filters — `/blog` or `/news`. */
+  /** The section this toolbar filters — `/blogs` or `/news`. */
   basePath: string;
   searchLabel: string;
   searchPlaceholder: string;

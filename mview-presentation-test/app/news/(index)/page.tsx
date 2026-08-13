@@ -2,12 +2,12 @@ import type { Metadata } from "next";
 
 import { SECTIONS } from "@/lib/blog-types";
 
-import { ArticleListing } from "../../blog/_components/article-listing";
+import { ArticleListing } from "../../blogs/_components/article-listing";
 
 /**
  * News listing — the API's `Oil & Gas News` type.
  *
- * Same page as `/blog` against a different `type`; see `ArticleListing`. The
+ * Same page as `/blogs` against a different `type`; see `ArticleListing`. The
  * prototype keeps both behind one route with an in-page view switch, which this
  * build replaces with two tabs.
  */

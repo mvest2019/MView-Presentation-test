@@ -9,14 +9,14 @@ import {
 
 export async function generateMetadata({
   params,
-}: PageProps<"/blog/[slug]">): Promise<Metadata> {
+}: PageProps<"/blogs/[slug]">): Promise<Metadata> {
   const { slug } = await params;
   return buildArticleMetadata(slug);
 }
 
 export default async function BlogArticleRoute({
   params,
-}: PageProps<"/blog/[slug]">) {
+}: PageProps<"/blogs/[slug]">) {
   const { slug } = await params;
   return <ArticlePage slug={slug} section="blog" />;
 }

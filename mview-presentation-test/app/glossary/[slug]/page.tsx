@@ -9,8 +9,7 @@ import {
 } from "@/lib/glossary-api";
 
 import { h3Class, headingBase, inlineLink } from "../../_components/typography";
-import { ArticleHero } from "../../blog/_components/article-hero";
-import { TableOfContents } from "../../blog/_components/table-of-contents";
+import { TableOfContents } from "../../blogs/_components/table-of-contents";
 import { prepareArticle } from "@/lib/toc";
 
 import { GlossaryContent } from "../_components/glossary-content";
@@ -96,12 +95,45 @@ export default async function GlossaryTermPage({
               {term.term_name}
             </h1>
 
-            {term.header_img && (
-              <ArticleHero src={term.header_img} alt={term.term_name} />
-            )}
+            {/*
+             * NO HERO HERE — deliberately, unlike the blog and news pages.
+             *
+             * Glossary bodies author their own hero: the CMS content carries an
+             * `<img class="glossary-image glossary-image--hero">` right after the
+             * meta row, and `header_img` is the same file exposed as a field.
+             * Rendering both showed the identical picture twice on every term
+             * that has one.
+             *
+             * Measured over the whole corpus before removing it: `header_img`
+             * duplicates a body image on 36 of 47 terms and is a UNIQUE image on
+             * ZERO of them, so nothing loses its only picture here. The body copy
+             * is also the better of the two — it carries a full descriptive
+             * `alt` where this passed only the term name, and it sits where the
+             * CMS put it.
+             *
+             * `header_img` is still used for the OpenGraph image above: a social
+             * card wants one, and it cannot duplicate anything there.
+             */}
 
             <div className="rounded-[12px] border border-mv-line bg-mv-card p-[22px] shadow-mv">
               <GlossaryContent preparedHtml={html} />
+
+              {/* The live site's "trust box" (`GlossaryDetailsPage.tsx`), which
+                  closes every term page directly after the content and which this
+                  build was missing entirely. Copy is the live site's, verbatim —
+                  it is an editorial statement about who writes these pages, not
+                  something to reword here.
+
+                  Inside the content card and separated by a rule, as it is there:
+                  it reads as the end of the article, not as a site-wide footer. */}
+              <p className="mt-[18px] border-t border-mv-line pt-[14px] text-[13.5px] text-mv-slate">
+                <strong className="text-mv-ink">
+                  Written and reviewed by Mineral View.
+                </strong>{" "}
+                This glossary page is designed to help mineral owners understand
+                oil and gas lease, royalty, operator, and ownership terms in
+                plain language.
+              </p>
             </div>
 
             {related.length > 0 && (

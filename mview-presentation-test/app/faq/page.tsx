@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { headingBase } from "../_components/typography";
-import { ResourceTabs } from "../blog/_components/resource-tabs";
+import { ResourceTabs } from "../blogs/_components/resource-tabs";
 import { FaqExplorer } from "./_components/faq-explorer";
 import { Breadcrumb } from "../_components/breadcrumb";
 

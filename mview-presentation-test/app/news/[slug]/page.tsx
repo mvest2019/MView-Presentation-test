@@ -3,9 +3,9 @@ import type { Metadata } from "next";
 import {
   ArticlePage,
   buildArticleMetadata,
-} from "../../blog/_components/article-page";
+} from "../../blogs/_components/article-page";
 
-/** A News story. Blog articles live at `/blog/[slug]`. */
+/** A News story. Blog articles live at `/blogs/[slug]`. */
 
 export async function generateMetadata({
   params,

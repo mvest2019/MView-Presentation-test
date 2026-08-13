@@ -11,6 +11,6 @@ export const metadata: Metadata = {
   description: SECTIONS.blog.lede,
 };
 
-export default async function BlogPage({ searchParams }: PageProps<"/blog">) {
+export default async function BlogPage({ searchParams }: PageProps<"/blogs">) {
   return <ArticleListing mode="blog" searchParams={await searchParams} />;
 }

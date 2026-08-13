@@ -10,7 +10,7 @@ import { BlogToolbar } from "./blog-toolbar";
 import { ResourceTabs } from "./resource-tabs";
 
 /**
- * The listing body shared by `/blog` and `/news`.
+ * The listing body shared by `/blogs` and `/news`.
  *
  * Both sections are the same page against a different API `type`, so the layout
  * lives here once and each route supplies its mode. Everything on screen — the
@@ -116,7 +116,10 @@ export async function ArticleListing({
             ))}
           </div>
         ) : (
-          <p className="mt-8 text-mv-muted">
+          // Centred to match the count line below it: with the grid gone there is
+          // nothing left-aligned for this to line up with, so hugging the left
+          // edge of an otherwise empty page read as a stray fragment.
+          <p className="mt-8 text-center text-mv-muted">
             Nothing matches that search{category ? ` in ${category}` : ""}.{" "}
             <Link href={section.path} className={inlineLink}>
               Clear the filters →

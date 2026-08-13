@@ -4,6 +4,7 @@ import { unstable_cache } from "next/cache";
 
 import {
   BLOG_TYPES,
+  CATEGORY_ORDER,
   type BlogDetails,
   type BlogListItem,
   type BlogMode,
@@ -116,7 +117,14 @@ const getCorpus = unstable_cache(
   { revalidate: REVALIDATE_SECONDS, tags: ["blog"] },
 );
 
-/** Categories present in one type, most-populous first, counted from the API. */
+/**
+ * Categories present in one type, counted from the API and ordered to match the
+ * live site's chip row — see `CATEGORY_ORDER`.
+ *
+ * Anything the API returns that `CATEGORY_ORDER` does not name is appended,
+ * alphabetically, after the known chips. A new CMS category therefore appears on
+ * the page without a code change; it just does not jump the established order.
+ */
 export async function getCategoryFacets(
   mode: BlogMode,
 ): Promise<{ facets: CategoryFacet[]; total: number }> {
@@ -128,9 +136,21 @@ export async function getCategoryFacets(
     if (category) counts.set(category, (counts.get(category) ?? 0) + 1);
   }
 
+  const order = CATEGORY_ORDER[mode];
+  // Unlisted categories sort after every listed one, so `order.length` is the
+  // rank for "not found" rather than -1, which would sort it to the front.
+  const rank = (category: string) => {
+    const index = order.indexOf(category);
+    return index === -1 ? order.length : index;
+  };
+
   const facets = [...counts.entries()]
     .map(([category, count]) => ({ category, count }))
-    .sort((a, b) => b.count - a.count || a.category.localeCompare(b.category));
+    .sort(
+      (a, b) =>
+        rank(a.category) - rank(b.category) ||
+        a.category.localeCompare(b.category),
+    );
 
   return { facets, total: corpus.length };
 }

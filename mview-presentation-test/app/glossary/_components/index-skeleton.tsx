@@ -25,8 +25,6 @@ export function GlossaryIndexSkeleton() {
             ))}
           </div>
 
-          <Skeleton className="mt-[10px] h-[15px] w-[110px]" />
-
           {/* A–Z rail */}
           <div className="flex flex-wrap gap-1 border-b border-mv-line py-[10px]">
             {Array.from({ length: 26 }).map((_, i) => (
@@ -39,11 +37,14 @@ export function GlossaryIndexSkeleton() {
             <Skeleton className="h-[37px] w-full rounded-full" />
           </div>
 
-          {/* Two columns of term cards */}
-          <div className="mt-2 columns-2 gap-x-[30px] max-[820px]:columns-1">
+          {/* Two columns of term cards. Spacing mirrors `GlossaryIndex` exactly —
+              no margin here, 10px above each letter, and 14px under it (the real
+              heading's 4px padding + 2px rule + the list's 8px). When this drifts
+              the page visibly jumps as the terms land. */}
+          <div className="columns-2 gap-x-[30px] max-[820px]:columns-1">
             {Array.from({ length: 16 }).map((_, i) => (
               <div key={i} className="break-inside-avoid">
-                <Skeleton className="mb-1 mt-[22px] h-[30px] w-[28px]" />
+                <Skeleton className="mb-[14px] mt-[10px] h-[30px] w-[28px]" />
                 <div className="mb-2 rounded-[12px] border border-mv-line bg-white px-4 py-[13px]">
                   <div className="flex flex-wrap items-center gap-2">
                     <Skeleton className="h-[21px] w-[150px]" />

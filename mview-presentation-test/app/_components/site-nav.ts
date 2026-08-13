@@ -178,7 +178,7 @@ export const exploreNav: MegaColumn[] = [
  * share this list and show labels only.
  */
 export const learnNav: (NavLink & { sub: string })[] = [
-  { label: "Blog", href: "/blog", sub: "Updates, tips and insights" },
+  { label: "Blog", href: "/blogs", sub: "Updates, tips and insights" },
   { label: "News", href: "/news", sub: "Oil and gas sector activity" },
   { label: "Glossary", href: "/glossary", sub: "Key industry terms defined" },
   { label: "FAQ", href: "/faq", sub: "What we are, and how data is handled" },
@@ -224,7 +224,7 @@ export const footerColumns: FooterColumn[] = [
     heading: "Learn",
     links: [
       { label: "Resources", href: "/resources" },
-      { label: "Blog", href: "/blog" },
+      { label: "Blog", href: "/blogs" },
       { label: "News", href: "/news" },
       { label: "Watch & Listen", href: "/media" },
       { label: "Glossary", href: "/glossary" },

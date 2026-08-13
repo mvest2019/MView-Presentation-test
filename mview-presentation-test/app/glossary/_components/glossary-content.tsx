@@ -22,6 +22,19 @@ import { useEffect, useRef } from "react";
  */
 
 const GLOSSARY_BODY = [
+  /*
+   * `scroll-mt` on SECTIONS as well as headings.
+   *
+   * The CMS puts the SAME id on both the wrapper and its heading —
+   * `<section id="how-bopd-works"><h2 id="how-bopd-works">` — 7 duplicated ids
+   * on a term like BOPD. `getElementById` and the browser's own fragment lookup
+   * both take the FIRST match in document order, which is the section, and the
+   * section had no scroll margin: jumping to a contents row put the section's top
+   * edge at the viewport top, tucking the heading up under the sticky 64px
+   * header. Giving both the same margin means the landing is right whichever one
+   * wins, without rewriting ids the CMS may link to elsewhere.
+   */
+  "[&_section]:scroll-mt-[88px]",
   // Prose
   "[&_h2]:mt-[18px] [&_h2]:mb-2 [&_h2]:scroll-mt-[88px] [&_h2]:font-serif [&_h2]:font-semibold [&_h2]:leading-[1.18] [&_h2]:tracking-[-.01em] [&_h2]:text-[20px] [&_h2]:text-mv-ink",
   "[&_h3]:mt-[14px] [&_h3]:mb-[6px] [&_h3]:font-serif [&_h3]:font-semibold [&_h3]:leading-[1.18] [&_h3]:tracking-[-.01em] [&_h3]:text-[15.5px] [&_h3]:text-mv-ink",
@@ -33,7 +46,8 @@ const GLOSSARY_BODY = [
   "[&_ul]:mb-3 [&_ul]:ml-5 [&_ul]:list-disc [&_ul]:text-[14px] [&_ul]:text-mv-slate",
   "[&_ol]:mb-3 [&_ol]:ml-5 [&_ol]:list-decimal [&_ol]:text-[14px] [&_ol]:text-mv-slate",
   "[&_li]:my-1",
-  "[&_a]:text-mv-green-deep [&_a]:no-underline [&_a]:hover:underline",
+  // Blue, same reason as the article body (QA #8).
+  "[&_a]:text-mv-blue [&_a]:no-underline [&_a]:hover:underline",
   // Figures and images
   "[&_img]:my-2 [&_img]:block [&_img]:h-auto [&_img]:max-w-full [&_img]:rounded-[10px] [&_img]:border [&_img]:border-mv-line",
   "[&_figure]:my-3",

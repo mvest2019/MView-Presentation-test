@@ -13,10 +13,11 @@ import { ArticleHero } from "./article-hero";
 import { ArticleShare } from "./article-share";
 import { BlogCard, formatBlogDate } from "./blog-card";
 import { BlogChip } from "./blog-chip";
+import { ContentsCard } from "./contents-card";
 import { TableOfContents } from "./table-of-contents";
 
 /**
- * Article detail, shared by `/blog/[slug]` and `/news/[slug]`.
+ * Article detail, shared by `/blogs/[slug]` and `/news/[slug]`.
  *
  * Body, header image, category, author, date and related articles all come from
  * `/NewsFramework/Blog_datadetails`. The body is CMS HTML and goes through
@@ -65,15 +66,33 @@ export async function ArticlePage({
   const { details, realetedArray: related } = article;
 
   // `modeFromApiType` falls back to "blog" for an unknown or absent type, so a
-  // record the CMS has not classified stays reachable under /blog.
+  // record the CMS has not classified stays reachable under /blogs.
   if (modeFromApiType(details.type) !== mode) notFound();
 
   const section = SECTIONS[mode];
+
   const author = details.Created_by?.trim() || "Mineral View team";
 
   // Sanitises the body and writes an id onto every h2, so the contents list has
   // something to link to. Blog headings ship no anchors of their own.
   const { html, toc } = prepareArticle(details.blog);
+
+  /*
+   * The contents card and the sticky rail appear on ANY article with headings,
+   * news included (Ryan, 2026-08-13: "same like blogs").
+   *
+   * This was blog-only, on the reasoning that the old site shows no "On this
+   * page" card on a news story and that news pieces are too short to index. The
+   * second half was simply wrong: every news story in the corpus carries 6–19
+   * `<h2>` headings, so a news reader was being denied a contents list that the
+   * body fully supports, and news detail looked unlike blog detail for no reason
+   * a reader could see.
+   *
+   * The gate is now purely "does the body have headings", which is also what
+   * makes this safe: an article with none falls back to a single column instead
+   * of leaving an empty 300px track beside the body.
+   */
+  const showContents = toc.length > 0;
 
   return (
     <div className="py-16 pt-[26px] max-[767px]:py-11">
@@ -91,7 +110,24 @@ export async function ArticlePage({
           {section.backLabel}
         </Link>
 
-        <div className="mt-3 grid grid-cols-[minmax(0,1fr)_300px] items-start gap-10 max-[1023px]:grid-cols-[minmax(0,1fr)]">
+        {/* TWO rows rather than one tall column beside the rail (QA #14a). The
+            rail used to start level with the chip and the headline; it should
+            start where the reading does. Row one is the article header with an
+            empty cell beside it, row two is the body with the rail.
+
+            The second track EXISTS ONLY WHEN THE RAIL DOES. Declaring it
+            unconditionally broke every page without a rail — news stories, and
+            any blog article whose body has no `<h2>`: with the spacer and the
+            aside both skipped, the body was the grid's second child and so
+            landed in row one's second cell, squeezed into the 300px track with
+            the whole left column left empty beside it. */}
+        <div
+          className={`mt-3 grid items-start gap-x-10 ${
+            showContents
+              ? "grid-cols-[minmax(0,1fr)_300px] max-[1023px]:grid-cols-[minmax(0,1fr)]"
+              : "grid-cols-[minmax(0,1fr)]"
+          }`}
+        >
           <div className="min-w-0">
             <div className="mt-[14px] flex flex-wrap items-center gap-2">
               <BlogChip category={details.Category} size="md" />
@@ -110,6 +146,15 @@ export async function ArticlePage({
               src={details.blog_header_img}
               alt={details.blog_title}
             />
+          </div>
+
+          {/* Spacer holding row one's second cell so the rail lands in row two. */}
+          {showContents && (
+            <div aria-hidden="true" className="max-[1023px]:hidden" />
+          )}
+
+          <div className="min-w-0">
+            {showContents && <ContentsCard items={toc} />}
 
             <ArticleBody preparedHtml={html} />
 
@@ -126,35 +171,49 @@ export async function ArticlePage({
               </div>
             </div>
 
-            {related.length > 0 && (
-              <>
-                <h3 className={`${h3Class} mb-[10px] mt-[22px]`}>
-                  Related Articles
-                </h3>
-                {/* Same tablet step as the listing grid. */}
-                <div className="grid grid-cols-3 gap-[18px] max-[1023px]:grid-cols-2 max-[767px]:grid-cols-1">
-                  {related.map((item) => (
-                    <BlogCard key={item._id} article={item} compact />
-                  ))}
-                </div>
-              </>
-            )}
-
+            {/* Share sits with the article, not after the related grid (QA #6).
+                Below six cards nobody found it. */}
             <ArticleShare title={details.blog_title} />
-
-            <p className="mt-4 text-xs text-mv-muted">
-              Informational only — not legal, tax, or investment advice.
-            </p>
           </div>
 
-          {/* Sticky beside the article on wide screens. Below 1024 the grid is a
-              single column, so `order-first` lifts the card above the article
-              rather than stranding it under the related-articles grid, where
-              nobody would reach it. */}
-          <aside className="sticky top-[88px] max-[1023px]:static max-[1023px]:order-first">
-            <TableOfContents items={toc} variant="article" />
-          </aside>
+          {/* Desktop only (QA #9): hidden on phones AND iPad, where it used to be
+              lifted above the article and pushed the reading down the page. The
+              in-body card covers those widths. */}
+          {showContents && (
+            <aside className="sticky top-[88px] max-[1023px]:hidden">
+              <TableOfContents items={toc} variant="article" />
+            </aside>
+          )}
         </div>
+
+        {/* OUTSIDE the grid (QA #7). Inside it, the sticky rail kept pace with
+            the related-articles grid and hung alongside it long after the
+            article had ended. The grid now closes with the article. */}
+        {related.length > 0 && (
+          <>
+            <h3 className={`${h3Class} mb-[10px] mt-[26px]`}>
+              Related Articles
+            </h3>
+            {/* One horizontal row that scrolls (QA #10), not a grid that wrapped
+                onto a second and third line. `snap` so a swipe lands on a card;
+                the fixed basis is needed because a flex child's default
+                `min-width:auto` would let the cards squash to fit instead. */}
+            <div className="mv-thin-scroll -mx-1 flex snap-x snap-mandatory gap-[18px] overflow-x-auto px-1 pb-2">
+              {related.map((item) => (
+                <div
+                  key={item._id}
+                  className="w-[280px] flex-none snap-start max-[767px]:w-[240px]"
+                >
+                  <BlogCard article={item} compact />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        <p className="mt-4 text-xs text-mv-muted">
+          Informational only — not legal, tax, or investment advice.
+        </p>
       </div>
     </div>
   );

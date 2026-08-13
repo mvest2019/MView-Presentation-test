@@ -47,7 +47,7 @@ import {
  * What deliberately stayed out:
  *   · `use-operator-directory.ts` — the data layer and the API seam. No markup.
  *   · `_components/county-directory.tsx` — a distinct section with its own data.
- *   · `@/app/_components/button` and `typography` — site-wide, used by /blog too.
+ *   · `@/app/_components/button` and `typography` — site-wide, used by /blogs too.
  *
  * If a section here ever earns a second caller, promote it to
  * `app/_components/` rather than back into a private sibling file.
