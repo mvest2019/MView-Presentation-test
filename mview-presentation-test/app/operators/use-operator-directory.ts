@@ -305,16 +305,29 @@ export function useOperatorDirectory({
     }));
   }, []);
 
-  /** Re-clicking a column flips direction; a new column starts descending. */
-  const toggleSort = useCallback((key: OperatorSortKey) => {
-    setFilters((current) => ({
-      ...current,
-      sortKey: key,
-      sortDir:
-        current.sortKey === key && current.sortDir === "desc" ? "asc" : "desc",
-      page: 1,
-    }));
-  }, []);
+  /**
+   * Sort a column. With no direction, re-clicking a column flips it and a new
+   * column starts descending — the header label behaves as it always has.
+   *
+   * With a direction, that direction is applied outright. The two arrows in each
+   * sortable header need this: an up arrow whose tooltip says "ascending" has to
+   * actually sort ascending, and a toggle cannot promise that.
+   */
+  const toggleSort = useCallback(
+    (key: OperatorSortKey, dir?: "asc" | "desc") => {
+      setFilters((current) => ({
+        ...current,
+        sortKey: key,
+        sortDir:
+          dir ??
+          (current.sortKey === key && current.sortDir === "desc"
+            ? "asc"
+            : "desc"),
+        page: 1,
+      }));
+    },
+    [],
+  );
 
   const goToPage = useCallback(
     (next: number) => patch({ page: next }, false),

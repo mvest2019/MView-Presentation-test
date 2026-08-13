@@ -1,13 +1,13 @@
 "use client";
 
-import { ChevronDown, ChevronsUpDown, Search, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Search, X } from "lucide-react";
 import Link from "next/link";
 import { memo, useEffect, useId, useRef, useState } from "react";
 
 import { Button, selectedControlClass } from "@/app/_components/button";
+import { OperatorMonogram } from "@/app/_components/operator-monogram";
 import {
   fieldGroupLabelClass,
-  panelTitleClass,
   tinyClass,
 } from "@/app/_components/typography";
 import {
@@ -106,10 +106,6 @@ export function OperatorPage({
     >
       {/* ---- filter zone ---- */}
       <div className="relative bg-[linear-gradient(180deg,#f3faf6_0%,#ffffff_82%)] p-6 before:absolute before:inset-x-0 before:top-0 before:h-[3px] before:bg-[linear-gradient(90deg,var(--color-mv-green),var(--color-mv-green-deep))] before:content-[''] max-[767px]:p-4">
-        <h2 className={`${panelTitleClass} mb-3 text-mv-ink`}>
-          Operators directory
-        </h2>
-
         <QuickFilters selected={filters.quick} onToggle={toggleQuick} />
 
         <div className="mt-3">
@@ -643,7 +639,7 @@ function ResultsTable({
   hasError: boolean;
   /** Suppresses the empty state until a response has actually arrived. */
   hasLoadedOnce: boolean;
-  onSort: (key: OperatorSortKey) => void;
+  onSort: (key: OperatorSortKey, dir?: "asc" | "desc") => void;
   onClearFilters: () => void;
   /** Re-issues the same request; the filter dedupe would otherwise skip it. */
   onRetry: () => void;
@@ -700,7 +696,7 @@ function ResultsTable({
                     label={columnLabel(col, page.units)}
                     active={sortKey === col.key}
                     dir={sortDir}
-                    onClick={() => onSort(col.key)}
+                    onSort={(dir) => onSort(col.key, dir)}
                   />
                 </th>
               ))}
@@ -775,6 +771,90 @@ function ResultsTable({
  * re-render caused by typing reconciles the rows that actually changed and skips
  * the rest.
  */
+/**
+ * The tile's edge length. 40px because the cell's two lines of text measure 41px
+ * inside `py-4` — anything taller grows every row in the table.
+ *
+ * THE LOGO FILLS THE TILE, WITH NO INSET, AND THAT IS DELIBERATE. The API's logo
+ * PNGs are not bare marks: they are pre-rendered white tiles with a light grey
+ * border already drawn in. Sampled at source, Pioneer and Burlington (512×512) both
+ * carry a ring of `rgb(225,225,225)` around a white field — a hair off this
+ * project's own `mv-line`. Inset the image and that baked border sits *inside* the
+ * tile's border, and the cell shows two concentric rounded rectangles. Filling the
+ * tile puts the two edges on top of each other, so one border is visible.
+ *
+ * The tile keeps its own border because not every logo has one — EOG's 200×200 is
+ * white to the edge — and without it those would float with no boundary at all.
+ *
+ * `object-contain` stays: it costs nothing on the square logos and stops a
+ * non-square one from being stretched.
+ */
+const LOGO_SIZE = 40;
+const LOGO_FILL = "h-full w-full";
+
+/**
+ * An operator's real logo, falling back to the monogram tile.
+ *
+ * The src is `row.logoUrl` — our own `/api/operators/{no}/logo`, not the API's URL.
+ * The upstream response sets `Cross-Origin-Resource-Policy: same-origin`, so an
+ * `<img>` pointed straight at it downloads a valid PNG and is then refused by the
+ * browser. The route handler re-serves the same bytes from our origin; see the note
+ * on `fetchOperatorLogo`.
+ *
+ * THE FALLBACK IS STILL LOAD-BEARING. `operator_logo` is built from the operator
+ * number and arrives on every record, so its presence says nothing about whether an
+ * image exists — the endpoint 404s for operators without one. `onError` is what
+ * turns that into a monogram instead of a broken-image icon.
+ *
+ * WHY A PLAIN `<img>` AND NOT `next/image`. Now that the bytes come from our own
+ * origin the optimizer would work without an allowlist entry, but it buys nothing at
+ * 34 pixels and it turns each of the (many) 404s into a failed, uncached
+ * `/_next/image` round trip. The raw 404 is cacheable, so the browser stops asking.
+ *
+ * `alt=""` because the operator's name is right beside it as real text; announcing
+ * the logo too would just repeat it.
+ */
+function OperatorLogo({
+  url,
+  monogram,
+}: {
+  url: string | null;
+  monogram: string;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  if (!url || failed) {
+    return (
+      <OperatorMonogram
+        monogram={monogram}
+        size={LOGO_SIZE}
+        className="!rounded-[9px]"
+      />
+    );
+  }
+
+  return (
+    <span
+      className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-[9px] border border-mv-line bg-white shadow-[0_1px_2px_rgba(13,14,23,.05)]"
+      style={{ width: LOGO_SIZE, height: LOGO_SIZE }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element -- deliberate; see the
+          note above this component about `next/image` and the 404 path. */}
+      <img
+        src={url}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        onError={() => setFailed(true)}
+        // The box is a fixed size, so the image is constrained inside it rather
+        // than sizing it — no intrinsic dimensions are needed and no logo, square
+        // or not, can shift the row.
+        className={`${LOGO_FILL} object-contain`}
+      />
+    </span>
+  );
+}
+
 const OperatorRow = memo(function OperatorRow({
   row,
   rank,
@@ -795,20 +875,34 @@ const OperatorRow = memo(function OperatorRow({
       </td>
 
       <td className={cellClass}>
-        {/* A gated row has no slug, so its name is plain text rather than a link
-            to nowhere. Everything else about the cell is unchanged. */}
-        {row.href ? (
-          <Link
-            href={row.href}
-            className="font-bold text-mv-green-deep no-underline hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
-          >
-            {row.name}
-          </Link>
-        ) : (
-          <strong className="font-bold text-mv-muted">{row.name}</strong>
-        )}
-        <span className="mt-[2px] block text-xs font-normal text-mv-muted">
-          No. {row.operatorNumber}
+        {/* The design system's operator identity block (`.op-id`): the logo tile
+            beside the name and number, the same pairing the comparison tools use.
+            The tile is shorter than the two lines of text next to it, so adding it
+            does not change the row's height. */}
+        <span className="flex items-center gap-3">
+          <OperatorLogo url={row.logoUrl} monogram={row.monogram} />
+
+          <span className="min-w-0">
+            {/* A gated row has no slug, so its name is plain text rather than a
+                link to nowhere. */}
+            {/* Ink at rest, brand green on hover — the design system's
+                `.op-id-name a` rule, and the same treatment the operator
+                comparison tools give an operator name. The row is clickable as a
+                whole, so the hover state carries the affordance. */}
+            {row.href ? (
+              <Link
+                href={row.href}
+                className="font-bold text-mv-ink no-underline hover:text-mv-green-deep hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+              >
+                {row.name}
+              </Link>
+            ) : (
+              <strong className="font-bold text-mv-muted">{row.name}</strong>
+            )}
+            <span className="mt-[2px] block text-xs font-normal text-mv-muted">
+              No. {row.operatorNumber}
+            </span>
+          </span>
         </span>
       </td>
 
@@ -861,52 +955,82 @@ function SortButton({
   label,
   active,
   dir,
-  onClick,
+  onSort,
 }: {
   label: string;
   active: boolean;
   dir: "asc" | "desc";
-  onClick: () => void;
+  onSort: (dir?: "asc" | "desc") => void;
 }) {
   /**
-   * The tooltip states the direction currently applied, not the one the next click
-   * would apply. Describing the next action inverted it: a column sorted
-   * descending read "Sort by … ascending", and every unsorted column claimed
-   * "descending" before anything was sorted at all. An unsorted column names no
-   * direction, because none is in effect.
+   * Each arrow is its own control, so each can carry its own tooltip and sort in
+   * its own direction.
+   *
+   * WHY IT IS NOT ONE ICON ANY MORE. A single combined chevron can only have one
+   * `title`, so hovering either half of it showed the same text — the up arrow of a
+   * descending column said "descending", and the down arrow of an ascending one
+   * said "ascending". Splitting the control is the only way the tooltip can match
+   * the arrow the pointer is actually over.
+   *
+   * And because each arrow now names a direction, each has to apply that direction
+   * rather than toggle: an up arrow that promises "ascending" and delivers
+   * descending is worse than no tooltip. The label keeps the old toggle behaviour,
+   * so a plain click on the column name is unchanged.
+   *
+   * COLOUR still carries the applied direction — brand green ascending, light grey
+   * descending, per the earlier request. The arrow that is not in effect drops to
+   * `white/35` so the pair never reads as two active states.
    */
-  const title = active
-    ? `Sorted by ${label} ${dir === "asc" ? "ascending" : "descending"}`
-    : `Sort by ${label}`;
+  const arrowClass = (arrowDir: "asc" | "desc") => {
+    if (active && dir === arrowDir) {
+      return arrowDir === "asc" ? "text-mv-green" : "text-mv-placeholder";
+    }
+    return "text-white/35 hover:text-white/80";
+  };
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      className="group/sort inline-flex cursor-pointer items-center gap-[5px] border-0 bg-transparent p-0 text-[13px] font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-    >
-      <span className="group-hover/sort:underline group-hover/sort:underline-offset-[3px]">
-        {label}
-      </span>
-      {/* One icon shape on every sortable column — swapping in an up/down arrow on
-          the sorted one made that header look like a different control. Colour
-          carries the direction instead: brand green ascending, grey descending, and
-          a neutral tint while unsorted. `mv-placeholder` is the design system's
-          light grey, which stays legible on the dark header where `mv-muted` would
-          sink into it. */}
-      <ChevronsUpDown
-        aria-hidden="true"
-        strokeWidth={2.5}
-        className={`h-4 w-4 shrink-0 ${
+    <span className="inline-flex items-center gap-[5px]">
+      <button
+        type="button"
+        onClick={() => onSort()}
+        title={
           active
-            ? dir === "asc"
-              ? "text-mv-green"
-              : "text-mv-placeholder"
-            : "text-white/50 group-hover/sort:text-white/80"
-        }`}
-      />
-    </button>
+            ? `Sorted by ${label} ${dir === "asc" ? "ascending" : "descending"}`
+            : `Sort by ${label}`
+        }
+        className="cursor-pointer border-0 bg-transparent p-0 text-[13px] font-semibold text-white hover:underline hover:underline-offset-[3px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+      >
+        {label}
+      </button>
+
+      {/* Stacked into the same 16px box the single icon occupied, so the header row
+          keeps its height. `-space-y-[3px]` closes the gap the two glyphs leave
+          between them. */}
+      <span className="inline-flex h-4 shrink-0 flex-col justify-center -space-y-[3px]">
+        {(
+          [
+            ["asc", ChevronUp, "ascending"],
+            ["desc", ChevronDown, "descending"],
+          ] as const
+        ).map(([arrowDir, Icon, word]) => (
+          <button
+            key={arrowDir}
+            type="button"
+            onClick={() => onSort(arrowDir)}
+            title={`Sort by ${label} ${word}`}
+            aria-label={`Sort by ${label} ${word}`}
+            aria-pressed={active && dir === arrowDir}
+            className="cursor-pointer border-0 bg-transparent p-0 leading-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+          >
+            <Icon
+              aria-hidden="true"
+              strokeWidth={2.75}
+              className={`h-[11px] w-[13px] shrink-0 ${arrowClass(arrowDir)}`}
+            />
+          </button>
+        ))}
+      </span>
+    </span>
   );
 }
 
@@ -936,14 +1060,26 @@ function SkeletonRows({
           <td className={cellClass}>
             <span className={`${bar} w-5`} />
           </td>
-          {/* The name cell mirrors the data row's two line boxes exactly — a
-              14.5px line for the name and a 12px line for the operator number.
-              Sizing the bars alone left this cell ~18px short, so the whole card
-              grew when real rows replaced it. */}
+          {/* The name cell mirrors the data row's layout exactly — the logo tile,
+              then a 14.5px line for the name and a 12px line for the operator
+              number. Sizing the bars alone left this cell ~18px short, so the whole
+              card grew when real rows replaced it; omitting the tile shifts the two
+              text bars sideways by its width plus the gap for the same reason. */}
           <td className={cellClass}>
-            <span className={`${bar} w-[180px]`} />
-            <span className="mt-[2px] block text-xs">
-              <span className={`${bar} !h-2 w-[110px]`} />
+            <span className="flex items-center gap-3">
+              {/* Both dimensions come from `LOGO_SIZE`, so resizing the tile can
+                  never leave the skeleton a different height and reintroduce the
+                  shift this cell was tuned to remove. */}
+              <span
+                className={`${bar} shrink-0 !rounded-[9px]`}
+                style={{ width: LOGO_SIZE, height: LOGO_SIZE }}
+              />
+              <span>
+                <span className={`${bar} w-[180px]`} />
+                <span className="mt-[2px] block text-xs">
+                  <span className={`${bar} !h-2 w-[110px]`} />
+                </span>
+              </span>
             </span>
           </td>
           {Array.from({ length: sortableCount }, (_, cell) => (

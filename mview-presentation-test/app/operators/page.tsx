@@ -5,7 +5,6 @@ import { Breadcrumbs } from "@/app/_components/breadcrumbs";
 import {
   displayLgClass,
   displaySmClass,
-  eyebrowClass,
   h3Class,
   inlineLink,
 } from "@/app/_components/typography";
@@ -96,21 +95,25 @@ const BREADCRUMB_JSON_LD = {
 /** The three operator feature cards (`.psvc-card`), unchanged from the design. */
 const FEATURE_CARDS = [
   {
-    href: "/operators/compare-production",
+    // Built. `/features/` because the destination is a tool, not one operator's
+    // record — see the note at the top of that route.
+    href: "/features/compare-operator-production",
     icon: "▮▮",
     title: "Compare Operator Production",
     body: "Put 2–4 operators side by side on reported production — real figures, ranked within their play.",
     cta: "Open the comparison →",
   },
   {
-    href: "/operators/compare-statistics",
+    // Built, alongside its sibling under `/features/`.
+    href: "/features/compare-operator-statistics",
     icon: "≡",
     title: "Compare Operator Statistics",
     body: "Company statistics side by side — leases, counties, rank, and production intensity.",
     cta: "Open the comparison →",
   },
   {
-    href: "/operators/presentations",
+    // Built. No "compare" in the slug — this one is a library, not a comparison.
+    href: "/features/operator-presentations",
     icon: "▣",
     title: "Operator Presentations",
     body: "A clean, shareable one-page profile of any operator — built from the public record.",
@@ -197,7 +200,7 @@ export default async function OperatorsRoute() {
         />
 
         <div className="pt-7">
-          <h1 className={displayLgClass}>Know Your Operators</h1>
+          <h1 className={displayLgClass}>Operator Directory</h1>
           <p className="mt-[6px] max-w-[640px] text-[15.5px] text-mv-muted">
             Search, filter, and rank Texas oil &amp; gas operators by reported
             production, activity, and coverage.
@@ -210,9 +213,8 @@ export default async function OperatorsRoute() {
           visitorId={visitorId}
         />
 
-        {/* The hrefs are the paths the prototype points at. None of those routes
-            exists yet — same situation as most of `site-nav.ts`, where every path
-            but the built ones is a placeholder. */}
+        {/* All three routes are built, each under `/features/` — see the note at
+            the top of those files for why that section rather than `/operators/`. */}
         <div className="mt-[18px] grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] items-stretch gap-4">
           {FEATURE_CARDS.map((card) => (
             <Link
@@ -233,7 +235,6 @@ export default async function OperatorsRoute() {
         </div>
 
         <section className="mt-[46px]">
-          <div className={eyebrowClass}>By county · public records</div>
           <h2 className={`${displaySmClass} mt-[7px]`}>
             Browse operators by county
           </h2>
