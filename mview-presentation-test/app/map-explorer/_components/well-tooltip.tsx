@@ -39,9 +39,6 @@ export function WellTooltip({ well }: { well: HoveredWell }) {
         <div className="bg-[#f4faf6] px-[14px] pb-[9px] pt-[9px]">
           <div className="truncate text-[12.5px] font-bold leading-tight text-mv-ink">
             {well.lease}
-            {well.well && (
-              <span className="font-semibold text-mv-slate"> · {well.well}</span>
-            )}
           </div>
           <div className="mt-[5px] font-mono text-[11px] leading-none text-mv-muted">
             {well.api}
@@ -49,6 +46,7 @@ export function WellTooltip({ well }: { well: HoveredWell }) {
         </div>
 
         <dl className="px-[14px] py-[9px] text-[11.5px] leading-none">
+          <Row label="Well" value={well.well} />
           <Row label="Operator" value={well.operator} />
           <Row label="Status" value={well.status} />
           <Row label="Type" value={well.wtype} />
