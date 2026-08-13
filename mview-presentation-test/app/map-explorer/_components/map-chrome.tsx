@@ -538,10 +538,10 @@ export function MapChrome({
           filtersOpen ? "left-[276px] hidden lg:flex" : "left-3 flex"
         }`}
       >
-      {/* The legend describes well symbols, so it appears with the wells. Over
-          the bubbles there is nothing on the map for it to explain. */}
-      {legendsOpen && wellsVisible && (
+      {/* Always there, but explaining whichever of the two the map is drawing. */}
+      {legendsOpen && (
         <LegendsPanel
+          mode={wellsVisible ? "wells" : "clusters"}
           defaultOpen={wideScreen}
           className="pointer-events-auto"
         />

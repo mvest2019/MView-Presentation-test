@@ -979,7 +979,7 @@ export function MapExplorerView() {
             symbol: {
               type: "simple-fill",
               color: [0, 0, 0, 0],
-              outline: { color: [37, 99, 235, 0.8], width: 2 },
+              outline: { color: [103, 135, 134, 0.85], width: 1.75 },
             },
           },
           labelsVisible: true,
@@ -989,7 +989,7 @@ export function MapExplorerView() {
               labelPlacement: "always-horizontal",
               symbol: {
                 type: "text",
-                color: [37, 99, 235, 1],
+                color: [64, 92, 91, 1],
                 haloColor: [255, 255, 255, 0.9],
                 haloSize: 1.5,
                 font: { size: 11, weight: "bold" },
@@ -1011,8 +1011,11 @@ export function MapExplorerView() {
                 type: "simple",
                 symbol: {
                   type: "simple-fill",
+                  // No fill. The palette's county washes were drawn over a
+                  // white basemap; over imagery or the dark map they fog it,
+                  // and the lines alone read the same on all six.
                   color: [0, 0, 0, 0],
-                  outline: { color: [18, 0, 255, 0.9], width: 2 },
+                  outline: { color: [103, 135, 134, 0.9], width: 1 },
                 },
               },
               labelsVisible: true,
@@ -1022,7 +1025,7 @@ export function MapExplorerView() {
                   labelPlacement: "always-horizontal",
                   symbol: {
                     type: "text",
-                    color: [18, 0, 255, 1],
+                    color: [64, 92, 91, 1],
                     haloColor: [255, 255, 255, 0.9],
                     haloSize: 1.5,
                     font: { size: 12 },
