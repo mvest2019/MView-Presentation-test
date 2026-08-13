@@ -53,8 +53,46 @@
   --color-mv-row-hover: #fafbfc;
   --color-mv-table-head: #1f2937;
 
+  /* Third-tier surfaces — the Compare Operator Production prototype.
+     Same rule as everything above: extracted, not authored. Each is that
+     design's own literal, named here because inline hexes are not allowed in
+     components and several of these repeat across the chart, the tables and the
+     dark panels. Grouped rather than merged into the lists above so it stays
+     obvious which page introduced them.
+
+     `mv-plum` is the fourth comparison slot; slots one to three already exist as
+     `mv-green-deep`, `mv-amber` and `mv-blue`. `mv-ink-soft` is the prototype's
+     `--ink2`, the body colour inside its data tables. The `on-deep` trio is text
+     that sits on the dark panels, where `mv-ink` would be unreadable. */
+  --color-mv-plum: #a4426f;
+  --color-mv-card-tint: #fbfdfc;
+  /* The statistics comparison's two additions: the sub-label under an operator's
+     name on the dark table header, and the deeper mint a best-value cell takes on
+     row hover so the highlight survives the hover fill. */
+  --color-mv-on-head-soft: #9fb4ab;
+  --color-mv-tint-strong: #dff0e8;
+  --color-mv-ink-soft: #374151;
+  --color-mv-faint: #93a29a;
+  --color-mv-axis: #98a2b3;
+  --color-mv-gas: #dbe3e9;
+  --color-mv-scroll: #cbd5cd;
+  --color-mv-spark: #8fb9a8;
+  --color-mv-forest: #123f2b;
+  --color-mv-night: #0e1622;
+  --color-mv-deep: #14312a;
+  --color-mv-deep-ink: #0d1512;
+  --color-mv-tooltip: #0f2c22;
+  --color-mv-on-deep: #dce6e1;
+  --color-mv-on-deep-soft: #a9bcb2;
+  --color-mv-on-deep-muted: #c4d1cb;
+  --color-mv-on-deep-accent: #79d3ac;
+
   /* Status */
   --color-mv-amber: #b45309;
+  --color-mv-down: #c0392b;
+  --color-mv-sand: #a9781f;
+  --color-mv-sand-tint: #f6efdc;
+  --color-mv-sand-line: #e8d9ab;
   --color-mv-amber-bg: #fef3c7;
   --color-mv-red: #b91c1c;
   --color-mv-red-bg: #fee2e2;
@@ -82,3 +120,4 @@
   --shadow-mv-lg: 0 4px 10px rgba(13, 14, 23, 0.08), 0 16px 40px rgba(13, 14, 23, 0.1);
   --radius-mv: 12px;
 }
+
