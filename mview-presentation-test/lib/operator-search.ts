@@ -12,6 +12,7 @@ import {
   MASKED,
   OPERATOR_SORT_FIELDS,
   TEMP_MEMBER_ID,
+  operatorLogoPath,
   type OperatorSearchRecord,
   type OperatorSearchRequest,
 } from "./operator-api-types";
@@ -154,8 +155,34 @@ export interface OperatorRow {
   status: string;
   /** `null` on a gated row, which has no slug to link to. */
   href: string | null;
+  /**
+   * Where to request the logo, or null when there is nothing worth requesting —
+   * a gated row (whose operator number is masked, so there is no logo to name) or
+   * a record that carried no `operator_logo`.
+   *
+   * This is OUR path, not the API's URL. The upstream response sets
+   * `Cross-Origin-Resource-Policy: same-origin`, so a browser refuses to display it
+   * cross-origin; `operatorLogoPath` points at the route handler that re-serves the
+   * bytes from our own origin. See the note there.
+   *
+   * A value here means "ask for it", not "it exists": the endpoint 404s for every
+   * operator without a logo, so whatever renders this must still handle failure.
+   */
+  logoUrl: string | null;
+  /** Two initials, for the tile shown when there is no logo to show. */
+  monogram: string;
   /** True when this row came back as `"****"` behind the sign-in gate. */
   masked: boolean;
+}
+
+/**
+ * Initials of the first two words of the operator's name — "Pioneer Natural RES
+ * USA, Inc" becomes "PN". The same rule the operator comparison tools use, so one
+ * operator gets the same tile everywhere it appears.
+ */
+function monogramOf(name: string): string {
+  const words = name.match(/[A-Za-z]+/g) ?? [];
+  return `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}`.toUpperCase();
 }
 
 /**
@@ -210,6 +237,11 @@ export function toOperatorRow(
     lastProduction: record.end_productiondate,
     status: record.status,
     href: masked || !slug ? null : `/operators/${slug}`,
+    logoUrl:
+      masked || !record.operator_logo
+        ? null
+        : operatorLogoPath(record.operator_number),
+    monogram: monogramOf(record.cleaned_operator_name),
     masked,
   };
 }

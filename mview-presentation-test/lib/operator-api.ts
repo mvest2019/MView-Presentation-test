@@ -271,3 +271,42 @@ export async function searchOperators(
 
   return payload as OperatorSearchResponse;
 }
+
+/**
+ * Fetch an operator's logo bytes from the API.
+ *
+ * WHY THIS GOES THROUGH OUR SERVER AT ALL. The upstream logo response carries
+ * `Cross-Origin-Resource-Policy: same-origin`, which tells a browser the resource
+ * may only be embedded by a page on the API's own origin. Our pages are on a
+ * different origin, so an `<img src>` pointing straight at it is fetched and then
+ * *refused* — `onerror` fires even though the bytes arrived intact. Measured:
+ * `fetch(url, { mode: "cors" })` returns 200 and a valid 512×512 PNG, while
+ * `mode: "no-cors"` — the mode an `<img>` uses — throws. CORP is not CORS: the
+ * endpoint does send `Access-Control-Allow-Origin: *`, which is why the JSON
+ * endpoints work from the browser and this one cannot.
+ *
+ * Reading it server-side and re-serving it from our own origin makes the embed
+ * same-origin, so CORP is satisfied.
+ *
+ * DELETE THIS WHEN THE HEADER IS FIXED. The clean fix is one line upstream —
+ * `Cross-Origin-Resource-Policy: cross-origin` on the logo route (these headers are
+ * Helmet's defaults, and this asset is public). Once that ships, the row can carry
+ * `operator_logo` verbatim and this function and its route handler both go away.
+ *
+ * Returns the raw response so the handler can pass the status, content type and
+ * validator headers through rather than re-deriving them.
+ */
+export async function fetchOperatorLogo(
+  operatorNumber: string,
+  signal?: AbortSignal,
+): Promise<Response> {
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
+
+  return fetch(`${baseUrl()}/api/v1/operators/${operatorNumber}/logo`, {
+    signal: combined,
+    // The upstream sends `max-age=86400` and an etag; letting Next cache the
+    // response means repeat views of the same page cost no upstream request.
+    next: { revalidate: REVALIDATE_SECONDS, tags: ["operators"] },
+  });
+}

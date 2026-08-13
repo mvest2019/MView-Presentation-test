@@ -71,6 +71,22 @@ export const OPERATOR_ENDPOINTS = {
 } as const;
 
 /**
+ * Where the browser should ask for an operator's logo: our own origin, not the
+ * API's.
+ *
+ * The upstream logo response sets `Cross-Origin-Resource-Policy: same-origin`, so
+ * an `<img>` pointing at `operator_logo` directly is fetched and then refused by
+ * the browser. `app/api/operators/[number]/logo/route.ts` re-serves the same bytes
+ * from here, which makes the embed same-origin.
+ *
+ * ONE PLACE, SO THE ROUTE AND THE ROW CANNOT DISAGREE. When the upstream header is
+ * fixed this function becomes `record.operator_logo` and the handler is deleted.
+ */
+export function operatorLogoPath(operatorNumber: string): string {
+  return `/api/operators/${encodeURIComponent(operatorNumber)}/logo`;
+}
+
+/**
  * The operator API host as seen from the browser.
  *
  * Read from `NEXT_PUBLIC_OPERATOR_API_BASE_URL`, which `next.config.ts` inlines
@@ -189,6 +205,22 @@ export interface OperatorSearchRecord {
   current_quarter_month_year: string[] | typeof MASKED;
   previous_quarter_month_year: string[] | typeof MASKED;
   status: string;
+  /**
+   * An absolute URL to the operator's logo on the API host, e.g.
+   * `https://mview-dev-api.mineralview.com/api/v1/operators/020528/logo`.
+   *
+   * IT IS A TEMPLATE, NOT A PROMISE. The value is built from the operator number
+   * and comes back populated on every record, including operators that have no
+   * logo — the endpoint then answers 404 with
+   * `{"error":{"message":"No logo for operator 020528"}}`. So a non-empty
+   * `operator_logo` does NOT mean an image exists, and the only way to find out is
+   * to request it. Whatever renders this has to fall back on error; see
+   * `OperatorRow.logoUrl`.
+   *
+   * Optional because it is not part of the payload contract we were given, and a
+   * response without it must not break the mapping.
+   */
+  operator_logo?: string | null;
 }
 
 export interface OperatorSearchResponse {
