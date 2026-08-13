@@ -52,6 +52,8 @@ type MapChromeProps = {
   basemap: string;
   onBasemapChange: (id: string) => void;
   onSaveImage: () => void;
+  /** Downloads what the map is showing — bubbles, or wells once close in. */
+  onExportCsv: () => void;
   onPrint: () => void;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
@@ -92,6 +94,7 @@ export function MapChrome({
   basemap,
   onBasemapChange,
   onSaveImage,
+  onExportCsv,
   onPrint,
   isFullscreen,
   onToggleFullscreen,
@@ -398,7 +401,11 @@ export function MapChrome({
           <Divider />
 
           {!compact && (
-            <ToolbarButton icon={Download} label="Export CSV" />
+            <ToolbarButton
+              icon={Download}
+              label="Export CSV"
+              onClick={onExportCsv}
+            />
           )}
 
           {!compact && <Divider />}

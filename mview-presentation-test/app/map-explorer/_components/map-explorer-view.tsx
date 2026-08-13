@@ -50,6 +50,7 @@ import {
   type PointCtor,
 } from "./map-measurements";
 
+import { exportVisible } from "./map-export";
 import { buildWellGraphics } from "./well-graphics";
 import { WellTooltip, type HoveredWell } from "./well-tooltip";
 
@@ -388,6 +389,8 @@ export function MapExplorerView() {
   /* Legend description -> icon URL, so a well draws its legend's symbol. */
   const wellIconsRef = useRef<Map<string, string>>(new Map());
   const wellRequestRef = useRef(0);
+  /* The wells last loaded, for the export — the layer holds graphics, not rows. */
+  const wellsRef = useRef<MapWell[]>([]);
   const clustersRef = useRef<WellCluster[]>([]);
   const [clusters, setClusters] = useState<WellCluster[]>([]);
   const [clustersLoading, setClustersLoading] = useState(true);
@@ -873,6 +876,7 @@ export function MapExplorerView() {
       .then((list: MapWell[]) => {
         if (request !== wellRequestRef.current) return;
 
+        wellsRef.current = list;
         setWellError(null);
         layer.removeAll();
         layer.addMany(
@@ -892,9 +896,24 @@ export function MapExplorerView() {
 
   const clearWells = useCallback(() => {
     wellRequestRef.current += 1;
+    wellsRef.current = [];
     setWellsLoading(false);
     setWellError(null);
     wellLayerRef.current?.removeAll();
+  }, []);
+
+  /** Export CSV: whatever is inside the extent right now, wells or bubbles. */
+  const exportCsv = useCallback(() => {
+    const view = viewRef.current;
+    if (!view?.extent) return;
+
+    const { xmin, ymin, xmax, ymax } = view.extent;
+    exportVisible(clustersRef.current, wellsRef.current, {
+      west: mercatorToLongitude(xmin),
+      south: mercatorToLatitude(ymin),
+      east: mercatorToLongitude(xmax),
+      north: mercatorToLatitude(ymax),
+    });
   }, []);
 
   /** Drops the bubbles — the view is too wide for them to mean anything. */
@@ -1941,6 +1960,7 @@ export function MapExplorerView() {
           scale={readout.scale}
           zoom={readout.zoom}
           wellsVisible={readout.zoom >= WELL_ZOOM}
+          onExportCsv={exportCsv}
           center={readout.center}
           basemap={basemap}
           onBasemapChange={changeBasemap}
