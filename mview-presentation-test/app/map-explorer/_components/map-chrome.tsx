@@ -15,7 +15,6 @@ import {
   Search,
   Share2,
   Table2,
-  Zap,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -399,12 +398,7 @@ export function MapChrome({
           <Divider />
 
           {!compact && (
-            <ToolbarButton icon={Download} label="Export CSV">
-              <span className="inline-flex items-center gap-[2px] rounded bg-mv-amber-bg px-[5px] py-[2px] text-[9px] font-extrabold uppercase tracking-[.06em] text-mv-amber">
-                <Zap size={8} fill="currentColor" strokeWidth={0} aria-hidden="true" />
-                Pro
-              </span>
-            </ToolbarButton>
+            <ToolbarButton icon={Download} label="Export CSV" />
           )}
 
           {!compact && <Divider />}
@@ -571,11 +565,6 @@ export function MapChrome({
 
       {/* ---------------- navigation stack ---------------- */}
       <div className="absolute bottom-4 right-4 flex flex-col items-end gap-2">
-        {/* The zoom level, above the buttons that change it. Rounded, because
-            `snapToZoom` is off and the raw value sits between LODs. */}
-        <div className="pointer-events-auto rounded-lg border border-mv-line bg-white/97 px-[9px] py-[5px] text-[11px] font-semibold leading-none text-mv-slate shadow-mv backdrop-blur-[6px] lg:text-[12px]">
-          Zoom {Math.round(zoom)}
-        </div>
 
         <div ref={basemapRef} className="relative">
           {basemapOpen && (
@@ -647,6 +636,12 @@ export function MapChrome({
         {/* A house, not another expand glyph — the previous icon was a near
             twin of the full-screen control two buttons up. */}
         <IconButton icon={House} label="Reset view" onClick={onHome} />
+
+        {/* The zoom level, under the buttons that change it. Rounded, because
+            `snapToZoom` is off and the raw value sits between LODs. */}
+        <div className="pointer-events-auto rounded-lg border border-mv-line bg-white/97 px-[9px] py-[5px] text-[11px] font-semibold leading-none text-mv-slate shadow-mv backdrop-blur-[6px] lg:text-[12px]">
+          Zoom {Math.round(zoom)}
+        </div>
       </div>
     </div>
   );
