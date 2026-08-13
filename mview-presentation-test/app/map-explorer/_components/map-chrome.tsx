@@ -54,6 +54,9 @@ type MapChromeProps = {
   onSaveImage: () => void;
   /** Downloads what the map is showing — bubbles, or wells once close in. */
   onExportCsv: () => void;
+  /** The time-lapse bar is the view's, since the plotting is. */
+  timeLapseOpen: boolean;
+  onToggleTimeLapse: () => void;
   onPrint: () => void;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
@@ -95,6 +98,8 @@ export function MapChrome({
   onBasemapChange,
   onSaveImage,
   onExportCsv,
+  timeLapseOpen,
+  onToggleTimeLapse,
   onPrint,
   isFullscreen,
   onToggleFullscreen,
@@ -396,7 +401,12 @@ export function MapChrome({
               — the mock drops it too, and Share falls back to its icon. */}
           <div className="flex flex-wrap items-center justify-end gap-2 lg:contents">
 
-          <ToolbarButton icon={Clock} label="Time-lapse" />
+          <ToolbarButton
+            icon={Clock}
+            label="Time-lapse"
+            expanded={timeLapseOpen}
+            onClick={onToggleTimeLapse}
+          />
 
           <Divider />
 

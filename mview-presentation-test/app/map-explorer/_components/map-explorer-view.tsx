@@ -51,6 +51,7 @@ import {
 } from "./map-measurements";
 
 import { exportVisible } from "./map-export";
+import { TimeLapseBar } from "./time-lapse-bar";
 import { buildWellGraphics } from "./well-graphics";
 import { WellTooltip, type HoveredWell } from "./well-tooltip";
 
@@ -284,6 +285,16 @@ const CLUSTER_ZOOM_STEPS = [5, 8];
 const WELL_ZOOM = 10;
 
 /*
+ * The highlight pulse. The ring sits just outside a 10px well icon; the wave
+ * runs out to a little over twice that, which reads at a glance without
+ * covering the wells around it.
+ */
+const PULSE_MIN_SIZE = 16;
+const PULSE_MAX_SIZE = 38;
+const PULSE_FRAMES = 26;
+const PULSE_INTERVAL_MS = 45;
+
+/*
  * Below the first step nothing is requested, but what is already drawn stays:
  * zooming out from 5 to 4 or 3 is still looking at the same wells, just from
  * further away. Only past this point is the view so wide that the bubbles no
@@ -460,8 +471,40 @@ export function MapExplorerView() {
     y: number;
     bubble: number;
   } | null>(null);
+  /*
+   * The time-lapse. It replays whatever the map is already showing: the marks
+   * come off, then go back on a few at a time. `plotted` is how many are back;
+   * `playing` is whether more are still arriving.
+   */
+  const [timeLapseOpen, setTimeLapseOpen] = useState(false);
+  const [timeLapsePlaying, setTimeLapsePlaying] = useState(false);
+  const [timeLapsePlotted, setTimeLapsePlotted] = useState(0);
+  /* How many there are to plot. State, not the queue's length: the render
+     reads it, and a ref read during render is not a dependency React tracks. */
+  const [timeLapseTotal, setTimeLapseTotal] = useState(0);
+  /** The graphics taken off the map, waiting to be put back one by one. */
+  const timeLapseQueueRef = useRef<unknown[]>([]);
+  /*
+   * Graphics per mark. A bubble is two — the circle and its label — so the
+   * queue is twice as long as the thing being counted, and the pair has to go
+   * on together or a bubble appears with no number in it.
+   */
+  const timeLapseUnitRef = useRef(1);
+  const timeLapseLayerRef = useRef<EsriGraphicsLayer | null>(null);
+
+  /*
+   * The well clicked on the map. Held as a ref, not state: nothing in React
+   * renders it — the highlight is a graphic on the map, drawn by the same
+   * handler that picks it.
+   */
+  const highlightLayerRef = useRef<EsriGraphicsLayer | null>(null);
+  const pulseTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(
+    undefined,
+  );
+
   /** Well under the pointer, once the map is close enough to draw them. */
   const [hoveredWell, setHoveredWell] = useState<HoveredWell | null>(null);
+  const hoveredWellRef = useRef<HoveredWell | null>(null);
   /* Hit-testing is async; only the newest answer may be shown. */
   const wellHoverRef = useRef(0);
 
@@ -902,6 +945,106 @@ export function MapExplorerView() {
     wellLayerRef.current?.removeAll();
   }, []);
 
+  /*
+   * Opening clears the map. Whichever layer is live — bubbles or wells — its
+   * graphics are rebuilt into a queue and the layer emptied, so the replay
+   * starts from nothing on screen. Closing puts them all straight back.
+   */
+  const toggleTimeLapse = useCallback(() => {
+    const ctors = ctorsRef.current;
+    if (!ctors) return;
+
+    const wells = wellsRef.current;
+    const layer =
+      wells.length > 0 ? wellLayerRef.current : clusterLayerRef.current;
+    if (!layer) return;
+
+    if (timeLapseOpen) {
+      // Closing: everything back on the map at once.
+      layer.removeAll();
+      layer.addMany(timeLapseQueueRef.current);
+      timeLapseQueueRef.current = [];
+      timeLapseLayerRef.current = null;
+      setTimeLapsePlaying(false);
+      setTimeLapsePlotted(0);
+      setTimeLapseTotal(0);
+      setTimeLapseOpen(false);
+      return;
+    }
+
+    const clusters = clustersRef.current;
+    const marks = wells.length > 0 ? wells.length : clusters.length;
+
+    timeLapseQueueRef.current =
+      wells.length > 0
+        ? buildWellGraphics(ctors.Graphic, wells, wellIconsRef.current)
+        : buildClusterGraphics(ctors.Graphic, clusters);
+    timeLapseUnitRef.current =
+      marks === 0 ? 1 : timeLapseQueueRef.current.length / marks;
+    timeLapseLayerRef.current = layer;
+    layer.removeAll();
+    setTimeLapseTotal(marks);
+    setTimeLapsePlotted(0);
+    setTimeLapseOpen(true);
+    // Opening is the play: the button is for pausing what is already running.
+    setTimeLapsePlaying(true);
+  }, [timeLapseOpen]);
+
+  /**
+   * Rings the picked well, with a pulse running out from it.
+   *
+   * Its own layer above the wells, so highlighting one neither disturbs the
+   * field around it nor survives a reload of it.
+   *
+   * The pulse is redrawn on a timer rather than animated: an Esri symbol has
+   * no transition to hook, so a growing, fading ring means replacing the
+   * graphic each frame. It is two graphics on one layer, so the cost is
+   * nothing — and it is what makes a 10px well findable among a thousand.
+   */
+  const highlightWell = useCallback((longitude: number, latitude: number) => {
+    const ctors = ctorsRef.current;
+    const layer = highlightLayerRef.current;
+    if (!ctors || !layer) return;
+
+    clearInterval(pulseTimerRef.current);
+
+    const geometry = { type: "point", longitude, latitude };
+    let frame = 0;
+
+    const draw = () => {
+      // 0 to 1 over PULSE_FRAMES, then round again.
+      const phase = (frame % PULSE_FRAMES) / PULSE_FRAMES;
+      frame += 1;
+
+      layer.removeAll();
+      layer.addMany([
+        // The wave: out from the well and fading as it goes.
+        new ctors.Graphic({
+          geometry,
+          symbol: {
+            type: "simple-marker",
+            size: PULSE_MIN_SIZE + phase * (PULSE_MAX_SIZE - PULSE_MIN_SIZE),
+            color: [0, 0, 0, 0],
+            outline: { color: [46, 143, 109, 1 - phase], width: 2 },
+          },
+        }),
+        // The ring itself, steady, so the well stays marked between waves.
+        new ctors.Graphic({
+          geometry,
+          symbol: {
+            type: "simple-marker",
+            size: PULSE_MIN_SIZE,
+            color: [0, 0, 0, 0],
+            outline: { color: [46, 143, 109, 1], width: 2.5 },
+          },
+        }),
+      ]);
+    };
+
+    draw();
+    pulseTimerRef.current = setInterval(draw, PULSE_INTERVAL_MS);
+  }, []);
+
   /** Export CSV: whatever is inside the extent right now, wells or bubbles. */
   const exportCsv = useCallback(() => {
     const view = viewRef.current;
@@ -969,6 +1112,43 @@ export function MapExplorerView() {
     // The watch card is not projected — it holds the bottom of the map
     // whatever the circle does.
   }, []);
+
+  /*
+   * The replay itself. A slice per tick rather than one mark per tick: a dense
+   * county is thousands of wells, and one at a time would take minutes. The
+   * slice is sized so any dataset takes about the same time — a little under a
+   * minute — whether it is sixty bubbles or three thousand wells.
+   *
+   * Pausing stops the interval and leaves what is drawn drawn — pressing play
+   * again carries on from there rather than starting over.
+   */
+  useEffect(() => {
+    if (!timeLapsePlaying) return;
+
+    const queue = timeLapseQueueRef.current;
+    const layer = timeLapseLayerRef.current;
+    const unit = timeLapseUnitRef.current;
+    if (!layer || queue.length === 0) return;
+
+    const marks = queue.length / unit;
+    // Spread over ~900 ticks. With the interval below that is a couple of
+    // minutes end to end for a large set — slow enough to watch the marks
+    // arrive rather than see them appear in blocks.
+    const step = Math.max(1, Math.ceil(marks / 900));
+
+    const timer = setInterval(() => {
+      setTimeLapsePlotted((current) => {
+        const next = Math.min(marks, current + step);
+        // Sliced in units, not graphics: a bubble and its label go on
+        // together, and the count below the bar counts bubbles.
+        layer.addMany(queue.slice(current * unit, next * unit));
+        if (next >= marks) setTimeLapsePlaying(false);
+        return next;
+      });
+    }, 160);
+
+    return () => clearInterval(timer);
+  }, [timeLapsePlaying]);
 
   useEffect(() => {
     // StrictMode mounts the effect twice in dev; `cancelled` stops the first
@@ -1090,6 +1270,9 @@ export function MapExplorerView() {
         const wells = new GraphicsLayer({ id: "wells" });
         wellLayerRef.current = wells;
 
+        const highlight = new GraphicsLayer({ id: "well-highlight" });
+        highlightLayerRef.current = highlight;
+
         // Above the clusters, so tool output is never buried. One layer each,
         // so clearing an area does not wipe a measurement and vice versa.
         const areaLayer = new GraphicsLayer({ id: "drawn-area" });
@@ -1113,6 +1296,7 @@ export function MapExplorerView() {
             ...countyLayers,
             clusters,
             wells,
+            highlight,
             areaLayer,
             measureLayer,
             nearbyLayer,
@@ -1291,21 +1475,24 @@ export function MapExplorerView() {
                 );
                 const attributes = found?.graphic?.attributes;
 
-                setHoveredWell(
-                  attributes
-                    ? {
-                        api: String(attributes.api ?? ""),
-                        lease: String(attributes.lease ?? ""),
-                        well: String(attributes.well ?? ""),
-                        operator: String(attributes.operator ?? ""),
-                        status: String(attributes.status ?? ""),
-                        wtype: String(attributes.wtype ?? ""),
-                        county: String(attributes.county ?? ""),
-                        x,
-                        y,
-                      }
-                    : null,
-                );
+                const next = attributes
+                  ? {
+                      api: String(attributes.api ?? ""),
+                      lease: String(attributes.lease ?? ""),
+                      well: String(attributes.well ?? ""),
+                      operator: String(attributes.operator ?? ""),
+                      status: String(attributes.status ?? ""),
+                      wtype: String(attributes.wtype ?? ""),
+                      county: String(attributes.county ?? ""),
+                      lon: Number(attributes.lon),
+                      lat: Number(attributes.lat),
+                      x,
+                      y,
+                    }
+                  : null;
+
+                hoveredWellRef.current = next;
+                setHoveredWell(next);
               })
               .catch(() => {
                 // A hit test can be interrupted by a redraw; no card, no fuss.
@@ -1332,6 +1519,49 @@ export function MapExplorerView() {
 
         clickHandle = view.on("immediate-click", (event) => {
           const ctors = ctorsRef.current;
+
+          /*
+           * Over wells, a click picks one and switches to Insights with it.
+           *
+           * The hovered well first: the pointer has already hit-tested this
+           * exact spot, and reusing that answer means the click acts on what
+           * the tooltip was showing rather than on a second, slightly later
+           * test. Only when there is no hover — a tap, where there never was
+           * one — does it ask the layer itself.
+           */
+          if (!activeToolRef.current && view && view.zoom >= WELL_ZOOM) {
+            const wellLayer = wellLayerRef.current;
+            if (!wellLayer) return;
+
+            event.stopPropagation();
+
+            const hovered = hoveredWellRef.current;
+            if (hovered) {
+              // The well's own position, not the cursor's — a click a few
+              // pixels off centre should still ring the well.
+              highlightWell(hovered.lon, hovered.lat);
+              setViewTab("insights");
+              return;
+            }
+
+            void view
+              .hitTest({ x: event.x, y: event.y }, { include: wellLayer })
+              .then(({ results }) => {
+                const attributes = results.find(
+                  (result) => result.graphic?.attributes?.api,
+                )?.graphic?.attributes;
+                if (!attributes) return;
+
+                highlightWell(Number(attributes.lon), Number(attributes.lat));
+                setViewTab("insights");
+              })
+              .catch((error: unknown) => {
+                // Not swallowed: a hit test that keeps failing is why a click
+                // would look like it did nothing at all.
+                console.error("Could not pick a well.", error);
+              });
+            return;
+          }
 
           // With no tool armed, a click on a bubble opens that area — but only
           // on the first cluster level, which is where the hover card offers
@@ -1529,6 +1759,8 @@ export function MapExplorerView() {
       ctorsRef.current = null;
       viewRef.current = null;
       clusterLayerRef.current = null;
+      highlightLayerRef.current = null;
+      clearInterval(pulseTimerRef.current);
       view?.destroy();
     };
     // All stable, so the view is still built exactly once.
@@ -1543,6 +1775,7 @@ export function MapExplorerView() {
     clearClusters,
     loadWells,
     clearWells,
+    highlightWell,
   ]);
 
   // Esc backs out of an armed tool — the prompt says so.
@@ -1896,6 +2129,26 @@ export function MapExplorerView() {
           </div>
         )}
 
+      {status === "ready" && timeLapseOpen && (
+        <TimeLapseBar
+          playing={timeLapsePlaying}
+          progress={
+            timeLapseTotal === 0 ? 0 : timeLapsePlotted / timeLapseTotal
+          }
+          plotted={timeLapsePlotted}
+          total={timeLapseTotal}
+          onTogglePlay={() => {
+            // Replaying from the end starts over rather than doing nothing.
+            if (timeLapseTotal > 0 && timeLapsePlotted >= timeLapseTotal) {
+              timeLapseLayerRef.current?.removeAll();
+              setTimeLapsePlotted(0);
+            }
+            setTimeLapsePlaying((playing) => !playing);
+          }}
+          onClose={toggleTimeLapse}
+        />
+      )}
+
       {status === "ready" && hoveredWell && <WellTooltip well={hoveredWell} />}
 
       {status === "ready" && hoveredCluster && (
@@ -1961,6 +2214,8 @@ export function MapExplorerView() {
           zoom={readout.zoom}
           wellsVisible={readout.zoom >= WELL_ZOOM}
           onExportCsv={exportCsv}
+          timeLapseOpen={timeLapseOpen}
+          onToggleTimeLapse={toggleTimeLapse}
           center={readout.center}
           basemap={basemap}
           onBasemapChange={changeBasemap}

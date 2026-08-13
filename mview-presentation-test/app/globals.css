@@ -240,3 +240,32 @@
   background: #b9bec6;
 }
 
+/* ----------------------------------------------------------------------------
+   The time-lapse year slider.
+
+   `appearance: none` strips the native control but leaves the thumb, which no
+   utility class can reach — it is a pseudo-element, and a different one in
+   each engine. The track itself is a gradient set inline, so only the thumb
+   is described here.
+   ---------------------------------------------------------------------------- */
+.mv-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  background: var(--color-mv-green-deep);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(13, 14, 23, 0.25);
+  cursor: pointer;
+}
+
+.mv-range::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  background: var(--color-mv-green-deep);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(13, 14, 23, 0.25);
+  cursor: pointer;
+}
