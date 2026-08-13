@@ -137,3 +137,121 @@ export const getLegendListMap = async (): Promise<MapLegend[]> => {
     throw new Error(String(error) || "Failed to fetch legend list");
   }
 };
+
+/** One hit from the combined search — a lease, an operator or a county. */
+export type MapSearchResult = {
+  type: string;
+  value: string;
+  /** The display name. Counties carry theirs in `value` instead. */
+  label?: string;
+};
+
+/** GET /api/v1/map/search?q={query} -> { query, results: [{ type, value, label }] } */
+export const getMapSearch = async (
+  query: string,
+): Promise<MapSearchResult[]> => {
+  try {
+    const response = await fetch(
+      `${process.env.MAP_BASE_URL}/api/v1/map/search?q=${encodeURIComponent(query)}`,
+    );
+    const data = await response.json();
+
+    if (response.ok && Array.isArray(data?.results)) {
+      return data.results as MapSearchResult[];
+    } else {
+      throw new Error("Failed to search");
+    }
+  } catch (error) {
+    throw new Error(String(error) || "Failed to search");
+  }
+};
+
+/** One aggregated bubble: where it sits, how many wells, and their mix. */
+export type MapCluster = {
+  id: string;
+  lon: number;
+  lat: number;
+  count: number;
+  oil: number;
+  gas: number;
+  oilGas: number;
+  name: string;
+  topCounty: string;
+  sharePct: { oil: number; gas: number; oilGas: number };
+};
+
+/**
+ * GET /api/v1/map/clusters?bbox={west},{south},{east},{north}
+ *
+ * The bbox is the map's own extent in degrees, in that order: minLon, minLat,
+ * maxLon, maxLat — bottom-left corner first, then top-right.
+ */
+export const getClusterListMap = async (bbox: {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+}): Promise<MapCluster[]> => {
+  try {
+    const box = [bbox.west, bbox.south, bbox.east, bbox.north]
+      .map((value) => value.toFixed(4))
+      .join(",");
+    const response = await fetch(
+      `${process.env.MAP_BASE_URL}/api/v1/map/clusters?bbox=${box}`,
+    );
+    const data = await response.json();
+
+    if (response.ok && Array.isArray(data?.clusters)) {
+      return data.clusters as MapCluster[];
+    } else {
+      throw new Error("Failed to fetch clusters");
+    }
+  } catch (error) {
+    throw new Error(String(error) || "Failed to fetch clusters");
+  }
+};
+
+/** One well, as the map draws it. `icon` names a legend symbol. */
+export type MapWell = {
+  api: string;
+  lon: number;
+  lat: number;
+  icon: string;
+  wtype: string;
+  status: string;
+  operator: string;
+  lease: string;
+  well: string;
+  county: string;
+};
+
+/**
+ * GET /api/v1/map/wells?bbox={west},{south},{east},{north}
+ *
+ * Individual wells rather than aggregated bubbles — only worth asking for once
+ * the map is close enough that the count is small.
+ */
+export const getWellListMap = async (bbox: {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+}): Promise<MapWell[]> => {
+  try {
+    const box = [bbox.west, bbox.south, bbox.east, bbox.north]
+      .map((value) => value.toFixed(4))
+      .join(",");
+    const response = await fetch(
+      `${process.env.MAP_BASE_URL}/api/v1/map/wells?bbox=${box}`,
+    );
+    const data = await response.json();
+
+    if (response.ok && Array.isArray(data?.wells)) {
+      return data.wells as MapWell[];
+    } else {
+      throw new Error("Failed to fetch wells");
+    }
+  } catch (error) {
+    throw new Error(String(error) || "Failed to fetch wells");
+  }
+};
