@@ -110,15 +110,20 @@ export async function ArticlePage({
           {section.backLabel}
         </Link>
 
-        {/* TWO rows rather than one tall column beside the rail (QA #14a). The
-            rail used to start level with the chip and the headline; it should
-            start where the reading does. Row one is the article header with an
-            empty cell beside it, row two is the body with the rail.
+        {/* THREE rows, so the rail begins level with the PROSE (Ryan,
+            2026-08-13). Each row pairs a left cell with an empty right cell,
+            except the last, whose right cell is the rail:
+              1. chip, headline, hero
+              2. the in-body Table of Contents card
+              3. the article body, the notice and the share row — plus the rail
+            It began at row two, level with the contents card, which put two
+            copies of the same list side by side at the top of the page. Starting
+            at row three means the rail appears exactly where the reading does.
 
             The second track EXISTS ONLY WHEN THE RAIL DOES. Declaring it
             unconditionally broke every page without a rail — news stories, and
-            any blog article whose body has no `<h2>`: with the spacer and the
-            aside both skipped, the body was the grid's second child and so
+            any blog article whose body has no `<h2>`: with the spacers and the
+            aside all skipped, the body was the grid's second child and so
             landed in row one's second cell, squeezed into the 300px track with
             the whole left column left empty beside it. */}
         <div
@@ -148,14 +153,24 @@ export async function ArticlePage({
             />
           </div>
 
-          {/* Spacer holding row one's second cell so the rail lands in row two. */}
+          {/* Spacer holding row one's second cell. */}
           {showContents && (
             <div aria-hidden="true" className="max-[1023px]:hidden" />
           )}
 
-          <div className="min-w-0">
-            {showContents && <ContentsCard items={toc} />}
+          {/* Row two: the contents card, and a spacer beside it. Both cells are
+              needed — without the spacer the card would sit in row one's empty
+              right-hand cell instead of starting a row of its own. */}
+          {showContents && (
+            <>
+              <div className="min-w-0">
+                <ContentsCard items={toc} />
+              </div>
+              <div aria-hidden="true" className="max-[1023px]:hidden" />
+            </>
+          )}
 
+          <div className="min-w-0">
             <ArticleBody preparedHtml={html} />
 
             <div className="mt-[18px] flex items-start gap-[10px] rounded-[10px] bg-mv-mint px-4 py-[13px] text-[13.5px] text-mv-green-ink">
