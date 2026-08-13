@@ -11,13 +11,18 @@ import { type MapWell } from "@/lib/map-api";
 
 type GraphicCtor = new (props: Record<string, unknown>) => unknown;
 
-/** Icon size on screen, in pixels. Small enough to read a field of them. */
-const WELL_ICON_SIZE = 16;
+/*
+ * Icon size on screen, in pixels.
+ *
+ * Small: a well-dense county puts thousands of these on screen at once, and at
+ * 16px they merged into blocks of colour with no individual wells left to see.
+ */
+const WELL_ICON_SIZE = 10;
 
 /** The mark for a well whose `icon` the legend does not cover. */
 const FALLBACK_SYMBOL = {
   type: "simple-marker",
-  size: 6,
+  size: 5,
   color: [46, 143, 109, 0.9],
   outline: { color: [255, 255, 255, 0.9], width: 1 },
 };

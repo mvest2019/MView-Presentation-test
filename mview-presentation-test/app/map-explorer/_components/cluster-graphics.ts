@@ -16,8 +16,13 @@ export type WellCluster = {
   newestYear: number | null;
   /** The county each bubble sits over, for the hover card's title. */
   name: string;
-  /** Share of the cluster producing oil, as a percentage. */
+  /** The mix inside the cluster: how many of each, and their share. */
+  oil: number;
+  gas: number;
+  oilGas: number;
   oilShare: number;
+  gasShare: number;
+  oilGasShare: number;
 };
 
 /*
@@ -130,7 +135,12 @@ export function toWellCluster(cluster: MapCluster): WellCluster {
     count: cluster.count,
     newestYear: null,
     name: cluster.name || cluster.topCounty,
+    oil: cluster.oil,
+    gas: cluster.gas,
+    oilGas: cluster.oilGas,
     oilShare: cluster.sharePct.oil,
+    gasShare: cluster.sharePct.gas,
+    oilGasShare: cluster.sharePct.oilGas,
   };
 }
 

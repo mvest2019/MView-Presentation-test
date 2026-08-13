@@ -297,6 +297,9 @@ const CLUSTER_ZOOM_SCALE = 900_000;
 
 type ScreenPoint = { x: number; y: number };
 
+/** A bubble on screen: where its top edge is, and how wide it is. */
+type BubbleAnchor = ScreenPoint & { bubble: number };
+
 
 /** The dashed blue both tools draw in. */
 const TOOL_BLUE: [number, number, number] = [37, 99, 235];
@@ -432,13 +435,20 @@ export function MapExplorerView() {
   const tractLayerRef = useRef<EsriGraphicsLayer | null>(null);
 
   const [nearby, setNearby] = useState<Nearby | null>(null);
-  /** Cluster under the pointer, with its bubble's top edge on screen. */
+  /**
+   * Cluster under the pointer, with its bubble's top edge on screen and how
+   * tall the bubble is — the card needs the height to flip below it when there
+   * is no room above.
+   */
   const [hoveredCluster, setHoveredCluster] = useState<
-    { index: number; x: number; y: number } | null
+    { index: number; x: number; y: number; bubble: number } | null
   >(null);
-  const hoveredClusterRef = useRef<{ index: number; x: number; y: number } | null>(
-    null,
-  );
+  const hoveredClusterRef = useRef<{
+    index: number;
+    x: number;
+    y: number;
+    bubble: number;
+  } | null>(null);
   /** Undefined while the county lookup is in flight. */
   const [nearbyCounty, setNearbyCounty] = useState<string | null | undefined>(
     undefined,
@@ -792,6 +802,9 @@ export function MapExplorerView() {
 
     const { xmin, ymin, xmax, ymax } = view.extent;
     const request = ++clusterRequestRef.current;
+    // Every load, not just the first — the flag starts true for the opening
+    // one, and without this a reload on a zoom band change never raised it.
+    setClustersLoading(true);
 
     getClusterListMap({
       west: mercatorToLongitude(xmin),
@@ -1195,7 +1208,7 @@ export function MapExplorerView() {
           return screen ? { x: screen.x, y: screen.y } : null;
         };
 
-        const screenTopOf = (index: number): ScreenPoint | null => {
+        const screenTopOf = (index: number): BubbleAnchor | null => {
           const ctors = ctorsRef.current;
           if (!view || !ctors) return null;
           const cluster = clustersRef.current[index];
@@ -1207,9 +1220,12 @@ export function MapExplorerView() {
             }),
           );
           if (!screen) return null;
+
+          const diameter = clusterDiameter(cluster.count);
           return {
             x: Math.round(screen.x),
-            y: Math.round(screen.y - clusterDiameter(cluster.count) / 2),
+            y: Math.round(screen.y - diameter / 2),
+            bubble: Math.round(diameter),
           };
         };
 
@@ -1225,7 +1241,9 @@ export function MapExplorerView() {
           // A tool takes precedence — no hover cards mid-draw.
           const index = activeToolRef.current ? -1 : clusterAt(event.x, event.y);
           const top = index === -1 ? null : screenTopOf(index);
-          const next = top ? { index, x: top.x, y: top.y } : null;
+          const next = top
+            ? { index, x: top.x, y: top.y, bubble: top.bubble }
+            : null;
 
           const previous = hoveredClusterRef.current;
           const same =
@@ -1241,11 +1259,14 @@ export function MapExplorerView() {
         clickHandle = view.on("immediate-click", (event) => {
           const ctors = ctorsRef.current;
 
-          // With no tool armed, a click on a bubble opens that area — which is
-          // what the hover card promises.
+          // With no tool armed, a click on a bubble opens that area — but only
+          // on the first cluster level, which is where the hover card offers
+          // it. Past that the bubbles are already the closer view.
           if (!activeToolRef.current) {
+            if (!view || view.zoom >= CLUSTER_ZOOM_STEPS[1]) return;
+
             const index = clusterAt(event.x, event.y);
-            if (index !== -1 && view) {
+            if (index !== -1) {
               event.stopPropagation();
               const cluster = clustersRef.current[index];
               view
@@ -1721,7 +1742,11 @@ export function MapExplorerView() {
     <div
       ref={rootRef}
       className={`mv-map relative h-full w-full bg-[#efe7d8] ${
-        activeTool ? "cursor-crosshair" : hoveredCluster ? "cursor-pointer" : ""
+        activeTool
+          ? "cursor-crosshair"
+          : hoveredCluster && readout.zoom < CLUSTER_ZOOM_STEPS[1]
+            ? "cursor-pointer"
+            : ""
       }`}
     >
       {/*
@@ -1756,23 +1781,47 @@ export function MapExplorerView() {
       >
       <div ref={containerRef} className="h-full w-full" />
 
-      {/* The bubbles reload on every pan, so their state is a quiet pill over
-          the map rather than anything that moves the chrome around. */}
+      {/*
+        While a request is out, the map goes behind a blur and stops taking
+        input. Half-drawn bubbles are worse than none: mid-load the map is
+        showing the last extent's answer, and letting someone pan or click that
+        is letting them act on something already known to be stale.
+
+        `backdrop-blur` over the whole view rather than a filter on the map
+        container — the filter would create a containing block and every
+        absolutely-positioned overlay inside would reposition against it.
+      */}
+      {status === "ready" && (clustersLoading || wellsLoading) && (
+        <div className="absolute inset-0 z-40 grid place-items-center bg-white/35 backdrop-blur-[3px]">
+          <div className="flex items-center gap-[10px] rounded-full border border-mv-line bg-white px-[16px] py-[9px] shadow-mv-lg">
+            <span
+              aria-hidden="true"
+              className="h-[14px] w-[14px] shrink-0 animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
+            />
+            <span className="text-[12.5px] font-semibold leading-none text-mv-slate">
+              {clustersLoading ? "Loading clusters…" : "Loading wells…"}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* A failure is a quiet pill instead — nothing is loading, so nothing
+          should be blurred, and the map still shows what it last had. */}
       {status === "ready" &&
-        (clustersLoading || wellsLoading || clusterError || wellError) && (
+        !clustersLoading &&
+        !wellsLoading &&
+        (clusterError || wellError) && (
           <div className="pointer-events-none absolute left-1/2 top-3 z-30 -translate-x-1/2 rounded-full border border-mv-line bg-white/95 px-3 py-[5px] text-[11.5px] font-semibold text-mv-slate shadow-mv">
-            {clustersLoading || wellsLoading
-              ? "Loading wells…"
-              : (clusterError ?? wellError)}
+            {clusterError ?? wellError}
           </div>
         )}
 
       {status === "ready" && hoveredCluster && (
         <ClusterTooltip
-          name={clusters[hoveredCluster.index].name}
-          wells={clusters[hoveredCluster.index].count}
-          oilShare={clusters[hoveredCluster.index].oilShare}
+          cluster={clusters[hoveredCluster.index]}
+          canOpen={readout.zoom < CLUSTER_ZOOM_STEPS[1]}
           at={{ x: hoveredCluster.x, y: hoveredCluster.y }}
+          bubble={hoveredCluster.bubble}
         />
       )}
 
