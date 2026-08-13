@@ -47,8 +47,20 @@ type OpenMenu = "explore" | "learn" | null;
  * `line-height:1.2` on `.btn` for exactly this reason; the mockup gets it free
  * because its own body sets no line-height.
  */
+/*
+ * DARK BAR. The header is black (Ryan, 2026-08-13) so the logo can be the supplied
+ * asset untouched — it is drawn for the live site's black header, and on white its
+ * "VIEW" and the icon's inner V simply vanish. Everything in the bar therefore
+ * carries the inverted treatment: link colour, hover wash, active state, the
+ * "Sign in" link and the burger. The dropdown panels and the mobile drawer hang
+ * BELOW the bar and stay white — they are content surfaces, not chrome.
+ *
+ * `#cbd5e1` is the footer's body colour, so the two dark surfaces agree rather
+ * than each inventing a grey. The hover wash is `white/10` for the same reason
+ * `mv-nav-hover` was used on white: a faint lift off the bar, not a second colour.
+ */
 const navLinkBase =
-  "whitespace-nowrap rounded-[10px] border-2 border-transparent px-[10px] py-[9px] text-[13.5px] font-semibold leading-[1.2] text-mv-slate no-underline transition-colors hover:bg-mv-nav-hover hover:text-mv-green-deep hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep";
+  "whitespace-nowrap rounded-[10px] border-2 border-transparent px-[10px] py-[9px] text-[13.5px] font-semibold leading-[1.2] text-[#cbd5e1] no-underline transition-colors hover:bg-white/10 hover:text-white hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green";
 
 /**
  * The mockup's `.nl.active` — the current page's bar item, and whichever menu is
@@ -59,7 +71,7 @@ const navLinkBase =
    menu triggers used to set `bg-transparent`, and two utilities touching one
    property resolve by stylesheet order rather than by where they sit in the class
    string — so without these the wash and the green text both silently lost. */
-const navLinkActive = "!bg-mv-nav-hover !text-mv-green-deep";
+const navLinkActive = "!bg-white/10 !text-mv-green";
 
 /** The menu triggers match `.nl` exactly, so they sit level with the links. */
 const menuButtonBase = `${navLinkBase} inline-flex cursor-pointer items-center gap-[5px] font-sans`;
@@ -140,14 +152,19 @@ export function SiteHeader() {
 
   return (
     <>
-      <a
-        href="#main"
-        className="fixed left-[10px] top-[-80px] z-[999] rounded-[10px] bg-mv-green-deep px-[18px] py-3 text-sm font-extrabold text-white !no-underline transition-[top] focus:top-[10px]"
-      >
-        Skip to main content
-      </a>
+      {/* No "Skip to main content" link (Ryan, 2026-08-13). It was the standard
+          keyboard shortcut past the nav — parked off-screen at `top-[-80px]` and
+          sliding in only on focus — but it was showing in normal use and was not
+          wanted. Removing it costs keyboard and screen-reader users the shortcut:
+          they now tab through every bar item to reach the page. Put it back if
+          that becomes a problem; nothing else depended on it, though `<main>` in
+          `layout.tsx` keeps its `id="main"`. */}
 
-      <header className="sticky top-0 z-[60] border-b border-mv-line bg-white/94 backdrop-blur-[8px]">
+      {/* `bg-mv-ink` is the FOOTER's colour, deliberately — the two dark bands
+          that top and tail every page should be the same black, not two. The
+          border becomes a light hairline for the same reason `mv-line` was a dark
+          one on white: it has to separate the bar from the page below it. */}
+      <header className="sticky top-0 z-[60] border-b border-white/10 bg-mv-ink/94 backdrop-blur-[8px]">
         {/* `relative` so the Explore panel can span the bar's full width: that
             panel's wrapper is `static`, letting `left-0` resolve against this
             element rather than against the trigger. */}
@@ -159,14 +176,36 @@ export function SiteHeader() {
             little slack either side. The mockup's single 1180px threshold was
             sized for a lighter six-item bar and overflowed 87px at 1024. */}
         <div className="relative mx-auto flex h-16 max-w-[1200px] items-center gap-[26px] px-7 max-[1239px]:gap-3 max-[1239px]:px-4">
+          {/* Two assets, swapped at 768px (Ryan, 2026-08-13): the full wordmark
+              on desktop, the square icon mark on phones, where the bar has to
+              fit the burger and the CTA as well.
+
+              Rendered as two <Image>s toggled by CSS rather than one `src` picked
+              in JS: the header is a client component, but choosing in JS would
+              mean the server sends one of them and the other pops in after
+              hydration. Both are in the markup; only one is ever displayed.
+              `alt` is on the visible-by-default one and empty on the other, so a
+              screen reader announces the link once, not twice. */}
           <Link href="/" aria-label="Mineral View home" className="shrink-0">
             <Image
-              src={logo.onLight}
+              src={logo.desktop.src}
               alt="Mineral View"
-              width={logo.width}
-              height={logo.height}
+              width={logo.desktop.width}
+              height={logo.desktop.height}
               priority
-              className="block h-[34px] w-auto max-[767px]:h-[26px]"
+              className="block h-[34px] w-auto max-[767px]:hidden"
+            />
+            {/* No corner radius: the JPG's baked-in black ground now matches the
+                bar, so the tile is invisible and only the mark reads. The radius
+                existed solely to stop a black square looking like a clipped image
+                on the old white bar. */}
+            <Image
+              src={logo.mobile.src}
+              alt=""
+              width={logo.mobile.width}
+              height={logo.mobile.height}
+              priority
+              className="hidden h-[30px] w-[30px] max-[767px]:block"
             />
           </Link>
 
@@ -239,7 +278,7 @@ export function SiteHeader() {
           <div className="ml-auto flex items-center gap-[14px] max-[767px]:gap-2">
             <Link
               href="/login"
-              className="whitespace-nowrap text-sm font-semibold text-mv-slate no-underline hover:text-mv-green-deep hover:no-underline max-[767px]:hidden"
+              className="whitespace-nowrap text-sm font-semibold text-[#cbd5e1] no-underline hover:text-white hover:no-underline max-[767px]:hidden"
             >
               Sign in
             </Link>
@@ -261,7 +300,7 @@ export function SiteHeader() {
               onClick={() => setDrawerOpen((open) => !open)}
               aria-label={drawerOpen ? "Close menu" : "Menu"}
               aria-expanded={drawerOpen}
-              className="hidden shrink-0 cursor-pointer rounded-lg border border-mv-line px-[10px] py-[7px] text-base leading-none text-mv-slate max-[1139px]:block"
+              className="hidden shrink-0 cursor-pointer rounded-lg border border-white/20 px-[10px] py-[7px] text-base leading-none text-white max-[1139px]:block"
             >
               {drawerOpen ? "✕" : "☰"}
             </button>

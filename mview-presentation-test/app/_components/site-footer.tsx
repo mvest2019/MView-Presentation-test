@@ -29,10 +29,10 @@ export function SiteFooter() {
         <div className="grid grid-cols-[1.4fr_1fr_1fr_1fr_1fr] gap-[26px] max-[1024px]:grid-cols-2 max-[767px]:grid-cols-1">
           <div>
             <Image
-              src={logo.onDark}
+              src={logo.onDark.src}
               alt="Mineral View"
-              width={logo.width}
-              height={logo.height}
+              width={logo.onDark.width}
+              height={logo.onDark.height}
               className="mb-[14px] block h-[30px] w-auto"
             />
             <p className="max-w-[300px] text-[13px] text-[#8a94a6]">
@@ -65,12 +65,19 @@ export function SiteFooter() {
               </Link>
             ))}
 
-            <span className="block py-1 text-[13px] text-[#cbd5e1]">
-              Support: <strong>help@mineralview.com</strong>{" "}
-              <span className="text-xs text-[#8a94a6]">
-                · or chat with support in-app
-              </span>
-            </span>
+            {/* Support address, replacing help@mineralview.com (Ryan,
+                2026-08-13). The "· or chat with support in-app" line that sat
+                beside it is gone with it: there is no in-app chat in this build,
+                so it pointed at nothing.
+
+                A `mailto:` now, not plain text — it reads the same but is one tap
+                on a phone, where a footer address is most likely to be used. */}
+            <a
+              href="mailto:support@mineralview.com"
+              className={`${footerLink} font-semibold`}
+            >
+              support@mineralview.com
+            </a>
 
             {footerCompanyLinksBottom.map((link) => (
               <Link key={link.href} href={link.href} className={footerLink}>
@@ -81,7 +88,13 @@ export function SiteFooter() {
         </div>
 
         <div className="mt-9 flex flex-wrap justify-between gap-4 border-t border-[#263041] pt-5 text-xs text-[#8a94a6]">
-          <span>© 2026 Mineral View, LLC · Texas</span>
+          {/* Year from the clock, not typed in — it was hardcoded to 2026.
+              This is a server component, so it resolves during rendering; on the
+              statically prerendered routes that means BUILD time, which is
+              accurate as long as the site is redeployed at least once a year (any
+              deploy re-bakes it). Doing it in the browser instead would mean a
+              hydration mismatch on the turn of the year, for no real gain. */}
+          <span>© {new Date().getFullYear()} Mineral View, LLC · Texas</span>
           <span>
             Estimates are informational only — not legal, tax, or investment
             advice.

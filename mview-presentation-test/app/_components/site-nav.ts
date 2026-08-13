@@ -222,16 +222,18 @@ export const footerColumns: FooterColumn[] = [
   },
   {
     heading: "Learn",
-    links: [
-      { label: "Resources", href: "/resources" },
-      { label: "Blog", href: "/blogs" },
-      { label: "News", href: "/news" },
-      { label: "Watch & Listen", href: "/media" },
-      { label: "Glossary", href: "/glossary" },
-      { label: "FAQ", href: "/faq" },
-      { label: "Owner community", href: "/groups/public" },
-      { label: "Claim your record", href: "/claim" },
-    ],
+    /*
+     * THE SAME FOUR AS THE HEADER'S LEARN MENU (Ryan, 2026-08-13), and derived
+     * from `learnNav` rather than restated, so the menu, this column and the
+     * library tab row cannot disagree — trimming one trims all three.
+     *
+     * This column previously carried four more: Resources (/resources),
+     * Watch & Listen (/media), Owner community (/groups/public) and Claim your
+     * record (/claim). The first three now have NO link anywhere on the site;
+     * /claim is still reached from the notice on every article and glossary page.
+     * Worth a home somewhere if those pages get built.
+     */
+    links: learnNav.map(({ label, href }) => ({ label, href })),
   },
 ];
 
@@ -242,54 +244,82 @@ export const footerCompanyLinksTop: NavLink[] = [
   { label: "Contact", href: "/contact" },
 ];
 
+/*
+ * Terms and Privacy now point at REAL pages, on the same paths the live site uses
+ * (`/terms-condition`, `/privacy-policy`) so existing links keep working. Both
+ * previously pointed into `/legal?jump=…`, a Legal Center page that does not
+ * exist — as the remaining four still do. Those four are subsections of that
+ * unbuilt hub; leave them until it is built, or they become 404s in the footer.
+ */
 export const footerCompanyLinksBottom: NavLink[] = [
   { label: "Legal Center — all policies", href: "/legal" },
-  { label: "Terms of Use", href: "/legal?jump=leg-mv-tou" },
-  { label: "Privacy Policy", href: "/legal?jump=leg-mv-priv" },
+  { label: "Terms & Conditions", href: "/terms-condition" },
+  { label: "Privacy Policy", href: "/privacy-policy" },
   { label: "Subscription Terms", href: "/legal?jump=leg-mv-sub" },
   { label: "Lease Audit Terms", href: "/legal?jump=leg-mv-audit" },
   { label: "Group Services Terms", href: "/legal?jump=leg-mv-grpsvc" },
 ];
 
 /**
- * The real Mineral View logo — the Cloudinary asset the live site uses. Never
- * hand-recreate it as SVG. The non-green part of the mark must be dark on
- * light surfaces and white on dark ones, hence the two transforms.
+ * The real Mineral View logo — the Cloudinary assets the live site uses. Never
+ * hand-recreate either as SVG.
  *
- * The source asset is green "MINERAL" plus WHITE "VIEW", which is why the plain
- * URL suits dark surfaces and every production use of it sits on black. The
- * light-surface variant recolours only that white word — `e_replace_color` takes
- * `to:tolerance:from`, so this reads "replace #ffffff with the brand ink". The
- * green is untouched: decoded, both variants carry the identical rgb(0,200,160).
+ * TWO ASSETS, one per breakpoint, both named explicitly by Ryan (2026-08-13):
+ * `icons/mineralview-logo.png` on desktop, `icons/logo.jpg.jpg` on mobile.
  *
- * TWO transforms are chained on the light variant, both taking their targets
- * from `header-mockup.html` (Ryan, 2026-08-11), which colours the wordmark
- * MINERAL `--mv-green-deep` and VIEW `--mv-green-ink`:
- *   1. #ffffff -> #04231a   the VIEW word, brand ink
- *   2. #00cd95 -> #2e8f6d   the MINERAL word, green-deep
+ * BOTH ARE USED RAW — no Cloudinary transform on either. That is a deliberate
+ * instruction, given twice and confirmed after seeing the rendered result
+ * (Ryan, 2026-08-13). Earlier revisions recoloured the desktop wordmark; every
+ * one of those is gone. Do not reintroduce a transform without asking.
  *
- * Step 2 moves the mark OFF the brand green the asset ships (#00CD95, and the
- * value the memory record names) onto the mockup's deeper green, so the wordmark
- * and the header CTA sit in one family. Worth knowing that the mockup's logo is
- * a hand-drawn placeholder using whatever CSS tokens it had to hand, so this may
- * be an approximation rather than a brand decision — it is one line to drop if
- * the vivid green is meant to stay.
+ * THE KNOWN CONSEQUENCE, so nobody rediscovers it as a bug: the desktop file is
+ * drawn for the live site's BLACK header — green "MINERAL" plus WHITE "VIEW". On
+ * this build's white header the word VIEW is white-on-white and does not show,
+ * and the icon's inner V and upper arc drop out for the same reason. The header
+ * reads "MINERAL" with a partial mark beside it. That is the asset, not a bug in
+ * this file.
  *
- * Order and tolerance are not arbitrary: chained at tolerance 45 the second pass
- * dragged VIEW to #091513 instead of #04231A. Decoded, this pair lands both words
- * exactly on target. Re-check with a pixel sample if you touch either.
+ * If it should ever read in full, the fix is NOT a colour swap — the icon's inner
+ * V is the same pure white as the VIEW text, so one swap darkens both and turns
+ * the mark into a dark blob. The two real options are a dark ground behind the
+ * logo, or a dark header bar; either shows the asset exactly as the live site
+ * does.
  *
- * The dark variant is deliberately left alone — the mockup only shows the light
- * header, and #2E8F6D on the footer's #0D0E17 would be muddy.
+ * The mobile file is a JPG and so has no alpha: its black ground is baked into
+ * the pixels and renders as a black tile whatever sits behind it — which is why
+ * the mark reads there and not on desktop. A small corner radius in the header
+ * keeps that tile looking deliberate rather than like a clipped image.
  */
 export const logo = {
-  /** Light surfaces (the header, the drawer) — MINERAL green-deep, VIEW ink. */
-  onLight:
-    "https://res.cloudinary.com/mview/image/upload/e_replace_color:04231a:48:ffffff/e_replace_color:2e8f6d:25:00cd95/f_auto,q_auto,w_320/f_auto/icons/mineralview-logo.png",
-  /** Dark surfaces (the footer) — "VIEW" renders white. */
-  onDark:
-    "https://res.cloudinary.com/mview/image/upload/f_auto/f_auto,q_auto,w_320/icons/mineralview-logo.png",
-  /** Intrinsic dimensions of the source asset. */
-  width: 320,
-  height: 73,
+  /**
+   * Desktop header — the wordmark, the supplied URL VERBATIM.
+   *
+   * Do not add a transform here. It has been asked for twice and confirmed after
+   * seeing the result (Ryan, 2026-08-13); see the note above for what that means
+   * on a white header and for the two ways to change it if that is ever wanted.
+   */
+  desktop: {
+    src: "https://res.cloudinary.com/mview/image/upload/icons/mineralview-logo.png",
+    width: 577,
+    height: 132,
+  },
+  /**
+   * Mobile header — the square icon mark on its own, so the bar keeps its room
+   * for the burger and the CTA at phone widths.
+   *
+   * A JPG, so it has NO transparency: the black ground is baked into the file and
+   * shows as a black tile. That is the asset as it exists; it cannot be made
+   * transparent by a URL parameter.
+   */
+  mobile: {
+    src: "https://res.cloudinary.com/mview/image/upload/icons/logo.jpg.jpg",
+    width: 63,
+    height: 63,
+  },
+  /** Dark surfaces (the footer) — the wordmark, where white "VIEW" reads. */
+  onDark: {
+    src: "https://res.cloudinary.com/mview/image/upload/icons/mineralview-logo.png",
+    width: 577,
+    height: 132,
+  },
 } as const;
