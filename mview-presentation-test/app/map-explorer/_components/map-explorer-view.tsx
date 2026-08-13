@@ -51,6 +51,7 @@ import {
 } from "./map-measurements";
 
 import { buildWellGraphics } from "./well-graphics";
+import { WellTooltip, type HoveredWell } from "./well-tooltip";
 
 import { WellsTable } from "./wells-table";
 
@@ -109,6 +110,13 @@ interface EsriView {
   ): EsriHandle;
   toMap(screenPoint: { x: number; y: number }): LonLat | null;
   toScreen(mapPoint: unknown): { x: number; y: number } | null;
+  /** What is under a screen point. `include` narrows it to one layer. */
+  hitTest(
+    screenPoint: { x: number; y: number },
+    options?: { include?: unknown },
+  ): Promise<{
+    results: { graphic?: { attributes?: Record<string, unknown> } }[];
+  }>;
   goTo(target: unknown): Promise<unknown>;
   /** Captures the map surface only — the React chrome is not in the canvas. */
   takeScreenshot(options?: {
@@ -449,6 +457,11 @@ export function MapExplorerView() {
     y: number;
     bubble: number;
   } | null>(null);
+  /** Well under the pointer, once the map is close enough to draw them. */
+  const [hoveredWell, setHoveredWell] = useState<HoveredWell | null>(null);
+  /* Hit-testing is async; only the newest answer may be shown. */
+  const wellHoverRef = useRef(0);
+
   /** Undefined while the county lookup is in flight. */
   const [nearbyCounty, setNearbyCounty] = useState<string | null | undefined>(
     undefined,
@@ -1238,6 +1251,48 @@ export function MapExplorerView() {
             }
           }
 
+          /*
+           * Over wells, ask the layer what is under the pointer. Esri's own
+           * hit test rather than our cluster-style geometry check: there can
+           * be thousands of wells on screen, and projecting every one of them
+           * on every pointer move is not something to do at 60fps.
+           */
+          const wellLayer = wellLayerRef.current;
+          if (!activeToolRef.current && wellLayer && view) {
+            const request = ++wellHoverRef.current;
+            const { x, y } = event;
+
+            void view
+              .hitTest({ x, y }, { include: wellLayer })
+              .then(({ results }) => {
+                if (request !== wellHoverRef.current) return;
+
+                const found = results.find(
+                  (result) => result.graphic?.attributes?.api,
+                );
+                const attributes = found?.graphic?.attributes;
+
+                setHoveredWell(
+                  attributes
+                    ? {
+                        api: String(attributes.api ?? ""),
+                        lease: String(attributes.lease ?? ""),
+                        well: String(attributes.well ?? ""),
+                        operator: String(attributes.operator ?? ""),
+                        status: String(attributes.status ?? ""),
+                        wtype: String(attributes.wtype ?? ""),
+                        county: String(attributes.county ?? ""),
+                        x,
+                        y,
+                      }
+                    : null,
+                );
+              })
+              .catch(() => {
+                // A hit test can be interrupted by a redraw; no card, no fuss.
+              });
+          }
+
           // A tool takes precedence — no hover cards mid-draw.
           const index = activeToolRef.current ? -1 : clusterAt(event.x, event.y);
           const top = index === -1 ? null : screenTopOf(index);
@@ -1821,6 +1876,8 @@ export function MapExplorerView() {
             {clusterError ?? wellError}
           </div>
         )}
+
+      {status === "ready" && hoveredWell && <WellTooltip well={hoveredWell} />}
 
       {status === "ready" && hoveredCluster && (
         <ClusterTooltip
