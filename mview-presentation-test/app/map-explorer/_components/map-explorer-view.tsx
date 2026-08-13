@@ -1799,7 +1799,13 @@ export function MapExplorerView() {
               className="h-[14px] w-[14px] shrink-0 animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
             />
             <span className="text-[12.5px] font-semibold leading-none text-mv-slate">
-              {clustersLoading ? "Loading clusters…" : "Loading wells…"}
+              {/* The second cluster band is a finer aggregation of the first,
+                  so it is named for what it is. */}
+              {clustersLoading
+                ? readout.zoom >= CLUSTER_ZOOM_STEPS[1]
+                  ? "Loading sub-clusters…"
+                  : "Loading clusters…"
+                : "Loading wells…"}
             </span>
           </div>
         </div>
