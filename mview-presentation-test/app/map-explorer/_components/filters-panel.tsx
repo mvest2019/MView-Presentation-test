@@ -21,7 +21,6 @@ import {
   type MapFilterItem,
 } from "@/lib/map-api";
 
-import { WELLS_STATEWIDE } from "./well-clusters";
 
 /*
  * The Search & filters panel that opens off the FILTERS edge tab.
@@ -106,6 +105,9 @@ export const FILTER_SECTIONS: FilterSection[] = [
  * it, which is also why "Water Supply" does not answer a search for "up".
  */
 /** Below this the search box stays quiet — the endpoint is slow and vague. */
+/** Statewide well total, for the footer's "n of n match". Still a constant. */
+const WELLS_STATEWIDE = 1_217_270;
+
 const SEARCH_MIN_CHARS = 3;
 
 /** The API's `type` as the badge beside a result, and the section it belongs to. */

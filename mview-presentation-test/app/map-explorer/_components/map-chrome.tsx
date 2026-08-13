@@ -44,6 +44,10 @@ import { ToolsPanel } from "./tools-panel";
 type MapChromeProps = {
   /** Live map scale denominator — the `1 : n` in the readout. */
   scale: number;
+  /** Live zoom level, as Esri counts it. Fractional between LODs. */
+  zoom: number;
+  /** True once the map is close enough to draw individual wells. */
+  wellsVisible: boolean;
   center: { longitude: number; latitude: number };
   /** Active basemap id, so the gallery can mark its tile. */
   basemap: string;
@@ -83,6 +87,8 @@ const VIEW_TABS: { id: ViewTab; label: string; icon: typeof MapIcon }[] = [
 
 export function MapChrome({
   scale,
+  zoom,
+  wellsVisible,
   center,
   basemap,
   onBasemapChange,
@@ -532,7 +538,9 @@ export function MapChrome({
           filtersOpen ? "left-[276px] hidden lg:flex" : "left-3 flex"
         }`}
       >
-      {legendsOpen && (
+      {/* The legend describes well symbols, so it appears with the wells. Over
+          the bubbles there is nothing on the map for it to explain. */}
+      {legendsOpen && wellsVisible && (
         <LegendsPanel
           defaultOpen={wideScreen}
           className="pointer-events-auto"
@@ -563,6 +571,12 @@ export function MapChrome({
 
       {/* ---------------- navigation stack ---------------- */}
       <div className="absolute bottom-4 right-4 flex flex-col items-end gap-2">
+        {/* The zoom level, above the buttons that change it. Rounded, because
+            `snapToZoom` is off and the raw value sits between LODs. */}
+        <div className="pointer-events-auto rounded-lg border border-mv-line bg-white/97 px-[9px] py-[5px] text-[11px] font-semibold leading-none text-mv-slate shadow-mv backdrop-blur-[6px] lg:text-[12px]">
+          Zoom {Math.round(zoom)}
+        </div>
+
         <div ref={basemapRef} className="relative">
           {basemapOpen && (
             <BasemapGallery

@@ -19,20 +19,40 @@ import {
   type AreaMeasurement,
 } from "./measure-area-panel";
 import { MeasureBar } from "./measure-bar";
+import { NEARBY_RADII, NearbyPanel, NearbyPrompt } from "./nearby-panel";
 import {
-  NEARBY_RADII,
-  NearbyPanel,
-  NearbyPrompt,
-  type NearbyStats,
-} from "./nearby-panel";
-import { WellsTable } from "./wells-table";
+  getClusterListMap,
+  getLegendListMap,
+  getWellListMap,
+  type MapWell,
+} from "@/lib/map-api";
+
 import {
-  CLUSTER_FILL,
+  buildClusterGraphics,
   clusterDiameter,
-  clusterFontSize,
-  formatCount,
-  wellClusters,
-} from "./well-clusters";
+  mercatorToLatitude,
+  mercatorToLongitude,
+  toWellCluster,
+  type WellCluster,
+} from "./cluster-graphics";
+import {
+  lookupCounty,
+  downloadAreaCsv,
+  downloadNearbyCsv,
+  measureTract,
+  nearbyStats,
+  wellsInArea,
+  METRES_PER_MILE,
+  type Area,
+  type GeodesicUtils,
+  type LonLat,
+  type Nearby,
+  type PointCtor,
+} from "./map-measurements";
+
+import { buildWellGraphics } from "./well-graphics";
+
+import { WellsTable } from "./wells-table";
 
 /*
  * The explorer: an Esri `MapView` on Esri's terrain basemap with the well-count
@@ -68,6 +88,13 @@ interface EsriView {
   /** Viewport size in pixels; 0 until the view has a laid-out container. */
   width: number;
   height: number;
+  /** The visible rectangle, in the basemap's spatial reference. */
+  extent: {
+    xmin: number;
+    ymin: number;
+    xmax: number;
+    ymax: number;
+  } | null;
   center: { longitude: number; latitude: number };
   when(): Promise<unknown>;
   watch(paths: string | string[], callback: () => void): EsriHandle;
@@ -91,19 +118,11 @@ interface EsriView {
   destroy(): void;
 }
 
-type LonLat = { longitude: number; latitude: number };
-
 interface EsriGraphicsLayer {
   addMany(graphics: unknown[]): void;
   removeAll(): void;
   add(graphic: unknown): void;
 }
-
-type PointCtor = new (props: {
-  longitude: number;
-  latitude: number;
-  spatialReference: { wkid: number };
-}) => unknown;
 
 type EsriClickEvent = {
   mapPoint: LonLat | null;
@@ -111,17 +130,6 @@ type EsriClickEvent = {
   x: number;
   y: number;
   stopPropagation(): void;
-};
-
-type GeodesicUtils = {
-  /** Ellipsoidal, not great-circle — worth ~0.5% over a few hundred miles. */
-  geodesicDistance(
-    from: unknown,
-    to: unknown,
-    unit: "meters",
-  ): { distance: number };
-  /** `azimuth` is degrees clockwise from north. */
-  pointFromDistance(from: unknown, meters: number, azimuth: number): LonLat;
 };
 
 type MapCtor = new (props: { basemap: string; layers?: unknown[] }) => EsriMap;
@@ -202,9 +210,6 @@ const COUNTY_LAYER_COUNT = 9;
 /** County lines stay hidden above this scale — statewide they are a smear. */
 const COUNTY_MIN_SCALE = 4_000_000;
 
-/** A drawn rectangle, in degrees. */
-type Area = { west: number; south: number; east: number; north: number };
-
 /** A measured line and its ellipsoidal length in metres. */
 type Measurement = { from: LonLat; to: LonLat; meters: number };
 
@@ -221,9 +226,7 @@ type ActiveTool =
  * rather than being derived at render time, because working them out needs the
  * Esri modules, and those are held in a ref.
  */
-type Nearby = { at: LonLat; radiusMiles: number; stats: NearbyStats };
 
-const METRES_PER_MILE = 1609.344;
 
 /** Vertices around a watch circle. 6° steps read as smooth at any zoom. */
 const CIRCLE_STEP_DEGREES = 6;
@@ -253,12 +256,47 @@ const MAX_SPLIT = 0.78;
 const SPLIT_KEY_STEP = 0.02;
 
 /** Where clicking a well-count bubble settles — county-ish. */
+/*
+ * The zoom levels at which the bubbles are re-requested.
+ *
+ * Not on every move: the API re-aggregates for the bbox it is given, so a pan
+ * at the same zoom returns the same cells, and a request per pan would be
+ * traffic for nothing. Crossing one of these levels is what changes the
+ * aggregation enough to be worth asking again — so zoom 5 loads, 5→6 and 6→7
+ * do not, and reaching 8 loads again for whatever is now on screen.
+ */
+const CLUSTER_ZOOM_STEPS = [5, 8];
+
+/*
+ * Where the bubbles give way to the wells themselves. Past this the extent is
+ * small enough that the count is manageable and an aggregate says less than
+ * the individual holes do.
+ */
+const WELL_ZOOM = 10;
+
+/*
+ * Below the first step nothing is requested, but what is already drawn stays:
+ * zooming out from 5 to 4 or 3 is still looking at the same wells, just from
+ * further away. Only past this point is the view so wide that the bubbles no
+ * longer describe anything, and they are dropped.
+ */
+const CLUSTER_CLEAR_ZOOM = 3;
+
+/**
+ * Which band a zoom falls in. Same band, same bubbles, no request.
+ *
+ * Tier 0 is everything below the first step: further out than zoom 5 the whole
+ * state is a handful of cells and the answer is not worth asking for, so
+ * nothing is requested until the map is at least that close.
+ */
+function clusterZoomTier(zoom: number): number {
+  return CLUSTER_ZOOM_STEPS.filter((step) => zoom >= step).length;
+}
+
 const CLUSTER_ZOOM_SCALE = 900_000;
 
 type ScreenPoint = { x: number; y: number };
 
-const AREA_CSV_FILENAME = "mineral-view-area.csv";
-const WATCH_CSV_FILENAME = "mineral-view-nearby.csv";
 
 /** The dashed blue both tools draw in. */
 const TOOL_BLUE: [number, number, number] = [37, 99, 235];
@@ -281,265 +319,6 @@ const SCREENSHOT_FILENAME = "mineral-view-map.png";
  * and Next's dev overlay throws an error card over the map, which makes a
  * working button look broken.
  */
-/**
- * Clusters whose centre falls inside the rectangle.
- *
- * Cluster-level, not well-level: the map only holds the aggregated bubbles, so
- * a cluster is in or out as a whole. Against the real well layer this becomes a
- * spatial query and the count gets exact.
- */
-function clustersInArea(area: Area) {
-  return wellClusters.filter(
-    ({ at: [longitude, latitude] }) =>
-      longitude >= area.west &&
-      longitude <= area.east &&
-      latitude >= area.south &&
-      latitude <= area.north,
-  );
-}
-
-/**
- * What the watch card reports.
- *
- * Same caveat as the drawn area: the map holds aggregated bubbles, not
- * individual bores, so "wells" counts whole clusters falling inside the circle
- * and "nearest bore" measures to a cluster centre. Permits are always zero —
- * there is no permit layer to read. All three become real queries once the well
- * layer lands; only the numbers change, not this card.
- */
-function nearbyStats(
-  at: LonLat,
-  radiusMiles: number,
-  geodesic: GeodesicUtils,
-  Point: PointCtor,
-): NearbyStats {
-  const centre = new Point({
-    longitude: at.longitude,
-    latitude: at.latitude,
-    spatialReference: { wkid: 4326 },
-  });
-
-  const radiusMetres = radiusMiles * METRES_PER_MILE;
-  let wells = 0;
-  let inside = 0;
-  let newestYear: number | null = null;
-  let nearest = Infinity;
-
-  for (const cluster of wellClusters) {
-    const metres = geodesic.geodesicDistance(
-      centre,
-      new Point({
-        longitude: cluster.at[0],
-        latitude: cluster.at[1],
-        spatialReference: { wkid: 4326 },
-      }),
-      "meters",
-    ).distance;
-
-    if (metres <= radiusMetres) {
-      wells += cluster.count;
-      inside += 1;
-      if (newestYear === null || cluster.newestYear > newestYear) {
-        newestYear = cluster.newestYear;
-      }
-    }
-    if (metres < nearest) nearest = metres;
-  }
-
-  return {
-    permits: 0,
-    wells,
-    nearestBoreMiles: nearest === Infinity ? null : nearest / METRES_PER_MILE,
-    // The clusters carry no operator attribution, so everything inside falls
-    // into the same catch-all bucket the county list uses.
-    operators: inside ? [{ name: "All other operators", count: inside }] : [],
-    newestYear,
-  };
-}
-
-/**
- * The county the point sits in.
- *
- * NOTE: this is Esri's public *sample* server — fine for a prototype, not
- * something to ship against. Swap in the counties layer the live map already
- * uses (`mview-portal.mineralview.com/gis/counties.geojson`) before release.
- * Returns null on any failure; the card just drops the "· County" suffix.
- */
-const COUNTY_QUERY_URL =
-  "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/3/query";
-
-async function lookupCounty(at: LonLat): Promise<string | null> {
-  const params = new URLSearchParams({
-    f: "json",
-    returnGeometry: "false",
-    outFields: "NAME",
-    geometryType: "esriGeometryPoint",
-    inSR: "4326",
-    spatialRel: "esriSpatialRelIntersects",
-    geometry: JSON.stringify({
-      x: at.longitude,
-      y: at.latitude,
-      spatialReference: { wkid: 4326 },
-    }),
-  });
-
-  try {
-    const response = await fetch(`${COUNTY_QUERY_URL}?${params}`);
-    const body = await response.json();
-
-    // Field casing is not guaranteed — this service echoes `NAME` back as
-    // `name`. Take whichever key came home rather than assuming.
-    const attributes: Record<string, unknown> =
-      body?.features?.[0]?.attributes ?? {};
-    const name = attributes.NAME ?? attributes.name;
-    return typeof name === "string" ? name : null;
-  } catch {
-    return null;
-  }
-}
-
-function downloadNearbyCsv(watch: Nearby, geodesic: GeodesicUtils, Point: PointCtor): void {
-  const centre = new Point({
-    longitude: watch.at.longitude,
-    latitude: watch.at.latitude,
-    spatialReference: { wkid: 4326 },
-  });
-  const radiusMetres = watch.radiusMiles * METRES_PER_MILE;
-
-  const rows: (string | number)[][] = [
-    ["longitude", "latitude", "wells", "newest_year"],
-  ];
-
-  for (const cluster of wellClusters) {
-    const metres = geodesic.geodesicDistance(
-      centre,
-      new Point({
-        longitude: cluster.at[0],
-        latitude: cluster.at[1],
-        spatialReference: { wkid: 4326 },
-      }),
-      "meters",
-    ).distance;
-    if (metres <= radiusMetres) {
-      rows.push([cluster.at[0], cluster.at[1], cluster.count, cluster.newestYear]);
-    }
-  }
-
-  const url = URL.createObjectURL(
-    new Blob([rows.map((row) => row.join(",")).join("\r\n")], {
-      type: "text/csv;charset=utf-8",
-    }),
-  );
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = WATCH_CSV_FILENAME;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
-/**
- * Area, perimeter and contents of a closed tract.
- *
- * The area uses the spherical-excess formula rather than Esri's
- * `geodesicAreas`, which would mean loading two more geometry modules to get a
- * result that differs by well under a percent at these sizes. The perimeter is
- * a sum of great-circle hops between corners.
- */
-function measureTract(points: LonLat[]): AreaMeasurement {
-  const R = 6378137;
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-
-  let sum = 0;
-  let perimetreMetres = 0;
-
-  for (let i = 0; i < points.length; i++) {
-    const a = points[i];
-    const b = points[(i + 1) % points.length];
-
-    sum +=
-      (toRad(b.longitude) - toRad(a.longitude)) *
-      (2 + Math.sin(toRad(a.latitude)) + Math.sin(toRad(b.latitude)));
-
-    // Haversine — the corners are far apart, so a flat approximation would
-    // drift badly across a tract this size.
-    const dLat = toRad(b.latitude - a.latitude);
-    const dLon = toRad(b.longitude - a.longitude);
-    const h =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos(toRad(a.latitude)) *
-        Math.cos(toRad(b.latitude)) *
-        Math.sin(dLon / 2) ** 2;
-    perimetreMetres += 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
-  }
-
-  const squareMetres = Math.abs((sum * R * R) / 2);
-  const squareMiles = squareMetres / 2_589_988.11;
-  const acres = squareMetres / 4046.856;
-
-  let wellsInside = 0;
-  for (const cluster of wellClusters) {
-    if (pointInRing(cluster.at[0], cluster.at[1], points)) {
-      wellsInside += cluster.count;
-    }
-  }
-
-  return {
-    acres,
-    squareMiles,
-    perimeterMiles: perimetreMetres / METRES_PER_MILE,
-    wellsInside,
-    // No permit layer to read, same as the watch card.
-    permitsInside: 0,
-    // A section is one square mile.
-    wellsPerSection: squareMiles ? wellsInside / squareMiles : 0,
-  };
-}
-
-/** Ray casting, on plain lon/lat — exact enough for a hand-drawn tract. */
-function pointInRing(lon: number, lat: number, ring: LonLat[]): boolean {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const xi = ring[i].longitude;
-    const yi = ring[i].latitude;
-    const xj = ring[j].longitude;
-    const yj = ring[j].latitude;
-    if (
-      yi > lat !== yj > lat &&
-      lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi
-    ) {
-      inside = !inside;
-    }
-  }
-  return inside;
-}
-
-function wellsInArea(area: Area): number {
-  return clustersInArea(area).reduce((total, { count }) => total + count, 0);
-}
-
-function downloadAreaCsv(area: Area): void {
-  const rows = [
-    ["longitude", "latitude", "wells"],
-    ...clustersInArea(area).map(({ at, count }) => [at[0], at[1], count]),
-  ];
-
-  const url = URL.createObjectURL(
-    new Blob([rows.map((row) => row.join(",")).join("\r\n")], {
-      type: "text/csv;charset=utf-8",
-    }),
-  );
-
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = AREA_CSV_FILENAME;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
 function subscribeToFullscreen(onChange: () => void) {
   document.addEventListener("fullscreenchange", onChange);
   return () => document.removeEventListener("fullscreenchange", onChange);
@@ -587,6 +366,27 @@ export function MapExplorerView() {
   const rootRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EsriView | null>(null);
   const countyLayersRef = useRef<EsriGeoJSONLayer[]>([]);
+  /*
+   * The bubbles currently on the map. Held in a ref as well as state: the Esri
+   * handlers below are registered once and close over their first render, so
+   * hit-testing and the tool maths read the ref, while the hover card — which
+   * is React — reads the state.
+   */
+  const clusterLayerRef = useRef<EsriGraphicsLayer | null>(null);
+  const wellLayerRef = useRef<EsriGraphicsLayer | null>(null);
+  /* Legend description -> icon URL, so a well draws its legend's symbol. */
+  const wellIconsRef = useRef<Map<string, string>>(new Map());
+  const wellRequestRef = useRef(0);
+  const clustersRef = useRef<WellCluster[]>([]);
+  const [clusters, setClusters] = useState<WellCluster[]>([]);
+  const [clustersLoading, setClustersLoading] = useState(true);
+  const [clusterError, setClusterError] = useState<string | null>(null);
+  const [wellsLoading, setWellsLoading] = useState(false);
+  const [wellError, setWellError] = useState<string | null>(null);
+  /* Only the newest answer may be drawn, whichever order they arrive in. */
+  const clusterRequestRef = useRef(0);
+  /* The zoom band the bubbles on screen were loaded for. */
+  const clusterTierRef = useRef(-1);
   const mapRef = useRef<EsriMap | null>(null);
 
   // Tracked through the browser rather than our own state: Escape and the
@@ -660,6 +460,7 @@ export function MapExplorerView() {
   } | null>(null);
   const [readout, setReadout] = useState({
     scale: HOME_SCALE,
+    zoom: 6,
     center: { longitude: HOME_CENTER[0], latitude: HOME_CENTER[1] },
   });
 
@@ -972,6 +773,115 @@ export function MapExplorerView() {
     return true;
   }, []);
 
+  /*
+   * Loads the bubbles for whatever is on screen and redraws them.
+   *
+   * The API takes the extent as minLon, minLat, maxLon, maxLat, and Esri hands
+   * the extent back in the basemap's own spatial reference — Web Mercator —
+   * so it is converted to degrees on the way out.
+   */
+  const loadClusters = useCallback(() => {
+    const view = viewRef.current;
+    const ctors = ctorsRef.current;
+    const layer = clusterLayerRef.current;
+    if (!view?.extent || !ctors || !layer) return;
+
+    // Too far out to be worth asking — but what is drawn stays drawn.
+    // Clearing is the zoom watcher's job, and only much further out.
+    if (clusterZoomTier(view.zoom) === 0) return;
+
+    const { xmin, ymin, xmax, ymax } = view.extent;
+    const request = ++clusterRequestRef.current;
+
+    getClusterListMap({
+      west: mercatorToLongitude(xmin),
+      south: mercatorToLatitude(ymin),
+      east: mercatorToLongitude(xmax),
+      north: mercatorToLatitude(ymax),
+    })
+      .then((list) => {
+        // A slower earlier request must not overwrite a newer answer.
+        if (request !== clusterRequestRef.current) return;
+
+        const next = list.map(toWellCluster);
+        clustersRef.current = next;
+        setClusters(next);
+        setClusterError(null);
+
+        layer.removeAll();
+        layer.addMany(buildClusterGraphics(ctors.Graphic, next));
+      })
+      .catch((error: unknown) => {
+        if (request !== clusterRequestRef.current) return;
+        setClusterError(
+          error instanceof Error ? error.message : "Could not load wells.",
+        );
+      })
+      .finally(() => {
+        if (request === clusterRequestRef.current) setClustersLoading(false);
+      });
+  }, []);
+
+  /*
+   * Loads the wells for what is on screen.
+   *
+   * Unlike the bubbles this does follow a pan: at this zoom the extent is a
+   * few miles across, so panning genuinely leaves the loaded set behind.
+   */
+  const loadWells = useCallback(() => {
+    const view = viewRef.current;
+    const ctors = ctorsRef.current;
+    const layer = wellLayerRef.current;
+    if (!view?.extent || !ctors || !layer) return;
+
+    const { xmin, ymin, xmax, ymax } = view.extent;
+    const request = ++wellRequestRef.current;
+    setWellsLoading(true);
+
+    getWellListMap({
+      west: mercatorToLongitude(xmin),
+      south: mercatorToLatitude(ymin),
+      east: mercatorToLongitude(xmax),
+      north: mercatorToLatitude(ymax),
+    })
+      .then((list: MapWell[]) => {
+        if (request !== wellRequestRef.current) return;
+
+        setWellError(null);
+        layer.removeAll();
+        layer.addMany(
+          buildWellGraphics(ctors.Graphic, list, wellIconsRef.current),
+        );
+      })
+      .catch((error: unknown) => {
+        if (request !== wellRequestRef.current) return;
+        setWellError(
+          error instanceof Error ? error.message : "Could not load wells.",
+        );
+      })
+      .finally(() => {
+        if (request === wellRequestRef.current) setWellsLoading(false);
+      });
+  }, []);
+
+  const clearWells = useCallback(() => {
+    wellRequestRef.current += 1;
+    setWellsLoading(false);
+    setWellError(null);
+    wellLayerRef.current?.removeAll();
+  }, []);
+
+  /** Drops the bubbles — the view is too wide for them to mean anything. */
+  const clearClusters = useCallback(() => {
+    if (clustersRef.current.length === 0) return;
+
+    clustersRef.current = [];
+    setClusters([]);
+    clusterLayerRef.current?.removeAll();
+    // The next zoom in crosses back into a band and loads afresh.
+    clusterTierRef.current = -1;
+  }, []);
+
   /** Re-projects the on-map cards — they are React, so they do not follow. */
   const anchorBars = useCallback(() => {
     const view = viewRef.current;
@@ -1025,6 +935,7 @@ export function MapExplorerView() {
     let clickHandle: EsriHandle | undefined;
     let pointerHandle: EsriHandle | undefined;
     let frame = 0;
+    let clusterTimer: ReturnType<typeof setTimeout> | undefined;
 
     void (async () => {
       try {
@@ -1124,7 +1035,12 @@ export function MapExplorerView() {
         countyLayersRef.current = countyLayers;
 
         const clusters = new GraphicsLayer({ id: "well-clusters" });
-        clusters.addMany(buildClusterGraphics(Graphic));
+        clusterLayerRef.current = clusters;
+
+        // Its own layer, so switching between bubbles and wells is two
+        // independent clears rather than one shared list to sort out.
+        const wells = new GraphicsLayer({ id: "wells" });
+        wellLayerRef.current = wells;
 
         // Above the clusters, so tool output is never buried. One layer each,
         // so clearing an area does not wipe a measurement and vice versa.
@@ -1148,6 +1064,7 @@ export function MapExplorerView() {
             districtLayer,
             ...countyLayers,
             clusters,
+            wells,
             areaLayer,
             measureLayer,
             nearbyLayer,
@@ -1178,6 +1095,7 @@ export function MapExplorerView() {
             if (cancelled || !view) return;
             setReadout({
               scale: view.scale,
+              zoom: view.zoom,
               center: {
                 longitude: view.center.longitude,
                 latitude: view.center.latitude,
@@ -1190,6 +1108,39 @@ export function MapExplorerView() {
           // Tool graphics are on the map and move themselves; the bars above
           // them are React, so they have to be re-projected as the view moves.
           anchorBars();
+
+          // Panning changes nothing about which bubbles are right, so only a
+          // change of zoom band asks again — and then only once the zoom has
+          // settled, since this fires on every frame of it.
+          const zoom = view?.zoom ?? 0;
+
+          if (zoom < CLUSTER_CLEAR_ZOOM) {
+            clearTimeout(clusterTimer);
+            clearClusters();
+            clearWells();
+            return;
+          }
+
+          if (zoom >= WELL_ZOOM) {
+            // Wells replace the bubbles outright; the tier resets so coming
+            // back out counts as a new band and reloads them.
+            if (clusterTierRef.current !== -1) {
+              clusterTierRef.current = -1;
+              clearClusters();
+            }
+            clearTimeout(clusterTimer);
+            clusterTimer = setTimeout(loadWells, 400);
+            return;
+          }
+
+          clearWells();
+
+          const tier = clusterZoomTier(zoom);
+          if (tier !== clusterTierRef.current) {
+            clusterTierRef.current = tier;
+            clearTimeout(clusterTimer);
+            clusterTimer = setTimeout(loadClusters, 400);
+          }
         });
 
         // `immediate-click` rather than `click`: the latter is held back to see
@@ -1208,8 +1159,9 @@ export function MapExplorerView() {
           const ctors = ctorsRef.current;
           if (!view || !ctors) return -1;
 
-          for (let index = wellClusters.length - 1; index >= 0; index--) {
-            const cluster = wellClusters[index];
+          const live = clustersRef.current;
+          for (let index = live.length - 1; index >= 0; index--) {
+            const cluster = live[index];
             const screen = view.toScreen(
               new ctors.Point({
                 longitude: cluster.at[0],
@@ -1243,7 +1195,7 @@ export function MapExplorerView() {
         const screenTopOf = (index: number): ScreenPoint | null => {
           const ctors = ctorsRef.current;
           if (!view || !ctors) return null;
-          const cluster = wellClusters[index];
+          const cluster = clustersRef.current[index];
           const screen = view.toScreen(
             new ctors.Point({
               longitude: cluster.at[0],
@@ -1292,7 +1244,7 @@ export function MapExplorerView() {
             const index = clusterAt(event.x, event.y);
             if (index !== -1 && view) {
               event.stopPropagation();
-              const cluster = wellClusters[index];
+              const cluster = clustersRef.current[index];
               view
                 .goTo({ center: cluster.at, scale: CLUSTER_ZOOM_SCALE })
                 .catch(ignoreInterrupted);
@@ -1319,7 +1271,7 @@ export function MapExplorerView() {
                 const dy = event.y - first.y;
                 if (dx * dx + dy * dy <= 144) {
                   drawTract(points, true);
-                  setTractResult(measureTract(points));
+                  setTractResult(measureTract(clustersRef.current, points));
                   activeToolRef.current = null;
                   setActiveTool(null);
                   return;
@@ -1346,6 +1298,7 @@ export function MapExplorerView() {
             at,
             radiusMiles: DEFAULT_WATCH_RADIUS_MILES,
             stats: nearbyStats(
+              clustersRef.current,
               at,
               DEFAULT_WATCH_RADIUS_MILES,
               ctors.geodesic,
@@ -1437,7 +1390,27 @@ export function MapExplorerView() {
         });
 
         await view.when();
-        if (!cancelled) setStatus("ready");
+        if (cancelled) return;
+
+        setStatus("ready");
+        // The opening load. The extent is only real once the view has laid
+        // itself out, and the band it lands in is the one to beat.
+        // The legend's icons are what the wells are drawn with, so they are
+        // fetched alongside — a failure just means the fallback dot.
+        void getLegendListMap()
+          .then((legends) => {
+            wellIconsRef.current = new Map(
+              legends.map((legend) => [legend.description, legend.iconUrl]),
+            );
+          })
+          .catch(() => {});
+
+        if (view.zoom >= WELL_ZOOM) {
+          loadWells();
+        } else {
+          clusterTierRef.current = clusterZoomTier(view.zoom);
+          loadClusters();
+        }
       } catch {
         if (!cancelled) setStatus("error");
       }
@@ -1454,12 +1427,25 @@ export function MapExplorerView() {
       measureLayerRef.current = null;
       nearbyLayerRef.current = null;
       tractLayerRef.current = null;
+      clearTimeout(clusterTimer);
       ctorsRef.current = null;
       viewRef.current = null;
+      clusterLayerRef.current = null;
       view?.destroy();
     };
     // All stable, so the view is still built exactly once.
-  }, [drawArea, drawMeasurement, drawNearby, drawTract, frameRadius, anchorBars]);
+  }, [
+    drawArea,
+    drawMeasurement,
+    drawNearby,
+    drawTract,
+    frameRadius,
+    anchorBars,
+    loadClusters,
+    clearClusters,
+    loadWells,
+    clearWells,
+  ]);
 
   // Esc backs out of an armed tool — the prompt says so.
   useEffect(() => {
@@ -1514,6 +1500,7 @@ export function MapExplorerView() {
         ...current,
         radiusMiles,
         stats: nearbyStats(
+          clustersRef.current,
           current.at,
           radiusMiles,
           ctors.geodesic,
@@ -1633,7 +1620,7 @@ export function MapExplorerView() {
     const current = nearbyRef.current;
     const ctors = ctorsRef.current;
     if (current && ctors) {
-      downloadNearbyCsv(current, ctors.geodesic, ctors.Point);
+      downloadNearbyCsv(clustersRef.current, current, ctors.geodesic, ctors.Point);
     }
   }, []);
 
@@ -1652,7 +1639,7 @@ export function MapExplorerView() {
   }, [drawMeasurement]);
 
   const exportArea = useCallback(() => {
-    if (areaRef.current) downloadAreaCsv(areaRef.current);
+    if (areaRef.current) downloadAreaCsv(clustersRef.current, areaRef.current);
   }, []);
 
   const zoomBy = useCallback((factor: number) => {
@@ -1766,18 +1753,29 @@ export function MapExplorerView() {
       >
       <div ref={containerRef} className="h-full w-full" />
 
+      {/* The bubbles reload on every pan, so their state is a quiet pill over
+          the map rather than anything that moves the chrome around. */}
+      {status === "ready" &&
+        (clustersLoading || wellsLoading || clusterError || wellError) && (
+          <div className="pointer-events-none absolute left-1/2 top-3 z-30 -translate-x-1/2 rounded-full border border-mv-line bg-white/95 px-3 py-[5px] text-[11.5px] font-semibold text-mv-slate shadow-mv">
+            {clustersLoading || wellsLoading
+              ? "Loading wells…"
+              : (clusterError ?? wellError)}
+          </div>
+        )}
+
       {status === "ready" && hoveredCluster && (
         <ClusterTooltip
-          name={wellClusters[hoveredCluster.index].name}
-          wells={wellClusters[hoveredCluster.index].count}
-          oilShare={wellClusters[hoveredCluster.index].oilShare}
+          name={clusters[hoveredCluster.index].name}
+          wells={clusters[hoveredCluster.index].count}
+          oilShare={clusters[hoveredCluster.index].oilShare}
           at={{ x: hoveredCluster.x, y: hoveredCluster.y }}
         />
       )}
 
       {status === "ready" && area && areaAnchor && (
         <AreaSelectionBar
-          count={wellsInArea(area)}
+          count={wellsInArea(clusters, area)}
           at={areaAnchor}
           onExport={exportArea}
           onClear={clearArea}
@@ -1826,6 +1824,8 @@ export function MapExplorerView() {
       {status === "ready" ? (
         <MapChrome
           scale={readout.scale}
+          zoom={readout.zoom}
+          wellsVisible={readout.zoom >= WELL_ZOOM}
           center={readout.center}
           basemap={basemap}
           onBasemapChange={changeBasemap}
@@ -1965,41 +1965,4 @@ function printImage(dataUrl: string): void {
 
   if (image.complete) print();
   else image.addEventListener("load", print, { once: true });
-}
-
-/**
- * One filled circle plus one label per cluster. Sizes are in screen pixels, so
- * the bubbles hold their size as you zoom — the same behaviour the mock shows,
- * and what a server-side cluster layer would do once it replaces this.
- */
-function buildClusterGraphics(Graphic: GraphicCtor): unknown[] {
-  return wellClusters.flatMap(({ at: [longitude, latitude], count, tone }) => {
-    const diameter = clusterDiameter(count);
-    const fontSize = clusterFontSize(diameter);
-
-    const geometry = { type: "point", longitude, latitude };
-
-    return [
-      new Graphic({
-        geometry,
-        symbol: {
-          type: "simple-marker",
-          size: diameter,
-          color: CLUSTER_FILL[tone],
-          outline: { color: [255, 255, 255, 0.75], width: 1.5 },
-        },
-      }),
-      new Graphic({
-        geometry,
-        symbol: {
-          type: "text",
-          text: formatCount(count),
-          color: "#ffffff",
-          horizontalAlignment: "center",
-          verticalAlignment: "middle",
-          font: { size: fontSize, weight: "bold", family: "sans-serif" },
-        },
-      }),
-    ];
-  });
 }
