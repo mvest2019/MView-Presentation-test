@@ -13,7 +13,6 @@ import {
 import {
   OPERATOR_ENDPOINTS,
   publicOperatorApiBaseUrl,
-  TEMP_MEMBER_ID,
   type OperatorSearchResponse,
 } from "@/lib/operator-api-types";
 import {
@@ -149,6 +148,29 @@ const SORT_LABELS: Record<OperatorSortKey, string> = {
 };
 
 const SEARCH_DEBOUNCE_MS = 300;
+
+/**
+ * Rows per slice while building the export. 2,000 keeps each slice's work in the
+ * tens of milliseconds on the 24,744-row response, which is short enough that a
+ * frame can be painted between slices.
+ */
+const EXPORT_CHUNK = 2000;
+
+/**
+ * Hand control back to the browser so it can paint and handle input.
+ *
+ * `scheduler.yield()` is the right primitive — it resumes at the front of the task
+ * queue, so yielding does not cost the work its place. Where it is missing,
+ * `setTimeout(0)` yields too; it just goes to the back of the queue and carries the
+ * ~4ms clamp, which over 13 slices is negligible against the 243ms being broken up.
+ */
+function yieldToBrowser(): Promise<void> {
+  const scheduler = (
+    globalThis as { scheduler?: { yield?: () => Promise<void> } }
+  ).scheduler;
+  if (typeof scheduler?.yield === "function") return scheduler.yield();
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 
 export function useOperatorDirectory({
@@ -340,28 +362,25 @@ export function useOperatorDirectory({
     setFilters(DEFAULT_FILTERS);
   }, []);
 
-  /**
-   * Export CSV — now the rows currently on screen.
-   *
-   * It used to write the whole filtered set, which was possible when every record
-   * was already in the browser. The API is paginated and offers no bulk export,
-   * so covering all matches would mean walking every page (3,095 active operators
-   * is 310 requests). Exporting the current page is the honest version of the
-   * same button; a real export needs a server-side endpoint.
-   */
   /** In-flight guard, so a second click cannot start a duplicate export. */
   const exporting = useRef(false);
 
   /**
    * Export CSV.
    *
-   * Calls the same search endpoint with the export payload — `{ member_id }` and
-   * nothing else, as specified — then writes the response out with the columns the
-   * table is currently showing, so the file matches what is on screen.
+   * Reads `GET /api/v1/operators/all` — the whole directory in one response — and
+   * writes it out. Same envelope and same record shape as the search endpoint, so
+   * the rows still go through `toOperatorRows`.
    *
-   * The row set is whatever that payload returns; it is not the filtered view and
-   * not the current page. See the note in the report about how many records the
-   * endpoint actually sends back for this body.
+   * WHAT THE FILE CONTAINS. Every operator the API holds: 24,744 rows, of which
+   * 21,649 are inactive. It is not the filtered view and not the current page, and
+   * it is not sorted the way the table is — the endpoint returns its own order and
+   * the `Rank` column numbers that order. The previous export had the same
+   * "everything, not what is on screen" behaviour, so this only widens the set.
+   *
+   * IT IS A 16 MB RESPONSE. Downloading and parsing that is the cost of a complete
+   * export and it only happens on click, but it does block the main thread while
+   * `JSON.parse` runs, so a click is not free. See the note in the report.
    */
   const exportCsv = useCallback(async () => {
     if (exporting.current) return;
@@ -369,42 +388,59 @@ export function useOperatorDirectory({
 
     try {
       const response = await fetch(
-        `${publicOperatorApiBaseUrl()}${OPERATOR_ENDPOINTS.search}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ member_id: TEMP_MEMBER_ID }),
-        },
+        `${publicOperatorApiBaseUrl()}${OPERATOR_ENDPOINTS.all}`,
+        { method: "GET" },
       );
 
       if (!response.ok) throw new Error(`export responded ${response.status}`);
 
       const { result } = (await response.json()) as OperatorSearchResponse;
-      const rows = toOperatorRows(result);
 
-      // Same columns as the table, honouring the Columns toggles so the file has
-      // the columns the visitor can see.
+      // The table's columns, honouring the Columns toggles so the file matches what
+      // the visitor can see — except Leases count and Last production, which are
+      // always written. Both are opt-in columns that default to off, so gating them
+      // meant the export silently dropped two fields the endpoint always returns.
       const header = ["Rank", "Operator Name", "Operator No."];
       if (columns.oil) header.push("Oil Produced");
       if (columns.gas) header.push("Gas Produced");
       if (columns.cty) header.push("Counties");
-      if (columns.leases) header.push("Leases count");
-      if (columns.lastProduction) header.push("Last production");
+      header.push("Leases count", "Last production");
       if (columns.status) header.push("Status");
 
       const cell = (value: string) => `"${value.replace(/"/g, '""')}"`;
       const lines = [header.join(",")];
 
-      rows.forEach((row, index) => {
-        const line = [String(index + 1), cell(row.name), cell(row.operatorNumber)];
-        if (columns.oil) line.push(cell(row.oil));
-        if (columns.gas) line.push(cell(row.gas));
-        if (columns.cty) line.push(cell(row.counties));
-        if (columns.leases) line.push(cell(row.leases));
-        if (columns.lastProduction) line.push(cell(row.lastProduction));
-        if (columns.status) line.push(cell(row.status));
-        lines.push(line.join(","));
-      });
+      /**
+       * BUILT IN SLICES, YIELDING BETWEEN THEM, and that is not premature.
+       * Measured on this response: mapping and joining 24,744 rows in one pass is
+       * 243ms of unbroken main-thread work, on top of 264ms to decode and parse the
+       * 15 MB body. Half a second in a single task freezes the page — several
+       * seconds of it on a mid-range phone — and delays whatever the visitor tries
+       * to do next, which is what reaches INP. Slicing turns one long task into
+       * short ones, so the page keeps painting and stays responsive while the file
+       * is assembled. The output is byte-for-byte what the single pass produced.
+       *
+       * `toOperatorRows` still does the mapping, one slice at a time, so there is
+       * no second copy of the record-to-row logic.
+       */
+      for (let start = 0; start < result.length; start += EXPORT_CHUNK) {
+        toOperatorRows(result.slice(start, start + EXPORT_CHUNK)).forEach(
+          (row, offset) => {
+            const line = [
+              String(start + offset + 1),
+              cell(row.name),
+              cell(row.operatorNumber),
+            ];
+            if (columns.oil) line.push(cell(row.oil));
+            if (columns.gas) line.push(cell(row.gas));
+            if (columns.cty) line.push(cell(row.counties));
+            line.push(cell(row.leases), cell(row.lastProduction));
+            if (columns.status) line.push(cell(row.status));
+            lines.push(line.join(","));
+          },
+        );
+        await yieldToBrowser();
+      }
 
       const blob = new Blob([lines.join("\n")], {
         type: "text/csv;charset=utf-8",

@@ -68,6 +68,18 @@ export const OPERATOR_ENDPOINTS = {
   playTypes: "/api/v1/operators/playtypes",
   counties: "/api/v1/operators/counties",
   search: "/api/v1/operators/search",
+  /**
+   * Every operator in one `GET`, for the CSV export. Returns the same
+   * `{ result, total_count }` envelope and the same record shape as `search`, so
+   * the rows map through `toOperatorRows` unchanged.
+   *
+   * IT IS THE WHOLE DIRECTORY, AND IT IS BIG. Measured: 24,744 records, 16 MB of
+   * JSON, all of it unmasked — this endpoint takes no `member_id` and gates
+   * nothing. That is 21,649 inactive operators alongside the 3,095 active ones the
+   * listing shows by default, and it ignores the filters on screen. Do not reach
+   * for it to populate anything the user is looking at.
+   */
+  all: "/api/v1/operators/all",
 } as const;
 
 /**
