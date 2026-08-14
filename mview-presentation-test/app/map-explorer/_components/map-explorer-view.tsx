@@ -26,6 +26,7 @@ import { NEARBY_RADII, NearbyPanel, NearbyPrompt } from "./nearby-panel";
 import {
   getClusterListMap,
   getLegendListMap,
+  getMatchedWellsMap,
   getWellListMap,
   type MapWell,
 } from "@/lib/map-api";
@@ -288,6 +289,24 @@ const CLUSTER_ZOOM_STEPS = [5, 8];
 const WELL_ZOOM = 10;
 
 /*
+ * How far apart matched wells may be before Apply stops trying to frame them.
+ *
+ * Three degrees is roughly two hundred miles — a county, a field, or one
+ * operator's patch fits inside that; wells in the Permian and the Eagle Ford
+ * at once do not.
+ */
+const FILTER_FIT_MAX_DEGREES = 3;
+
+/** Below this the extent is a point, and this stands in for it. */
+const FILTER_FIT_MIN_DEGREES = 0.05;
+
+/** Metres in a degree, near enough for choosing a scale. */
+const DEGREE_METRES = 111_320;
+
+/** The furthest out Apply may leave the map — about zoom 8. */
+const FILTER_FIT_MAX_SCALE = 1_100_000;
+
+/*
  * The highlight pulse. The ring sits just outside a 10px well icon; the wave
  * runs out to a little over twice that, which reads at a glance without
  * covering the wells around it.
@@ -345,6 +364,32 @@ const SCREENSHOT_FILENAME = "mineral-view-map.png";
  * and Next's dev overlay throws an error card over the map, which makes a
  * working button look broken.
  */
+/**
+ * Where a set of wells really is, ignoring strays.
+ *
+ * Takes the 2nd and 98th percentile on each axis instead of the outright
+ * minimum and maximum: a handful of bad coordinates in a county's worth of
+ * wells would otherwise define the frame, and the frame would be the state.
+ */
+function trimmedBox(wells: MapWell[]) {
+  if (wells.length === 0) return null;
+
+  const at = (values: number[], fraction: number) =>
+    values[
+      Math.min(values.length - 1, Math.max(0, Math.round(fraction * (values.length - 1))))
+    ];
+
+  const lons = wells.map((well) => well.lon).sort((a, b) => a - b);
+  const lats = wells.map((well) => well.lat).sort((a, b) => a - b);
+
+  return {
+    west: at(lons, 0.02),
+    east: at(lons, 0.98),
+    south: at(lats, 0.02),
+    north: at(lats, 0.98),
+  };
+}
+
 function subscribeToFullscreen(onChange: () => void) {
   document.addEventListener("fullscreenchange", onChange);
   return () => document.removeEventListener("fullscreenchange", onChange);
@@ -411,10 +456,23 @@ export function MapExplorerView() {
   const [clusterError, setClusterError] = useState<string | null>(null);
   const [wellsLoading, setWellsLoading] = useState(false);
   const [wellError, setWellError] = useState<string | null>(null);
+  /** What the last Apply matched, and how much of it the server returned. */
+  const [filterSummary, setFilterSummary] = useState<{
+    matched: number;
+    shown: number;
+  } | null>(null);
   /* Only the newest answer may be drawn, whichever order they arrive in. */
   const clusterRequestRef = useRef(0);
   /* The zoom band the bubbles on screen were loaded for. */
   const clusterTierRef = useRef(-1);
+  /*
+   * True while a filter is applied. The zoom watcher steps aside then: the
+   * wells on screen are the filter's answer, and reloading bubbles or extent
+   * wells over them would wipe it out — which is exactly what happened, since
+   * clearing the bubbles resets the tier and the next view change reloaded
+   * them straight back.
+   */
+  const filteredRef = useRef(false);
   const mapRef = useRef<EsriMap | null>(null);
 
   // Tracked through the browser rather than our own state: Escape and the
@@ -1072,6 +1130,151 @@ export function MapExplorerView() {
     [highlightWell],
   );
 
+  /** Drops the bubbles — the view is too wide for them to mean anything. */
+  const clearClusters = useCallback(() => {
+    if (clustersRef.current.length === 0) return;
+
+    clustersRef.current = [];
+    setClusters([]);
+    // The hover card holds an index into that list; leaving it set points the
+    // card at a bubble that no longer exists.
+    hoveredClusterRef.current = null;
+    setHoveredCluster(null);
+    clusterLayerRef.current?.removeAll();
+    // The next zoom in crosses back into a band and loads afresh.
+    clusterTierRef.current = -1;
+  }, []);
+
+  /*
+   * Apply, from the filters panel.
+   *
+   * The result is wells wherever they are, not wells in the current extent, so
+   * it takes over the well layer outright: bubbles off, matches on, and the
+   * map moves to fit them. Clearing every filter hands the map back to the
+   * zoom-driven loading it does otherwise.
+   *
+   * The server caps the list at 5,000 while reporting the true total, so a
+   * broad filter draws a sample and says so rather than pretending.
+   */
+  const applyFilters = useCallback(
+    (filters: Record<string, string[]>) => {
+      const ctors = ctorsRef.current;
+      const layer = wellLayerRef.current;
+      const view = viewRef.current;
+      if (!ctors || !layer || !view) return;
+
+      if (Object.keys(filters).length === 0) {
+        filteredRef.current = false;
+        setFilterSummary(null);
+        clearWells();
+        clusterTierRef.current = -1;
+        loadClusters();
+        return;
+      }
+
+      const request = ++wellRequestRef.current;
+      setWellsLoading(true);
+      // The previous answer is no longer the answer. Leaving it up means a
+      // failed request still reads as a successful one.
+      setFilterSummary(null);
+      setWellError(null);
+
+      getMatchedWellsMap(filters)
+        .then(({ matched, wells }) => {
+          if (request !== wellRequestRef.current) return;
+
+          filteredRef.current = true;
+          wellsRef.current = wells;
+          setWellError(null);
+          setFilterSummary({ matched, shown: wells.length });
+
+          clearClusters();
+          layer.removeAll();
+          layer.addMany(
+            buildWellGraphics(ctors.Graphic, wells, wellIconsRef.current),
+          );
+
+          /*
+           * Zoom only when the matches describe one place.
+           *
+           * A county, or one operator working a single field, comes back
+           * inside a degree or two and the map can frame it. Two operators on
+           * opposite sides of Texas come back spanning the state, and fitting
+           * that is the statewide view with extra steps — worse, it throws
+           * away wherever the map was. Beyond the threshold the wells are
+           * drawn and the view is left alone.
+           *
+           * `bounds` is the server's, covering every match; the returned wells
+           * are only the first five thousand of them.
+           */
+          /*
+           * The box to frame, from the returned wells rather than the server's
+           * `bounds`, and trimmed.
+           *
+           * `bounds` is the outright min and max over every match, so one well
+           * with a bad coordinate drags it across the state — which is what
+           * happened: a county half a degree wide asked for a seven-degree
+           * frame. Cutting the outermost few per cent on each axis describes
+           * where the wells actually are.
+           */
+          const box = trimmedBox(wells);
+
+          if (box) {
+            const spread = Math.max(box.east - box.west, box.north - box.south);
+
+            if (spread <= FILTER_FIT_MAX_DEGREES) {
+              /*
+               * Centre and scale, not an extent: a plain object is not a
+               * Geometry and `goTo` will not autocast one, so the extent form
+               * rejected and the map stayed put.
+               */
+              const degrees = Math.max(spread, FILTER_FIT_MIN_DEGREES);
+              const span = Math.max(
+                Math.min(view.width, view.height) * 0.8,
+                200,
+              );
+              const metresPerPixel = (degrees * DEGREE_METRES) / span;
+
+              view
+                .goTo({
+                  center: [
+                    (box.west + box.east) / 2,
+                    (box.south + box.north) / 2,
+                  ],
+                  // Never further out than this: a filter that lands on the
+                  // statewide view has not shown anybody anything.
+                  scale: Math.min(
+                    (metresPerPixel * 96) / 0.0254,
+                    FILTER_FIT_MAX_SCALE,
+                  ),
+                })
+                .catch(ignoreInterrupted);
+            }
+          }
+        })
+        .catch((error: unknown) => {
+          if (request !== wellRequestRef.current) return;
+          setWellError(
+            /*
+             * The endpoint runs for a minute or more on a broad filter and
+             * the gateway gives up before it does, so the failure people
+             * actually hit is a 502. Say what to do about it rather than
+             * repeating the status line.
+             */
+            error instanceof Error && /502|timeout|Failed to fetch/i.test(error.message)
+              ? "The filter took too long to run. Try again — the result is cached once it completes."
+              : error instanceof Error
+                ? error.message
+                : "Could not apply filters.",
+          );
+        })
+        .finally(() => {
+          if (request === wellRequestRef.current) setWellsLoading(false);
+        });
+    },
+    [clearClusters, clearWells, loadClusters],
+  );
+
   /** Export CSV: whatever is inside the extent right now, wells or bubbles. */
   const exportCsv = useCallback(() => {
     const view = viewRef.current;
@@ -1086,16 +1289,6 @@ export function MapExplorerView() {
     });
   }, []);
 
-  /** Drops the bubbles — the view is too wide for them to mean anything. */
-  const clearClusters = useCallback(() => {
-    if (clustersRef.current.length === 0) return;
-
-    clustersRef.current = [];
-    setClusters([]);
-    clusterLayerRef.current?.removeAll();
-    // The next zoom in crosses back into a band and loads afresh.
-    clusterTierRef.current = -1;
-  }, []);
 
   /** Re-projects the on-map cards — they are React, so they do not follow. */
   const anchorBars = useCallback(() => {
@@ -1371,6 +1564,9 @@ export function MapExplorerView() {
           // Panning changes nothing about which bubbles are right, so only a
           // change of zoom band asks again — and then only once the zoom has
           // settled, since this fires on every frame of it.
+          // A filter owns the map until it is cleared.
+          if (filteredRef.current) return;
+
           const zoom = view?.zoom ?? 0;
 
           if (zoom < CLUSTER_CLEAR_ZOOM) {
@@ -2187,9 +2383,17 @@ export function MapExplorerView() {
         />
       )}
 
+      {status === "ready" && filterSummary && !wellsLoading && !wellError && (
+        <div className="pointer-events-none absolute left-1/2 top-3 z-30 -translate-x-1/2 rounded-full border border-mv-line bg-white/95 px-3 py-[5px] text-[11.5px] font-semibold text-mv-slate shadow-mv">
+          {filterSummary.shown < filterSummary.matched
+            ? `Showing ${filterSummary.shown.toLocaleString("en-US")} of ${filterSummary.matched.toLocaleString("en-US")} matching wells`
+            : `${filterSummary.matched.toLocaleString("en-US")} matching wells`}
+        </div>
+      )}
+
       {status === "ready" && hoveredWell && <WellTooltip well={hoveredWell} />}
 
-      {status === "ready" && hoveredCluster && (
+      {status === "ready" && hoveredCluster && clusters[hoveredCluster.index] && (
         <ClusterTooltip
           cluster={clusters[hoveredCluster.index]}
           canOpen={readout.zoom < CLUSTER_ZOOM_STEPS[1]}
@@ -2253,6 +2457,7 @@ export function MapExplorerView() {
           wellsVisible={readout.zoom >= WELL_ZOOM}
           onExportCsv={exportCsv}
           onSelectApi={selectApi}
+          onApplyFilters={applyFilters}
           timeLapseOpen={timeLapseOpen}
           onToggleTimeLapse={toggleTimeLapse}
           center={readout.center}

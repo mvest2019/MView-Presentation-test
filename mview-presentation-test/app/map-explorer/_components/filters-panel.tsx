@@ -104,9 +104,6 @@ export const FILTER_SECTIONS: FilterSection[] = [
  * it, which is also why "Water Supply" does not answer a search for "up".
  */
 /** Below this the search box stays quiet — the endpoint is slow and vague. */
-/** Statewide well total, for the footer's "n of n match". Still a constant. */
-const WELLS_STATEWIDE = 1_217_270;
-
 const SEARCH_MIN_CHARS = 3;
 
 /** The API's `type` as the badge beside a result, and the section it belongs to. */
@@ -131,12 +128,22 @@ type Suggestion = {
 };
 
 type FiltersPanelProps = {
+  /**
+   * Fired by Apply with what is ticked, keyed by facet. The panel does not
+   * fetch: the map owns what it draws, so it makes the request and decides
+   * what to do with the answer.
+   */
+  onApply?: (filters: Record<string, string[]>) => void;
   onCollapse?: () => void;
   /** Positioning; the panel places itself nowhere on its own. */
   className?: string;
 };
 
-export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) {
+export function FiltersPanel({
+  onApply,
+  onCollapse,
+  className = "",
+}: FiltersPanelProps) {
   /* The live county list, with the two states any request has besides its
      result. `loading` starts true because the request starts on mount. */
   const [counties, setCounties] = useState<MapFilterItem[]>([]);
@@ -762,12 +769,31 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
         <div className="h-2" />
       </div>
 
-      {/* ---------------- match count ---------------- */}
-      <div className="border-t border-mv-line px-[14px] py-[10px] text-[11.5px] lg:text-[12.5px] leading-snug text-mv-muted">
-        <span className="font-bold text-mv-ink">
-          {WELLS_STATEWIDE.toLocaleString("en-US")}
-        </span>{" "}
-        of {WELLS_STATEWIDE.toLocaleString("en-US")} wells match
+      {/* ---------------- apply ----------------
+          Outside the scroll container, so the sections scroll under it and
+          this stays put — the button has to be reachable without scrolling to
+          the end of two hundred and seventy counties. */}
+      <div className="shrink-0 border-t border-mv-line bg-white px-[14px] pb-[12px] pt-[12px]">
+        <button
+          type="button"
+          onClick={() =>
+            onApply?.(
+              // Only the facets with something ticked — an untouched section
+              // is not a filter of "nothing", it is no filter at all.
+              Object.fromEntries(
+                Object.entries(checked)
+                  .map(([facet, values]): [string, string[]] => [
+                    facet,
+                    [...values],
+                  ])
+                  .filter(([, values]) => values.length > 0),
+              ),
+            )
+          }
+          className="w-full cursor-pointer rounded-lg bg-mv-green-deep px-3 py-[9px] text-[12.5px] font-bold text-white hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+        >
+          Apply filters
+        </button>
       </div>
     </div>
   );

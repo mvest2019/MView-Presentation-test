@@ -69,6 +69,8 @@ type MapChromeProps = {
   compact?: boolean;
   /** Fired when an API number is chosen from the search box. */
   onSelectApi: (api: string) => void;
+  /** Apply, with what the filters panel has ticked. */
+  onApplyFilters: (filters: Record<string, string[]>) => void;
   /** The tool waiting for a drag on the map, if any. */
   activeTool: string | null;
   onSelectTool: (
@@ -116,6 +118,7 @@ export function MapChrome({
   onViewTabChange,
   compact = false,
   onSelectApi,
+  onApplyFilters,
   activeTool,
   onSelectTool,
   onZoomIn,
@@ -386,6 +389,7 @@ export function MapChrome({
           `z-10` lifts it over the scale card, which shares this corner. */}
       {filtersOpen ? (
         <FiltersPanel
+          onApply={onApplyFilters}
           onCollapse={() => setFiltersOpen(false)}
           className="pointer-events-auto absolute bottom-6 left-3 top-3 z-10"
         />
