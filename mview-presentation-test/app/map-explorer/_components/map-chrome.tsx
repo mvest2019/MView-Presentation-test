@@ -394,6 +394,8 @@ export function MapChrome({
         <FiltersPanel
           onApply={onApplyFilters}
           onCollapse={() => setFiltersOpen(false)}
+          // Stretched top to bottom, so the rail lines up with the map's own
+          // edges rather than stopping short of them.
           className="pointer-events-auto absolute bottom-6 left-3 top-3 z-10"
         />
       ) : (

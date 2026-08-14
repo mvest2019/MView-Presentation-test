@@ -118,6 +118,24 @@ const SEARCH_SECTIONS: Record<string, string | undefined> = {
   county: "county",
 };
 
+/*
+ * The matched-wells parameter each section filters on.
+ *
+ * Two of the section ids are not the API's names for them — `well-type` is
+ * `wtype` and `play-type` is `play` — so Apply sent keys the endpoint does not
+ * accept and those two filters did nothing. The mapping lives here rather than
+ * renaming the sections, because the ids are also the keys of the checkbox
+ * state and the notices.
+ */
+const SECTION_FACETS: Record<string, string> = {
+  county: "county",
+  operator: "operator",
+  "well-type": "wtype",
+  status: "status",
+  "play-type": "play",
+  field: "field",
+};
+
 /** The matched-wells parameter each search type filters on. */
 const SEARCH_FACETS: Record<string, string | undefined> = {
   county: "county",
@@ -561,6 +579,27 @@ export function FiltersPanel({
    * the result of the search is visible rather than just typed. Clearing the
    * box does not put the list back — the filter is applied, not previewed.
    */
+  /*
+   * What Apply would send: the ticked values, keyed by the API's name for each
+   * facet. An untouched section is not a filter of "nothing", it is no filter
+   * at all, so it is left out entirely — which also makes this empty exactly
+   * when there is nothing to apply.
+   */
+  const selectedFilters = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(checked)
+          .map(([section, values]): [string, string[]] => [
+            SECTION_FACETS[section] ?? section,
+            [...values],
+          ])
+          .filter(([, values]) => values.length > 0),
+      ),
+    [checked],
+  );
+
+  const hasSelection = Object.keys(selectedFilters).length > 0;
+
   function applySuggestion(suggestion: Suggestion) {
     // A search hit is a filter in its own right: picking one asks the map for
     // those wells, rather than only ticking a box to be applied afterwards.
@@ -626,7 +665,14 @@ export function FiltersPanel({
 
   return (
     <div
-      className={`flex max-h-full w-[196px] flex-col md:w-[224px] lg:w-[252px] overflow-hidden rounded-xl border border-mv-line bg-white shadow-mv-lg ${className}`}
+      /*
+        No height class here. The caller pins the card between a top and a
+        bottom edge, which already gives it a definite height — adding
+        `h-full` on top made it 100% of the map *starting* at the top inset,
+        so the card hung past the bottom edge by the two insets combined.
+        The footer's `mt-auto` is what keeps Apply at the bottom.
+      */
+      className={`flex w-[196px] flex-col md:w-[224px] lg:w-[252px] overflow-hidden rounded-xl border border-mv-line bg-white shadow-mv-lg ${className}`}
     >
       <div className="mv-thin-scroll min-h-0 flex-1 overflow-y-auto px-[14px]">
         {/* ---------------- header ---------------- */}
@@ -814,24 +860,16 @@ export function FiltersPanel({
           Outside the scroll container, so the sections scroll under it and
           this stays put — the button has to be reachable without scrolling to
           the end of two hundred and seventy counties. */}
-      <div className="shrink-0 border-t border-mv-line bg-white px-[14px] pb-[12px] pt-[12px]">
+      {/* `mt-auto` as well as the body's `flex-1`: when the sections are short
+          — collapsed, or their lists still loading — the body does not always
+          claim the free space, and the footer floated up the card leaving
+          white below it. Pushing from below pins it either way. */}
+      <div className="mt-auto shrink-0 border-t border-mv-line bg-white px-[14px] pb-[12px] pt-[12px]">
         <button
           type="button"
-          onClick={() =>
-            onApply?.(
-              // Only the facets with something ticked — an untouched section
-              // is not a filter of "nothing", it is no filter at all.
-              Object.fromEntries(
-                Object.entries(checked)
-                  .map(([facet, values]): [string, string[]] => [
-                    facet,
-                    [...values],
-                  ])
-                  .filter(([, values]) => values.length > 0),
-              ),
-            )
-          }
-          className="w-full cursor-pointer rounded-lg bg-mv-green-deep px-3 py-[9px] text-[12.5px] font-bold text-white hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+          disabled={!hasSelection}
+          onClick={() => onApply?.(selectedFilters)}
+          className="w-full rounded-lg px-3 py-[9px] text-[12.5px] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep enabled:cursor-pointer enabled:bg-mv-green-deep enabled:text-white enabled:hover:brightness-105 disabled:cursor-not-allowed disabled:bg-[#eef1ee] disabled:text-mv-muted"
         >
           Apply filters
         </button>
