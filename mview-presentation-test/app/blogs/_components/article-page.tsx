@@ -14,6 +14,7 @@ import { ArticleShare } from "./article-share";
 import { BlogCard, formatBlogDate } from "./blog-card";
 import { BlogChip } from "./blog-chip";
 import { ContentsCard } from "./contents-card";
+import { ShareDialog } from "./share-dialog";
 import { TableOfContents } from "./table-of-contents";
 
 /**
@@ -110,15 +111,20 @@ export async function ArticlePage({
           {section.backLabel}
         </Link>
 
-        {/* TWO rows rather than one tall column beside the rail (QA #14a). The
-            rail used to start level with the chip and the headline; it should
-            start where the reading does. Row one is the article header with an
-            empty cell beside it, row two is the body with the rail.
+        {/* THREE rows, so the rail begins level with the PROSE (QA #14a, refined
+            2026-08-13). Each row pairs a left cell with an empty right cell,
+            except the last, whose right cell is the rail:
+              1. headline, byline, hero
+              2. the in-body Table of Contents card
+              3. the article body, the notice and the share row — plus the rail
+            The rail first started at row one, level with the headline; then at
+            row two, level with the contents card, which showed two copies of the
+            same list side by side. Row three is where the reading starts.
 
             The second track EXISTS ONLY WHEN THE RAIL DOES. Declaring it
             unconditionally broke every page without a rail — news stories, and
-            any blog article whose body has no `<h2>`: with the spacer and the
-            aside both skipped, the body was the grid's second child and so
+            any blog article whose body has no `<h2>`: with the spacers and the
+            aside all skipped, the body was the grid's second child and so
             landed in row one's second cell, squeezed into the 300px track with
             the whole left column left empty beside it. */}
         <div
@@ -129,18 +135,31 @@ export async function ArticlePage({
           }`}
         >
           <div className="min-w-0">
-            <div className="mt-[14px] flex flex-wrap items-center gap-2">
+            {/* HEADLINE FIRST, byline under it (Ryan, 2026-08-13) — the live
+                site's order. The category chip travels with the byline rather
+                than staying above the title, so the whole meta line is one row
+                the eye reads after the headline instead of two fragments split
+                either side of it. */}
+            <h1
+              className={`${headingBase} mb-[10px] mt-[14px] text-[34px] leading-[1.18] max-[767px]:text-[26px]`}
+            >
+              {details.blog_title}
+            </h1>
+
+            {/* The share trigger sits at the END of the byline — the live site's
+                placement. The dialog is the primary share surface; the icon row
+                further down stays for anyone who reaches the end of the article
+                and wants to share without scrolling back up. */}
+            <div className="flex flex-wrap items-center gap-2">
               <BlogChip category={details.Category} size="md" />
               <span className="self-center text-xs text-mv-muted">
                 {formatBlogDate(details.Created_date)} · {author}
               </span>
+              <span aria-hidden="true" className="text-xs text-mv-line">
+                |
+              </span>
+              <ShareDialog title={details.blog_title} section={section.tab} />
             </div>
-
-            <h1
-              className={`${headingBase} mb-[10px] mt-3 text-[34px] leading-[1.18] max-[767px]:text-[26px]`}
-            >
-              {details.blog_title}
-            </h1>
 
             <ArticleHero
               src={details.blog_header_img}
@@ -148,14 +167,26 @@ export async function ArticlePage({
             />
           </div>
 
-          {/* Spacer holding row one's second cell so the rail lands in row two. */}
+          {/* Spacer holding row one's second cell. */}
           {showContents && (
             <div aria-hidden="true" className="max-[1023px]:hidden" />
           )}
 
-          <div className="min-w-0">
-            {showContents && <ContentsCard items={toc} />}
+          {/* Row two: the contents card, and a spacer beside it. Both cells are
+              needed — without the spacer the card would sit in row one's empty
+              right-hand cell instead of starting a row of its own, which is what
+              puts the rail level with the PROSE rather than level with this card
+              (two copies of the same list side by side). */}
+          {showContents && (
+            <>
+              <div className="min-w-0">
+                <ContentsCard items={toc} />
+              </div>
+              <div aria-hidden="true" className="max-[1023px]:hidden" />
+            </>
+          )}
 
+          <div className="min-w-0">
             <ArticleBody preparedHtml={html} />
 
             <div className="mt-[18px] flex items-start gap-[10px] rounded-[10px] bg-mv-mint px-4 py-[13px] text-[13.5px] text-mv-green-ink">
