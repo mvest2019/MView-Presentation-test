@@ -42,7 +42,10 @@ export async function ArticleListing({
   const requestedCategory = first(searchParams.category);
   const show = toPositiveInt(first(searchParams.show), PAGE_SIZE);
 
-  const { facets, total } = await getCategoryFacets(mode);
+  // The search is passed so the chips count only what the search matched — see
+  // `getCategoryFacets`. Without it the row described the whole section while
+  // the grid below showed a handful of results.
+  const { facets, total } = await getCategoryFacets(mode, search);
 
   // Ignore a category that is not in this section — an old `category` carried
   // over from the other tab would otherwise render an empty grid.

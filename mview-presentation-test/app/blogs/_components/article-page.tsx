@@ -11,7 +11,6 @@ import { Breadcrumb } from "../../_components/breadcrumb";
 import { h3Class, headingBase, inlineLink } from "../../_components/typography";
 import { ArticleBody } from "./article-body";
 import { ArticleHero } from "./article-hero";
-import { ArticleShare } from "./article-share";
 import { BlogCard, formatBlogDate } from "./blog-card";
 import { BlogChip } from "./blog-chip";
 import { ContentsCard } from "./contents-card";
@@ -126,7 +125,7 @@ export async function ArticlePage({
             except the last, whose right cell is the rail:
               1. headline, byline, hero
               2. the in-body Table of Contents card
-              3. the article body, the notice and the share row — plus the rail
+              3. the article body and the notice — plus the rail
             The rail first started at row one, level with the headline; then at
             row two, level with the contents card, which showed two copies of the
             same list side by side. Row three is where the reading starts.
@@ -157,9 +156,9 @@ export async function ArticlePage({
             </h1>
 
             {/* The share trigger sits at the END of the byline — the live site's
-                placement. The dialog is the primary share surface; the icon row
-                further down stays for anyone who reaches the end of the article
-                and wants to share without scrolling back up. */}
+                placement, and now the ONLY share surface: the icon row that used
+                to repeat at the foot of the article was removed (Ryan,
+                2026-08-13), so the page offers one way to share, not two. */}
             <div className="flex flex-wrap items-center gap-2">
               <BlogChip category={details.Category} size="md" />
               <span className="self-center text-xs text-mv-muted">
@@ -212,9 +211,6 @@ export async function ArticlePage({
               </div>
             </div>
 
-            {/* Share sits with the article, not after the related grid (QA #6).
-                Below six cards nobody found it. */}
-            <ArticleShare title={details.blog_title} />
           </div>
 
           {/* Desktop only (QA #9): hidden on phones AND iPad, where it used to be

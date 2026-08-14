@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { searchFieldClass } from "@/app/_components/field";
 import { ALPHABET, type GlossaryTermSummary } from "@/lib/glossary-types";
@@ -57,6 +57,52 @@ export function GlossaryIndex({ terms }: { terms: GlossaryTermSummary[] }) {
     [groups],
   );
 
+  /*
+   * Which letter the reader is in, so the A–Z rail can show it.
+   *
+   * A SCROLL POSITION, not the URL hash. Reading the hash would light the letter
+   * up on click and then leave it stuck there while the reader scrolled on into
+   * H, M, N — and it would show nothing at all for someone who scrolled without
+   * clicking. This is the same "last heading I have passed" check the article
+   * contents rail uses.
+   *
+   * The offset clears both sticky layers — the 64px header and the rail-and-
+   * search block beneath it — which is the same reason the headings carry
+   * `scroll-mt-[176px]`.
+   */
+  const [activeLetter, setActiveLetter] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Nothing to track while searching — the rail is not rendered at all then,
+    // so any stale value is invisible and `sync()` below corrects it the moment
+    // the search is cleared. (Clearing it here instead would be a `setState`
+    // straight in an effect body, which `react-hooks/set-state-in-effect`
+    // rejects and which would render twice for no visible gain.)
+    if (searching) return;
+
+    function sync() {
+      const headings = groups
+        .map((group) => document.getElementById(`gl-${group.letter}`))
+        .filter((el): el is HTMLElement => Boolean(el));
+      if (!headings.length) return;
+
+      let current = headings[0].id;
+      for (const heading of headings) {
+        if (heading.getBoundingClientRect().top - 180 <= 0) current = heading.id;
+        else break;
+      }
+      setActiveLetter(current.replace(/^gl-/, ""));
+    }
+
+    sync();
+    window.addEventListener("scroll", sync, { passive: true });
+    window.addEventListener("resize", sync);
+    return () => {
+      window.removeEventListener("scroll", sync);
+      window.removeEventListener("resize", sync);
+    };
+  }, [groups, searching]);
+
   return (
     <>
       {/* Sticky below the 64px header, as the design's `.azbar` is. Hidden while
@@ -77,7 +123,12 @@ export function GlossaryIndex({ terms }: { terms: GlossaryTermSummary[] }) {
               <a
                 key={letter}
                 href={`#gl-${letter}`}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-[7px] border border-mv-line bg-white text-[12.5px] font-bold text-mv-green-deep no-underline hover:bg-mv-mint hover:no-underline"
+                aria-current={activeLetter === letter ? "location" : undefined}
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-[7px] border text-[12.5px] font-bold no-underline hover:no-underline ${
+                  activeLetter === letter
+                    ? "border-mv-green-deep bg-mv-green-deep text-white"
+                    : "border-mv-line bg-white text-mv-green-deep hover:bg-mv-mint"
+                }`}
               >
                 {letter}
               </a>
