@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Send } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
@@ -9,24 +9,22 @@ import { contactConfig as cfg } from "./contact-config";
 import { contactSchema, type ContactValues } from "./contact-schema";
 
 /**
- * Left card — the message form, following `contact_page_proposed.html`.
+ * Left card — the message form.
  *
- * Two things about the proposed layout are deliberate and worth not "fixing":
- * the intro, the reply promise and the required-field note are one line rather
- * than three, because the three-line version cost ~60px the right-hand card had
- * no content to match; and errors sit in `empty:hidden` slots rather than the
- * reserved fixed-height ones this form used to have, so the card is shorter at
- * rest and grows when a message appears.
+ * No required-field asterisks and no key explaining them: the only optional
+ * field says so on its own label, which is the whole convention. Errors sit in
+ * `empty:hidden` slots, so the card is short at rest and grows when a message
+ * appears; the submit row carries its own top padding so a message can never
+ * crowd the button.
  */
 
 const inputBase =
-  "w-full rounded-[9px] border bg-white px-3 py-[10px] text-sm text-mv-ink outline-none placeholder:text-[#9aa3ae] focus:ring-2";
+  "w-full rounded-[9px] border bg-white px-[13px] py-[11px] text-[15px] text-mv-ink outline-none placeholder:text-[#9aa3ae] focus:ring-2";
 const okBorder = "border-[#cbd5e1] focus:border-mv-green-deep focus:ring-mv-green/25";
 const errBorder = "border-mv-red ring-2 ring-mv-red/10 focus:ring-mv-red/20";
-const labelClass = "mb-[5px] block text-[12.5px] font-bold text-mv-slate";
+const labelClass = "mb-[6px] block text-[13.5px] font-semibold text-mv-slate";
 const errClass =
-  "block text-[12.5px] font-semibold leading-[16px] text-mv-red empty:hidden";
-const req = <span className="font-extrabold text-mv-red">*</span>;
+  "mt-[5px] block text-[13px] font-semibold leading-[17px] text-mv-red empty:hidden";
 
 export function ContactForm() {
   const {
@@ -77,26 +75,15 @@ export function ContactForm() {
 
   return (
     <div className="flex h-full flex-col rounded-mv border border-mv-line bg-mv-card p-[22px] shadow-mv">
-      <div className="mb-1.5 text-[11.5px] font-bold uppercase tracking-[.12em] text-mv-green-deep">
+      <div className="mb-2 text-[12px] font-bold uppercase tracking-[.12em] text-mv-green-deep">
         Send a message
       </div>
-      <h2 className="mb-1.5 font-serif text-[19px] font-semibold leading-[1.25] tracking-[-.01em] text-mv-ink">
-        Have a question or comment?
+      <h2 className="font-serif text-[20px] font-semibold leading-[1.25] tracking-[-.01em] text-mv-ink">
+        How can we help?
       </h2>
-
-      <p className="m-0 mb-[14px] text-xs text-mv-muted">
-        A person, not a bot — we reply within{" "}
-        <strong className="font-semibold text-mv-slate">one business day</strong>.
-        Prefer email?{" "}
-        <a
-          className="text-mv-green-deep no-underline hover:underline"
-          href={cfg.email.href}
-        >
-          {cfg.supportEmail}
-        </a>
-        .{/* Own line with a little air above it, rather than wrapping tight
-             against the sentence it follows. */}
-        <span className="mt-[6px] block whitespace-nowrap">{req} Required.</span>
+      <p className="m-0 mb-5 mt-1.5 text-[13.5px] leading-[1.5] text-mv-muted">
+        Tell us a little about what you need, and we&rsquo;ll get back to you
+        shortly.
       </p>
 
       {/* Typing after a send clears the confirmation and re-enables the button,
@@ -113,16 +100,16 @@ export function ContactForm() {
         }}
         className="flex flex-1 flex-col"
       >
-        <div className="mb-[14px] grid grid-cols-1 gap-[14px] min-[521px]:grid-cols-2">
+        <div className="mb-[16px] grid grid-cols-1 gap-[16px] min-[521px]:grid-cols-2">
           <div>
             <label htmlFor="ctFirst" className={labelClass}>
-              First Name {req}
+              First name
             </label>
             <input
               id="ctFirst"
               type="text"
               autoComplete="given-name"
-              placeholder="Enter First Name"
+              placeholder="Enter your first name"
               aria-invalid={!!errors.firstName}
               aria-describedby="ctFirstErr"
               className={`${inputBase} ${errors.firstName ? errBorder : okBorder}`}
@@ -135,13 +122,13 @@ export function ContactForm() {
 
           <div>
             <label htmlFor="ctLast" className={labelClass}>
-              Last Name {req}
+              Last name
             </label>
             <input
               id="ctLast"
               type="text"
               autoComplete="family-name"
-              placeholder="Enter Last Name"
+              placeholder="Enter your last name"
               aria-invalid={!!errors.lastName}
               aria-describedby="ctLastErr"
               className={`${inputBase} ${errors.lastName ? errBorder : okBorder}`}
@@ -153,16 +140,16 @@ export function ContactForm() {
           </div>
         </div>
 
-        <div className="mb-[14px] grid grid-cols-1 gap-[14px] min-[521px]:grid-cols-2">
+        <div className="mb-[16px] grid grid-cols-1 gap-[16px] min-[521px]:grid-cols-2">
           <div>
             <label htmlFor="ctEmail" className={labelClass}>
-              Email {req}
+              Email address
             </label>
             <input
               id="ctEmail"
               type="email"
               autoComplete="email"
-              placeholder="Enter Email Address"
+              placeholder="you@example.com"
               aria-invalid={!!errors.email}
               aria-describedby="ctEmailErr"
               className={`${inputBase} ${errors.email ? errBorder : okBorder}`}
@@ -176,13 +163,15 @@ export function ContactForm() {
           <div>
             <label htmlFor="ctPhone" className={labelClass}>
               Phone{" "}
-              <span className="text-xs font-normal text-mv-muted">(optional)</span>
+              <span className="text-[13px] font-normal text-mv-muted">
+                (optional)
+              </span>
             </label>
             <input
               id="ctPhone"
               type="tel"
               autoComplete="tel"
-              placeholder="Enter Phone Number"
+              placeholder="Enter your phone number"
               aria-invalid={!!errors.phone}
               aria-describedby="ctPhoneErr"
               className={`${inputBase} ${errors.phone ? errBorder : okBorder}`}
@@ -196,15 +185,15 @@ export function ContactForm() {
 
         <div>
           <label htmlFor="ctMsg" className={labelClass}>
-            What&rsquo;s your question or comment about? {req}
+            What can we help you with?
           </label>
           <textarea
             id="ctMsg"
             rows={3}
-            placeholder="Enter Comments"
+            placeholder="Tell us a little about your question…"
             aria-invalid={!!errors.comment}
             aria-describedby="ctMsgErr"
-            className={`${inputBase} min-h-[76px] resize-y leading-[20px] ${
+            className={`${inputBase} min-h-[92px] resize-y leading-[22px] ${
               errors.comment ? errBorder : okBorder
             }`}
             {...register("comment")}
@@ -214,32 +203,35 @@ export function ContactForm() {
           </span>
         </div>
 
-        {/* `mt-auto` pins this to the card's bottom, which is what keeps the two
-            cards reading as one row; auto-width from 521px up, per the proposal. */}
-        <button
-          type="submit"
-          disabled={isSubmitting || sent}
-          /* `cursor-pointer` is explicit because Tailwind v4's preflight sets
-             buttons to `cursor: default`, which read as not-clickable. */
-          className="mt-auto inline-flex min-h-[42px] w-full cursor-pointer items-center justify-center gap-2 self-start rounded-[10px] border border-mv-green bg-mv-green px-[22px] py-2.5 text-sm font-semibold text-mv-green-ink transition hover:brightness-95 disabled:cursor-default disabled:opacity-80 min-[521px]:w-auto"
-        >
-          {isSubmitting ? (
-            "Sending…"
-          ) : sent ? (
-            "Message sent ✓"
-          ) : (
-            <>
-              Send Message
-              <Send className="h-4 w-4" />
-            </>
-          )}
-        </button>
+        {/* `mt-auto` pins the row to the card's bottom, which keeps the two cards
+            reading as one row; `pt-4` is the floor between it and whatever sits
+            above, so a validation message never crowds the button. */}
+        <div className="mt-auto flex justify-end pt-4">
+          <button
+            type="submit"
+            disabled={isSubmitting || sent}
+            /* `cursor-pointer` is explicit because Tailwind v4's preflight sets
+               buttons to `cursor: default`, which read as not-clickable. */
+            className="inline-flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-2 rounded-[10px] border border-mv-green bg-mv-green px-[22px] py-2.5 text-[14.5px] font-semibold text-mv-green-ink transition hover:brightness-95 disabled:cursor-default disabled:opacity-80 min-[521px]:w-auto"
+          >
+            {isSubmitting ? (
+              "Sending…"
+            ) : sent ? (
+              "Message sent ✓"
+            ) : (
+              <>
+                Send message
+                <ArrowUpRight className="h-[18px] w-[18px]" />
+              </>
+            )}
+          </button>
+        </div>
       </form>
 
       {done && (
         <p
           role="status"
-          className={`mt-2.5 text-xs ${status === "error" ? "text-mv-red" : "text-mv-muted"}`}
+          className={`mt-3 text-[13px] ${status === "error" ? "text-mv-red" : "text-mv-muted"}`}
         >
           {done}
         </p>
