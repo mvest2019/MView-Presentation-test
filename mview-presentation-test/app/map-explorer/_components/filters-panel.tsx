@@ -69,7 +69,7 @@ const MY_LEASES: Lease[] = [
  * The count is optional: a facet that returns no tally should show none, and a
  * "0" would read as data rather than as the absence of it.
  */
-type FilterItem = { name: string; count?: number };
+type FilterItem = { name: string; count?: number; id?: string };
 
 type FilterSection = {
   id: string;
@@ -127,6 +127,13 @@ const SEARCH_SECTIONS: Record<string, string | undefined> = {
  * renaming the sections, because the ids are also the keys of the checkbox
  * state and the notices.
  */
+/*
+ * The two facets the endpoint matches by id rather than by name. The rows
+ * still show the name — nobody searches for operator 665748 — so the id is
+ * looked up from the loaded list when Apply builds the request.
+ */
+const ID_FACETS = new Set(["operator", "field"]);
+
 const SECTION_FACETS: Record<string, string> = {
   county: "county",
   operator: "operator",
@@ -236,48 +243,60 @@ export function FiltersPanel({
         if (section.id === "county") {
           return {
             ...section,
-            items: counties.map(({ value, count }) => ({ name: value, count })),
+            items: counties.map(({ value, count, id }) => ({
+              name: value,
+              count,
+              id,
+            })),
           };
         }
         if (section.id === "operator") {
           return {
             ...section,
-            items: operators.map(({ value, count }) => ({
+            items: operators.map(({ value, count, id }) => ({
               name: value,
               count,
+              id,
             })),
           };
         }
         if (section.id === "well-type") {
           return {
             ...section,
-            items: wellTypes.map(({ value, count }) => ({
+            items: wellTypes.map(({ value, count, id }) => ({
               name: value,
               count,
+              id,
             })),
           };
         }
         if (section.id === "field") {
           return {
             ...section,
-            items: fields.map(({ value, count }) => ({ name: value, count })),
+            items: fields.map(({ value, count, id }) => ({
+              name: value,
+              count,
+              id,
+            })),
           };
         }
         if (section.id === "play-type") {
           return {
             ...section,
-            items: playTypes.map(({ value, count }) => ({
+            items: playTypes.map(({ value, count, id }) => ({
               name: value,
               count,
+              id,
             })),
           };
         }
         if (section.id === "status") {
           return {
             ...section,
-            items: wellStatuses.map(({ value, count }) => ({
+            items: wellStatuses.map(({ value, count, id }) => ({
               name: value,
               count,
+              id,
             })),
           };
         }
@@ -471,6 +490,8 @@ export function FiltersPanel({
    */
   const [searchHits, setSearchHits] = useState<Suggestion[]>([]);
   const [searchError, setSearchError] = useState<string | null>(null);
+  /** Ticked or unticked since the last Apply. */
+  const [dirty, setDirty] = useState(false);
   /*
    * The query the box was filled with by picking a result.
    *
@@ -585,20 +606,70 @@ export function FiltersPanel({
    * at all, so it is left out entirely — which also makes this empty exactly
    * when there is nothing to apply.
    */
-  const selectedFilters = useMemo(
-    () =>
-      Object.fromEntries(
-        Object.entries(checked)
-          .map(([section, values]): [string, string[]] => [
+  const selectedFilters = useMemo(() => {
+    const idOf = new Map<string, Map<string, string>>();
+    for (const section of sections) {
+      idOf.set(
+        section.id,
+        new Map(
+          section.items
+            .filter((item) => item.id)
+            // First wins: a name can appear twice with different ids — two
+            // Spraberry fields, for instance — and the list is ordered by
+            // well count, so the first is the larger of them.
+            .reverse()
+            .map((item) => [item.name, item.id as string]),
+        ),
+      );
+    }
+
+    return Object.fromEntries(
+      Object.entries(checked)
+        .map(([section, values]): [string, string[]] => {
+          const ids = idOf.get(section);
+          const useIds = ID_FACETS.has(section) && ids;
+
+          return [
             SECTION_FACETS[section] ?? section,
-            [...values],
-          ])
-          .filter(([, values]) => values.length > 0),
-      ),
-    [checked],
-  );
+            [...values].map((name) =>
+              useIds ? (ids.get(name) ?? name) : name,
+            ),
+          ];
+        })
+        .filter(([, values]) => values.length > 0),
+    );
+  }, [checked, sections]);
 
   const hasSelection = Object.keys(selectedFilters).length > 0;
+
+  /*
+   * Apply is live while the boxes differ from what was last applied — not
+   * only while something is ticked. Unticking the last box has to be
+   * appliable too, or there is no way to take the wells back off the map.
+   */
+  const canApply = hasSelection || dirty;
+
+  /*
+   * Clearing the last box clears the map, without waiting for Apply.
+   *
+   * Apply exists to say "run this filter", and an empty filter is not one —
+   * unticking everything is a request to stop filtering, and leaving the wells
+   * up until a button is pressed makes the panel disagree with the map.
+   */
+  const wasFiltering = useRef(false);
+
+  useEffect(() => {
+    if (hasSelection) {
+      wasFiltering.current = true;
+      return;
+    }
+
+    if (!wasFiltering.current) return;
+
+    wasFiltering.current = false;
+    setDirty(false);
+    onApply?.({});
+  }, [hasSelection, onApply]);
 
   function applySuggestion(suggestion: Suggestion) {
     // A search hit is a filter in its own right: picking one asks the map for
@@ -655,6 +726,7 @@ export function FiltersPanel({
   }
 
   function toggleItem(sectionId: string, name: string) {
+    setDirty(true);
     setChecked((previous) => {
       const next = new Set(previous[sectionId]);
       if (next.has(name)) next.delete(name);
@@ -867,8 +939,11 @@ export function FiltersPanel({
       <div className="mt-auto shrink-0 border-t border-mv-line bg-white px-[14px] pb-[12px] pt-[12px]">
         <button
           type="button"
-          disabled={!hasSelection}
-          onClick={() => onApply?.(selectedFilters)}
+          disabled={!canApply}
+          onClick={() => {
+            setDirty(false);
+            onApply?.(selectedFilters);
+          }}
           className="w-full rounded-lg px-3 py-[9px] text-[12.5px] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep enabled:cursor-pointer enabled:bg-mv-green-deep enabled:text-white enabled:hover:brightness-105 disabled:cursor-not-allowed disabled:bg-[#eef1ee] disabled:text-mv-muted"
         >
           Apply filters

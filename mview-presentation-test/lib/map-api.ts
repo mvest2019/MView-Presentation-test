@@ -6,8 +6,11 @@
  * dev, staging and production differ only in that value.
  */
 
-/** One row of a filter facet — the value and how many wells carry it. */
-export type MapFilterItem = { value: string; count: number };
+/**
+ * One row of a filter facet: the name to show, how many wells carry it, and
+ * the id to filter by. Operator and field are filtered by id, not by name.
+ */
+export type MapFilterItem = { value: string; count: number; id?: string };
 
 /** GET /api/v1/map/filters/county -> { facet, items: [{ value, count }] } */
 export const getCountyListMap = async (): Promise<MapFilterItem[]> => {
