@@ -27,7 +27,7 @@ const nextConfig: NextConfig = {
     // Never put a key or token here.
     CONTACT_API_URL:
       process.env.CONTACT_API_URL ||
-      "https://mview-dev-api.mineralview.com/api/v1/contact",
+      "https://mview-dev-api.mineralview.com/api/v1/contact-us",
   },
   images: {
     // Cloudinary serves both the Mineral View logo and every article/news
@@ -38,6 +38,17 @@ const nextConfig: NextConfig = {
     // `next/image` throw. `lib/image-host.ts` mirrors this list and must be
     // updated alongside it.
     remotePatterns: [new URL("https://res.cloudinary.com/**")],
+  },
+  /**
+   * The contact page moved from `/contact` to `/contact-us`, matching the live
+   * site. Anything already pointing at the old path — the Vercel preview links
+   * shared for review, a bookmark, a search result — would 404 without this.
+   *
+   * `permanent: true` is a 308, which also tells search engines the page moved
+   * rather than that it is temporarily elsewhere.
+   */
+  redirects() {
+    return [{ source: "/contact", destination: "/contact-us", permanent: true }];
   },
 };
 
