@@ -5,7 +5,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronUp,
-  Lock,
   Search,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -577,15 +576,6 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
     });
   }
 
-  function setAll(section: FilterSection, on: boolean) {
-    setChecked((previous) => ({
-      ...previous,
-      [section.id]: on
-        ? new Set(section.items.map((item) => item.name))
-        : new Set(),
-    }));
-  }
-
   return (
     <div
       className={`flex max-h-full w-[196px] flex-col md:w-[224px] lg:w-[252px] overflow-hidden rounded-xl border border-mv-line bg-white shadow-mv-lg ${className}`}
@@ -596,7 +586,6 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
           <h2 className="text-[14px] lg:text-[15px] font-bold leading-none text-mv-ink">
             Search &amp; filters
           </h2>
-          <ProBadge />
           <button
             type="button"
             onClick={onCollapse}
@@ -767,7 +756,6 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
             onToggle={() => toggleSection(section.id)}
             checked={checked[section.id]}
             onToggleItem={(name) => toggleItem(section.id, name)}
-            onSetAll={(on) => setAll(section, on)}
           />
         ))}
 
@@ -791,7 +779,6 @@ function CheckboxSection({
   onToggle,
   checked,
   onToggleItem,
-  onSetAll,
   notice,
 }: {
   section: FilterSection;
@@ -799,7 +786,6 @@ function CheckboxSection({
   onToggle: () => void;
   checked: Set<string>;
   onToggleItem: (name: string) => void;
-  onSetAll: (on: boolean) => void;
   /** Shown in place of the list — "loading", or why there is nothing. */
   notice?: string | null;
 }) {
@@ -820,14 +806,6 @@ function CheckboxSection({
       open={open}
       onToggle={onToggle}
     >
-      <div className="flex items-center justify-end gap-[6px] pb-[10px]">
-        <BulkAction onClick={() => onSetAll(true)}>All</BulkAction>
-        <span aria-hidden="true" className="text-[10px] lg:text-[11px] text-mv-muted">
-          ·
-        </span>
-        <BulkAction onClick={() => onSetAll(false)}>None</BulkAction>
-      </div>
-
       {section.searchable && (
         <div className="mb-2 flex items-center gap-2 rounded-lg border border-mv-line px-[10px] py-[6px]">
           <Search size={13} className="text-mv-muted" aria-hidden="true" />
@@ -974,23 +952,6 @@ function Highlighted({ text, query }: { text: string; query: string }) {
 }
 
 /** The green All / None sweeps above a list. */
-function BulkAction({
-  children,
-  onClick,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="cursor-pointer text-[10.5px] lg:text-[11.5px] font-bold text-mv-green-deep hover:underline"
-    >
-      {children}
-    </button>
-  );
-}
 
 /*
  * The radio and checkbox are drawn rather than styled natively: `accent-color`
@@ -1026,15 +987,6 @@ function Checkbox({ checked }: { checked: boolean }) {
       }`}
     >
       {checked && <Check size={11} strokeWidth={3.5} />}
-    </span>
-  );
-}
-
-function ProBadge() {
-  return (
-    <span className="inline-flex shrink-0 items-center gap-[3px] rounded bg-mv-amber-bg px-[5px] py-[2px] text-[8px] lg:text-[9px] font-extrabold uppercase leading-none tracking-[.06em] text-mv-amber">
-      <Lock size={8} strokeWidth={3} aria-hidden="true" />
-      Pro
     </span>
   );
 }
