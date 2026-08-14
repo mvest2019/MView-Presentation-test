@@ -10,7 +10,7 @@ import { BlogToolbar } from "./blog-toolbar";
 import { ResourceTabs } from "./resource-tabs";
 
 /**
- * The listing body shared by `/blogs` and `/news`.
+ * The listing body shared by `/blogs` and `/oil-and-gas-news`.
  *
  * Both sections are the same page against a different API `type`, so the layout
  * lives here once and each route supplies its mode. Everything on screen — the
@@ -64,7 +64,7 @@ export async function ArticleListing({
   });
 
   return (
-    <div className="py-16 pt-[26px] max-[767px]:py-11">
+    <div className="py-16 pt-[26px] max-[767px]:pb-11">
       <div className="mx-auto max-w-[1200px] px-7 max-[767px]:px-4">
         <Breadcrumb trail={[{ label: section.tab }]} />
         {/* No `min-height` here. The design gives `.res-head` a 150px floor so

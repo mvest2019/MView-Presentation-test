@@ -121,7 +121,10 @@ export function GlossaryIndex({ terms }: { terms: GlossaryTermSummary[] }) {
       </div>
 
       {matches.length === 0 ? (
-        <p className="mt-8 text-mv-muted">
+        // Centred, like the listing pages' empty state: with the term columns
+        // gone there is nothing left-aligned for this to line up with, so hugging
+        // the left edge of an otherwise empty page read as a stray fragment.
+        <p className="mt-8 text-center text-mv-muted">
           No terms match “{query.trim()}”.{" "}
           <button
             type="button"

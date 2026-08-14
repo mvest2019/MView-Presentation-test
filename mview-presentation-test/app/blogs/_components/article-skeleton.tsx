@@ -27,7 +27,7 @@ export function ArticleSkeleton({
 }) {
   return (
     <SkeletonScreen label="Loading article">
-      <div className="py-16 pt-[26px] max-[767px]:py-11">
+      <div className="py-16 pt-[26px] max-[767px]:pb-11">
         <div className="mx-auto max-w-[1200px] px-7 max-[767px]:px-4">
           {/* Back link */}
           <Skeleton className="h-[17px] w-[96px]" />

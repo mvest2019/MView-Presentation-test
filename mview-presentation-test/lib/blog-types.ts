@@ -111,7 +111,7 @@ export const SECTIONS = {
     backLabel: "← Blogs",
   },
   news: {
-    path: "/news",
+    path: "/oil-and-gas-news",
     tab: "News",
     heading: "Oil & Gas Industry News",
     lede: "Get real-time updates and insights on the oil and gas sector & mineral rights.",

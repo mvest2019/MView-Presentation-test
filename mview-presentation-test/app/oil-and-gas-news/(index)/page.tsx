@@ -17,6 +17,6 @@ export const metadata: Metadata = {
   description: SECTIONS.news.lede,
 };
 
-export default async function NewsPage({ searchParams }: PageProps<"/news">) {
+export default async function NewsPage({ searchParams }: PageProps<"/oil-and-gas-news">) {
   return <ArticleListing mode="news" searchParams={await searchParams} />;
 }

@@ -179,7 +179,7 @@ export const exploreNav: MegaColumn[] = [
  */
 export const learnNav: (NavLink & { sub: string })[] = [
   { label: "Blog", href: "/blogs", sub: "Updates, tips and insights" },
-  { label: "News", href: "/news", sub: "Oil and gas sector activity" },
+  { label: "News", href: "/oil-and-gas-news", sub: "Oil and gas sector activity" },
   { label: "Glossary", href: "/glossary", sub: "Key industry terms defined" },
   { label: "FAQ", href: "/faq", sub: "What we are, and how data is handled" },
 ];

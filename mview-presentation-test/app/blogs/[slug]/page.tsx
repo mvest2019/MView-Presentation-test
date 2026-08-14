@@ -5,7 +5,7 @@ import {
   buildArticleMetadata,
 } from "../_components/article-page";
 
-/** A Blog article. News articles live at `/news/[slug]`. */
+/** A Blog article. News articles live at `/oil-and-gas-news/[slug]`. */
 
 export async function generateMetadata({
   params,

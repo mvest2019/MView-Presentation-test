@@ -8,6 +8,7 @@ import {
   resolveRelatedTerms,
 } from "@/lib/glossary-api";
 
+import { Breadcrumb } from "../../_components/breadcrumb";
 import { h3Class, headingBase, inlineLink } from "../../_components/typography";
 import { ShareDialog } from "../../blogs/_components/share-dialog";
 import { TableOfContents } from "../../blogs/_components/table-of-contents";
@@ -72,20 +73,26 @@ export default async function GlossaryTermPage({
   const { html, toc } = prepareArticle(term.content);
 
   return (
-    <div className="py-16 pt-[26px] max-[767px]:py-11">
+    <div className="py-16 pt-[26px] max-[767px]:pb-11">
       {/* Two columns with the contents rail, matching the article pages — see
           the note in `article-page.tsx` for why this is 1200 and not 1300. */}
       <div className="mx-auto max-w-[1200px] px-7 max-[767px]:px-4">
-        <Link href="/glossary" className={`${inlineLink} text-[13px]`}>
-          ← Glossary
-        </Link>
+        {/* Breadcrumb rather than a "← Glossary" back link, matching the blog
+            and news detail pages and the glossary index. The section crumb links
+            back, so nothing is lost. */}
+        <Breadcrumb
+          trail={[
+            { label: "Glossary", href: "/glossary" },
+            { label: term.term_name },
+          ]}
+        />
 
-        <div className="mt-3 grid grid-cols-[minmax(0,1fr)_300px] items-start gap-10 max-[1023px]:grid-cols-[minmax(0,1fr)]">
+        <div className="grid grid-cols-[minmax(0,1fr)_300px] items-start gap-10 max-[1023px]:grid-cols-[minmax(0,1fr)]">
           <div className="min-w-0">
             {/* Headline first, then the meta row — the same order as the blog
                 and news pages, so the three detail templates read alike. */}
             <h1
-              className={`${headingBase} mb-[10px] mt-[14px] text-[34px] leading-[1.18] max-[767px]:text-[26px]`}
+              className={`${headingBase} mb-[10px] text-[34px] leading-[1.18] max-[767px]:text-[26px]`}
             >
               {term.term_name}
             </h1>
