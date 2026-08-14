@@ -2,9 +2,11 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useTransition } from "react";
 
+import { AccountMenu } from "./account-menu";
+import { signOutAction } from "./auth-actions";
 import { buttonClass, primaryFillOverrideClass } from "./button";
 import {
   barNav,
@@ -13,6 +15,7 @@ import {
   logo,
   type MegaColumn,
 } from "./site-nav";
+import type { SessionUser } from "@/lib/session";
 
 /*
  * Marketing header — follows `header-mockup.html` (Ryan, 2026-08-11), which
@@ -25,8 +28,12 @@ import {
  * SVG mark for its own convenience; that must not be copied — every hand-drawn
  * reproduction of this logo has been wrong.
  *
- * The prototype swaps the right-hand actions on auth state (`data-auth`). There
- * is no auth in this build, so only the signed-out cluster is rendered.
+ * The prototype swaps the right-hand actions on auth state (`data-auth`), and so
+ * does this: signed out shows "Sign in" and "Free account", signed in shows the
+ * portal link and the account menu. The state comes from the session cookie,
+ * read on the server in `layout.tsx` and passed down — not from a class toggled
+ * on `<body>` as the prototype does, so the right cluster is in the first HTML
+ * and never flashes the wrong one.
  */
 
 type OpenMenu = "explore" | "learn" | null;
@@ -87,7 +94,7 @@ const panelItem =
 const ctaMint = buttonClass({ variant: "mint", size: "lg" });
 const ctaPrimary = buttonClass({ variant: "primary", size: "lg" });
 
-export function SiteHeader() {
+export function SiteHeader({ user }: { user: SessionUser | null }) {
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const navRef = useRef<HTMLElement>(null);
@@ -303,21 +310,40 @@ export function SiteHeader() {
               and the burger would bunch up against the logo instead of sitting
               at the right edge. */}
           <div className="flex items-center gap-[14px] max-[1139px]:ml-auto max-[767px]:gap-2">
-            <Link
-              href="/login"
-              className="whitespace-nowrap text-sm font-semibold text-[#cbd5e1] no-underline hover:text-white hover:no-underline max-[767px]:hidden"
-            >
-              Sign in
-            </Link>
+            {/* The design's `data-auth` swap: signed out shows the two CTAs,
+                signed in replaces them with the portal link and the account
+                menu. Rendered from a server-read cookie rather than toggled by a
+                class on `<body>` as the prototype does, so the correct state is
+                in the first HTML and never flashes the wrong one. */}
+            {user ? (
+              <>
+                <Link
+                  href="/portal"
+                  className={`${ctaPrimary} whitespace-nowrap max-[767px]:hidden`}
+                >
+                  Go to your portal →
+                </Link>
+                <AccountMenu user={user} />
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="whitespace-nowrap text-sm font-semibold text-[#cbd5e1] no-underline hover:text-white hover:no-underline max-[767px]:hidden"
+                >
+                  Sign in
+                </Link>
 
-            {/* `.mk-actions a` is nowrap in the prototype — without it "Free
-                account" breaks onto two lines and pushes the bar off 64px. */}
-            <Link
-              href="/signup"
-              className={`${ctaMint} whitespace-nowrap max-[767px]:px-[10px] max-[767px]:py-2 max-[767px]:text-xs`}
-            >
-              Free account
-            </Link>
+                {/* `.mk-actions a` is nowrap in the prototype — without it "Free
+                    account" breaks onto two lines and pushes the bar off 64px. */}
+                <Link
+                  href="/register"
+                  className={`${ctaMint} whitespace-nowrap max-[767px]:px-[10px] max-[767px]:py-2 max-[767px]:text-xs`}
+                >
+                  Free account
+                </Link>
+              </>
+            )}
 
             {/* Collapses at 1140px — see the note on the bar above for how that
                 figure is derived. The mockup sets no breakpoint and the design's
@@ -399,12 +425,51 @@ export function SiteHeader() {
             ),
           )}
 
-          <SheetLink href="/login" onNavigate={closeDrawer}>
-            Sign in
-          </SheetLink>
+          {user ? (
+            <>
+              <SheetLink href="/portal" onNavigate={closeDrawer}>
+                Go to your portal →
+              </SheetLink>
+              {/* The account menu in the bar is hidden below 767px, so without
+                  this there would be no way to sign out on a phone. */}
+              <DrawerSignOut onDone={closeDrawer} />
+            </>
+          ) : (
+            <SheetLink href="/login" onNavigate={closeDrawer}>
+              Sign in
+            </SheetLink>
+          )}
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * Sign out, for the mobile drawer.
+ *
+ * Its own component so the drawer does not need the menu's popup machinery — it
+ * is already a full-screen sheet, so there is nothing to open.
+ */
+function DrawerSignOut({ onDone }: { onDone: () => void }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={() =>
+        startTransition(async () => {
+          await signOutAction();
+          onDone();
+          router.refresh();
+        })
+      }
+      className="block w-full cursor-pointer border-0 border-b border-mv-line bg-transparent px-1 py-3 text-left font-sans text-[15px] font-semibold text-mv-slate hover:text-mv-green-deep disabled:opacity-60"
+    >
+      {pending ? "Signing out…" : "Sign out"}
+    </button>
   );
 }
 

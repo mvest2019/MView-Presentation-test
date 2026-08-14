@@ -25,6 +25,40 @@ const nextConfig: NextConfig = {
     // Note: `env` values are inlined into the client bundle, so this URL is
     // public — which is fine, the form POSTs to it straight from the browser.
     // Never put a key or token here.
+    // Auth API — registration and sign-in, per the backend team's contract
+    // (2026-08-13). A DIFFERENT HOST AND PATH to BASE_URL, which still serves
+    // blog, news and glossary: the `/api/v1` prefix belongs to this value, so
+    // pointing at another environment is a host swap and nothing more.
+    //
+    // Same host as MAP_BASE_URL today but kept separate and carrying its full
+    // path — the two are owned by different services and free to diverge.
+    AUTH_API_URL:
+      process.env.AUTH_API_URL ||
+      "https://mview-dev-api.mineralview.com/api/v1",
+
+    // Google sign-in client id. PUBLIC by design — it identifies the app to
+    // Google and travels in every OAuth request, which is why the live repo also
+    // ships it in plain config as NEXT_PUBLIC_GOOGLE_CLIENT_ID.
+    //
+    // THIS VALUE IS PAIRED WITH `BASE_URL` ABOVE AND MUST MOVE WITH IT. The
+    // backend validates the ID token's `aud` claim against its OWN client id, so
+    // a token minted for the wrong one is rejected with
+    //   "google token is not valid Error: Wrong recipient, payload audience !=
+    //    requiredAudience"
+    // which is exactly what shipping the production client against the testing
+    // host produced. The live repo's two env blocks pair them:
+    //   testing-paymentapi.mineralview.com → 838706864455-… (this one)
+    //   mview-info.mineralview.com         → 911653129924-…
+    // Change BASE_URL to production and this has to change with it.
+    //
+    // There is NO client secret here, and there must never be: sign-in uses
+    // Google Identity Services in the browser, which returns a signed ID token
+    // from the public id alone. A secret would be inlined into the client bundle
+    // by this `env` block and published to every visitor.
+    NEXT_PUBLIC_GOOGLE_CLIENT_ID:
+      process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
+      "838706864455-kgp7idu8786fv765u4gsbaepcg9kus9n.apps.googleusercontent.com",
+
     CONTACT_API_URL:
       process.env.CONTACT_API_URL ||
       "https://mview-dev-api.mineralview.com/api/v1/contact-us",
