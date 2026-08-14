@@ -28,6 +28,17 @@ const nextConfig: NextConfig = {
     // updated alongside it.
     remotePatterns: [new URL("https://res.cloudinary.com/**")],
   },
+  /**
+   * The contact page moved from `/contact` to `/contact-us`, matching the live
+   * site. Anything already pointing at the old path — the Vercel preview links
+   * shared for review, a bookmark, a search result — would 404 without this.
+   *
+   * `permanent: true` is a 308, which also tells search engines the page moved
+   * rather than that it is temporarily elsewhere.
+   */
+  redirects() {
+    return [{ source: "/contact", destination: "/contact-us", permanent: true }];
+  },
 };
 
 export default nextConfig;

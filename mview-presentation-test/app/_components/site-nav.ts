@@ -39,7 +39,7 @@ export const learnNav: NavLink[] = [
   { label: "Watch & Listen", href: "/media" },
   { label: "Community Q&A", href: "/qa" },
   { label: "FAQ", href: "/faq" },
-  { label: "Contact", href: "/contact" },
+  { label: "Contact", href: "/contact-us" },
 ];
 
 /** Sits below a divider in the Learn dropdown. */
@@ -111,7 +111,7 @@ export const footerColumns: FooterColumn[] = [
 export const footerCompanyLinksTop: NavLink[] = [
   { label: "Our Story", href: "/story" },
   { label: "Reviews", href: "/reviews" },
-  { label: "Contact", href: "/contact" },
+  { label: "Contact", href: "/contact-us" },
 ];
 
 export const footerCompanyLinksBottom: NavLink[] = [

@@ -13,7 +13,7 @@ const TABS = [
   { label: "Watch & Listen", href: "/media" },
   { label: "Community Q&A", href: "/qa" },
   { label: "FAQ", href: "/faq" },
-  { label: "Contact", href: "/contact" },
+  { label: "Contact", href: "/contact-us" },
 ];
 
 export function ResourceTabs({ active }: { active: string }) {
