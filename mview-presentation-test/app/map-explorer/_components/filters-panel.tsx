@@ -118,6 +118,13 @@ const SEARCH_SECTIONS: Record<string, string | undefined> = {
   county: "county",
 };
 
+/** The matched-wells parameter each search type filters on. */
+const SEARCH_FACETS: Record<string, string | undefined> = {
+  county: "county",
+  operator: "operator",
+  lease: "lease",
+};
+
 type Suggestion = {
   key: string;
   label: string;
@@ -125,6 +132,14 @@ type Suggestion = {
   kind: string;
   sectionId?: string;
   leaseId?: string;
+  /*
+   * How to ask the map for this hit: the matched-wells parameter, and the
+   * value it takes. They differ by type — a lease is found by its key, a
+   * county and an operator by name — so the pairing is decided where the
+   * results arrive rather than where they are used.
+   */
+  facet?: string;
+  param?: string;
 };
 
 type FiltersPanelProps = {
@@ -439,6 +454,15 @@ export function FiltersPanel({
   const [searchHits, setSearchHits] = useState<Suggestion[]>([]);
   const [searchError, setSearchError] = useState<string | null>(null);
   /*
+   * The query the box was filled with by picking a result.
+   *
+   * Picking writes the label into the input, which looks to the effect below
+   * exactly like typing it — so choosing "KARNES" fired a second search for
+   * "KARNES" whose answer was the thing just chosen. This is how the effect
+   * tells the two apart.
+   */
+  const pickedQueryRef = useRef<string | null>(null);
+  /*
    * The query these results answer. Anything else in the box means an answer
    * is still coming — which covers the debounce window as well as the request
    * itself. A plain `loading` flag cannot: it only goes up when the timer
@@ -460,6 +484,10 @@ export function FiltersPanel({
 
   useEffect(() => {
     const needle = query.trim();
+
+    // Filled in by a pick, not typed: the answer is already on screen.
+    if (pickedQueryRef.current === needle) return;
+
     let cancelled = false;
 
     /*
@@ -486,6 +514,12 @@ export function FiltersPanel({
               label: result.label ?? result.value,
               kind: SEARCH_KINDS[result.type] ?? result.type,
               sectionId: SEARCH_SECTIONS[result.type],
+              facet: SEARCH_FACETS[result.type],
+              // A lease is found by its key; a county and an operator by name.
+              param:
+                result.type === "lease"
+                  ? result.value
+                  : (result.label ?? result.value),
             })),
           );
           setSearchError(null);
@@ -528,6 +562,12 @@ export function FiltersPanel({
    * box does not put the list back — the filter is applied, not previewed.
    */
   function applySuggestion(suggestion: Suggestion) {
+    // A search hit is a filter in its own right: picking one asks the map for
+    // those wells, rather than only ticking a box to be applied afterwards.
+    if (suggestion.facet && suggestion.param) {
+      onApply?.({ [suggestion.facet]: [suggestion.param] });
+    }
+
     if (suggestion.leaseId) {
       setSelectedLease(suggestion.leaseId);
       setLeasesOpen(true);
@@ -540,6 +580,7 @@ export function FiltersPanel({
       }));
     }
 
+    pickedQueryRef.current = suggestion.label.trim();
     setQuery(suggestion.label);
     setSuggestionsOpen(false);
   }
