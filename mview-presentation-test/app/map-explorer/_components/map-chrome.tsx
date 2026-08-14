@@ -69,6 +69,8 @@ type MapChromeProps = {
   compact?: boolean;
   /** Fired when an API number is chosen from the search box. */
   onSelectApi: (api: string) => void;
+  /** Fired when the box is emptied — the picked well comes off the map. */
+  onClearApi: () => void;
   /** Apply, with what the filters panel has ticked. */
   onApplyFilters: (filters: Record<string, string[]>) => void;
   /** The tool waiting for a drag on the map, if any. */
@@ -118,6 +120,7 @@ export function MapChrome({
   onViewTabChange,
   compact = false,
   onSelectApi,
+  onClearApi,
   onApplyFilters,
   activeTool,
   onSelectTool,
@@ -536,6 +539,8 @@ export function MapChrome({
                 value={placeQuery}
                 onChange={(event) => {
                   setPlaceQuery(event.target.value);
+                  // Emptying the box undoes what picking a number did.
+                  if (event.target.value.trim() === "") onClearApi();
                   setPlaceIndex(0);
                   setPlaceOpen(true);
                   anchorPlaceResults();

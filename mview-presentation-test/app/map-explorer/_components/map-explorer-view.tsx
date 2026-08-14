@@ -307,12 +307,12 @@ const DEGREE_METRES = 111_320;
 const FILTER_FIT_MAX_SCALE = 1_100_000;
 
 /*
- * The highlight pulse. The ring sits just outside a 10px well icon; the wave
- * runs out to a little over twice that, which reads at a glance without
- * covering the wells around it.
+ * The highlight ring. It sits just outside a 10px well icon and breathes out
+ * to a little over half again, which catches the eye without covering the
+ * wells around it.
  */
 const PULSE_MIN_SIZE = 16;
-const PULSE_MAX_SIZE = 38;
+const PULSE_MAX_SIZE = 26;
 const PULSE_FRAMES = 26;
 const PULSE_INTERVAL_MS = 45;
 
@@ -1075,60 +1075,37 @@ export function MapExplorerView() {
     let frame = 0;
 
     const draw = () => {
-      // 0 to 1 over PULSE_FRAMES, then round again.
+      /*
+       * One ring that breathes, rather than a steady ring with a wave running
+       * out of it — two circles around one well read as two things.
+       *
+       * The size follows a cosine, so it eases at both ends instead of
+       * snapping back at the top of each cycle, and the opacity is constant:
+       * a ring that fades out leaves the well unmarked for part of every
+       * cycle, which is the one thing a highlight must not do.
+       */
       const phase = (frame % PULSE_FRAMES) / PULSE_FRAMES;
       frame += 1;
 
+      const swell = 0.5 - 0.5 * Math.cos(2 * Math.PI * phase);
+
       layer.removeAll();
-      layer.addMany([
-        // The wave: out from the well and fading as it goes.
+      layer.add(
         new ctors.Graphic({
           geometry,
           symbol: {
             type: "simple-marker",
-            size: PULSE_MIN_SIZE + phase * (PULSE_MAX_SIZE - PULSE_MIN_SIZE),
-            color: [0, 0, 0, 0],
-            outline: { color: [46, 143, 109, 1 - phase], width: 2 },
-          },
-        }),
-        // The ring itself, steady, so the well stays marked between waves.
-        new ctors.Graphic({
-          geometry,
-          symbol: {
-            type: "simple-marker",
-            size: PULSE_MIN_SIZE,
+            size: PULSE_MIN_SIZE + swell * (PULSE_MAX_SIZE - PULSE_MIN_SIZE),
             color: [0, 0, 0, 0],
             outline: { color: [46, 143, 109, 1], width: 2.5 },
           },
         }),
-      ]);
+      );
     };
 
     draw();
     pulseTimerRef.current = setInterval(draw, PULSE_INTERVAL_MS);
   }, []);
-
-  /**
-   * A picked API number.
-   *
-   * The lookup returns identity only — no coordinates, and there is no
-   * endpoint that turns an API number into a position. So this can place the
-   * well only if it is among those already loaded, which means the map is at
-   * well zoom over the right patch of Texas. Anything else fills the box and
-   * leaves the map where it is.
-   */
-  const selectApi = useCallback(
-    (api: string) => {
-      const well = wellsRef.current.find((candidate) => candidate.api === api);
-      if (!well) return;
-
-      highlightWell(well.lon, well.lat);
-      viewRef.current
-        ?.goTo({ center: [well.lon, well.lat], scale: 12_000 })
-        .catch(ignoreInterrupted);
-    },
-    [highlightWell],
-  );
 
   /** Drops the bubbles — the view is too wide for them to mean anything. */
   const clearClusters = useCallback(() => {
@@ -1150,11 +1127,8 @@ export function MapExplorerView() {
    *
    * The result is wells wherever they are, not wells in the current extent, so
    * it takes over the well layer outright: bubbles off, matches on, and the
-   * map moves to fit them. Clearing every filter hands the map back to the
-   * zoom-driven loading it does otherwise.
-   *
-   * The server caps the list at 5,000 while reporting the true total, so a
-   * broad filter draws a sample and says so rather than pretending.
+   * map moves to fit them when it can. Clearing every filter hands the map
+   * back to the zoom-driven loading it does otherwise.
    */
   const applyFilters = useCallback(
     (filters: Record<string, string[]>) => {
@@ -1166,9 +1140,25 @@ export function MapExplorerView() {
       if (Object.keys(filters).length === 0) {
         filteredRef.current = false;
         setFilterSummary(null);
+        // The ring belongs to the picked well; it goes with it.
+        clearInterval(pulseTimerRef.current);
+        highlightLayerRef.current?.removeAll();
         clearWells();
         clusterTierRef.current = -1;
-        loadClusters();
+
+        /*
+         * Back to the opening view, not to wherever the filter left the map.
+         * A cleared filter should leave no trace, and being parked over one
+         * county at zoom 14 with the bubbles reloading around it is a trace.
+         *
+         * The clusters load once the move settles: they are requested for the
+         * extent, and asking before the map has finished moving asks about the
+         * wrong one.
+         */
+        viewRef.current
+          ?.goTo({ center: HOME_CENTER, scale: homeScale() })
+          .then(loadClusters)
+          .catch(ignoreInterrupted);
         return;
       }
 
@@ -1194,28 +1184,22 @@ export function MapExplorerView() {
             buildWellGraphics(ctors.Graphic, wells, wellIconsRef.current),
           );
 
+          // One match is a well someone asked for by name; ring it so it is
+          // not a single 10px icon on an empty map.
+          if (wells.length === 1) {
+            highlightWell(wells[0].lon, wells[0].lat);
+          }
+
           /*
            * Zoom only when the matches describe one place.
            *
-           * A county, or one operator working a single field, comes back
-           * inside a degree or two and the map can frame it. Two operators on
-           * opposite sides of Texas come back spanning the state, and fitting
-           * that is the statewide view with extra steps — worse, it throws
-           * away wherever the map was. Beyond the threshold the wells are
-           * drawn and the view is left alone.
+           * A county, or one operator working a single field, fits inside a
+           * degree or two. Operators on opposite sides of Texas span the
+           * state, and fitting that is the statewide view with extra steps —
+           * worse, it throws away wherever the map was.
            *
-           * `bounds` is the server's, covering every match; the returned wells
-           * are only the first five thousand of them.
-           */
-          /*
-           * The box to frame, from the returned wells rather than the server's
-           * `bounds`, and trimmed.
-           *
-           * `bounds` is the outright min and max over every match, so one well
-           * with a bad coordinate drags it across the state — which is what
-           * happened: a county half a degree wide asked for a seven-degree
-           * frame. Cutting the outermost few per cent on each axis describes
-           * where the wells actually are.
+           * The box is trimmed rather than the outright min and max: a handful
+           * of bad coordinates would otherwise define the frame.
            */
           const box = trimmedBox(wells);
 
@@ -1223,11 +1207,8 @@ export function MapExplorerView() {
             const spread = Math.max(box.east - box.west, box.north - box.south);
 
             if (spread <= FILTER_FIT_MAX_DEGREES) {
-              /*
-               * Centre and scale, not an extent: a plain object is not a
-               * Geometry and `goTo` will not autocast one, so the extent form
-               * rejected and the map stayed put.
-               */
+              // Centre and scale, not an extent: a plain object is not a
+              // Geometry and `goTo` will not autocast one.
               const degrees = Math.max(spread, FILTER_FIT_MIN_DEGREES);
               const span = Math.max(
                 Math.min(view.width, view.height) * 0.8,
@@ -1256,12 +1237,12 @@ export function MapExplorerView() {
           if (request !== wellRequestRef.current) return;
           setWellError(
             /*
-             * The endpoint runs for a minute or more on a broad filter and
-             * the gateway gives up before it does, so the failure people
-             * actually hit is a 502. Say what to do about it rather than
-             * repeating the status line.
+             * The endpoint runs for a minute or more on a broad filter and the
+             * gateway gives up before it does, so the failure people actually
+             * hit is a 502. Say what to do about it.
              */
-            error instanceof Error && /502|timeout|Failed to fetch/i.test(error.message)
+            error instanceof Error &&
+            /502|timeout|Failed to fetch/i.test(error.message)
               ? "The filter took too long to run. Try again — the result is cached once it completes."
               : error instanceof Error
                 ? error.message
@@ -1272,8 +1253,29 @@ export function MapExplorerView() {
           if (request === wellRequestRef.current) setWellsLoading(false);
         });
     },
-    [clearClusters, clearWells, loadClusters],
+    [clearClusters, clearWells, loadClusters, highlightWell],
   );
+
+  /**
+   * A picked API number, run as a filter of one.
+   *
+   * The lookup returns identity only — no coordinates — so the position has to
+   * come from somewhere, and `matched-wells?api=…` already answers exactly
+   * that. It draws the well, frames it and rings it by the same path every
+   * other filter takes.
+   */
+  const selectApi = useCallback(
+    (api: string) => {
+      applyFilters({ api: [api] });
+    },
+    [applyFilters],
+  );
+
+  /** The box was emptied. Only undo something if something was done. */
+  const clearApi = useCallback(() => {
+    if (!filteredRef.current) return;
+    applyFilters({});
+  }, [applyFilters]);
 
   /** Export CSV: whatever is inside the extent right now, wells or bubbles. */
   const exportCsv = useCallback(() => {
@@ -2457,6 +2459,7 @@ export function MapExplorerView() {
           wellsVisible={readout.zoom >= WELL_ZOOM}
           onExportCsv={exportCsv}
           onSelectApi={selectApi}
+          onClearApi={clearApi}
           onApplyFilters={applyFilters}
           timeLapseOpen={timeLapseOpen}
           onToggleTimeLapse={toggleTimeLapse}
