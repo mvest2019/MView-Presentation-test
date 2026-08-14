@@ -54,7 +54,7 @@ export function BlogCard({
 
   return (
     // Each article lives under its own section, so a News item found in a
-    // blog article's related list still links to `/news/…`.
+    // blog article's related list still links to `/oil-and-gas-news/…`.
     <Link
       href={`${sectionPath(article.type)}/${slugFromUrlTitle(article.urlTitle)}`}
       className="flex flex-col overflow-hidden rounded-[12px] border border-mv-line bg-mv-card text-inherit no-underline shadow-mv transition-shadow hover:shadow-[0_6px_18px_rgba(13,14,23,.10)] hover:no-underline"

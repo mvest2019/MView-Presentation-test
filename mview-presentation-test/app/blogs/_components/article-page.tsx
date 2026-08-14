@@ -7,6 +7,7 @@ import { SECTIONS, modeFromApiType, type BlogMode } from "@/lib/blog-types";
 import { prepareArticle } from "@/lib/toc";
 import { getVisitorId } from "@/lib/visitor-id";
 
+import { Breadcrumb } from "../../_components/breadcrumb";
 import { h3Class, headingBase, inlineLink } from "../../_components/typography";
 import { ArticleBody } from "./article-body";
 import { ArticleHero } from "./article-hero";
@@ -18,7 +19,7 @@ import { ShareDialog } from "./share-dialog";
 import { TableOfContents } from "./table-of-contents";
 
 /**
- * Article detail, shared by `/blogs/[slug]` and `/news/[slug]`.
+ * Article detail, shared by `/blogs/[slug]` and `/oil-and-gas-news/[slug]`.
  *
  * Body, header image, category, author, date and related articles all come from
  * `/NewsFramework/Blog_datadetails`. The body is CMS HTML and goes through
@@ -96,7 +97,7 @@ export async function ArticlePage({
   const showContents = toc.length > 0;
 
   return (
-    <div className="py-16 pt-[26px] max-[767px]:py-11">
+    <div className="py-16 pt-[26px] max-[767px]:pb-11">
       {/* 1200px — the same container as the header, the footer and the listings.
           This briefly ran at 1300 to make room for the contents rail, which left
           the article sticking 50px past the header and footer on either side and
@@ -104,12 +105,21 @@ export async function ArticlePage({
           rail is paid for out of the content column instead: prose lands near
           800px, about 95 characters, which reads better than the 112 it was.
 
-          The back link sits outside the grid so it stays the first thing on the
+          The breadcrumb sits outside the grid so it stays the first thing on the
           page at every width, including where the rail moves above the article. */}
       <div className="mx-auto max-w-[1200px] px-7 max-[767px]:px-4">
-        <Link href={section.path} className={`${inlineLink} text-[13px]`}>
-          {section.backLabel}
-        </Link>
+        {/* A BREADCRUMB, replacing the "← Blogs" back link (Ryan, 2026-08-13).
+            It does the same job — the section crumb links back — while also
+            saying where the page sits, and matches the listing pages, which have
+            carried one all along. Keeping both would have meant two controls a
+            line apart pointing at the same place, and the second of the two gaps
+            flagged in review was exactly the space between them. */}
+        <Breadcrumb
+          trail={[
+            { label: section.tab, href: section.path },
+            { label: details.blog_title },
+          ]}
+        />
 
         {/* THREE rows, so the rail begins level with the PROSE (QA #14a, refined
             2026-08-13). Each row pairs a left cell with an empty right cell,
@@ -128,7 +138,7 @@ export async function ArticlePage({
             landed in row one's second cell, squeezed into the 300px track with
             the whole left column left empty beside it. */}
         <div
-          className={`mt-3 grid items-start gap-x-10 ${
+          className={`grid items-start gap-x-10 ${
             showContents
               ? "grid-cols-[minmax(0,1fr)_300px] max-[1023px]:grid-cols-[minmax(0,1fr)]"
               : "grid-cols-[minmax(0,1fr)]"
@@ -141,7 +151,7 @@ export async function ArticlePage({
                 the eye reads after the headline instead of two fragments split
                 either side of it. */}
             <h1
-              className={`${headingBase} mb-[10px] mt-[14px] text-[34px] leading-[1.18] max-[767px]:text-[26px]`}
+              className={`${headingBase} mb-[10px] text-[34px] leading-[1.18] max-[767px]:text-[26px]`}
             >
               {details.blog_title}
             </h1>
