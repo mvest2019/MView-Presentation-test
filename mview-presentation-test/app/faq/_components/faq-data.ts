@@ -190,7 +190,7 @@ export const FAQ_ENTRIES: readonly FaqEntry[] = [
   {
     category: "Products",
     question: "Can I Get a Demo of Your Products Before Subscribing?",
-    answerHtml: `<p>Absolutely! We offer a free demo of our products to help you understand their features and how they can benefit you. You can connect with us at any time through our <a href="/contact">Contact page</a>.</p>`,
+    answerHtml: `<p>Absolutely! We offer a free demo of our products to help you understand their features and how they can benefit you. You can connect with us at any time through our <a href="/contact-us">Contact page</a>.</p>`,
   },
   {
     category: "Products",
@@ -231,7 +231,7 @@ export const FAQ_ENTRIES: readonly FaqEntry[] = [
   {
     category: "Products",
     question: "How do I Know Which Product is Right for Me?",
-    answerHtml: `<p>Our team can help you determine the best product for your needs based on your goals, level of expertise, and the type of assets you own. Contact us for any help through our <a href="/contact">Contact page</a>.</p>`,
+    answerHtml: `<p>Our team can help you determine the best product for your needs based on your goals, level of expertise, and the type of assets you own. Contact us for any help through our <a href="/contact-us">Contact page</a>.</p>`,
   },
   {
     category: "Products",
