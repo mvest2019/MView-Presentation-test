@@ -5,6 +5,8 @@ import { useState } from "react";
 
 import { Button } from "@/app/_components/button";
 
+import { NETWORKS, openShare } from "./share-networks";
+
 /**
  * Share row: Facebook, X, LinkedIn, Reddit, WhatsApp, plus a copy-link button.
  *
@@ -24,48 +26,8 @@ import { Button } from "@/app/_components/button";
  * render, where the final URL is not known.
  */
 
-/** `label` doubles as the accessible name and the alt text. */
-const NETWORKS = [
-  {
-    label: "Facebook",
-    icon: "/icon-images/facebook-icon.png",
-    href: (url: string) =>
-      `https://www.facebook.com/sharer/sharer.php?u=${url}`,
-  },
-  {
-    label: "X",
-    icon: "/icon-images/twitter-icon.png",
-    href: (url: string, text: string) =>
-      `https://twitter.com/intent/tweet?text=${text}&url=${url}`,
-  },
-  {
-    label: "LinkedIn",
-    icon: "/icon-images/linkedin-icon.png",
-    href: (url: string) =>
-      `https://www.linkedin.com/sharing/share-offsite/?url=${url}`,
-  },
-  {
-    label: "Reddit",
-    icon: "/icon-images/reddit-icon.png",
-    href: (url: string, text: string) =>
-      `https://www.reddit.com/submit?url=${url}&title=${text}`,
-  },
-  {
-    label: "WhatsApp",
-    icon: "/icon-images/whatsapp-icon.png",
-    // WhatsApp takes one text field, so the title and the link go together.
-    href: (url: string, text: string) => `https://wa.me/?text=${text}%20${url}`,
-  },
-] as const;
-
 export function ArticleShare({ title }: { title: string }) {
   const [copied, setCopied] = useState(false);
-
-  function share(build: (url: string, text: string) => string) {
-    const url = encodeURIComponent(window.location.href);
-    const text = encodeURIComponent(title);
-    window.open(build(url, text), "_blank", "noopener,noreferrer");
-  }
 
   async function copyLink() {
     try {
@@ -89,7 +51,7 @@ export function ArticleShare({ title }: { title: string }) {
         <button
           key={network.label}
           type="button"
-          onClick={() => share(network.href)}
+          onClick={() => openShare(network.href, title)}
           aria-label={`Share on ${network.label}`}
           title={`Share on ${network.label}`}
           className="cursor-pointer rounded-lg border-0 bg-transparent p-0 transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"

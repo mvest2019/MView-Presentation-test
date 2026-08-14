@@ -14,6 +14,7 @@ import { ArticleShare } from "./article-share";
 import { BlogCard, formatBlogDate } from "./blog-card";
 import { BlogChip } from "./blog-chip";
 import { ContentsCard } from "./contents-card";
+import { ShareDialog } from "./share-dialog";
 import { TableOfContents } from "./table-of-contents";
 
 /**
@@ -110,15 +111,15 @@ export async function ArticlePage({
           {section.backLabel}
         </Link>
 
-        {/* THREE rows, so the rail begins level with the PROSE (Ryan,
+        {/* THREE rows, so the rail begins level with the PROSE (QA #14a, refined
             2026-08-13). Each row pairs a left cell with an empty right cell,
             except the last, whose right cell is the rail:
-              1. chip, headline, hero
+              1. headline, byline, hero
               2. the in-body Table of Contents card
               3. the article body, the notice and the share row — plus the rail
-            It began at row two, level with the contents card, which put two
-            copies of the same list side by side at the top of the page. Starting
-            at row three means the rail appears exactly where the reading does.
+            The rail first started at row one, level with the headline; then at
+            row two, level with the contents card, which showed two copies of the
+            same list side by side. Row three is where the reading starts.
 
             The second track EXISTS ONLY WHEN THE RAIL DOES. Declaring it
             unconditionally broke every page without a rail — news stories, and
@@ -134,18 +135,31 @@ export async function ArticlePage({
           }`}
         >
           <div className="min-w-0">
-            <div className="mt-[14px] flex flex-wrap items-center gap-2">
+            {/* HEADLINE FIRST, byline under it (Ryan, 2026-08-13) — the live
+                site's order. The category chip travels with the byline rather
+                than staying above the title, so the whole meta line is one row
+                the eye reads after the headline instead of two fragments split
+                either side of it. */}
+            <h1
+              className={`${headingBase} mb-[10px] mt-[14px] text-[34px] leading-[1.18] max-[767px]:text-[26px]`}
+            >
+              {details.blog_title}
+            </h1>
+
+            {/* The share trigger sits at the END of the byline — the live site's
+                placement. The dialog is the primary share surface; the icon row
+                further down stays for anyone who reaches the end of the article
+                and wants to share without scrolling back up. */}
+            <div className="flex flex-wrap items-center gap-2">
               <BlogChip category={details.Category} size="md" />
               <span className="self-center text-xs text-mv-muted">
                 {formatBlogDate(details.Created_date)} · {author}
               </span>
+              <span aria-hidden="true" className="text-xs text-mv-line">
+                |
+              </span>
+              <ShareDialog title={details.blog_title} section={section.tab} />
             </div>
-
-            <h1
-              className={`${headingBase} mb-[10px] mt-3 text-[34px] leading-[1.18] max-[767px]:text-[26px]`}
-            >
-              {details.blog_title}
-            </h1>
 
             <ArticleHero
               src={details.blog_header_img}
@@ -160,7 +174,9 @@ export async function ArticlePage({
 
           {/* Row two: the contents card, and a spacer beside it. Both cells are
               needed — without the spacer the card would sit in row one's empty
-              right-hand cell instead of starting a row of its own. */}
+              right-hand cell instead of starting a row of its own, which is what
+              puts the rail level with the PROSE rather than level with this card
+              (two copies of the same list side by side). */}
           {showContents && (
             <>
               <div className="min-w-0">

@@ -9,6 +9,7 @@ import {
 } from "@/lib/glossary-api";
 
 import { h3Class, headingBase, inlineLink } from "../../_components/typography";
+import { ShareDialog } from "../../blogs/_components/share-dialog";
 import { TableOfContents } from "../../blogs/_components/table-of-contents";
 import { prepareArticle } from "@/lib/toc";
 
@@ -81,19 +82,39 @@ export default async function GlossaryTermPage({
 
         <div className="mt-3 grid grid-cols-[minmax(0,1fr)_300px] items-start gap-10 max-[1023px]:grid-cols-[minmax(0,1fr)]">
           <div className="min-w-0">
-            <div className="mt-[14px] flex flex-wrap items-center gap-2">
-              {term.Category && (
-                <span className="inline-flex items-center rounded-full bg-[#d4dceb] px-[10px] py-[3px] text-[11.5px] font-bold leading-[1.3] text-[#1a2434]">
-                  {term.Category}
-                </span>
-              )}
-            </div>
-
+            {/* Headline first, then the meta row — the same order as the blog
+                and news pages, so the three detail templates read alike. */}
             <h1
-              className={`${headingBase} mb-[10px] mt-3 text-[34px] leading-[1.18] max-[767px]:text-[26px]`}
+              className={`${headingBase} mb-[10px] mt-[14px] text-[34px] leading-[1.18] max-[767px]:text-[26px]`}
             >
               {term.term_name}
             </h1>
+
+            {/* `section="Term"` rather than "Glossary": the control reads
+                "Share Term" and the dialog "Share this Term", which is what a
+                single entry is. "Share Glossary" would name the whole index.
+
+                A term has no byline — the CMS exposes no author or date on the
+                glossary endpoints — so this row is the category chip and the
+                share trigger only, and the divider is dropped when there is no
+                chip to divide it from. */}
+            {/* `mb-[18px]` because nothing else supplies it here. On the blog
+                and news pages the hero image follows this row and carries its
+                own `my-[6px] mb-[14px]`; a term has no hero, so without a margin
+                the content card butted straight up against the chip. */}
+            <div className="mb-[18px] flex flex-wrap items-center gap-2">
+              {term.Category && (
+                <>
+                  <span className="inline-flex items-center rounded-full bg-[#d4dceb] px-[10px] py-[3px] text-[11.5px] font-bold leading-[1.3] text-[#1a2434]">
+                    {term.Category}
+                  </span>
+                  <span aria-hidden="true" className="text-xs text-mv-line">
+                    |
+                  </span>
+                </>
+              )}
+              <ShareDialog title={term.term_name} section="Term" />
+            </div>
 
             {/*
              * NO HERO HERE — deliberately, unlike the blog and news pages.

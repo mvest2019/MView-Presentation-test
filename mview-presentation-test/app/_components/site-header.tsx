@@ -176,7 +176,22 @@ export function SiteHeader() {
             needs 1112px and holds down to ~1127px. Hence 1240 and 1140 with a
             little slack either side. The mockup's single 1180px threshold was
             sized for a lighter six-item bar and overflowed 87px at 1024. */}
-        <div className="relative mx-auto flex h-16 max-w-[1200px] items-center gap-[26px] px-7 max-[1239px]:gap-3 max-[1239px]:px-4">
+        {/* FULL WIDTH, not the 1200px wrap the rest of the site uses (Ryan,
+            2026-08-13): the logo sits against the left edge of the bar and the
+            actions against the right, rather than both being inset by however
+            much empty bar a wide screen leaves either side.
+
+            KNOWN CONSEQUENCE: the header no longer lines up with the footer, the
+            listings or the article column, which all still wrap at 1200px. The
+            logo will sit to the left of the page content below it. That is the
+            trade this change makes; widen the others to match if the misalignment
+            reads as wrong.
+
+            The measured 1240/1140 breakpoints below are unaffected in the safe
+            direction — they were sized for a 1200px wrap, and this only ever
+            gives the bar MORE room, so nothing that fitted before can overflow
+            now. */}
+        <div className="relative flex h-16 items-center gap-[26px] px-7 max-[1239px]:gap-3 max-[1239px]:px-4">
           {/* Two assets, swapped at 768px (Ryan, 2026-08-13): the full wordmark
               on desktop, the square icon mark on phones, where the bar has to
               fit the burger and the CTA as well.
@@ -212,9 +227,15 @@ export function SiteHeader() {
 
           {/* Collapse point is measured, not the design's 919px — see the note
               on the hamburger below. */}
+          {/* `mx-auto` centres the bar items between the logo and the actions
+              (Ryan, 2026-08-13), matching the live site. Flex splits the free
+              space equally between this element's two auto margins, which is what
+              both centres the nav AND pushes the actions to the right edge — so
+              they need no auto margin of their own above 1140px. See the note on
+              the actions block for why they get one back below it. */}
           <nav
             ref={navRef}
-            className="ml-2 flex items-center gap-[6px] max-[1239px]:gap-[2px] max-[1139px]:hidden"
+            className="mx-auto flex items-center gap-[6px] max-[1239px]:gap-[2px] max-[1139px]:hidden"
           >
             {/* The single filled CTA in the bar, on the PROTOTYPE's treatment
                 rather than the mockup's (Ryan, 2026-08-11): `.mk-claim` is 14px
@@ -276,7 +297,13 @@ export function SiteHeader() {
             )}
           </nav>
 
-          <div className="ml-auto flex items-center gap-[14px] max-[767px]:gap-2">
+          {/* `ml-auto` ONLY below 1140px. Above it the nav's `mx-auto` already
+              pushes this block to the right edge, and a third auto margin would
+              join the split and drag the nav left of centre. Below 1140 the nav
+              is `hidden`, so its margins stop existing — without this the actions
+              and the burger would bunch up against the logo instead of sitting
+              at the right edge. */}
+          <div className="flex items-center gap-[14px] max-[1139px]:ml-auto max-[767px]:gap-2">
             <Link
               href="/login"
               className="whitespace-nowrap text-sm font-semibold text-[#cbd5e1] no-underline hover:text-white hover:no-underline max-[767px]:hidden"
