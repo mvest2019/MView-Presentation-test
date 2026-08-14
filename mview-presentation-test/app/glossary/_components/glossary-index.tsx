@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { searchFieldClass } from "@/app/_components/field";
 import { ALPHABET, type GlossaryTermSummary } from "@/lib/glossary-types";
@@ -57,6 +57,52 @@ export function GlossaryIndex({ terms }: { terms: GlossaryTermSummary[] }) {
     [groups],
   );
 
+  /*
+   * Which letter the reader is in, so the A–Z rail can show it.
+   *
+   * A SCROLL POSITION, not the URL hash. Reading the hash would light the letter
+   * up on click and then leave it stuck there while the reader scrolled on into
+   * H, M, N — and it would show nothing at all for someone who scrolled without
+   * clicking. This is the same "last heading I have passed" check the article
+   * contents rail uses.
+   *
+   * The offset clears both sticky layers — the 64px header and the rail-and-
+   * search block beneath it — which is the same reason the headings carry
+   * `scroll-mt-[176px]`.
+   */
+  const [activeLetter, setActiveLetter] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Nothing to track while searching — the rail is not rendered at all then,
+    // so any stale value is invisible and `sync()` below corrects it the moment
+    // the search is cleared. (Clearing it here instead would be a `setState`
+    // straight in an effect body, which `react-hooks/set-state-in-effect`
+    // rejects and which would render twice for no visible gain.)
+    if (searching) return;
+
+    function sync() {
+      const headings = groups
+        .map((group) => document.getElementById(`gl-${group.letter}`))
+        .filter((el): el is HTMLElement => Boolean(el));
+      if (!headings.length) return;
+
+      let current = headings[0].id;
+      for (const heading of headings) {
+        if (heading.getBoundingClientRect().top - 180 <= 0) current = heading.id;
+        else break;
+      }
+      setActiveLetter(current.replace(/^gl-/, ""));
+    }
+
+    sync();
+    window.addEventListener("scroll", sync, { passive: true });
+    window.addEventListener("resize", sync);
+    return () => {
+      window.removeEventListener("scroll", sync);
+      window.removeEventListener("resize", sync);
+    };
+  }, [groups, searching]);
+
   return (
     <>
       {/* Sticky below the 64px header, as the design's `.azbar` is. Hidden while
@@ -77,7 +123,12 @@ export function GlossaryIndex({ terms }: { terms: GlossaryTermSummary[] }) {
               <a
                 key={letter}
                 href={`#gl-${letter}`}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-[7px] border border-mv-line bg-white text-[12.5px] font-bold text-mv-green-deep no-underline hover:bg-mv-mint hover:no-underline"
+                aria-current={activeLetter === letter ? "location" : undefined}
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-[7px] border text-[12.5px] font-bold no-underline hover:no-underline ${
+                  activeLetter === letter
+                    ? "border-mv-green-deep bg-mv-green-deep text-white"
+                    : "border-mv-line bg-white text-mv-green-deep hover:bg-mv-mint"
+                }`}
               >
                 {letter}
               </a>
@@ -239,7 +290,7 @@ function TermCard({ term }: { term: GlossaryTermSummary }) {
         )}
       </dt>
       <dd className="mt-1 max-w-[700px] text-[14.5px] text-mv-slate">
-        {stripHtml(term.short_definition)}
+        {withEllipsis(stripHtml(term.short_definition))}
         {/* Not a link: the card already is one, and a second anchor to the same
             place would be a duplicate for anyone tabbing or using a screen
             reader. Kept as text so the affordance still reads.
@@ -255,6 +306,32 @@ function TermCard({ term }: { term: GlossaryTermSummary }) {
       </dd>
     </div>
   );
+}
+
+/**
+ * Marks a definition that the API cut off.
+ *
+ * `short_definition` is truncated upstream at a fixed length, mid-word and with
+ * no ellipsis — 16 of the 47 terms end like "…crude-quality measure that can
+ * affect t". On the page that reads as a rendering fault rather than as "there
+ * is more inside".
+ *
+ * A COMPLETE definition always ends in terminal punctuation, so the absence of
+ * it is the signal. Checked against the live corpus: every one of the 31 whole
+ * definitions ends with `.`, and all 16 cut ones end mid-word.
+ *
+ * A trailing ONE-character token is dropped before the ellipsis, because that is
+ * always a fragment ("affect t" → "affect…"). Longer tails are kept: "wel",
+ * "prod" and "tied" are equally likely to be a real word as a fragment, and
+ * cutting a real word to look tidier loses meaning the reader could have used.
+ *
+ * This is applied where the text is RENDERED, not inside `stripHtml`, so the
+ * ellipsis never leaks into the search index and make a term match on "…".
+ */
+function withEllipsis(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed || /[.!?"”)]$/.test(trimmed)) return trimmed;
+  return `${trimmed.replace(/\s+\S$/, "")}…`;
 }
 
 /**
