@@ -241,7 +241,7 @@ export const footerColumns: FooterColumn[] = [
 export const footerCompanyLinksTop: NavLink[] = [
   { label: "Our Story", href: "/story" },
   { label: "Reviews", href: "/reviews" },
-  { label: "Contact", href: "/contact" },
+  { label: "Contact", href: "/contact-us" },
 ];
 
 /*

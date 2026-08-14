@@ -10,8 +10,8 @@ import { inlineLink } from "./typography";
  * the one change: `support@mineralview.com` replaces `help@mineralview.com`
  * (Ryan, 2026-08-13), the same address the footer now carries.
  *
- * The live site's version links to `/contact-us`; this build's contact route is
- * `/contact`.
+ * Links to `/contact-us`, the same path the live site uses — this build's route
+ * was renamed from `/contact` to match it.
  */
 export function LegalContact({
   heading,
@@ -55,7 +55,7 @@ export function LegalContact({
       </div>
 
       <Link
-        href="/contact"
+        href="/contact-us"
         className="mt-4 inline-flex items-center justify-center rounded-[10px] bg-mv-green px-[18px] py-[10px] text-sm font-bold text-mv-green-ink !no-underline hover:brightness-[1.05]"
       >
         Send us a message
