@@ -12,6 +12,10 @@ import { AreaSelectionBar } from "./area-selection";
 import { loadArcgisModules } from "./arcgis-loader";
 import { ClusterTooltip } from "./cluster-tooltip";
 import { InsightsPanel } from "./insights-panel";
+import {
+  WellInsightsPanel,
+  type SelectedWell,
+} from "./well-insights-panel";
 import { MapChrome, type ViewTab } from "./map-chrome";
 import { type Place } from "./map-search";
 import {
@@ -497,6 +501,8 @@ export function MapExplorerView() {
    * renders it — the highlight is a graphic on the map, drawn by the same
    * handler that picks it.
    */
+  /** The well picked on the map. Swaps the statewide summary for its own. */
+  const [selectedWell, setSelectedWell] = useState<SelectedWell | null>(null);
   const highlightLayerRef = useRef<EsriGraphicsLayer | null>(null);
   const pulseTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(
     undefined,
@@ -1540,6 +1546,15 @@ export function MapExplorerView() {
               // The well's own position, not the cursor's — a click a few
               // pixels off centre should still ring the well.
               highlightWell(hovered.lon, hovered.lat);
+              setSelectedWell({
+                api: hovered.api,
+                lease: hovered.lease,
+                well: hovered.well,
+                operator: hovered.operator,
+                status: hovered.status,
+                wtype: hovered.wtype,
+                county: hovered.county,
+              });
               setViewTab("insights");
               return;
             }
@@ -1553,6 +1568,15 @@ export function MapExplorerView() {
                 if (!attributes) return;
 
                 highlightWell(Number(attributes.lon), Number(attributes.lat));
+                setSelectedWell({
+                  api: String(attributes.api ?? ""),
+                  lease: String(attributes.lease ?? ""),
+                  well: String(attributes.well ?? ""),
+                  operator: String(attributes.operator ?? ""),
+                  status: String(attributes.status ?? ""),
+                  wtype: String(attributes.wtype ?? ""),
+                  county: String(attributes.county ?? ""),
+                });
                 setViewTab("insights");
               })
               .catch((error: unknown) => {
@@ -2258,7 +2282,13 @@ export function MapExplorerView() {
                 : { width: `${(1 - split) * 100}%` }
             }
           >
-            <InsightsPanel />
+            {/* One well's summary in place of the statewide one — the
+                statewide panel itself is untouched. */}
+            {selectedWell ? (
+              <WellInsightsPanel well={selectedWell} />
+            ) : (
+              <InsightsPanel />
+            )}
           </div>
 
           {/* The 7px hit area is wider than the 1px seam it sits on, so the
