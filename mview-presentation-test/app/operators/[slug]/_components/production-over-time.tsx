@@ -1,229 +1,647 @@
 "use client";
 
-import { CalendarDays } from "lucide-react";
-import { useId, useMemo, useState } from "react";
+import { AreaChart, Droplet, Info, LineChart } from "lucide-react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 
 import { cardTitleClass } from "@/app/_components/typography";
-import {
-  formatVolume,
-  summariseSeries,
-  yearRangeOptions,
-  type OperatorCompareYear,
-} from "@/lib/operator-detail";
+import type { ProductionYear } from "@/lib/operator-production-graph";
+import { titleCase } from "@/lib/text-case";
+
+import { ALL_COUNTIES, CountyFilter } from "./county-filter";
+import { useProductionGraph } from "./use-production-graph";
+import { YearBrush } from "./year-brush";
 
 /**
- * "Production over time" — reported annual volumes, with a year-range select.
+ * "Production over time" — reported annual volumes from
+ * `POST /api/v1/operators/production-graph`, styled to the approved design.
  *
- * A client component because the range is interactive, but a small one: the series
- * is at most ten points, so the chart is recomputed in a `useMemo` rather than
- * measured or animated. Unlike the compare tool's chart this one has no crosshair
- * and no brush, so it needs no viewBox measurement — the axis labels are drawn
- * outside the scaled area, which is what let the fixed viewBox stay.
+ * THE FILTER IS COUNTY, NOT YEARS, on request. "All counties" sends every county the
+ * operator reports in, because the endpoint rejects an empty list; picking one sends
+ * that one.
  *
- * Rendered only when the operator has a filed series. The route checks that; there
- * is no empty state in here.
+ * THE OPTIONS ARE THIS OPERATOR'S COUNTIES, not every county in Texas. The dropdown
+ * first listed all ~255 from the shared `/operators/counties` read, which meant 176 of
+ * Pioneer's options were counties it has no wells in — every one of them charting
+ * empty. The operator's own list already arrives with `/operators/details`, so this
+ * needs no second read at all: fewer requests, and every option returns data.
+ *
+ * BOE IS NOT PLOTTED, also on request, even though the response carries `BOEValues`
+ * and the design shows a third series. `toProductionYears` drops it at the boundary,
+ * so there are two series and two summary cards rather than three.
+ *
+ * EVERYTHING IS IN MILLIONS. The design labels the axis "Volume (MM)" and prints
+ * `181.37MM`, so raw barrels and Mcf are divided once, here, and every figure below —
+ * axis, cards, tooltip, end pills — reads off the same scaled numbers.
+ *
+ * ZOOM IS A VISIBLE CONTROL. `YearBrush` under the x-axis owns the range: drag its
+ * handles to narrow, drag inside to pan, press Reset or double-click to restore. The
+ * wheel and the plot-area drag still work for anyone who reaches for them, but the
+ * chart no longer depends on a gesture nothing on screen advertises and touch does not
+ * have. All of them write the same `zoom` index window, so the two paths cannot
+ * disagree about what is shown.
  */
 
-const VIEW = { width: 960, height: 300 } as const;
-const INSET = { top: 16, right: 14, bottom: 30, left: 58 } as const;
+const VIEW = { width: 1040, height: 400 } as const;
+const INSET = { top: 22, right: 96, bottom: 46, left: 96 } as const;
+
+/** The design's two plotted series. BOE is deliberately absent. */
+const SERIES = [
+  {
+    key: "oil",
+    label: "Oil (bbl)",
+    colour: "var(--color-mv-chart-oil)",
+  },
+  {
+    key: "gas",
+    label: "Gas (Mcf)",
+    colour: "var(--color-mv-down)",
+  },
+] as const;
+
+type SeriesKey = (typeof SERIES)[number]["key"];
+
+/** Millions, two decimals — the design's `181.37MM`. */
+const mm = (value: number) => (value / 1e6).toFixed(2);
+/** Millions, two decimals with a single M — the design's end pills, `786.43M`. */
+const pill = (value: number) => `${(value / 1e6).toFixed(2)}M`;
 
 export function ProductionOverTime({
-  series,
+  operatorNumber,
+  operatorCounties,
 }: {
-  series: readonly OperatorCompareYear[];
+  operatorNumber: string;
+  /**
+   * Every county the operator reports in, from `/operators/details`. Drives both the
+   * all-counties payload and the dropdown's options, so the two cannot disagree.
+   */
+  operatorCounties: readonly string[];
 }) {
-  const options = useMemo(() => yearRangeOptions(series), [series]);
-  const [fromYear, setFromYear] = useState(() => options[0]?.from ?? 0);
-  const selectId = useId();
-
-  const summary = useMemo(
-    () => summariseSeries(series, fromYear),
-    [series, fromYear],
+  const [county, setCounty] = useState<string>(ALL_COUNTIES);
+  const [mode, setMode] = useState<"line" | "area">("area");
+  const [hover, setHover] = useState<number | null>(null);
+  /** Index window over the data, for zoom and pan. Null means the whole range. */
+  const [zoom, setZoom] = useState<{ start: number; end: number } | null>(null);
+  const gradientId = useId();
+  const dragFrom = useRef<{ x: number; start: number; end: number } | null>(
+    null,
   );
 
-  const window = useMemo(
-    () => series.filter((entry) => entry.year >= fromYear),
-    [series, fromYear],
+  const counties = useMemo(
+    () => (county === ALL_COUNTIES ? [...operatorCounties] : [county]),
+    [county, operatorCounties],
+  );
+
+  /** Alphabetical, so the dropdown reads in a predictable order. */
+  const options = useMemo(
+    () => [...operatorCounties].sort((a, b) => a.localeCompare(b)),
+    [operatorCounties],
+  );
+
+  const graph = useProductionGraph({ operatorNumber, counties });
+  const all = useMemo(() => graph.data ?? [], [graph.data]);
+
+  /** The visible slice. */
+  const data = useMemo(
+    () => (zoom ? all.slice(zoom.start, zoom.end + 1) : all),
+    [all, zoom],
   );
 
   const geometry = useMemo(() => {
     const innerWidth = VIEW.width - INSET.left - INSET.right;
     const innerHeight = VIEW.height - INSET.top - INSET.bottom;
-    const peak = window.reduce((top, entry) => Math.max(top, entry.boe), 0) || 1;
-    // Round the axis up to a whole "nice" step so the top gridline is a readable
-    // number rather than the exact peak.
-    const magnitude = Math.pow(10, Math.floor(Math.log10(peak)));
-    const max = Math.ceil(peak / magnitude) * magnitude;
-    const last = window.length - 1 || 1;
-
+    const peak = data.reduce((top, p) => Math.max(top, p.oil, p.gas), 0) || 1;
+    // Four gridlines above zero, on a round-ish step, so the top label is readable.
+    const step = peak / 4;
+    const last = data.length - 1 || 1;
     return {
       innerWidth,
       innerHeight,
-      max,
-      x: (index: number) => INSET.left + (innerWidth * index) / last,
-      y: (value: number) =>
-        INSET.top + innerHeight * (1 - value / max),
+      max: peak,
+      step,
+      x: (i: number) => INSET.left + (innerWidth * i) / last,
+      y: (v: number) => INSET.top + innerHeight * (1 - v / peak),
     };
-  }, [window]);
+  }, [data]);
 
-  const line = window
-    .map(
-      (entry, index) =>
-        `${index === 0 ? "M" : "L"}${geometry.x(index).toFixed(1)} ${geometry.y(entry.boe).toFixed(1)}`,
-    )
-    .join(" ");
+  const baseline = INSET.top + geometry.innerHeight;
+  /** The year the cards and tooltip describe: hovered, else the latest. */
+  const focus = hover ?? data.length - 1;
+  const point: ProductionYear | undefined = data[focus];
+  const prior: ProductionYear | undefined = data[focus - 1];
 
-  const area = `${line} L${geometry.x(window.length - 1).toFixed(1)} ${(INSET.top + geometry.innerHeight).toFixed(1)} L${geometry.x(0).toFixed(1)} ${(INSET.top + geometry.innerHeight).toFixed(1)} Z`;
+  const linePath = (key: SeriesKey) =>
+    data
+      .map(
+        (p, i) =>
+          `${i === 0 ? "M" : "L"}${geometry.x(i).toFixed(1)} ${geometry.y(p[key]).toFixed(1)}`,
+      )
+      .join(" ");
 
-  const gridlines = 4;
+  /* ---- interaction ---- */
+
+  const pointerIndex = (event: React.PointerEvent<SVGSVGElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width === 0 || data.length === 0) return null;
+    const scale = VIEW.width / rect.width;
+    const x = (event.clientX - rect.left) * scale;
+    const spacing =
+      data.length > 1 ? geometry.innerWidth / (data.length - 1) : 1;
+    return Math.max(
+      0,
+      Math.min(data.length - 1, Math.round((x - INSET.left) / spacing)),
+    );
+  };
+
+  const onWheel = useCallback(
+    (event: React.WheelEvent<SVGSVGElement>) => {
+      if (all.length < 4) return;
+      event.preventDefault();
+      setZoom((current) => {
+        const start = current?.start ?? 0;
+        const end = current?.end ?? all.length - 1;
+        const span = end - start + 1;
+        // In narrows, out widens, both anchored on the middle. Three years is the
+        // floor — below that there is no line left to read.
+        const next =
+          event.deltaY < 0
+            ? Math.max(3, span - 2)
+            : Math.min(all.length, span + 2);
+        if (next === span) return current;
+        const centre = Math.round((start + end) / 2);
+        let from = Math.max(0, centre - Math.floor(next / 2));
+        const to = Math.min(all.length - 1, from + next - 1);
+        from = Math.max(0, to - next + 1);
+        return from === 0 && to === all.length - 1
+          ? null
+          : { start: from, end: to };
+      });
+    },
+    [all.length],
+  );
+
+  const onPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (!zoom) return;
+    dragFrom.current = {
+      x: event.clientX,
+      start: zoom.start,
+      end: zoom.end,
+    };
+  };
+
+  const onPointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
+    const drag = dragFrom.current;
+    if (drag && event.buttons === 1) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const spanPx = rect.width / Math.max(1, drag.end - drag.start + 1);
+      const shift = Math.round((drag.x - event.clientX) / spanPx);
+      if (shift !== 0) {
+        const span = drag.end - drag.start + 1;
+        const start = Math.max(
+          0,
+          Math.min(all.length - span, drag.start + shift),
+        );
+        setZoom({ start, end: start + span - 1 });
+      }
+      return;
+    }
+    setHover(pointerIndex(event));
+  };
+
+  const tinted = (colour: string, amount: string) =>
+    `color-mix(in srgb, ${colour} ${amount}, white)`;
 
   return (
     <div className="rounded-2xl border border-mv-line bg-white px-[22px] py-5 shadow-mv max-[560px]:px-4">
+      {/* ---- header ---- */}
       <div className="flex flex-wrap items-start justify-between gap-[14px]">
-        <div>
-          <h2 className={cardTitleClass}>Production over time</h2>
-          <p className="mt-1 text-[13px] text-mv-muted">
-            Reported annual volumes across covered counties · oil (bbl), gas
-            (Mcf), BOE
-          </p>
-        </div>
-
-        <label
-          htmlFor={selectId}
-          className="inline-flex items-center gap-2 rounded-[10px] border border-mv-line px-3 py-2"
-        >
-          <CalendarDays
+        <div className="flex min-w-0 items-start gap-[11px]">
+          <span
             aria-hidden="true"
-            className="h-4 w-4 shrink-0 text-mv-green-deep"
-            strokeWidth={1.9}
-          />
-          <span className="sr-only">Year range</span>
-          <select
-            id={selectId}
-            value={fromYear}
-            onChange={(event) => setFromYear(Number(event.target.value))}
-            className="cursor-pointer appearance-none bg-transparent pr-1 text-[13px] font-semibold text-mv-ink outline-none"
+            className="mt-[3px] shrink-0 text-mv-green-deep"
           >
-            {options.map((option) => (
-              <option key={option.from} value={option.from}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <div className="mt-4 grid grid-cols-3 gap-3 max-[640px]:grid-cols-1">
-        {(
-          [
-            ["Oil", summary.oil, "bbl"],
-            ["Gas", summary.gas, "Mcf"],
-            ["BOE", summary.boe, "BOE"],
-          ] as const
-        ).map(([label, value, unit]) => (
-          <div
-            key={label}
-            className="rounded-xl border border-mv-line bg-mv-bg px-4 py-3"
-          >
-            <p className="text-[12px] font-bold uppercase tracking-[.05em] text-mv-muted">
-              {label}
-            </p>
-            <p className="mt-1 text-[22px] font-bold tracking-[-.02em] tabular-nums text-mv-ink">
-              {formatVolume(value)}{" "}
-              <span className="text-[12px] font-semibold text-mv-muted">
-                {unit}
-              </span>
+            <Droplet className="h-[19px] w-[19px]" strokeWidth={1.9} />
+          </span>
+          <div className="min-w-0">
+            <h2 className={cardTitleClass}>Production over time</h2>
+            <p className="mt-1 text-[13px] text-mv-muted">
+              Reported annual volumes across covered counties · oil (bbl), gas
+              (Mcf)
             </p>
           </div>
+        </div>
+
+        <CountyFilter
+          value={county}
+          options={options}
+          onChange={(next) => {
+            setCounty(next);
+            // A new series has its own year range, so the old window is meaningless.
+            setZoom(null);
+            setHover(null);
+          }}
+        />
+      </div>
+
+      {/* ---- summary cards, tinted per series ---- */}
+      <div className="mt-4 grid grid-cols-2 gap-[14px] max-[640px]:grid-cols-1">
+        {SERIES.map((series) => {
+          const value = point?.[series.key] ?? 0;
+          const was = prior?.[series.key];
+          const change =
+            was !== undefined && was > 0 ? ((value - was) / was) * 100 : null;
+
+          return (
+            <div
+              key={series.key}
+              className="flex items-start gap-3 rounded-[14px] border px-4 py-[14px]"
+              style={{
+                background: tinted(series.colour, "5%"),
+                borderColor: tinted(series.colour, "22%"),
+              }}
+            >
+              <span
+                aria-hidden="true"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full"
+                style={{ background: tinted(series.colour, "14%") }}
+              >
+                <Droplet
+                  className="h-[17px] w-[17px]"
+                  strokeWidth={2}
+                  style={{ color: series.colour, fill: series.colour }}
+                />
+              </span>
+
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-semibold text-mv-ink-soft">
+                  {series.label}
+                  {point ? (
+                    <>
+                      {" in "}
+                      <b className="font-bold text-mv-ink">{point.year}</b>
+                    </>
+                  ) : null}
+                </p>
+                <p
+                  className="mt-[2px] text-[26px] font-extrabold leading-[1.1] tracking-[-.02em] tabular-nums"
+                  style={{ color: series.colour }}
+                >
+                  {graph.status === "loading" && !graph.data ? (
+                    <span className="inline-block h-[26px] w-[120px] animate-pulse rounded-md bg-mv-line-soft align-middle" />
+                  ) : (
+                    <>
+                      {mm(value)}
+                      <small className="ml-[1px] text-[13px] font-bold">
+                        MM
+                      </small>
+                    </>
+                  )}
+                </p>
+              </div>
+
+              {change !== null ? (
+                <div className="shrink-0 text-right">
+                  <p
+                    className={`text-[12.5px] font-bold ${change >= 0 ? "text-mv-green-deep" : "text-mv-down"}`}
+                  >
+                    {change >= 0 ? "▲" : "▼"} {Math.abs(change).toFixed(1)}%
+                  </p>
+                  <p className="mt-[2px] text-[11.5px] text-mv-muted">
+                    vs {prior?.year}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ---- axis label, interaction hint, line/area toggle ---- */}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[13px]">
+          <b className="font-bold text-mv-ink">Volume (MM)</b>
+          <span className="ml-2 text-mv-muted">
+            Use the range below to zoom
+          </span>
+        </p>
+
+        <div
+          role="group"
+          aria-label="Chart style"
+          className="inline-flex overflow-hidden rounded-[10px] border border-mv-line"
+        >
+          {(
+            [
+              ["line", "Line", LineChart],
+              ["area", "Area", AreaChart],
+            ] as const
+          ).map(([value, label, Icon]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={mode === value}
+              onClick={() => setMode(value)}
+              className={`flex cursor-pointer items-center gap-[6px] border-0 px-[14px] py-[7px] text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-mv-green-deep ${
+                mode === value
+                  ? "bg-mv-tint text-mv-green-deep"
+                  : "bg-white text-mv-muted hover:text-mv-ink"
+              }`}
+            >
+              <Icon
+                aria-hidden="true"
+                className="h-[15px] w-[15px]"
+                strokeWidth={1.9}
+              />
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ---- chart ---- */}
+      <div
+        className="relative mt-2 h-[400px] max-[767px]:h-[280px]"
+        aria-busy={graph.status === "loading"}
+      >
+        {graph.status === "error" ? (
+          <div
+            role="alert"
+            className="flex h-full flex-col items-center justify-center gap-3 rounded-xl border border-mv-line bg-mv-bg px-4 text-center"
+          >
+            <p className="text-sm text-mv-ink-soft">
+              Production data could not be loaded.
+            </p>
+            <button
+              type="button"
+              onClick={graph.retry}
+              className="cursor-pointer rounded-[10px] border border-mv-line bg-white px-4 py-2 text-[13px] font-semibold text-mv-slate hover:border-mv-line-strong hover:bg-mv-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+            >
+              Try again
+            </button>
+          </div>
+        ) : graph.status === "empty" ? (
+          <div className="flex h-full items-center justify-center rounded-xl border border-mv-line bg-mv-bg px-4 text-center">
+            <p className="text-sm text-mv-muted">
+              No reported production for{" "}
+              {county === ALL_COUNTIES
+                ? "this operator"
+                : `${titleCase(county)} County`}
+              .
+            </p>
+          </div>
+        ) : data.length === 0 ? (
+          <div className="flex h-full items-center justify-center rounded-xl border border-mv-line bg-mv-bg">
+            <span className="sr-only">Loading production</span>
+            <span
+              aria-hidden="true"
+              className="h-3 w-[220px] animate-pulse rounded-md bg-mv-line-soft"
+            />
+          </div>
+        ) : (
+          <>
+            <svg
+              viewBox={`0 0 ${VIEW.width} ${VIEW.height}`}
+              className={`block h-full w-full touch-pan-y overflow-visible transition-opacity ${
+                graph.status === "loading" ? "opacity-50" : "opacity-100"
+              } ${zoom ? "cursor-grab" : ""}`}
+              role="img"
+              aria-label={`Annual oil and gas production, ${data[0]?.year} to ${data.at(-1)?.year}, for ${county === ALL_COUNTIES ? "all counties" : titleCase(county)}.`}
+              onWheel={onWheel}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={() => (dragFrom.current = null)}
+              onPointerLeave={() => {
+                dragFrom.current = null;
+                setHover(null);
+              }}
+              onDoubleClick={() => {
+                setZoom(null);
+                setHover(null);
+              }}
+            >
+              <defs>
+                {SERIES.map((series) => (
+                  <linearGradient
+                    key={series.key}
+                    id={`${gradientId}-${series.key}`}
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
+                    <stop
+                      offset="0"
+                      stopColor={series.colour}
+                      stopOpacity=".22"
+                    />
+                    <stop
+                      offset="1"
+                      stopColor={series.colour}
+                      stopOpacity="0"
+                    />
+                  </linearGradient>
+                ))}
+              </defs>
+
+              {/* dashed gridlines, MM labels */}
+              {Array.from({ length: 5 }, (_, i) => {
+                const value = geometry.step * i;
+                const y = geometry.y(value);
+                return (
+                  <g key={i}>
+                    <line
+                      x1={INSET.left}
+                      x2={VIEW.width - INSET.right}
+                      y1={y.toFixed(1)}
+                      y2={y.toFixed(1)}
+                      stroke="var(--color-mv-line)"
+                      strokeDasharray={i === 0 ? undefined : "5 5"}
+                    />
+                    <text
+                      x={INSET.left - 12}
+                      y={(y + 4).toFixed(1)}
+                      textAnchor="end"
+                      fontSize="13"
+                      fill="var(--color-mv-placeholder)"
+                    >
+                      {i === 0 ? "0" : `${mm(value)}MM`}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {/* year labels — thinned when the zoom is wide */}
+              {data.map((p, i) =>
+                data.length <= 10 ||
+                i % Math.ceil(data.length / 10) === 0 ||
+                i === data.length - 1 ? (
+                  <text
+                    key={p.year}
+                    x={geometry.x(i).toFixed(1)}
+                    y={VIEW.height - 14}
+                    textAnchor="middle"
+                    fontSize="14"
+                    fill="var(--color-mv-ink-soft)"
+                  >
+                    {p.year}
+                  </text>
+                ) : null,
+              )}
+
+              {/* crosshair */}
+              {hover !== null && data[hover] ? (
+                <line
+                  x1={geometry.x(hover)}
+                  x2={geometry.x(hover)}
+                  y1={INSET.top}
+                  y2={baseline}
+                  stroke="var(--color-mv-placeholder)"
+                  strokeWidth="1"
+                  strokeDasharray="4 4"
+                />
+              ) : null}
+
+              {SERIES.map((series) => (
+                <g key={series.key}>
+                  {mode === "area" ? (
+                    <path
+                      d={`${linePath(series.key)} L${geometry.x(data.length - 1).toFixed(1)} ${baseline.toFixed(1)} L${geometry.x(0).toFixed(1)} ${baseline.toFixed(1)} Z`}
+                      fill={`url(#${gradientId}-${series.key})`}
+                    />
+                  ) : null}
+                  <path
+                    d={linePath(series.key)}
+                    fill="none"
+                    stroke={series.colour}
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  {data.map((p, i) => (
+                    <circle
+                      key={p.year}
+                      cx={geometry.x(i).toFixed(1)}
+                      cy={geometry.y(p[series.key]).toFixed(1)}
+                      r={hover === i ? 6 : 3.2}
+                      fill={hover === i ? "#fff" : series.colour}
+                      stroke={series.colour}
+                      strokeWidth={hover === i ? 2.4 : 0}
+                    />
+                  ))}
+
+                  {/* the end pill */}
+                  {(() => {
+                    const lastPoint = data.at(-1);
+                    if (!lastPoint) return null;
+                    const y = geometry.y(lastPoint[series.key]);
+                    const x = VIEW.width - INSET.right + 12;
+                    return (
+                      <g>
+                        <rect
+                          x={x}
+                          y={y - 15}
+                          width="82"
+                          height="30"
+                          rx="15"
+                          fill={series.colour}
+                        />
+                        <text
+                          x={x + 41}
+                          y={y + 5}
+                          textAnchor="middle"
+                          fontSize="14"
+                          fontWeight="700"
+                          fill="#fff"
+                        >
+                          {pill(lastPoint[series.key])}
+                        </text>
+                      </g>
+                    );
+                  })()}
+                </g>
+              ))}
+            </svg>
+
+            {/* tooltip, positioned over the crosshair */}
+            {hover !== null && data[hover] ? (
+              <div
+                className="pointer-events-none absolute z-10 min-w-[190px] rounded-[10px] bg-mv-tooltip px-[14px] py-3 shadow-mv"
+                style={{
+                  left: `${(geometry.x(hover) / VIEW.width) * 100}%`,
+                  top: "52%",
+                  transform:
+                    geometry.x(hover) > VIEW.width / 2
+                      ? "translate(calc(-100% - 14px), -50%)"
+                      : "translate(14px, -50%)",
+                }}
+              >
+                <p className="mb-2 text-[13px] font-extrabold text-white">
+                  {data[hover].year}
+                </p>
+                {SERIES.map((series) => (
+                  <p
+                    key={series.key}
+                    className="my-1 flex items-center justify-between gap-5 text-[13px]"
+                  >
+                    <span className="flex items-center gap-2 text-mv-on-deep-muted">
+                      <span
+                        aria-hidden="true"
+                        className="h-[9px] w-[9px] rounded-full"
+                        style={{ background: series.colour }}
+                      />
+                      {series.label}
+                    </span>
+                    <b className="font-bold tabular-nums text-white">
+                      {mm(data[hover][series.key])}MM
+                    </b>
+                  </p>
+                ))}
+              </div>
+            ) : null}
+          </>
+        )}
+      </div>
+
+      {/* ---- the zoom range, under the x-axis ---- */}
+      {graph.status === "success" || (graph.data?.length ?? 0) > 0 ? (
+        <YearBrush
+          years={all.map((p) => p.year)}
+          values={all.map((p) => p.oil + p.gas)}
+          zoom={zoom}
+          onChange={(next) => {
+            setZoom(next);
+            setHover(null);
+          }}
+        />
+      ) : null}
+
+      {/* ---- legend chips ---- */}
+      <div className="mt-3 flex flex-wrap gap-[10px]">
+        {SERIES.map((series) => (
+          <span
+            key={series.key}
+            className="inline-flex items-center gap-2 rounded-full border px-[14px] py-[7px] text-[13px] font-semibold text-mv-ink-soft"
+            style={{
+              background: tinted(series.colour, "6%"),
+              borderColor: tinted(series.colour, "24%"),
+            }}
+          >
+            <span
+              aria-hidden="true"
+              className="h-[9px] w-[9px] rounded-full"
+              style={{ background: series.colour }}
+            />
+            {series.label}
+          </span>
         ))}
       </div>
 
-      <svg
-        viewBox={`0 0 ${VIEW.width} ${VIEW.height}`}
-        className="mt-4 block h-auto w-full overflow-visible"
-        role="img"
-        aria-label={`Annual barrels of oil equivalent, ${summary.years[0]} to ${summary.years.at(-1)}. Peak ${formatVolume(geometry.max)} BOE.`}
-      >
-        <defs>
-          <linearGradient id="potFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="var(--color-mv-green)" stopOpacity=".18" />
-            <stop offset="1" stopColor="var(--color-mv-green)" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-
-        {Array.from({ length: gridlines + 1 }, (_, index) => {
-          const value = (geometry.max / gridlines) * index;
-          const y = geometry.y(value);
-          return (
-            <g key={index}>
-              <line
-                x1={INSET.left}
-                x2={VIEW.width - INSET.right}
-                y1={y.toFixed(1)}
-                y2={y.toFixed(1)}
-                stroke="var(--color-mv-line-soft)"
-              />
-              <text
-                x={INSET.left - 9}
-                y={(y + 4).toFixed(1)}
-                textAnchor="end"
-                fontSize="12"
-                fill="var(--color-mv-axis)"
-              >
-                {formatVolume(value)}
-              </text>
-            </g>
-          );
-        })}
-
-        {window.map((entry, index) => (
-          <text
-            key={entry.year}
-            x={geometry.x(index).toFixed(1)}
-            y={VIEW.height - 8}
-            textAnchor="middle"
-            fontSize="12"
-            fill="var(--color-mv-axis)"
-          >
-            {entry.year}
-          </text>
-        ))}
-
-        <path d={area} fill="url(#potFill)" />
-        <path
-          d={line}
-          fill="none"
-          stroke="var(--color-mv-green-deep)"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+      <p className="mt-3 flex items-center gap-[7px] text-[12.5px] text-mv-muted">
+        <Info
+          aria-hidden="true"
+          className="h-[14px] w-[14px] shrink-0"
+          strokeWidth={1.9}
         />
-        {window.map((entry, index) => (
-          <circle
-            key={entry.year}
-            cx={geometry.x(index).toFixed(1)}
-            cy={geometry.y(entry.boe).toFixed(1)}
-            r="3"
-            fill="#fff"
-            stroke="var(--color-mv-green-deep)"
-            strokeWidth="1.8"
-          />
-        ))}
-      </svg>
-
-      <p className="mt-3 text-[12px] leading-[1.55] text-mv-muted">
-        Oil in barrels (bbl) · Gas in thousand cubic feet (Mcf) · BOE in barrels of
-        oil equivalent
-        {summary.change !== null ? (
-          <>
-            {" · "}
-            <b className="font-semibold text-mv-ink-soft">
-              {summary.change >= 0 ? "+" : ""}
-              {summary.change.toFixed(1)}%
-            </b>{" "}
-            BOE across the range
-          </>
-        ) : null}
+        Oil in barrels (bbl) · Gas in thousand cubic feet (Mcf)
       </p>
     </div>
   );

@@ -66,6 +66,10 @@
      that sits on the dark panels, where `mv-ink` would be unreadable. */
   --color-mv-plum: #a4426f;
   --color-mv-card-tint: #fbfdfc;
+  /* The production chart's oil series. The design uses a cooler, deeper green here
+     than `mv-green-deep` so oil reads as distinct from the brand chrome around it;
+     gas is `mv-down` and BOE `mv-blue`, both of which already exist. */
+  --color-mv-chart-oil: #1a8a4f;
   /* The statistics comparison's two additions: the sub-label under an operator's
      name on the dark table header, and the deeper mint a best-value cell takes on
      row hover so the highlight survives the hover fill. */

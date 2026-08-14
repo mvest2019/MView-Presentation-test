@@ -377,9 +377,17 @@ export default async function OperatorDetailRoute({
         </section>
 
         {/* ---- 5 · production over time ---- */}
-        {operator.series ? (
+        {/* Deferred so the production-graph request fires when the chart is
+            approached rather than on page load. Shown whenever the operator has
+            counties to ask about — the series no longer comes from the fixture. */}
+        {operator.activeCounties.length > 0 ? (
           <section className="pt-[26px]">
-            <ProductionOverTime series={operator.series} />
+            <DeferredSection minHeight={520} label="Production over time">
+              <ProductionOverTime
+                operatorNumber={operator.operatorNumber}
+                operatorCounties={operator.activeCounties}
+              />
+            </DeferredSection>
           </section>
         ) : null}
 
