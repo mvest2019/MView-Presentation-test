@@ -255,3 +255,30 @@ export const getWellListMap = async (bbox: {
     throw new Error(String(error) || "Failed to fetch wells");
   }
 };
+
+/** One row of the API-number lookup. Identity only — no position. */
+export type MapWellLookup = { api: string; county: string };
+
+/**
+ * GET /api/v1/map/wells/lookup?q={prefix} -> { wells: [{ api, county }] }
+ *
+ * A prefix search over API numbers, capped at ten by the server.
+ */
+export const getWellLookupMap = async (
+  query: string,
+): Promise<MapWellLookup[]> => {
+  try {
+    const response = await fetch(
+      `${process.env.MAP_BASE_URL}/api/v1/map/wells/lookup?q=${encodeURIComponent(query)}`,
+    );
+    const data = await response.json();
+
+    if (response.ok && Array.isArray(data?.wells)) {
+      return data.wells as MapWellLookup[];
+    } else {
+      throw new Error("Failed to look up API numbers");
+    }
+  } catch (error) {
+    throw new Error(String(error) || "Failed to look up API numbers");
+  }
+};

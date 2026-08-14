@@ -17,7 +17,6 @@ import {
   type SelectedWell,
 } from "./well-insights-panel";
 import { MapChrome, type ViewTab } from "./map-chrome";
-import { type Place } from "./map-search";
 import {
   MeasureAreaPanel,
   type AreaMeasurement,
@@ -1051,6 +1050,28 @@ export function MapExplorerView() {
     pulseTimerRef.current = setInterval(draw, PULSE_INTERVAL_MS);
   }, []);
 
+  /**
+   * A picked API number.
+   *
+   * The lookup returns identity only — no coordinates, and there is no
+   * endpoint that turns an API number into a position. So this can place the
+   * well only if it is among those already loaded, which means the map is at
+   * well zoom over the right patch of Texas. Anything else fills the box and
+   * leaves the map where it is.
+   */
+  const selectApi = useCallback(
+    (api: string) => {
+      const well = wellsRef.current.find((candidate) => candidate.api === api);
+      if (!well) return;
+
+      highlightWell(well.lon, well.lat);
+      viewRef.current
+        ?.goTo({ center: [well.lon, well.lat], scale: 12_000 })
+        .catch(ignoreInterrupted);
+    },
+    [highlightWell],
+  );
+
   /** Export CSV: whatever is inside the extent right now, wells or bubbles. */
   const exportCsv = useCallback(() => {
     const view = viewRef.current;
@@ -2025,13 +2046,6 @@ export function MapExplorerView() {
     }
   }, []);
 
-  /** Search result picked — fly the map to it. */
-  const goToPlace = useCallback((place: Place) => {
-    viewRef.current
-      ?.goTo({ center: place.at, scale: place.scale })
-      .catch(ignoreInterrupted);
-  }, []);
-
   const changeBasemap = useCallback((id: string) => {
     setBasemap(id);
     if (mapRef.current) mapRef.current.basemap = id;
@@ -2238,6 +2252,7 @@ export function MapExplorerView() {
           zoom={readout.zoom}
           wellsVisible={readout.zoom >= WELL_ZOOM}
           onExportCsv={exportCsv}
+          onSelectApi={selectApi}
           timeLapseOpen={timeLapseOpen}
           onToggleTimeLapse={toggleTimeLapse}
           center={readout.center}
@@ -2250,7 +2265,6 @@ export function MapExplorerView() {
           viewTab={viewTab}
           onViewTabChange={changeViewTab}
           compact={viewTab === "insights"}
-          onSelectPlace={goToPlace}
           activeTool={activeTool}
           onSelectTool={startTool}
           onZoomIn={zoomIn}
