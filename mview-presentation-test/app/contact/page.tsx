@@ -35,7 +35,7 @@ export default function ContactPage() {
           <h1
             className={`${headingBase} text-[clamp(23px,2.6vw,30px)] leading-[1.15]`}
           >
-            Contact us
+            Contact Us
           </h1>
           {/* No max-width: the line is ~700px and the column is 1015px, so
               capping it was the only reason it wrapped. Still wraps naturally

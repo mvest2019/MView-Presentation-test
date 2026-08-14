@@ -16,7 +16,7 @@ const nextConfig: NextConfig = {
     // Never put a key or token here.
     CONTACT_API_URL:
       process.env.CONTACT_API_URL ||
-      "https://mview-dev-api.mineralview.com/api/v1/contact",
+      "https://mview-dev-api.mineralview.com/api/v1/contact-us",
   },
   images: {
     // Cloudinary serves both the Mineral View logo and every article/news

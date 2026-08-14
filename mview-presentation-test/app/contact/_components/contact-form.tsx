@@ -1,8 +1,8 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowUpRight } from "lucide-react";
-import { useState } from "react";
+import { ArrowUpRight, CircleCheck } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { contactConfig as cfg } from "./contact-config";
@@ -11,11 +11,11 @@ import { contactSchema, type ContactValues } from "./contact-schema";
 /**
  * Left card — the message form.
  *
- * No required-field asterisks and no key explaining them: the only optional
- * field says so on its own label, which is the whole convention. Errors sit in
- * `empty:hidden` slots, so the card is short at rest and grows when a message
- * appears; the submit row carries its own top padding so a message can never
- * crowd the button.
+ * Required fields carry an asterisk, but there is no "* Required" key spelling
+ * it out — that legend was removed as noise, and the asterisk is a convention
+ * visitors already read. Errors sit in `empty:hidden` slots, so the card is
+ * short at rest and grows when a message appears; the submit row carries its own
+ * top padding so a message can never crowd the button.
  */
 
 const inputBase =
@@ -23,8 +23,21 @@ const inputBase =
 const okBorder = "border-[#cbd5e1] focus:border-mv-green-deep focus:ring-mv-green/25";
 const errBorder = "border-mv-red ring-2 ring-mv-red/10 focus:ring-mv-red/20";
 const labelClass = "mb-[6px] block text-[13.5px] font-semibold text-mv-slate";
+/**
+ * Error slot. Takes no space until it has something to say — reserving the line
+ * up front kept the card height constant, but it also pushed the fields ~17px
+ * apart at rest, which is not what the design asks for. So the form does grow on
+ * a failed submit; the get-in-touch card is held out of that by `self-start`.
+ */
 const errClass =
   "mt-[5px] block text-[13px] font-semibold leading-[17px] text-mv-red empty:hidden";
+/** Marks a required field. `aria-hidden` because a screen reader announces the
+ *  input's own required state — the glyph on the label would just be noise. */
+const req = (
+  <span aria-hidden className="font-extrabold text-mv-red">
+    *
+  </span>
+);
 
 export function ContactForm() {
   const {
@@ -42,11 +55,34 @@ export function ContactForm() {
       comment: "",
     },
   });
-  const [status, setStatus] = useState<"idle" | "sent" | "error">("idle");
-  const [done, setDone] = useState("");
+  /** Set only when a send fails; success is announced by the toast alone. */
+  const [failure, setFailure] = useState("");
+
+  /**
+   * Success toast — the one and only confirmation of a send. The button label
+   * stays put and no inline line is added, so the news is told once.
+   *
+   * `fixed`, so it cannot affect either card's height — the point the whole
+   * layout has been fighting over. Auto-hides after 6s.
+   */
+  const [toast, setToast] = useState(false);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    },
+    [],
+  );
+
+  function showToast() {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast(true);
+    toastTimer.current = setTimeout(() => setToast(false), 6000);
+  }
 
   async function onValid(values: ContactValues) {
-    setStatus("idle");
+    setFailure("");
     try {
       // Posted straight to the backend from the browser. `values` already
       // matches the contract — { firstName, lastName, email, phone, comment } —
@@ -61,20 +97,30 @@ export function ContactForm() {
       // looking like it still needs sending. Only on success — on failure the
       // text is kept so the visitor does not have to retype it.
       reset();
-      setStatus("sent");
-      setDone("Thank you — a person replies within one business day.");
+      showToast();
     } catch {
       // Covers a rejected request and a blocked one alike: a CORS failure
       // surfaces here as a TypeError, not as a status code.
-      setStatus("error");
-      setDone(`Something went wrong. Please email ${cfg.supportEmail}.`);
+      setFailure(`Something went wrong. Please email ${cfg.supportEmail}.`);
     }
   }
 
-  const sent = status === "sent";
-
   return (
     <div className="flex h-full flex-col rounded-mv border border-mv-line bg-mv-card p-[22px] shadow-mv">
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed left-1/2 top-[84px] z-50 flex max-w-[calc(100vw-32px)] -translate-x-1/2 items-start gap-2.5 rounded-[12px] bg-mv-green-ink px-[18px] py-[14px] shadow-mv-lg"
+        >
+          <CircleCheck className="mt-[1px] h-[19px] w-[19px] flex-none text-mv-green" />
+          <p className="m-0 max-w-[290px] text-[13.5px] font-semibold leading-[1.45] text-mv-green">
+            Your message has been sent successfully. We&rsquo;ll get back to you
+            soon!
+          </p>
+        </div>
+      )}
+
       <div className="mb-2 text-[12px] font-bold uppercase tracking-[.12em] text-mv-green-deep">
         Send a message
       </div>
@@ -86,24 +132,21 @@ export function ContactForm() {
         shortly.
       </p>
 
-      {/* Typing after a send clears the confirmation and re-enables the button,
-          so a second message is possible without reloading. The button stays
-          disabled until then, which is what stops a double submit. */}
+      {/* Typing clears a previous failure notice — it refers to an attempt the
+          visitor has now moved on from. Nothing else to reset: the button label
+          never changed, and the toast times itself out. */}
       <form
         noValidate
         onSubmit={handleSubmit(onValid)}
         onChange={() => {
-          if (status !== "idle") {
-            setStatus("idle");
-            setDone("");
-          }
+          if (failure) setFailure("");
         }}
         className="flex flex-1 flex-col"
       >
         <div className="mb-[16px] grid grid-cols-1 gap-[16px] min-[521px]:grid-cols-2">
           <div>
             <label htmlFor="ctFirst" className={labelClass}>
-              First name
+              First name {req}
             </label>
             <input
               id="ctFirst"
@@ -122,7 +165,7 @@ export function ContactForm() {
 
           <div>
             <label htmlFor="ctLast" className={labelClass}>
-              Last name
+              Last name {req}
             </label>
             <input
               id="ctLast"
@@ -143,7 +186,7 @@ export function ContactForm() {
         <div className="mb-[16px] grid grid-cols-1 gap-[16px] min-[521px]:grid-cols-2">
           <div>
             <label htmlFor="ctEmail" className={labelClass}>
-              Email address
+              Email address {req}
             </label>
             <input
               id="ctEmail"
@@ -185,7 +228,7 @@ export function ContactForm() {
 
         <div>
           <label htmlFor="ctMsg" className={labelClass}>
-            What can we help you with?
+            What can we help you with? {req}
           </label>
           <textarea
             id="ctMsg"
@@ -207,17 +250,18 @@ export function ContactForm() {
             reading as one row; `pt-4` is the floor between it and whatever sits
             above, so a validation message never crowds the button. */}
         <div className="mt-auto flex justify-end pt-4">
+          {/* Label only reflects the in-flight state. It deliberately does not
+              switch to a "sent" label afterwards: the toast is the confirmation,
+              and two of them saying the same thing is noise. */}
           <button
             type="submit"
-            disabled={isSubmitting || sent}
+            disabled={isSubmitting}
             /* `cursor-pointer` is explicit because Tailwind v4's preflight sets
                buttons to `cursor: default`, which read as not-clickable. */
             className="inline-flex min-h-[44px] w-full cursor-pointer items-center justify-center gap-2 rounded-[10px] border border-mv-green bg-mv-green px-[22px] py-2.5 text-[14.5px] font-semibold text-mv-green-ink transition hover:brightness-95 disabled:cursor-default disabled:opacity-80 min-[521px]:w-auto"
           >
             {isSubmitting ? (
               "Sending…"
-            ) : sent ? (
-              "Message sent ✓"
             ) : (
               <>
                 Send message
@@ -228,12 +272,12 @@ export function ContactForm() {
         </div>
       </form>
 
-      {done && (
-        <p
-          role="status"
-          className={`mt-3 text-[13px] ${status === "error" ? "text-mv-red" : "text-mv-muted"}`}
-        >
-          {done}
+      {/* Failures only. Success is the toast's job, so there is no inline line to
+          duplicate it — but a failure needs to persist and name the fallback
+          address, which a toast that disappears after six seconds cannot do. */}
+      {failure && (
+        <p role="alert" className="mt-3 text-[13px] text-mv-red">
+          {failure}
         </p>
       )}
     </div>
