@@ -28,6 +28,9 @@ export type WellRow = {
   county: string;
   /** Barrels of oil equivalent, or null where nothing was reported. */
   boe: number | null;
+  /** Reported volumes: oil in bbl, gas in mcf. Null where none was filed. */
+  oil: number | null;
+  gas: number | null;
 };
 
 /** Matches the county totals in the filters panel, which add up to 9,000. */
@@ -151,16 +154,16 @@ const LEASES = [
 ];
 
 const PAGE_ONE: WellRow[] = [
-  { api: "42-001-00106", operator: "Highmark", lease: "FAIRWAY /JAMES LIME/ UNIT", type: "Oil", status: null, county: "Anderson", boe: null },
-  { api: "42-001-00114", operator: "Highmark", lease: "FAIRWAY /JAMES LIME/ UNIT", type: "Oil", status: null, county: "Anderson", boe: null },
-  { api: "42-001-00267", operator: "Peles", lease: "EATON G. W. ESTATE", type: "Oil", status: "Shut-In Producer", county: "Anderson", boe: 8320 },
-  { api: "42-001-00305", operator: "Peles", lease: "BOWERS ESTATE A. L.", type: "Oil", status: "Shut-In Producer", county: "Anderson", boe: 5410 },
-  { api: "42-001-01271", operator: "Supreme", lease: "BROYLES & WOOLVERTON", type: "Oil", status: null, county: "Anderson", boe: null },
-  { api: "42-001-01717", operator: "Dg&e/slocum", lease: "SOUTHERN PINE LBR. CO.", type: "Oil", status: null, county: "Anderson", boe: null },
-  { api: "42-001-01764", operator: "Palestine", lease: "WEBB CARL A", type: "Oil", status: null, county: "Anderson", boe: null },
-  { api: "42-001-02078", operator: "Hd", lease: "VICKERY J. R.", type: "Oil", status: "Shut-In Producer", county: "Anderson", boe: 3120 },
-  { api: "42-001-02415", operator: "Ward", lease: "LOPER VERNA", type: "Gas", status: null, county: "Anderson", boe: null },
-  { api: "42-001-02525", operator: "Hd", lease: "VICKERY J. R.", type: "Oil", status: "Producing", county: "Anderson", boe: 12850 },
+  { api: "42-001-00106", operator: "Highmark", lease: "FAIRWAY /JAMES LIME/ UNIT", type: "Oil", status: null, county: "Anderson", boe: null, oil: null, gas: null },
+  { api: "42-001-00114", operator: "Highmark", lease: "FAIRWAY /JAMES LIME/ UNIT", type: "Oil", status: null, county: "Anderson", boe: null, oil: null, gas: null },
+  { api: "42-001-00267", operator: "Peles", lease: "EATON G. W. ESTATE", type: "Oil", status: "Shut-In Producer", county: "Anderson", boe: 8320, oil: 6490, gas: 11650 },
+  { api: "42-001-00305", operator: "Peles", lease: "BOWERS ESTATE A. L.", type: "Oil", status: "Shut-In Producer", county: "Anderson", boe: 5410, oil: 4220, gas: 7570 },
+  { api: "42-001-01271", operator: "Supreme", lease: "BROYLES & WOOLVERTON", type: "Oil", status: null, county: "Anderson", boe: null, oil: null, gas: null },
+  { api: "42-001-01717", operator: "Dg&e/slocum", lease: "SOUTHERN PINE LBR. CO.", type: "Oil", status: null, county: "Anderson", boe: null, oil: null, gas: null },
+  { api: "42-001-01764", operator: "Palestine", lease: "WEBB CARL A", type: "Oil", status: null, county: "Anderson", boe: null, oil: null, gas: null },
+  { api: "42-001-02078", operator: "Hd", lease: "VICKERY J. R.", type: "Oil", status: "Shut-In Producer", county: "Anderson", boe: 3120, oil: 2430, gas: 4370 },
+  { api: "42-001-02415", operator: "Ward", lease: "LOPER VERNA", type: "Gas", status: null, county: "Anderson", boe: null, oil: null, gas: null },
+  { api: "42-001-02525", operator: "Hd", lease: "VICKERY J. R.", type: "Oil", status: "Producing", county: "Anderson", boe: 12850, oil: 10020, gas: 17990 },
 ];
 
 /**
@@ -214,6 +217,21 @@ export function allWells(): WellRow[] {
       status,
       county,
       boe: hasBoe ? Math.round((1000 + unit(index, 7) * 19000) / 10) * 10 : null,
+      /*
+       * Volumes follow the well's own kind, so an oil well does not report a
+       * larger gas figure than oil. Both come from the same seed as the BOE:
+       * a well with nothing filed has nothing filed for either stream.
+       */
+      oil: hasBoe
+        ? type === "Gas"
+          ? Math.round(unit(index, 8) * 900)
+          : Math.round((800 + unit(index, 8) * 15000) / 10) * 10
+        : null,
+      gas: hasBoe
+        ? type === "Oil"
+          ? Math.round(unit(index, 9) * 1800)
+          : Math.round((2000 + unit(index, 9) * 42000) / 10) * 10
+        : null,
     });
   }
 
