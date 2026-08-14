@@ -16,10 +16,10 @@ import { contactConfig as cfg } from "./contact-config";
 export function ContactInfo() {
   return (
     <div className="flex h-full flex-col rounded-mv border border-mv-line bg-mv-card p-[22px] shadow-mv">
-      <div className="mb-1.5 text-[11.5px] font-bold uppercase tracking-[.12em] text-mv-green-deep">
+      <div className="mb-2 text-[12px] font-bold uppercase tracking-[.12em] text-mv-green-deep">
         Get in touch
       </div>
-      <h2 className="mb-1.5 font-serif text-[19px] font-semibold leading-[1.25] tracking-[-.01em] text-mv-ink">
+      <h2 className="mb-1.5 font-serif text-[20px] font-semibold leading-[1.25] tracking-[-.01em] text-mv-ink">
         Reach us directly
       </h2>
 
@@ -30,10 +30,10 @@ export function ContactInfo() {
               <Phone className="h-[19px] w-[19px]" />
             </span>
             <div className="min-w-0 pt-[1px]">
-              <div className="text-[11px] font-extrabold uppercase tracking-[.09em] text-mv-green-deep">
+              <div className="text-[11.5px] font-extrabold uppercase tracking-[.09em] text-mv-green-deep">
                 Phone
               </div>
-              <div className="mt-[3px] text-[14.5px] font-semibold leading-[1.45] text-mv-ink">
+              <div className="mt-[3px] text-[15px] font-semibold leading-[1.45] text-mv-ink">
                 <a
                   className="text-mv-ink no-underline hover:text-mv-green-deep hover:underline"
                   href={cfg.phone.href}
@@ -49,10 +49,10 @@ export function ContactInfo() {
               <Mail className="h-[19px] w-[19px]" />
             </span>
             <div className="min-w-0 pt-[1px]">
-              <div className="text-[11px] font-extrabold uppercase tracking-[.09em] text-mv-green-deep">
+              <div className="text-[11.5px] font-extrabold uppercase tracking-[.09em] text-mv-green-deep">
                 Email
               </div>
-              <div className="mt-[3px] text-[14.5px] font-semibold leading-[1.45] text-mv-ink">
+              <div className="mt-[3px] text-[15px] font-semibold leading-[1.45] text-mv-ink">
                 {/* `break-all`: the address is 2px too wide for the column at
                     320px, and a mid-word break beats overflowing the card. */}
                 <a
@@ -70,7 +70,7 @@ export function ContactInfo() {
               <MapPin className="h-[19px] w-[19px]" />
             </span>
             <div className="min-w-0 pt-[1px]">
-              <div className="text-[11px] font-extrabold uppercase tracking-[.09em] text-mv-green-deep">
+              <div className="text-[11.5px] font-extrabold uppercase tracking-[.09em] text-mv-green-deep">
                 Our address
               </div>
               <address className="mt-[3px] text-[14.5px] font-semibold not-italic leading-[1.45] text-mv-ink">
@@ -88,11 +88,11 @@ export function ContactInfo() {
         {/* Single-line rows, so nothing has to wrap on a phone — the previous
             two-column version broke "Monday – Friday" onto two lines below 400px. */}
         <div className="mt-[14px] rounded-xl bg-mv-green-ink px-[22px] py-[18px] text-[#cfeade]">
-          <div className="mb-[7px] text-[14px] font-bold text-white">
-            Business Hours
+          <div className="mb-[7px] text-[15px] font-bold text-white">
+            Business hours
           </div>
           {cfg.hours.map((h) => (
-            <div key={h.label} className="text-[13px] leading-[1.75]">
+            <div key={h.label} className="text-[13.5px] leading-[1.75]">
               {h.label}: <b className="font-semibold text-white">{h.value}</b>
             </div>
           ))}

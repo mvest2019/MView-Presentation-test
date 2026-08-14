@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getCountyListMap,
   getFieldListMap,
+  getMapSearch,
   getOperatorListMap,
   getPlayTypeListMap,
   getWellStatusListMap,
@@ -20,7 +21,6 @@ import {
   type MapFilterItem,
 } from "@/lib/map-api";
 
-import { WELLS_STATEWIDE } from "./well-clusters";
 
 /*
  * The Search & filters panel that opens off the FILTERS edge tab.
@@ -36,18 +36,6 @@ import { WELLS_STATEWIDE } from "./well-clusters";
  * mock's value, which means unchecking a row will not move it. That is the
  * first thing to replace when real filtering lands.
  */
-
-/** The legend dots. Fixed set so the six lists read as one system. */
-const DOT = {
-  green: "#10b981",
-  amber: "#f59e0b",
-  blue: "#3b82f6",
-  red: "#ef4444",
-  purple: "#8b5cf6",
-  grey: "#9ca3af",
-  slate: "#6b7280",
-  brown: "#a16207",
-} as const;
 
 type Lease = {
   id: string;
@@ -79,11 +67,10 @@ const MY_LEASES: Lease[] = [
 ];
 
 /*
- * A count and a colour dot are optional: some lists are plain sets of choices
- * with no tally behind them, and a "0" or a grey dot would read as data rather
- * than as an absence of it.
+ * The count is optional: a facet that returns no tally should show none, and a
+ * "0" would read as data rather than as the absence of it.
  */
-type FilterItem = { name: string; count?: number; dot?: string };
+type FilterItem = { name: string; count?: number };
 
 type FilterSection = {
   id: string;
@@ -97,106 +84,19 @@ type FilterSection = {
   defaultOpen?: boolean;
 };
 
+/*
+ * The sections themselves — id, label and how each behaves. Every list now
+ * comes from the API, so `items` starts empty and is filled in by `sections`
+ * below; the static rows that stood in for them while there was no endpoint
+ * are gone.
+ */
 export const FILTER_SECTIONS: FilterSection[] = [
-  {
-    id: "county",
-    label: "County",
-    searchable: true,
-    defaultOpen: true,
-    items: [
-      { name: "Midland", count: 412, dot: DOT.green },
-      { name: "Reeves", count: 388, dot: DOT.amber },
-      { name: "Ector", count: 305, dot: DOT.blue },
-      { name: "Karnes", count: 214, dot: DOT.red },
-      { name: "Martin", count: 198, dot: DOT.green },
-      { name: "Howard", count: 176, dot: DOT.purple },
-      { name: "Andrews", count: 152, dot: DOT.amber },
-      { name: "Upton", count: 141, dot: DOT.green },
-      { name: "Reagan", count: 128, dot: DOT.red },
-      { name: "Gaines", count: 119, dot: DOT.blue },
-      { name: "All other counties", count: 6767, dot: DOT.grey },
-    ],
-  },
-  {
-    // No screenshot shows this list open, so the operators and their counts are
-    // invented — plausible Permian names, not real figures. Replace wholesale.
-    id: "operator",
-    label: "Operator",
-    searchable: true,
-    items: [
-      { name: "Pioneer Natural Resources", count: 48210, dot: DOT.green },
-      { name: "Diamondback E&P", count: 41905, dot: DOT.amber },
-      { name: "ConocoPhillips", count: 33640, dot: DOT.blue },
-      { name: "Chevron U.S.A.", count: 29318, dot: DOT.red },
-      { name: "Apache Corporation", count: 24772, dot: DOT.purple },
-      { name: "Oxy USA", count: 22140, dot: DOT.green },
-      { name: "EOG Resources", count: 19884, dot: DOT.amber },
-      { name: "Devon Energy", count: 15301, dot: DOT.blue },
-      // These two are real — they surface in the mock's typeahead for "up".
-      { name: "UPP Operating", count: 9412, dot: DOT.red },
-      { name: "Supreme", count: 6880, dot: DOT.purple },
-      { name: "All other operators", count: 982100, dot: DOT.grey },
-    ],
-  },
-  {
-    id: "well-type",
-    label: "Well type",
-    items: [
-      { name: "Oil Well" },
-      { name: "Gas Well" },
-      { name: "Oil / Gas Well" },
-      { name: "Injection / Disposal Well" },
-      { name: "Storage Well" },
-      { name: "Service Well" },
-      { name: "Observation Well" },
-      { name: "Brine Mining Well" },
-      { name: "Water Supply Well" },
-      { name: "Geothermal Well" },
-    ],
-  },
-  {
-    id: "status",
-    label: "Well status",
-    items: [
-      { name: "Permitted Location" },
-      { name: "Producing" },
-      { name: "Non-Producing" },
-      { name: "Dry Hole" },
-      { name: "Canceled / Abandoned Location" },
-    ],
-  },
-  {
-    id: "play-type",
-    label: "Play type",
-    note: "No well data",
-    items: [
-      { name: "Permian – Midland", count: 2110, dot: DOT.green },
-      { name: "Permian – Delaware", count: 1340, dot: DOT.green },
-      { name: "Eagle Ford", count: 1020, dot: DOT.amber },
-      { name: "Barnett", count: 512, dot: DOT.green },
-      { name: "Haynesville", count: 305, dot: DOT.amber },
-      { name: "Granite Wash", count: 188, dot: DOT.purple },
-      { name: "Austin Chalk", count: 142, dot: DOT.red },
-      { name: "Conventional / other", count: 3383, dot: DOT.grey },
-    ],
-  },
-  {
-    // Spraberry and Wolfcamp are from the mock; the rest are filled in.
-    id: "field",
-    label: "Field",
-    note: "No well data",
-    searchable: true,
-    items: [
-      { name: "Spraberry (Trend)", count: 1240, dot: DOT.green },
-      { name: "Wolfcamp", count: 1105, dot: DOT.red },
-      { name: "Wolfbone", count: 940, dot: DOT.amber },
-      { name: "Bone Spring", count: 812, dot: DOT.blue },
-      { name: "Eagleville (Eagle Ford)", count: 705, dot: DOT.amber },
-      { name: "Phantom (Wolfcamp)", count: 588, dot: DOT.purple },
-      { name: "Panhandle, West", count: 341, dot: DOT.green },
-      { name: "All other fields", count: 4271, dot: DOT.grey },
-    ],
-  },
+  { id: "county", label: "County", searchable: true, defaultOpen: true, items: [] },
+  { id: "operator", label: "Operator", searchable: true, items: [] },
+  { id: "well-type", label: "Well type", items: [] },
+  { id: "status", label: "Well status", items: [] },
+  { id: "play-type", label: "Play type", items: [] },
+  { id: "field", label: "Field", searchable: true, items: [] },
 ];
 
 /**
@@ -204,9 +104,23 @@ export const FILTER_SECTIONS: FilterSection[] = [
  * operator, or county" — so status, well type, play type and field stay out of
  * it, which is also why "Water Supply" does not answer a search for "up".
  */
-const SEARCHED_SECTIONS = new Set(["county", "operator"]);
+/** Below this the search box stays quiet — the endpoint is slow and vague. */
+/** Statewide well total, for the footer's "n of n match". Still a constant. */
+const WELLS_STATEWIDE = 1_217_270;
 
-const MAX_SUGGESTIONS = 8;
+const SEARCH_MIN_CHARS = 3;
+
+/** The API's `type` as the badge beside a result, and the section it belongs to. */
+const SEARCH_KINDS: Record<string, string> = {
+  lease: "Lease",
+  operator: "Operator",
+  county: "County",
+};
+
+const SEARCH_SECTIONS: Record<string, string | undefined> = {
+  operator: "operator",
+  county: "county",
+};
 
 type Suggestion = {
   key: string;
@@ -307,16 +221,12 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
         if (section.id === "field") {
           return {
             ...section,
-            // Live data now, so the "No well data" flag comes off.
-            note: undefined,
             items: fields.map(({ value, count }) => ({ name: value, count })),
           };
         }
         if (section.id === "play-type") {
           return {
             ...section,
-            // The list is live now, so the "No well data" flag comes off.
-            note: undefined,
             items: playTypes.map(({ value, count }) => ({
               name: value,
               count,
@@ -515,43 +425,82 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
   }, []);
 
   const [query, setQuery] = useState("");
+  /*
+   * What the search API returned for the box at the top of the panel. Only
+   * this box goes to the network — the Find… box inside each section still
+   * filters the rows already on screen.
+   */
+  const [searchHits, setSearchHits] = useState<Suggestion[]>([]);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  /*
+   * The query these results answer. Anything else in the box means an answer
+   * is still coming — which covers the debounce window as well as the request
+   * itself. A plain `loading` flag cannot: it only goes up when the timer
+   * fires, so for those 300ms the box looked settled and empty and said "No
+   * matches" before it said "Searching…".
+   */
+  const [searchedFor, setSearchedFor] = useState("");
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  const suggestions = useMemo<Suggestion[]>(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return [];
+  /* The dropdown is the API's answer and nothing else — no local matching
+     against the loaded rows, no lease list. */
+  const suggestions = searchHits;
 
-    const hits: Suggestion[] = [];
+  /* Typed enough to search, and the results on hand are for something else. */
+  const searching =
+    query.trim().length >= SEARCH_MIN_CHARS && query.trim() !== searchedFor;
 
-    for (const lease of MY_LEASES) {
-      if (lease.name.toLowerCase().includes(needle)) {
-        hits.push({
-          key: `lease:${lease.id}`,
-          label: lease.name,
-          kind: "Lease",
-          leaseId: lease.id,
+  useEffect(() => {
+    const needle = query.trim();
+    let cancelled = false;
+
+    /*
+     * Below the minimum the box has nothing to ask for: two letters match
+     * thousands of rows and the endpoint takes seconds to answer. Debounced on
+     * top of that, so a word typed at speed is one request, not five.
+     */
+    const timer = setTimeout(() => {
+      if (needle.length < SEARCH_MIN_CHARS) {
+        setSearchHits([]);
+        setSearchError(null);
+        setSearchedFor(needle);
+        return;
+      }
+
+      getMapSearch(needle)
+        .then((results) => {
+          if (cancelled) return;
+          setSearchHits(
+            results.map((result, index) => ({
+              // Counties carry their name in `value`; the rest have an id
+              // there and the name in `label`.
+              key: `${result.type}:${result.value}:${index}`,
+              label: result.label ?? result.value,
+              kind: SEARCH_KINDS[result.type] ?? result.type,
+              sectionId: SEARCH_SECTIONS[result.type],
+            })),
+          );
+          setSearchError(null);
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          setSearchHits([]);
+          setSearchError(
+            error instanceof Error ? error.message : "Search failed.",
+          );
+        })
+        .finally(() => {
+          if (!cancelled) setSearchedFor(needle);
         });
-      }
-    }
+    }, needle.length < SEARCH_MIN_CHARS ? 0 : 300);
 
-    for (const section of sections) {
-      if (!SEARCHED_SECTIONS.has(section.id)) continue;
-      for (const item of section.items) {
-        if (item.name.toLowerCase().includes(needle)) {
-          hits.push({
-            key: `${section.id}:${item.name}`,
-            label: item.name,
-            kind: section.label,
-            sectionId: section.id,
-          });
-        }
-      }
-    }
-
-    return hits.slice(0, MAX_SUGGESTIONS);
-  }, [query, sections]);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query]);
 
   // Dismiss the suggestions on an outside click, as the map's other overlays do.
   useEffect(() => {
@@ -698,10 +647,31 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
               id="filters-search-results"
               role="listbox"
               aria-label="Search results"
-              className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-lg border border-mv-line bg-white py-1 shadow-mv-lg"
+              className="mv-thin-scroll absolute inset-x-0 top-full z-20 mt-1 max-h-[248px] overflow-y-auto rounded-lg border border-mv-line bg-white py-1 shadow-mv-lg"
             >
+              {/* Refining a search keeps the previous answer on screen, blurred
+                  and inert, with the spinner above it — the list stays where
+                  it was instead of emptying and reflowing, but nobody can
+                  click a result that is about to be replaced. */}
+              {searching && suggestions.length > 0 && (
+                <li className="flex items-center gap-2 border-b border-mv-line px-3 py-[6px] text-[10.5px] lg:text-[11.5px] font-semibold text-mv-muted">
+                  <span
+                    aria-hidden="true"
+                    className="h-[11px] w-[11px] shrink-0 animate-spin rounded-full border-[1.5px] border-mv-line border-t-mv-green-deep"
+                  />
+                  Searching…
+                </li>
+              )}
+
               {suggestions.map((suggestion, index) => (
-                <li key={suggestion.key}>
+                <li
+                  key={suggestion.key}
+                  className={
+                    searching
+                      ? "pointer-events-none select-none opacity-50 blur-[1.5px] transition-[filter,opacity] duration-150"
+                      : "transition-[filter,opacity] duration-150"
+                  }
+                >
                   <button
                     type="button"
                     id={`filters-search-option-${index}`}
@@ -727,9 +697,16 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
 
               {suggestions.length === 0 && (
                 <li className="px-3 py-[9px] text-[12px] lg:text-[13px] text-mv-muted">
-                  No matches
+                  {searching
+                    ? "Searching…"
+                    : searchError
+                      ? searchError
+                      : query.trim().length < SEARCH_MIN_CHARS
+                        ? `Type ${SEARCH_MIN_CHARS} letters to search`
+                        : "No matches"}
                 </li>
               )}
+
             </ul>
           )}
         </div>
@@ -893,13 +870,6 @@ function CheckboxSection({
             onChange={() => onToggleItem(item.name)}
           />
           <Checkbox checked={checked.has(item.name)} />
-          {item.dot && (
-            <span
-              aria-hidden="true"
-              className="h-[7px] w-[7px] shrink-0 rounded-full"
-              style={{ background: item.dot }}
-            />
-          )}
           {/* Without a count to keep clear of, a long name may wrap rather
               than be cut off. */}
           <span
@@ -949,7 +919,7 @@ function SectionShell({
         aria-expanded={open}
         className="flex w-full cursor-pointer items-center gap-2 text-left"
       >
-        <span className="text-[9.5px] lg:text-[10.5px] font-extrabold uppercase tracking-[.1em] text-mv-ink">
+        <span className="text-[11px] lg:text-[12px] font-extrabold uppercase tracking-[.1em] text-mv-ink">
           {label}
         </span>
         {count !== undefined && (

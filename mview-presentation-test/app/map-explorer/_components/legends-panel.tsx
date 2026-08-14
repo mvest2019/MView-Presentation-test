@@ -6,6 +6,8 @@ import { useEffect, useState } from "react";
 
 import { getLegendListMap, type MapLegend } from "@/lib/map-api";
 
+import { CLUSTER_SCALE } from "./cluster-graphics";
+
 /*
  * The well-symbol legend, served by the map API.
  *
@@ -18,12 +20,18 @@ import { getLegendListMap, type MapLegend } from "@/lib/map-api";
  */
 
 type LegendsPanelProps = {
+  /**
+   * What the map is drawing. The legend explains that and only that: the
+   * count scale over bubbles, the well symbols over wells.
+   */
+  mode: "clusters" | "wells";
   /** Positioning; the panel places itself nowhere on its own. */
   className?: string;
   defaultOpen?: boolean;
 };
 
 export function LegendsPanel({
+  mode,
   className = "",
   defaultOpen = true,
 }: LegendsPanelProps) {
@@ -34,6 +42,8 @@ export function LegendsPanel({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (mode !== "wells") return;
+
     let cancelled = false;
 
     getLegendListMap()
@@ -57,7 +67,7 @@ export function LegendsPanel({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [mode]);
 
   return (
     <div
@@ -71,7 +81,7 @@ export function LegendsPanel({
       >
         <Layers size={15} aria-hidden="true" />
         <span className="flex-1 text-[13px] lg:text-[14px] font-bold leading-none">
-          Legends
+          {mode === "clusters" ? "Well counts" : "Legends"}
         </span>
         <ChevronDown
           size={16}
@@ -80,7 +90,33 @@ export function LegendsPanel({
         />
       </button>
 
+      {open && mode === "clusters" && (
+        <ul className="py-1">
+          {CLUSTER_SCALE.map((band) => (
+            <li
+              key={band.from}
+              className="flex items-center gap-[10px] px-3 py-[5px]"
+            >
+              <span
+                aria-hidden="true"
+                className="h-[14px] w-[14px] shrink-0 rounded-full border border-black/10"
+                style={{
+                  background: `rgb(${band.fill[0]}, ${band.fill[1]}, ${band.fill[2]})`,
+                }}
+              />
+              <span className="text-[11.5px] lg:text-[12.5px] leading-[1.35] text-mv-ink">
+                {band.label}
+              </span>
+            </li>
+          ))}
+          <li className="px-3 pb-1 pt-[6px] text-[10px] lg:text-[11px] leading-snug text-mv-muted">
+            Wells in the cluster. Zoom in for individual wells.
+          </li>
+        </ul>
+      )}
+
       {open &&
+        mode === "wells" &&
         (loading || error ? (
           <p className="px-3 py-[10px] text-[11.5px] leading-snug text-mv-muted">
             {loading ? "Loading legend…" : error}
