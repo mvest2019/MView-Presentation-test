@@ -16,6 +16,9 @@ export type HoveredWell = {
   status: string;
   wtype: string;
   county: string;
+  /** Where the well is, so a click can ring the well and not the cursor. */
+  lon: number;
+  lat: number;
   /** Screen position of the well, in view-container pixels. */
   x: number;
   y: number;
