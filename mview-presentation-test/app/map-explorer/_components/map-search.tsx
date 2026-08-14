@@ -14,7 +14,7 @@ import { MapPin } from "lucide-react";
  * nested in it would be sliced off. See `map-chrome.tsx` for the anchoring.
  */
 
-export type PlaceKind = "City" | "County" | "ZIP";
+export type PlaceKind = "City" | "County" | "ZIP" | "API";
 
 export type Place = {
   name: string;

@@ -4,6 +4,7 @@ import {
   Activity,
   ArrowLeft,
   Check,
+  CircleCheck,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -50,7 +51,14 @@ import {
 
 type SortKey = keyof Pick<
   WellRow,
-  "api" | "operator" | "lease" | "type" | "status" | "county" | "boe"
+  | "api"
+  | "operator"
+  | "lease"
+  | "type"
+  | "status"
+  | "county"
+  | "oil"
+  | "gas"
 >;
 
 type ViewTab = "map" | "table" | "insights";
@@ -85,11 +93,12 @@ const COLUMNS: {
 }[] = [
   { key: "api", label: "API", width: "w-[11%]" },
   { key: "operator", label: "Operator", width: "w-[15%]" },
-  { key: "lease", label: "Lease", width: "w-[16%]" },
+  { key: "lease", label: "Lease", width: "w-[17%]" },
   { key: "type", label: "Type", width: "w-[11%]" },
   { key: "status", label: "Status", width: "w-[13%]" },
   { key: "county", label: "County", width: "w-[11%]" },
-  { key: "boe", label: "Reported BOE", align: "right", width: "w-[12%]" },
+  { key: "oil", label: "Oil (bbl)", align: "right", width: "w-[11%]" },
+  { key: "gas", label: "Gas (mcf)", align: "right", width: "w-[11%]" },
 ];
 
 const FACETS: {
@@ -122,7 +131,6 @@ export function WellsTable({
     ascending: true,
   });
   const [query, setQuery] = useState("");
-  const [boeOnly, setBoeOnly] = useState(false);
   const [facets, setFacets] = useState<Facets>(emptyFacets);
   const [openFacet, setOpenFacet] = useState<FacetKey | null>(null);
   const filterBarRef = useRef<HTMLDivElement>(null);
@@ -152,7 +160,6 @@ export function WellsTable({
     const needle = query.trim().toLowerCase();
 
     return allWells().filter((row) => {
-      if (boeOnly && row.boe === null) return false;
       if (facets.operator.size && !facets.operator.has(row.operator)) return false;
       if (facets.type.size && !facets.type.has(row.type)) return false;
       if (facets.status.size && !(row.status && facets.status.has(row.status))) {
@@ -166,7 +173,7 @@ export function WellsTable({
         row.lease.toLowerCase().includes(needle)
       );
     });
-  }, [query, boeOnly, facets]);
+  }, [query, facets]);
 
   const summary = useMemo(() => {
     const operators = new Set<string>();
@@ -174,6 +181,7 @@ export function WellsTable({
     let oil = 0;
     let gas = 0;
     let inactive = 0;
+    let active = 0;
 
     for (const row of matched) {
       operators.add(row.operator);
@@ -181,12 +189,16 @@ export function WellsTable({
       if (row.type === "Oil") oil += 1;
       else if (row.type === "Gas") gas += 1;
       if (row.status === "Inactive") inactive += 1;
+      // Producing or shut-in but still a producer — anything but inactive,
+      // and only where a status is reported at all.
+      else if (row.status !== null) active += 1;
     }
 
     return {
       total: matched.length,
       oil,
       gas,
+      active,
       inactive,
       operators: operators.size,
       counties: counties.size,
@@ -222,9 +234,6 @@ export function WellsTable({
     ...FACETS.flatMap(({ key, label }) =>
       [...facets[key]].map((value) => ({ key, label, value })),
     ),
-    ...(boeOnly
-      ? [{ key: "boe" as const, label: "Reported BOE only", value: "" }]
-      : []),
   ];
 
   function updateFacet(key: FacetKey, next: Set<string>) {
@@ -233,19 +242,14 @@ export function WellsTable({
   }
 
   function removeChip(chip: (typeof chips)[number]) {
-    if (chip.key === "boe") {
-      setBoeOnly(false);
-    } else {
-      const next = new Set(facets[chip.key]);
-      next.delete(chip.value);
-      updateFacet(chip.key, next);
-    }
+    const next = new Set(facets[chip.key]);
+    next.delete(chip.value);
+    updateFacet(chip.key, next);
     setPage(1);
   }
 
   function clearAll() {
     setFacets(emptyFacets());
-    setBoeOnly(false);
     setQuery("");
     setPage(1);
   }
@@ -287,17 +291,12 @@ export function WellsTable({
 
         <span aria-hidden="true" className="h-5 w-px shrink-0 bg-mv-line" />
 
+        {/* A title, not a tally: the count already appears in the line below
+            and again in the summary strip, and "match your search" claimed a
+            search that has usually not happened. */}
         <h2 className="text-[16px] font-bold leading-tight text-mv-ink lg:text-[19px] lg:leading-none">
-          <span className="text-mv-green-deep">
-            {summary.total.toLocaleString("en-US")}
-          </span>{" "}
-          wells match your search
+          Well results
         </h2>
-        <p className="text-[12.5px] text-mv-muted">
-          Showing {firstShown.toLocaleString("en-US")} to{" "}
-          {lastShown.toLocaleString("en-US")} of{" "}
-          {summary.total.toLocaleString("en-US")} results
-        </p>
       </div>
 
       {/* ---------------- controls ----------------
@@ -341,26 +340,6 @@ export function WellsTable({
             onChange={(next) => updateFacet(facet.key, next)}
           />
         ))}
-
-        <label
-          className={`inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-full border px-[14px] py-[6px] text-[12.5px] font-semibold ${
-            boeOnly
-              ? "border-mv-green-deep text-mv-green-deep"
-              : "border-mv-line text-mv-slate"
-          }`}
-        >
-          <input
-            type="checkbox"
-            className="sr-only"
-            checked={boeOnly}
-            onChange={(event) => {
-              setBoeOnly(event.target.checked);
-              setPage(1);
-            }}
-          />
-          <Box checked={boeOnly} />
-          Reported BOE only
-        </label>
 
         {chips.length > 0 && (
           <button
@@ -432,7 +411,7 @@ export function WellsTable({
 
       {/* ---------------- summary strip ----------------
           Top border only — the card's own edge closes it off below. */}
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-b-xl border-t border-mv-line bg-mv-line md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-b-xl border-t border-mv-line bg-mv-line md:grid-cols-3 xl:grid-cols-7">
         <SummaryCard
           icon={FlaskConical}
           tint="green"
@@ -457,6 +436,13 @@ export function WellsTable({
           label="Gas wells"
           value={summary.gas}
           note={`${share(summary.gas)}%`}
+        />
+        <SummaryCard
+          icon={CircleCheck}
+          tint="green"
+          label="Active wells"
+          value={summary.active}
+          note={`${share(summary.active)}%`}
         />
         <SummaryCard
           icon={TriangleAlert}
@@ -486,7 +472,7 @@ export function WellsTable({
       {/* ---------------- table ---------------- */}
       <div className="mt-4 overflow-hidden rounded-xl border border-mv-line bg-white">
       <div className="mv-thin-scroll overflow-x-auto">
-        <table className="w-full min-w-[1000px] border-collapse text-left">
+        <table className="w-full min-w-[1160px] border-collapse text-left">
           <thead>
             <tr className="border-b border-mv-line bg-[#f8f9fa]">
               {/* The first and last cells carry the page's 24px gutter, so the
@@ -565,14 +551,8 @@ export function WellsTable({
                 <td className="px-4 py-[14px] text-[13px] text-mv-slate">
                   {row.county}
                 </td>
-                <td className="px-4 py-[14px] text-right text-[13px] tabular-nums text-mv-ink">
-                  {row.boe === null ? (
-                    <span className="text-mv-muted">—</span>
-                  ) : (
-                    row.boe.toLocaleString("en-US")
-                  )}
-                </td>
-
+                <Volume value={row.oil} />
+                <Volume value={row.gas} />
                 <td className="py-[14px] pl-4 pr-6">
                   <button
                     type="button"
@@ -913,6 +893,19 @@ function SortMark({
     <ChevronUp size={11} aria-hidden="true" />
   ) : (
     <ChevronDown size={11} aria-hidden="true" />
+  );
+}
+
+/** A reported volume, or a dash where nothing was filed. */
+function Volume({ value }: { value: number | null }) {
+  return (
+    <td className="px-4 py-[14px] text-right text-[13px] tabular-nums text-mv-ink">
+      {value === null ? (
+        <span className="text-mv-muted">—</span>
+      ) : (
+        value.toLocaleString("en-US")
+      )}
+    </td>
   );
 }
 
