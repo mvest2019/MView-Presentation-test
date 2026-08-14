@@ -20,6 +20,7 @@
  * Pioneer's: it is thinner because the record is.
  */
 
+import { titleCase } from "./text-case";
 import {
   COMPARE_YEARS,
   OPERATOR_COMPARE_RECORDS,
@@ -142,11 +143,10 @@ export function formatCount(value: number): string {
   return Math.round(value).toLocaleString("en-US");
 }
 
-export function titleCase(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/\b[a-z]/g, (character) => character.toUpperCase());
-}
+/* `titleCase` moved to `./text-case` so client components can import it without
+   pulling this module's fixture tables into the browser bundle. Re-exported here,
+   unchanged, so every existing caller keeps working. */
+export { titleCase };
 
 function monogramOf(filedName: string): string {
   const words = filedName.match(/[A-Za-z]+/g) ?? [];

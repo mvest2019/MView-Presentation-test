@@ -5,6 +5,11 @@ import Link from "next/link";
 import { memo, useEffect, useId, useRef, useState } from "react";
 
 import { Button, selectedControlClass } from "@/app/_components/button";
+import {
+  CONTROL_CARET,
+  CONTROL_TINT,
+  SELECT_CLASS,
+} from "@/app/_components/control-styles";
 import { OperatorMonogram } from "@/app/_components/operator-monogram";
 import {
   fieldGroupLabelClass,
@@ -254,11 +259,9 @@ function QuickFilters({
    every control goes full width so nothing is squeezed under a usable size.
    ========================================================================== */
 
-/** The mint-edged control border and lift — the design's `--mint-line`. */
-const CONTROL_TINT = "border-mv-mint-line shadow-[0_1px_2px_rgba(13,14,23,.04)]";
-
-const SELECT_CLASS =
-  "w-full cursor-pointer appearance-none rounded-[10px] border bg-white py-2 pl-[14px] pr-9 text-sm font-medium text-mv-ink outline-none transition-colors hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)]";
+/* `CONTROL_TINT`, `SELECT_CLASS` and `CONTROL_CARET` live in
+   `app/_components/control-styles.ts` — the production chart's county filter has to
+   look like these controls, so the classes are shared rather than duplicated. */
 
 /* The Play Type and Status options no longer carry trailing counts. Those came
    from the local fixture, and the search endpoint reports a single `total_count`
@@ -387,7 +390,7 @@ function SelectControl({
       </select>
       <ChevronDown
         aria-hidden="true"
-        className="pointer-events-none absolute right-[13px] top-1/2 h-[7px] w-[11px] -translate-y-1/2 text-mv-muted"
+        className={CONTROL_CARET}
         strokeWidth={1.8}
       />
     </div>
