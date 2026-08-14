@@ -290,7 +290,7 @@ function TermCard({ term }: { term: GlossaryTermSummary }) {
         )}
       </dt>
       <dd className="mt-1 max-w-[700px] text-[14.5px] text-mv-slate">
-        {stripHtml(term.short_definition)}
+        {withEllipsis(stripHtml(term.short_definition))}
         {/* Not a link: the card already is one, and a second anchor to the same
             place would be a duplicate for anyone tabbing or using a screen
             reader. Kept as text so the affordance still reads.
@@ -306,6 +306,32 @@ function TermCard({ term }: { term: GlossaryTermSummary }) {
       </dd>
     </div>
   );
+}
+
+/**
+ * Marks a definition that the API cut off.
+ *
+ * `short_definition` is truncated upstream at a fixed length, mid-word and with
+ * no ellipsis — 16 of the 47 terms end like "…crude-quality measure that can
+ * affect t". On the page that reads as a rendering fault rather than as "there
+ * is more inside".
+ *
+ * A COMPLETE definition always ends in terminal punctuation, so the absence of
+ * it is the signal. Checked against the live corpus: every one of the 31 whole
+ * definitions ends with `.`, and all 16 cut ones end mid-word.
+ *
+ * A trailing ONE-character token is dropped before the ellipsis, because that is
+ * always a fragment ("affect t" → "affect…"). Longer tails are kept: "wel",
+ * "prod" and "tied" are equally likely to be a real word as a fragment, and
+ * cutting a real word to look tidier loses meaning the reader could have used.
+ *
+ * This is applied where the text is RENDERED, not inside `stripHtml`, so the
+ * ellipsis never leaks into the search index and make a term match on "…".
+ */
+function withEllipsis(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed || /[.!?"”)]$/.test(trimmed)) return trimmed;
+  return `${trimmed.replace(/\s+\S$/, "")}…`;
 }
 
 /**
