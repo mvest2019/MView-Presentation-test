@@ -111,10 +111,14 @@ export function ContactForm() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed left-1/2 top-[84px] z-50 flex max-w-[calc(100vw-32px)] -translate-x-1/2 items-start gap-2.5 rounded-[12px] bg-mv-green-ink px-[18px] py-[14px] shadow-mv-lg"
+          /* Width is set, not left to the content: as a shrink-to-fit box the
+             message wrapped over five lines on a phone. `w-[calc(100vw-24px)]`
+             takes the screen less a small margin, `max-w-[380px]` stops it
+             stretching on a desktop. */
+          className="fixed left-1/2 top-[84px] z-50 flex w-[calc(100vw-24px)] max-w-[380px] -translate-x-1/2 items-start gap-2.5 rounded-[12px] bg-mv-green-ink px-[18px] py-[14px] shadow-mv-lg"
         >
           <CircleCheck className="mt-[1px] h-[19px] w-[19px] flex-none text-mv-green" />
-          <p className="m-0 max-w-[290px] text-[13.5px] font-semibold leading-[1.45] text-mv-green">
+          <p className="m-0 text-[13.5px] font-semibold leading-[1.45] text-mv-green">
             Your message has been sent successfully. We&rsquo;ll get back to you
             soon!
           </p>
