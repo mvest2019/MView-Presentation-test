@@ -9,11 +9,11 @@ import { z } from "zod";
  */
 export const contactSchema = z.object({
   firstName: z.string().trim().min(1, "Tell us your first name."),
-  lastName: z.string().trim().min(1, "And your last name."),
+  lastName: z.string().trim().min(1, "Tell us your last name."),
   email: z
     .string()
     .trim()
-    .min(1, "We need an email to reply to.")
+    .min(1, "Please enter your email address.")
     .regex(/^[^@\s]+@[^@\s]+\.[^@\s]+$/, "That doesn't look like an email address."),
   // Optional — only shape-checked when something was typed.
   phone: z
