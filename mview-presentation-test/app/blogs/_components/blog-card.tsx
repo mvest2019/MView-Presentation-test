@@ -55,9 +55,16 @@ export function BlogCard({
   return (
     // Each article lives under its own section, so a News item found in a
     // blog article's related list still links to `/oil-and-gas-news/…`.
+    //
+    // `h-full` so the card fills whatever box it is placed in. In the related
+    // row each card sits inside a fixed-width wrapper that stretches to the
+    // tallest of them; without this the card sized to its OWN content instead,
+    // so a two-line title and a three-line title produced cards with ragged
+    // bottoms. With it, the body's `flex-1` and the "Read →" row's `mt-auto`
+    // push that link to the same baseline in every card.
     <Link
       href={`${sectionPath(article.type)}/${slugFromUrlTitle(article.urlTitle)}`}
-      className="flex flex-col overflow-hidden rounded-[12px] border border-mv-line bg-mv-card text-inherit no-underline shadow-mv transition-shadow hover:shadow-[0_6px_18px_rgba(13,14,23,.10)] hover:no-underline"
+      className="flex h-full flex-col overflow-hidden rounded-[12px] border border-mv-line bg-mv-card text-inherit no-underline shadow-mv transition-shadow hover:shadow-[0_6px_18px_rgba(13,14,23,.10)] hover:no-underline"
     >
       <BlogThumb
         src={article.blog_header_img}
