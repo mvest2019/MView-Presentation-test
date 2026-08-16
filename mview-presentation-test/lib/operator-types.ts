@@ -107,6 +107,10 @@ export interface OperatorColumns {
   oil: boolean;
   gas: boolean;
   cty: boolean;
+  /** `leaseCount` from the search response. Off by default. */
+  leases: boolean;
+  /** `end_productiondate` from the search response. Off by default. */
+  lastProduction: boolean;
   status: boolean;
 }
 
@@ -114,6 +118,9 @@ export const DEFAULT_COLUMNS: OperatorColumns = {
   oil: true,
   gas: true,
   cty: true,
+  // Opt-in columns: the table stays as it was until a visitor turns them on.
+  leases: false,
+  lastProduction: false,
   status: true,
 };
 
