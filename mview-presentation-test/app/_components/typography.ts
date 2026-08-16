@@ -58,8 +58,22 @@ export const displayMdClass = `${headingBase} leading-[1.16] text-[clamp(26px,3v
 /** 22→30px. A section heading below the page's own h1. */
 export const displaySmClass = `${headingBase} leading-[1.18] text-[clamp(22px,2.6vw,30px)]`;
 
+/** 24→32px. The compare tool's `.cp-head h1`, tighter than the directory's. */
+export const displayXsClass = `${headingBase} leading-[1.2] tracking-[-.02em] text-[clamp(24px,3vw,32px)]`;
+
 /** 19px — the design's `.ws-title h3` / `.tbl-head h2`, a panel's own title. */
 export const panelTitleClass = `${headingBase} text-[19px]`;
+
+/**
+ * 20px bold — the compare tool's `.cp-sechead h2`, the heading that titles a
+ * band of the page. Distinct from `h3Class` (20px semibold): these carry the
+ * heavier weight and tighter tracking the design gives its section heads.
+ */
+export const sectionTitleClass =
+  "font-sans font-bold leading-[1.2] tracking-[-.015em] text-[20px]";
+
+/** 17px bold — the compare tool's `.cp-cardhead h3`, a card's own title. */
+export const cardTitleClass = "font-sans font-bold leading-[1.25] text-[17px]";
 
 /* --------------------------------------------------------------------------
    Body and supporting text
