@@ -1,6 +1,6 @@
 "use client";
 
-import { AreaChart, Droplet, Info, LineChart } from "lucide-react";
+import { Droplet, Info } from "lucide-react";
 import { useCallback, useId, useMemo, useRef, useState } from "react";
 
 import { cardTitleClass } from "@/app/_components/typography";
@@ -29,9 +29,14 @@ import { YearBrush } from "./year-brush";
  * and the design shows a third series. `toProductionYears` drops it at the boundary,
  * so there are two series and two summary cards rather than three.
  *
- * EVERYTHING IS IN MILLIONS. The design labels the axis "Volume (MM)" and prints
- * `181.37MM`, so raw barrels and Mcf are divided once, here, and every figure below —
- * axis, cards, tooltip, end pills — reads off the same scaled numbers.
+ * EVERYTHING IS IN MILLIONS. Raw barrels and Mcf are divided once, here, and every
+ * figure below — axis, cards, tooltip, end pills — reads off the same scaled numbers.
+ * The `MM` suffix rides on each gridline label, so the axis needs no caption of its
+ * own; the strip above the plot names the applied county instead.
+ *
+ * THE PLOT IS ALWAYS AN AREA. The line/area toggle is gone on request, so the fill is
+ * unconditional rather than a mode nothing can switch. Units are not lost with the old
+ * "(bbl)" / "(Mcf)" labels: the subtitle and the footnote both still carry them.
  *
  * ZOOM IS A VISIBLE CONTROL. `YearBrush` under the x-axis owns the range: drag its
  * handles to narrow, drag inside to pan, press Reset or double-click to restore. The
@@ -48,12 +53,12 @@ const INSET = { top: 22, right: 96, bottom: 46, left: 96 } as const;
 const SERIES = [
   {
     key: "oil",
-    label: "Oil (bbl)",
+    label: "Oil Produced",
     colour: "var(--color-mv-chart-oil)",
   },
   {
     key: "gas",
-    label: "Gas (Mcf)",
+    label: "Gas Produced",
     colour: "var(--color-mv-down)",
   },
 ] as const;
@@ -77,7 +82,6 @@ export function ProductionOverTime({
   operatorCounties: readonly string[];
 }) {
   const [county, setCounty] = useState<string>(ALL_COUNTIES);
-  const [mode, setMode] = useState<"line" | "area">("area");
   const [hover, setHover] = useState<number | null>(null);
   /** Index window over the data, for zoom and pan. Null means the whole range. */
   const [zoom, setZoom] = useState<{ start: number; end: number } | null>(null);
@@ -96,6 +100,14 @@ export function ProductionOverTime({
     () => [...operatorCounties].sort((a, b) => a.localeCompare(b)),
     [operatorCounties],
   );
+
+  /**
+   * What the chart is currently showing, in the listing's label format. Named once
+   * because it is printed above the plot, spoken in the SVG's `aria-label` and used in
+   * the empty state — three places that must never disagree about the filter.
+   */
+  const appliedCounty =
+    county === ALL_COUNTIES ? "All counties" : `${titleCase(county)} County`;
 
   const graph = useProductionGraph({ operatorNumber, counties });
   const all = useMemo(() => graph.data ?? [], [graph.data]);
@@ -127,7 +139,6 @@ export function ProductionOverTime({
   /** The year the cards and tooltip describe: hovered, else the latest. */
   const focus = hover ?? data.length - 1;
   const point: ProductionYear | undefined = data[focus];
-  const prior: ProductionYear | undefined = data[focus - 1];
 
   const linePath = (key: SeriesKey) =>
     data
@@ -243,17 +254,14 @@ export function ProductionOverTime({
       </div>
 
       {/* ---- summary cards, tinted per series ---- */}
-      <div className="mt-4 grid grid-cols-2 gap-[14px] max-[640px]:grid-cols-1">
+      <div className="mt-4 grid grid-cols-2 gap-[14px] max-[860px]:grid-cols-1">
         {SERIES.map((series) => {
           const value = point?.[series.key] ?? 0;
-          const was = prior?.[series.key];
-          const change =
-            was !== undefined && was > 0 ? ((value - was) / was) * 100 : null;
 
           return (
             <div
               key={series.key}
-              className="flex items-start gap-3 rounded-[14px] border px-4 py-[14px]"
+              className="flex items-center gap-3 rounded-[14px] border px-4 py-[14px]"
               style={{
                 background: tinted(series.colour, "5%"),
                 borderColor: tinted(series.colour, "22%"),
@@ -271,8 +279,12 @@ export function ProductionOverTime({
                 />
               </span>
 
-              <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-semibold text-mv-ink-soft">
+              {/* Label and figure share a baseline on one row. `flex-wrap` is the
+                  safety valve, not the intent: it only engages if the card is squeezed
+                  narrower than the two can sit in, which the grid's single column below
+                  640px avoids. */}
+              <p className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-3 gap-y-[2px]">
+                <span className="text-[13px] font-semibold text-mv-ink-soft">
                   {series.label}
                   {point ? (
                     <>
@@ -280,82 +292,38 @@ export function ProductionOverTime({
                       <b className="font-bold text-mv-ink">{point.year}</b>
                     </>
                   ) : null}
-                </p>
-                <p
-                  className="mt-[2px] text-[26px] font-extrabold leading-[1.1] tracking-[-.02em] tabular-nums"
+                </span>
+                <span
+                  className="text-[22px] font-extrabold leading-[1.1] tracking-[-.02em] tabular-nums max-[420px]:text-[18px]"
                   style={{ color: series.colour }}
                 >
                   {graph.status === "loading" && !graph.data ? (
-                    <span className="inline-block h-[26px] w-[120px] animate-pulse rounded-md bg-mv-line-soft align-middle" />
+                    <span className="inline-block h-[22px] w-[104px] animate-pulse rounded-md bg-mv-line-soft align-middle" />
                   ) : (
                     <>
                       {mm(value)}
-                      <small className="ml-[1px] text-[13px] font-bold">
+                      <small className="ml-[1px] text-[12.5px] font-bold">
                         MM
                       </small>
                     </>
                   )}
-                </p>
-              </div>
-
-              {change !== null ? (
-                <div className="shrink-0 text-right">
-                  <p
-                    className={`text-[12.5px] font-bold ${change >= 0 ? "text-mv-green-deep" : "text-mv-down"}`}
-                  >
-                    {change >= 0 ? "▲" : "▼"} {Math.abs(change).toFixed(1)}%
-                  </p>
-                  <p className="mt-[2px] text-[11.5px] text-mv-muted">
-                    vs {prior?.year}
-                  </p>
-                </div>
-              ) : null}
+                </span>
+              </p>
             </div>
           );
         })}
       </div>
 
-      {/* ---- axis label, interaction hint, line/area toggle ---- */}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[13px]">
-          <b className="font-bold text-mv-ink">Volume (MM)</b>
-          <span className="ml-2 text-mv-muted">
-            Use the range below to zoom
-          </span>
-        </p>
-
-        <div
-          role="group"
-          aria-label="Chart style"
-          className="inline-flex overflow-hidden rounded-[10px] border border-mv-line"
-        >
-          {(
-            [
-              ["line", "Line", LineChart],
-              ["area", "Area", AreaChart],
-            ] as const
-          ).map(([value, label, Icon]) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={mode === value}
-              onClick={() => setMode(value)}
-              className={`flex cursor-pointer items-center gap-[6px] border-0 px-[14px] py-[7px] text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-mv-green-deep ${
-                mode === value
-                  ? "bg-mv-tint text-mv-green-deep"
-                  : "bg-white text-mv-muted hover:text-mv-ink"
-              }`}
-            >
-              <Icon
-                aria-hidden="true"
-                className="h-[15px] w-[15px]"
-                strokeWidth={1.9}
-              />
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* ---- the applied county, above the plot ----
+          `aria-live` because the figures and the plot both change under a filter the
+          user drove from elsewhere on the card; this line is the confirmation that the
+          change landed. */}
+      <p
+        aria-live="polite"
+        className="mt-4 truncate text-[13px] font-bold text-mv-ink"
+      >
+        {appliedCounty}
+      </p>
 
       {/* ---- chart ---- */}
       <div
@@ -382,10 +350,7 @@ export function ProductionOverTime({
           <div className="flex h-full items-center justify-center rounded-xl border border-mv-line bg-mv-bg px-4 text-center">
             <p className="text-sm text-mv-muted">
               No reported production for{" "}
-              {county === ALL_COUNTIES
-                ? "this operator"
-                : `${titleCase(county)} County`}
-              .
+              {county === ALL_COUNTIES ? "this operator" : appliedCounty}.
             </p>
           </div>
         ) : data.length === 0 ? (
@@ -404,7 +369,7 @@ export function ProductionOverTime({
                 graph.status === "loading" ? "opacity-50" : "opacity-100"
               } ${zoom ? "cursor-grab" : ""}`}
               role="img"
-              aria-label={`Annual oil and gas production, ${data[0]?.year} to ${data.at(-1)?.year}, for ${county === ALL_COUNTIES ? "all counties" : titleCase(county)}.`}
+              aria-label={`Annual oil and gas production, ${data[0]?.year} to ${data.at(-1)?.year}, for ${appliedCounty}.`}
               onWheel={onWheel}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
@@ -502,12 +467,10 @@ export function ProductionOverTime({
 
               {SERIES.map((series) => (
                 <g key={series.key}>
-                  {mode === "area" ? (
-                    <path
-                      d={`${linePath(series.key)} L${geometry.x(data.length - 1).toFixed(1)} ${baseline.toFixed(1)} L${geometry.x(0).toFixed(1)} ${baseline.toFixed(1)} Z`}
-                      fill={`url(#${gradientId}-${series.key})`}
-                    />
-                  ) : null}
+                  <path
+                    d={`${linePath(series.key)} L${geometry.x(data.length - 1).toFixed(1)} ${baseline.toFixed(1)} L${geometry.x(0).toFixed(1)} ${baseline.toFixed(1)} Z`}
+                    fill={`url(#${gradientId}-${series.key})`}
+                  />
                   <path
                     d={linePath(series.key)}
                     fill="none"
