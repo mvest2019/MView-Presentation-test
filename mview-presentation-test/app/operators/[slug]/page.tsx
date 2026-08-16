@@ -40,6 +40,7 @@ import { OPERATOR_RECENT_WELLS } from "@/lib/operator-detail-data";
 import { TEXAS_COUNTY_PATHS, TEXAS_VIEWBOX } from "@/lib/texas-county-paths";
 
 import { FootprintMap } from "./_components/footprint-map";
+import { getOperatorCounties } from "@/lib/operator-api";
 import { fetchOperatorDetails } from "@/lib/operator-details-api";
 
 import { DeferredSection } from "./_components/deferred-section";
@@ -140,6 +141,24 @@ export async function generateMetadata({
   };
 }
 
+/**
+ * County names for the lease table's filter.
+ *
+ * The SAME read the operator listing's Counties quick filter uses, on request, so the
+ * option list has exactly one source. It is cached upstream, so this costs no extra
+ * request per view. The failure is swallowed here rather than in the service: a filter
+ * that cannot load its options must not take the page down, and the lease table still
+ * works unfiltered.
+ */
+async function loadCountyOptions(): Promise<string[]> {
+  try {
+    return await getOperatorCounties();
+  } catch (error) {
+    console.error("[operator-detail] counties unavailable:", error);
+    return [];
+  }
+}
+
 export default async function OperatorDetailRoute({
   params,
 }: {
@@ -148,6 +167,8 @@ export default async function OperatorDetailRoute({
   const { slug } = await params;
   const operator = await loadOperator(slug);
   if (!operator) notFound();
+
+  const countyOptions = await loadCountyOptions();
 
   const recentWells = OPERATOR_RECENT_WELLS[operator.operatorNumber] ?? [];
 
@@ -480,18 +501,19 @@ export default async function OperatorDetailRoute({
           </section>
         ) : null}
 
-        {/* ---- 8 · leases ---- */}
-        {operator.leaseRows.length > 0 ? (
-          <section className="pt-[26px]">
-            {/* 40 rows and a client island with its own search, sort and drilldown. */}
-            <DeferredSection minHeight={620} label="Operator leases">
-              <OperatorLeases
-                leases={operator.leaseRows}
-                totalLeasesOnRecord={operator.leases}
-              />
-            </DeferredSection>
-          </section>
-        ) : null}
+        {/* ---- 8 · leases ----
+            Deferred so the lease read fires when the section is approached rather
+            than on page load. It no longer depends on the fixture's rows: the table
+            and its wells drilldown are both served by the operator API. */}
+        <section className="pt-[26px]">
+          <DeferredSection minHeight={620} label="Operator leases">
+            <OperatorLeases
+              operatorNumber={operator.operatorNumber}
+              totalLeasesOnRecord={operator.leases}
+              countyOptions={countyOptions}
+            />
+          </DeferredSection>
+        </section>
 
         {/* ---- 9 · related operators ---- */}
         <section className="pt-[26px]">
