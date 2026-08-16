@@ -4,7 +4,8 @@ import { ChevronDown, ChevronUp, Search, X } from "lucide-react";
 import Link from "next/link";
 import { memo, useEffect, useId, useRef, useState } from "react";
 
-import { Button, selectedControlClass } from "@/app/_components/button";
+import { Button } from "@/app/_components/button";
+import { Pager as SharedPager } from "@/app/_components/pager";
 import {
   CONTROL_CARET,
   CONTROL_TINT,
@@ -1177,93 +1178,17 @@ function Pager({
 }) {
   if (page.total === 0) return null;
 
-  const { page: current, pageCount } = page;
-
-  const windowed: number[] = [];
-  for (let index = 1; index <= pageCount; index += 1) {
-    if (index === 1 || index === pageCount || Math.abs(index - current) <= 1) {
-      windowed.push(index);
-    }
-  }
-
   return (
-    <nav
-      aria-label="Directory pages"
-      className="flex flex-wrap items-center justify-between gap-3 px-[2px] pb-[2px] pt-4"
-    >
-      <p className="m-0 text-[12.5px] text-mv-muted">
-        Total records:{" "}
-        <b className="font-bold tabular-nums text-mv-ink">{page.total}</b>
-      </p>
-
-      <span className="flex flex-wrap items-center gap-[5px]">
-        <PageButton
-          onClick={() => onPage(current - 1)}
-          disabled={current === 1}
-          label="Previous page"
-        >
-          ← Previous
-        </PageButton>
-
-        {windowed.map((value, index) => (
-          <span key={value} className="flex items-center gap-[5px]">
-            {index > 0 && value - windowed[index - 1] > 1 && (
-              <span aria-hidden="true" className="px-[2px] text-mv-muted">
-                …
-              </span>
-            )}
-            <PageButton
-              onClick={() => onPage(value)}
-              current={value === current}
-              label={`Page ${value}`}
-            >
-              {value}
-            </PageButton>
-          </span>
-        ))}
-
-        <PageButton
-          onClick={() => onPage(current + 1)}
-          disabled={current === pageCount}
-          label="Next page"
-        >
-          Next →
-        </PageButton>
-      </span>
-    </nav>
+    <SharedPager
+      current={page.page}
+      pageCount={page.pageCount}
+      total={page.total}
+      onPage={onPage}
+      label="Directory pages"
+    />
   );
 }
 
-function PageButton({
-  children,
-  onClick,
-  disabled = false,
-  current = false,
-  label,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-  current?: boolean;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-      aria-current={current ? "page" : undefined}
-      className={`min-w-[34px] cursor-pointer rounded-[9px] border px-[10px] py-[6px] text-[13.5px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep disabled:cursor-not-allowed disabled:opacity-40 ${
-        current
-          ? selectedControlClass
-          : "border-mv-line bg-white text-mv-ink enabled:hover:bg-mv-hover"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
 
 /* ==========================================================================
    The rounded filter pill (`.fp`) with its optional count badge (`.fp .cnt`).
