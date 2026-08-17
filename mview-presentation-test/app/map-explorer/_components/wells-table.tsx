@@ -30,6 +30,7 @@ import {
   EMPTY_PRODUCTION,
   ProductionFilter,
   productionCount,
+  productionProblem,
   type ProductionRange,
 } from "./production-filter";
 
@@ -310,11 +311,20 @@ export function WellsTable({
           },
           appliedPicked,
         ),
+        // Both ends or neither: a lone bound is not a range.
         ranges: {
-          producedOilMin: appliedProduction.oilMin,
-          producedOilMax: appliedProduction.oilMax,
-          producedGasMin: appliedProduction.gasMin,
-          producedGasMax: appliedProduction.gasMax,
+          ...(appliedProduction.oilMin && appliedProduction.oilMax
+            ? {
+                producedOilMin: appliedProduction.oilMin,
+                producedOilMax: appliedProduction.oilMax,
+              }
+            : {}),
+          ...(appliedProduction.gasMin && appliedProduction.gasMax
+            ? {
+                producedGasMin: appliedProduction.gasMin,
+                producedGasMax: appliedProduction.gasMax,
+              }
+            : {}),
         },
       })
         .then((result) => {
@@ -362,10 +372,22 @@ export function WellsTable({
     setPage(1);
   }
 
+  /*
+   * Taking a chip off drops that value from the applied set as well as the
+   * draft, and reloads. The chips are what is *on* the table — leaving the
+   * rows filtered by something no longer listed is the disagreement the chips
+   * exist to prevent.
+   */
   function removeChip(chip: (typeof chips)[number]) {
     const next = new Set(facets[chip.key]);
     next.delete(chip.value);
-    updateFacet(chip.key, next);
+
+    setFacets((current) => ({ ...current, [chip.key]: next }));
+    setAppliedFacets((current) => {
+      const applied = new Set(current[chip.key]);
+      applied.delete(chip.value);
+      return { ...current, [chip.key]: applied };
+    });
     setPage(1);
   }
 
@@ -380,6 +402,10 @@ export function WellsTable({
   }
 
   function applyFacets() {
+    // Applying is the end of choosing: whatever panel is open has served its
+    // purpose, and leaving it up covers the rows it was just used to filter.
+    setOpenFacet(null);
+    setProductionOpen(false);
     setAppliedFacets(facets);
     setAppliedProduction(production);
     setAppliedPicked(picked);
@@ -594,7 +620,10 @@ export function WellsTable({
           <button
             type="button"
             onClick={applyFacets}
-            disabled={loading || !pending}
+            // A half-filled or back-to-front range cannot be sent.
+            disabled={
+              loading || !pending || productionProblem(production) !== null
+            }
             className="rounded-lg px-[15px] py-[6px] text-[12.5px] font-bold enabled:cursor-pointer enabled:bg-mv-green-deep enabled:text-white enabled:hover:brightness-105 disabled:cursor-not-allowed disabled:bg-[#e9ecea] disabled:text-mv-muted"
           >
             Apply

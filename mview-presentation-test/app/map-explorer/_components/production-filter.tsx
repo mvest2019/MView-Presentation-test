@@ -24,9 +24,46 @@ export const EMPTY_PRODUCTION: ProductionRange = {
   gasMax: "",
 };
 
-/** How many of the four bounds are set — the badge on the pill. */
+/** The two streams, each as its pair of bounds. */
+const PAIRS = [
+  { min: "oilMin", max: "oilMax" },
+  { min: "gasMin", max: "gasMax" },
+] as const;
+
+const set = (bound: string) => bound.trim() !== "";
+
+/**
+ * Complete pairs — the badge on the pill.
+ *
+ * A range needs both ends. One bound on its own is half a thought, and
+ * counting it made the pill claim a filter that could not be applied.
+ */
 export function productionCount(range: ProductionRange): number {
-  return Object.values(range).filter((bound) => bound.trim() !== "").length;
+  return PAIRS.filter((pair) => set(range[pair.min]) && set(range[pair.max]))
+    .length;
+}
+
+/**
+ * What is wrong with the range, if anything — the message under the boxes and
+ * the reason Apply is held back.
+ *
+ * Two ways to get it wrong: half a pair, or a maximum below its minimum. Both
+ * would go out as a query the endpoint answers with nothing, which reads as
+ * "no such wells" rather than "that is not a range".
+ */
+export function productionProblem(range: ProductionRange): string | null {
+  if (PAIRS.some((pair) => set(range[pair.min]) !== set(range[pair.max]))) {
+    return "Enter both a minimum and a maximum for each range you set.";
+  }
+
+  const inverted = PAIRS.some(
+    (pair) =>
+      set(range[pair.min]) &&
+      set(range[pair.max]) &&
+      Number(range[pair.min]) > Number(range[pair.max]),
+  );
+
+  return inverted ? "The maximum has to be at least the minimum." : null;
 }
 
 type ProductionFilterProps = {
@@ -45,6 +82,10 @@ export function ProductionFilter({
   onChange,
 }: ProductionFilterProps) {
   const count = productionCount(range);
+  const problem = productionProblem(range);
+  const badPair = (min: string, max: string) =>
+    (min.trim() !== "") !== (max.trim() !== "") ||
+    (min.trim() !== "" && max.trim() !== "" && Number(min) > Number(max));
 
   return (
     <div className="relative shrink-0">
@@ -85,6 +126,7 @@ export function ProductionFilter({
 
           <Pair
             label="Oil (bbl)"
+            invalid={badPair(range.oilMin, range.oilMax)}
             min={range.oilMin}
             max={range.oilMax}
             onMin={(oilMin) => onChange({ ...range, oilMin })}
@@ -92,14 +134,19 @@ export function ProductionFilter({
           />
           <Pair
             label="Gas (mcf)"
+            invalid={badPair(range.gasMin, range.gasMax)}
             min={range.gasMin}
             max={range.gasMax}
             onMin={(gasMin) => onChange({ ...range, gasMin })}
             onMax={(gasMax) => onChange({ ...range, gasMax })}
           />
 
-          <p className="mt-1 text-[11px] leading-snug text-mv-muted">
-            Leave a box empty for no bound on that end.
+          <p
+            className={`mt-1 text-[11px] leading-snug ${
+              problem ? "text-mv-red" : "text-mv-muted"
+            }`}
+          >
+            {problem ?? "Set a minimum and a maximum on either stream."}
           </p>
         </div>
       )}
@@ -110,12 +157,14 @@ export function ProductionFilter({
 /** One stream: its label, then min and max side by side. */
 function Pair({
   label,
+  invalid,
   min,
   max,
   onMin,
   onMax,
 }: {
   label: string;
+  invalid?: boolean;
   min: string;
   max: string;
   onMin: (value: string) => void;
@@ -127,11 +176,23 @@ function Pair({
         {label}
       </div>
       <div className="flex items-center gap-2">
-        <Bound label={`${label} minimum`} value={min} onChange={onMin} placeholder="Min" />
+        <Bound
+          label={`${label} minimum`}
+          invalid={invalid}
+          value={min}
+          onChange={onMin}
+          placeholder="Min"
+        />
         <span aria-hidden="true" className="text-[12px] text-mv-muted">
           –
         </span>
-        <Bound label={`${label} maximum`} value={max} onChange={onMax} placeholder="Max" />
+        <Bound
+          label={`${label} maximum`}
+          invalid={invalid}
+          value={max}
+          onChange={onMax}
+          placeholder="Max"
+        />
       </div>
     </div>
   );
@@ -139,11 +200,13 @@ function Pair({
 
 function Bound({
   label,
+  invalid,
   value,
   onChange,
   placeholder,
 }: {
   label: string;
+  invalid?: boolean;
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
@@ -160,7 +223,12 @@ function Bound({
         // would be sent as a query parameter it rejects outright.
         onChange={(event) => onChange(event.target.value.replace(/[^\d]/g, ""))}
         placeholder={placeholder}
-        className="w-full rounded-lg border border-mv-line px-[10px] py-[6px] text-[12.5px] tabular-nums text-mv-ink outline-none placeholder:text-mv-muted focus:border-mv-green-deep"
+        aria-invalid={invalid}
+        className={`w-full rounded-lg border px-[10px] py-[6px] text-[12.5px] tabular-nums text-mv-ink outline-none placeholder:text-mv-muted ${
+          invalid
+            ? "border-mv-red focus:border-mv-red"
+            : "border-mv-line focus:border-mv-green-deep"
+        }`}
       />
     </label>
   );
