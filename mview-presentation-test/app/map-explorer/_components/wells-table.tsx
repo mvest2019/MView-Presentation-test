@@ -42,24 +42,23 @@ import {
   type MapTableSummary,
 } from "@/lib/map-api";
 
-import {
-  PER_PAGE,
-  type WellRow,
-} from "./wells-data";
-
 /*
  * The Table view — the result set behind the map, as a grid.
  *
- * Everything runs against the full 9,000-row static set in `wells-data.ts`, so
- * filtering, sorting, paging and the summary strip all agree with each other:
- * tick "Reported BOE only" and the totals, the percentages and the page count
- * all move together, rather than the filter quietly applying to one page.
+ * Every part of it is the server's: the rows, the dropdown options, the counts
+ * in the summary strip, the page count. 1.1M wells is not something to hold in
+ * the browser, so the page, the sort, the search and the filters are all part
+ * of the request, and the summary comes back totalled over the whole result
+ * set rather than over the rows on screen.
  *
  * Export full list is the only control still inert.
  */
 
-type SortKey = keyof Pick<
-  WellRow,
+/** Rows per page — the `pageSize` the table asks for. */
+const PER_PAGE = 10;
+
+/** The columns a header can order by — the endpoint's own list. */
+type SortKey =
   | "api"
   | "operator"
   | "lease"
@@ -67,8 +66,7 @@ type SortKey = keyof Pick<
   | "status"
   | "county"
   | "oil"
-  | "gas"
->;
+  | "gas";
 
 type ViewTab = "map" | "table" | "insights";
 
