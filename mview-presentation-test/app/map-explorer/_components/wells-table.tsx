@@ -19,21 +19,23 @@ import {
   Map as MapIcon,
   MapPin,
   Search,
-  TriangleAlert,
   X,
-  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  getTableMap,
+  type MapTableRow,
+  type MapTableSummary,
+} from "@/lib/map-api";
+
+import {
   COUNTIES,
   OPERATORS,
   PER_PAGE,
-  TOTAL_WELLS,
   WELL_STATUSES,
   WELL_TYPES,
-  allWells,
   type WellRow,
 } from "./wells-data";
 
@@ -45,8 +47,7 @@ import {
  * tick "Reported BOE only" and the totals, the percentages and the page count
  * all move together, rather than the filter quietly applying to one page.
  *
- * Export full list is the only control still inert — it is PRO-gated in the
- * design, same as the map toolbar's.
+ * Export full list is the only control still inert.
  */
 
 type SortKey = keyof Pick<
@@ -71,7 +72,7 @@ type Facets = Record<FacetKey, Set<string>>;
 type WellsTableProps = {
   activeTab: ViewTab;
   onTabChange: (tab: ViewTab) => void;
-  onShowOnMap: (row: WellRow) => void;
+  onShowOnMap: (row: MapTableRow) => void;
 };
 
 /**
@@ -90,12 +91,14 @@ const COLUMNS: {
   label: string;
   align?: "right";
   width: string;
+  /** Columns the server will not order by, so the header is plain text. */
+  sortable?: boolean;
 }[] = [
-  { key: "api", label: "API", width: "w-[11%]" },
+  { key: "api", label: "API", width: "w-[11%]", sortable: false },
   { key: "operator", label: "Operator", width: "w-[15%]" },
   { key: "lease", label: "Lease", width: "w-[17%]" },
-  { key: "type", label: "Type", width: "w-[11%]" },
-  { key: "status", label: "Status", width: "w-[13%]" },
+  { key: "type", label: "Type", width: "w-[11%]", sortable: false },
+  { key: "status", label: "Status", width: "w-[13%]", sortable: false },
   { key: "county", label: "County", width: "w-[11%]" },
   { key: "oil", label: "Oil (bbl)", align: "right", width: "w-[11%]" },
   { key: "gas", label: "Gas (mcf)", align: "right", width: "w-[11%]" },
@@ -156,80 +159,72 @@ export function WellsTable({
     };
   }, [openFacet]);
 
-  const matched = useMemo(() => {
-    const needle = query.trim().toLowerCase();
+  /*
+   * The rows come from the server, a page at a time.
+   *
+   * 1.1M wells: the page, the sort, the search and the facets are all part of
+   * the request rather than something to do in the browser over a downloaded
+   * copy. The summary comes back with them, already totalled over the whole
+   * result set rather than over the twenty-five rows on screen.
+   */
+  const [rows, setRows] = useState<MapTableRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [summary, setSummary] = useState<MapTableSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-    return allWells().filter((row) => {
-      if (facets.operator.size && !facets.operator.has(row.operator)) return false;
-      if (facets.type.size && !facets.type.has(row.type)) return false;
-      if (facets.status.size && !(row.status && facets.status.has(row.status))) {
-        return false;
-      }
-      if (facets.county.size && !facets.county.has(row.county)) return false;
-      if (!needle) return true;
-      return (
-        row.api.toLowerCase().includes(needle) ||
-        row.operator.toLowerCase().includes(needle) ||
-        row.lease.toLowerCase().includes(needle)
-      );
-    });
-  }, [query, facets]);
+  useEffect(() => {
+    let cancelled = false;
 
-  const summary = useMemo(() => {
-    const operators = new Set<string>();
-    const counties = new Set<string>();
-    let oil = 0;
-    let gas = 0;
-    let inactive = 0;
-    let active = 0;
+    // Debounced, or every keystroke in the search box is a page of wells.
+    const timer = setTimeout(() => {
+      setLoading(true);
 
-    for (const row of matched) {
-      operators.add(row.operator);
-      counties.add(row.county);
-      if (row.type === "Oil") oil += 1;
-      else if (row.type === "Gas") gas += 1;
-      if (row.status === "Inactive") inactive += 1;
-      // Producing or shut-in but still a producer — anything but inactive,
-      // and only where a status is reported at all.
-      else if (row.status !== null) active += 1;
-    }
+      getTableMap({
+        page,
+        pageSize: PER_PAGE,
+        sort: sort.key,
+        dir: sort.ascending ? "asc" : "desc",
+        q: query,
+        filters: {
+          county: [...facets.county],
+          wtype: [...facets.type],
+          status: [...facets.status],
+        },
+      })
+        .then((result) => {
+          if (cancelled) return;
+          setRows(result.rows);
+          setTotal(result.total);
+          setTotalPages(Math.max(1, result.totalPages));
+          setSummary(result.summary);
+          setError(null);
+        })
+        .catch((failure: unknown) => {
+          if (cancelled) return;
+          setRows([]);
+          setError(
+            failure instanceof Error
+              ? failure.message
+              : "Could not load the table.",
+          );
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, query ? 300 : 0);
 
-    return {
-      total: matched.length,
-      oil,
-      gas,
-      active,
-      inactive,
-      operators: operators.size,
-      counties: counties.size,
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
     };
-  }, [matched]);
+  }, [page, sort, query, facets]);
 
-  // Sorting spans the whole matched set, not just the page on screen.
-  const sorted = useMemo(() => {
-    const rows = [...matched];
-    rows.sort((a, b) => {
-      const left = a[sort.key];
-      const right = b[sort.key];
-      // Nulls sort last whichever way the column is pointing.
-      if (left === null) return right === null ? 0 : 1;
-      if (right === null) return -1;
-
-      const order =
-        typeof left === "number" && typeof right === "number"
-          ? left - right
-          : String(left).localeCompare(String(right));
-      return sort.ascending ? order : -order;
-    });
-    return rows;
-  }, [matched, sort]);
-
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PER_PAGE));
   const safePage = Math.min(page, totalPages);
-  const rows = sorted.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
+  const firstShown = total ? (safePage - 1) * PER_PAGE + 1 : 0;
+  const lastShown = Math.min(safePage * PER_PAGE, total);
 
-  const firstShown = sorted.length ? (safePage - 1) * PER_PAGE + 1 : 0;
-  const lastShown = Math.min(safePage * PER_PAGE, sorted.length);
   const chips = [
     ...FACETS.flatMap(({ key, label }) =>
       [...facets[key]].map((value) => ({ key, label, value })),
@@ -262,9 +257,6 @@ export function WellsTable({
     );
     setPage(1);
   }
-
-  const share = (count: number) =>
-    summary.total ? ((count / summary.total) * 100).toFixed(1) : "0.0";
 
   return (
     /* Two cards on the page background, not one flat sheet: the result header
@@ -379,10 +371,6 @@ export function WellsTable({
           >
             <Download size={14} aria-hidden="true" />
             Export full list
-            <span className="inline-flex items-center gap-[2px] rounded bg-mv-amber-bg px-[5px] py-[2px] text-[9px] font-extrabold uppercase tracking-[.06em] text-mv-amber">
-              <Zap size={8} fill="currentColor" strokeWidth={0} aria-hidden="true" />
-              Pro
-            </span>
           </button>
         </div>
       </div>
@@ -411,58 +399,47 @@ export function WellsTable({
 
       {/* ---------------- summary strip ----------------
           Top border only — the card's own edge closes it off below. */}
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-b-xl border-t border-mv-line bg-mv-line md:grid-cols-3 xl:grid-cols-7">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-b-xl border-t border-mv-line bg-mv-line md:grid-cols-3 xl:grid-cols-6">
         <SummaryCard
           icon={FlaskConical}
           tint="green"
           label="Total wells"
-          value={summary.total}
-          note={
-            summary.total === TOTAL_WELLS
-              ? "100% of results"
-              : `${((summary.total / TOTAL_WELLS) * 100).toFixed(1)}% of all wells`
-          }
+          value={summary?.totalWells ?? 0}
+          note="Across this result set"
         />
         <SummaryCard
           icon={Activity}
           tint="green"
           label="Oil wells"
-          value={summary.oil}
-          note={`${share(summary.oil)}%`}
+          value={summary?.oilWells ?? 0}
+          note={`${summary?.oilPct ?? 0}%`}
         />
         <SummaryCard
           icon={Droplet}
           tint="red"
           label="Gas wells"
-          value={summary.gas}
-          note={`${share(summary.gas)}%`}
+          value={summary?.gasWells ?? 0}
+          note={`${summary?.gasPct ?? 0}%`}
         />
         <SummaryCard
           icon={CircleCheck}
           tint="green"
           label="Active wells"
-          value={summary.active}
-          note={`${share(summary.active)}%`}
-        />
-        <SummaryCard
-          icon={TriangleAlert}
-          tint="amber"
-          label="Inactive wells"
-          value={summary.inactive}
-          note={`${share(summary.inactive)}%`}
+          value={summary?.activeWells ?? 0}
+          note={`${summary?.activePct ?? 0}%`}
         />
         <SummaryCard
           icon={Layers}
           tint="blue"
           label="Unique operators"
-          value={summary.operators}
+          value={summary?.operators ?? 0}
           note="Across this result set"
         />
         <SummaryCard
           icon={MapIcon}
           tint="purple"
           label="Counties"
-          value={summary.counties}
+          value={summary?.counties ?? 0}
           note="Across this result set"
         />
       </div>
@@ -477,32 +454,40 @@ export function WellsTable({
             <tr className="border-b border-mv-line bg-[#f8f9fa]">
               {/* The first and last cells carry the page's 24px gutter, so the
                   grid lines up with the heading above it. */}
-              {COLUMNS.map(({ key, label, align, width }, index) => (
+              {COLUMNS.map(({ key, label, align, width, sortable }, index) => (
                 <th
                   key={key}
                   scope="col"
                   aria-sort={
-                    sort.key === key
-                      ? sort.ascending
-                        ? "ascending"
-                        : "descending"
-                      : "none"
+                    sortable === false
+                      ? undefined
+                      : sort.key === key
+                        ? sort.ascending
+                          ? "ascending"
+                          : "descending"
+                        : "none"
                   }
                   className={`whitespace-nowrap py-[8px] ${
                     index === 0 ? "pl-6 pr-4" : "px-4"
                   } ${width} ${align === "right" ? "text-right" : ""}`}
                 >
-                  <button
-                    type="button"
-                    onClick={() => toggleSort(key)}
-                    className="inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-[12.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate hover:text-mv-green-deep"
-                  >
-                    {label}
-                    <SortMark
-                      active={sort.key === key}
-                      ascending={sort.ascending}
-                    />
-                  </button>
+                  {sortable === false ? (
+                    <span className="inline-flex whitespace-nowrap text-[12.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate">
+                      {label}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => toggleSort(key)}
+                      className="inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-[12.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate hover:text-mv-green-deep"
+                    >
+                      {label}
+                      <SortMark
+                        active={sort.key === key}
+                        ascending={sort.ascending}
+                      />
+                    </button>
+                  )}
                 </th>
               ))}
 
@@ -515,7 +500,7 @@ export function WellsTable({
             </tr>
           </thead>
 
-          <tbody>
+          <tbody className={loading && rows.length > 0 ? "opacity-50" : ""}>
             {rows.map((row) => (
               <tr
                 key={row.api}
@@ -534,14 +519,14 @@ export function WellsTable({
                 </td>
                 <td className="px-4 py-[14px]">
                   <span className="inline-flex items-center gap-[6px] rounded-full bg-[#eef1ee] px-[10px] py-[3px] text-[12px] font-medium text-mv-slate">
-                    <Dot color={TYPE_DOT[row.type]} />
-                    {row.type}
+                    <Dot color={TYPE_DOT[row.wtype] ?? DOT_GREY} />
+                    {row.wtype}
                   </span>
                 </td>
                 <td className="px-4 py-[14px] text-[13px] text-mv-slate">
                   {row.status ? (
                     <span className="inline-flex items-center gap-[6px]">
-                      <Dot color={STATUS_DOT[row.status]} />
+                      <Dot color={STATUS_DOT[row.status] ?? DOT_GREY} />
                       {row.status}
                     </span>
                   ) : (
@@ -551,8 +536,8 @@ export function WellsTable({
                 <td className="px-4 py-[14px] text-[13px] text-mv-slate">
                   {row.county}
                 </td>
-                <Volume value={row.oil} />
-                <Volume value={row.gas} />
+                <Volume value={row.producedOil} />
+                <Volume value={row.producedGas} />
                 <td className="py-[14px] pl-4 pr-6">
                   <button
                     type="button"
@@ -573,7 +558,17 @@ export function WellsTable({
                   colSpan={COLUMNS.length + 1}
                   className="px-6 py-10 text-center text-[13px] text-mv-muted"
                 >
-                  No wells match these filters.
+                  {loading ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        aria-hidden="true"
+                        className="h-[13px] w-[13px] animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
+                      />
+                      Loading wells…
+                    </span>
+                  ) : (
+                    (error ?? "No wells match these filters.")
+                  )}
                 </td>
               </tr>
             )}
@@ -586,7 +581,7 @@ export function WellsTable({
         <span className="text-[12.5px] text-mv-muted lg:mr-2">
           {firstShown.toLocaleString("en-US")}–
           {lastShown.toLocaleString("en-US")} of{" "}
-          {summary.total.toLocaleString("en-US")}
+          {total.toLocaleString("en-US")}
         </span>
 
         <div className="flex flex-wrap items-center justify-center gap-[6px] lg:contents">
@@ -769,15 +764,22 @@ function FilterDropdown({
   );
 }
 
-const TYPE_DOT: Record<WellRow["type"], string> = {
+/** Anything the API reports that is not listed here falls back to grey. */
+const DOT_GREY = "#9ca3af";
+
+const TYPE_DOT: Record<string, string> = {
   Oil: "#3f9d76",
   Gas: "#d1584f",
+  "Oil or Gas": "#b45309",
   Injection: "#4a7fbf",
 };
 
 const STATUS_DOT: Record<string, string> = {
   Producing: "#3f9d76",
+  "Shut-In": "#d9a441",
   "Shut-In Producer": "#d9a441",
+  Plugged: "#9ca3af",
+  Service: "#4a7fbf",
   Inactive: "#9ca3af",
 };
 

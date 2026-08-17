@@ -144,8 +144,14 @@ export const getLegendListMap = async (): Promise<MapLegend[]> => {
 /** One hit from the combined search — a lease, an operator or a county. */
 export type MapSearchResult = {
   type: string;
+  /** The name to show. */
   value: string;
-  /** The display name. Counties carry theirs in `value` instead. */
+  /**
+   * What the filter takes, where it is not the name: an operator's or a
+   * field's id, a lease's key. Counties filter by name and have none.
+   */
+  id?: string;
+  /** Some rows carry the display name here instead of in `value`. */
   label?: string;
 };
 
@@ -328,5 +334,86 @@ export const getMatchedWellsMap = async (
     }
   } catch (error) {
     throw new Error(String(error) || "Failed to fetch matched wells");
+  }
+};
+
+/** One row of the wells table. Production is null where none was filed. */
+export type MapTableRow = {
+  api: string;
+  operator: string;
+  operatorNumber: string;
+  lease: string;
+  leaseKey: string;
+  wtype: string;
+  status: string;
+  county: string;
+  producedOil: number | null;
+  producedGas: number | null;
+  lon: number;
+  lat: number;
+  profile: string;
+};
+
+/** The counts above the table, as the server totals them. */
+export type MapTableSummary = {
+  totalWells: number;
+  oilWells: number;
+  oilPct: number;
+  gasWells: number;
+  gasPct: number;
+  activeWells: number;
+  activePct: number;
+  operators: number;
+  counties: number;
+};
+
+/**
+ * GET /api/v1/map/table?page=&pageSize=&sort=&dir=&q=&county=…
+ *
+ * Server-paged: 1.1M rows, so the page, the sort and the search all belong to
+ * the request rather than to the browser.
+ */
+export const getTableMap = async (params: {
+  page: number;
+  pageSize: number;
+  sort?: string;
+  dir?: "asc" | "desc";
+  q?: string;
+  filters?: Record<string, string[]>;
+}): Promise<{
+  rows: MapTableRow[];
+  total: number;
+  totalPages: number;
+  summary: MapTableSummary | null;
+}> => {
+  try {
+    const query = new URLSearchParams({
+      page: String(params.page),
+      pageSize: String(params.pageSize),
+    });
+    if (params.sort) query.set("sort", params.sort);
+    if (params.dir) query.set("dir", params.dir);
+    if (params.q?.trim()) query.set("q", params.q.trim());
+    for (const [facet, values] of Object.entries(params.filters ?? {})) {
+      if (values.length > 0) query.set(facet, values.join(","));
+    }
+
+    const response = await fetch(
+      `${process.env.MAP_BASE_URL}/api/v1/map/table?${query.toString()}`,
+    );
+    const data = await response.json();
+
+    if (response.ok && Array.isArray(data?.rows)) {
+      return {
+        rows: data.rows as MapTableRow[],
+        total: Number(data.total ?? data.rows.length),
+        totalPages: Number(data.totalPages ?? 1),
+        summary: (data.summary as MapTableSummary) ?? null,
+      };
+    } else {
+      throw new Error("Failed to fetch the table");
+    }
+  } catch (error) {
+    throw new Error(String(error) || "Failed to fetch the table");
   }
 };
