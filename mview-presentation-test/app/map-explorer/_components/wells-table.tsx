@@ -54,6 +54,10 @@ import {
  * Export full list is the only control still inert.
  */
 
+/** A field needs quoting when it holds a comma, a quote or a line break. */
+const CSV_QUOTE = new RegExp('[",\\n]');
+const CSV_NEWLINE = "\r\n";
+
 /** Rows per page — the `pageSize` the table asks for. */
 const PER_PAGE = 10;
 
@@ -359,6 +363,51 @@ export function WellsTable({
     productionCount(appliedProduction) > 0 ||
     appliedFacets.county.size > 0;
 
+  /*
+   * The rows on screen, as a file.
+   *
+   * This page only — the whole result set is over a million wells and the
+   * endpoint pages at ten, so "the full list" would be a hundred thousand
+   * requests. The button says so, and so does its tooltip.
+   */
+  function exportPage() {
+    if (rows.length === 0) return;
+
+    const cell = (value: string | number | null) => {
+      const text = value === null ? "" : String(value);
+      return CSV_QUOTE.test(text)
+        ? `"${text.replace(/"/g, '""')}"`
+        : text;
+    };
+
+    const lines = [
+      ["api", "operator", "lease", "type", "status", "county", "oil", "gas"],
+      ...rows.map((row) => [
+        row.api,
+        row.operator,
+        row.lease,
+        row.wtype,
+        row.status,
+        row.county,
+        row.producedOil,
+        row.producedGas,
+      ]),
+    ].map((line) => line.map(cell).join(","));
+
+    const url = URL.createObjectURL(
+      new Blob([lines.join(CSV_NEWLINE)], {
+        type: "text/csv;charset=utf-8",
+      }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `mineral-view-wells-page-${safePage}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   function toggleSort(key: SortKey) {
     setSort((current) =>
       current?.key === key
@@ -424,10 +473,13 @@ export function WellsTable({
 
           <button
             type="button"
-            className="inline-flex w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-mv-line px-[14px] py-[8px] text-[12.5px] font-semibold text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep lg:w-auto"
+            onClick={exportPage}
+            disabled={rows.length === 0}
+            title={`Export this page — ${rows.length} record${rows.length === 1 ? "" : "s"}`}
+            className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-mv-line px-[14px] py-[8px] text-[12.5px] font-semibold text-mv-slate enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-50 lg:w-auto"
           >
             <Download size={14} aria-hidden="true" />
-            Export full list
+            Export this page
           </button>
         </div>
       </div>
