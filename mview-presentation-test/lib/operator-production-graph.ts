@@ -1,53 +1,49 @@
 /**
- * `POST /api/v1/operators/production-graph` — the annual production series behind
- * the "Production over time" chart.
+ * `POST /api/v1/operators/production-graph` — the production chart's series.
  *
- * NOT server-only, deliberately. This is the one read on the detail page that
- * genuinely belongs on the client: the chart sits well below the fold, it is not in
- * `generateMetadata`, and it is not the LCP element. Fetching it when the section
- * scrolls into view is what keeps it off the initial page load. The endpoint sends
- * `Access-Control-Allow-Origin: *`, so the browser can call it directly — no
- * forwarder needed, unlike the logo route.
+ * EVERY FILTER IS OPTIONAL, AND OMITTING ONE MEANS "ALL". Established by probing, not
+ * assumed:
  *
- * `county` IS REQUIRED AND MUST BE NON-EMPTY. An empty array or a missing key both
- * answer 400 `COUNTY_AND_OPERATOR_REQUIRED`, so there is no "whole operator" mode.
- * Passing every county the operator reports in is what produces the operator-wide
- * series, and it reconciles: for Pioneer the 79-county payload returns 30 years whose
- * oil sums to 1,907,873,826, which is exactly the `Totaloilproduction` that
- * `/operators/details` reports. That county list comes from the same `/details`
- * response, so the chart depends on it and is fetched second.
+ *   {operatorNo}                                  → all counties, 1997–2026 (30 years)
+ *   {operatorNo, county}                          → that county, every year it has
+ *   {operatorNo, start_year, end_year}            → all counties, those years only
+ *   {operatorNo, county, start_year, end_year}    → that county, those years only
+ *
+ * This replaces an earlier shape that sent `type: "Operator Data"` and required a
+ * non-empty `county` array — which meant the operator-wide series had to be requested
+ * by naming all 79 of Pioneer's counties. Omitting the key does the same thing
+ * server-side and reconciles exactly: no county, 2025 only, returns oil of
+ * 214,403,548, the same figure the 79-county payload produced.
+ *
+ * THE YEAR RANGE IS SERVER-SIDE, NOT A CLIENT SLICE. Narrowing the range returns the
+ * narrowed series, so the totals the panel prints are the API's own sums over the range
+ * the reader chose rather than something this app added up from a wider fetch.
  *
  * YEARS CAN HAVE GAPS. A single county returns e.g. 2000, 2001, 2002, 2006 — 2003 to
- * 2005 simply absent. Anything plotting this must use the returned years as the axis
- * rather than assuming a contiguous range.
+ * 2005 are absent, not zero. Nothing here fills them in: an interpolated year is a
+ * fabricated figure, and a gap in reported production is itself information.
  *
- * THE LAST YEAR IS PARTIAL. 2026 reports 92,667,725 barrels against 2025's
- * 214,403,548 — a year in progress, not a collapse. Whatever renders it should not
- * present that as a decline.
+ * THE LAST YEAR IS PARTIAL. Production posts on a lag, so the newest year holds only
+ * the months filed so far and always reads low against the one before it.
  */
 
-/** Exactly the documented payload. */
 export interface ProductionGraphRequest {
-  /** The only value observed in use. */
-  type: "Operator Data";
   operatorNo: string;
-  /** Upper-case county names. Must contain at least one. */
-  county: string[];
+  /** A single county name, upper-case. Omit for every county the operator reports in. */
+  county?: string;
+  /** Inclusive. Omit both to get the operator's full history. */
+  start_year?: number;
+  end_year?: number;
 }
 
-/** Parallel arrays — every one is the same length as `years`. */
 export interface ProductionGraphResponse {
-  /** Year labels as strings, ascending. May skip years. */
   years: string[];
-  /** Barrels per year. */
   oilValues: number[];
-  /** Mcf per year. */
   gasValues: number[];
-  /** Barrels of oil equivalent. Returned, but the chart does not plot it. */
+  /** Present in the response and deliberately unused — BOE is not plotted. */
   BOEValues: number[];
 }
 
-/** One year, with the parallel arrays zipped into a point. */
 export interface ProductionYear {
   year: number;
   /** Barrels. */
@@ -56,71 +52,77 @@ export interface ProductionYear {
   gas: number;
 }
 
-const ENDPOINT = "/api/v1/operators/production-graph";
+export interface ProductionSeries {
+  rows: ProductionYear[];
+  /** Oil across every year returned, in barrels. */
+  totalOil: number;
+  /** Gas across every year returned, in Mcf. */
+  totalGas: number;
+}
 
-function isGraphResponse(value: unknown): value is ProductionGraphResponse {
-  if (!value || typeof value !== "object") return false;
-  const body = value as ProductionGraphResponse;
+function isResponse(value: unknown): value is ProductionGraphResponse {
+  if (value === null || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
   return (
-    Array.isArray(body.years) &&
-    Array.isArray(body.oilValues) &&
-    Array.isArray(body.gasValues) &&
-    body.oilValues.length === body.years.length &&
-    body.gasValues.length === body.years.length
+    Array.isArray(record.years) &&
+    Array.isArray(record.oilValues) &&
+    Array.isArray(record.gasValues)
   );
 }
 
-/**
- * Zip the parallel arrays into points, dropping any year whose label is not a
- * number. Oil and gas only — `BOEValues` is deliberately not carried through,
- * because the chart does not plot it and passing it would invite it back in.
- */
-export function toProductionYears(
-  response: ProductionGraphResponse,
-): ProductionYear[] {
-  return response.years
-    .map((label, index) => ({
-      year: Number(label),
-      oil: response.oilValues[index] ?? 0,
-      gas: response.gasValues[index] ?? 0,
-    }))
-    .filter((point) => Number.isFinite(point.year))
-    .sort((a, b) => a.year - b.year);
-}
+const numberAt = (values: unknown[], index: number): number => {
+  const value = values[index];
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+};
 
 /**
- * Fetch one operator's annual series.
+ * The three parallel arrays into rows, with the API's own totals alongside.
  *
- * Takes an `AbortSignal` so a component that unmounts mid-flight — the visitor
- * scrolled past and navigated away — cancels rather than resolving into nothing.
- * Throws on a bad status or an unrecognised body so the caller can show its own
- * error state; the chart is one section, and a failure there should not blank the
- * page around it.
+ * `BOEValues` is dropped here rather than downstream: the design shows a third series
+ * and the panel does not, so the boundary is where that decision belongs — nothing
+ * below this can accidentally plot it.
  */
+export function toSeries(response: ProductionGraphResponse): ProductionSeries {
+  const rows: ProductionYear[] = [];
+  let totalOil = 0;
+  let totalGas = 0;
+
+  response.years.forEach((label, index) => {
+    const year = Number.parseInt(label, 10);
+    if (!Number.isFinite(year)) return;
+    const oil = numberAt(response.oilValues, index);
+    const gas = numberAt(response.gasValues, index);
+    rows.push({ year, oil, gas });
+    totalOil += oil;
+    totalGas += gas;
+  });
+
+  rows.sort((a, b) => a.year - b.year);
+  return { rows, totalOil, totalGas };
+}
+
 export async function fetchProductionGraph(
   baseUrl: string,
   request: ProductionGraphRequest,
   signal?: AbortSignal,
-): Promise<ProductionYear[]> {
-  if (request.county.length === 0) {
-    throw new Error("production-graph requires at least one county");
-  }
-
-  const response = await fetch(`${baseUrl}${ENDPOINT}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-    signal,
-  });
+): Promise<ProductionSeries> {
+  const response = await fetch(
+    `${baseUrl.replace(/\/+$/, "")}/api/v1/operators/production-graph`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal,
+    },
+  );
 
   if (!response.ok) {
-    throw new Error(`production-graph responded ${response.status}`);
+    throw new Error(`Production data unavailable (${response.status})`);
   }
 
-  const body: unknown = await response.json();
-  if (!isGraphResponse(body)) {
-    throw new Error("production-graph did not return parallel year arrays");
+  const payload: unknown = await response.json();
+  if (!isResponse(payload)) {
+    throw new Error("Production data came back in an unexpected shape");
   }
-
-  return toProductionYears(body);
+  return toSeries(payload);
 }
