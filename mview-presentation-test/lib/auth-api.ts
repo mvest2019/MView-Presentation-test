@@ -97,13 +97,27 @@ function messageFrom(body: unknown, fallback: string): string {
       const value = record[key];
       if (typeof value === "string" && value.trim()) return value.trim();
     }
-    const errors = record.errors;
-    if (Array.isArray(errors) && errors.length) {
-      const first = errors[0];
+    /*
+     * The 422 field list. BOTH KEYS AND BOTH MEMBER NAMES are read because the
+     * contract and the live API disagree: the contract documents
+     * `{errors:[{message}]}`, while `/email-verification/send-code` actually
+     * answers `{"error":[{"msg":"Invalid email","param":"email"}]}` — `error`
+     * singular, holding an array, with the text under `msg`.
+     *
+     * This only checked `errors` + `.message`, so every 422 fell through to the
+     * generic fallback and the visitor was never told WHICH field was wrong.
+     */
+    for (const key of ["errors", "error"]) {
+      const list = record[key];
+      if (!Array.isArray(list) || !list.length) continue;
+      const first = list[0];
       if (typeof first === "string") return first;
       if (first && typeof first === "object") {
-        const message = (first as Record<string, unknown>).message;
-        if (typeof message === "string") return message;
+        const entry = first as Record<string, unknown>;
+        for (const field of ["message", "msg"]) {
+          const text = entry[field];
+          if (typeof text === "string" && text.trim()) return text.trim();
+        }
       }
     }
   }
@@ -252,6 +266,22 @@ const SIGN_IN_MESSAGES: Record<string, string> = {
  */
 const INFRASTRUCTURE = /not configured|internal server|jwt_secret|unavailable/i;
 
+/**
+ * Show the upstream text to the person on the page, instead of hiding it.
+ *
+ * OFF BY DEFAULT — these strings name internal variables and must not reach real
+ * visitors. Set `AUTH_SHOW_UPSTREAM_ERRORS=1` on a preview deployment to turn it
+ * on there.
+ *
+ * This exists because hiding the reason cost three rounds of "Google still does
+ * not work". The generic sentence below is correct for a visitor and useless for
+ * whoever is testing: the actual cause was
+ * "GOOGLE_CLIENT_ID is not configured", visible only in a server log nobody
+ * reading the preview site can see. `NODE_ENV` is no help as the gate — a Vercel
+ * preview builds as production, which is exactly where the testing happens.
+ */
+const SHOW_UPSTREAM = process.env.AUTH_SHOW_UPSTREAM_ERRORS === "1";
+
 function signInMessage(raw: string): string {
   const known = SIGN_IN_MESSAGES[raw.trim().toLowerCase()];
   if (known) return known;
@@ -259,7 +289,9 @@ function signInMessage(raw: string): string {
   if (INFRASTRUCTURE.test(raw)) {
     // Kept where an engineer will see it; the visitor gets a plain sentence.
     console.error(`[auth] upstream configuration error: ${raw}`);
-    return "Sign-in is temporarily unavailable. Please try again shortly.";
+    return SHOW_UPSTREAM
+      ? `Sign-in is temporarily unavailable. Upstream said: ${raw}`
+      : "Sign-in is temporarily unavailable. Please try again shortly.";
   }
 
   return raw;
@@ -384,42 +416,74 @@ export async function loginWithGoogle(
 /* ───────────────────────────────────────────────────── email verification ── */
 
 /**
- * NOT PART OF THE SUPPLIED CONTRACT — and probably wrong now.
+ * ON THE AUTH HOST, under its `/api/v1` prefix (Ryan, 2026-08-17:
+ * "/api/v1/email-verification/send-code this for verification code").
  *
- * These two are the live repo's endpoints on the OLD host. They are kept because
- * the design gates the account on an emailed code, and the new login response
- * ("Please Verify Your email id") shows the new API expects verification too —
- * but the backend team did not supply endpoints for it.
+ * These used to point at `{BASE_URL}/api/email-verification/...` — the live
+ * repo's paths on the OLD host — which could never have worked: an account
+ * created on `mview-dev-api` does not exist on `BASE_URL`, and a code issued by
+ * one host cannot be checked by the other. Both calls therefore go through the
+ * SAME `post` as registration and sign-in, so the three always agree on which
+ * backend owns the account.
  *
- * An account created on the new host will not exist on `BASE_URL`, so these
- * calls are expected to fail. ASK FOR THE EQUIVALENTS on the new API before
- * relying on this step.
+ * Verified against the live API (2026-08-17):
+ *
+ *   POST /api/v1/email-verification/send-code    { email, username }
+ *        `{}` answers 422 with
+ *        `error:[{msg:"Invalid email",param:"email"},
+ *                {msg:"please provide username",param:"username"}]`,
+ *        so USERNAME IS REQUIRED, not optional as the old call treated it.
+ *
+ *   POST /api/v1/email-verification/verify-code  — 404, ROUTE DOES NOT EXIST.
+ *        Nor does any spelling of it: verifyCode, verify, check-code,
+ *        validate-code, confirm-code and update-email-verified all answer
+ *        "Cannot POST". `send-code` is the only one of the three the live repo
+ *        uses that has been deployed to this host.
+ *
+ * The 404 is reported as its own thing rather than as a bad code — see
+ * `verifyCode`. NEEDED FROM THE BACKEND TEAM: verify-code (and
+ * update-email-verified) on `mview-dev-api`, or the confirmation that
+ * verification now completes by emailed link instead of by code.
  */
-function legacyBase(): string {
-  const url = process.env.BASE_URL;
-  if (!url) throw new Error("BASE_URL is not set.");
-  return url.replace(/\/+$/, "");
-}
 
 export type VerificationResult = { ok: boolean; message: string };
 
-async function postLegacy(path: string, payload: unknown) {
-  const response = await fetch(`${legacyBase()}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    cache: "no-store",
-  });
-  const text = await response.text();
-  let body: unknown = null;
-  if (text) {
-    try {
-      body = JSON.parse(text);
-    } catch {
-      body = text;
-    }
-  }
-  return { status: response.status, body };
+/**
+ * Where verification lives on whichever host `AUTH_API_URL` names.
+ *
+ * THE TWO HOSTS LAY THESE OUT DIFFERENTLY, and both were surveyed on 2026-08-17:
+ *
+ *   mview-dev-api.mineralview.com/api/v1  → /api/v1/email-verification/<name>
+ *   testing-paymentapi.mineralview.com    → /api/email-verification/<name>
+ *                                           (User endpoints at the root, so the
+ *                                            base carries no prefix at all)
+ *
+ * Derived rather than configured separately ON PURPOSE. A code is issued by one
+ * host and checked by the same one — they do not share state — so a second env
+ * var pointing verification elsewhere would produce an account that can never be
+ * confirmed. Tying it to `AUTH_API_URL` means the whole auth surface moves
+ * together or not at all, and switching hosts stays a config change.
+ */
+function verificationPath(name: "send-code" | "verify-code"): string {
+  const versioned = /\/api\/v\d+$/.test(authBase());
+  return versioned
+    ? `/email-verification/${name}`
+    : `/api/email-verification/${name}`;
+}
+
+/**
+ * Did the API answer "no such route" rather than "no"?
+ *
+ * A 404 alone is the test. Neither of these endpoints has a per-record form —
+ * both take an email in the body, not in the path — so there is no legitimate
+ * "that email was not found" 404 for this to be confused with. The host's own
+ * shape confirms it either way: an unrouted POST answers
+ * `{"error":{"statusCode":404,"code":"HTTP_EXCEPTION","message":"Cannot POST …"}}`,
+ * which is nothing like the `{status_code,data,error}` envelope its real
+ * handlers return.
+ */
+function isMissingRoute(status: number): boolean {
+  return status === 404;
 }
 
 export async function sendVerificationCode(
@@ -427,13 +491,27 @@ export async function sendVerificationCode(
   username: string,
 ): Promise<VerificationResult> {
   try {
-    const { status, body } = await postLegacy(
-      "/api/email-verification/send-code",
-      { email, username },
-    );
+    const { status, body } = await post(verificationPath("send-code"), {
+      email,
+      username,
+    });
+
+    if (isMissingRoute(status)) {
+      console.error(
+        "[auth] POST /email-verification/send-code is not deployed on AUTH_API_URL.",
+      );
+      return {
+        ok: false,
+        message: "We could not send the code just now. Please try again later.",
+      };
+    }
+
+    // The envelope's own code wins here too — this host answers 422 inside a
+    // 200-shaped body on some routes.
     const ok =
       (body as { success?: boolean } | null)?.success ??
-      (status >= 200 && status < 300);
+      envelopeCode(status, body) < 400;
+
     return {
       ok: Boolean(ok),
       message: messageFrom(body, ok ? "" : "We could not send the code."),
@@ -448,13 +526,36 @@ export async function verifyCode(
   code: string,
 ): Promise<VerificationResult> {
   try {
-    const { status, body } = await postLegacy(
-      "/api/email-verification/verify-code",
-      { email, verification_code: code },
-    );
+    const { status, body } = await post(verificationPath("verify-code"), {
+      email,
+      verification_code: code,
+    });
+
+    /*
+     * A MISSING ROUTE IS NOT A WRONG CODE. Left to fall through, the 404 would
+     * be reported as "That code is invalid or expired" — sending someone to
+     * re-read an email and retype six digits that were right all along, for as
+     * long as the endpoint stays undeployed. The visitor gets a sentence that
+     * does not blame them; the engineer gets the reason in the log.
+     */
+    if (isMissingRoute(status)) {
+      console.error(
+        "[auth] POST /email-verification/verify-code returned 404 — the route is " +
+          "not deployed on AUTH_API_URL. Email verification cannot complete " +
+          "until the backend ships it.",
+      );
+      return {
+        ok: false,
+        message:
+          "Email confirmation is not available yet. Your account was created — " +
+          "please contact support@mineralview.com to finish activating it.",
+      };
+    }
+
     const record = (body ?? {}) as { success?: boolean; verified?: boolean };
     const ok =
-      record.success ?? record.verified ?? (status >= 200 && status < 300);
+      record.success ?? record.verified ?? envelopeCode(status, body) < 400;
+
     return {
       ok: Boolean(ok),
       message: messageFrom(body, ok ? "" : "That code is invalid or expired."),

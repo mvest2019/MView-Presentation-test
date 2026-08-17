@@ -59,7 +59,7 @@ export function LoginForm({ next }: { next: string }) {
     <>
       <AuthHead
         title="Sign in to Mineral View"
-        lede="Welcome back. Enter your email and password."
+        lede="Access your Mineral View account."
       />
 
       <GoogleSignIn next={next} onError={setGoogleFailure} />
@@ -75,7 +75,9 @@ export function LoginForm({ next }: { next: string }) {
         </p>
       )}
 
-      <OrDivider label="or with email" />
+      {/* Lower case here on purpose — `OrDivider` sets `uppercase`, so this
+          renders as "OR CONTINUE WITH EMAIL". */}
+      <OrDivider label="or continue with email" />
 
       <form onSubmit={handleSubmit(onValid)} noValidate>
         <FormError message={failure} />
@@ -87,7 +89,7 @@ export function LoginForm({ next }: { next: string }) {
               {...register("email")}
               type="email"
               autoComplete="username"
-              placeholder="you@email.com"
+              placeholder="you@example.com"
             />
           )}
         </Field>
@@ -109,7 +111,7 @@ export function LoginForm({ next }: { next: string }) {
               {...props}
               {...register("password")}
               autoComplete="current-password"
-              placeholder="Your password"
+              placeholder="Enter your password"
             />
           )}
         </Field>
@@ -119,7 +121,7 @@ export function LoginForm({ next }: { next: string }) {
             lasts the browser session. */}
         <div className="mb-3 mt-[2px]">
           <CheckRow {...register("remember")}>
-            <span className="text-[13px]">Keep me signed in on this device</span>
+            <span className="text-[13px]">Stay signed in on this device</span>
           </CheckRow>
         </div>
 
@@ -128,20 +130,19 @@ export function LoginForm({ next }: { next: string }) {
         </SubmitButton>
 
         <Fine className="mt-3">
-          Mineral View is not a broker · your private data is never sold ·
-          estimates, not appraisals
+          Your information is kept private and is never sold.
         </Fine>
       </form>
 
       <Divider />
 
       <p className="text-center text-[13px] text-mv-slate">
-        New to Mineral View?{" "}
+        Don&apos;t have an account?{" "}
         <Link
           href="/register"
           className="font-bold text-mv-green-deep no-underline hover:underline"
         >
-          Create your free account →
+          Create one for free →
         </Link>
       </p>
     </>

@@ -51,6 +51,8 @@ export function RegisterForm() {
      button, not in the form's error slot halfway down the card. */
   const [googleFailure, setGoogleFailure] = useState<string | null>(null);
   const [email, setEmail] = useState("");
+  /* Held past the form step for the resend call, which needs a `username`. */
+  const [fullName, setFullName] = useState("");
 
   const {
     register,
@@ -86,6 +88,7 @@ export function RegisterForm() {
       return;
     }
     setEmail(values.email);
+    setFullName(values.fullName);
     setStage("verify");
   }
 
@@ -97,6 +100,7 @@ export function RegisterForm() {
     return (
       <VerifyPanel
         email={email}
+        fullName={fullName}
         onVerified={() => setStage("verified")}
       />
     );
@@ -105,8 +109,8 @@ export function RegisterForm() {
   return (
     <>
       <AuthHead
-        title="Create your free account"
-        lede="Email, password, and a quick email code. No card required. About 30 seconds."
+        title="Create your account"
+        lede="Create your account with your email or Google. No credit card required."
       />
 
       {/* The same endpoint as sign-in: the backend resolves existing-vs-new
@@ -121,13 +125,14 @@ export function RegisterForm() {
         </p>
       )}
 
-      <OrDivider label="or with email" />
+      {/* Lower case on purpose — `OrDivider` sets `uppercase`. */}
+      <OrDivider label="or continue with email" />
 
+      {/* No "* Required fields" legend (Ryan, 2026-08-17). The red asterisk on
+          each label already reads as required without being explained, and the
+          line sat between the divider and the first field where it was the first
+          thing the eye landed on. `Req` still marks the labels themselves. */}
       <form onSubmit={handleSubmit(onValid)} noValidate>
-        <p className="mb-2 text-[12px] text-mv-muted">
-          <Req /> Required field
-        </p>
-
         <FormError message={failure} />
 
         <Field
@@ -144,7 +149,7 @@ export function RegisterForm() {
               {...register("fullName")}
               type="text"
               autoComplete="name"
-              placeholder="Mineral Owner's Name"
+              placeholder="Enter your full name"
             />
           )}
         </Field>
@@ -163,7 +168,7 @@ export function RegisterForm() {
               {...register("email")}
               type="email"
               autoComplete="email"
-              placeholder="you@email.com"
+              placeholder="you@example.com"
             />
           )}
         </Field>
@@ -181,7 +186,7 @@ export function RegisterForm() {
               {...props}
               {...register("password")}
               autoComplete="new-password"
-              placeholder="8+ characters"
+              placeholder="Minimum 8 characters"
             />
           )}
         </Field>
@@ -211,17 +216,11 @@ export function RegisterForm() {
           label={
             <>
               Mailing address{" "}
-              <Optional>(optional now — required before you claim)</Optional>
+              <Optional>(optional for now)</Optional>
             </>
           }
           error={errors.mailingAddress?.message}
-          hint={
-            <>
-              You can add it later, but no claim can complete without it: this is
-              how we verify records are <em>yours</em> — several owners can share
-              one name, and a matching name isn&apos;t proof. The address is.
-            </>
-          }
+          hint="You can add your address later. It is required before claiming a record to help verify ownership."
         >
           {(props) => (
             <input
@@ -229,7 +228,7 @@ export function RegisterForm() {
               {...register("mailingAddress")}
               type="text"
               autoComplete="street-address"
-              placeholder="Street, city, state, ZIP"
+              placeholder="Street, City, State, ZIP"
             />
           )}
         </Field>
@@ -241,7 +240,7 @@ export function RegisterForm() {
             </>
           }
           error={errors.inviteCode?.message}
-          hint="Have a code from a co-owner's letter? It connects you to their lease group automatically."
+          hint="Enter an invite code if one was provided to you."
         >
           {(props) => (
             <input
@@ -262,14 +261,14 @@ export function RegisterForm() {
                 href="/terms-condition"
                 className="text-mv-green-deep no-underline hover:underline"
               >
-                Terms of Use (MV-TOU v2.0)
+                Terms of Use
               </Link>{" "}
-              and acknowledge the{" "}
+              and{" "}
               <Link
                 href="/privacy-policy"
                 className="text-mv-green-deep no-underline hover:underline"
               >
-                Privacy Policy (MV-PRIV v2.0)
+                Privacy Policy
               </Link>
               .
             </strong>
@@ -284,27 +283,34 @@ export function RegisterForm() {
         <SubmitButton disabled={!agreed || isSubmitting}>
           {isSubmitting
             ? "Creating your account…"
-            : "Create account & verify my email"}
+            : "Create account & verify email"}
         </SubmitButton>
 
         <Fine className="mt-2">
-          Always a free plan · No credit card · No commitment
+          Free plan • No credit card required • Cancel anytime
         </Fine>
         <Fine className="mt-[6px]">
-          Your acceptance is recorded with the document version and timestamp —
-          you can always see exactly what you agreed to.
+          Your acceptance of the Terms of Use and Privacy Policy is recorded.
         </Fine>
         <Fine className="mt-[10px]">
-          After you claim your record,{" "}
-          <strong className="font-bold">
-            Mineral View builds and verifies your portfolio — up to 24 hours
-          </strong>{" "}
-          — and notifies you when it&apos;s ready. We check the record before we
-          show you numbers.
+          After you claim a record, we verify your ownership before displaying
+          ownership data. Verification may take up to 24 hours.
         </Fine>
+
+        {/* ONE HORIZONTAL LINE, not a stacked bullet list (Ryan, 2026-08-17:
+            "need that horizontal to reduce space"). As a <ul> this was six lines
+            and 72px of the fifth consecutive block of small print above the
+            footer — two of those lines were the list's own leading, spent on two
+            items of three words each.
+
+            Back to `Fine`, which is what the four notes above it use, with the
+            same `•` separators as the "Free plan • No credit card required"
+            line. Every phrase is kept verbatim; only the layout changed. The <ul>
+            is not missed — with two short items on one line there is no list to
+            navigate, and it reads as the sentence it always was. */}
         <Fine className="mt-3">
-          Free plan: 1 active owner · 1 visible lease. Upgrade anytime — never
-          auto-renewed.
+          Free plan includes: 1 owner profile • 1 visible lease • Upgrade at any
+          time.
         </Fine>
       </form>
 
@@ -340,9 +346,13 @@ function Optional({ children }: { children?: React.ReactNode }) {
  */
 function VerifyPanel({
   email,
+  fullName,
   onVerified,
 }: {
   email: string;
+  /** Carried through only so "Resend the code" can supply the required
+      `username` — see `resendCodeAction`. */
+  fullName: string;
   onVerified: () => void;
 }) {
   const [digits, setDigits] = useState<string[]>(Array(6).fill(""));
@@ -453,7 +463,7 @@ function VerifyPanel({
             onClick={async () => {
               setResent(null);
               setError(null);
-              const result = await resendCodeAction(email);
+              const result = await resendCodeAction(email, fullName);
               if (result.ok) setResent("A new code is on its way.");
               else setError(result.message);
             }}

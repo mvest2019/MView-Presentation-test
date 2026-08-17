@@ -1,7 +1,10 @@
 "use client";
 
+import { Info } from "lucide-react";
 import Image from "next/image";
 import { useId, useState, type ReactNode } from "react";
+
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /**
  * The frame and controls shared by sign-in and sign-up.
@@ -147,18 +150,47 @@ export function Field({
 
   return (
     <div className="mb-[14px] flex flex-col gap-[6px]">
-      {aside ? (
-        <div className="flex items-center justify-between gap-3">
+      {/* One label row in both cases now. It used to branch — a bare <label>
+          without `aside`, a flex row with it — and the (i) has to sit beside the
+          label either way. With nothing on the right, `justify-between` is a
+          no-op, so the no-aside rendering is unchanged. */}
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex items-center gap-[5px]">
           <label htmlFor={id} className={labelClass}>
             {label}
           </label>
-          {aside}
-        </div>
-      ) : (
-        <label htmlFor={id} className={labelClass}>
-          {label}
-        </label>
-      )}
+          {/*
+            HELPER TEXT ON HOVER, behind an (i) (Ryan, 2026-08-17: "when hover on
+            that i icons then show text use shadcn"). Printed under the field it
+            was three paragraphs of explanation running down the form, which on a
+            phone pushed the Create button below the fold.
+
+            `type="button"` is load-bearing — this sits inside a <form>, and a
+            button without it defaults to `submit`, so hovering to read a note and
+            pressing Enter would have posted the form.
+          */}
+          {hint ? (
+            <Tooltip>
+              <TooltipTrigger
+                type="button"
+                aria-label="About this field"
+                /* Lucide's `Info`, not a bordered <span> holding an italic "i".
+                   That was a 15px circle drawn with a 1px border and a 10px
+                   glyph, and at that size the letter sat visibly off-centre and
+                   the ring rendered unevenly on non-retina screens. One SVG path
+                   set is crisp at any size, and lucide is already the icon set
+                   everywhere else in this app. Colour rides `currentColor`, so
+                   the hover and open states are a single `text-*` swap. */
+                className="inline-flex shrink-0 cursor-help items-center justify-center rounded-full bg-transparent p-0 text-mv-muted transition hover:text-mv-green-deep focus-visible:text-mv-green-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep data-[state=delayed-open]:text-mv-green-deep"
+              >
+                <Info aria-hidden className="h-[15px] w-[15px]" />
+              </TooltipTrigger>
+              <TooltipContent>{hint}</TooltipContent>
+            </Tooltip>
+          ) : null}
+        </span>
+        {aside}
+      </div>
       {children({
         id,
         "aria-invalid": Boolean(error),
@@ -170,7 +202,21 @@ export function Field({
           {error}
         </span>
       ) : hint ? (
-        <span id={`${id}-hint`} className="text-[12px] text-mv-muted">
+        /*
+         * ALWAYS `sr-only`, never `hidden`, and it is NOT the tooltip.
+         *
+         * This element is what the input's `aria-describedby` points at, and
+         * Radix only mounts tooltip content while the tooltip is open — so
+         * pointing the input at the tooltip would leave `aria-describedby`
+         * dangling at nothing for a screen-reader user who never hovers. Keeping
+         * a permanent visually-hidden copy means the note is read out with the
+         * field, whether or not anyone hovers. `display:none` would not do:
+         * hidden content is dropped from the accessibility tree entirely.
+         */
+        <span
+          id={`${id}-hint`}
+          className="sr-only"
+        >
           {hint}
         </span>
       ) : null}

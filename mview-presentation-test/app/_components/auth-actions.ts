@@ -95,11 +95,30 @@ export async function registerAction(values: unknown): Promise<ActionResult> {
   return { ok: true };
 }
 
-export async function resendCodeAction(email: string): Promise<ActionResult> {
+/**
+ * `fullName` IS REQUIRED, despite reading like a nicety.
+ *
+ * `/email-verification/send-code` rejects a blank one — `{}` answers 422 with
+ * "please provide username" — so this passed `""` and every resend failed with
+ * a validation error about a field the visitor cannot see. The name is already
+ * on screen from the form they just submitted, so it is threaded through rather
+ * than re-fetched.
+ *
+ * The fallback is the local part of the address: the endpoint only needs
+ * something to greet the reader with, and refusing to resend because a name went
+ * missing would be a worse outcome than an email addressed to "jane".
+ */
+export async function resendCodeAction(
+  email: string,
+  fullName: string,
+): Promise<ActionResult> {
   const parsed = loginSchema.shape.email.safeParse(email);
   if (!parsed.success) return { ok: false, message: "That email looks wrong." };
 
-  const sent = await sendVerificationCode(parsed.data, "");
+  const username =
+    splitName(fullName).first || parsed.data.split("@")[0] || "there";
+
+  const sent = await sendVerificationCode(parsed.data, username);
   return sent.ok
     ? { ok: true }
     : { ok: false, message: sent.message || "We could not resend the code." };
