@@ -377,10 +377,13 @@ export function WellsTable({
           collapsed this into a three-line block on a narrow viewport. */}
       <div
         ref={filterBarRef}
-        className="flex flex-wrap items-center gap-2 px-4 py-3 lg:flex-nowrap lg:px-6 lg:py-4"
+        /* A band of its own: bordered off from the heading above and tinted,
+           so the controls read as one strip rather than as loose chips
+           floating under the title. */
+        className="mt-4 flex flex-wrap items-center gap-2 border-t border-mv-line bg-[#fafbfa] px-4 pb-[10px] pt-[12px] lg:flex-nowrap lg:px-6"
       >
-        <div className="flex w-full items-center gap-2 rounded-lg border border-mv-line px-3 py-[7px] lg:w-auto lg:shrink-0">
-          <Search size={14} className="text-mv-muted" aria-hidden="true" />
+        <div className="flex w-full items-center gap-2 rounded-lg border border-mv-line bg-white px-[12px] py-[6px] focus-within:border-mv-green-deep lg:w-auto lg:shrink-0">
+          <Search size={14} className="shrink-0 text-mv-muted" aria-hidden="true" />
           <label htmlFor="table-search" className="sr-only">
             Search API, operator or lease
           </label>
@@ -392,14 +395,17 @@ export function WellsTable({
               setQuery(event.target.value);
               setPage(1);
             }}
-            placeholder="Search API, operator, lease,"
-            className="w-full min-w-0 border-0 bg-transparent text-[12.5px] leading-tight text-mv-ink outline-none placeholder:text-mv-muted lg:w-[172px]"
+            placeholder="Search API, operator or lease"
+            className="w-full min-w-0 border-0 bg-transparent text-[12.5px] leading-tight text-mv-ink outline-none placeholder:text-mv-muted lg:w-[196px]"
           />
         </div>
 
-        <span className="ml-1 shrink-0 text-[10px] font-extrabold uppercase tracking-[.1em] text-mv-muted">
-          Filter
-        </span>
+        {/* A rule, not a "FILTER" label: the pills say what they are, and the
+            word was competing with them for attention. */}
+        <span
+          aria-hidden="true"
+          className="mx-1 hidden h-5 w-px shrink-0 bg-mv-line lg:block"
+        />
 
         {FACETS.map((facet) => (
           <FilterDropdown
@@ -435,36 +441,44 @@ export function WellsTable({
             type="button"
             onClick={clearAll}
             disabled={loading || (!pending && !anyFilter)}
-            className="rounded-lg border border-mv-line px-[13px] py-[7px] text-[12.5px] font-semibold text-mv-slate enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-lg border border-mv-red px-[13px] py-[6px] text-[12.5px] font-semibold text-mv-red enabled:cursor-pointer enabled:hover:bg-mv-red-bg disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Clear filters
+            Clear
           </button>
           <button
             type="button"
             onClick={applyFacets}
             disabled={loading || !pending}
-            className="rounded-lg px-[13px] py-[7px] text-[12.5px] font-bold enabled:cursor-pointer enabled:bg-mv-green-deep enabled:text-white enabled:hover:brightness-105 disabled:cursor-not-allowed disabled:bg-[#eef1ee] disabled:text-mv-muted"
+            className="rounded-lg px-[15px] py-[6px] text-[12.5px] font-bold enabled:cursor-pointer enabled:bg-mv-green-deep enabled:text-white enabled:hover:brightness-105 disabled:cursor-not-allowed disabled:bg-[#e9ecea] disabled:text-mv-muted"
           >
-            Apply filters
+            Apply
           </button>
         </div>
 
       </div>
 
-      {/* ---------------- applied filters ---------------- */}
+      {/* ---------------- applied filters ----------------
+          Each chip names its facet as well as its value: "Anderson" alone
+          leaves you to work out which of five filters put it there, and two
+          facets can hold the same word. */}
       {chips.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 px-4 pb-3 lg:px-6 lg:pb-4">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-[6px] border-b border-mv-line bg-[#fafbfa] px-4 pb-[11px] pt-[9px] lg:px-6">
+          <span className="mr-1 shrink-0 text-[10px] font-extrabold uppercase tracking-[.1em] text-mv-muted">
+            Applied
+          </span>
+
           {chips.map((chip) => (
             <span
               key={`${chip.key}:${chip.value}`}
-              className="inline-flex items-center gap-[6px] rounded-full bg-[#eef1ee] py-[4px] pl-[12px] pr-[8px] text-[12px] font-semibold text-mv-slate"
+              className="inline-flex items-center gap-[7px] rounded-lg border border-mv-green-deep/25 bg-mv-mint py-[4px] pl-[10px] pr-[5px] text-[12px] text-mv-green-deep"
             >
-              {chip.value || chip.label}
+              <span className="text-mv-green-deep/70">{chip.label}</span>
+              <span className="font-semibold">{chip.value || "—"}</span>
               <button
                 type="button"
                 onClick={() => removeChip(chip)}
-                aria-label={`Remove ${chip.value || chip.label}`}
-                className="grid h-[15px] w-[15px] cursor-pointer place-items-center rounded-full text-mv-muted hover:bg-white hover:text-mv-green-deep"
+                aria-label={`Remove ${chip.label} ${chip.value}`}
+                className="grid h-[16px] w-[16px] cursor-pointer place-items-center rounded text-mv-green-deep/60 hover:bg-white hover:text-mv-red"
               >
                 <X size={11} strokeWidth={2.5} aria-hidden="true" />
               </button>
@@ -797,7 +811,7 @@ function FilterDropdown({
         aria-expanded={open}
         disabled={disabled}
         onClick={() => onOpenChange(!open)}
-        className={`inline-flex items-center gap-[6px] rounded-full border px-[14px] py-[6px] text-[12.5px] font-semibold enabled:cursor-pointer disabled:cursor-wait disabled:opacity-60 ${
+        className={`inline-flex items-center gap-[6px] rounded-lg border px-[13px] py-[6px] text-[12.5px] font-semibold enabled:cursor-pointer disabled:cursor-wait disabled:opacity-60 ${
           chosen.size
             ? "border-mv-green-deep text-mv-green-deep"
             : "border-mv-line text-mv-slate enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep"

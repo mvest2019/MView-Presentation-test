@@ -53,7 +53,7 @@ export function ProductionFilter({
         aria-expanded={open}
         disabled={disabled}
         onClick={() => onOpenChange(!open)}
-        className={`inline-flex items-center gap-[6px] rounded-full border px-[14px] py-[6px] text-[12.5px] font-semibold enabled:cursor-pointer disabled:cursor-wait disabled:opacity-60 ${
+        className={`inline-flex items-center gap-[6px] rounded-lg border px-[13px] py-[6px] text-[12.5px] font-semibold enabled:cursor-pointer disabled:cursor-wait disabled:opacity-60 ${
           count
             ? "border-mv-green-deep text-mv-green-deep"
             : "border-mv-line text-mv-slate enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep"
