@@ -24,6 +24,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { TableSearch, type SearchPick } from "./table-search";
+
 import {
   EMPTY_PRODUCTION,
   ProductionFilter,
@@ -53,6 +55,22 @@ import {
  *
  * Export full list is the only control still inert.
  */
+
+/** Adds the picked search result to whichever facet it filters on. */
+function withPick(
+  filters: Record<string, string[]>,
+  pick: SearchPick | null,
+): Record<string, string[]> {
+  if (!pick) return filters;
+
+  const existing = filters[pick.facet] ?? [];
+  return {
+    ...filters,
+    [pick.facet]: existing.includes(pick.param)
+      ? existing
+      : [...existing, pick.param],
+  };
+}
 
 /** A field needs quoting when it holds a comma, a quote or a line break. */
 const CSV_QUOTE = new RegExp('[",\\n]');
@@ -165,7 +183,13 @@ export function WellsTable({
     key: SortKey;
     ascending: boolean;
   } | null>(null);
-  const [query, setQuery] = useState("");
+  /*
+   * What the search box picked: a county, an operator or a lease, already
+   * carrying the parameter it filters on. A draft like the pills: the box
+   * shows the choice, and Apply is what sends it.
+   */
+  const [picked, setPicked] = useState<SearchPick | null>(null);
+  const [appliedPicked, setAppliedPicked] = useState<SearchPick | null>(null);
   /*
    * Two copies: what is ticked, and what the rows are actually for.
    *
@@ -260,7 +284,6 @@ export function WellsTable({
   useEffect(() => {
     let cancelled = false;
 
-    // Debounced, or every keystroke in the search box is a page of wells.
     const timer = setTimeout(() => {
       setLoading(true);
 
@@ -269,16 +292,24 @@ export function WellsTable({
         pageSize: PER_PAGE,
         sort: sort ? (SORT_PARAM[sort.key] ?? sort.key) : undefined,
         dir: sort ? (sort.ascending ? "asc" : "desc") : undefined,
-        q: query,
-        filters: {
-          // Operators go by id; everything else by name.
-          operator: [...appliedFacets.operator]
-            .map((name) => operatorIds.get(name) ?? "")
-            .filter(Boolean),
-          county: [...appliedFacets.county],
-          wtype: [...appliedFacets.type],
-          status: [...appliedFacets.status],
-        },
+        /*
+         * Built, not spread. The picked search result was written first and
+         * then overwritten by the dropdown's own key for that facet — pick a
+         * county and the `county:` line below replaced it with the empty list,
+         * so the filter never left the browser. Merging keeps both.
+         */
+        filters: withPick(
+          {
+            // Operators go by id; everything else by name.
+            operator: [...appliedFacets.operator]
+              .map((name) => operatorIds.get(name) ?? "")
+              .filter(Boolean),
+            county: [...appliedFacets.county],
+            wtype: [...appliedFacets.type],
+            status: [...appliedFacets.status],
+          },
+          appliedPicked,
+        ),
         ranges: {
           producedOilMin: appliedProduction.oilMin,
           producedOilMax: appliedProduction.oilMax,
@@ -306,13 +337,15 @@ export function WellsTable({
         .finally(() => {
           if (!cancelled) setLoading(false);
         });
-    }, query ? 300 : 0);
+      // No debounce: every input here is a deliberate choice — a page, a
+      // sort, a picked search result — not a keystroke.
+    }, 0);
 
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [page, sort, query, appliedFacets, appliedProduction, operatorIds]);
+  }, [page, sort, appliedPicked, appliedFacets, appliedProduction, operatorIds]);
 
   const safePage = Math.min(page, totalPages);
   const firstShown = total ? (safePage - 1) * PER_PAGE + 1 : 0;
@@ -341,13 +374,15 @@ export function WellsTable({
     setAppliedFacets(emptyFacets());
     setProduction(EMPTY_PRODUCTION);
     setAppliedProduction(EMPTY_PRODUCTION);
-    setQuery("");
+    setPicked(null);
+    setAppliedPicked(null);
     setPage(1);
   }
 
   function applyFacets() {
     setAppliedFacets(facets);
     setAppliedProduction(production);
+    setAppliedPicked(picked);
     setPage(1);
   }
 
@@ -357,8 +392,11 @@ export function WellsTable({
 
   const pending =
     spell(facets) !== spell(appliedFacets) ||
-    JSON.stringify(production) !== JSON.stringify(appliedProduction);
+    JSON.stringify(production) !== JSON.stringify(appliedProduction) ||
+    (picked?.param ?? "") !== (appliedPicked?.param ?? "");
   const anyFilter =
+    appliedPicked !== null ||
+    picked !== null ||
     chips.length > 0 ||
     productionCount(appliedProduction) > 0 ||
     appliedFacets.county.size > 0;
@@ -494,25 +532,12 @@ export function WellsTable({
            floating under the title. */
         className="mt-4 flex flex-wrap items-center gap-2 border-t border-mv-line bg-[#fafbfa] px-4 pb-[10px] pt-[12px] lg:flex-nowrap lg:px-6"
       >
-        {/* Padded to the pills' own height: the box was a couple of pixels
-            shorter, which showed up as a step across the row. */}
-        <div className="flex w-full items-center gap-2 rounded-lg border border-mv-line bg-white px-[12px] py-[7px] focus-within:border-mv-green-deep lg:w-auto lg:shrink-0">
-          <Search size={14} className="shrink-0 text-mv-muted" aria-hidden="true" />
-          <label htmlFor="table-search" className="sr-only">
-            Search API, operator or lease
-          </label>
-          <input
-            id="table-search"
-            type="text"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setPage(1);
-            }}
-            placeholder="Search API, operator or lease"
-            className="w-full min-w-0 border-0 bg-transparent text-[12.5px] leading-tight text-mv-ink outline-none placeholder:text-mv-muted lg:w-[196px]"
-          />
-        </div>
+        <TableSearch
+          picked={picked}
+          disabled={loading}
+          onPick={setPicked}
+          onClear={() => setPicked(null)}
+        />
 
         {/* A rule, not a "FILTER" label: the pills say what they are, and the
             word was competing with them for attention. */}
