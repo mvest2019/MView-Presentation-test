@@ -1,29 +1,45 @@
 "use client";
 
 import { Droplet, Info } from "lucide-react";
-import { useCallback, useId, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { cardTitleClass } from "@/app/_components/typography";
-import type { ProductionYear } from "@/lib/operator-production-graph";
 import { titleCase } from "@/lib/text-case";
 
 import { ALL_COUNTIES, CountyFilter } from "./county-filter";
-import { useProductionGraph } from "./use-production-graph";
+import { useProductionGraph, type YearRange } from "./use-production-graph";
 import { YearBrush } from "./year-brush";
 
 /**
  * "Production over time" — reported annual volumes from
  * `POST /api/v1/operators/production-graph`, styled to the approved design.
  *
- * THE FILTER IS COUNTY, NOT YEARS, on request. "All counties" sends every county the
- * operator reports in, because the endpoint rejects an empty list; picking one sends
- * that one.
+ * THE FILTER IS COUNTY AND YEARS. "All counties" omits the `county` key; picking one
+ * sends that one name. The years come from the brush.
  *
  * THE OPTIONS ARE THIS OPERATOR'S COUNTIES, not every county in Texas. The dropdown
  * first listed all ~255 from the shared `/operators/counties` read, which meant 176 of
  * Pioneer's options were counties it has no wells in — every one of them charting
  * empty. The operator's own list already arrives with `/operators/details`, so this
  * needs no second read at all: fewer requests, and every option returns data.
+ *
+ * ALL COUNTIES IS AN OMITTED KEY, NOT A LIST OF ALL OF THEM. The endpoint treats a
+ * missing `county` as every county, which it proves by returning the same 2025 oil
+ * figure — 214,403,548 — that naming Pioneer's 79 counties produced. So the operator-
+ * wide series is now the smaller request, not the larger one.
+ *
+ * THE YEAR RANGE IS THE API'S, NOT A CLIENT SLICE. Dragging the brush sends
+ * `start_year`/`end_year` and plots what comes back, so the totals in the summary
+ * cards are the source's own sums over the reader's range rather than something added
+ * up here. The drag is debounced and the previous request aborted, so moving the handles
+ * across twenty years costs one call, not twenty.
  *
  * BOE IS NOT PLOTTED, also on request, even though the response carries `BOEValues`
  * and the design shows a third series. `toProductionYears` drops it at the boundary,
@@ -83,17 +99,20 @@ export function ProductionOverTime({
 }) {
   const [county, setCounty] = useState<string>(ALL_COUNTIES);
   const [hover, setHover] = useState<number | null>(null);
-  /** Index window over the data, for zoom and pan. Null means the whole range. */
+  /**
+   * The brush's live window, as indices into the full history. It moves on every drag
+   * frame, which is why it is not what gets sent.
+   */
   const [zoom, setZoom] = useState<{ start: number; end: number } | null>(null);
+  /** The settled year range that becomes the request. Null means the full history. */
+  const [range, setRange] = useState<YearRange | null>(null);
   const gradientId = useId();
   const dragFrom = useRef<{ x: number; start: number; end: number } | null>(
     null,
   );
 
-  const counties = useMemo(
-    () => (county === ALL_COUNTIES ? [...operatorCounties] : [county]),
-    [county, operatorCounties],
-  );
+  /** What goes on the wire: one county, or the key omitted entirely. */
+  const apiCounty = county === ALL_COUNTIES ? null : county;
 
   /** Alphabetical, so the dropdown reads in a predictable order. */
   const options = useMemo(
@@ -109,14 +128,36 @@ export function ProductionOverTime({
   const appliedCounty =
     county === ALL_COUNTIES ? "All counties" : `${titleCase(county)} County`;
 
-  const graph = useProductionGraph({ operatorNumber, counties });
-  const all = useMemo(() => graph.data ?? [], [graph.data]);
+  const graph = useProductionGraph({
+    operatorNumber,
+    county: apiCounty,
+    range,
+  });
 
-  /** The visible slice. */
-  const data = useMemo(
-    () => (zoom ? all.slice(zoom.start, zoom.end + 1) : all),
-    [all, zoom],
-  );
+  /** The full history — the brush's domain, and never narrowed by it. */
+  const all = useMemo(() => graph.full?.rows ?? [], [graph.full]);
+  /** The selected range — what is plotted. Straight from the API, not sliced here. */
+  const data = useMemo(() => graph.range?.rows ?? [], [graph.range]);
+
+  /*
+   * The brush moves continuously; the request must not. A settled window becomes a
+   * year range after a short pause, and the hook aborts anything still in flight — so
+   * a drag across the whole history is one request rather than one per frame.
+   */
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (zoom === null || all.length === 0) {
+        setRange(null);
+        return;
+      }
+      const start = all[zoom.start]?.year;
+      const end = all[zoom.end]?.year;
+      setRange(
+        start === undefined || end === undefined ? null : { start, end },
+      );
+    }, 260);
+    return () => clearTimeout(timer);
+  }, [zoom, all]);
 
   const geometry = useMemo(() => {
     const innerWidth = VIEW.width - INSET.left - INSET.right;
@@ -135,10 +176,45 @@ export function ProductionOverTime({
     };
   }, [data]);
 
+  /*
+   * WHICH YEARS GET A LABEL.
+   *
+   * The old rule kept every nth year AND forced the last one, which is how "2024" and
+   * "2026" ended up printed on top of each other: the forced final label landed one
+   * slot after a kept one with no room between them. Spacing has to be measured, not
+   * assumed from a count.
+   *
+   * So labels are taken left to right only when far enough from the one before, and the
+   * final year is then added unconditionally — dropping its neighbour if that is what
+   * it takes to fit. The last year is the one a reader looks for, so it wins the
+   * collision rather than losing it.
+   */
+  const yearLabels = useMemo(() => {
+    const MIN_GAP = 58; // viewBox units — comfortably wider than a four-digit year
+    const picked = new Set<number>();
+    let lastX = Number.NEGATIVE_INFINITY;
+
+    data.forEach((_, index) => {
+      const x = geometry.x(index);
+      if (x - lastX >= MIN_GAP) {
+        picked.add(index);
+        lastX = x;
+      }
+    });
+
+    const final = data.length - 1;
+    if (final >= 0 && !picked.has(final)) {
+      if (geometry.x(final) - lastX < MIN_GAP) {
+        // Evict the neighbour that would collide, whichever it is.
+        const previous = [...picked].pop();
+        if (previous !== undefined && previous !== 0) picked.delete(previous);
+      }
+      picked.add(final);
+    }
+    return picked;
+  }, [data, geometry]);
+
   const baseline = INSET.top + geometry.innerHeight;
-  /** The year the cards and tooltip describe: hovered, else the latest. */
-  const focus = hover ?? data.length - 1;
-  const point: ProductionYear | undefined = data[focus];
 
   const linePath = (key: SeriesKey) =>
     data
@@ -246,8 +322,11 @@ export function ProductionOverTime({
           options={options}
           onChange={(next) => {
             setCounty(next);
-            // A new series has its own year range, so the old window is meaningless.
+            // A new series has its own year range, so both the window and the range
+            // it produced are meaningless — clear them together, or the next request
+            // asks the new county for the old county's years.
             setZoom(null);
+            setRange(null);
             setHover(null);
           }}
         />
@@ -256,7 +335,12 @@ export function ProductionOverTime({
       {/* ---- summary cards, tinted per series ---- */}
       <div className="mt-4 grid grid-cols-2 gap-[14px] max-[860px]:grid-cols-1">
         {SERIES.map((series) => {
-          const value = point?.[series.key] ?? 0;
+          // The API's own total over the selected range, not a figure summed here and
+          // not a single year's value.
+          const value =
+            series.key === "oil"
+              ? (graph.range?.totalOil ?? 0)
+              : (graph.range?.totalGas ?? 0);
 
           return (
             <div
@@ -286,18 +370,12 @@ export function ProductionOverTime({
               <p className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-3 gap-y-[2px]">
                 <span className="text-[13px] font-semibold text-mv-ink-soft">
                   {series.label}
-                  {point ? (
-                    <>
-                      {" in "}
-                      <b className="font-bold text-mv-ink">{point.year}</b>
-                    </>
-                  ) : null}
                 </span>
                 <span
                   className="text-[22px] font-extrabold leading-[1.1] tracking-[-.02em] tabular-nums max-[420px]:text-[18px]"
                   style={{ color: series.colour }}
                 >
-                  {graph.status === "loading" && !graph.data ? (
+                  {graph.status === "loading" && graph.range === null ? (
                     <span className="inline-block h-[22px] w-[104px] animate-pulse rounded-md bg-mv-line-soft align-middle" />
                   ) : (
                     <>
@@ -323,6 +401,13 @@ export function ProductionOverTime({
         className="mt-4 truncate text-[13px] font-bold text-mv-ink"
       >
         {appliedCounty}
+        {data.length > 0 ? (
+          <span className="ml-2 font-medium text-mv-muted">
+            {data[0]?.year === data.at(-1)?.year
+              ? data[0]?.year
+              : `${data[0]?.year}–${data.at(-1)?.year}`}
+          </span>
+        ) : null}
       </p>
 
       {/* ---- chart ---- */}
@@ -434,11 +519,9 @@ export function ProductionOverTime({
                 );
               })}
 
-              {/* year labels — thinned when the zoom is wide */}
+              {/* year labels — see `yearLabels`; the last year always shows */}
               {data.map((p, i) =>
-                data.length <= 10 ||
-                i % Math.ceil(data.length / 10) === 0 ||
-                i === data.length - 1 ? (
+                yearLabels.has(i) ? (
                   <text
                     key={p.year}
                     x={geometry.x(i).toFixed(1)}
@@ -565,7 +648,7 @@ export function ProductionOverTime({
       </div>
 
       {/* ---- the zoom range, under the x-axis ---- */}
-      {graph.status === "success" || (graph.data?.length ?? 0) > 0 ? (
+      {all.length > 0 ? (
         <YearBrush
           years={all.map((p) => p.year)}
           values={all.map((p) => p.oil + p.gas)}
