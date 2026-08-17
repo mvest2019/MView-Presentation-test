@@ -1,5 +1,6 @@
 "use client";
 
+import { MapPin } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -11,7 +12,6 @@ import {
 import { AreaSelectionBar } from "./area-selection";
 import { loadArcgisModules } from "./arcgis-loader";
 import { ClusterTooltip } from "./cluster-tooltip";
-import { InsightsPanel } from "./insights-panel";
 import {
   WellInsightsPanel,
   type SelectedWell,
@@ -2557,12 +2557,27 @@ export function MapExplorerView() {
                 : { width: `${(1 - split) * 100}%` }
             }
           >
-            {/* One well's summary in place of the statewide one — the
-                statewide panel itself is untouched. */}
+            {/* Insights is about one well. Without one there is nothing to
+                summarise, so it says so rather than showing statewide figures
+                that have nothing to do with what was clicked. */}
             {selectedWell ? (
               <WellInsightsPanel well={selectedWell} />
             ) : (
-              <InsightsPanel />
+              <div className="grid h-full place-items-center bg-mv-bg p-6">
+                <div className="max-w-[280px] text-center">
+                  <span className="mx-auto grid h-[44px] w-[44px] place-items-center rounded-full bg-mv-mint text-mv-green-deep">
+                    <MapPin size={20} aria-hidden="true" />
+                  </span>
+                  <h2 className="mt-3 text-[15px] font-bold text-mv-ink">
+                    Pick a well
+                  </h2>
+                  <p className="mt-[6px] text-[12.5px] leading-snug text-mv-muted">
+                    Click a well on the map to see its production, wellbore and
+                    lease summary here. Zoom in past the bubbles to draw
+                    individual wells.
+                  </p>
+                </div>
+              </div>
             )}
           </div>
 
