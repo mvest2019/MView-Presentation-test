@@ -1,83 +1,78 @@
 /*
- * The numbers behind the single-well summary.
+ * The single-well summary, as data.
  *
- * Static, and the same for whichever well is clicked: none of it is in the
- * map API yet — no production history, no wellbore geometry, no filings. The
- * header takes the real well's identity from the click; everything below it
- * is this file. Replace it wholesale when a well-detail endpoint exists.
+ * All of it is static and all of it is the same for whichever well is clicked:
+ * none of production history, reserves, decline or filings is in the map API
+ * yet. Only the top strip is real, and only the parts the map already knows —
+ * the API number, the county, the status.
+ *
+ * Replace this file wholesale when a well-detail endpoint exists.
  */
 
-/** Twenty-four months of oil, in bbl — the shape the mock's chart shows. */
-export const WELL_OIL_SERIES = [
-  1250, 1310, 1290, 1420, 1520, 1470, 1380, 1490, 1320, 1300, 1180, 1210, 1120,
-  1050, 980, 1010, 940, 900, 860, 880, 820, 800, 180, 990,
-];
-
-/** The same months of gas, in mcf. */
-export const WELL_GAS_SERIES = [
-  545, 520, 528, 534, 560, 512, 505, 520, 498, 505, 470, 462, 455, 470, 448,
-  442, 430, 425, 410, 402, 395, 388, 120, 405,
-];
-
-export const WELL_MONTHS = [
-  "Feb '24", "Apr '24", "Jun '24", "Aug '24", "Oct '24", "Dec '24",
-  "Feb '25", "Apr '25", "Jun '25", "Aug '25", "Oct '25", "Dec '25",
-];
-
-export const WELL_HEADLINE = [
-  {
-    label: "Cumulative BOE",
-    value: "285k",
-    unit: "boe",
-    note: "284,900 to date",
-    foot: "vs. prior 12 months",
-    delta: "▼ -26.7%",
-    down: true,
-  },
-  {
-    label: "Oil produced",
-    value: "272k",
-    unit: "bbl",
-    note: "39 bbl/d last month",
-    foot: "vs. prior 12 months",
-    delta: "▼ -26.9%",
-    down: true,
-  },
-  {
-    label: "Gas produced",
-    value: "80k",
-    unit: "mcf",
-    note: "13 mcf/d last month",
-    foot: "vs. prior 12 months",
-    delta: "▼ -22.6%",
-    down: true,
-  },
-  {
-    label: "12-month trend",
-    value: "-26.7%",
-    unit: "",
-    note: "vs. prior 12 months",
-    foot: "Trend direction",
-    delta: "Declining",
-    down: true,
-  },
-];
-
-export const WELL_STREAM_MIX = {
-  oilShare: 95,
-  rows: [
-    { label: "Oil", value: "272k bbl", colour: "#12a13f" },
-    { label: "Gas", value: "80k mcf", colour: "#e2231a" },
-    { label: "Water", value: "1.1M bbl", colour: "#2f4fd8" },
-    { label: "GOR", value: "296 scf/bbl", colour: "#8b5cf6" },
-  ],
-  peak: "20k – 1k boe",
+export const WELL_HEADER = {
+  wellNumber: "1",
+  api: "42-255-38043",
+  county: "Karnes",
+  status: "Producing",
+  performance: "Good",
 };
 
-export const WELL_BORE = {
+/** The six figures across the top. */
+export const WELL_METRICS = [
+  { label: "Last Month Oil", value: "10,826", unit: "BBL", kind: "oil" },
+  { label: "Last Month Gas", value: "19,117", unit: "MCF", kind: "gas" },
+  { label: "Next Month Est Oil", value: "9,467", unit: "BBL", kind: "oil" },
+  { label: "Next Month Est Gas", value: "16,718", unit: "MCF", kind: "gas" },
+  { label: "Reserve Oil", value: "75,000", unit: "BBL", kind: "reserve" },
+  { label: "Reserve Gas", value: "130,000", unit: "MCF", kind: "reserve" },
+] as const;
+
+export const WELL_INFORMATION = [
+  { label: "Well Type", value: "Oil" },
+  { label: "Direction", value: "Horizontal" },
+  { label: "Well Age", value: "1 year" },
+  { label: "Reservoir/Play", value: "Eagle Ford Shale" },
+];
+
+export const LEASE_INFORMATION = [
+  { label: "Lease Name", value: "Metz-Korth-Rru Usw A" },
+  { label: "Lease No.", value: "13071" },
+  { label: "Acres", value: "5,618.53" },
+  { label: "District", value: "02" },
+];
+
+export const OPERATOR_INFO = {
+  label: "Operator",
+  value: "Burlington Resources O & G Co Lp (109335)",
+};
+
+export const DEPTH_GEOMETRY = [
+  { label: "Start Depth", value: "11,490 ft" },
+  { label: "True Vertical", value: "13,360 ft" },
+  { label: "End Depth", value: "25,289 ft" },
+  { label: "Nearest Well", value: "0.009 miles" },
+];
+
+export const WELL_ACTIVITY = [
+  { label: "Filing Type", value: "New Well" },
+  { label: "Filing Purpose", value: "Drilling" },
+  { label: "Spud Date", value: "12-03-2024" },
+  { label: "First Production", value: "03-19-2025" },
+  { label: "Completion Date", value: "03-2025" },
+  { label: "Last Production", value: "04-2026" },
+];
+
+export const WELL_LOCATION = [
+  { label: "Latitude", value: "52.38143° N" },
+  { label: "Longitude", value: "97.65799° W" },
+  { label: "Survey", value: "J POITEVENT" },
+  { label: "Blk / Sec", value: "41 / 19" },
+];
+
+export const WELLBORE = {
   kind: "Horizontal",
-  surface: "SURFACE · 291 ft GL",
-  formation: "CLEARFORK",
+  surface: "Surface · 341 ft GL",
+  formation: "Clearfork",
   tvd: "TVD 6,941 ft",
   td: "TD 18,940 ft",
   lateral: "Lateral 11,500 ft",
@@ -89,52 +84,121 @@ export const WELL_BORE = {
   ],
 };
 
-export const WELL_LOCATION = [
-  { label: "Latitude", value: "32.38243° N" },
-  { label: "Longitude", value: "101.95799° W" },
-  { label: "Survey", value: "J POITEVENT" },
-  { label: "Blk / Sec", value: "41 / 19" },
-];
+/** Decline diagnostics: what the rate curve anchors reveal. */
+export const DECLINE_ROWS = [
+  { label: "Last month oil", value: "10,826.53", unit: "BBL", tone: "ink" },
+  { label: "Next month est oil", value: "9,467.70", unit: "BBL", tone: "ink" },
+  { label: "Month-on-month step", value: "-12.55", unit: "%", tone: "down" },
+  { label: "Implied annual effective", value: "80.0", unit: "%", tone: "ink" },
+  { label: "Last month gas", value: "19,117.48", unit: "MCF", tone: "ink" },
+  { label: "Next month est gas", value: "16,718.12", unit: "MCF", tone: "ink" },
+  { label: "Gas MoM step", value: "-12.55", unit: "%", tone: "down" },
+  { label: "Oil ÷ gas step ratio", value: "1.0000", unit: "", tone: "ink" },
+  { label: "Life GOR", value: "1,369", unit: "SCF/BBL", tone: "ink" },
+  { label: "Last month GOR", value: "1,766", unit: "SCF/BBL", tone: "ink" },
+  { label: "GOR trend to date", value: "+29", unit: "%", tone: "up" },
+  { label: "Forecast GOR", value: "1,766", unit: "frozen", tone: "ink" },
+  { label: "R/P on last month", value: "0.58", unit: "yr · 7 months", tone: "down" },
+  { label: "Reserve ÷ integral of curve", value: "93.4", unit: "%", tone: "ink" },
+] as const;
 
-export const WELL_LEASE = {
-  operator: "Sabine Production",
-  operatorMeta: "P-5 425673 · Corpus Christi, TX",
-  rows: [
-    { label: "Lease", value: "BROWN ESTATE" },
-    { label: "RRC lease no.", value: "90330" },
-    { label: "Field", value: "KERMIT (SAN ANDRES)" },
-    { label: "Acreage", value: "1,200 acres" },
-    { label: "Wells on lease", value: "8" },
+/** Reserve integrity: stated depletion against well age. */
+export const RESERVE_INTEGRITY = {
+  bars: [
+    { label: "under 2 yr", value: 86.99, count: "n = 273" },
+    { label: "2 – 4 yr", value: 83.06, count: "n = 315" },
+    { label: "4 – 7 yr", value: 91.44, count: "n = 440" },
+    { label: "7 – 11 yr", value: 96.25, count: "n = 660" },
+    { label: "11 yr +", value: 96.77, count: "n = 1,000" },
+  ],
+  note: "A well cannot be 87% depleted in its first two years. Yet that is the median for the 273 youngest Karnes wells. The curve should rise monotonically with age; that most steps drop by 3–4 per cent, then plateau, says the reserve is being extrapolated from a model that is cheapest early in life — so young wells get truncated EURs.",
+};
+
+/** Cohort EUR — the tell. Median booked EUR by age. */
+export const COHORT_EUR = {
+  bars: [
+    { label: "under 2 yr", value: 216457, display: "216,457" },
+    { label: "2 – 4 yr", value: 339225, display: "339,225" },
+    { label: "4 – 7 yr", value: 295609, display: "295,609" },
+    { label: "7 – 11 yr", value: 203980, display: "203,980" },
+    { label: "11 yr +", value: 256109, display: "256,109" },
+  ],
+  notes: [
+    "Newest wells are booked with the smallest EURs. The under-2-yr median EUR is 26.7% below the 4–7 yr cohort — the opposite of reality. Since 2024+ Karnes wells average 7,880 ft of lateral against ~5,300 ft for mature levels. Longer wells, smaller booked EUR: the model, not the rock.",
+    "This well's own alone (411,720 BBL at 14 months) already exceeds the median lifetime EUR of every cohort in this table.",
   ],
 };
 
-export const WELL_ACTIVITY = [
-  {
-    date: "Jan 01, 2026",
-    title: "Shut-in status filed",
-    detail: "Well reported shut-in; annual W-3C on file.",
-    tone: "amber" as const,
-  },
-  {
-    date: "Apr 24, 2020",
-    title: "First production reported",
-    detail: "Initial month reported 18,850 bbl oil and 4,943 mcf gas.",
-    tone: "blue" as const,
-  },
-  {
-    date: "Mar 21, 2020",
-    title: "Completion report filed",
-    detail: "Form W-2 / G-1 filed; lateral of 11,500 ft at 18,940 ft TD.",
-    tone: "green" as const,
-  },
-];
+/** The written read, and the cards under it. */
+export const INSIGHT_SUMMARY = {
+  headline:
+    "METZ-KORTH-RRU USW A WELL 1 is a 14-month-old, top-decile Eagle Ford producer whose booked reserves are almost certainly understated. It has recovered 411,720 BBL oil and 563,797 MCF gas — 505,686 BOE — from a 13,599 ft lateral, already clearing the p90 of its own 2024+ vintage cohort (367,957 BBL, n = 281) and exceeding the median lifetime EUR of 11-year-old Karnes wells (256,109 BBL). Yet the operator books only 75,440 BBL remaining, implying an EUR of 487,160 BBL and 84.5% depletion at 14 months old — not physically credible for a well this young.",
+  cards: [
+    {
+      tone: "green" as const,
+      title: "Exceptional early performance",
+      body: "411,720 BBL in 14 months against a vintage-cohort median of 181,363 BBL — 2.27× the current rate of 12,100 BOE/mo sits at p8 of that cohort.",
+    },
+    {
+      tone: "red" as const,
+      title: "The reserve model breaks on young wells",
+      body: "Across 5,319 Karnes wells the median well under 2 years old is booked at 86.99% depleted, and most recent months' median EUR (216,457 BBL) sits 26.7% lower than the 4–7 yr cohort's (295,609 BBL) — despite far longer modern laterals.",
+    },
+    {
+      tone: "blue" as const,
+      title: "Independent EUR cross-check",
+      body: "553k – 1,024k BBL. Mature (7 yr+) Karnes horizontals recover p25 39.2 / p60 54.5 / p75 71.3 BBL per lateral foot. At 13,599 ft that brackets EUR of 553,000 – 1,024,000 BBL mid-case 741,000. The nearest EUR implies just 35.8 BBL/ft — below the mature p25. On the mid-case this well is ~50% depleted, not 84.5%.",
+    },
+    {
+      tone: "blue" as const,
+      title: "Long lateral, diminishing per-foot return",
+      body: "Pad sibling 42-255-38041 shares identical lease-mates (6,090 of 6,216 math-well groups, 96.6%). This well is clean — sole well at lease 13071 — but 4 of its 8 nearest offsets are not.",
+    },
+    {
+      tone: "green" as const,
+      title: "Six-well co-developed cube",
+      body: "All 6 wells within 148 ft at surface, all first production Mar 2025, 7,912 downhole ft. Of 6 on cumulative oil but 4th of 6 on current rate and remaining reserves — it is declining faster than its cube-mates.",
+    },
+    {
+      tone: "red" as const,
+      title: "25.4% of the collection has lease-level, not well-level, production",
+      body: "24,554 of 96,711 reporting wells share identical production figures with their lease-mates. This well is clean — sole well at lease 13071 — but 4 of its 8 nearest offsets are not.",
+    },
+  ],
+};
 
-export const WELL_TOTALS = [
-  { label: "Total BOE", qualifier: "(to date)", value: "284,900", unit: "boe" },
-  { label: "Oil", qualifier: "(to date)", value: "271,515", unit: "bbl" },
-  { label: "Gas", qualifier: "(to date)", value: "80,311", unit: "mcf" },
-  { label: "Water", qualifier: "(to date)", value: "1,101,983", unit: "bbl" },
-  { label: "GOR", qualifier: "(to date)", value: "296", unit: "scf/bbl" },
-];
+/*
+ * Monthly oil and gas, history then forecast.
+ *
+ * Generated rather than typed out: eight years is ninety-six points a stream,
+ * and the shape is what matters — a sharp ramp, a peak in the first year, then
+ * a hyperbolic decline that flattens out. Deterministic, so the chart does not
+ * change between renders.
+ */
+export const PRODUCTION_START_YEAR = 2025;
+export const PRODUCTION_END_YEAR = 2032;
 
-export const WELL_UPDATED = "Jan 01, 2026";
+/** Months of history before the forecast takes over. */
+export const PRODUCTION_HISTORY_MONTHS = 11;
+
+export type ProductionPoint = { month: number; oil: number; gas: number };
+
+export const PRODUCTION_SERIES: ProductionPoint[] = Array.from(
+  { length: (PRODUCTION_END_YEAR - PRODUCTION_START_YEAR + 1) * 12 },
+  (_, month) => {
+    // Ramp over the first two months, then decline hyperbolically.
+    const ramp = Math.min(1, (month + 0.35) / 2);
+    const decline = 1 / (1 + 0.55 * Math.max(0, month - 2));
+    // A small repeating wobble while the well is still being reported.
+    const wobble =
+      month < PRODUCTION_HISTORY_MONTHS
+        ? 1 + 0.07 * Math.sin(month * 1.7)
+        : 1;
+
+    return {
+      month,
+      oil: Math.round(57_000 * ramp * decline * wobble),
+      gas: Math.round(74_000 * ramp * decline * wobble),
+    };
+  },
+);
