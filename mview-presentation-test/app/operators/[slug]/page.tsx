@@ -4,10 +4,7 @@ import {
   Building2,
   CheckCircle2,
   FileText,
-  Flag,
   Gauge,
-  Plus,
-  Repeat,
   TrendingUp,
 } from "lucide-react";
 import type { Metadata } from "next";
@@ -32,7 +29,6 @@ import {
   formatVolume,
   listOperatorDetailSlugs,
   titleCase,
-  type ChangeRow,
   type ConditionCard,
   type OperatorDetail,
 } from "@/lib/operator-detail";
@@ -45,6 +41,7 @@ import { fetchOperatorDetails } from "@/lib/operator-details-api";
 
 import { DeferredSection } from "./_components/deferred-section";
 import { OperatorLeases } from "./_components/operator-leases";
+import { OperatorWhatChanged } from "./_components/operator-what-changed";
 import { ProductionOverTime } from "./_components/production-over-time";
 
 /**
@@ -278,23 +275,22 @@ export default async function OperatorDetailRoute({
           </section>
         ) : null}
 
-        {/* ---- 3 · what changed — MOVED UP, see the note at the top ---- */}
-        {operator.changeRows.length > 0 ? (
-          <section className="pt-[26px]">
-            <SectionHead
-              eyebrow="Auto-generated"
-              title="What changed"
-              // Shortened to fit one line. "Illustrative" is kept: these rows are
-              // hardcoded narrative, not derived from the operator record.
-              aside="Illustrative insights · last 90 days"
-            />
-            <ul className="m-0 grid list-none gap-[10px] p-0">
-              {operator.changeRows.map((row) => (
-                <ChangeItem key={row.headline} row={row} />
-              ))}
-            </ul>
-          </section>
-        ) : null}
+        {/* ---- 3 · what changed — MOVED UP, see the note at the top ----
+            Now measured rather than narrated: the Python analysis service reads the
+            five MongoDB collections for THIS operator, computes and ranks the changes,
+            and has Claude rephrase the finished findings. Deferred, so neither the
+            request nor the model call touches first paint — the section reserves its
+            height and fills in when approached. See `operator-what-changed.tsx`. */}
+        <section className="pt-[26px]">
+          <SectionHead
+            eyebrow="Auto-generated"
+            title="What changed"
+            aside="Measured from RRC records · last 90 days"
+          />
+          <DeferredSection minHeight={520} label="What changed">
+            <OperatorWhatChanged operatorNumber={operator.operatorNumber} />
+          </DeferredSection>
+        </section>
 
         {/* ---- 4 · footprint ---- */}
         <section className="pt-[26px]">
@@ -669,41 +665,6 @@ function ConditionTile({ card }: { card: ConditionCard }) {
       </p>
       <p className="mt-1 text-[12px] text-mv-muted">{card.foot}</p>
     </div>
-  );
-}
-
-const CHANGE_ICONS = {
-  up: ArrowUp,
-  down: ArrowDown,
-  add: Plus,
-  flag: Flag,
-  swap: Repeat,
-} as const;
-
-function ChangeItem({ row }: { row: ChangeRow }) {
-  const Icon = CHANGE_ICONS[row.kind];
-  const tone =
-    row.kind === "up"
-      ? "bg-mv-tint text-mv-green-deep"
-      : row.kind === "down"
-        ? "bg-mv-line-soft text-mv-muted"
-        : "bg-mv-sand-tint text-mv-sand";
-
-  return (
-    <li className="flex items-start gap-3 rounded-[14px] border border-mv-line bg-white px-[18px] py-4 shadow-[0_1px_2px_rgba(24,24,27,.05)]">
-      <span
-        aria-hidden="true"
-        className={`grid h-[26px] w-[26px] shrink-0 place-items-center rounded-lg ${tone}`}
-      >
-        <Icon className="h-[15px] w-[15px]" strokeWidth={2.2} />
-      </span>
-      <span className="min-w-0 text-[13.5px] leading-[1.55] text-mv-ink-soft">
-        <b className="font-bold text-mv-ink">{row.headline}</b> {row.detail}
-        <span className="mt-1 block text-[12px] text-mv-muted">
-          {row.source}
-        </span>
-      </span>
-    </li>
   );
 }
 
