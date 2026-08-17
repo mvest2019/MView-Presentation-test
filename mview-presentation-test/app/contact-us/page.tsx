@@ -24,7 +24,9 @@ export default function ContactPage() {
         {/* Breadcrumb, heading and cards share one width, so the heading's left
             edge lines up with the left edge of the form card below it. */}
         <div className="mx-auto max-w-[1015px]">
-          <Breadcrumb trail={[{ label: "Contact" }]} />
+          {/* "Contact Us" rather than "Contact", matching the page's own heading —
+              a breadcrumb's last crumb names the page you are on. */}
+          <Breadcrumb trail={[{ label: "Contact Us" }]} />
 
           {/* 30px ceiling: at 38-40px the heading dwarfs the cards below it. */}
           <h1
