@@ -32,7 +32,9 @@ import {
 } from "./production-filter";
 
 import {
+  getOperatorListMap,
   getTableMap,
+  type MapFilterItem,
   type MapTableRow,
   type MapTableSummary,
 } from "@/lib/map-api";
@@ -123,6 +125,19 @@ const FACETS: {
   { key: "county", label: "County", options: COUNTIES, searchable: true },
 ];
 
+/*
+ * The column key as the endpoint spells it.
+ *
+ * Two of ours are not its names — the Oil and Gas columns are `producedOil`
+ * and `producedGas` — and sending "oil" was rejected outright with a 400,
+ * which is what "Failed to fetch the table" was reporting.
+ */
+const SORT_PARAM: Record<string, string> = {
+  oil: "producedOil",
+  gas: "producedGas",
+  type: "wtype",
+};
+
 const emptyFacets = (): Facets => ({
   operator: new Set(),
   type: new Set(),
@@ -136,10 +151,15 @@ export function WellsTable({
   onShowOnMap,
 }: WellsTableProps) {
   const [page, setPage] = useState(1);
-  const [sort, setSort] = useState<{ key: SortKey; ascending: boolean }>({
-    key: "api",
-    ascending: true,
-  });
+  /*
+   * Null until a column is clicked, and then not sent at all — the endpoint
+   * has its own default order, and sending `sort=api` unasked made the request
+   * look like it carried an API filter.
+   */
+  const [sort, setSort] = useState<{
+    key: SortKey;
+    ascending: boolean;
+  } | null>(null);
   const [query, setQuery] = useState("");
   /*
    * Two copies: what is ticked, and what the rows are actually for.
@@ -154,6 +174,34 @@ export function WellsTable({
   const [appliedProduction, setAppliedProduction] =
     useState<ProductionRange>(EMPTY_PRODUCTION);
   const [productionOpen, setProductionOpen] = useState(false);
+  /*
+   * The operator list, from the facet endpoint rather than the static names.
+   * It filters by id, and the id only comes with the live list — the dropdown
+   * was offering names the endpoint has never heard of, and the choice was
+   * not being sent at all.
+   */
+  const [operatorItems, setOperatorItems] = useState<MapFilterItem[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getOperatorListMap()
+      .then((items) => {
+        if (!cancelled) setOperatorItems(items);
+      })
+      .catch(() => {
+        // No list, no operator filter — the rest of the table is unaffected.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const operatorIds = useMemo(
+    () => new Map(operatorItems.map((item) => [item.value, item.id ?? ""])),
+    [operatorItems],
+  );
   const [openFacet, setOpenFacet] = useState<FacetKey | null>(null);
   const filterBarRef = useRef<HTMLDivElement>(null);
 
@@ -207,10 +255,14 @@ export function WellsTable({
       getTableMap({
         page,
         pageSize: PER_PAGE,
-        sort: sort.key,
-        dir: sort.ascending ? "asc" : "desc",
+        sort: sort ? (SORT_PARAM[sort.key] ?? sort.key) : undefined,
+        dir: sort ? (sort.ascending ? "asc" : "desc") : undefined,
         q: query,
         filters: {
+          // Operators go by id; everything else by name.
+          operator: [...appliedFacets.operator]
+            .map((name) => operatorIds.get(name) ?? "")
+            .filter(Boolean),
           county: [...appliedFacets.county],
           wtype: [...appliedFacets.type],
           status: [...appliedFacets.status],
@@ -248,7 +300,7 @@ export function WellsTable({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [page, sort, query, appliedFacets, appliedProduction]);
+  }, [page, sort, query, appliedFacets, appliedProduction, operatorIds]);
 
   const safePage = Math.min(page, totalPages);
   const firstShown = total ? (safePage - 1) * PER_PAGE + 1 : 0;
@@ -301,7 +353,7 @@ export function WellsTable({
 
   function toggleSort(key: SortKey) {
     setSort((current) =>
-      current.key === key
+      current?.key === key
         ? { key, ascending: !current.ascending }
         : { key, ascending: true },
     );
@@ -411,7 +463,11 @@ export function WellsTable({
           <FilterDropdown
             key={facet.key}
             label={facet.label}
-            options={facet.options}
+            options={
+              facet.key === "operator"
+                ? operatorItems.map((item) => item.value)
+                : facet.options
+            }
             searchable={facet.searchable}
             chosen={facets[facet.key]}
             open={openFacet === facet.key}
@@ -567,7 +623,7 @@ export function WellsTable({
                   aria-sort={
                     sortable === false
                       ? undefined
-                      : sort.key === key
+                      : sort?.key === key
                         ? sort.ascending
                           ? "ascending"
                           : "descending"
@@ -590,8 +646,8 @@ export function WellsTable({
                     >
                       {label}
                       <SortMark
-                        active={sort.key === key}
-                        ascending={sort.ascending}
+                        active={sort?.key === key}
+                        ascending={sort?.ascending ?? true}
                       />
                     </button>
                   )}
