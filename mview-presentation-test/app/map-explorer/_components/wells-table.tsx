@@ -25,6 +25,13 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  EMPTY_PRODUCTION,
+  ProductionFilter,
+  productionCount,
+  type ProductionRange,
+} from "./production-filter";
+
+import {
   getTableMap,
   type MapTableRow,
   type MapTableSummary,
@@ -134,21 +141,37 @@ export function WellsTable({
     ascending: true,
   });
   const [query, setQuery] = useState("");
+  /*
+   * Two copies: what is ticked, and what the rows are actually for.
+   *
+   * The endpoint is slow enough that filtering on every tick meant a request
+   * per checkbox, each one replacing the last. Apply commits the draft; until
+   * then the table keeps showing what it already had.
+   */
   const [facets, setFacets] = useState<Facets>(emptyFacets);
+  const [appliedFacets, setAppliedFacets] = useState<Facets>(emptyFacets);
+  const [production, setProduction] = useState<ProductionRange>(EMPTY_PRODUCTION);
+  const [appliedProduction, setAppliedProduction] =
+    useState<ProductionRange>(EMPTY_PRODUCTION);
+  const [productionOpen, setProductionOpen] = useState(false);
   const [openFacet, setOpenFacet] = useState<FacetKey | null>(null);
   const filterBarRef = useRef<HTMLDivElement>(null);
 
   // Close an open dropdown on an outside click, as the map overlays do.
   useEffect(() => {
-    if (!openFacet) return;
+    if (!openFacet && !productionOpen) return;
 
     function onPointerDown(event: MouseEvent) {
       if (!filterBarRef.current?.contains(event.target as Node)) {
         setOpenFacet(null);
+        setProductionOpen(false);
       }
     }
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpenFacet(null);
+      if (event.key === "Escape") {
+        setOpenFacet(null);
+        setProductionOpen(false);
+      }
     }
 
     document.addEventListener("mousedown", onPointerDown);
@@ -157,7 +180,7 @@ export function WellsTable({
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [openFacet]);
+  }, [openFacet, productionOpen]);
 
   /*
    * The rows come from the server, a page at a time.
@@ -188,9 +211,15 @@ export function WellsTable({
         dir: sort.ascending ? "asc" : "desc",
         q: query,
         filters: {
-          county: [...facets.county],
-          wtype: [...facets.type],
-          status: [...facets.status],
+          county: [...appliedFacets.county],
+          wtype: [...appliedFacets.type],
+          status: [...appliedFacets.status],
+        },
+        ranges: {
+          producedOilMin: appliedProduction.oilMin,
+          producedOilMax: appliedProduction.oilMax,
+          producedGasMin: appliedProduction.gasMin,
+          producedGasMax: appliedProduction.gasMax,
         },
       })
         .then((result) => {
@@ -219,7 +248,7 @@ export function WellsTable({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [page, sort, query, facets]);
+  }, [page, sort, query, appliedFacets, appliedProduction]);
 
   const safePage = Math.min(page, totalPages);
   const firstShown = total ? (safePage - 1) * PER_PAGE + 1 : 0;
@@ -245,9 +274,30 @@ export function WellsTable({
 
   function clearAll() {
     setFacets(emptyFacets());
+    setAppliedFacets(emptyFacets());
+    setProduction(EMPTY_PRODUCTION);
+    setAppliedProduction(EMPTY_PRODUCTION);
     setQuery("");
     setPage(1);
   }
+
+  function applyFacets() {
+    setAppliedFacets(facets);
+    setAppliedProduction(production);
+    setPage(1);
+  }
+
+  /** A stable spelling of a selection, for telling draft from applied. */
+  const spell = (of: Facets) =>
+    FACETS.map(({ key }) => [...of[key]].sort().join("|")).join("§");
+
+  const pending =
+    spell(facets) !== spell(appliedFacets) ||
+    JSON.stringify(production) !== JSON.stringify(appliedProduction);
+  const anyFilter =
+    chips.length > 0 ||
+    productionCount(appliedProduction) > 0 ||
+    appliedFacets.county.size > 0;
 
   function toggleSort(key: SortKey) {
     setSort((current) =>
@@ -289,6 +339,37 @@ export function WellsTable({
         <h2 className="text-[16px] font-bold leading-tight text-mv-ink lg:text-[19px] lg:leading-none">
           Well results
         </h2>
+
+        <div className="flex w-full shrink-0 flex-wrap items-center gap-2 lg:ml-auto lg:w-auto lg:flex-nowrap lg:pl-2">
+          <div className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-mv-line bg-white p-1 lg:flex-none lg:justify-start">
+            <TabButton
+              icon={MapIcon}
+              label="Map"
+              active={activeTab === "map"}
+              onClick={() => onTabChange("map")}
+            />
+            <TabButton
+              icon={TableIcon}
+              label="Table"
+              active={activeTab === "table"}
+              onClick={() => onTabChange("table")}
+            />
+            <TabButton
+              icon={Activity}
+              label="Insights"
+              active={activeTab === "insights"}
+              onClick={() => onTabChange("insights")}
+            />
+          </div>
+
+          <button
+            type="button"
+            className="inline-flex w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-mv-line px-[14px] py-[8px] text-[12.5px] font-semibold text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep lg:w-auto"
+          >
+            <Download size={14} aria-hidden="true" />
+            Export full list
+          </button>
+        </div>
       </div>
 
       {/* ---------------- controls ----------------
@@ -329,51 +410,45 @@ export function WellsTable({
             chosen={facets[facet.key]}
             open={openFacet === facet.key}
             disabled={loading}
-            onOpenChange={(next) => setOpenFacet(next ? facet.key : null)}
+            onOpenChange={(next) => {
+              setOpenFacet(next ? facet.key : null);
+              if (next) setProductionOpen(false);
+            }}
             onChange={(next) => updateFacet(facet.key, next)}
           />
         ))}
 
-        {chips.length > 0 && (
+        <ProductionFilter
+          range={production}
+          open={productionOpen}
+          disabled={loading}
+          onOpenChange={(next) => {
+            setProductionOpen(next);
+            if (next) setOpenFacet(null);
+          }}
+          onChange={setProduction}
+        />
+
+        {/* Apply and Clear at the end of the row, where the space is. */}
+        <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
           <button
             type="button"
             onClick={clearAll}
-            className="shrink-0 cursor-pointer text-[12.5px] text-mv-muted underline underline-offset-2 hover:text-mv-green-deep"
+            disabled={loading || (!pending && !anyFilter)}
+            className="rounded-lg border border-mv-line px-[13px] py-[7px] text-[12.5px] font-semibold text-mv-slate enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Clear all
+            Clear filters
           </button>
-        )}
-
-        <div className="flex w-full shrink-0 flex-wrap items-center gap-2 lg:ml-auto lg:w-auto lg:flex-nowrap lg:pl-2">
-          <div className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-mv-line bg-white p-1 lg:flex-none lg:justify-start">
-            <TabButton
-              icon={MapIcon}
-              label="Map"
-              active={activeTab === "map"}
-              onClick={() => onTabChange("map")}
-            />
-            <TabButton
-              icon={TableIcon}
-              label="Table"
-              active={activeTab === "table"}
-              onClick={() => onTabChange("table")}
-            />
-            <TabButton
-              icon={Activity}
-              label="Insights"
-              active={activeTab === "insights"}
-              onClick={() => onTabChange("insights")}
-            />
-          </div>
-
           <button
             type="button"
-            className="inline-flex w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-mv-line px-[14px] py-[8px] text-[12.5px] font-semibold text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep lg:w-auto"
+            onClick={applyFacets}
+            disabled={loading || !pending}
+            className="rounded-lg px-[13px] py-[7px] text-[12.5px] font-bold enabled:cursor-pointer enabled:bg-mv-green-deep enabled:text-white enabled:hover:brightness-105 disabled:cursor-not-allowed disabled:bg-[#eef1ee] disabled:text-mv-muted"
           >
-            <Download size={14} aria-hidden="true" />
-            Export full list
+            Apply filters
           </button>
         </div>
+
       </div>
 
       {/* ---------------- applied filters ---------------- */}
@@ -581,10 +656,10 @@ export function WellsTable({
                   className="h-[52vh] px-6 text-center align-middle text-[13px] text-mv-muted"
                 >
                   {loading ? (
-                    <span className="inline-flex items-center gap-2">
+                    <span className="inline-flex items-center gap-[10px] text-[15px] font-semibold text-mv-slate">
                       <span
                         aria-hidden="true"
-                        className="h-[13px] w-[13px] animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
+                        className="h-[22px] w-[22px] animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
                       />
                       Loading wells…
                     </span>

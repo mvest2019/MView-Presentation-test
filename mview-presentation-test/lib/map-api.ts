@@ -380,6 +380,8 @@ export const getTableMap = async (params: {
   dir?: "asc" | "desc";
   q?: string;
   filters?: Record<string, string[]>;
+  /** producedOilMin and the rest — omitted where the box was left empty. */
+  ranges?: Record<string, string>;
 }): Promise<{
   rows: MapTableRow[];
   total: number;
@@ -396,6 +398,9 @@ export const getTableMap = async (params: {
     if (params.q?.trim()) query.set("q", params.q.trim());
     for (const [facet, values] of Object.entries(params.filters ?? {})) {
       if (values.length > 0) query.set(facet, values.join(","));
+    }
+    for (const [bound, value] of Object.entries(params.ranges ?? {})) {
+      if (value.trim() !== "") query.set(bound, value.trim());
     }
 
     const response = await fetch(
