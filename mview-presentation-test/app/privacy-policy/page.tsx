@@ -1,5 +1,4 @@
 import { LegalPage, LegalSection, legalMetadata } from "../_components/legal-page";
-import { LegalContact } from "../_components/legal-contact";
 
 /**
  * Privacy Policy.
@@ -112,7 +111,12 @@ export default function PrivacyPolicyPage() {
 
               <LegalSection id="data-download" title="About Data Download">
                     <p>
-                      Mineral View offers the
+                      {/* `{' '}` after "the" is not decoration: JSX drops a
+                          newline-plus-indent that sits between text and a tag, so
+                          this rendered as "offers theData Download" — visible in
+                          the screenshot, and present in the live site's source
+                          too. */}
+                      Mineral View offers the{' '}
                       <span>
                         Data Download
                       </span>{' '}
@@ -126,8 +130,13 @@ export default function PrivacyPolicyPage() {
                     <p>
                       We offer the following data:
                     </p>
+                    {/* One <ul>, not a <ul> wrapping a <ul>. The port left the
+                        list double-nested, which is invalid — a list may only
+                        contain <li> — and indented these three items twice. */}
                     <ul>
-                      <ul><li>Mineral Rolls Data</li><li>Well Data</li><li>Production Data</li></ul>
+                      <li>Mineral Rolls Data</li>
+                      <li>Well Data</li>
+                      <li>Production Data</li>
                     </ul>
                     <p>
                       For quick assistance or solving the doubts and questions about
@@ -316,10 +325,17 @@ export default function PrivacyPolicyPage() {
                     </p>
                   </LegalSection>
 
-      <LegalContact
-        heading="Contact us about privacy"
-        intro="If you have questions about this Privacy Policy or how your information is handled, contact our Compliance Officer:"
-      />
+      {/* NO SECOND CONTACT BLOCK (Ryan, 2026-08-17: "show only one info for
+          contact us"). A `LegalContact` card sat directly under the section
+          above, repeating the same Austin address in a green panel — two contact
+          details a card apart, which reads as though they might differ.
+
+          The SECTION is the one kept, and the card is the one dropped, because
+          the section is a clause of the policy itself: its wording is the
+          document, and the live site ends the page on it with no extra card. The
+          card was ours. What went with it — the support address, the phone number
+          and a "Send us a message" button — is all in the site footer, and the
+          support address also appears in "About Data Download" above. */}
     </LegalPage>
   );
 }

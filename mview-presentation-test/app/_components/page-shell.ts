@@ -19,8 +19,8 @@
  * finished. 32px also sits close to the 26px above the breadcrumb, so these pages
  * are roughly evenly inset top and bottom.
  *
- * `app/_components/legal-page.tsx` deliberately still carries the old 64px — the
- * privacy and terms pages were not part of that request. Worth revisiting
- * together rather than letting the two quietly diverge.
+ * Privacy and Terms joined on 2026-08-17 via `legal-page.tsx`, so every page that
+ * used to carry the old 64px now reads from here and there is nothing left to
+ * diverge.
  */
 export const pageShellClass = "pb-8 pt-[26px] max-[767px]:pb-6";
