@@ -32,7 +32,9 @@ export default function ContactPage() {
               Home
             </Link>
             <span className="mx-2 text-mv-muted">›</span>
-            <span className="font-bold text-mv-ink">Contact</span>
+            {/* "Contact Us", matching the page's own heading — a breadcrumb's last
+                crumb names the page you are on. */}
+            <span className="font-bold text-mv-ink">Contact Us</span>
           </nav>
 
           {/* 30px ceiling: at 38-40px the heading dwarfs the cards below it. */}
