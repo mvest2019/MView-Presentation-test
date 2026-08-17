@@ -32,19 +32,18 @@ import {
 } from "./production-filter";
 
 import {
+  getCountyListMap,
   getOperatorListMap,
   getTableMap,
+  getWellStatusListMap,
+  getWellTypeListMap,
   type MapFilterItem,
   type MapTableRow,
   type MapTableSummary,
 } from "@/lib/map-api";
 
 import {
-  COUNTIES,
-  OPERATORS,
   PER_PAGE,
-  WELL_STATUSES,
-  WELL_TYPES,
   type WellRow,
 } from "./wells-data";
 
@@ -113,16 +112,20 @@ const COLUMNS: {
   { key: "gas", label: "Gas (mcf)", align: "right", width: "w-[11%]" },
 ];
 
+/*
+ * The four dropdowns. Their options come from the facet endpoints, not from
+ * this file — a hardcoded list can only ever disagree with the data, and the
+ * operator one did: it offered names the endpoint had never heard of.
+ */
 const FACETS: {
   key: FacetKey;
   label: string;
-  options: string[];
   searchable?: boolean;
 }[] = [
-  { key: "operator", label: "Operator", options: OPERATORS, searchable: true },
-  { key: "type", label: "Well type", options: WELL_TYPES },
-  { key: "status", label: "Status", options: [...WELL_STATUSES] },
-  { key: "county", label: "County", options: COUNTIES, searchable: true },
+  { key: "operator", label: "Operator", searchable: true },
+  { key: "type", label: "Well type" },
+  { key: "status", label: "Status" },
+  { key: "county", label: "County", searchable: true },
 ];
 
 /*
@@ -175,32 +178,39 @@ export function WellsTable({
     useState<ProductionRange>(EMPTY_PRODUCTION);
   const [productionOpen, setProductionOpen] = useState(false);
   /*
-   * The operator list, from the facet endpoint rather than the static names.
-   * It filters by id, and the id only comes with the live list — the dropdown
-   * was offering names the endpoint has never heard of, and the choice was
-   * not being sent at all.
+   * The options behind each dropdown, from the facet endpoints. Fetched once,
+   * together: four small lists, and the table is unusable without any of them.
    */
-  const [operatorItems, setOperatorItems] = useState<MapFilterItem[]>([]);
+  const [facetItems, setFacetItems] = useState<Record<FacetKey, MapFilterItem[]>>({
+    operator: [],
+    type: [],
+    status: [],
+    county: [],
+  });
 
   useEffect(() => {
     let cancelled = false;
 
-    getOperatorListMap()
-      .then((items) => {
-        if (!cancelled) setOperatorItems(items);
-      })
-      .catch(() => {
-        // No list, no operator filter — the rest of the table is unaffected.
-      });
+    void Promise.all([
+      getOperatorListMap().catch(() => [] as MapFilterItem[]),
+      getWellTypeListMap().catch(() => [] as MapFilterItem[]),
+      getWellStatusListMap().catch(() => [] as MapFilterItem[]),
+      getCountyListMap().catch(() => [] as MapFilterItem[]),
+    ]).then(([operator, type, status, county]) => {
+      // One failing leaves its dropdown empty; the others still work.
+      if (!cancelled) setFacetItems({ operator, type, status, county });
+    });
 
     return () => {
       cancelled = true;
     };
   }, []);
 
+  /** Operator filters by id, so its names have to be translated back. */
   const operatorIds = useMemo(
-    () => new Map(operatorItems.map((item) => [item.value, item.id ?? ""])),
-    [operatorItems],
+    () =>
+      new Map(facetItems.operator.map((item) => [item.value, item.id ?? ""])),
+    [facetItems],
   );
   const [openFacet, setOpenFacet] = useState<FacetKey | null>(null);
   const filterBarRef = useRef<HTMLDivElement>(null);
@@ -463,11 +473,7 @@ export function WellsTable({
           <FilterDropdown
             key={facet.key}
             label={facet.label}
-            options={
-              facet.key === "operator"
-                ? operatorItems.map((item) => item.value)
-                : facet.options
-            }
+            options={facetItems[facet.key].map((item) => item.value)}
             searchable={facet.searchable}
             chosen={facets[facet.key]}
             open={openFacet === facet.key}
