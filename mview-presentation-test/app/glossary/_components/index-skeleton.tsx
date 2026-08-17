@@ -1,4 +1,5 @@
 import { Skeleton, SkeletonScreen } from "@/app/_components/skeleton";
+import { pageShellClass } from "@/app/_components/page-shell";
 
 /**
  * Loading state for the glossary index.
@@ -13,7 +14,7 @@ import { Skeleton, SkeletonScreen } from "@/app/_components/skeleton";
 export function GlossaryIndexSkeleton() {
   return (
     <SkeletonScreen label="Loading glossary">
-      <div className="py-16 pt-[26px] max-[767px]:pb-11">
+      <div className={pageShellClass}>
         <div className="mx-auto max-w-[1200px] px-7 max-[767px]:px-4">
           <Skeleton className="h-[14px] w-[86px]" />
           <Skeleton className="my-2 h-[40px] w-[420px] max-w-full" />
