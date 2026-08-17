@@ -15,6 +15,7 @@ import { TableOfContents } from "../../blogs/_components/table-of-contents";
 import { prepareArticle } from "@/lib/toc";
 
 import { GlossaryContent } from "../_components/glossary-content";
+import { pageShellClass } from "@/app/_components/page-shell";
 
 /**
  * A single glossary term.
@@ -73,7 +74,7 @@ export default async function GlossaryTermPage({
   const { html, toc } = prepareArticle(term.content);
 
   return (
-    <div className="py-16 pt-[26px] max-[767px]:pb-11">
+    <div className={pageShellClass}>
       {/* Two columns with the contents rail, matching the article pages — see
           the note in `article-page.tsx` for why this is 1200 and not 1300. */}
       <div className="mx-auto max-w-[1200px] px-7 max-[767px]:px-4">

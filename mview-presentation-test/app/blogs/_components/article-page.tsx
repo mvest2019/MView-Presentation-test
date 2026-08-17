@@ -16,6 +16,7 @@ import { BlogChip } from "./blog-chip";
 import { ContentsCard } from "./contents-card";
 import { ShareDialog } from "./share-dialog";
 import { TableOfContents } from "./table-of-contents";
+import { pageShellClass } from "../../_components/page-shell";
 
 /**
  * Article detail, shared by `/blogs/[slug]` and `/oil-and-gas-news/[slug]`.
@@ -96,7 +97,7 @@ export async function ArticlePage({
   const showContents = toc.length > 0;
 
   return (
-    <div className="py-16 pt-[26px] max-[767px]:pb-11">
+    <div className={pageShellClass}>
       {/* 1200px — the same container as the header, the footer and the listings.
           This briefly ran at 1300 to make room for the contents rail, which left
           the article sticking 50px past the header and footer on either side and

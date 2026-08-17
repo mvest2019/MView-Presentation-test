@@ -4,6 +4,7 @@ import { headingBase } from "../_components/typography";
 import { ResourceTabs } from "../blogs/_components/resource-tabs";
 import { FaqExplorer } from "./_components/faq-explorer";
 import { Breadcrumb } from "../_components/breadcrumb";
+import { pageShellClass } from "../_components/page-shell";
 
 /**
  * FAQ — the prototype's `route:faq`. Heading + lede, then the interactive
@@ -18,20 +19,7 @@ export const metadata: Metadata = {
 
 export default function FaqPage() {
   return (
-    /* LESS BOTTOM PADDING THAN ITS SIBLING LIBRARY PAGES, deliberately (Ryan,
-        2026-08-17: "Remove that space").
-
-        Blog, News and Glossary all carry `pb-16` and end on a small grey line of
-        type — a count, a "prefer to watch or listen?" link — so the 64px below it
-        reads as breathing room. FAQ ends on a bordered white card against the
-        dark footer, and the same 64px read as an empty band instead: measured at
-        exactly 64px, all of it this padding, with the last card's own margin
-        already zeroed by `last:mb-0`.
-
-        32px, not 0: butted straight against the footer the last card looks
-        clipped rather than finished. It also pairs with the 26px above the
-        breadcrumb, so the page is close to evenly inset top and bottom. */
-    <div className="pb-8 pt-[26px] max-[767px]:pb-6">
+    <div className={pageShellClass}>
       <div className="mx-auto max-w-[1200px] px-7 max-[767px]:px-4">
         <Breadcrumb trail={[{ label: "FAQ" }]} />
 
