@@ -6,6 +6,7 @@ import { headingBase } from "../../_components/typography";
 import { ResourceTabs } from "../../blogs/_components/resource-tabs";
 import { GlossaryIndex } from "../_components/glossary-index";
 import { Breadcrumb } from "../../_components/breadcrumb";
+import { pageShellClass } from "@/app/_components/page-shell";
 
 /**
  * Glossary index — the prototype's `route:glossary`.
@@ -32,7 +33,7 @@ export default async function GlossaryPage() {
   const terms = await getGlossaryTerms();
 
   return (
-    <div className="py-16 pt-[26px] max-[767px]:pb-11">
+    <div className={pageShellClass}>
       <div className="mx-auto max-w-[1200px] px-7 max-[767px]:px-4">
         <Breadcrumb trail={[{ label: "Glossary" }]} />
         {/* Matches the listing pages — see the note in `article-listing.tsx`

@@ -4,6 +4,7 @@ import { headingBase } from "../_components/typography";
 import { ResourceTabs } from "../blogs/_components/resource-tabs";
 import { FaqExplorer } from "./_components/faq-explorer";
 import { Breadcrumb } from "../_components/breadcrumb";
+import { pageShellClass } from "../_components/page-shell";
 
 /**
  * FAQ — the prototype's `route:faq`. Heading + lede, then the interactive
@@ -18,7 +19,7 @@ export const metadata: Metadata = {
 
 export default function FaqPage() {
   return (
-    <div className="py-16 pt-[26px] max-[767px]:pb-11">
+    <div className={pageShellClass}>
       <div className="mx-auto max-w-[1200px] px-7 max-[767px]:px-4">
         <Breadcrumb trail={[{ label: "FAQ" }]} />
 

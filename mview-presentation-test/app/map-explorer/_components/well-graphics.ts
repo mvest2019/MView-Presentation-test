@@ -47,6 +47,8 @@ export function buildWellGraphics(
         : FALLBACK_SYMBOL,
       attributes: {
         api: well.api,
+        lon: well.lon,
+        lat: well.lat,
         lease: well.lease,
         well: well.well,
         operator: well.operator,

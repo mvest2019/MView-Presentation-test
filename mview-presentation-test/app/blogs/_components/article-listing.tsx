@@ -8,6 +8,7 @@ import { headingBase, inlineLink } from "../../_components/typography";
 import { BlogCard } from "./blog-card";
 import { BlogToolbar } from "./blog-toolbar";
 import { ResourceTabs } from "./resource-tabs";
+import { pageShellClass } from "../../_components/page-shell";
 
 /**
  * The listing body shared by `/blogs` and `/oil-and-gas-news`.
@@ -42,7 +43,10 @@ export async function ArticleListing({
   const requestedCategory = first(searchParams.category);
   const show = toPositiveInt(first(searchParams.show), PAGE_SIZE);
 
-  const { facets, total } = await getCategoryFacets(mode);
+  // The search is passed so the chips count only what the search matched — see
+  // `getCategoryFacets`. Without it the row described the whole section while
+  // the grid below showed a handful of results.
+  const { facets, total } = await getCategoryFacets(mode, search);
 
   // Ignore a category that is not in this section — an old `category` carried
   // over from the other tab would otherwise render an empty grid.
@@ -64,7 +68,7 @@ export async function ArticleListing({
   });
 
   return (
-    <div className="py-16 pt-[26px] max-[767px]:pb-11">
+    <div className={pageShellClass}>
       <div className="mx-auto max-w-[1200px] px-7 max-[767px]:px-4">
         <Breadcrumb trail={[{ label: section.tab }]} />
         {/* No `min-height` here. The design gives `.res-head` a 150px floor so

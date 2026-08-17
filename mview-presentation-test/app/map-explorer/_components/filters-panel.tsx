@@ -5,7 +5,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronUp,
-  Lock,
   Search,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -70,7 +69,7 @@ const MY_LEASES: Lease[] = [
  * The count is optional: a facet that returns no tally should show none, and a
  * "0" would read as data rather than as the absence of it.
  */
-type FilterItem = { name: string; count?: number };
+type FilterItem = { name: string; count?: number; id?: string };
 
 type FilterSection = {
   id: string;
@@ -105,9 +104,6 @@ export const FILTER_SECTIONS: FilterSection[] = [
  * it, which is also why "Water Supply" does not answer a search for "up".
  */
 /** Below this the search box stays quiet — the endpoint is slow and vague. */
-/** Statewide well total, for the footer's "n of n match". Still a constant. */
-const WELLS_STATEWIDE = 1_217_270;
-
 const SEARCH_MIN_CHARS = 3;
 
 /** The API's `type` as the badge beside a result, and the section it belongs to. */
@@ -122,6 +118,38 @@ const SEARCH_SECTIONS: Record<string, string | undefined> = {
   county: "county",
 };
 
+/*
+ * The matched-wells parameter each section filters on.
+ *
+ * Two of the section ids are not the API's names for them — `well-type` is
+ * `wtype` and `play-type` is `play` — so Apply sent keys the endpoint does not
+ * accept and those two filters did nothing. The mapping lives here rather than
+ * renaming the sections, because the ids are also the keys of the checkbox
+ * state and the notices.
+ */
+/*
+ * The two facets the endpoint matches by id rather than by name. The rows
+ * still show the name — nobody searches for operator 665748 — so the id is
+ * looked up from the loaded list when Apply builds the request.
+ */
+const ID_FACETS = new Set(["operator", "field"]);
+
+const SECTION_FACETS: Record<string, string> = {
+  county: "county",
+  operator: "operator",
+  "well-type": "wtype",
+  status: "status",
+  "play-type": "play",
+  field: "field",
+};
+
+/** The matched-wells parameter each search type filters on. */
+const SEARCH_FACETS: Record<string, string | undefined> = {
+  county: "county",
+  operator: "operator",
+  lease: "lease",
+};
+
 type Suggestion = {
   key: string;
   label: string;
@@ -129,15 +157,33 @@ type Suggestion = {
   kind: string;
   sectionId?: string;
   leaseId?: string;
+  /*
+   * How to ask the map for this hit: the matched-wells parameter, and the
+   * value it takes. They differ by type — a lease is found by its key, a
+   * county and an operator by name — so the pairing is decided where the
+   * results arrive rather than where they are used.
+   */
+  facet?: string;
+  param?: string;
 };
 
 type FiltersPanelProps = {
+  /**
+   * Fired by Apply with what is ticked, keyed by facet. The panel does not
+   * fetch: the map owns what it draws, so it makes the request and decides
+   * what to do with the answer.
+   */
+  onApply?: (filters: Record<string, string[]>) => void;
   onCollapse?: () => void;
   /** Positioning; the panel places itself nowhere on its own. */
   className?: string;
 };
 
-export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) {
+export function FiltersPanel({
+  onApply,
+  onCollapse,
+  className = "",
+}: FiltersPanelProps) {
   /* The live county list, with the two states any request has besides its
      result. `loading` starts true because the request starts on mount. */
   const [counties, setCounties] = useState<MapFilterItem[]>([]);
@@ -197,48 +243,60 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
         if (section.id === "county") {
           return {
             ...section,
-            items: counties.map(({ value, count }) => ({ name: value, count })),
+            items: counties.map(({ value, count, id }) => ({
+              name: value,
+              count,
+              id,
+            })),
           };
         }
         if (section.id === "operator") {
           return {
             ...section,
-            items: operators.map(({ value, count }) => ({
+            items: operators.map(({ value, count, id }) => ({
               name: value,
               count,
+              id,
             })),
           };
         }
         if (section.id === "well-type") {
           return {
             ...section,
-            items: wellTypes.map(({ value, count }) => ({
+            items: wellTypes.map(({ value, count, id }) => ({
               name: value,
               count,
+              id,
             })),
           };
         }
         if (section.id === "field") {
           return {
             ...section,
-            items: fields.map(({ value, count }) => ({ name: value, count })),
+            items: fields.map(({ value, count, id }) => ({
+              name: value,
+              count,
+              id,
+            })),
           };
         }
         if (section.id === "play-type") {
           return {
             ...section,
-            items: playTypes.map(({ value, count }) => ({
+            items: playTypes.map(({ value, count, id }) => ({
               name: value,
               count,
+              id,
             })),
           };
         }
         if (section.id === "status") {
           return {
             ...section,
-            items: wellStatuses.map(({ value, count }) => ({
+            items: wellStatuses.map(({ value, count, id }) => ({
               name: value,
               count,
+              id,
             })),
           };
         }
@@ -432,6 +490,17 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
    */
   const [searchHits, setSearchHits] = useState<Suggestion[]>([]);
   const [searchError, setSearchError] = useState<string | null>(null);
+  /** Ticked or unticked since the last Apply. */
+  const [dirty, setDirty] = useState(false);
+  /*
+   * The query the box was filled with by picking a result.
+   *
+   * Picking writes the label into the input, which looks to the effect below
+   * exactly like typing it — so choosing "KARNES" fired a second search for
+   * "KARNES" whose answer was the thing just chosen. This is how the effect
+   * tells the two apart.
+   */
+  const pickedQueryRef = useRef<string | null>(null);
   /*
    * The query these results answer. Anything else in the box means an answer
    * is still coming — which covers the debounce window as well as the request
@@ -454,6 +523,10 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
 
   useEffect(() => {
     const needle = query.trim();
+
+    // Filled in by a pick, not typed: the answer is already on screen.
+    if (pickedQueryRef.current === needle) return;
+
     let cancelled = false;
 
     /*
@@ -480,6 +553,12 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
               label: result.label ?? result.value,
               kind: SEARCH_KINDS[result.type] ?? result.type,
               sectionId: SEARCH_SECTIONS[result.type],
+              facet: SEARCH_FACETS[result.type],
+              // A lease is found by its key; a county and an operator by name.
+              param:
+                result.type === "lease"
+                  ? result.value
+                  : (result.label ?? result.value),
             })),
           );
           setSearchError(null);
@@ -521,7 +600,84 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
    * the result of the search is visible rather than just typed. Clearing the
    * box does not put the list back — the filter is applied, not previewed.
    */
+  /*
+   * What Apply would send: the ticked values, keyed by the API's name for each
+   * facet. An untouched section is not a filter of "nothing", it is no filter
+   * at all, so it is left out entirely — which also makes this empty exactly
+   * when there is nothing to apply.
+   */
+  const selectedFilters = useMemo(() => {
+    const idOf = new Map<string, Map<string, string>>();
+    for (const section of sections) {
+      idOf.set(
+        section.id,
+        new Map(
+          section.items
+            .filter((item) => item.id)
+            // First wins: a name can appear twice with different ids — two
+            // Spraberry fields, for instance — and the list is ordered by
+            // well count, so the first is the larger of them.
+            .reverse()
+            .map((item) => [item.name, item.id as string]),
+        ),
+      );
+    }
+
+    return Object.fromEntries(
+      Object.entries(checked)
+        .map(([section, values]): [string, string[]] => {
+          const ids = idOf.get(section);
+          const useIds = ID_FACETS.has(section) && ids;
+
+          return [
+            SECTION_FACETS[section] ?? section,
+            [...values].map((name) =>
+              useIds ? (ids.get(name) ?? name) : name,
+            ),
+          ];
+        })
+        .filter(([, values]) => values.length > 0),
+    );
+  }, [checked, sections]);
+
+  const hasSelection = Object.keys(selectedFilters).length > 0;
+
+  /*
+   * Apply is live while the boxes differ from what was last applied — not
+   * only while something is ticked. Unticking the last box has to be
+   * appliable too, or there is no way to take the wells back off the map.
+   */
+  const canApply = hasSelection || dirty;
+
+  /*
+   * Clearing the last box clears the map, without waiting for Apply.
+   *
+   * Apply exists to say "run this filter", and an empty filter is not one —
+   * unticking everything is a request to stop filtering, and leaving the wells
+   * up until a button is pressed makes the panel disagree with the map.
+   */
+  const wasFiltering = useRef(false);
+
+  useEffect(() => {
+    if (hasSelection) {
+      wasFiltering.current = true;
+      return;
+    }
+
+    if (!wasFiltering.current) return;
+
+    wasFiltering.current = false;
+    setDirty(false);
+    onApply?.({});
+  }, [hasSelection, onApply]);
+
   function applySuggestion(suggestion: Suggestion) {
+    // A search hit is a filter in its own right: picking one asks the map for
+    // those wells, rather than only ticking a box to be applied afterwards.
+    if (suggestion.facet && suggestion.param) {
+      onApply?.({ [suggestion.facet]: [suggestion.param] });
+    }
+
     if (suggestion.leaseId) {
       setSelectedLease(suggestion.leaseId);
       setLeasesOpen(true);
@@ -534,6 +690,7 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
       }));
     }
 
+    pickedQueryRef.current = suggestion.label.trim();
     setQuery(suggestion.label);
     setSuggestionsOpen(false);
   }
@@ -569,6 +726,7 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
   }
 
   function toggleItem(sectionId: string, name: string) {
+    setDirty(true);
     setChecked((previous) => {
       const next = new Set(previous[sectionId]);
       if (next.has(name)) next.delete(name);
@@ -577,18 +735,16 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
     });
   }
 
-  function setAll(section: FilterSection, on: boolean) {
-    setChecked((previous) => ({
-      ...previous,
-      [section.id]: on
-        ? new Set(section.items.map((item) => item.name))
-        : new Set(),
-    }));
-  }
-
   return (
     <div
-      className={`flex max-h-full w-[196px] flex-col md:w-[224px] lg:w-[252px] overflow-hidden rounded-xl border border-mv-line bg-white shadow-mv-lg ${className}`}
+      /*
+        No height class here. The caller pins the card between a top and a
+        bottom edge, which already gives it a definite height — adding
+        `h-full` on top made it 100% of the map *starting* at the top inset,
+        so the card hung past the bottom edge by the two insets combined.
+        The footer's `mt-auto` is what keeps Apply at the bottom.
+      */
+      className={`flex w-[196px] flex-col md:w-[224px] lg:w-[252px] overflow-hidden rounded-xl border border-mv-line bg-white shadow-mv-lg ${className}`}
     >
       <div className="mv-thin-scroll min-h-0 flex-1 overflow-y-auto px-[14px]">
         {/* ---------------- header ---------------- */}
@@ -596,7 +752,6 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
           <h2 className="text-[14px] lg:text-[15px] font-bold leading-none text-mv-ink">
             Search &amp; filters
           </h2>
-          <ProBadge />
           <button
             type="button"
             onClick={onCollapse}
@@ -767,19 +922,32 @@ export function FiltersPanel({ onCollapse, className = "" }: FiltersPanelProps) 
             onToggle={() => toggleSection(section.id)}
             checked={checked[section.id]}
             onToggleItem={(name) => toggleItem(section.id, name)}
-            onSetAll={(on) => setAll(section, on)}
           />
         ))}
 
         <div className="h-2" />
       </div>
 
-      {/* ---------------- match count ---------------- */}
-      <div className="border-t border-mv-line px-[14px] py-[10px] text-[11.5px] lg:text-[12.5px] leading-snug text-mv-muted">
-        <span className="font-bold text-mv-ink">
-          {WELLS_STATEWIDE.toLocaleString("en-US")}
-        </span>{" "}
-        of {WELLS_STATEWIDE.toLocaleString("en-US")} wells match
+      {/* ---------------- apply ----------------
+          Outside the scroll container, so the sections scroll under it and
+          this stays put — the button has to be reachable without scrolling to
+          the end of two hundred and seventy counties. */}
+      {/* `mt-auto` as well as the body's `flex-1`: when the sections are short
+          — collapsed, or their lists still loading — the body does not always
+          claim the free space, and the footer floated up the card leaving
+          white below it. Pushing from below pins it either way. */}
+      <div className="mt-auto shrink-0 border-t border-mv-line bg-white px-[14px] pb-[12px] pt-[12px]">
+        <button
+          type="button"
+          disabled={!canApply}
+          onClick={() => {
+            setDirty(false);
+            onApply?.(selectedFilters);
+          }}
+          className="w-full rounded-lg px-3 py-[9px] text-[12.5px] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep enabled:cursor-pointer enabled:bg-mv-green-deep enabled:text-white enabled:hover:brightness-105 disabled:cursor-not-allowed disabled:bg-[#eef1ee] disabled:text-mv-muted"
+        >
+          Apply filters
+        </button>
       </div>
     </div>
   );
@@ -791,7 +959,6 @@ function CheckboxSection({
   onToggle,
   checked,
   onToggleItem,
-  onSetAll,
   notice,
 }: {
   section: FilterSection;
@@ -799,7 +966,6 @@ function CheckboxSection({
   onToggle: () => void;
   checked: Set<string>;
   onToggleItem: (name: string) => void;
-  onSetAll: (on: boolean) => void;
   /** Shown in place of the list — "loading", or why there is nothing. */
   notice?: string | null;
 }) {
@@ -820,14 +986,6 @@ function CheckboxSection({
       open={open}
       onToggle={onToggle}
     >
-      <div className="flex items-center justify-end gap-[6px] pb-[10px]">
-        <BulkAction onClick={() => onSetAll(true)}>All</BulkAction>
-        <span aria-hidden="true" className="text-[10px] lg:text-[11px] text-mv-muted">
-          ·
-        </span>
-        <BulkAction onClick={() => onSetAll(false)}>None</BulkAction>
-      </div>
-
       {section.searchable && (
         <div className="mb-2 flex items-center gap-2 rounded-lg border border-mv-line px-[10px] py-[6px]">
           <Search size={13} className="text-mv-muted" aria-hidden="true" />
@@ -974,23 +1132,6 @@ function Highlighted({ text, query }: { text: string; query: string }) {
 }
 
 /** The green All / None sweeps above a list. */
-function BulkAction({
-  children,
-  onClick,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="cursor-pointer text-[10.5px] lg:text-[11.5px] font-bold text-mv-green-deep hover:underline"
-    >
-      {children}
-    </button>
-  );
-}
 
 /*
  * The radio and checkbox are drawn rather than styled natively: `accent-color`
@@ -1026,15 +1167,6 @@ function Checkbox({ checked }: { checked: boolean }) {
       }`}
     >
       {checked && <Check size={11} strokeWidth={3.5} />}
-    </span>
-  );
-}
-
-function ProBadge() {
-  return (
-    <span className="inline-flex shrink-0 items-center gap-[3px] rounded bg-mv-amber-bg px-[5px] py-[2px] text-[8px] lg:text-[9px] font-extrabold uppercase leading-none tracking-[.06em] text-mv-amber">
-      <Lock size={8} strokeWidth={3} aria-hidden="true" />
-      Pro
     </span>
   );
 }

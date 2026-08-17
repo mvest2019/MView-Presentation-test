@@ -6,8 +6,11 @@
  * dev, staging and production differ only in that value.
  */
 
-/** One row of a filter facet — the value and how many wells carry it. */
-export type MapFilterItem = { value: string; count: number };
+/**
+ * One row of a filter facet: the name to show, how many wells carry it, and
+ * the id to filter by. Operator and field are filtered by id, not by name.
+ */
+export type MapFilterItem = { value: string; count: number; id?: string };
 
 /** GET /api/v1/map/filters/county -> { facet, items: [{ value, count }] } */
 export const getCountyListMap = async (): Promise<MapFilterItem[]> => {
@@ -253,5 +256,77 @@ export const getWellListMap = async (bbox: {
     }
   } catch (error) {
     throw new Error(String(error) || "Failed to fetch wells");
+  }
+};
+
+/** One row of the API-number lookup. Identity only — no position. */
+export type MapWellLookup = { api: string; county: string };
+
+/**
+ * GET /api/v1/map/wells/lookup?q={prefix} -> { wells: [{ api, county }] }
+ *
+ * A prefix search over API numbers, capped at ten by the server.
+ */
+export const getWellLookupMap = async (
+  query: string,
+): Promise<MapWellLookup[]> => {
+  try {
+    const response = await fetch(
+      `${process.env.MAP_BASE_URL}/api/v1/map/wells/lookup?q=${encodeURIComponent(query)}`,
+    );
+    const data = await response.json();
+
+    if (response.ok && Array.isArray(data?.wells)) {
+      return data.wells as MapWellLookup[];
+    } else {
+      throw new Error("Failed to look up API numbers");
+    }
+  } catch (error) {
+    throw new Error(String(error) || "Failed to look up API numbers");
+  }
+};
+
+/**
+ * GET /api/v1/map/matched-wells?county=…&wtype=… -> { matched, returned, wells }
+ *
+ * The filters panel's query. Keys are the facet names — county, operator,
+ * wtype, status, play, field — and several values of one key go comma-joined.
+ * `matched` is the true total; `wells` is capped by the server at 5,000.
+ */
+export const getMatchedWellsMap = async (
+  filters: Record<string, string[]>,
+): Promise<{
+  matched: number;
+  wells: MapWell[];
+  /** The true extent of every match, not just the returned sample. */
+  bounds: {
+    minLon: number;
+    minLat: number;
+    maxLon: number;
+    maxLat: number;
+  } | null;
+}> => {
+  try {
+    const params = new URLSearchParams();
+    for (const [facet, values] of Object.entries(filters)) {
+      if (values.length > 0) params.set(facet, values.join(","));
+    }
+
+    const response = await fetch(
+      `${process.env.MAP_BASE_URL}/api/v1/map/matched-wells?${params.toString()}`,
+    );
+    const data = await response.json();
+
+    if (response.ok && Array.isArray(data?.wells)) {
+      return {
+        matched: Number(data.matched ?? data.wells.length),
+        wells: data.wells as MapWell[],
+        bounds: data.bounds ?? null,
+      };
+    } else {
+      throw new Error("Failed to fetch matched wells");
+    }
+  } catch (error) {
+    throw new Error(String(error) || "Failed to fetch matched wells");
   }
 };

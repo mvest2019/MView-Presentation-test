@@ -14,13 +14,19 @@ export const metadata: Metadata = {
 
 /** Contact — form + get-in-touch panel. */
 export default function ContactPage() {
+  // `pb-10` is 40px below the cards, down from 64px. The `max-[767px]:pb-11`
+  // override that used to sit alongside it is gone with it: at 44px it was larger
+  // than the new desktop value, so it would have added space on phones rather
+  // than saving it.
   return (
-    <div className="pb-16 pt-[18px] max-[767px]:pb-11">
+    <div className="pb-10 pt-[18px]">
       <div className="mx-auto max-w-[1140px] px-7 max-[767px]:px-4">
         {/* Breadcrumb, heading and cards share one width, so the heading's left
             edge lines up with the left edge of the form card below it. */}
         <div className="mx-auto max-w-[1015px]">
-          <Breadcrumb trail={[{ label: "Contact" }]} />
+          {/* "Contact Us" rather than "Contact", matching the page's own heading —
+              a breadcrumb's last crumb names the page you are on. */}
+          <Breadcrumb trail={[{ label: "Contact Us" }]} />
 
           {/* 30px ceiling: at 38-40px the heading dwarfs the cards below it. */}
           <h1
@@ -31,7 +37,7 @@ export default function ContactPage() {
           {/* No max-width: the line is ~700px and the column is 1015px, so
               capping it was the only reason it wrapped. Still wraps naturally
               on narrower screens. */}
-          <p className="mb-6 mt-2 text-[15px] leading-[1.55] text-mv-muted">
+          <p className="mb-4 mt-2 text-[15px] leading-[1.55] text-mv-muted">
             We&rsquo;re real people, and we normally reply within one business
             day. Prefer email?{" "}
             <a

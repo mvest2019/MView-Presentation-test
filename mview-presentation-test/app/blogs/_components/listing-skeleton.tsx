@@ -1,4 +1,5 @@
 import { Skeleton, SkeletonScreen } from "@/app/_components/skeleton";
+import { pageShellClass } from "../../_components/page-shell";
 
 /**
  * Loading state for the Blog and News listings.
@@ -13,7 +14,7 @@ import { Skeleton, SkeletonScreen } from "@/app/_components/skeleton";
 export function ListingSkeleton() {
   return (
     <SkeletonScreen label="Loading articles">
-      <div className="py-16 pt-[26px] max-[767px]:pb-11">
+      <div className={pageShellClass}>
         <div className="mx-auto max-w-[1200px] px-7 max-[767px]:px-4">
           {/* Eyebrow, heading, lede */}
           <Skeleton className="h-[14px] w-[64px]" />

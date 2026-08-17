@@ -21,7 +21,9 @@ import { useEffect, useRef, useState } from "react";
 import { BasemapGallery } from "./basemap-gallery";
 import { FiltersPanel } from "./filters-panel";
 import { LegendsPanel } from "./legends-panel";
-import { PlaceResults, matchPlaces, type Place } from "./map-search";
+import { getWellLookupMap, type MapWellLookup } from "@/lib/map-api";
+
+import { ApiResults } from "./api-results";
 import { ShareMenu } from "./share-menu";
 import { ToolsPanel } from "./tools-panel";
 
@@ -54,6 +56,9 @@ type MapChromeProps = {
   onSaveImage: () => void;
   /** Downloads what the map is showing — bubbles, or wells once close in. */
   onExportCsv: () => void;
+  /** The time-lapse bar is the view's, since the plotting is. */
+  timeLapseOpen: boolean;
+  onToggleTimeLapse: () => void;
   onPrint: () => void;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
@@ -62,8 +67,12 @@ type MapChromeProps = {
   onViewTabChange: (tab: ViewTab) => void;
   /** Insights halves the map, so the toolbar sheds what will not fit. */
   compact?: boolean;
-  /** Fired when a place is chosen from the search box. */
-  onSelectPlace: (place: Place) => void;
+  /** Fired when an API number is chosen from the search box. */
+  onSelectApi: (api: string) => void;
+  /** Fired when the box is emptied — the picked well comes off the map. */
+  onClearApi: () => void;
+  /** Apply, with what the filters panel has ticked. */
+  onApplyFilters: (filters: Record<string, string[]>) => void;
   /** The tool waiting for a drag on the map, if any. */
   activeTool: string | null;
   onSelectTool: (
@@ -80,6 +89,13 @@ type MapChromeProps = {
 
 export type ViewTab = "map" | "table" | "insights";
 
+/*
+ * Below this the lookup is not worth asking for. Six digits is the state and
+ * county prefix plus a digit — enough to narrow the answer to one county's
+ * wells rather than every well whose number happens to start the same way.
+ */
+const API_MIN_DIGITS = 6;
+
 const VIEW_TABS: { id: ViewTab; label: string; icon: typeof MapIcon }[] = [
   { id: "map", label: "Map", icon: MapIcon },
   { id: "table", label: "Table", icon: Table2 },
@@ -95,13 +111,17 @@ export function MapChrome({
   onBasemapChange,
   onSaveImage,
   onExportCsv,
+  timeLapseOpen,
+  onToggleTimeLapse,
   onPrint,
   isFullscreen,
   onToggleFullscreen,
   viewTab,
   onViewTabChange,
   compact = false,
-  onSelectPlace,
+  onSelectApi,
+  onClearApi,
+  onApplyFilters,
   activeTool,
   onSelectTool,
   onZoomIn,
@@ -169,7 +189,11 @@ export function MapChrome({
     }, 0);
   };
 
-  const places = matchPlaces(placeQuery);
+  /* What the lookup returned for what is typed, and the two states any
+     request has besides its result. */
+  const [places, setPlaces] = useState<MapWellLookup[]>([]);
+  const [placeLoading, setPlaceLoading] = useState(false);
+  const [placeError, setPlaceError] = useState<string | null>(null);
   const basemapRef = useRef<HTMLDivElement>(null);
   const toolsRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -211,10 +235,55 @@ export function MapChrome({
     });
   };
 
-  const pickPlace = (place: Place) => {
-    setPlaceQuery(place.name);
+  /*
+   * The lookup. Debounced, and only past the minimum: two digits match tens of
+   * thousands of wells and the answer would be thrown away by the next
+   * keystroke anyway.
+   */
+  useEffect(() => {
+    const digits = placeQuery.replace(/\D/g, "");
+    let cancelled = false;
+
+    // The clear runs inside the timer too: a setState in the effect body is a
+    // render-phase update, and React rightly refuses it.
+    const timer = setTimeout(() => {
+      if (digits.length < API_MIN_DIGITS) {
+        setPlaces([]);
+        setPlaceError(null);
+        setPlaceLoading(false);
+        return;
+      }
+
+      setPlaceLoading(true);
+      getWellLookupMap(placeQuery.trim())
+        .then((wells) => {
+          if (cancelled) return;
+          setPlaces(wells);
+          setPlaceError(null);
+          anchorPlaceResults();
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          setPlaces([]);
+          setPlaceError(
+            error instanceof Error ? error.message : "Lookup failed.",
+          );
+        })
+        .finally(() => {
+          if (!cancelled) setPlaceLoading(false);
+        });
+    }, digits.length < API_MIN_DIGITS ? 0 : 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [placeQuery]);
+
+  const pickPlace = (well: MapWellLookup) => {
+    setPlaceQuery(well.api);
     setPlaceOpen(false);
-    onSelectPlace(place);
+    onSelectApi(well.api);
   };
 
   const onPlaceKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -323,7 +392,10 @@ export function MapChrome({
           `z-10` lifts it over the scale card, which shares this corner. */}
       {filtersOpen ? (
         <FiltersPanel
+          onApply={onApplyFilters}
           onCollapse={() => setFiltersOpen(false)}
+          // Stretched top to bottom, so the rail lines up with the map's own
+          // edges rather than stopping short of them.
           className="pointer-events-auto absolute bottom-6 left-3 top-3 z-10"
         />
       ) : (
@@ -396,7 +468,12 @@ export function MapChrome({
               — the mock drops it too, and Share falls back to its icon. */}
           <div className="flex flex-wrap items-center justify-end gap-2 lg:contents">
 
-          <ToolbarButton icon={Clock} label="Time-lapse" />
+          <ToolbarButton
+            icon={Clock}
+            label="Time-lapse"
+            expanded={timeLapseOpen}
+            onClick={onToggleTimeLapse}
+          />
 
           <Divider />
 
@@ -425,7 +502,7 @@ export function MapChrome({
           <button
             type="button"
             onClick={openSearch}
-            aria-label="Search by town, ZIP or API number"
+            aria-label="Search by API number"
             aria-expanded={searchOpen}
             className="grid shrink-0 cursor-pointer place-items-center rounded-xl border border-mv-line bg-white/97 px-[9px] py-[7px] text-mv-slate shadow-mv-lg backdrop-blur-[6px] hover:text-mv-green-deep lg:hidden"
           >
@@ -446,7 +523,7 @@ export function MapChrome({
               }`}
             >
               <label htmlFor="map-search" className="sr-only">
-                Search by town, ZIP or API number
+                Search by API number
               </label>
               <input
                 ref={searchInputRef}
@@ -464,6 +541,8 @@ export function MapChrome({
                 value={placeQuery}
                 onChange={(event) => {
                   setPlaceQuery(event.target.value);
+                  // Emptying the box undoes what picking a number did.
+                  if (event.target.value.trim() === "") onClearApi();
                   setPlaceIndex(0);
                   setPlaceOpen(true);
                   anchorPlaceResults();
@@ -476,7 +555,7 @@ export function MapChrome({
                 onBlur={() => {
                   if (!placeQuery.trim()) setSearchOpen(false);
                 }}
-                placeholder="Town, ZIP or API number"
+                placeholder="API number (e.g 123-45678)"
                 className="w-full min-w-0 border-0 bg-transparent text-[12.5px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted lg:w-[148px]"
               />
               <Search
@@ -494,15 +573,26 @@ export function MapChrome({
             nested inside it would be cut off. Anchored by measurement instead —
             see `toggleShare`. */}
         {placeOpen && placeQuery.trim() !== "" && (
-          <PlaceResults
+          <ApiResults
             results={places}
+            query={placeQuery}
             activeIndex={placeIndex}
+            loading={placeLoading}
+            error={placeError}
+            tooShort={placeQuery.replace(/\D/g, "").length < API_MIN_DIGITS}
             onHover={setPlaceIndex}
             onPick={pickPlace}
+            /*
+              Right-aligned to the input and sized to its own content: an API
+              number and a county name do not fit a 232px box, and wrapping a
+              number across two lines makes it unreadable. Growing leftwards
+              keeps it on screen — the box sits at the right of the toolbar.
+            */
             style={{
               top: placeAnchor.top,
-              left: placeAnchor.left,
-              width: placeAnchor.width,
+              left: placeAnchor.left + placeAnchor.width,
+              minWidth: placeAnchor.width,
+              transform: "translateX(-100%)",
             }}
           />
         )}
