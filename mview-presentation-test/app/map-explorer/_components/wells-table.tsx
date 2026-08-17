@@ -494,7 +494,9 @@ export function WellsTable({
            floating under the title. */
         className="mt-4 flex flex-wrap items-center gap-2 border-t border-mv-line bg-[#fafbfa] px-4 pb-[10px] pt-[12px] lg:flex-nowrap lg:px-6"
       >
-        <div className="flex w-full items-center gap-2 rounded-lg border border-mv-line bg-white px-[12px] py-[6px] focus-within:border-mv-green-deep lg:w-auto lg:shrink-0">
+        {/* Padded to the pills' own height: the box was a couple of pixels
+            shorter, which showed up as a step across the row. */}
+        <div className="flex w-full items-center gap-2 rounded-lg border border-mv-line bg-white px-[12px] py-[7px] focus-within:border-mv-green-deep lg:w-auto lg:shrink-0">
           <Search size={14} className="shrink-0 text-mv-muted" aria-hidden="true" />
           <label htmlFor="table-search" className="sr-only">
             Search API, operator or lease

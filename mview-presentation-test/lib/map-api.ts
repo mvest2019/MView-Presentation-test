@@ -186,7 +186,8 @@ export type MapCluster = {
   oilGas: number;
   name: string;
   topCounty: string;
-  sharePct: { oil: number; gas: number; oilGas: number };
+  /** Null where the cluster has no producing wells to take shares of. */
+  sharePct: { oil: number; gas: number; oilGas: number } | null;
 };
 
 /**
