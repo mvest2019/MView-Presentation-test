@@ -14,7 +14,7 @@ import { getMapSearch, type MapSearchResult } from "@/lib/map-api";
  */
 
 /** Below this the endpoint matches too much to be worth asking. */
-const MIN_CHARS = 2;
+const MIN_CHARS = 3;
 
 /** What each result type is, and how it filters. */
 const KINDS: Record<

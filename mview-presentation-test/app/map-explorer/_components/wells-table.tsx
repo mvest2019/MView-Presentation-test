@@ -536,7 +536,14 @@ export function WellsTable({
           picked={picked}
           disabled={loading}
           onPick={setPicked}
-          onClear={() => setPicked(null)}
+          onClear={() => {
+            // Applied straight away, unlike picking: clearing is a request to
+            // stop filtering, and waiting for Apply would leave the box empty
+            // while the table still showed that one operator's wells.
+            setPicked(null);
+            setAppliedPicked(null);
+            setPage(1);
+          }}
         />
 
         {/* A rule, not a "FILTER" label: the pills say what they are, and the
