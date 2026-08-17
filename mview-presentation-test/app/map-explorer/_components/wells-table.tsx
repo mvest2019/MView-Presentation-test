@@ -328,6 +328,7 @@ export function WellsTable({
             searchable={facet.searchable}
             chosen={facets[facet.key]}
             open={openFacet === facet.key}
+            disabled={loading}
             onOpenChange={(next) => setOpenFacet(next ? facet.key : null)}
             onChange={(next) => updateFacet(facet.key, next)}
           />
@@ -447,7 +448,23 @@ export function WellsTable({
       </div>
 
       {/* ---------------- table ---------------- */}
-      <div className="mt-4 overflow-hidden rounded-xl border border-mv-line bg-white">
+      <div className="relative mt-4 overflow-hidden rounded-xl border border-mv-line bg-white">
+      {/* Over the dimmed rows, not instead of them: dimming alone reads as a
+          disabled table, and says nothing about how long it will be. */}
+      {loading && rows.length > 0 && (
+        <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center">
+          <span className="flex items-center gap-[10px] rounded-full border border-mv-line bg-white px-[16px] py-[9px] shadow-mv-lg">
+            <span
+              aria-hidden="true"
+              className="h-[14px] w-[14px] shrink-0 animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
+            />
+            <span className="text-[12.5px] font-semibold leading-none text-mv-slate">
+              Loading wells…
+            </span>
+          </span>
+        </div>
+      )}
+
       <div className="mv-thin-scroll overflow-x-auto">
         <table className="w-full min-w-[1160px] border-collapse text-left">
           <thead>
@@ -478,8 +495,9 @@ export function WellsTable({
                   ) : (
                     <button
                       type="button"
+                      disabled={loading}
                       onClick={() => toggleSort(key)}
-                      className="inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-[12.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate hover:text-mv-green-deep"
+                      className="inline-flex items-center gap-1 whitespace-nowrap text-[12.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate enabled:cursor-pointer enabled:hover:text-mv-green-deep disabled:cursor-wait"
                     >
                       {label}
                       <SortMark
@@ -554,9 +572,13 @@ export function WellsTable({
 
             {rows.length === 0 && (
               <tr>
+                {/* Tall and centred: with no rows the card collapsed to a
+                    strip and the spinner sat under the header with the page
+                    empty beneath it. The height holds the card open so the
+                    table does not jump when the rows arrive. */}
                 <td
                   colSpan={COLUMNS.length + 1}
-                  className="px-6 py-10 text-center text-[13px] text-mv-muted"
+                  className="h-[52vh] px-6 text-center align-middle text-[13px] text-mv-muted"
                 >
                   {loading ? (
                     <span className="inline-flex items-center gap-2">
@@ -577,7 +599,11 @@ export function WellsTable({
       </div>
 
       {/* ---------------- pager ---------------- */}
-      <div className="flex flex-col items-center gap-2 px-4 py-3 lg:flex-row lg:flex-wrap lg:justify-end lg:px-6">
+      <div
+        className={`flex flex-col items-center gap-2 px-4 py-3 lg:flex-row lg:flex-wrap lg:justify-end lg:px-6 ${
+          loading && rows.length === 0 ? "invisible" : ""
+        }`}
+      >
         <span className="text-[12.5px] text-mv-muted lg:mr-2">
           {firstShown.toLocaleString("en-US")}–
           {lastShown.toLocaleString("en-US")} of{" "}
@@ -610,6 +636,7 @@ export function WellsTable({
               <button
                 key={entry}
                 type="button"
+                disabled={loading}
                 aria-current={entry === safePage ? "page" : undefined}
                 onClick={() => setPage(entry)}
                 /* A phone fits one row of pager controls, not two, so below
@@ -659,6 +686,7 @@ function FilterDropdown({
   searchable,
   chosen,
   open,
+  disabled,
   onOpenChange,
   onChange,
 }: {
@@ -667,6 +695,8 @@ function FilterDropdown({
   searchable?: boolean;
   chosen: Set<string>;
   open: boolean;
+  /** Shut while a request is out — a second filter would race the first. */
+  disabled?: boolean;
   onOpenChange: (open: boolean) => void;
   onChange: (next: Set<string>) => void;
 }) {
@@ -690,11 +720,12 @@ function FilterDropdown({
       <button
         type="button"
         aria-expanded={open}
+        disabled={disabled}
         onClick={() => onOpenChange(!open)}
-        className={`inline-flex cursor-pointer items-center gap-[6px] rounded-full border px-[14px] py-[6px] text-[12.5px] font-semibold ${
+        className={`inline-flex items-center gap-[6px] rounded-full border px-[14px] py-[6px] text-[12.5px] font-semibold enabled:cursor-pointer disabled:cursor-wait disabled:opacity-60 ${
           chosen.size
             ? "border-mv-green-deep text-mv-green-deep"
-            : "border-mv-line text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep"
+            : "border-mv-line text-mv-slate enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep"
         }`}
       >
         {label}
