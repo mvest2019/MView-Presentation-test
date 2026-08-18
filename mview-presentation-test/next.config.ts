@@ -55,6 +55,7 @@ const nextConfig: NextConfig = {
     // Google Identity Services in the browser, which returns a signed ID token
     // from the public id alone. A secret would be inlined into the client bundle
     // by this `env` block and published to every visitor.
+    
     NEXT_PUBLIC_GOOGLE_CLIENT_ID:
       process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
       "838706864455-kgp7idu8786fv765u4gsbaepcg9kus9n.apps.googleusercontent.com",
