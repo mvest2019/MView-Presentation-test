@@ -67,10 +67,12 @@ export const registerSchema = z.object({
    * rather than to the number. It accepted "878979098897886764555555555" — 27
    * digits — and posted it to the API as a phone number.
    *
-   * 10 to 15. Ten is a complete US number with its area code, and this site is
-   * US-facing throughout. Fifteen is the most digits any telephone number can
-   * have anywhere on earth (E.164 §6.2), so beyond that it is not a number in
-   * any country's plan and there is nothing to be gained by accepting it.
+   * EXACTLY TEN, not a range. This is a US number with its area code and nothing
+   * else; the placeholder says so ("(555) 555-0123") and the site is US-facing
+   * throughout. A single length also gives a message worth reading — "Enter a
+   * 10-digit phone number" tells someone what to do, where a range leaves them
+   * counting. International numbers are not accepted here; if that changes, this
+   * is the one place to widen.
    */
   phone: optionalText
     .refine(
@@ -78,12 +80,8 @@ export const registerSchema = z.object({
       "A phone number can only contain digits, spaces and ( ) + - characters.",
     )
     .refine(
-      (v) => {
-        if (v === "") return true;
-        const digits = v.replace(/\D/g, "").length;
-        return digits >= 10 && digits <= 15;
-      },
-      "Enter a complete phone number — between 10 and 15 digits.",
+      (v) => v === "" || v.replace(/\D/g, "").length === 10,
+      "Enter a 10-digit phone number, like (555) 555-0123.",
     ),
   mailingAddress: optionalText,
   inviteCode: optionalText,
