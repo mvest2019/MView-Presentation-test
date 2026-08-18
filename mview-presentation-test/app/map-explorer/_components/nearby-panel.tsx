@@ -50,6 +50,8 @@ type NearbyPanelProps = {
   county?: string | null;
   radiusMiles: number;
   stats: NearbyStats;
+  /** True while this is the circle the tool drew for you, not one you placed. */
+  sample?: boolean;
   onRadiusChange: (miles: number) => void;
   onDownload: () => void;
   onClose: () => void;
@@ -61,6 +63,7 @@ export function NearbyPanel({
   county,
   radiusMiles,
   stats,
+  sample,
   onRadiusChange,
   onDownload,
   onClose,
@@ -96,11 +99,16 @@ export function NearbyPanel({
           <h2 className="flex-1 text-[13.5px] lg:text-[15px] font-bold leading-snug text-mv-ink">
             Within {radiusMiles} {radiusMiles === 1 ? "mile" : "miles"} of this
             point
+            {sample && (
+              <span className="ml-[7px] inline-block rounded bg-mv-mint px-[6px] py-[3px] align-[2px] text-[9px] font-extrabold uppercase leading-none tracking-[.08em] text-mv-green-deep">
+                Sample
+              </span>
+            )}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={sample ? "Dismiss the sample" : "Close"}
             className="-mr-1 grid h-6 w-6 shrink-0 cursor-pointer place-items-center rounded text-mv-muted hover:bg-[#f2f8f5] hover:text-mv-green-deep"
           >
             <X size={16} aria-hidden="true" />

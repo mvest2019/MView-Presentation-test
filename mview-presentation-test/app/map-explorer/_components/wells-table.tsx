@@ -128,13 +128,23 @@ const COLUMNS: {
   sortable?: boolean;
 }[] = [
   { key: "api", label: "API", width: "w-[11%]", sortable: false },
-  { key: "operator", label: "Operator", width: "w-[15%]" },
-  { key: "lease", label: "Lease", width: "w-[17%]" },
+  { key: "operator", label: "Operator", width: "w-[14%]" },
+  { key: "lease", label: "Lease", width: "w-[16%]" },
   { key: "type", label: "Type", width: "w-[11%]", sortable: false },
   { key: "status", label: "Status", width: "w-[13%]", sortable: false },
   { key: "county", label: "County", width: "w-[11%]" },
-  { key: "oil", label: "Oil (bbl)", align: "right", width: "w-[11%]" },
-  { key: "gas", label: "Gas (mcf)", align: "right", width: "w-[11%]" },
+  {
+    key: "oil",
+    label: "Producing Oil (bbl)",
+    align: "right",
+    width: "w-[12%]",
+  },
+  {
+    key: "gas",
+    label: "Producing Gas (mcf)",
+    align: "right",
+    width: "w-[12%]",
+  },
 ];
 
 /*
@@ -374,6 +384,31 @@ export function WellsTable({
   ];
 
   /*
+   * The production ranges as chips too.
+   *
+   * They filter the rows exactly as the dropdown facets do, and leaving them
+   * out of this row meant a table narrowed to wells making 1–10 bbl that said
+   * only "County ANDREWS" above it. A range needs both ends to be a range, so
+   * a half-filled pair shows nothing — the same rule the pill's badge counts by.
+   */
+  const rangeChips = [
+    {
+      stream: "oil" as const,
+      label: "Producing oil",
+      unit: "bbl",
+      min: production.oilMin,
+      max: production.oilMax,
+    },
+    {
+      stream: "gas" as const,
+      label: "Producing gas",
+      unit: "mcf",
+      min: production.gasMin,
+      max: production.gasMax,
+    },
+  ].filter(({ min, max }) => min.trim() !== "" && max.trim() !== "");
+
+  /*
    * Ticking a box is a draft, so the page it is on does not move.
    *
    * Resetting to page 1 here sent a request for page 1 of the *old* filters —
@@ -401,6 +436,18 @@ export function WellsTable({
       applied.delete(chip.value);
       return { ...current, [chip.key]: applied };
     });
+    setPage(1);
+  }
+
+  /** Drops one stream's range from the draft and from the applied set. */
+  function removeRange(stream: "oil" | "gas") {
+    const blank =
+      stream === "oil"
+        ? { oilMin: "", oilMax: "" }
+        : { gasMin: "", gasMax: "" };
+
+    setProduction((current) => ({ ...current, ...blank }));
+    setAppliedProduction((current) => ({ ...current, ...blank }));
     setPage(1);
   }
 
@@ -656,7 +703,7 @@ export function WellsTable({
           Each chip names its facet as well as its value: "Anderson" alone
           leaves you to work out which of five filters put it there, and two
           facets can hold the same word. */}
-      {chips.length > 0 && (
+      {(chips.length > 0 || rangeChips.length > 0) && (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-[6px] border-b border-mv-line bg-[#fafbfa] px-4 pb-[11px] pt-[9px] lg:px-6">
           <span className="mr-1 shrink-0 text-[10px] font-extrabold uppercase tracking-[.1em] text-mv-muted">
             Applied
@@ -673,6 +720,27 @@ export function WellsTable({
                 type="button"
                 onClick={() => removeChip(chip)}
                 aria-label={`Remove ${chip.label} ${chip.value}`}
+                className="grid h-[16px] w-[16px] cursor-pointer place-items-center rounded text-mv-green-deep/60 hover:bg-white hover:text-mv-red"
+              >
+                <X size={11} strokeWidth={2.5} aria-hidden="true" />
+              </button>
+            </span>
+          ))}
+
+          {rangeChips.map(({ stream, label, unit, min, max }) => (
+            <span
+              key={stream}
+              className="inline-flex items-center gap-[7px] rounded-lg border border-mv-green-deep/25 bg-mv-mint py-[4px] pl-[10px] pr-[5px] text-[12px] text-mv-green-deep"
+            >
+              <span className="text-mv-green-deep/70">{label}</span>
+              <span className="font-semibold tabular-nums">
+                {Number(min).toLocaleString("en-US")} –{" "}
+                {Number(max).toLocaleString("en-US")} {unit}
+              </span>
+              <button
+                type="button"
+                onClick={() => removeRange(stream)}
+                aria-label={`Remove the ${label} range`}
                 className="grid h-[16px] w-[16px] cursor-pointer place-items-center rounded text-mv-green-deep/60 hover:bg-white hover:text-mv-red"
               >
                 <X size={11} strokeWidth={2.5} aria-hidden="true" />
@@ -804,9 +872,33 @@ export function WellsTable({
 
           <tbody className={loading && rows.length > 0 ? "opacity-50" : ""}>
             {rows.map((row) => (
+              /*
+               * The whole row opens the well, not just the pin at the end of
+               * it. Keyboard too: a `tr` takes no focus of its own, so it is
+               * given a row role, a tab stop and Enter/Space.
+               *
+               * Held back while a page is in flight — the rows on screen are
+               * the previous page's, and a click would open a well the reader
+               * is no longer looking at.
+               */
               <tr
                 key={row.api}
-                className="border-b border-mv-line hover:bg-[#fafbfa]"
+                role="row"
+                tabIndex={loading ? -1 : 0}
+                aria-label={`Show ${row.api} on the map`}
+                onClick={() => {
+                  if (!loading) onShowOnMap(row);
+                }}
+                onKeyDown={(event) => {
+                  if (loading) return;
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onShowOnMap(row);
+                  }
+                }}
+                className={`border-b border-mv-line hover:bg-[#f4f9f6] focus-visible:bg-[#f4f9f6] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-mv-green-deep ${
+                  loading ? "cursor-wait" : "cursor-pointer"
+                }`}
               >
                 <td className="py-[14px] pl-6 pr-4">
                   <span className="text-[13px] font-semibold text-mv-green-deep underline underline-offset-2">
@@ -843,8 +935,16 @@ export function WellsTable({
                 <td className="py-[14px] pl-4 pr-6">
                   <button
                     type="button"
-                    onClick={() => onShowOnMap(row)}
-                    aria-label={`Show ${row.api} on the map`}
+                    onClick={(event) => {
+                      // The row already carries this; without stopping here it
+                      // would run twice on one click.
+                      event.stopPropagation();
+                      if (!loading) onShowOnMap(row);
+                    }}
+                    // The row is the control now; the pin is its marker, so it
+                    // is not a second tab stop announcing the same action.
+                    tabIndex={-1}
+                    aria-hidden="true"
                     title="View on map"
                     className="mx-auto grid h-[26px] w-[26px] cursor-pointer place-items-center rounded-lg border border-mv-line text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep"
                   >
