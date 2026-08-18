@@ -551,8 +551,15 @@ export function WellsTable({
           <button
             type="button"
             onClick={exportPage}
-            disabled={rows.length === 0}
-            title={`Export this page — ${rows.length} record${rows.length === 1 ? "" : "s"}`}
+            /* Locked while a page is in flight: the rows on screen are the
+               previous page's, and exporting them under a pager that already
+               says 7 hands over the wrong ten records. */
+            disabled={loading || rows.length === 0}
+            title={
+              loading
+                ? "Loading this page…"
+                : `Export this page — ${rows.length} record${rows.length === 1 ? "" : "s"}`
+            }
             className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-mv-line px-[14px] py-[8px] text-[12.5px] font-semibold text-mv-slate enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-50 lg:w-auto"
           >
             <Download size={14} aria-hidden="true" />
