@@ -132,15 +132,20 @@ export function mercatorToLatitude(y: number): number {
 export function toWellCluster(cluster: MapCluster): WellCluster {
   return {
     at: [cluster.lon, cluster.lat],
-    count: cluster.count,
+    count: cluster.count ?? 0,
     newestYear: null,
     name: cluster.name || cluster.topCounty,
-    oil: cluster.oil,
-    gas: cluster.gas,
-    oilGas: cluster.oilGas,
-    oilShare: cluster.sharePct.oil,
-    gasShare: cluster.sharePct.gas,
-    oilGasShare: cluster.sharePct.oilGas,
+    oil: cluster.oil ?? 0,
+    gas: cluster.gas ?? 0,
+    oilGas: cluster.oilGas ?? 0,
+    /*
+     * `sharePct` is not always there. A cluster with no producing wells comes
+     * back with it null, and reading through it threw — which took the whole
+     * view down, so the map stopped zooming and drawing anything at all.
+     */
+    oilShare: cluster.sharePct?.oil ?? 0,
+    gasShare: cluster.sharePct?.gas ?? 0,
+    oilGasShare: cluster.sharePct?.oilGas ?? 0,
   };
 }
 

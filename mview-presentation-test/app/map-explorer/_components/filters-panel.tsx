@@ -493,6 +493,18 @@ export function FiltersPanel({
   /** Ticked or unticked since the last Apply. */
   const [dirty, setDirty] = useState(false);
   /*
+   * What a searched-for row filters by, remembered by the name it shows.
+   *
+   * Picking a search result also ticks its box, and the box only holds the
+   * name. Operator and field filter by id, and the id normally comes from the
+   * loaded facet list — but a searched-for operator is usually not in that
+   * list, which is why it was searched for. Without this, pressing Apply
+   * afterwards would fall back to the name and match nothing.
+   */
+  const [pickedParams, setPickedParams] = useState<
+    Record<string, Record<string, string>>
+  >({});
+  /*
    * The query the box was filled with by picking a result.
    *
    * Picking writes the label into the input, which looks to the effect below
@@ -547,18 +559,19 @@ export function FiltersPanel({
           if (cancelled) return;
           setSearchHits(
             results.map((result, index) => ({
-              // Counties carry their name in `value`; the rest have an id
-              // there and the name in `label`.
-              key: `${result.type}:${result.value}:${index}`,
-              label: result.label ?? result.value,
+              key: `${result.type}:${result.id ?? result.value}:${index}`,
+              label: result.value || (result.label ?? ""),
               kind: SEARCH_KINDS[result.type] ?? result.type,
               sectionId: SEARCH_SECTIONS[result.type],
               facet: SEARCH_FACETS[result.type],
-              // A lease is found by its key; a county and an operator by name.
-              param:
-                result.type === "lease"
-                  ? result.value
-                  : (result.label ?? result.value),
+              /*
+               * `id` first. The search reports the name in `value` and, where
+               * the filter wants something else, the id alongside it — so an
+               * operator comes back as KABCO OIL & GAS COMPANY with id 449245,
+               * and it is the id that matches. Counties have no id and filter
+               * by name, which `value` already is.
+               */
+              param: result.id ?? result.value,
             })),
           );
           setSearchError(null);
@@ -631,14 +644,18 @@ export function FiltersPanel({
 
           return [
             SECTION_FACETS[section] ?? section,
-            [...values].map((name) =>
-              useIds ? (ids.get(name) ?? name) : name,
-            ),
+            [...values].map((name) => {
+              // A searched-for row knows its own id; the loaded list is the
+              // fallback, and the name itself the last resort.
+              const picked = pickedParams[section]?.[name];
+              if (picked) return picked;
+              return useIds ? (ids.get(name) ?? name) : name;
+            }),
           ];
         })
         .filter(([, values]) => values.length > 0),
     );
-  }, [checked, sections]);
+  }, [checked, sections, pickedParams]);
 
   const hasSelection = Object.keys(selectedFilters).length > 0;
 
@@ -683,6 +700,15 @@ export function FiltersPanel({
       setLeasesOpen(true);
     } else if (suggestion.sectionId) {
       const sectionId = suggestion.sectionId;
+
+      if (suggestion.param) {
+        const param = suggestion.param;
+        setPickedParams((previous) => ({
+          ...previous,
+          [sectionId]: { ...previous[sectionId], [suggestion.label]: param },
+        }));
+      }
+
       setOpenSections((previous) => new Set(previous).add(sectionId));
       setChecked((previous) => ({
         ...previous,
