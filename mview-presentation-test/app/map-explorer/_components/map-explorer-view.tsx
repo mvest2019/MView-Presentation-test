@@ -1,5 +1,6 @@
 "use client";
 
+import { MapPin } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -11,7 +12,6 @@ import {
 import { AreaSelectionBar } from "./area-selection";
 import { loadArcgisModules } from "./arcgis-loader";
 import { ClusterTooltip } from "./cluster-tooltip";
-import { InsightsPanel } from "./insights-panel";
 import {
   WellInsightsPanel,
   type SelectedWell,
@@ -28,6 +28,7 @@ import {
   getLegendListMap,
   getMatchedWellsMap,
   getWellListMap,
+  type MapTableRow,
   type MapWell,
 } from "@/lib/map-api";
 
@@ -302,6 +303,9 @@ const FILTER_FIT_MIN_DEGREES = 0.05;
 
 /** Metres in a degree, near enough for choosing a scale. */
 const DEGREE_METRES = 111_320;
+
+/** One well, framed: close enough to read the lease lines around it. */
+const SINGLE_WELL_SCALE = 9_000;
 
 /** The furthest out Apply may leave the map — about zoom 8. */
 const FILTER_FIT_MAX_SCALE = 1_100_000;
@@ -1162,6 +1166,17 @@ export function MapExplorerView() {
         return;
       }
 
+      /*
+       * Claimed before the request goes out, not when it comes back.
+       *
+       * Switching tab resizes the map, which fires the zoom watcher — and
+       * while this flag was still false the watcher treated it as an ordinary
+       * move: it cleared the wells (bumping the request counter, so the answer
+       * was discarded as stale) and reloaded the bubbles over the top. The
+       * filter appeared to do nothing at all.
+       */
+      filteredRef.current = true;
+
       const request = ++wellRequestRef.current;
       setWellsLoading(true);
       // The previous answer is no longer the answer. Leaving it up means a
@@ -1173,7 +1188,6 @@ export function MapExplorerView() {
         .then(({ matched, wells }) => {
           if (request !== wellRequestRef.current) return;
 
-          filteredRef.current = true;
           wellsRef.current = wells;
           setWellError(null);
           setFilterSummary({ matched, shown: wells.length });
@@ -1184,10 +1198,19 @@ export function MapExplorerView() {
             buildWellGraphics(ctors.Graphic, wells, wellIconsRef.current),
           );
 
-          // One match is a well someone asked for by name; ring it so it is
-          // not a single 10px icon on an empty map.
+          /*
+           * One match is a well someone asked for by name. Ring it, and go
+           * right down to it: a single well has no extent to frame, and the
+           * general framing below would leave it as a 10px icon somewhere in
+           * a county-wide view.
+           */
           if (wells.length === 1) {
-            highlightWell(wells[0].lon, wells[0].lat);
+            const only = wells[0];
+            highlightWell(only.lon, only.lat);
+            view
+              .goTo({ center: [only.lon, only.lat], scale: SINGLE_WELL_SCALE })
+              .catch(ignoreInterrupted);
+            return;
           }
 
           /*
@@ -1235,6 +1258,9 @@ export function MapExplorerView() {
         })
         .catch((error: unknown) => {
           if (request !== wellRequestRef.current) return;
+
+          // Nothing was drawn, so the map goes back to loading its own wells.
+          filteredRef.current = false;
           setWellError(
             /*
              * The endpoint runs for a minute or more on a broad filter and the
@@ -1276,6 +1302,33 @@ export function MapExplorerView() {
     if (!filteredRef.current) return;
     applyFilters({});
   }, [applyFilters]);
+
+  /*
+   * A row's "view on map" button.
+   *
+   * The same path a picked API number takes — the well is fetched as a filter
+   * of one, drawn, ringed and framed — and then Insights, because the summary
+   * for that well is the reason to look at it. The split shows the map beside
+   * it, so the ring is on screen either way.
+   */
+  const showRowOnMap = useCallback(
+    (row: MapTableRow) => {
+      applyFilters({ api: [row.api] });
+      // The row already carries everything the summary's header needs, so it
+      // is filled straight from the table rather than waiting on the fetch.
+      setSelectedWell({
+        api: row.api,
+        lease: row.lease,
+        well: "",
+        operator: row.operator,
+        status: row.status,
+        wtype: row.wtype,
+        county: row.county,
+      });
+      setViewTab("insights");
+    },
+    [applyFilters],
+  );
 
   /** Export CSV: whatever is inside the extent right now, wells or bubbles. */
   const exportCsv = useCallback(() => {
@@ -2504,12 +2557,27 @@ export function MapExplorerView() {
                 : { width: `${(1 - split) * 100}%` }
             }
           >
-            {/* One well's summary in place of the statewide one — the
-                statewide panel itself is untouched. */}
+            {/* Insights is about one well. Without one there is nothing to
+                summarise, so it says so rather than showing statewide figures
+                that have nothing to do with what was clicked. */}
             {selectedWell ? (
               <WellInsightsPanel well={selectedWell} />
             ) : (
-              <InsightsPanel />
+              <div className="grid h-full place-items-center bg-mv-bg p-6">
+                <div className="max-w-[280px] text-center">
+                  <span className="mx-auto grid h-[44px] w-[44px] place-items-center rounded-full bg-mv-mint text-mv-green-deep">
+                    <MapPin size={20} aria-hidden="true" />
+                  </span>
+                  <h2 className="mt-3 text-[15px] font-bold text-mv-ink">
+                    Pick a well
+                  </h2>
+                  <p className="mt-[6px] text-[12.5px] leading-snug text-mv-muted">
+                    Click a well on the map to see its production, wellbore and
+                    lease summary here. Zoom in past the bubbles to draw
+                    individual wells.
+                  </p>
+                </div>
+              </div>
             )}
           </div>
 
@@ -2554,7 +2622,7 @@ export function MapExplorerView() {
         <WellsTable
           activeTab={viewTab}
           onTabChange={changeViewTab}
-          onShowOnMap={() => setViewTab("map")}
+          onShowOnMap={showRowOnMap}
         />
       )}
     </div>

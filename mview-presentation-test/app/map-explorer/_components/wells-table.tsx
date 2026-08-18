@@ -19,38 +19,69 @@ import {
   Map as MapIcon,
   MapPin,
   Search,
-  TriangleAlert,
   X,
-  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { TableSearch, type SearchPick } from "./table-search";
+
 import {
-  COUNTIES,
-  OPERATORS,
-  PER_PAGE,
-  TOTAL_WELLS,
-  WELL_STATUSES,
-  WELL_TYPES,
-  allWells,
-  type WellRow,
-} from "./wells-data";
+  EMPTY_PRODUCTION,
+  ProductionFilter,
+  productionCount,
+  productionProblem,
+  type ProductionRange,
+} from "./production-filter";
+
+import {
+  getCountyListMap,
+  getOperatorListMap,
+  getTableMap,
+  getWellStatusListMap,
+  getWellTypeListMap,
+  type MapFilterItem,
+  type MapTableRow,
+  type MapTableSummary,
+} from "@/lib/map-api";
 
 /*
  * The Table view — the result set behind the map, as a grid.
  *
- * Everything runs against the full 9,000-row static set in `wells-data.ts`, so
- * filtering, sorting, paging and the summary strip all agree with each other:
- * tick "Reported BOE only" and the totals, the percentages and the page count
- * all move together, rather than the filter quietly applying to one page.
+ * Every part of it is the server's: the rows, the dropdown options, the counts
+ * in the summary strip, the page count. 1.1M wells is not something to hold in
+ * the browser, so the page, the sort, the search and the filters are all part
+ * of the request, and the summary comes back totalled over the whole result
+ * set rather than over the rows on screen.
  *
- * Export full list is the only control still inert — it is PRO-gated in the
- * design, same as the map toolbar's.
+ * Export full list is the only control still inert.
  */
 
-type SortKey = keyof Pick<
-  WellRow,
+/** Adds the picked search result to whichever facet it filters on. */
+function withPick(
+  filters: Record<string, string[]>,
+  pick: SearchPick | null,
+): Record<string, string[]> {
+  if (!pick) return filters;
+
+  const existing = filters[pick.facet] ?? [];
+  return {
+    ...filters,
+    [pick.facet]: existing.includes(pick.param)
+      ? existing
+      : [...existing, pick.param],
+  };
+}
+
+/** A field needs quoting when it holds a comma, a quote or a line break. */
+const CSV_QUOTE = new RegExp('[",\\n]');
+const CSV_NEWLINE = "\r\n";
+
+/** Rows per page — the `pageSize` the table asks for. */
+const PER_PAGE = 10;
+
+/** The columns a header can order by — the endpoint's own list. */
+type SortKey =
   | "api"
   | "operator"
   | "lease"
@@ -58,8 +89,7 @@ type SortKey = keyof Pick<
   | "status"
   | "county"
   | "oil"
-  | "gas"
->;
+  | "gas";
 
 type ViewTab = "map" | "table" | "insights";
 
@@ -71,7 +101,7 @@ type Facets = Record<FacetKey, Set<string>>;
 type WellsTableProps = {
   activeTab: ViewTab;
   onTabChange: (tab: ViewTab) => void;
-  onShowOnMap: (row: WellRow) => void;
+  onShowOnMap: (row: MapTableRow) => void;
 };
 
 /**
@@ -90,28 +120,47 @@ const COLUMNS: {
   label: string;
   align?: "right";
   width: string;
+  /** Columns the server will not order by, so the header is plain text. */
+  sortable?: boolean;
 }[] = [
-  { key: "api", label: "API", width: "w-[11%]" },
+  { key: "api", label: "API", width: "w-[11%]", sortable: false },
   { key: "operator", label: "Operator", width: "w-[15%]" },
   { key: "lease", label: "Lease", width: "w-[17%]" },
-  { key: "type", label: "Type", width: "w-[11%]" },
-  { key: "status", label: "Status", width: "w-[13%]" },
+  { key: "type", label: "Type", width: "w-[11%]", sortable: false },
+  { key: "status", label: "Status", width: "w-[13%]", sortable: false },
   { key: "county", label: "County", width: "w-[11%]" },
   { key: "oil", label: "Oil (bbl)", align: "right", width: "w-[11%]" },
   { key: "gas", label: "Gas (mcf)", align: "right", width: "w-[11%]" },
 ];
 
+/*
+ * The four dropdowns. Their options come from the facet endpoints, not from
+ * this file — a hardcoded list can only ever disagree with the data, and the
+ * operator one did: it offered names the endpoint had never heard of.
+ */
 const FACETS: {
   key: FacetKey;
   label: string;
-  options: string[];
   searchable?: boolean;
 }[] = [
-  { key: "operator", label: "Operator", options: OPERATORS, searchable: true },
-  { key: "type", label: "Well type", options: WELL_TYPES },
-  { key: "status", label: "Status", options: [...WELL_STATUSES] },
-  { key: "county", label: "County", options: COUNTIES, searchable: true },
+  { key: "operator", label: "Operator", searchable: true },
+  { key: "type", label: "Well type" },
+  { key: "status", label: "Status" },
+  { key: "county", label: "County", searchable: true },
 ];
+
+/*
+ * The column key as the endpoint spells it.
+ *
+ * Two of ours are not its names — the Oil and Gas columns are `producedOil`
+ * and `producedGas` — and sending "oil" was rejected outright with a 400,
+ * which is what "Failed to fetch the table" was reporting.
+ */
+const SORT_PARAM: Record<string, string> = {
+  oil: "producedOil",
+  gas: "producedGas",
+  type: "wtype",
+};
 
 const emptyFacets = (): Facets => ({
   operator: new Set(),
@@ -126,26 +175,88 @@ export function WellsTable({
   onShowOnMap,
 }: WellsTableProps) {
   const [page, setPage] = useState(1);
-  const [sort, setSort] = useState<{ key: SortKey; ascending: boolean }>({
-    key: "api",
-    ascending: true,
-  });
-  const [query, setQuery] = useState("");
+  /*
+   * Null until a column is clicked, and then not sent at all — the endpoint
+   * has its own default order, and sending `sort=api` unasked made the request
+   * look like it carried an API filter.
+   */
+  const [sort, setSort] = useState<{
+    key: SortKey;
+    ascending: boolean;
+  } | null>(null);
+  /*
+   * What the search box picked: a county, an operator or a lease, already
+   * carrying the parameter it filters on. A draft like the pills: the box
+   * shows the choice, and Apply is what sends it.
+   */
+  const [picked, setPicked] = useState<SearchPick | null>(null);
+  const [appliedPicked, setAppliedPicked] = useState<SearchPick | null>(null);
+  /*
+   * Two copies: what is ticked, and what the rows are actually for.
+   *
+   * The endpoint is slow enough that filtering on every tick meant a request
+   * per checkbox, each one replacing the last. Apply commits the draft; until
+   * then the table keeps showing what it already had.
+   */
   const [facets, setFacets] = useState<Facets>(emptyFacets);
+  const [appliedFacets, setAppliedFacets] = useState<Facets>(emptyFacets);
+  const [production, setProduction] = useState<ProductionRange>(EMPTY_PRODUCTION);
+  const [appliedProduction, setAppliedProduction] =
+    useState<ProductionRange>(EMPTY_PRODUCTION);
+  const [productionOpen, setProductionOpen] = useState(false);
+  /*
+   * The options behind each dropdown, from the facet endpoints. Fetched once,
+   * together: four small lists, and the table is unusable without any of them.
+   */
+  const [facetItems, setFacetItems] = useState<Record<FacetKey, MapFilterItem[]>>({
+    operator: [],
+    type: [],
+    status: [],
+    county: [],
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void Promise.all([
+      getOperatorListMap().catch(() => [] as MapFilterItem[]),
+      getWellTypeListMap().catch(() => [] as MapFilterItem[]),
+      getWellStatusListMap().catch(() => [] as MapFilterItem[]),
+      getCountyListMap().catch(() => [] as MapFilterItem[]),
+    ]).then(([operator, type, status, county]) => {
+      // One failing leaves its dropdown empty; the others still work.
+      if (!cancelled) setFacetItems({ operator, type, status, county });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** Operator filters by id, so its names have to be translated back. */
+  const operatorIds = useMemo(
+    () =>
+      new Map(facetItems.operator.map((item) => [item.value, item.id ?? ""])),
+    [facetItems],
+  );
   const [openFacet, setOpenFacet] = useState<FacetKey | null>(null);
   const filterBarRef = useRef<HTMLDivElement>(null);
 
   // Close an open dropdown on an outside click, as the map overlays do.
   useEffect(() => {
-    if (!openFacet) return;
+    if (!openFacet && !productionOpen) return;
 
     function onPointerDown(event: MouseEvent) {
       if (!filterBarRef.current?.contains(event.target as Node)) {
         setOpenFacet(null);
+        setProductionOpen(false);
       }
     }
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpenFacet(null);
+      if (event.key === "Escape") {
+        setOpenFacet(null);
+        setProductionOpen(false);
+      }
     }
 
     document.addEventListener("mousedown", onPointerDown);
@@ -154,82 +265,102 @@ export function WellsTable({
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [openFacet]);
+  }, [openFacet, productionOpen]);
 
-  const matched = useMemo(() => {
-    const needle = query.trim().toLowerCase();
+  /*
+   * The rows come from the server, a page at a time.
+   *
+   * 1.1M wells: the page, the sort, the search and the facets are all part of
+   * the request rather than something to do in the browser over a downloaded
+   * copy. The summary comes back with them, already totalled over the whole
+   * result set rather than over the twenty-five rows on screen.
+   */
+  const [rows, setRows] = useState<MapTableRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [summary, setSummary] = useState<MapTableSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-    return allWells().filter((row) => {
-      if (facets.operator.size && !facets.operator.has(row.operator)) return false;
-      if (facets.type.size && !facets.type.has(row.type)) return false;
-      if (facets.status.size && !(row.status && facets.status.has(row.status))) {
-        return false;
-      }
-      if (facets.county.size && !facets.county.has(row.county)) return false;
-      if (!needle) return true;
-      return (
-        row.api.toLowerCase().includes(needle) ||
-        row.operator.toLowerCase().includes(needle) ||
-        row.lease.toLowerCase().includes(needle)
-      );
-    });
-  }, [query, facets]);
+  useEffect(() => {
+    let cancelled = false;
 
-  const summary = useMemo(() => {
-    const operators = new Set<string>();
-    const counties = new Set<string>();
-    let oil = 0;
-    let gas = 0;
-    let inactive = 0;
-    let active = 0;
+    const timer = setTimeout(() => {
+      setLoading(true);
 
-    for (const row of matched) {
-      operators.add(row.operator);
-      counties.add(row.county);
-      if (row.type === "Oil") oil += 1;
-      else if (row.type === "Gas") gas += 1;
-      if (row.status === "Inactive") inactive += 1;
-      // Producing or shut-in but still a producer — anything but inactive,
-      // and only where a status is reported at all.
-      else if (row.status !== null) active += 1;
-    }
+      getTableMap({
+        page,
+        pageSize: PER_PAGE,
+        sort: sort ? (SORT_PARAM[sort.key] ?? sort.key) : undefined,
+        dir: sort ? (sort.ascending ? "asc" : "desc") : undefined,
+        /*
+         * Built, not spread. The picked search result was written first and
+         * then overwritten by the dropdown's own key for that facet — pick a
+         * county and the `county:` line below replaced it with the empty list,
+         * so the filter never left the browser. Merging keeps both.
+         */
+        filters: withPick(
+          {
+            // Operators go by id; everything else by name.
+            operator: [...appliedFacets.operator]
+              .map((name) => operatorIds.get(name) ?? "")
+              .filter(Boolean),
+            county: [...appliedFacets.county],
+            wtype: [...appliedFacets.type],
+            status: [...appliedFacets.status],
+          },
+          appliedPicked,
+        ),
+        // Both ends or neither: a lone bound is not a range.
+        ranges: {
+          ...(appliedProduction.oilMin && appliedProduction.oilMax
+            ? {
+                producedOilMin: appliedProduction.oilMin,
+                producedOilMax: appliedProduction.oilMax,
+              }
+            : {}),
+          ...(appliedProduction.gasMin && appliedProduction.gasMax
+            ? {
+                producedGasMin: appliedProduction.gasMin,
+                producedGasMax: appliedProduction.gasMax,
+              }
+            : {}),
+        },
+      })
+        .then((result) => {
+          if (cancelled) return;
+          setRows(result.rows);
+          setTotal(result.total);
+          setTotalPages(Math.max(1, result.totalPages));
+          setSummary(result.summary);
+          setError(null);
+        })
+        .catch((failure: unknown) => {
+          if (cancelled) return;
+          setRows([]);
+          setError(
+            failure instanceof Error
+              ? failure.message
+              : "Could not load the table.",
+          );
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+      // No debounce: every input here is a deliberate choice — a page, a
+      // sort, a picked search result — not a keystroke.
+    }, 0);
 
-    return {
-      total: matched.length,
-      oil,
-      gas,
-      active,
-      inactive,
-      operators: operators.size,
-      counties: counties.size,
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
     };
-  }, [matched]);
+  }, [page, sort, appliedPicked, appliedFacets, appliedProduction, operatorIds]);
 
-  // Sorting spans the whole matched set, not just the page on screen.
-  const sorted = useMemo(() => {
-    const rows = [...matched];
-    rows.sort((a, b) => {
-      const left = a[sort.key];
-      const right = b[sort.key];
-      // Nulls sort last whichever way the column is pointing.
-      if (left === null) return right === null ? 0 : 1;
-      if (right === null) return -1;
-
-      const order =
-        typeof left === "number" && typeof right === "number"
-          ? left - right
-          : String(left).localeCompare(String(right));
-      return sort.ascending ? order : -order;
-    });
-    return rows;
-  }, [matched, sort]);
-
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PER_PAGE));
   const safePage = Math.min(page, totalPages);
-  const rows = sorted.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
+  const firstShown = total ? (safePage - 1) * PER_PAGE + 1 : 0;
+  const lastShown = Math.min(safePage * PER_PAGE, total);
 
-  const firstShown = sorted.length ? (safePage - 1) * PER_PAGE + 1 : 0;
-  const lastShown = Math.min(safePage * PER_PAGE, sorted.length);
   const chips = [
     ...FACETS.flatMap(({ key, label }) =>
       [...facets[key]].map((value) => ({ key, label, value })),
@@ -241,30 +372,114 @@ export function WellsTable({
     setPage(1);
   }
 
+  /*
+   * Taking a chip off drops that value from the applied set as well as the
+   * draft, and reloads. The chips are what is *on* the table — leaving the
+   * rows filtered by something no longer listed is the disagreement the chips
+   * exist to prevent.
+   */
   function removeChip(chip: (typeof chips)[number]) {
     const next = new Set(facets[chip.key]);
     next.delete(chip.value);
-    updateFacet(chip.key, next);
+
+    setFacets((current) => ({ ...current, [chip.key]: next }));
+    setAppliedFacets((current) => {
+      const applied = new Set(current[chip.key]);
+      applied.delete(chip.value);
+      return { ...current, [chip.key]: applied };
+    });
     setPage(1);
   }
 
   function clearAll() {
     setFacets(emptyFacets());
-    setQuery("");
+    setAppliedFacets(emptyFacets());
+    setProduction(EMPTY_PRODUCTION);
+    setAppliedProduction(EMPTY_PRODUCTION);
+    setPicked(null);
+    setAppliedPicked(null);
     setPage(1);
+  }
+
+  function applyFacets() {
+    // Applying is the end of choosing: whatever panel is open has served its
+    // purpose, and leaving it up covers the rows it was just used to filter.
+    setOpenFacet(null);
+    setProductionOpen(false);
+    setAppliedFacets(facets);
+    setAppliedProduction(production);
+    setAppliedPicked(picked);
+    setPage(1);
+  }
+
+  /** A stable spelling of a selection, for telling draft from applied. */
+  const spell = (of: Facets) =>
+    FACETS.map(({ key }) => [...of[key]].sort().join("|")).join("§");
+
+  const pending =
+    spell(facets) !== spell(appliedFacets) ||
+    JSON.stringify(production) !== JSON.stringify(appliedProduction) ||
+    (picked?.param ?? "") !== (appliedPicked?.param ?? "");
+  const anyFilter =
+    appliedPicked !== null ||
+    picked !== null ||
+    chips.length > 0 ||
+    productionCount(appliedProduction) > 0 ||
+    appliedFacets.county.size > 0;
+
+  /*
+   * The rows on screen, as a file.
+   *
+   * This page only — the whole result set is over a million wells and the
+   * endpoint pages at ten, so "the full list" would be a hundred thousand
+   * requests. The button says so, and so does its tooltip.
+   */
+  function exportPage() {
+    if (rows.length === 0) return;
+
+    const cell = (value: string | number | null) => {
+      const text = value === null ? "" : String(value);
+      return CSV_QUOTE.test(text)
+        ? `"${text.replace(/"/g, '""')}"`
+        : text;
+    };
+
+    const lines = [
+      ["api", "operator", "lease", "type", "status", "county", "oil", "gas"],
+      ...rows.map((row) => [
+        row.api,
+        row.operator,
+        row.lease,
+        row.wtype,
+        row.status,
+        row.county,
+        row.producedOil,
+        row.producedGas,
+      ]),
+    ].map((line) => line.map(cell).join(","));
+
+    const url = URL.createObjectURL(
+      new Blob([lines.join(CSV_NEWLINE)], {
+        type: "text/csv;charset=utf-8",
+      }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `mineral-view-wells-page-${safePage}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   }
 
   function toggleSort(key: SortKey) {
     setSort((current) =>
-      current.key === key
+      current?.key === key
         ? { key, ascending: !current.ascending }
         : { key, ascending: true },
     );
     setPage(1);
   }
-
-  const share = (count: number) =>
-    summary.total ? ((count / summary.total) * 100).toFixed(1) : "0.0";
 
   return (
     /* Two cards on the page background, not one flat sheet: the result header
@@ -297,59 +512,6 @@ export function WellsTable({
         <h2 className="text-[16px] font-bold leading-tight text-mv-ink lg:text-[19px] lg:leading-none">
           Well results
         </h2>
-      </div>
-
-      {/* ---------------- controls ----------------
-          One row: `nowrap` plus a scroller rather than `flex-wrap`, which
-          collapsed this into a three-line block on a narrow viewport. */}
-      <div
-        ref={filterBarRef}
-        className="flex flex-wrap items-center gap-2 px-4 py-3 lg:flex-nowrap lg:px-6 lg:py-4"
-      >
-        <div className="flex w-full items-center gap-2 rounded-lg border border-mv-line px-3 py-[7px] lg:w-auto lg:shrink-0">
-          <Search size={14} className="text-mv-muted" aria-hidden="true" />
-          <label htmlFor="table-search" className="sr-only">
-            Search API, operator or lease
-          </label>
-          <input
-            id="table-search"
-            type="text"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setPage(1);
-            }}
-            placeholder="Search API, operator, lease,"
-            className="w-full min-w-0 border-0 bg-transparent text-[12.5px] leading-tight text-mv-ink outline-none placeholder:text-mv-muted lg:w-[172px]"
-          />
-        </div>
-
-        <span className="ml-1 shrink-0 text-[10px] font-extrabold uppercase tracking-[.1em] text-mv-muted">
-          Filter
-        </span>
-
-        {FACETS.map((facet) => (
-          <FilterDropdown
-            key={facet.key}
-            label={facet.label}
-            options={facet.options}
-            searchable={facet.searchable}
-            chosen={facets[facet.key]}
-            open={openFacet === facet.key}
-            onOpenChange={(next) => setOpenFacet(next ? facet.key : null)}
-            onChange={(next) => updateFacet(facet.key, next)}
-          />
-        ))}
-
-        {chips.length > 0 && (
-          <button
-            type="button"
-            onClick={clearAll}
-            className="shrink-0 cursor-pointer text-[12.5px] text-mv-muted underline underline-offset-2 hover:text-mv-green-deep"
-          >
-            Clear all
-          </button>
-        )}
 
         <div className="flex w-full shrink-0 flex-wrap items-center gap-2 lg:ml-auto lg:w-auto lg:flex-nowrap lg:pl-2">
           <div className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-mv-line bg-white p-1 lg:flex-none lg:justify-start">
@@ -375,32 +537,123 @@ export function WellsTable({
 
           <button
             type="button"
-            className="inline-flex w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-mv-line px-[14px] py-[8px] text-[12.5px] font-semibold text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep lg:w-auto"
+            onClick={exportPage}
+            disabled={rows.length === 0}
+            title={`Export this page — ${rows.length} record${rows.length === 1 ? "" : "s"}`}
+            className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-mv-line px-[14px] py-[8px] text-[12.5px] font-semibold text-mv-slate enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-50 lg:w-auto"
           >
             <Download size={14} aria-hidden="true" />
-            Export full list
-            <span className="inline-flex items-center gap-[2px] rounded bg-mv-amber-bg px-[5px] py-[2px] text-[9px] font-extrabold uppercase tracking-[.06em] text-mv-amber">
-              <Zap size={8} fill="currentColor" strokeWidth={0} aria-hidden="true" />
-              Pro
-            </span>
+            Export this page
           </button>
         </div>
       </div>
 
-      {/* ---------------- applied filters ---------------- */}
+      {/* ---------------- controls ----------------
+          One row: `nowrap` plus a scroller rather than `flex-wrap`, which
+          collapsed this into a three-line block on a narrow viewport. */}
+      <div
+        ref={filterBarRef}
+        /* A band of its own: bordered off from the heading above and tinted,
+           so the controls read as one strip rather than as loose chips
+           floating under the title. */
+        className="mt-4 flex flex-wrap items-center gap-2 border-t border-mv-line bg-[#fafbfa] px-4 pb-[10px] pt-[12px] lg:flex-nowrap lg:px-6"
+      >
+        <TableSearch
+          picked={picked}
+          disabled={loading}
+          onPick={setPicked}
+          onClear={() => {
+            // Applied straight away, unlike picking: clearing is a request to
+            // stop filtering, and waiting for Apply would leave the box empty
+            // while the table still showed that one operator's wells.
+            setPicked(null);
+            setAppliedPicked(null);
+            setPage(1);
+          }}
+        />
+
+        {/* A rule, not a "FILTER" label: the pills say what they are, and the
+            word was competing with them for attention. */}
+        <span
+          aria-hidden="true"
+          className="mx-1 hidden h-5 w-px shrink-0 bg-mv-line lg:block"
+        />
+
+        {FACETS.map((facet) => (
+          <FilterDropdown
+            key={facet.key}
+            label={facet.label}
+            options={facetItems[facet.key].map((item) => item.value)}
+            searchable={facet.searchable}
+            chosen={facets[facet.key]}
+            open={openFacet === facet.key}
+            disabled={loading}
+            onOpenChange={(next) => {
+              setOpenFacet(next ? facet.key : null);
+              if (next) setProductionOpen(false);
+            }}
+            onChange={(next) => updateFacet(facet.key, next)}
+          />
+        ))}
+
+        <ProductionFilter
+          range={production}
+          open={productionOpen}
+          disabled={loading}
+          onOpenChange={(next) => {
+            setProductionOpen(next);
+            if (next) setOpenFacet(null);
+          }}
+          onChange={setProduction}
+        />
+
+        {/* Apply and Clear at the end of the row, where the space is. */}
+        <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
+          <button
+            type="button"
+            onClick={clearAll}
+            disabled={loading || (!pending && !anyFilter)}
+            className="rounded-lg border border-mv-red px-[13px] py-[6px] text-[12.5px] font-semibold text-mv-red enabled:cursor-pointer enabled:hover:bg-mv-red-bg disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            onClick={applyFacets}
+            // A half-filled or back-to-front range cannot be sent.
+            disabled={
+              loading || !pending || productionProblem(production) !== null
+            }
+            className="rounded-lg px-[15px] py-[6px] text-[12.5px] font-bold enabled:cursor-pointer enabled:bg-mv-green-deep enabled:text-white enabled:hover:brightness-105 disabled:cursor-not-allowed disabled:bg-[#e9ecea] disabled:text-mv-muted"
+          >
+            Apply
+          </button>
+        </div>
+
+      </div>
+
+      {/* ---------------- applied filters ----------------
+          Each chip names its facet as well as its value: "Anderson" alone
+          leaves you to work out which of five filters put it there, and two
+          facets can hold the same word. */}
       {chips.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 px-4 pb-3 lg:px-6 lg:pb-4">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-[6px] border-b border-mv-line bg-[#fafbfa] px-4 pb-[11px] pt-[9px] lg:px-6">
+          <span className="mr-1 shrink-0 text-[10px] font-extrabold uppercase tracking-[.1em] text-mv-muted">
+            Applied
+          </span>
+
           {chips.map((chip) => (
             <span
               key={`${chip.key}:${chip.value}`}
-              className="inline-flex items-center gap-[6px] rounded-full bg-[#eef1ee] py-[4px] pl-[12px] pr-[8px] text-[12px] font-semibold text-mv-slate"
+              className="inline-flex items-center gap-[7px] rounded-lg border border-mv-green-deep/25 bg-mv-mint py-[4px] pl-[10px] pr-[5px] text-[12px] text-mv-green-deep"
             >
-              {chip.value || chip.label}
+              <span className="text-mv-green-deep/70">{chip.label}</span>
+              <span className="font-semibold">{chip.value || "—"}</span>
               <button
                 type="button"
                 onClick={() => removeChip(chip)}
-                aria-label={`Remove ${chip.value || chip.label}`}
-                className="grid h-[15px] w-[15px] cursor-pointer place-items-center rounded-full text-mv-muted hover:bg-white hover:text-mv-green-deep"
+                aria-label={`Remove ${chip.label} ${chip.value}`}
+                className="grid h-[16px] w-[16px] cursor-pointer place-items-center rounded text-mv-green-deep/60 hover:bg-white hover:text-mv-red"
               >
                 <X size={11} strokeWidth={2.5} aria-hidden="true" />
               </button>
@@ -411,58 +664,47 @@ export function WellsTable({
 
       {/* ---------------- summary strip ----------------
           Top border only — the card's own edge closes it off below. */}
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-b-xl border-t border-mv-line bg-mv-line md:grid-cols-3 xl:grid-cols-7">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-b-xl border-t border-mv-line bg-mv-line md:grid-cols-3 xl:grid-cols-6">
         <SummaryCard
           icon={FlaskConical}
           tint="green"
           label="Total wells"
-          value={summary.total}
-          note={
-            summary.total === TOTAL_WELLS
-              ? "100% of results"
-              : `${((summary.total / TOTAL_WELLS) * 100).toFixed(1)}% of all wells`
-          }
+          value={summary?.totalWells ?? 0}
+          note="Across this result set"
         />
         <SummaryCard
           icon={Activity}
           tint="green"
           label="Oil wells"
-          value={summary.oil}
-          note={`${share(summary.oil)}%`}
+          value={summary?.oilWells ?? 0}
+          note={`${summary?.oilPct ?? 0}%`}
         />
         <SummaryCard
           icon={Droplet}
           tint="red"
           label="Gas wells"
-          value={summary.gas}
-          note={`${share(summary.gas)}%`}
+          value={summary?.gasWells ?? 0}
+          note={`${summary?.gasPct ?? 0}%`}
         />
         <SummaryCard
           icon={CircleCheck}
           tint="green"
           label="Active wells"
-          value={summary.active}
-          note={`${share(summary.active)}%`}
-        />
-        <SummaryCard
-          icon={TriangleAlert}
-          tint="amber"
-          label="Inactive wells"
-          value={summary.inactive}
-          note={`${share(summary.inactive)}%`}
+          value={summary?.activeWells ?? 0}
+          note={`${summary?.activePct ?? 0}%`}
         />
         <SummaryCard
           icon={Layers}
           tint="blue"
           label="Unique operators"
-          value={summary.operators}
+          value={summary?.operators ?? 0}
           note="Across this result set"
         />
         <SummaryCard
           icon={MapIcon}
           tint="purple"
           label="Counties"
-          value={summary.counties}
+          value={summary?.counties ?? 0}
           note="Across this result set"
         />
       </div>
@@ -470,39 +712,64 @@ export function WellsTable({
       </div>
 
       {/* ---------------- table ---------------- */}
-      <div className="mt-4 overflow-hidden rounded-xl border border-mv-line bg-white">
+      <div className="relative mt-4 overflow-hidden rounded-xl border border-mv-line bg-white">
+      {/* Over the dimmed rows, not instead of them: dimming alone reads as a
+          disabled table, and says nothing about how long it will be. */}
+      {loading && rows.length > 0 && (
+        <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center">
+          <span className="flex items-center gap-[10px] rounded-full border border-mv-line bg-white px-[16px] py-[9px] shadow-mv-lg">
+            <span
+              aria-hidden="true"
+              className="h-[14px] w-[14px] shrink-0 animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
+            />
+            <span className="text-[12.5px] font-semibold leading-none text-mv-slate">
+              Loading wells…
+            </span>
+          </span>
+        </div>
+      )}
+
       <div className="mv-thin-scroll overflow-x-auto">
         <table className="w-full min-w-[1160px] border-collapse text-left">
           <thead>
             <tr className="border-b border-mv-line bg-[#f8f9fa]">
               {/* The first and last cells carry the page's 24px gutter, so the
                   grid lines up with the heading above it. */}
-              {COLUMNS.map(({ key, label, align, width }, index) => (
+              {COLUMNS.map(({ key, label, align, width, sortable }, index) => (
                 <th
                   key={key}
                   scope="col"
                   aria-sort={
-                    sort.key === key
-                      ? sort.ascending
-                        ? "ascending"
-                        : "descending"
-                      : "none"
+                    sortable === false
+                      ? undefined
+                      : sort?.key === key
+                        ? sort.ascending
+                          ? "ascending"
+                          : "descending"
+                        : "none"
                   }
                   className={`whitespace-nowrap py-[8px] ${
                     index === 0 ? "pl-6 pr-4" : "px-4"
                   } ${width} ${align === "right" ? "text-right" : ""}`}
                 >
-                  <button
-                    type="button"
-                    onClick={() => toggleSort(key)}
-                    className="inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-[12.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate hover:text-mv-green-deep"
-                  >
-                    {label}
-                    <SortMark
-                      active={sort.key === key}
-                      ascending={sort.ascending}
-                    />
-                  </button>
+                  {sortable === false ? (
+                    <span className="inline-flex whitespace-nowrap text-[12.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate">
+                      {label}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => toggleSort(key)}
+                      className="inline-flex items-center gap-1 whitespace-nowrap text-[12.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate enabled:cursor-pointer enabled:hover:text-mv-green-deep disabled:cursor-wait"
+                    >
+                      {label}
+                      <SortMark
+                        active={sort?.key === key}
+                        ascending={sort?.ascending ?? true}
+                      />
+                    </button>
+                  )}
                 </th>
               ))}
 
@@ -515,7 +782,7 @@ export function WellsTable({
             </tr>
           </thead>
 
-          <tbody>
+          <tbody className={loading && rows.length > 0 ? "opacity-50" : ""}>
             {rows.map((row) => (
               <tr
                 key={row.api}
@@ -534,14 +801,14 @@ export function WellsTable({
                 </td>
                 <td className="px-4 py-[14px]">
                   <span className="inline-flex items-center gap-[6px] rounded-full bg-[#eef1ee] px-[10px] py-[3px] text-[12px] font-medium text-mv-slate">
-                    <Dot color={TYPE_DOT[row.type]} />
-                    {row.type}
+                    <Dot color={TYPE_DOT[row.wtype] ?? DOT_GREY} />
+                    {row.wtype}
                   </span>
                 </td>
                 <td className="px-4 py-[14px] text-[13px] text-mv-slate">
                   {row.status ? (
                     <span className="inline-flex items-center gap-[6px]">
-                      <Dot color={STATUS_DOT[row.status]} />
+                      <Dot color={STATUS_DOT[row.status] ?? DOT_GREY} />
                       {row.status}
                     </span>
                   ) : (
@@ -551,8 +818,8 @@ export function WellsTable({
                 <td className="px-4 py-[14px] text-[13px] text-mv-slate">
                   {row.county}
                 </td>
-                <Volume value={row.oil} />
-                <Volume value={row.gas} />
+                <Volume value={row.producedOil} />
+                <Volume value={row.producedGas} />
                 <td className="py-[14px] pl-4 pr-6">
                   <button
                     type="button"
@@ -569,11 +836,25 @@ export function WellsTable({
 
             {rows.length === 0 && (
               <tr>
+                {/* Tall and centred: with no rows the card collapsed to a
+                    strip and the spinner sat under the header with the page
+                    empty beneath it. The height holds the card open so the
+                    table does not jump when the rows arrive. */}
                 <td
                   colSpan={COLUMNS.length + 1}
-                  className="px-6 py-10 text-center text-[13px] text-mv-muted"
+                  className="h-[52vh] px-6 text-center align-middle text-[13px] text-mv-muted"
                 >
-                  No wells match these filters.
+                  {loading ? (
+                    <span className="inline-flex items-center gap-[10px] text-[15px] font-semibold text-mv-slate">
+                      <span
+                        aria-hidden="true"
+                        className="h-[22px] w-[22px] animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
+                      />
+                      Loading wells…
+                    </span>
+                  ) : (
+                    (error ?? "No wells match these filters.")
+                  )}
                 </td>
               </tr>
             )}
@@ -582,11 +863,15 @@ export function WellsTable({
       </div>
 
       {/* ---------------- pager ---------------- */}
-      <div className="flex flex-col items-center gap-2 px-4 py-3 lg:flex-row lg:flex-wrap lg:justify-end lg:px-6">
+      <div
+        className={`flex flex-col items-center gap-2 px-4 py-3 lg:flex-row lg:flex-wrap lg:justify-end lg:px-6 ${
+          loading && rows.length === 0 ? "invisible" : ""
+        }`}
+      >
         <span className="text-[12.5px] text-mv-muted lg:mr-2">
           {firstShown.toLocaleString("en-US")}–
           {lastShown.toLocaleString("en-US")} of{" "}
-          {summary.total.toLocaleString("en-US")}
+          {total.toLocaleString("en-US")}
         </span>
 
         <div className="flex flex-wrap items-center justify-center gap-[6px] lg:contents">
@@ -615,6 +900,7 @@ export function WellsTable({
               <button
                 key={entry}
                 type="button"
+                disabled={loading}
                 aria-current={entry === safePage ? "page" : undefined}
                 onClick={() => setPage(entry)}
                 /* A phone fits one row of pager controls, not two, so below
@@ -664,6 +950,7 @@ function FilterDropdown({
   searchable,
   chosen,
   open,
+  disabled,
   onOpenChange,
   onChange,
 }: {
@@ -672,6 +959,8 @@ function FilterDropdown({
   searchable?: boolean;
   chosen: Set<string>;
   open: boolean;
+  /** Shut while a request is out — a second filter would race the first. */
+  disabled?: boolean;
   onOpenChange: (open: boolean) => void;
   onChange: (next: Set<string>) => void;
 }) {
@@ -695,11 +984,12 @@ function FilterDropdown({
       <button
         type="button"
         aria-expanded={open}
+        disabled={disabled}
         onClick={() => onOpenChange(!open)}
-        className={`inline-flex cursor-pointer items-center gap-[6px] rounded-full border px-[14px] py-[6px] text-[12.5px] font-semibold ${
+        className={`inline-flex items-center gap-[6px] rounded-lg border px-[13px] py-[6px] text-[12.5px] font-semibold enabled:cursor-pointer disabled:cursor-wait disabled:opacity-60 ${
           chosen.size
             ? "border-mv-green-deep text-mv-green-deep"
-            : "border-mv-line text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep"
+            : "border-mv-line text-mv-slate enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep"
         }`}
       >
         {label}
@@ -769,15 +1059,22 @@ function FilterDropdown({
   );
 }
 
-const TYPE_DOT: Record<WellRow["type"], string> = {
+/** Anything the API reports that is not listed here falls back to grey. */
+const DOT_GREY = "#9ca3af";
+
+const TYPE_DOT: Record<string, string> = {
   Oil: "#3f9d76",
   Gas: "#d1584f",
+  "Oil or Gas": "#b45309",
   Injection: "#4a7fbf",
 };
 
 const STATUS_DOT: Record<string, string> = {
   Producing: "#3f9d76",
+  "Shut-In": "#d9a441",
   "Shut-In Producer": "#d9a441",
+  Plugged: "#9ca3af",
+  Service: "#4a7fbf",
   Inactive: "#9ca3af",
 };
 
