@@ -37,6 +37,8 @@ type MeasureAreaPanelProps = {
   className?: string;
   /** Null while the tract is still being drawn. */
   result: AreaMeasurement | null;
+  /** True while this is the tract the tool drew for you, not one you drew. */
+  sample?: boolean;
   onClose: () => void;
 };
 
@@ -80,6 +82,7 @@ const STATS: {
 export function MeasureAreaPanel({
   className = "",
   result,
+  sample,
   onClose,
 }: MeasureAreaPanelProps) {
   const { cardRef, handleProps, style } = useDraggableCard();
@@ -108,8 +111,13 @@ export function MeasureAreaPanel({
           </span>
 
           <span className="min-w-0 flex-1">
-            <h2 className="text-[14.5px] font-bold leading-none text-mv-ink">
+            <h2 className="flex items-center gap-[7px] text-[14.5px] font-bold leading-none text-mv-ink">
               {result ? "Measured area" : "Measuring an area"}
+              {sample && (
+                <span className="rounded bg-mv-mint px-[6px] py-[3px] text-[9px] font-extrabold uppercase leading-none tracking-[.08em] text-mv-green-deep">
+                  Sample
+                </span>
+              )}
             </h2>
             <p className="mt-[5px] text-[11.5px] leading-snug text-mv-slate">
               {result
@@ -121,7 +129,7 @@ export function MeasureAreaPanel({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={sample ? "Dismiss the sample" : "Close"}
             className="-mr-1 grid h-6 w-6 shrink-0 cursor-pointer place-items-center rounded-lg text-mv-muted hover:bg-mv-red-bg hover:text-mv-red"
           >
             <X size={15} aria-hidden="true" />

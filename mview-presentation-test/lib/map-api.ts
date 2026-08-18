@@ -233,6 +233,17 @@ export type MapWell = {
    */
   bhLon?: number;
   bhLat?: number;
+  /**
+   * The bore as drawn: surface hole first, bottom hole last, with whatever
+   * vertices lie between. Two identical points for a vertical well.
+   */
+  path?: [number, number][];
+  /**
+   * How the hole was drilled — "Horizontal", "Directional", "Vertical",
+   * "Unknown". The first two name legend symbols of their own, which is what
+   * the map marks the bottom of the bore with.
+   */
+  profile?: string;
   icon: string;
   wtype: string;
   status: string;
