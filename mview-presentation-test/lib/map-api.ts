@@ -226,6 +226,13 @@ export type MapWell = {
   api: string;
   lon: number;
   lat: number;
+  /*
+   * The bottom of the hole, where the service reports one. A horizontal well's
+   * bore can run a mile or more from its surface location, so anything asking
+   * "is this well in that tract" has to know both ends.
+   */
+  bhLon?: number;
+  bhLat?: number;
   icon: string;
   wtype: string;
   status: string;

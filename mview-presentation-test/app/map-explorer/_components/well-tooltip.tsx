@@ -1,5 +1,7 @@
 "use client";
 
+import { edgeClamped } from "./tooltip-edge";
+
 /*
  * The card that appears over an individual well on hover.
  *
@@ -27,8 +29,12 @@ export type HoveredWell = {
 /** Roughly the card's height, for deciding which side of the well it goes on. */
 const CARD_HEIGHT = 150;
 
+/** The card's own width, for holding it inside the map near the edges. */
+const CARD_WIDTH = 236;
+
 export function WellTooltip({ well }: { well: HoveredWell }) {
   const below = well.y < CARD_HEIGHT;
+  const { left, tail } = edgeClamped(well.x, CARD_WIDTH);
 
   return (
     <div
@@ -36,7 +42,7 @@ export function WellTooltip({ well }: { well: HoveredWell }) {
       className={`pointer-events-none absolute z-30 w-[236px] -translate-x-1/2 ${
         below ? "" : "-translate-y-full"
       }`}
-      style={{ left: well.x, top: below ? well.y + 14 : well.y - 12 }}
+      style={{ left, top: below ? well.y + 14 : well.y - 12 }}
     >
       <div className="overflow-hidden rounded-xl border border-mv-line bg-white shadow-mv-lg">
         <div className="bg-[#f4faf6] px-[14px] pb-[9px] pt-[9px]">
@@ -59,7 +65,8 @@ export function WellTooltip({ well }: { well: HoveredWell }) {
 
       <span
         aria-hidden="true"
-        className={`absolute left-1/2 h-[9px] w-[9px] -translate-x-1/2 -translate-y-[5px] rotate-45 border-mv-line ${
+        style={{ left: tail }}
+        className={`absolute h-[9px] w-[9px] -translate-x-1/2 -translate-y-[5px] rotate-45 border-mv-line ${
           below
             ? "top-0 border-l border-t bg-[#f4faf6]"
             : "top-full border-b border-r bg-white"
