@@ -367,9 +367,16 @@ export function WellsTable({
     ),
   ];
 
+  /*
+   * Ticking a box is a draft, so the page it is on does not move.
+   *
+   * Resetting to page 1 here sent a request for page 1 of the *old* filters —
+   * the rows changed under a selection that had not been applied yet, and the
+   * page the reader was on was lost before they pressed Apply. Apply is where
+   * the page goes back to 1, because that is where the result set changes.
+   */
   function updateFacet(key: FacetKey, next: Set<string>) {
     setFacets((current) => ({ ...current, [key]: next }));
-    setPage(1);
   }
 
   /*
