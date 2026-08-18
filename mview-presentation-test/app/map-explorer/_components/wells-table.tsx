@@ -885,13 +885,13 @@ export function WellsTable({
           <PagerButton
             label="First page"
             icon={ChevronsLeft}
-            disabled={safePage === 1}
+            disabled={loading || safePage === 1}
             onClick={() => setPage(1)}
           />
           <PagerButton
             label="Previous page"
             icon={ChevronLeft}
-            disabled={safePage === 1}
+            disabled={loading || safePage === 1}
             onClick={() => setPage(Math.max(1, safePage - 1))}
           />
 
@@ -914,7 +914,7 @@ export function WellsTable({
                    lg the window narrows to the current page and its nearest
                    neighbours — the ends and the ellipses stay, since they are
                    what makes the gap readable as a gap. */
-                className={`h-[28px] min-w-[28px] cursor-pointer rounded-lg border px-2 text-[12.5px] font-semibold ${
+                className={`h-[28px] min-w-[28px] rounded-lg border px-2 text-[12.5px] font-semibold enabled:cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
                   entry === 1 ||
                   entry === totalPages ||
                   Math.abs(entry - safePage) <= 2
@@ -923,7 +923,7 @@ export function WellsTable({
                 } ${
                   entry === safePage
                     ? "border-mv-green-deep bg-mv-green-deep text-white"
-                    : "border-mv-line text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep"
+                    : "border-mv-line text-mv-slate enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep"
                 }`}
               >
                 {entry}
@@ -934,13 +934,13 @@ export function WellsTable({
           <PagerButton
             label="Next page"
             icon={ChevronRight}
-            disabled={safePage === totalPages}
+            disabled={loading || safePage === totalPages}
             onClick={() => setPage(Math.min(totalPages, safePage + 1))}
           />
           <PagerButton
             label="Last page"
             icon={ChevronsRight}
-            disabled={safePage === totalPages}
+            disabled={loading || safePage === totalPages}
             onClick={() => setPage(totalPages)}
           />
         </div>
@@ -1255,7 +1255,7 @@ function PagerButton({
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
-      className="grid h-[28px] w-[28px] place-items-center rounded-lg border border-mv-line text-mv-slate enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:opacity-40"
+      className="grid h-[28px] w-[28px] place-items-center rounded-lg border border-mv-line text-mv-slate enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-40"
     >
       <Icon size={14} aria-hidden="true" />
     </button>
