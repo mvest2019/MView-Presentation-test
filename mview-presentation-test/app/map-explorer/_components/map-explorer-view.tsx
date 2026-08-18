@@ -977,6 +977,19 @@ export function MapExplorerView() {
 
         layer.removeAll();
         layer.addMany(buildClusterGraphics(ctors.Graphic, next));
+
+        /*
+         * And the ring goes, wherever it came from.
+         *
+         * Clearing it alongside the wells is not enough on its own: the ring
+         * survives any path that puts bubbles back without going through
+         * `clearWells` — a filter being applied, a filter owning the map while
+         * the zoom changes — and a ring pulsing around a bubble marks nothing.
+         * Bubbles and a single-well ring cannot both be true, so drawing the
+         * one clears the other.
+         */
+        clearInterval(pulseTimerRef.current);
+        highlightLayerRef.current?.removeAll();
       })
       .catch((error: unknown) => {
         if (request !== clusterRequestRef.current) return;
@@ -1040,6 +1053,15 @@ export function MapExplorerView() {
     setWellsLoading(false);
     setWellError(null);
     wellLayerRef.current?.removeAll();
+    /*
+     * The ring marks one of those wells, so it goes with them.
+     *
+     * It was only ever cleared when a filter was cleared, so zooming out of
+     * the well band took the wells away and left the ring pulsing over the
+     * bubbles, marking nothing.
+     */
+    clearInterval(pulseTimerRef.current);
+    highlightLayerRef.current?.removeAll();
   }, []);
 
   /*
@@ -1080,6 +1102,10 @@ export function MapExplorerView() {
       marks === 0 ? 1 : timeLapseQueueRef.current.length / marks;
     timeLapseLayerRef.current = layer;
     layer.removeAll();
+    // The replay starts from an empty map, so the ring goes with everything
+    // else — it would otherwise sit over ground with nothing under it.
+    clearInterval(pulseTimerRef.current);
+    highlightLayerRef.current?.removeAll();
     setTimeLapseTotal(marks);
     setTimeLapsePlotted(0);
     setTimeLapseOpen(true);
@@ -1174,9 +1200,7 @@ export function MapExplorerView() {
       if (Object.keys(filters).length === 0) {
         filteredRef.current = false;
         setFilterSummary(null);
-        // The ring belongs to the picked well; it goes with it.
-        clearInterval(pulseTimerRef.current);
-        highlightLayerRef.current?.removeAll();
+        // `clearWells` takes the ring with the wells it marked.
         clearWells();
         clusterTierRef.current = -1;
 
