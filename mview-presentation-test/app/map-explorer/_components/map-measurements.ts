@@ -8,6 +8,8 @@
 
 import { type AreaMeasurement } from "./measure-area-panel";
 import { type NearbyStats } from "./nearby-panel";
+import { type MapWell } from "@/lib/map-api";
+
 import { type WellCluster } from "./cluster-graphics";
 
 export type LonLat = { longitude: number; latitude: number };
@@ -227,6 +229,7 @@ export function downloadNearbyCsv(
  */
 export function measureTract(
   clusters: WellCluster[],
+  wells: MapWell[],
   points: LonLat[],
 ): AreaMeasurement {
   const R = 6378137;
@@ -259,10 +262,22 @@ export function measureTract(
   const squareMiles = squareMetres / 2_589_988.11;
   const acres = squareMetres / 4046.856;
 
+  /*
+   * Individual wells where the map has them, bubbles where it does not.
+   *
+   * Past the well zoom there are no bubbles left, so counting only those
+   * reported nought wells over a tract visibly full of them.
+   */
   let wellsInside = 0;
-  for (const cluster of clusters) {
-    if (pointInRing(cluster.at[0], cluster.at[1], points)) {
-      wellsInside += cluster.count;
+  if (wells.length > 0) {
+    for (const well of wells) {
+      if (boreInRing(well, points)) wellsInside += 1;
+    }
+  } else {
+    for (const cluster of clusters) {
+      if (pointInRing(cluster.at[0], cluster.at[1], points)) {
+        wellsInside += cluster.count;
+      }
     }
   }
 
@@ -271,11 +286,87 @@ export function measureTract(
     squareMiles,
     perimeterMiles: perimetreMetres / METRES_PER_MILE,
     wellsInside,
-    // No permit layer to read, same as the watch card.
-    permitsInside: 0,
+    /*
+     * Not a zero — nothing to count from.
+     *
+     * The wells feed excludes permits outright: its own note says "dry holes,
+     * permits, canceled locations, service wells and wells with no symbol are
+     * excluded", and the status facet offers only Producing, Plugged, Service
+     * and Shut-In. Reporting 0 would be a measurement; null is the truth.
+     */
+    permitsInside: null,
     // A section is one square mile.
     wellsPerSection: squareMiles ? wellsInside / squareMiles : 0,
   };
+}
+
+/**
+ * Whether a well's bore meets the tract at all.
+ *
+ * Either end inside counts, and so does a bore that runs clean through — a
+ * modern lateral is a mile or more long, so a tract can sit entirely between
+ * one well's surface hole and its bottom hole.
+ */
+function boreInRing(well: MapWell, ring: LonLat[]): boolean {
+  if (pointInRing(well.lon, well.lat, ring)) return true;
+
+  const bhLon = well.bhLon ?? well.lon;
+  const bhLat = well.bhLat ?? well.lat;
+  if (bhLon === well.lon && bhLat === well.lat) return false;
+  if (pointInRing(bhLon, bhLat, ring)) return true;
+
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    if (
+      segmentsCross(
+        well.lon,
+        well.lat,
+        bhLon,
+        bhLat,
+        ring[j].longitude,
+        ring[j].latitude,
+        ring[i].longitude,
+        ring[i].latitude,
+      )
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/** Which side of AB a point falls on — positive, negative or on the line. */
+function side(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  px: number,
+  py: number,
+): number {
+  return (bx - ax) * (py - ay) - (by - ay) * (px - ax);
+}
+
+/** Whether AB and CD properly cross. Touching at an end does not count. */
+function segmentsCross(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  cx: number,
+  cy: number,
+  dx: number,
+  dy: number,
+): boolean {
+  const d1 = side(cx, cy, dx, dy, ax, ay);
+  const d2 = side(cx, cy, dx, dy, bx, by);
+  const d3 = side(ax, ay, bx, by, cx, cy);
+  const d4 = side(ax, ay, bx, by, dx, dy);
+
+  return (
+    ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+    ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))
+  );
 }
 
 /** Ray casting, on plain lon/lat — exact enough for a hand-drawn tract. */

@@ -1967,7 +1967,13 @@ export function MapExplorerView() {
                 const dy = event.y - first.y;
                 if (dx * dx + dy * dy <= 144) {
                   drawTract(points, true);
-                  setTractResult(measureTract(clustersRef.current, points));
+                  setTractResult(
+                    measureTract(
+                      clustersRef.current,
+                      wellsRef.current,
+                      points,
+                    ),
+                  );
                   activeToolRef.current = null;
                   setActiveTool(null);
                   return;
