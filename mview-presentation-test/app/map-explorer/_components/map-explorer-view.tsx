@@ -479,11 +479,6 @@ export function MapExplorerView() {
   const [clusterError, setClusterError] = useState<string | null>(null);
   const [wellsLoading, setWellsLoading] = useState(false);
   const [wellError, setWellError] = useState<string | null>(null);
-  /** What the last Apply matched, and how much of it the server returned. */
-  const [filterSummary, setFilterSummary] = useState<{
-    matched: number;
-    shown: number;
-  } | null>(null);
   /* Only the newest answer may be drawn, whichever order they arrive in. */
   const clusterRequestRef = useRef(0);
   /* The zoom band the bubbles on screen were loaded for. */
@@ -1199,7 +1194,6 @@ export function MapExplorerView() {
 
       if (Object.keys(filters).length === 0) {
         filteredRef.current = false;
-        setFilterSummary(null);
         // `clearWells` takes the ring with the wells it marked.
         clearWells();
         clusterTierRef.current = -1;
@@ -1235,17 +1229,15 @@ export function MapExplorerView() {
       setWellsLoading(true);
       // The previous answer is no longer the answer. Leaving it up means a
       // failed request still reads as a successful one.
-      setFilterSummary(null);
       setWellError(null);
 
       getMatchedWellsMap(filters)
-        .then(({ matched, wells }) => {
+        .then(({ wells }) => {
           if (request !== wellRequestRef.current) return;
 
           wellsRef.current = wells;
           setWells(wells);
           setWellError(null);
-          setFilterSummary({ matched, shown: wells.length });
 
           clearClusters();
           layer.removeAll();
@@ -2548,14 +2540,6 @@ export function MapExplorerView() {
           }}
           onClose={toggleTimeLapse}
         />
-      )}
-
-      {status === "ready" && filterSummary && !wellsLoading && !wellError && (
-        <div className="pointer-events-none absolute left-1/2 top-3 z-30 -translate-x-1/2 rounded-full border border-mv-line bg-white/95 px-3 py-[5px] text-[11.5px] font-semibold text-mv-slate shadow-mv">
-          {filterSummary.shown < filterSummary.matched
-            ? `Showing ${filterSummary.shown.toLocaleString("en-US")} of ${filterSummary.matched.toLocaleString("en-US")} matching wells`
-            : `${filterSummary.matched.toLocaleString("en-US")} matching wells`}
-        </div>
       )}
 
       {status === "ready" && hoveredWell && <WellTooltip well={hoveredWell} />}
