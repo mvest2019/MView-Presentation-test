@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, MapPin, Scroll, Search, X } from "lucide-react";
+import { Building2, Hash, MapPin, Scroll, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { getMapSearch, type MapSearchResult } from "@/lib/map-api";
@@ -24,6 +24,15 @@ const KINDS: Record<
   county: { label: "County", facet: "county", icon: MapPin },
   operator: { label: "Operator", facet: "operator", icon: Building2 },
   lease: { label: "Lease", facet: "lease", icon: Scroll },
+  /*
+   * An API number filters through `q`, not through a facet of its own: the
+   * table endpoint rejects `api` outright ("Unrecognized key(s) in object")
+   * and answers `q=42-003-00001` with that one well.
+   *
+   * Left out of this list, every API result the search returned was dropped on
+   * the floor and the dropdown came up empty on a response full of matches.
+   */
+  api: { label: "API Number", facet: "q", icon: Hash },
 };
 
 export type SearchPick = {
