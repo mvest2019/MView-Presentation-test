@@ -11,7 +11,7 @@ import {
   CONTROL_TINT,
   SELECT_CLASS,
 } from "@/app/_components/control-styles";
-import { OperatorMonogram } from "@/app/_components/operator-monogram";
+import { OperatorLogo } from "@/app/_components/operator-logo";
 import {
   fieldGroupLabelClass,
   tinyClass,
@@ -779,85 +779,11 @@ function ResultsTable({
  * The tile's edge length. 40px because the cell's two lines of text measure 41px
  * inside `py-4` — anything taller grows every row in the table.
  *
- * THE LOGO FILLS THE TILE, WITH NO INSET, AND THAT IS DELIBERATE. The API's logo
- * PNGs are not bare marks: they are pre-rendered white tiles with a light grey
- * border already drawn in. Sampled at source, Pioneer and Burlington (512×512) both
- * carry a ring of `rgb(225,225,225)` around a white field — a hair off this
- * project's own `mv-line`. Inset the image and that baked border sits *inside* the
- * tile's border, and the cell shows two concentric rounded rectangles. Filling the
- * tile puts the two edges on top of each other, so one border is visible.
- *
- * The tile keeps its own border because not every logo has one — EOG's 200×200 is
- * white to the edge — and without it those would float with no boundary at all.
- *
- * `object-contain` stays: it costs nothing on the square logos and stops a
- * non-square one from being stretched.
+ * The tile itself is `OperatorLogo`, shared with the detail page's hero; the notes on
+ * why the image fills it with no inset live there.
  */
 const LOGO_SIZE = 40;
-const LOGO_FILL = "h-full w-full";
-
-/**
- * An operator's real logo, falling back to the monogram tile.
- *
- * The src is `row.logoUrl` — our own `/api/operators/{no}/logo`, not the API's URL.
- * The upstream response sets `Cross-Origin-Resource-Policy: same-origin`, so an
- * `<img>` pointed straight at it downloads a valid PNG and is then refused by the
- * browser. The route handler re-serves the same bytes from our origin; see the note
- * on `fetchOperatorLogo`.
- *
- * THE FALLBACK IS STILL LOAD-BEARING. `operator_logo` is built from the operator
- * number and arrives on every record, so its presence says nothing about whether an
- * image exists — the endpoint 404s for operators without one. `onError` is what
- * turns that into a monogram instead of a broken-image icon.
- *
- * WHY A PLAIN `<img>` AND NOT `next/image`. Now that the bytes come from our own
- * origin the optimizer would work without an allowlist entry, but it buys nothing at
- * 34 pixels and it turns each of the (many) 404s into a failed, uncached
- * `/_next/image` round trip. The raw 404 is cacheable, so the browser stops asking.
- *
- * `alt=""` because the operator's name is right beside it as real text; announcing
- * the logo too would just repeat it.
- */
-function OperatorLogo({
-  url,
-  monogram,
-}: {
-  url: string | null;
-  monogram: string;
-}) {
-  const [failed, setFailed] = useState(false);
-
-  if (!url || failed) {
-    return (
-      <OperatorMonogram
-        monogram={monogram}
-        size={LOGO_SIZE}
-        className="!rounded-[9px]"
-      />
-    );
-  }
-
-  return (
-    <span
-      className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-[9px] border border-mv-line bg-white shadow-[0_1px_2px_rgba(13,14,23,.05)]"
-      style={{ width: LOGO_SIZE, height: LOGO_SIZE }}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element -- deliberate; see the
-          note above this component about `next/image` and the 404 path. */}
-      <img
-        src={url}
-        alt=""
-        loading="lazy"
-        decoding="async"
-        onError={() => setFailed(true)}
-        // The box is a fixed size, so the image is constrained inside it rather
-        // than sizing it — no intrinsic dimensions are needed and no logo, square
-        // or not, can shift the row.
-        className={`${LOGO_FILL} object-contain`}
-      />
-    </span>
-  );
-}
+const LOGO_RADIUS = 9;
 
 const OperatorRow = memo(function OperatorRow({
   row,
@@ -884,7 +810,13 @@ const OperatorRow = memo(function OperatorRow({
             The tile is shorter than the two lines of text next to it, so adding it
             does not change the row's height. */}
         <span className="flex items-center gap-3">
-          <OperatorLogo url={row.logoUrl} monogram={row.monogram} />
+          <OperatorLogo
+            url={row.logoUrl}
+            monogram={row.monogram}
+            size={LOGO_SIZE}
+            radius={LOGO_RADIUS}
+            monogramClassName="!rounded-[9px]"
+          />
 
           <span className="min-w-0">
             {/* A gated row has no slug, so its name is plain text rather than a
