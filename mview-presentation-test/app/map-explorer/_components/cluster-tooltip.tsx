@@ -1,6 +1,7 @@
 "use client";
 
 import { type WellCluster } from "./cluster-graphics";
+import { edgeClamped } from "./tooltip-edge";
 
 /*
  * The card that appears over a well-count bubble on hover.
@@ -42,6 +43,10 @@ type ClusterTooltipProps = {
  */
 const CARD_HEIGHT = 176;
 
+/** The card's own width, for holding it inside the map near the edges. */
+const CARD_WIDTH = 228;
+
+
 export function ClusterTooltip({
   cluster,
   canOpen,
@@ -54,6 +59,7 @@ export function ClusterTooltip({
    * under the toolbar, which clipped it.
    */
   const below = at.y < CARD_HEIGHT;
+  const { left, tail } = edgeClamped(at.x, CARD_WIDTH);
   const mix = [
     { key: "oil", label: "Oil", value: cluster.oil, share: cluster.oilShare },
     { key: "gas", label: "Gas", value: cluster.gas, share: cluster.gasShare },
@@ -71,7 +77,7 @@ export function ClusterTooltip({
       className={`pointer-events-none absolute z-30 w-[228px] -translate-x-1/2 ${
         below ? "" : "-translate-y-full"
       }`}
-      style={{ left: at.x, top: below ? at.y + bubble + 12 : at.y - 12 }}
+      style={{ left, top: below ? at.y + bubble + 12 : at.y - 12 }}
     >
       <div className="overflow-hidden rounded-xl border border-mv-line bg-white shadow-mv-lg">
         {/* The headline: what it is, and the one number people came for. */}
@@ -145,7 +151,8 @@ export function ClusterTooltip({
           triangle, so it can carry the card's own border. */}
       <span
         aria-hidden="true"
-        className={`absolute left-1/2 h-[9px] w-[9px] -translate-x-1/2 rotate-45 border-mv-line ${
+        style={{ left: tail }}
+        className={`absolute h-[9px] w-[9px] -translate-x-1/2 rotate-45 border-mv-line ${
           below
             ? "top-0 -translate-y-[5px] border-l border-t bg-[#f4faf6]"
             : "top-full -translate-y-[5px] border-b border-r bg-white"
