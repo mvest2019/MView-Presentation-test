@@ -12,6 +12,7 @@ import {
 import { AreaSelectionBar } from "./area-selection";
 import { loadArcgisModules } from "./arcgis-loader";
 import { ClusterTooltip } from "./cluster-tooltip";
+import { SampleBanner } from "./sample-banner";
 import {
   WellInsightsPanel,
   type SelectedWell,
@@ -353,6 +354,31 @@ function clusterZoomTier(zoom: number): number {
  * a sub-cluster click drew more bubbles instead of wells.
  */
 const CLUSTER_ZOOM_SCALE = 900_000;
+
+/*
+ * How much of the screen the sample box covers when Draw an area is picked.
+ *
+ * The tool used to arm silently and wait for a gesture nobody knew to make, so
+ * it now draws one for you: a box over the middle of the view, already counted
+ * and already exportable. Close it and draw your own; drag anywhere and it is
+ * replaced by yours.
+ */
+const SAMPLE_AREA_SHARE = 0.36;
+
+/*
+ * The sample is drawn, not placed.
+ *
+ * A box that simply appears says "here is a box"; a box that grows out of one
+ * corner says "this is the gesture" — which is the whole reason it is there.
+ * Fifty-five frames at 40ms is a little over two seconds: slower than the drag
+ * it stands in for, because it is being watched rather than made, and at half
+ * that it was over before the eye had found it.
+ */
+const SAMPLE_FRAMES = 55;
+const SAMPLE_INTERVAL_MS = 40;
+
+/** One corner of the sample tract per beat, as if being clicked out. */
+const SAMPLE_CORNER_MS = 480;
 const WELL_ZOOM_SCALE = 200_000;
 
 type ScreenPoint = { x: number; y: number };
@@ -446,6 +472,124 @@ function ignoreInterrupted(error: unknown): void {
   if ((error as { name?: string } | null)?.name !== "view:goto-interrupted") {
     console.error("Map navigation failed.", error);
   }
+}
+
+/** The visible extent in degrees, or null before the view has one. */
+function viewBox(view: EsriView | null) {
+  if (!view?.extent) return null;
+
+  const { xmin, ymin, xmax, ymax } = view.extent;
+  const west = mercatorToLongitude(xmin);
+  const east = mercatorToLongitude(xmax);
+  const south = mercatorToLatitude(ymin);
+  const north = mercatorToLatitude(ymax);
+
+  return {
+    west,
+    east,
+    south,
+    north,
+    midLon: (west + east) / 2,
+    midLat: (south + north) / 2,
+    spanLon: east - west,
+    spanLat: north - south,
+  };
+}
+
+/** A line across the middle of the view — the sample Measure distance draws. */
+function sampleLine(view: EsriView | null): [LonLat, LonLat] | null {
+  const box = viewBox(view);
+  if (!box) return null;
+
+  return [
+    {
+      longitude: box.midLon - box.spanLon * 0.18,
+      latitude: box.midLat - box.spanLat * 0.1,
+    },
+    {
+      longitude: box.midLon + box.spanLon * 0.18,
+      latitude: box.midLat + box.spanLat * 0.1,
+    },
+  ];
+}
+
+/*
+ * Where the sample watch circle goes.
+ *
+ * The busiest bubble on screen rather than the middle of the view: a two-mile
+ * circle dropped on the centre of a statewide map landed in empty country and
+ * reported nought wells and a nearest bore 33 miles away, which demonstrates
+ * the tool finding nothing. Falls back to the middle when there are no bubbles
+ * — the wells themselves are already the close view.
+ */
+function samplePoint(
+  view: EsriView | null,
+  clusters: WellCluster[],
+): LonLat | null {
+  const box = viewBox(view);
+  if (!box) return null;
+
+  const inView = clusters.filter(
+    ({ at: [lon, lat] }) =>
+      lon >= box.west && lon <= box.east && lat >= box.south && lat <= box.north,
+  );
+
+  const busiest = inView.reduce<WellCluster | null>(
+    (best, cluster) => (!best || cluster.count > best.count ? cluster : best),
+    null,
+  );
+
+  return busiest
+    ? { longitude: busiest.at[0], latitude: busiest.at[1] }
+    : { longitude: box.midLon, latitude: box.midLat };
+}
+
+/*
+ * Five corners around the middle of the view — the sample tract.
+ *
+ * Not a rectangle: Measure area exists for the shapes a box cannot describe,
+ * and a square sample would say the opposite.
+ */
+function sampleTract(view: EsriView | null): LonLat[] | null {
+  const box = viewBox(view);
+  if (!box) return null;
+
+  const wide = box.spanLon * 0.16;
+  const tall = box.spanLat * 0.16;
+
+  return [
+    { longitude: box.midLon - wide, latitude: box.midLat + tall * 0.5 },
+    { longitude: box.midLon - wide * 0.3, latitude: box.midLat + tall },
+    { longitude: box.midLon + wide, latitude: box.midLat + tall * 0.35 },
+    { longitude: box.midLon + wide * 0.65, latitude: box.midLat - tall },
+    { longitude: box.midLon - wide * 0.75, latitude: box.midLat - tall * 0.8 },
+  ];
+}
+
+/**
+ * A box over the middle of whatever is on screen — the sample Draw an area
+ * opens with. Null before the view has an extent to measure.
+ */
+function sampleArea(view: EsriView | null): Area | null {
+  if (!view?.extent) return null;
+
+  const { xmin, ymin, xmax, ymax } = view.extent;
+  const west = mercatorToLongitude(xmin);
+  const east = mercatorToLongitude(xmax);
+  const south = mercatorToLatitude(ymin);
+  const north = mercatorToLatitude(ymax);
+
+  const halfLon = ((east - west) * SAMPLE_AREA_SHARE) / 2;
+  const halfLat = ((north - south) * SAMPLE_AREA_SHARE) / 2;
+  const midLon = (west + east) / 2;
+  const midLat = (south + north) / 2;
+
+  return {
+    west: midLon - halfLon,
+    east: midLon + halfLon,
+    south: midLat - halfLat,
+    north: midLat + halfLat,
+  };
 }
 
 /** The rectangle two opposite corners describe, whichever way round they are. */
@@ -610,6 +754,17 @@ export function MapExplorerView() {
   const countyRequestRef = useRef(0);
 
   const activeToolRef = useRef<ActiveTool>(null);
+  /*
+   * Which tool's drawing on screen is the sample it drew for you, if any.
+   *
+   * One field rather than a flag per tool: only one tool draws at a time, so
+   * two of them could never be samples at once.
+   */
+  const [sampleOf, setSampleOf] = useState<ActiveTool>(null);
+  /** The sample box's own animation, so anything can call it off. */
+  const sampleTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(
+    undefined,
+  );
   const areaRef = useRef<Area | null>(null);
   const measurementRef = useRef<Measurement | null>(null);
   const nearbyRef = useRef<Nearby | null>(null);
@@ -997,6 +1152,7 @@ export function MapExplorerView() {
          * one clears the other.
          */
         clearInterval(pulseTimerRef.current);
+      clearInterval(sampleTimerRef.current);
         highlightLayerRef.current?.removeAll();
       })
       .catch((error: unknown) => {
@@ -1962,6 +2118,10 @@ export function MapExplorerView() {
             if (!event.mapPoint || !view) return;
             event.stopPropagation();
 
+            clearInterval(sampleTimerRef.current);
+            sampleTimerRef.current = undefined;
+            setSampleOf(null);
+
             const at = {
               longitude: event.mapPoint.longitude,
               latitude: event.mapPoint.latitude,
@@ -1989,6 +2149,10 @@ export function MapExplorerView() {
           if (activeToolRef.current === "measure-area") {
             if (!event.mapPoint || !view) return;
             event.stopPropagation();
+
+            clearInterval(sampleTimerRef.current);
+            sampleTimerRef.current = undefined;
+            setSampleOf(null);
 
             const points = tractRef.current;
             const next: LonLat = {
@@ -2029,6 +2193,10 @@ export function MapExplorerView() {
           if (!event.mapPoint || !ctors) return;
 
           event.stopPropagation();
+
+          clearInterval(sampleTimerRef.current);
+          sampleTimerRef.current = undefined;
+          setSampleOf(null);
 
           const at = {
             longitude: event.mapPoint.longitude,
@@ -2084,7 +2252,13 @@ export function MapExplorerView() {
           if (!from || !to) return;
 
           if (tool === "draw-area") {
+            // A real drag takes over from the sample mid-play.
+            clearInterval(sampleTimerRef.current);
+            sampleTimerRef.current = undefined;
+
             const next = boxBetween(from, to);
+            // From here it is the reader's box, not the demonstration.
+            setSampleOf(null);
             // A drag supersedes a click-started box.
             areaStartRef.current = null;
             areaRef.current = next;
@@ -2093,6 +2267,11 @@ export function MapExplorerView() {
           } else if (tool === "measure-distance") {
             const ctors = ctorsRef.current;
             if (!ctors) return;
+
+            // A real drag takes over from the sample mid-play.
+            clearInterval(sampleTimerRef.current);
+            sampleTimerRef.current = undefined;
+            setSampleOf(null);
 
             const ends = [from, to].map(
               ({ longitude, latitude }) =>
@@ -2204,6 +2383,198 @@ export function MapExplorerView() {
   }, [activeTool, drawArea]);
 
   /*
+   * Plays the sample box out from its top-left corner.
+   *
+   * The graphic is redrawn frame by frame; the card only appears at the end,
+   * because a readout counting up while the box grows draws the eye away from
+   * the box. Eased out, so it settles rather than stops.
+   */
+  const playSampleArea = useCallback(
+    (target: Area) => {
+      clearInterval(sampleTimerRef.current);
+      let frame = 0;
+
+      const step = () => {
+        frame += 1;
+        const through = Math.min(1, frame / SAMPLE_FRAMES);
+        const eased = 1 - (1 - through) ** 3;
+
+        drawArea({
+          west: target.west,
+          north: target.north,
+          east: target.west + (target.east - target.west) * eased,
+          south: target.north - (target.north - target.south) * eased,
+        });
+
+        if (through < 1) return;
+
+        clearInterval(sampleTimerRef.current);
+        sampleTimerRef.current = undefined;
+        areaRef.current = target;
+        setArea(target);
+        setSampleOf("draw-area");
+        anchorBars();
+      };
+
+      step();
+      sampleTimerRef.current = setInterval(step, SAMPLE_INTERVAL_MS);
+    },
+    [anchorBars, drawArea],
+  );
+
+  /*
+   * Plays the sample line out from one end, the way a drag would.
+   *
+   * The distance is recomputed every frame, so the readout that lands at the
+   * end is the real geodesic length of the line that was drawn.
+   */
+  const playSampleLine = useCallback(
+    (from: LonLat, to: LonLat) => {
+      const ctors = ctorsRef.current;
+      if (!ctors) return;
+
+      clearInterval(sampleTimerRef.current);
+      let frame = 0;
+
+      const step = () => {
+        frame += 1;
+        const through = Math.min(1, frame / SAMPLE_FRAMES);
+        const eased = 1 - (1 - through) ** 3;
+
+        const end = {
+          longitude: from.longitude + (to.longitude - from.longitude) * eased,
+          latitude: from.latitude + (to.latitude - from.latitude) * eased,
+        };
+        const ends = [from, end].map(
+          ({ longitude, latitude }) =>
+            new ctors.Point({
+              longitude,
+              latitude,
+              spatialReference: { wkid: 4326 },
+            }),
+        );
+        const next: Measurement = {
+          from,
+          to: end,
+          meters: ctors.geodesic.geodesicDistance(ends[0], ends[1], "meters")
+            .distance,
+        };
+
+        drawMeasurement(next);
+        if (through < 1) return;
+
+        clearInterval(sampleTimerRef.current);
+        sampleTimerRef.current = undefined;
+        measurementRef.current = next;
+        setMeasurement(next);
+        setSampleOf("measure-distance");
+        anchorBars();
+      };
+
+      step();
+      sampleTimerRef.current = setInterval(step, SAMPLE_INTERVAL_MS);
+    },
+    [anchorBars, drawMeasurement],
+  );
+
+  /** Opens the sample watch circle out from its centre. */
+  const playSampleWatch = useCallback(
+    (at: LonLat) => {
+      const ctors = ctorsRef.current;
+      if (!ctors) return;
+
+      /*
+       * Frame it first, as picking a point does.
+       *
+       * At the opening scale a two-mile circle is three pixels across — the
+       * sample was drawing correctly and there was simply nothing to see.
+       */
+      frameRadius(at);
+
+      clearInterval(sampleTimerRef.current);
+      let frame = 0;
+
+      const step = () => {
+        frame += 1;
+        const through = Math.min(1, frame / SAMPLE_FRAMES);
+        const eased = 1 - (1 - through) ** 3;
+        // Never quite zero: a circle of no radius has nothing to draw.
+        const radiusMiles = Math.max(
+          0.05,
+          DEFAULT_WATCH_RADIUS_MILES * eased,
+        );
+
+        const stats = nearbyStats(
+          clustersRef.current,
+          at,
+          radiusMiles,
+          ctors.geodesic,
+          ctors.Point,
+        );
+        drawNearby({ at, radiusMiles, stats });
+        if (through < 1) return;
+
+        clearInterval(sampleTimerRef.current);
+        sampleTimerRef.current = undefined;
+
+        const next: Nearby = {
+          at,
+          radiusMiles: DEFAULT_WATCH_RADIUS_MILES,
+          stats,
+        };
+        nearbyRef.current = next;
+        setNearby(next);
+        setSampleOf("whats-near-my-land");
+
+        const request = ++countyRequestRef.current;
+        setNearbyCounty(undefined);
+        void lookupCounty(at).then((name) => {
+          if (request === countyRequestRef.current) setNearbyCounty(name);
+        });
+      };
+
+      step();
+      sampleTimerRef.current = setInterval(step, SAMPLE_INTERVAL_MS);
+    },
+    [drawNearby, frameRadius],
+  );
+
+  /*
+   * Clicks the sample tract out corner by corner, which is the gesture it is
+   * standing in for — one beat each, then the ring closes and is measured.
+   */
+  const playSampleTract = useCallback(
+    (corners: LonLat[]) => {
+      clearInterval(sampleTimerRef.current);
+      let placed = 0;
+
+      const step = () => {
+        placed += 1;
+
+        if (placed <= corners.length) {
+          drawTract(corners.slice(0, placed), false);
+          return;
+        }
+
+        clearInterval(sampleTimerRef.current);
+        sampleTimerRef.current = undefined;
+        drawTract(corners, true);
+        setTractResult(
+          measureTract(clustersRef.current, wellsRef.current, corners),
+        );
+        setSampleOf("measure-area");
+        // Left empty on purpose: the next click starts a tract of its own
+        // rather than adding a sixth corner to the sample.
+        tractRef.current = [];
+      };
+
+      step();
+      sampleTimerRef.current = setInterval(step, SAMPLE_CORNER_MS);
+    },
+    [drawTract],
+  );
+
+  /*
    * Arms a tool, and clears whatever any tool drew before it.
    *
    * One drawing at a time. Clearing only the tool being armed left a drawn box
@@ -2215,6 +2586,11 @@ export function MapExplorerView() {
     (tool: ActiveTool) => {
       activeToolRef.current = tool;
       setActiveTool(tool);
+
+      // Whatever the last pick was playing, it is not what is wanted now.
+      clearInterval(sampleTimerRef.current);
+      sampleTimerRef.current = undefined;
+      setSampleOf(null);
 
       areaRef.current = null;
       areaStartRef.current = null;
@@ -2238,8 +2614,37 @@ export function MapExplorerView() {
       tractRef.current = [];
       setTractResult(null);
       drawTract([], false);
+
+      // Draw an area opens with a worked example rather than an empty map.
+      /*
+       * Every tool opens with a worked example rather than an empty map: each
+       * one waits for a gesture, and which gesture is not something the panel
+       * can say in a sentence anybody reads.
+       */
+      if (tool === "draw-area") {
+        const sample = sampleArea(viewRef.current);
+        if (sample) playSampleArea(sample);
+      } else if (tool === "measure-distance") {
+        const line = sampleLine(viewRef.current);
+        if (line) playSampleLine(line[0], line[1]);
+      } else if (tool === "whats-near-my-land") {
+        const at = samplePoint(viewRef.current, clustersRef.current);
+        if (at) playSampleWatch(at);
+      } else if (tool === "measure-area") {
+        const corners = sampleTract(viewRef.current);
+        if (corners) playSampleTract(corners);
+      }
     },
-    [drawArea, drawMeasurement, drawNearby, drawTract],
+    [
+      drawArea,
+      drawMeasurement,
+      drawNearby,
+      drawTract,
+      playSampleArea,
+      playSampleLine,
+      playSampleTract,
+      playSampleWatch,
+    ],
   );
 
   const changeWatchRadius = useCallback(
@@ -2379,6 +2784,7 @@ export function MapExplorerView() {
   const clearArea = useCallback(() => {
     areaRef.current = null;
     setArea(null);
+    setSampleOf(null);
     setAreaAnchor(null);
     drawArea(null);
   }, [drawArea]);
@@ -2399,6 +2805,42 @@ export function MapExplorerView() {
    * through the cluster-only export, which past the well zoom had nothing to
    * write and handed over a file with only a header line.
    */
+  /*
+   * Closing the sample takes the sample away, and nothing else.
+   *
+   * `clearArea` on its own leaves the tool armed, but there is no way to see
+   * that: the box and its card both go, and the map looks like it did before
+   * anything was picked. Re-arming here is explicit — the prompt comes back and
+   * says the tool is still waiting for a gesture, without replaying the sample
+   * that was just dismissed.
+   */
+  const dismissSample = useCallback(
+    (tool: ActiveTool) => {
+      clearInterval(sampleTimerRef.current);
+      sampleTimerRef.current = undefined;
+      setSampleOf(null);
+
+      if (tool === "draw-area") {
+        areaStartRef.current = null;
+        clearArea();
+      } else if (tool === "measure-distance") {
+        clearMeasurement();
+      } else if (tool === "whats-near-my-land") {
+        clearNearby();
+      } else if (tool === "measure-area") {
+        tractRef.current = [];
+        setTractResult(null);
+        drawTract([], false);
+      }
+
+      // Still armed, and the prompt says so — dismissing the demonstration is
+      // not putting the tool away.
+      activeToolRef.current = tool;
+      setActiveTool(tool);
+    },
+    [clearArea, clearMeasurement, clearNearby, drawTract],
+  );
+
   const exportArea = useCallback(() => {
     if (!areaRef.current) return;
     exportVisible(clustersRef.current, wellsRef.current, areaRef.current);
@@ -2584,8 +3026,22 @@ export function MapExplorerView() {
         />
       )}
 
+      {/* Whichever tool is demonstrating itself, said once, across the top. */}
+      {status === "ready" && sampleOf && (
+        <SampleBanner
+          tool={sampleOf}
+          onDismiss={() => dismissSample(sampleOf)}
+        />
+      )}
+
       {status === "ready" && area && areaAnchor && (
         <AreaSelectionBar
+          sample={sampleOf === "draw-area"}
+          onClear={
+            sampleOf === "draw-area"
+              ? () => dismissSample("draw-area")
+              : clearArea
+          }
           count={
             wells.length > 0
               ? wellsInBox(wells, area)
@@ -2593,15 +3049,19 @@ export function MapExplorerView() {
           }
           at={areaAnchor}
           onExport={exportArea}
-          onClear={clearArea}
         />
       )}
 
       {status === "ready" && measurement && measureAnchor && (
         <MeasureBar
           meters={measurement.meters}
+          sample={sampleOf === "measure-distance"}
           at={measureAnchor}
-          onClear={clearMeasurement}
+          onClear={
+            sampleOf === "measure-distance"
+              ? () => dismissSample("measure-distance")
+              : clearMeasurement
+          }
         />
       )}
 
@@ -2628,9 +3088,14 @@ export function MapExplorerView() {
           <MeasureAreaPanel
             className="absolute bottom-6 left-1/2"
             result={tractResult}
+            sample={sampleOf === "measure-area"}
             onClose={() => {
+              if (sampleOf === "measure-area") {
+                dismissSample("measure-area");
+                return;
+              }
               tractRef.current = [];
-                    setTractResult(null);
+              setTractResult(null);
               drawTract([], false);
               startTool(null);
             }}
@@ -2646,7 +3111,12 @@ export function MapExplorerView() {
           stats={nearby.stats}
           onRadiusChange={changeWatchRadius}
           onDownload={downloadNearby}
-          onClose={clearNearby}
+          sample={sampleOf === "whats-near-my-land"}
+          onClose={
+            sampleOf === "whats-near-my-land"
+              ? () => dismissSample("whats-near-my-land")
+              : clearNearby
+          }
         />
       )}
 
