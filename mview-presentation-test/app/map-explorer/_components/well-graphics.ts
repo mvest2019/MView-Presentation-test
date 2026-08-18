@@ -8,9 +8,13 @@
  *
  * A horizontal or directional well is drawn as its bore, not as one dot: the
  * service sends a `path` from the surface hole to the bottom hole, and on a
- * modern lateral those are a mile or more apart. The well's own symbol sits on
- * the surface hole and the profile's symbol on the bottom hole, exactly as the
- * legend has them. Every other well is a single mark.
+ * modern lateral those are a mile or more apart.
+ *
+ * Which end carries which symbol is the Railroad Commission's convention, not
+ * a choice: the hollow pentagon and diamond are *surface* location markers, and
+ * the well's own symbol — the oil dot, the gas star, the plugged mark — belongs
+ * at the bottom hole, where the well is producing from. Every other well is a
+ * single mark at its one location.
  */
 
 import { type MapWell } from "@/lib/map-api";
@@ -48,17 +52,17 @@ const BORE_SYMBOL = {
 };
 
 /*
- * The bottom of the bore.
+ * The surface hole of a deviated well.
  *
  * The legend has a symbol for each way a hole is drilled — a pentagon for
  * "Horizontal", a diamond for "Directional" — and the well says which it is in
- * `profile`, so the end of the line is marked with the legend's own image
- * rather than a shape of our invention. The plain ring only stands in until
- * the legend images have loaded.
+ * `profile`, so the surface end of the line is marked with the legend's own
+ * image rather than a shape of our invention. The plain ring only stands in
+ * until the legend images have loaded.
  */
-const BOTTOM_HOLE_SIZE = 9;
+const SURFACE_HOLE_SIZE = 9;
 
-const BOTTOM_HOLE_SYMBOL = {
+const SURFACE_HOLE_SYMBOL = {
   type: "simple-marker",
   style: "circle",
   size: 6,
@@ -87,9 +91,7 @@ function borePath(well: MapWell): [number, number][] | null {
   if (!path || path.length < 2) return null;
 
   const [firstLon, firstLat] = path[0];
-  const moves = path.some(
-    ([lon, lat]) => lon !== firstLon || lat !== firstLat,
-  );
+  const moves = path.some(([lon, lat]) => lon !== firstLon || lat !== firstLat);
 
   return moves ? path : null;
 }
@@ -104,10 +106,8 @@ export function buildWellGraphics(
 
   for (const well of wells) {
     const url = iconByDescription.get(well.icon);
-    const attributes = {
+    const identity = {
       api: well.api,
-      lon: well.lon,
-      lat: well.lat,
       lease: well.lease,
       well: well.well,
       operator: well.operator,
@@ -117,6 +117,20 @@ export function buildWellGraphics(
     };
 
     const path = borePath(well);
+    // The well's own symbol goes at the bottom hole when there is a bore, and
+    // at its only location when there is not.
+    const [markLon, markLat] = path
+      ? path[path.length - 1]
+      : [well.lon, well.lat];
+    const attributes = {
+      ...identity,
+      // Where the symbol was actually drawn: the ring on a clicked well and
+      // the hover card both come back to this, and on a two-mile lateral the
+      // surface hole is nowhere near the mark that was clicked.
+      lon: markLon,
+      lat: markLat,
+    };
+
     if (path) {
       // The bore carries the same attributes, so clicking the line opens the
       // well it belongs to rather than falling through to the map.
@@ -141,7 +155,7 @@ export function buildWellGraphics(
         }),
       );
 
-      const [bhLon, bhLat] = path[path.length - 1];
+      const [surfaceLon, surfaceLat] = path[0];
       const profileUrl = well.profile
         ? iconByDescription.get(well.profile)
         : undefined;
@@ -150,18 +164,18 @@ export function buildWellGraphics(
         new Graphic({
           geometry: {
             type: "point",
-            longitude: bhLon,
-            latitude: bhLat,
+            longitude: surfaceLon,
+            latitude: surfaceLat,
             spatialReference: { wkid: 4326 },
           },
           symbol: profileUrl
             ? {
                 type: "picture-marker",
                 url: profileUrl,
-                width: BOTTOM_HOLE_SIZE,
-                height: BOTTOM_HOLE_SIZE,
+                width: SURFACE_HOLE_SIZE,
+                height: SURFACE_HOLE_SIZE,
               }
-            : BOTTOM_HOLE_SYMBOL,
+            : SURFACE_HOLE_SYMBOL,
           attributes,
         }),
       );
@@ -169,7 +183,12 @@ export function buildWellGraphics(
 
     marks.push(
       new Graphic({
-        geometry: { type: "point", longitude: well.lon, latitude: well.lat },
+        geometry: {
+          type: "point",
+          longitude: markLon,
+          latitude: markLat,
+          spatialReference: { wkid: 4326 },
+        },
         symbol: url
           ? {
               type: "picture-marker",
