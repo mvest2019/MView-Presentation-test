@@ -137,11 +137,26 @@ async function post(
 
   let body: unknown = null;
   const text = await response.text();
-  if (text) {
+  if (text.trim()) {
     try {
       body = JSON.parse(text);
     } catch {
-      body = text;
+      /*
+       * NOT JSON — AND NOT AUTOMATICALLY A MESSAGE.
+       *
+       * The contract allows a bare string body on some 400s, so a short line of
+       * text is still kept and `messageFrom` still reads it. But a failure in
+       * front of the API answers with a whole HTML document: Cloudflare's "502
+       * Bad gateway" is several kilobytes of markup, and this branch used to
+       * pass that straight through as the error message. The register form
+       * printed the entire page — DOCTYPE, IE conditional comments, Cloudflare's
+       * stylesheet link and all — into the red text under the password field.
+       *
+       * Anything opening with a tag, or longer than a sentence, is dropped so
+       * the caller falls through to its own wording instead.
+       */
+      const trimmed = text.trim();
+      body = trimmed.startsWith("<") || trimmed.length > 300 ? null : trimmed;
     }
   }
   return { status: response.status, body };
@@ -157,6 +172,20 @@ async function post(
 function envelopeCode(status: number, body: unknown): number {
   const code = (body as { status_code?: unknown } | null)?.status_code;
   return typeof code === "number" ? code : status;
+}
+
+/**
+ * The service is DOWN, as distinct from refusing what was sent.
+ *
+ * Worth separating because every fallback below names the thing the visitor most
+ * likely did wrong, and on a 5xx all of them are false: a 502 from the gateway
+ * would otherwise be reported as "That email and password did not match" to
+ * someone whose password was perfect, or as "That code is invalid or expired" to
+ * someone holding a code that had minutes left. Both send people off to fix
+ * something that was never broken.
+ */
+function upstreamDown(status: number, body: unknown): boolean {
+  return envelopeCode(status, body) >= 500;
 }
 
 /* ─────────────────────────────────────────────────────────── registration ── */
@@ -220,6 +249,16 @@ export async function registerUser(input: RegisterInput): Promise<AuthResult> {
           l_name: last,
           email_id: input.email,
         },
+      };
+    }
+
+    if (upstreamDown(status, body)) {
+      console.error(
+        `[auth] POST /User/userRegistration upstream failure: ${status}`,
+      );
+      return {
+        ok: false,
+        message: "Sign-up is temporarily unavailable. Please try again shortly.",
       };
     }
 
@@ -344,6 +383,14 @@ export async function loginUser(
       return { ok: true, user: data };
     }
 
+    if (upstreamDown(status, body)) {
+      console.error(`[auth] POST /User/login_user upstream failure: ${status}`);
+      return {
+        ok: false,
+        message: "Sign-in is temporarily unavailable. Please try again shortly.",
+      };
+    }
+
     return {
       ok: false,
       message: signInMessage(
@@ -396,6 +443,16 @@ export async function loginWithGoogle(
         ok: true,
         user: data,
         alreadyExisted: Boolean(data.alreadyExist),
+      };
+    }
+
+    if (upstreamDown(status, body)) {
+      console.error(
+        `[auth] POST /User/login_user (Google) upstream failure: ${status}`,
+      );
+      return {
+        ok: false,
+        message: "Sign-in is temporarily unavailable. Please try again shortly.",
       };
     }
 
@@ -512,6 +569,16 @@ export async function sendVerificationCode(
       (body as { success?: boolean } | null)?.success ??
       envelopeCode(status, body) < 400;
 
+    if (upstreamDown(status, body)) {
+      console.error(
+        `[auth] POST /email-verification/send-code upstream failure: ${status}`,
+      );
+      return {
+        ok: false,
+        message: "We could not send the code just now. Please try again shortly.",
+      };
+    }
+
     return {
       ok: Boolean(ok),
       message: messageFrom(body, ok ? "" : "We could not send the code."),
@@ -555,6 +622,16 @@ export async function verifyCode(
     const record = (body ?? {}) as { success?: boolean; verified?: boolean };
     const ok =
       record.success ?? record.verified ?? envelopeCode(status, body) < 400;
+
+    if (upstreamDown(status, body)) {
+      console.error(
+        `[auth] POST /email-verification/verify-code upstream failure: ${status}`,
+      );
+      return {
+        ok: false,
+        message: "We could not check that code just now. Please try again shortly.",
+      };
+    }
 
     return {
       ok: Boolean(ok),

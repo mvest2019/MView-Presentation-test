@@ -126,15 +126,13 @@ export function RegisterForm() {
       )}
 
       {/* Lower case on purpose — `OrDivider` sets `uppercase`. */}
-      <OrDivider label="or continue with email" />
+      <OrDivider label="or with email" />
 
       {/* No "* Required fields" legend (Ryan, 2026-08-17). The red asterisk on
           each label already reads as required without being explained, and the
           line sat between the divider and the first field where it was the first
           thing the eye landed on. `Req` still marks the labels themselves. */}
       <form onSubmit={handleSubmit(onValid)} noValidate>
-        <FormError message={failure} />
-
         <Field
           label={
             <>
@@ -190,6 +188,17 @@ export function RegisterForm() {
             />
           )}
         </Field>
+
+        {/* UNDER THE PASSWORD FIELD, matching sign-in. Every failure this can
+            carry — "that email address already has an account", a rejected
+            password, an upstream fault — is about the credentials above it, and
+            at the top of the form it sat under the "or with email" divider where
+            it read as a complaint about the Google button instead.
+
+            It is NOT the last field on this form, so it does not sit directly
+            above the submit button as sign-in's does; the fields that follow are
+            optional, and this stays with the three required ones it concerns. */}
+        <FormError message={failure} className="-mt-[8px] mb-3" />
 
         <Field
           label={
