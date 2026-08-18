@@ -37,7 +37,6 @@ export type GeodesicUtils = {
   pointFromDistance(from: unknown, meters: number, azimuth: number): LonLat;
 };
 
-const AREA_CSV_FILENAME = "mineral-view-area.csv";
 const WATCH_CSV_FILENAME = "mineral-view-nearby.csv";
 
 /** A drawn rectangle, in degrees. */
@@ -304,27 +303,23 @@ export function wellsInArea(clusters: WellCluster[], area: Area): number {
   );
 }
 
-export function downloadAreaCsv(clusters: WellCluster[], area: Area): void {
-  const rows = [
-    ["longitude", "latitude", "wells"],
-    ...clustersInArea(clusters, area).map(({ at, count }) => [
-      at[0],
-      at[1],
-      count,
-    ]),
-  ];
-
-  const url = URL.createObjectURL(
-    new Blob([rows.map((row) => row.join(",")).join("\r\n")], {
-      type: "text/csv;charset=utf-8",
-    }),
-  );
-
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = AREA_CSV_FILENAME;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+/**
+ * Individual wells inside the drawn box.
+ *
+ * Separate from `wellsInArea`, which counts whole bubbles: past the well zoom
+ * there are no bubbles left on the map, so counting them reported nought
+ * wells over an area visibly full of them.
+ */
+export function wellsInBox(
+  wells: { lon: number; lat: number }[],
+  area: Area,
+): number {
+  return wells.filter(
+    ({ lon, lat }) =>
+      lon >= area.west &&
+      lon <= area.east &&
+      lat >= area.south &&
+      lat <= area.north,
+  ).length;
 }
+
