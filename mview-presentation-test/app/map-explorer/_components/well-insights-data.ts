@@ -9,6 +9,9 @@
  * Replace this file wholesale when a well-detail endpoint exists.
  */
 
+/** When the summary was last read, as the header prints it. */
+export const SUMMARY_UPDATED = "May 12, 2025 10:30 AM";
+
 export const WELL_HEADER = {
   wellNumber: "1",
   api: "42-255-38043",

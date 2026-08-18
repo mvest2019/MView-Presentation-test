@@ -1,9 +1,8 @@
 "use client";
 
 import {
+  ArrowDown,
   Building2,
-  Database,
-  Droplet,
   FileText,
   Flame,
   Info,
@@ -12,10 +11,10 @@ import {
   Ruler,
   ScrollText,
   TrendingUp,
-  Wind,
 } from "lucide-react";
 
 import { ProductionChart } from "./production-chart";
+import { WellSummaryHeader } from "./well-summary-header";
 
 import {
   COHORT_EUR,
@@ -57,11 +56,13 @@ export type SelectedWell = {
 export function WellInsightsPanel({ well }: { well: SelectedWell }) {
   return (
     <div className="mv-thin-scroll h-full overflow-y-auto bg-mv-bg p-3 lg:p-4">
+      <WellSummaryHeader well={well} />
+
       {/* ---------------- identity strip ----------------
           A pale mint band rather than a white card: enough to read as the
           header the rest of the page hangs off, without going dark on a light
           layout. */}
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-xl border border-[#cfe8da] bg-gradient-to-r from-[#eaf7ef] via-[#f2fbf5] to-[#e6f5ec] px-4 py-[14px]">
+      <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-4 rounded-xl border border-[#cfe8da] bg-gradient-to-r from-[#eaf7ef] via-[#f2fbf5] to-[#e6f5ec] px-4 py-[14px]">
         <span className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-full border border-[#bfe0cd] bg-white">
           <Flame size={19} strokeWidth={1.75} className="text-mv-green-deep" aria-hidden="true" />
         </span>
@@ -95,39 +96,23 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
           keeps its white fill and the 1px seams read as dividers, including
           where the grid wraps. */}
       <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-mv-line bg-mv-line md:grid-cols-3 xl:grid-cols-6">
-        {WELL_METRICS.map((metric, index) => {
-          const look = METRIC_LOOK[index % METRIC_LOOK.length];
-          const Icon = look.icon;
-
-          return (
-            <div
-              key={metric.label}
-              className="flex items-center gap-[10px] bg-white px-[14px] py-[12px]"
-            >
-              {/* The icon on its own, no tinted disc behind it: six discs in a
-                  row read as six buttons. */}
-              <Icon
-                size={22}
-                strokeWidth={1.75}
-                aria-hidden="true"
-                className="shrink-0"
-                style={{ color: look.colour }}
-              />
-
-              <span className="min-w-0">
-                <span className="block truncate text-[11px] leading-tight text-mv-slate">
-                  {metric.label}
-                </span>
-                <span className="mt-[5px] block text-[20px] font-bold leading-none tabular-nums text-mv-ink">
-                  {metric.value}
-                </span>
-                <span className="mt-[5px] block text-[10px] font-semibold uppercase tracking-[.08em] text-mv-muted">
-                  {metric.unit}
-                </span>
+        {WELL_METRICS.map((metric) => (
+          <div key={metric.label} className="bg-white px-[14px] py-[12px]">
+            <span className="block truncate text-[11px] leading-tight text-mv-slate">
+              {metric.label}
+            </span>
+            {/* Unit beside the figure, not under it: "10,826 BBL" is one
+                reading, and on its own line the unit read as a third fact. */}
+            <span className="mt-[6px] flex items-baseline gap-[5px]">
+              <span className="text-[20px] font-bold leading-none tabular-nums text-mv-ink">
+                {metric.value}
               </span>
-            </div>
-          );
-        })}
+              <span className="text-[10px] font-semibold uppercase tracking-[.08em] text-mv-muted">
+                {metric.unit}
+              </span>
+            </span>
+          </div>
+        ))}
       </div>
 
       {/* ---------------- well · lease · operator ---------------- */}
@@ -154,11 +139,15 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
         </Card>
 
         <Card icon={MapPin} title="Location">
-          {/* The mark and the coordinates side by side: a county outline with
-              the well on it says "where" faster than four numbers do. */}
-          <div className="mt-3 flex items-start gap-4">
-            <CountyMark />
-            <Rows rows={WELL_LOCATION} className="mt-0 min-w-0 flex-1" />
+          {/* The tile and the coordinates side by side: a pinned map says
+              "where" faster than four numbers do. */}
+          <div className="mt-3 flex items-stretch gap-4">
+            <LocationMark />
+            <Rows
+              rows={WELL_LOCATION}
+              airy
+              className="mt-0 min-w-0 flex-1 self-center"
+            />
           </div>
         </Card>
 
@@ -191,17 +180,23 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
           them is the whole point of that card. */}
       <div className="mt-3 grid gap-3 xl:grid-cols-2">
         <Card
-          step={5}
           title="Decline Diagnostics"
           aside="What the rate curve anchors reveal"
+          className="flex flex-col"
         >
-          <dl className="mt-2">
+          {/* Two columns of seven, not one of fourteen: on one column this card
+              ran to twice the height of the one beside it, and the pair read as
+              a long list with a chart stranded at the top right.
+
+              `auto-rows-fr` lets the rows share whatever height the taller card
+              sets, so the two finish level. */}
+          <dl className="mt-2 grid flex-1 auto-rows-fr gap-x-6 sm:grid-cols-2">
             {DECLINE_ROWS.map((row) => (
               <div
                 key={row.label}
-                className="flex items-baseline justify-between gap-3 border-b border-mv-line py-[6px] text-[12px] last:border-0"
+                className="flex items-center justify-between gap-3 border-b border-mv-line py-[6px] text-[12px]"
               >
-                <dt className="text-mv-slate">{row.label}</dt>
+                <dt className="min-w-0 truncate text-mv-slate">{row.label}</dt>
                 <dd className="flex items-baseline gap-[5px] whitespace-nowrap">
                   <span
                     className={`font-bold tabular-nums ${
@@ -223,8 +218,14 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
           </dl>
         </Card>
 
-        <Card step={4} title="Reserve Integrity" aside="Stated Depletion vs Well Age">
-          <div className="mt-4 flex h-[168px] items-end gap-3">
+        <Card
+          title="Reserve Integrity"
+          aside="Stated Depletion vs Well Age"
+          className="flex flex-col"
+        >
+          {/* The chart takes the slack and the note sits on the floor of the
+              card, rather than both bunching at the top with a gap below. */}
+          <div className="mt-4 flex min-h-[168px] flex-1 items-end gap-3">
             {RESERVE_INTEGRITY.bars.map((bar, index) => (
               <div key={bar.label} className="flex flex-1 flex-col items-center">
                 <span className="mb-[6px] text-[11px] font-bold tabular-nums text-mv-ink">
@@ -247,55 +248,70 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
             ))}
           </div>
 
-          <Note tone="red">{RESERVE_INTEGRITY.note}</Note>
+          <Note tone="red" icon={ArrowDown}>
+            {RESERVE_INTEGRITY.note}
+          </Note>
         </Card>
 
-        <Card step={0} title="Cohort EUR — the tell" className="xl:col-span-2">
-          <div className="mt-[6px] text-[10.5px] text-mv-muted">
-            median booked EUR by age
+        {/*
+          The chart and its reading side by side, not stacked: the two notes
+          are what the bars are for, and under them they read as footnotes to a
+          chart that has already been passed over.
+        */}
+        <div className="grid gap-4 rounded-xl border border-mv-line bg-white p-4 xl:col-span-2 xl:grid-cols-2 xl:gap-6">
+          <div className="min-w-0">
+            <h3 className="text-[13px] font-bold leading-none text-mv-ink">
+              Cohort EUR — the tell
+            </h3>
+            <div className="mt-[6px] text-[10.5px] text-mv-muted">
+              median booked EUR by age
+            </div>
+
+            {/*
+              One colour, not five. These are the same measure at five ages, so
+              colouring them differently would suggest five kinds of thing —
+              the point is the shape of the sequence, which the bar lengths
+              already carry.
+            */}
+            <div className="mt-3">
+              {COHORT_EUR.bars.map((bar) => (
+                <div key={bar.label} className="flex items-center gap-3 py-[7px]">
+                  <span className="w-[58px] shrink-0 text-[11px] text-mv-slate">
+                    {bar.label}
+                  </span>
+                  <span className="h-[8px] min-w-0 flex-1 overflow-hidden rounded-full bg-[#eef0f2]">
+                    <span
+                      className="block h-full rounded-full bg-mv-green-deep"
+                      style={{ width: `${(bar.value / 400_000) * 100}%` }}
+                    />
+                  </span>
+                  <span className="w-[56px] shrink-0 text-right text-[11.5px] font-bold tabular-nums text-mv-ink">
+                    {bar.display}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
 
-          {/*
-            One colour, not five. These are the same measure at five ages, so
-            colouring them differently would suggest five kinds of thing — the
-            point is the shape of the sequence, which the bar lengths already
-            carry.
-          */}
-          <div className="mt-3">
-            {COHORT_EUR.bars.map((bar) => (
-              <div
-                key={bar.label}
-                className="flex items-center gap-3 py-[7px]"
+          <div className="flex min-w-0 flex-col justify-center gap-3">
+            {COHORT_EUR.notes.map((note, index) => (
+              <Note
+                key={note}
+                tone={index === 0 ? "red" : "blue"}
+                icon={index === 0 ? ArrowDown : Info}
+                flush
               >
-                <span className="w-[58px] shrink-0 text-[11px] text-mv-slate">
-                  {bar.label}
-                </span>
-                <span className="h-[7px] min-w-0 flex-1 overflow-hidden rounded-full bg-[#eef0f2]">
-                  <span
-                    className="block h-full rounded-full bg-mv-green-deep"
-                    style={{ width: `${(bar.value / 400_000) * 100}%` }}
-                  />
-                </span>
-                <span className="w-[52px] shrink-0 text-right text-[11px] font-bold tabular-nums text-mv-ink">
-                  {bar.display}
-                </span>
-              </div>
+                {note}
+              </Note>
             ))}
           </div>
-
-          {COHORT_EUR.notes.map((note, index) => (
-            <Note key={note} tone={index === 0 ? "red" : "blue"}>
-              {note}
-            </Note>
-          ))}
-        </Card>
+        </div>
       </div>
 
       {/* ---------------- the written read ---------------- */}
       <div className="mt-3 rounded-xl border border-mv-line bg-white p-4">
         <div className="flex flex-wrap items-center gap-2">
           <Heading
-            step={1}
             title="Insight Summary"
             aside="What the completion record says once it is read against the rest of the collection"
           />
@@ -353,21 +369,15 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
 
 /* ------------------------------------------------------------------ pieces */
 
-const BAR_COLOURS = ["#e2231a", "#f0a500", "#2fa360", "#2f8f6d", "#2e7d5f"];
-
 /*
- * The six tiles, in order. Oil is green and gas is warm throughout; the two
- * gas tiles differ because one is reported and one is a forecast, and the
- * reserves take the same green as the oil they belong to.
+ * The five ages, lightest to darkest.
+ *
+ * The same ramp the map's clusters use, so a green on this page means the same
+ * thing wherever it appears. A red and an amber column here read as an alert on
+ * the two youngest cohorts; the point is the shape of the sequence, and the
+ * note under the chart is where the alarm belongs.
  */
-const METRIC_LOOK = [
-  { icon: Droplet, colour: "#12a13f" },
-  { icon: Flame, colour: "#e08a1e" },
-  { icon: Droplet, colour: "#12a13f" },
-  { icon: Flame, colour: "#e2231a" },
-  { icon: Database, colour: "#12a13f" },
-  { icon: Wind, colour: "#12a13f" },
-] as const;
+const BAR_COLOURS = ["#c9e6d5", "#aedcc0", "#8fd0a8", "#6cc48d", "#4cbe74"];
 
 const TONES = {
   green: { card: "border-[#bfe3cc] bg-[#f2faf5]", dot: "bg-mv-green-deep" },
@@ -401,13 +411,11 @@ function HeaderFact({
 }
 
 function Heading({
-  step,
   icon: Icon,
   title,
   aside,
   badge,
 }: {
-  step?: number;
   icon?: typeof Info;
   title: string;
   aside?: string;
@@ -415,11 +423,7 @@ function Heading({
 }) {
   return (
     <div className="flex items-center gap-2">
-      {step ? (
-        <span className="grid h-[18px] w-[18px] shrink-0 place-items-center rounded bg-mv-green-deep text-[10px] font-bold text-white">
-          {step}
-        </span>
-      ) : Icon ? (
+      {Icon ? (
         <Icon size={14} className="shrink-0 text-mv-green-deep" aria-hidden="true" />
       ) : null}
 
@@ -441,7 +445,6 @@ function Heading({
 }
 
 function Card({
-  step,
   icon,
   title,
   aside,
@@ -449,7 +452,6 @@ function Card({
   className = "",
   children,
 }: {
-  step?: number;
   icon?: typeof Info;
   title: string;
   aside?: string;
@@ -459,7 +461,7 @@ function Card({
 }) {
   return (
     <div className={`rounded-xl border border-mv-line bg-white p-4 ${className}`}>
-      <Heading step={step} icon={icon} title={title} aside={aside} badge={badge} />
+      <Heading icon={icon} title={title} aside={aside} badge={badge} />
       {children}
     </div>
   );
@@ -469,10 +471,13 @@ function Card({
 function Rows({
   rows,
   columns = 1,
+  airy = false,
   className = "",
 }: {
   rows: { label: string; value: string }[];
   columns?: 1 | 2;
+  /** More air between rows, for the short lists that sit beside a graphic. */
+  airy?: boolean;
   className?: string;
 }) {
   return (
@@ -484,7 +489,9 @@ function Rows({
       {rows.map((row) => (
         <div
           key={row.label}
-          className="flex items-baseline justify-between gap-3 py-[5px] text-[12px]"
+          className={`flex items-baseline justify-between gap-3 text-[12px] ${
+            airy ? "py-[9px]" : "py-[5px]"
+          }`}
         >
           <dt className="shrink-0 text-mv-muted">{row.label}</dt>
           <dd className="truncate text-right font-semibold text-mv-ink">
@@ -498,43 +505,91 @@ function Rows({
 
 function Note({
   tone,
+  icon: Icon,
+  flush,
   children,
 }: {
   tone: "red" | "blue";
+  /** A marked disc rather than a plain dot, where the note carries the point. */
+  icon?: typeof Info;
+  /** Drop the top margin, for notes a parent already spaces. */
+  flush?: boolean;
   children: React.ReactNode;
 }) {
+  const look = tone === "red" ? TONES.red : TONES.blue;
+
   return (
     <div
-      className={`mt-3 flex items-start gap-2 rounded-lg border p-[10px] ${
-        tone === "red" ? TONES.red.card : TONES.blue.card
-      }`}
+      className={`flex items-start gap-[10px] rounded-lg border p-[12px] ${
+        flush ? "" : "mt-3"
+      } ${look.card}`}
     >
-      <span
-        aria-hidden="true"
-        className={`mt-[3px] h-[8px] w-[8px] shrink-0 rounded-full ${
-          tone === "red" ? TONES.red.dot : TONES.blue.dot
-        }`}
-      />
+      {Icon ? (
+        <span
+          aria-hidden="true"
+          className={`grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full ${look.dot}`}
+        >
+          <Icon size={11} strokeWidth={3} className="text-white" />
+        </span>
+      ) : (
+        <span
+          aria-hidden="true"
+          className={`mt-[3px] h-[8px] w-[8px] shrink-0 rounded-full ${look.dot}`}
+        />
+      )}
       <p className="text-[11px] leading-[1.55] text-mv-slate">{children}</p>
     </div>
   );
 }
 
-/** A county outline with the well marked on it — the shape, not a map. */
-function CountyMark() {
+/**
+ * A map tile with the well pinned on it.
+ *
+ * Not a real map — the coordinates are static and one tile request per card is
+ * not worth the trouble. Faint streets on a pale ground are enough to read as
+ * "somewhere", and the pin is what the eye is meant to land on.
+ */
+function LocationMark() {
   return (
-    <div className="grid h-[74px] w-[74px] shrink-0 place-items-center rounded-xl bg-[#f4f7f5]">
-      <svg viewBox="0 0 44 44" className="h-[42px] w-[42px]" aria-hidden="true">
+    <div className="relative min-h-[126px] w-[104px] shrink-0 self-stretch overflow-hidden rounded-xl border border-mv-line bg-[#eef3f0]">
+      <svg
+        viewBox="0 0 104 130"
+        preserveAspectRatio="xMidYMid slice"
+        className="absolute inset-0 h-full w-full"
+        aria-hidden="true"
+      >
+        {/* Blocks first, then the roads over them, as a street map draws. */}
+        <g fill="#e7eee9">
+          <rect x="6" y="8" width="26" height="20" rx="3" />
+          <rect x="52" y="16" width="30" height="16" rx="3" />
+          <rect x="14" y="52" width="22" height="26" rx="3" />
+          <rect x="62" y="58" width="28" height="22" rx="3" />
+          <rect x="10" y="98" width="34" height="18" rx="3" />
+        </g>
+
+        <g fill="none" stroke="#dfe8e2" strokeLinecap="round">
+          <path d="M-8 40 L112 28" strokeWidth="7" />
+          <path d="M-8 92 L112 84" strokeWidth="7" />
+          <path d="M40 -8 L32 138" strokeWidth="7" />
+          <path d="M84 -8 L94 138" strokeWidth="6" />
+          <path d="M-8 66 L112 60" strokeWidth="3" />
+          <path d="M14 -8 L8 138" strokeWidth="3" />
+        </g>
+
+        {/* A watercourse, for something that is not a straight line. */}
         <path
-          d="M7 9 L20 7 L33 10 L36 20 L31 31 L20 36 L10 32 L6 20 Z"
-          fill="#e4efe8"
-          stroke="#8fbfa6"
-          strokeWidth="1.4"
-          strokeLinejoin="round"
+          d="M-8 122 C 24 108, 46 132, 70 114 S 96 100, 112 106"
+          fill="none"
+          stroke="#dce9ef"
+          strokeWidth="6"
+          strokeLinecap="round"
         />
-        <circle cx="21" cy="20" r="4.4" fill={OIL} opacity="0.22" />
-        <circle cx="21" cy="20" r="2.2" fill={OIL} />
       </svg>
+
+      {/* The pin, centred: a green disc with the marker cut out of it. */}
+      <span className="absolute left-1/2 top-1/2 grid h-[38px] w-[38px] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-[3px] border-white bg-mv-green-deep shadow-mv">
+        <MapPin size={18} strokeWidth={2} className="text-white" aria-hidden="true" />
+      </span>
     </div>
   );
 }
