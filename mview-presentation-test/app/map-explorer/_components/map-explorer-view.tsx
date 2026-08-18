@@ -340,7 +340,20 @@ function clusterZoomTier(zoom: number): number {
   return CLUSTER_ZOOM_STEPS.filter((step) => zoom >= step).length;
 }
 
+/*
+ * Where a click on a bubble lands.
+ *
+ * One step down the ladder each time: a cluster opens into its sub-clusters,
+ * and a sub-cluster opens into the wells themselves. The first scale sits
+ * inside the second cluster band, the second past the well zoom.
+ *
+ * The ladder is a halving per zoom level off the opening 1:7,262,011 at zoom
+ * 5 — so 900,000 is zoom 8 and 225,000 is zoom 10. 450,000 was the first
+ * attempt at "past the well zoom" and lands on zoom 9, one short, which is why
+ * a sub-cluster click drew more bubbles instead of wells.
+ */
 const CLUSTER_ZOOM_SCALE = 900_000;
+const WELL_ZOOM_SCALE = 200_000;
 
 type ScreenPoint = { x: number; y: number };
 
@@ -1919,18 +1932,27 @@ export function MapExplorerView() {
             return;
           }
 
-          // With no tool armed, a click on a bubble opens that area — but only
-          // on the first cluster level, which is where the hover card offers
-          // it. Past that the bubbles are already the closer view.
+          /*
+           * With no tool armed, a click on a bubble opens it one step further:
+           * a cluster into its sub-clusters, a sub-cluster into the wells. Past
+           * the well zoom the individual holes are already there, and the click
+           * belongs to whichever one was hit.
+           */
           if (!activeToolRef.current) {
-            if (!view || view.zoom >= CLUSTER_ZOOM_STEPS[1]) return;
+            if (!view || view.zoom >= WELL_ZOOM) return;
 
             const index = clusterAt(event.x, event.y);
             if (index !== -1) {
               event.stopPropagation();
               const cluster = clustersRef.current[index];
               view
-                .goTo({ center: cluster.at, scale: CLUSTER_ZOOM_SCALE })
+                .goTo({
+                  center: cluster.at,
+                  scale:
+                    view.zoom >= CLUSTER_ZOOM_STEPS[1]
+                      ? WELL_ZOOM_SCALE
+                      : CLUSTER_ZOOM_SCALE,
+                })
                 .catch(ignoreInterrupted);
             }
             return;
@@ -2444,7 +2466,7 @@ export function MapExplorerView() {
       className={`mv-map relative h-full w-full bg-[#efe7d8] ${
         activeTool
           ? "cursor-crosshair"
-          : hoveredCluster && readout.zoom < CLUSTER_ZOOM_STEPS[1]
+          : hoveredCluster && readout.zoom < WELL_ZOOM
             ? "cursor-pointer"
             : ""
       }`}
