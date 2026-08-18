@@ -57,12 +57,16 @@ import {
  * Export full list is the only control still inert.
  */
 
-/** Adds the picked search result to whichever facet it filters on. */
+/**
+ * Adds the picked search result to whichever facet it filters on.
+ *
+ * An API number is not a facet — it goes out as `q` — so it is left alone here.
+ */
 function withPick(
   filters: Record<string, string[]>,
   pick: SearchPick | null,
 ): Record<string, string[]> {
-  if (!pick) return filters;
+  if (!pick || pick.facet === "q") return filters;
 
   const existing = filters[pick.facet] ?? [];
   return {
@@ -293,6 +297,8 @@ export function WellsTable({
         pageSize: PER_PAGE,
         sort: sort ? (SORT_PARAM[sort.key] ?? sort.key) : undefined,
         dir: sort ? (sort.ascending ? "asc" : "desc") : undefined,
+        // An API number is a free-text match, not one of the facets.
+        q: appliedPicked?.facet === "q" ? appliedPicked.param : undefined,
         /*
          * Built, not spread. The picked search result was written first and
          * then overwritten by the dropdown's own key for that facet — pick a
@@ -367,9 +373,16 @@ export function WellsTable({
     ),
   ];
 
+  /*
+   * Ticking a box is a draft, so the page it is on does not move.
+   *
+   * Resetting to page 1 here sent a request for page 1 of the *old* filters —
+   * the rows changed under a selection that had not been applied yet, and the
+   * page the reader was on was lost before they pressed Apply. Apply is where
+   * the page goes back to 1, because that is where the result set changes.
+   */
   function updateFacet(key: FacetKey, next: Set<string>) {
     setFacets((current) => ({ ...current, [key]: next }));
-    setPage(1);
   }
 
   /*
@@ -538,8 +551,15 @@ export function WellsTable({
           <button
             type="button"
             onClick={exportPage}
-            disabled={rows.length === 0}
-            title={`Export this page — ${rows.length} record${rows.length === 1 ? "" : "s"}`}
+            /* Locked while a page is in flight: the rows on screen are the
+               previous page's, and exporting them under a pager that already
+               says 7 hands over the wrong ten records. */
+            disabled={loading || rows.length === 0}
+            title={
+              loading
+                ? "Loading this page…"
+                : `Export this page — ${rows.length} record${rows.length === 1 ? "" : "s"}`
+            }
             className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-mv-line px-[14px] py-[8px] text-[12.5px] font-semibold text-mv-slate enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-50 lg:w-auto"
           >
             <Download size={14} aria-hidden="true" />
@@ -878,13 +898,13 @@ export function WellsTable({
           <PagerButton
             label="First page"
             icon={ChevronsLeft}
-            disabled={safePage === 1}
+            disabled={loading || safePage === 1}
             onClick={() => setPage(1)}
           />
           <PagerButton
             label="Previous page"
             icon={ChevronLeft}
-            disabled={safePage === 1}
+            disabled={loading || safePage === 1}
             onClick={() => setPage(Math.max(1, safePage - 1))}
           />
 
@@ -907,7 +927,7 @@ export function WellsTable({
                    lg the window narrows to the current page and its nearest
                    neighbours — the ends and the ellipses stay, since they are
                    what makes the gap readable as a gap. */
-                className={`h-[28px] min-w-[28px] cursor-pointer rounded-lg border px-2 text-[12.5px] font-semibold ${
+                className={`h-[28px] min-w-[28px] rounded-lg border px-2 text-[12.5px] font-semibold enabled:cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
                   entry === 1 ||
                   entry === totalPages ||
                   Math.abs(entry - safePage) <= 2
@@ -916,7 +936,7 @@ export function WellsTable({
                 } ${
                   entry === safePage
                     ? "border-mv-green-deep bg-mv-green-deep text-white"
-                    : "border-mv-line text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep"
+                    : "border-mv-line text-mv-slate enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep"
                 }`}
               >
                 {entry}
@@ -927,13 +947,13 @@ export function WellsTable({
           <PagerButton
             label="Next page"
             icon={ChevronRight}
-            disabled={safePage === totalPages}
+            disabled={loading || safePage === totalPages}
             onClick={() => setPage(Math.min(totalPages, safePage + 1))}
           />
           <PagerButton
             label="Last page"
             icon={ChevronsRight}
-            disabled={safePage === totalPages}
+            disabled={loading || safePage === totalPages}
             onClick={() => setPage(totalPages)}
           />
         </div>
@@ -1248,7 +1268,7 @@ function PagerButton({
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
-      className="grid h-[28px] w-[28px] place-items-center rounded-lg border border-mv-line text-mv-slate enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:opacity-40"
+      className="grid h-[28px] w-[28px] place-items-center rounded-lg border border-mv-line text-mv-slate enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-40"
     >
       <Icon size={14} aria-hidden="true" />
     </button>

@@ -42,11 +42,11 @@ import {
 } from "./cluster-graphics";
 import {
   lookupCounty,
-  downloadAreaCsv,
   downloadNearbyCsv,
   measureTract,
   nearbyStats,
   wellsInArea,
+  wellsInBox,
   METRES_PER_MILE,
   type Area,
   type GeodesicUtils,
@@ -57,6 +57,7 @@ import {
 
 import { exportVisible } from "./map-export";
 import { TimeLapseBar } from "./time-lapse-bar";
+import { ToolPrompt } from "./tool-prompt";
 import { buildWellGraphics } from "./well-graphics";
 import { WellTooltip, type HoveredWell } from "./well-tooltip";
 
@@ -434,6 +435,16 @@ function ignoreInterrupted(error: unknown): void {
   }
 }
 
+/** The rectangle two opposite corners describe, whichever way round they are. */
+function boxBetween(a: LonLat, b: LonLat): Area {
+  return {
+    west: Math.min(a.longitude, b.longitude),
+    east: Math.max(a.longitude, b.longitude),
+    south: Math.min(a.latitude, b.latitude),
+    north: Math.max(a.latitude, b.latitude),
+  };
+}
+
 type Status = "loading" | "ready" | "error";
 
 export function MapExplorerView() {
@@ -456,6 +467,14 @@ export function MapExplorerView() {
   const wellsRef = useRef<MapWell[]>([]);
   const clustersRef = useRef<WellCluster[]>([]);
   const [clusters, setClusters] = useState<WellCluster[]>([]);
+  /*
+   * The individual wells on the map, mirrored into state.
+   *
+   * The ref is what the Esri handlers read; this is what React renders from —
+   * the drawn-area bar has to count what is actually on screen, and past the
+   * well zoom that is these and not the bubbles.
+   */
+  const [wells, setWells] = useState<MapWell[]>([]);
   const [clustersLoading, setClustersLoading] = useState(true);
   const [clusterError, setClusterError] = useState<string | null>(null);
   const [wellsLoading, setWellsLoading] = useState(false);
@@ -587,6 +606,15 @@ export function MapExplorerView() {
   const measurementRef = useRef<Measurement | null>(null);
   const nearbyRef = useRef<Nearby | null>(null);
   const areaLayerRef = useRef<EsriGraphicsLayer | null>(null);
+  /*
+   * The first corner of a box being drawn by clicks, if there is one.
+   *
+   * Draw an area was drag-only, which is the one gesture the other tools do
+   * not use — Measure area is corner-by-corner and the watch tool is a single
+   * click — so a click on the map did nothing at all and the tool looked
+   * broken. Both gestures work now: drag a box, or click two corners.
+   */
+  const areaStartRef = useRef<LonLat | null>(null);
   const measureLayerRef = useRef<EsriGraphicsLayer | null>(null);
   const nearbyLayerRef = useRef<EsriGraphicsLayer | null>(null);
   const ctorsRef = useRef<{
@@ -987,6 +1015,7 @@ export function MapExplorerView() {
         if (request !== wellRequestRef.current) return;
 
         wellsRef.current = list;
+        setWells(list);
         setWellError(null);
         layer.removeAll();
         layer.addMany(
@@ -1007,6 +1036,7 @@ export function MapExplorerView() {
   const clearWells = useCallback(() => {
     wellRequestRef.current += 1;
     wellsRef.current = [];
+    setWells([]);
     setWellsLoading(false);
     setWellError(null);
     wellLayerRef.current?.removeAll();
@@ -1189,6 +1219,7 @@ export function MapExplorerView() {
           if (request !== wellRequestRef.current) return;
 
           wellsRef.current = wells;
+          setWells(wells);
           setWellError(null);
           setFilterSummary({ matched, shown: wells.length });
 
@@ -1724,6 +1755,19 @@ export function MapExplorerView() {
         };
 
         pointerHandle = view.on("pointer-move", (event) => {
+          // Mid-box, the pointer is the opposite corner until it is clicked.
+          if (activeToolRef.current === "draw-area" && areaStartRef.current) {
+            const at = view?.toMap(event);
+            if (at) {
+              drawArea(
+                boxBetween(areaStartRef.current, {
+                  longitude: at.longitude,
+                  latitude: at.latitude,
+                }),
+              );
+            }
+          }
+
           // Mid-tract, the pointer is the next corner until it is clicked.
           if (activeToolRef.current === "measure-area") {
             const points = tractRef.current;
@@ -1876,6 +1920,34 @@ export function MapExplorerView() {
             return;
           }
 
+          if (activeToolRef.current === "draw-area") {
+            if (!event.mapPoint || !view) return;
+            event.stopPropagation();
+
+            const at = {
+              longitude: event.mapPoint.longitude,
+              latitude: event.mapPoint.latitude,
+            };
+            const start = areaStartRef.current;
+
+            // First click sets a corner; the box follows the pointer until the
+            // second click fixes the opposite one.
+            if (!start) {
+              areaStartRef.current = at;
+              return;
+            }
+
+            const next = boxBetween(start, at);
+            areaStartRef.current = null;
+            areaRef.current = next;
+            setArea(next);
+            drawArea(next);
+            anchorBars();
+            activeToolRef.current = null;
+            setActiveTool(null);
+            return;
+          }
+
           if (activeToolRef.current === "measure-area") {
             if (!event.mapPoint || !view) return;
             event.stopPropagation();
@@ -1895,7 +1967,13 @@ export function MapExplorerView() {
                 const dy = event.y - first.y;
                 if (dx * dx + dy * dy <= 144) {
                   drawTract(points, true);
-                  setTractResult(measureTract(clustersRef.current, points));
+                  setTractResult(
+                    measureTract(
+                      clustersRef.current,
+                      wellsRef.current,
+                      points,
+                    ),
+                  );
                   activeToolRef.current = null;
                   setActiveTool(null);
                   return;
@@ -1968,12 +2046,9 @@ export function MapExplorerView() {
           if (!from || !to) return;
 
           if (tool === "draw-area") {
-            const next: Area = {
-              west: Math.min(from.longitude, to.longitude),
-              east: Math.max(from.longitude, to.longitude),
-              south: Math.min(from.latitude, to.latitude),
-              north: Math.max(from.latitude, to.latitude),
-            };
+            const next = boxBetween(from, to);
+            // A drag supersedes a click-started box.
+            areaStartRef.current = null;
             areaRef.current = next;
             setArea(next);
             drawArea(next);
@@ -2080,13 +2155,15 @@ export function MapExplorerView() {
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
+      areaStartRef.current = null;
+      drawArea(null);
       activeToolRef.current = null;
       setActiveTool(null);
     }
 
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [activeTool]);
+  }, [activeTool, drawArea]);
 
   /** Arms a tool, clearing whatever that same tool drew last time. */
   const startTool = useCallback(
@@ -2096,6 +2173,7 @@ export function MapExplorerView() {
 
       if (tool === "draw-area") {
         areaRef.current = null;
+        areaStartRef.current = null;
         setArea(null);
         setAreaAnchor(null);
         drawArea(null);
@@ -2265,8 +2343,18 @@ export function MapExplorerView() {
     drawMeasurement(null);
   }, [drawMeasurement]);
 
+  /*
+   * The drawn box, as a file.
+   *
+   * Through the same export the toolbar uses, so it writes one row per well —
+   * API number, lease, operator, status — whenever wells are what is on the
+   * map, and falls back to bubble rows only when they are. It used to go
+   * through the cluster-only export, which past the well zoom had nothing to
+   * write and handed over a file with only a header line.
+   */
   const exportArea = useCallback(() => {
-    if (areaRef.current) downloadAreaCsv(clustersRef.current, areaRef.current);
+    if (!areaRef.current) return;
+    exportVisible(clustersRef.current, wellsRef.current, areaRef.current);
   }, []);
 
   const zoomBy = useCallback((factor: number) => {
@@ -2459,7 +2547,11 @@ export function MapExplorerView() {
 
       {status === "ready" && area && areaAnchor && (
         <AreaSelectionBar
-          count={wellsInArea(clusters, area)}
+          count={
+            wells.length > 0
+              ? wellsInBox(wells, area)
+              : wellsInArea(clusters, area)
+          }
           at={areaAnchor}
           onExport={exportArea}
           onClear={clearArea}
@@ -2471,6 +2563,20 @@ export function MapExplorerView() {
           meters={measurement.meters}
           at={measureAnchor}
           onClear={clearMeasurement}
+        />
+      )}
+
+      {status === "ready" && activeTool === "draw-area" && (
+        <ToolPrompt
+          title="Click two opposite corners on the map, or drag a box across it."
+          hint="Esc to cancel"
+        />
+      )}
+
+      {status === "ready" && activeTool === "measure-distance" && (
+        <ToolPrompt
+          title="Drag from one point to another to measure the distance."
+          hint="Esc to cancel"
         />
       )}
 
