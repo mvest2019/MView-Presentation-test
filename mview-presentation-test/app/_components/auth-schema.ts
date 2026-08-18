@@ -55,10 +55,36 @@ export const registerSchema = z.object({
       /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/,
       "Include at least one symbol, like ! or ?.",
     ),
-  phone: optionalText.refine(
-    (v) => v === "" || /^[-+().\s\d]{7,}$/.test(v),
-    "That phone number looks off — digits only, please.",
-  ),
+  /*
+   * TWO CHECKS, because one regex could not do both jobs honestly.
+   *
+   * The first is about CHARACTERS: the placeholder is "(555) 555-0123", so
+   * brackets, spaces, dashes and a leading + have to pass.
+   *
+   * The second is about HOW MANY DIGITS, counted after those characters are
+   * stripped — which is the check that was missing. The rule here was
+   * `/^[-+().\s\d]{7,}$/`: a floor and NO CEILING, applied to the whole string
+   * rather than to the number. It accepted "878979098897886764555555555" — 27
+   * digits — and posted it to the API as a phone number.
+   *
+   * 10 to 15. Ten is a complete US number with its area code, and this site is
+   * US-facing throughout. Fifteen is the most digits any telephone number can
+   * have anywhere on earth (E.164 §6.2), so beyond that it is not a number in
+   * any country's plan and there is nothing to be gained by accepting it.
+   */
+  phone: optionalText
+    .refine(
+      (v) => v === "" || /^[-+().\s\d]+$/.test(v),
+      "A phone number can only contain digits, spaces and ( ) + - characters.",
+    )
+    .refine(
+      (v) => {
+        if (v === "") return true;
+        const digits = v.replace(/\D/g, "").length;
+        return digits >= 10 && digits <= 15;
+      },
+      "Enter a complete phone number — between 10 and 15 digits.",
+    ),
   mailingAddress: optionalText,
   inviteCode: optionalText,
   terms: z.literal(true, { message: "Please accept the terms to continue." }),

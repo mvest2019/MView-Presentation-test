@@ -14,8 +14,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
  * `.auth-shell`, `.auth-card`, `.field`, `.hint`, `.v33-gbtn`, `.v33-ordiv`,
  * `.pw-wrap`, `.pw-eye`, `.auth-check`, `.v33-req`, `.v33-code` and `.divider`
  * in `styles/v33css.css`. The measurements below are that stylesheet's, one for
- * one — 520px card, 44/80 shell padding, 14px field gap, 17px checkbox, 42x48
- * code boxes — so the pages match the mockups rather than resembling them.
+ * one — 520px card, 14px field gap, 42x48 code boxes — so the pages match the
+ * mockups rather than resembling them.
+ *
+ * TWO DELIBERATE DEPARTURES from that stylesheet, both from review of the built
+ * pages rather than the mockups: the shell's top padding (44px there) and the
+ * checkbox (17px there). Each is noted where it is set.
  *
  * The one thing NOT taken from the prototype is its behaviour: every control
  * there is `onclick="…demo…"`. The wiring is this build's, against the live
@@ -25,7 +29,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 /** `.auth-shell` + `.wrap` + `.card.card-pad.auth-card`. */
 export function AuthShell({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-[calc(100vh-64px)] pb-20 pt-11">
+    // 24px of top padding, not the stylesheet's 44px: at 44 the card floated
+    // clear of the header with a band of empty page above it that read as a
+    // rendering fault rather than as breathing room. The 80px bottom stays —
+    // it is what keeps the card off the fold on short viewports.
+    <div className="min-h-[calc(100vh-64px)] pb-20 pt-6">
       <div className="mx-auto max-w-[1200px] px-7 max-[767px]:px-4">
         <div className="mx-auto max-w-[520px] rounded-mv border border-mv-line bg-mv-card p-[22px] shadow-mv">
           {children}
@@ -233,7 +241,17 @@ const labelClass = "m-0 text-[13.5px] font-semibold text-mv-ink";
 export function inputClass(invalid: boolean): string {
   return [
     "w-full rounded-[10px] border bg-white px-[13px] py-[11px] text-[15px] text-mv-ink",
-    "outline-none placeholder:text-mv-placeholder max-[767px]:text-[16px]",
+    /*
+     * `mv-muted` (#6b7280), NOT the `mv-placeholder` token (#9aa3ae) the rest of
+     * the site uses in inputs. At #9aa3ae the example text sat at about 2.6:1 on
+     * white — under the 4.5:1 floor, and faint enough beside a near-black label
+     * that the field read as disabled rather than empty. #6b7280 clears the
+     * floor at ~4.9:1 and still reads as a prompt rather than as a typed value.
+     * Scoped to the auth inputs on purpose: the token is shared with the
+     * operator directory and the presentations filters, which were not in
+     * question here.
+     */
+    "outline-none placeholder:text-mv-muted max-[767px]:text-[16px]",
     invalid
       ? "border-[#b3261e] focus:border-[#b3261e]"
       : "border-mv-line focus:border-mv-green-deep",
@@ -279,7 +297,11 @@ export function CheckRow({
       <input
         type="checkbox"
         {...rest}
-        className="mt-px h-[17px] w-[17px] flex-none cursor-pointer accent-mv-green-deep"
+        /* 20px, not the stylesheet's 17px: beside 13px label text a 17px box
+           read as undersized next to every other control on the card. `mt-0`
+           follows from the height — at 17px the box needed a pixel of nudge to
+           sit on the text's first line, at 20px it already does. */
+        className="mt-0 h-5 w-5 flex-none cursor-pointer accent-mv-green-deep"
       />
       <span>{children}</span>
     </label>
@@ -305,11 +327,28 @@ export function SubmitButton({
   );
 }
 
-/** `role="alert"` so a failure is read out when it appears. */
-export function FormError({ message }: { message: string | null }) {
+/**
+ * `role="alert"` so a failure is read out when it appears.
+ *
+ * `className` is for PLACEMENT, not decoration. Sign-in renders this under the
+ * password field, where the preceding `Field`'s own 14px bottom margin would
+ * otherwise leave it floating clear of the input it is about; it passes a
+ * negative top margin to close that gap. Register keeps it above the fields and
+ * passes nothing, so the default spacing is unchanged there.
+ */
+export function FormError({
+  message,
+  className = "mb-2",
+}: {
+  message: string | null;
+  className?: string;
+}) {
   if (!message) return null;
   return (
-    <p role="alert" className="mb-2 text-[13px] font-semibold text-[#b3261e]">
+    <p
+      role="alert"
+      className={`text-[13px] font-semibold text-[#b3261e] ${className}`}
+    >
       {message}
     </p>
   );

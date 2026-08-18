@@ -40,16 +40,26 @@ const nextConfig: NextConfig = {
     // Google and travels in every OAuth request, which is why the live repo also
     // ships it in plain config as NEXT_PUBLIC_GOOGLE_CLIENT_ID.
     //
-    // THIS VALUE IS PAIRED WITH `BASE_URL` ABOVE AND MUST MOVE WITH IT. The
-    // backend validates the ID token's `aud` claim against its OWN client id, so
-    // a token minted for the wrong one is rejected with
+    // THIS VALUE MUST MATCH THE AUTH API'S OWN `GOOGLE_CLIENT_ID`. The backend
+    // validates the ID token's `aud` claim against its own configured id, so a
+    // token minted for any other client comes back
     //   "google token is not valid Error: Wrong recipient, payload audience !=
     //    requiredAudience"
-    // which is exactly what shipping the production client against the testing
-    // host produced. The live repo's two env blocks pair them:
-    //   testing-paymentapi.mineralview.com → 838706864455-… (this one)
-    //   mview-info.mineralview.com         → 911653129924-…
-    // Change BASE_URL to production and this has to change with it.
+    // Confirmed 2026-08-18: mview-dev-api.mineralview.com is configured with
+    // 299057428673-… (this one), which lives in Google Cloud project
+    // composed-night-403209. The live repo's older pairing — 838706864455-… for
+    // testing-paymentapi.mineralview.com, 911653129924-… for
+    // mview-info.mineralview.com — does NOT describe this API, and those clients
+    // sit in a project we have no access to. Changing BASE_URL no longer implies
+    // changing this; matching AUTH_API_URL's backend is what matters.
+    //
+    // EVERY ORIGIN THAT SERVES THIS APP MUST BE LISTED under the client's
+    // "Authorized JavaScript origins", or the button fails before a token even
+    // exists with "Error 400: origin_mismatch". Google accepts no wildcards, so a
+    // Vercel per-deployment URL (…-i3ameuhal-…) cannot be registered — it changes
+    // every push. Register and test on the stable domain only:
+    //   http://localhost:3000
+    //   https://m-view-presentation-test.vercel.app
     //
     // There is NO client secret here, and there must never be: sign-in uses
     // Google Identity Services in the browser, which returns a signed ID token

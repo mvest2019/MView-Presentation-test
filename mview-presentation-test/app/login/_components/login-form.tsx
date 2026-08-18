@@ -17,6 +17,7 @@ import {
   FormError,
   OrDivider,
   PasswordInput,
+  Req,
   SubmitButton,
 } from "@/app/_components/auth-shell";
 import { GoogleSignIn } from "@/app/_components/google-sign-in";
@@ -76,13 +77,21 @@ export function LoginForm({ next }: { next: string }) {
       )}
 
       {/* Lower case here on purpose — `OrDivider` sets `uppercase`, so this
-          renders as "OR CONTINUE WITH EMAIL". */}
-      <OrDivider label="or continue with email" />
+          renders as "OR WITH EMAIL". */}
+      <OrDivider label="or with email" />
 
       <form onSubmit={handleSubmit(onValid)} noValidate>
-        <FormError message={failure} />
-
-        <Field label="Email" error={errors.email?.message}>
+        {/* Both fields carry the asterisk, as sign-up's do. Sign-in had none,
+            which left the form looking as though something on it were optional
+            when nothing is. */}
+        <Field
+          label={
+            <>
+              Email <Req />
+            </>
+          }
+          error={errors.email?.message}
+        >
           {(props) => (
             <input
               {...props}
@@ -95,12 +104,20 @@ export function LoginForm({ next }: { next: string }) {
         </Field>
 
         <Field
-          label="Password"
+          label={
+            <>
+              Password <Req />
+            </>
+          }
           error={errors.password?.message}
           aside={
             <Link
               href="/reset-password"
-              className="text-[12px] font-semibold text-mv-green-deep no-underline hover:underline"
+              /* 13.5px, matching `labelClass` — this link shares a row with the
+                 "Password" label, and at 12px it read as a footnote about the
+                 label rather than as the control it is. Same size, same weight:
+                 the colour is what separates them now. */
+              className="text-[13.5px] font-semibold text-mv-green-deep no-underline hover:underline"
             >
               Forgot password?
             </Link>
@@ -115,6 +132,15 @@ export function LoginForm({ next }: { next: string }) {
             />
           )}
         </Field>
+
+        {/* UNDER THE PASSWORD FIELD, not at the top of the form.
+            "That email and password did not match." is a statement about the two
+            inputs directly above it. At the top it sat immediately beneath the
+            "or continue with email" divider, touching neither field and close
+            enough to the Google button to read as a complaint about that
+            instead. `-mt-[8px]` pulls it back against the password input, past
+            that `Field`'s own 14px bottom margin. */}
+        <FormError message={failure} className="-mt-[8px] mb-3" />
 
         {/* Unchecked by default, as the design specifies: shared and family
             devices. Checked, the session cookie lasts 30 days; unchecked it
