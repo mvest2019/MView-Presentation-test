@@ -804,9 +804,33 @@ export function WellsTable({
 
           <tbody className={loading && rows.length > 0 ? "opacity-50" : ""}>
             {rows.map((row) => (
+              /*
+               * The whole row opens the well, not just the pin at the end of
+               * it. Keyboard too: a `tr` takes no focus of its own, so it is
+               * given a row role, a tab stop and Enter/Space.
+               *
+               * Held back while a page is in flight — the rows on screen are
+               * the previous page's, and a click would open a well the reader
+               * is no longer looking at.
+               */
               <tr
                 key={row.api}
-                className="border-b border-mv-line hover:bg-[#fafbfa]"
+                role="row"
+                tabIndex={loading ? -1 : 0}
+                aria-label={`Show ${row.api} on the map`}
+                onClick={() => {
+                  if (!loading) onShowOnMap(row);
+                }}
+                onKeyDown={(event) => {
+                  if (loading) return;
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onShowOnMap(row);
+                  }
+                }}
+                className={`border-b border-mv-line hover:bg-[#f4f9f6] focus-visible:bg-[#f4f9f6] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-mv-green-deep ${
+                  loading ? "cursor-wait" : "cursor-pointer"
+                }`}
               >
                 <td className="py-[14px] pl-6 pr-4">
                   <span className="text-[13px] font-semibold text-mv-green-deep underline underline-offset-2">
@@ -843,8 +867,16 @@ export function WellsTable({
                 <td className="py-[14px] pl-4 pr-6">
                   <button
                     type="button"
-                    onClick={() => onShowOnMap(row)}
-                    aria-label={`Show ${row.api} on the map`}
+                    onClick={(event) => {
+                      // The row already carries this; without stopping here it
+                      // would run twice on one click.
+                      event.stopPropagation();
+                      if (!loading) onShowOnMap(row);
+                    }}
+                    // The row is the control now; the pin is its marker, so it
+                    // is not a second tab stop announcing the same action.
+                    tabIndex={-1}
+                    aria-hidden="true"
                     title="View on map"
                     className="mx-auto grid h-[26px] w-[26px] cursor-pointer place-items-center rounded-lg border border-mv-line text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep"
                   >
