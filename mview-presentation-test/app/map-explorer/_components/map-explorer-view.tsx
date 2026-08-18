@@ -2203,32 +2203,41 @@ export function MapExplorerView() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [activeTool, drawArea]);
 
-  /** Arms a tool, clearing whatever that same tool drew last time. */
+  /*
+   * Arms a tool, and clears whatever any tool drew before it.
+   *
+   * One drawing at a time. Clearing only the tool being armed left a drawn box
+   * sitting under a measured line, each with its own card floating over the
+   * map, and nothing said which belonged to which. Picking a tool is a fresh
+   * start.
+   */
   const startTool = useCallback(
     (tool: ActiveTool) => {
       activeToolRef.current = tool;
       setActiveTool(tool);
 
-      if (tool === "draw-area") {
-        areaRef.current = null;
-        areaStartRef.current = null;
-        setArea(null);
-        setAreaAnchor(null);
-        drawArea(null);
-      } else if (tool === "measure-distance") {
-        measurementRef.current = null;
-        setMeasurement(null);
-        setMeasureAnchor(null);
-        drawMeasurement(null);
-      } else if (tool === "whats-near-my-land") {
-        nearbyRef.current = null;
-        setNearby(null);
-        drawNearby(null);
-      } else if (tool === "measure-area") {
-        tractRef.current = [];
-        setTractResult(null);
-        drawTract([], false);
-      }
+      areaRef.current = null;
+      areaStartRef.current = null;
+      setArea(null);
+      setAreaAnchor(null);
+      drawArea(null);
+
+      measurementRef.current = null;
+      setMeasurement(null);
+      setMeasureAnchor(null);
+      drawMeasurement(null);
+
+      // The county lookup is in flight for the old pick; its answer is no
+      // longer wanted.
+      countyRequestRef.current += 1;
+      nearbyRef.current = null;
+      setNearby(null);
+      setNearbyCounty(undefined);
+      drawNearby(null);
+
+      tractRef.current = [];
+      setTractResult(null);
+      drawTract([], false);
     },
     [drawArea, drawMeasurement, drawNearby, drawTract],
   );
