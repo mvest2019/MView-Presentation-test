@@ -57,12 +57,16 @@ import {
  * Export full list is the only control still inert.
  */
 
-/** Adds the picked search result to whichever facet it filters on. */
+/**
+ * Adds the picked search result to whichever facet it filters on.
+ *
+ * An API number is not a facet — it goes out as `q` — so it is left alone here.
+ */
 function withPick(
   filters: Record<string, string[]>,
   pick: SearchPick | null,
 ): Record<string, string[]> {
-  if (!pick) return filters;
+  if (!pick || pick.facet === "q") return filters;
 
   const existing = filters[pick.facet] ?? [];
   return {
@@ -293,6 +297,8 @@ export function WellsTable({
         pageSize: PER_PAGE,
         sort: sort ? (SORT_PARAM[sort.key] ?? sort.key) : undefined,
         dir: sort ? (sort.ascending ? "asc" : "desc") : undefined,
+        // An API number is a free-text match, not one of the facets.
+        q: appliedPicked?.facet === "q" ? appliedPicked.param : undefined,
         /*
          * Built, not spread. The picked search result was written first and
          * then overwritten by the dropdown's own key for that facet — pick a
