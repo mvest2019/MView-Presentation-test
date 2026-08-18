@@ -46,6 +46,17 @@ const BORE_SYMBOL = {
   width: 1,
 };
 
+/*
+ * The bottom of the bore.
+ *
+ * The legend has a symbol for each way a hole is drilled — a circle for
+ * "Horizontal", a diamond for "Directional" — and the well says which it is in
+ * `profile`, so the end of the line is marked with the legend's own image
+ * rather than a shape of our invention. The plain ring is the fallback for a
+ * profile the legend does not cover.
+ */
+const BOTTOM_HOLE_SIZE = 9;
+
 const BOTTOM_HOLE_SYMBOL = {
   type: "simple-marker",
   style: "circle",
@@ -117,6 +128,10 @@ export function buildWellGraphics(
       );
 
       const [bhLon, bhLat] = path[path.length - 1];
+      const profileUrl = well.profile
+        ? iconByDescription.get(well.profile)
+        : undefined;
+
       bores.push(
         new Graphic({
           geometry: {
@@ -125,7 +140,14 @@ export function buildWellGraphics(
             latitude: bhLat,
             spatialReference: { wkid: 4326 },
           },
-          symbol: BOTTOM_HOLE_SYMBOL,
+          symbol: profileUrl
+            ? {
+                type: "picture-marker",
+                url: profileUrl,
+                width: BOTTOM_HOLE_SIZE,
+                height: BOTTOM_HOLE_SIZE,
+              }
+            : BOTTOM_HOLE_SYMBOL,
           attributes,
         }),
       );
