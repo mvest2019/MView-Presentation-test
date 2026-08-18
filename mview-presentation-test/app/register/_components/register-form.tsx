@@ -217,6 +217,13 @@ export function RegisterForm() {
               inputMode="tel"
               autoComplete="tel"
               placeholder="(555) 555-0123"
+              /* 14 = the placeholder's own length, "(555) 555-0123" — ten digits
+                 plus the brackets, space and dash someone may type around them.
+                 A hard stop in the control as well as in the schema, so a runaway
+                 string like the 27-digit one this replaced cannot be entered at
+                 all rather than being caught after the fact. The schema still has
+                 the last word: this caps characters, it cannot count digits. */
+              maxLength={14}
             />
           )}
         </Field>
