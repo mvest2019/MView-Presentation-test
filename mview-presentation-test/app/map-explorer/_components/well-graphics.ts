@@ -6,10 +6,11 @@
  * the map draws exactly what the legend promises rather than a second set of
  * marks that has to be kept in step with it.
  *
- * A deviated well is drawn as its bore, not as one dot: the service sends a
- * `path` from the surface hole to the bottom hole, and on a modern lateral
- * those are a mile or more apart. Where the two ends coincide — a vertical
- * well — there is nothing to draw but the mark.
+ * A horizontal or directional well is drawn as its bore, not as one dot: the
+ * service sends a `path` from the surface hole to the bottom hole, and on a
+ * modern lateral those are a mile or more apart. The well's own symbol sits on
+ * the surface hole and the profile's symbol on the bottom hole, exactly as the
+ * legend has them. Every other well is a single mark.
  */
 
 import { type MapWell } from "@/lib/map-api";
@@ -49,11 +50,11 @@ const BORE_SYMBOL = {
 /*
  * The bottom of the bore.
  *
- * The legend has a symbol for each way a hole is drilled — a circle for
+ * The legend has a symbol for each way a hole is drilled — a pentagon for
  * "Horizontal", a diamond for "Directional" — and the well says which it is in
  * `profile`, so the end of the line is marked with the legend's own image
- * rather than a shape of our invention. The plain ring is the fallback for a
- * profile the legend does not cover.
+ * rather than a shape of our invention. The plain ring only stands in until
+ * the legend images have loaded.
  */
 const BOTTOM_HOLE_SIZE = 9;
 
@@ -65,8 +66,21 @@ const BOTTOM_HOLE_SYMBOL = {
   outline: { color: [94, 100, 106, 0.66], width: 1 },
 };
 
-/** A path worth drawing: two or more points, and not all the same one. */
+/*
+ * The two profiles the legend draws a bore for.
+ *
+ * The line symbol is named "Horizontal/Directional Lines", so these are the
+ * only wells that get one — and they are exactly the wells the legend has a
+ * bottom-hole symbol for. A vertical well whose two ends differ by a couple of
+ * hundred metres of drift is still a vertical well: it gets its surface mark
+ * and nothing else.
+ */
+const BORE_PROFILES = new Set(["Horizontal", "Directional"]);
+
+/** A path worth drawing: a bore profile, and two points that are not the same. */
 function borePath(well: MapWell): [number, number][] | null {
+  if (!well.profile || !BORE_PROFILES.has(well.profile)) return null;
+
   const path = well.path?.filter(
     (point) => Array.isArray(point) && point.length >= 2,
   );
