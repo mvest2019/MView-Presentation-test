@@ -32,9 +32,13 @@ import { usePagedResource } from "./use-paged-resource";
  * that watches for the change after the fact.
  *
  * EVERY STATE IS DRAWN. Skeleton rows while the first page loads, an alert with a retry
- * when the request fails, a plain sentence when the lease has no wells on record, and a
- * dimmed table while a subsequent page is in flight. The card holds its height through
- * all of them so nothing below it jumps.
+ * when the request fails, a dimmed table while a subsequent page is in flight, and TWO
+ * different empties — because the API has two. A lease it holds no wells for answers
+ * `total_count: 0` with an empty array, which is "none on record". A page past the end
+ * answers with the real count and an empty array, which is not: claiming "no wells"
+ * there would contradict the pager sitting right below it, so that case says the page is
+ * empty and offers the way back. The card holds its height through all of them so
+ * nothing below it jumps.
  */
 
 const EM_DASH = "—";
@@ -110,9 +114,15 @@ export function LeaseWells({
           </h3>
           <p aria-live="polite" className="mt-1 text-[13px] text-mv-muted">
             Lease {lease.leaseNumber} · {titleCase(lease.county)} County ·{" "}
+            {/* A count is only claimed once one is actually known. On a failure the old
+                wording said "0 wells", which asserts a fact the request never returned. */}
             {firstLoad
               ? "loading wells…"
-              : `${wells.total.toLocaleString("en-US")} well${wells.total === 1 ? "" : "s"} belonging to this lease only`}
+              : wells.status === "error"
+                ? "well count unavailable"
+                : wells.total === 0
+                  ? "no wells on record"
+                  : `${wells.total.toLocaleString("en-US")} well${wells.total === 1 ? "" : "s"} belonging to this lease only`}
           </p>
         </div>
 
@@ -195,7 +205,27 @@ export function LeaseWells({
                   colSpan={COLUMNS}
                   className="whitespace-normal bg-white px-4 py-6 text-center text-sm text-mv-muted"
                 >
-                  No wells are recorded against this lease.
+                  {wells.total === 0 ? (
+                    /* The API's own answer for a lease it holds no wells for: HTTP 200,
+                       `total_count: 0`, an empty array. Not an error — there is simply
+                       nothing on record, and the pager stays hidden. */
+                    "No wells are recorded against this lease."
+                  ) : (
+                    /* Rows empty but the count says otherwise — the API does this for a
+                       page past the end, and the set can shrink between the count and
+                       the page. Saying "no wells" here would contradict the pager
+                       directly below, so offer the way back instead. */
+                    <>
+                      This page has no wells to show.{" "}
+                      <button
+                        type="button"
+                        onClick={() => setPage(1)}
+                        className="cursor-pointer font-semibold text-mv-green-deep underline hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+                      >
+                        Back to the first page
+                      </button>
+                    </>
+                  )}
                 </td>
               </tr>
             ) : (
