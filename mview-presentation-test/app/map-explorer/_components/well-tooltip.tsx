@@ -18,6 +18,8 @@ export type HoveredWell = {
   status: string;
   wtype: string;
   county: string;
+  /** Which filing the row came from — "Permit", "Completion". */
+  recordType?: string;
   /** Where the well is, so a click can ring the well and not the cursor. */
   lon: number;
   lat: number;
@@ -60,6 +62,7 @@ export function WellTooltip({ well }: { well: HoveredWell }) {
           <Row label="Status" value={well.status} />
           <Row label="Type" value={well.wtype} />
           <Row label="County" value={well.county} />
+          <Row label="Record" value={well.recordType ?? ""} />
         </dl>
       </div>
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import {
   ArrowDown,
   Building2,
@@ -13,8 +15,9 @@ import {
   TrendingUp,
 } from "lucide-react";
 
+import { PermitSummary } from "./permit-summary";
 import { ProductionChart } from "./production-chart";
-import { WellSummaryHeader } from "./well-summary-header";
+import { WellSummaryHeader, type WellRecord } from "./well-summary-header";
 
 import {
   COHORT_EUR,
@@ -54,315 +57,363 @@ export type SelectedWell = {
 };
 
 export function WellInsightsPanel({ well }: { well: SelectedWell }) {
+  /*
+   * Which filing is on screen. A well has two records with the Commission and
+   * they describe different things — the permit is what was applied for, the
+   * completion what was drilled — so they are two summaries, not one summary
+   * with a couple of fields swapped.
+   */
+  const [record, setRecord] = useState<WellRecord>("Completion");
+
   return (
     <div className="mv-thin-scroll h-full overflow-y-auto bg-mv-bg p-3 lg:p-4">
-      <WellSummaryHeader well={well} />
+      <WellSummaryHeader
+        well={well}
+        record={record}
+        onRecordChange={setRecord}
+      />
 
-      {/* ---------------- identity strip ----------------
+      {record === "Permit" ? (
+        <div className="mt-3">
+          <PermitSummary well={well} />
+        </div>
+      ) : (
+        <>
+          {/* ---------------- identity strip ----------------
           A pale mint band rather than a white card: enough to read as the
           header the rest of the page hangs off, without going dark on a light
           layout. */}
-      <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-4 rounded-xl border border-[#cfe8da] bg-gradient-to-r from-[#eaf7ef] via-[#f2fbf5] to-[#e6f5ec] px-4 py-[14px]">
-        <span className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-full border border-[#bfe0cd] bg-white">
-          <Flame size={19} strokeWidth={1.75} className="text-mv-green-deep" aria-hidden="true" />
-        </span>
-
-        <HeaderFact label="Well Number" value={well.well || WELL_HEADER.wellNumber} />
-        <HeaderFact label="API Number" value={well.api} mono />
-        <HeaderFact label="County" value={titleCase(well.county)} />
-        <HeaderFact
-          label="Well Status"
-          value={well.status || WELL_HEADER.status}
-          tone="green"
-        />
-
-        <div className="ml-auto flex items-center gap-[10px] rounded-lg border border-[#cfe8da] bg-white px-[14px] py-[8px]">
-          <TrendingUp size={18} strokeWidth={1.75} className="text-mv-green-deep" aria-hidden="true" />
-          <span>
-            <span className="block text-[10.5px] leading-tight text-mv-muted">
-              Performance
+          <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-4 rounded-xl border border-[#cfe8da] bg-gradient-to-r from-[#eaf7ef] via-[#f2fbf5] to-[#e6f5ec] px-4 py-[14px]">
+            <span className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-full border border-[#bfe0cd] bg-white">
+              <Flame
+                size={19}
+                strokeWidth={1.75}
+                className="text-mv-green-deep"
+                aria-hidden="true"
+              />
             </span>
-            <span className="block text-[14px] font-bold leading-tight text-mv-green-deep">
-              {WELL_HEADER.performance}
-            </span>
-          </span>
-        </div>
-      </div>
 
-      {/* ---------------- the six figures ----------------
+            <HeaderFact
+              label="Well Number"
+              value={well.well || WELL_HEADER.wellNumber}
+            />
+            <HeaderFact label="API Number" value={well.api} mono />
+            <HeaderFact label="County" value={titleCase(well.county)} />
+            <HeaderFact
+              label="Well Status"
+              value={well.status || WELL_HEADER.status}
+              tone="green"
+            />
+
+            <div className="ml-auto flex items-center gap-[10px] rounded-lg border border-[#cfe8da] bg-white px-[14px] py-[8px]">
+              <TrendingUp
+                size={18}
+                strokeWidth={1.75}
+                className="text-mv-green-deep"
+                aria-hidden="true"
+              />
+              <span>
+                <span className="block text-[10.5px] leading-tight text-mv-muted">
+                  Performance
+                </span>
+                <span className="block text-[14px] font-bold leading-tight text-mv-green-deep">
+                  {WELL_HEADER.performance}
+                </span>
+              </span>
+            </div>
+          </div>
+
+          {/* ---------------- the six figures ----------------
           One card, ruled into six, rather than six cards: they are one row of
           readings about one well, and separate cards said they were separate
           things. `gap-px` over a line-coloured ground is the rule — each cell
           keeps its white fill and the 1px seams read as dividers, including
           where the grid wraps. */}
-      <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-mv-line bg-mv-line md:grid-cols-3 xl:grid-cols-6">
-        {WELL_METRICS.map((metric) => (
-          <div key={metric.label} className="bg-white px-[14px] py-[12px]">
-            <span className="block truncate text-[11px] leading-tight text-mv-slate">
-              {metric.label}
-            </span>
-            {/* Unit beside the figure, not under it: "10,826 BBL" is one
+          <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-mv-line bg-mv-line md:grid-cols-3 xl:grid-cols-6">
+            {WELL_METRICS.map((metric) => (
+              <div key={metric.label} className="bg-white px-[14px] py-[12px]">
+                <span className="block truncate text-[11px] leading-tight text-mv-slate">
+                  {metric.label}
+                </span>
+                {/* Unit beside the figure, not under it: "10,826 BBL" is one
                 reading, and on its own line the unit read as a third fact. */}
-            <span className="mt-[6px] flex items-baseline gap-[5px]">
-              <span className="text-[20px] font-bold leading-none tabular-nums text-mv-ink">
-                {metric.value}
-              </span>
-              <span className="text-[10px] font-semibold uppercase tracking-[.08em] text-mv-muted">
-                {metric.unit}
-              </span>
-            </span>
+                <span className="mt-[6px] flex items-baseline gap-[5px]">
+                  <span className="text-[20px] font-bold leading-none tabular-nums text-mv-ink">
+                    {metric.value}
+                  </span>
+                  <span className="text-[10px] font-semibold uppercase tracking-[.08em] text-mv-muted">
+                    {metric.unit}
+                  </span>
+                </span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      {/* ---------------- well · lease · operator ---------------- */}
-      <div className="mt-3 grid gap-3 xl:grid-cols-3">
-        <Card icon={Info} title="Well Information">
-          <Rows rows={WELL_INFORMATION} />
-        </Card>
+          {/* ---------------- well · lease · operator ---------------- */}
+          <div className="mt-3 grid gap-3 xl:grid-cols-3">
+            <Card icon={Info} title="Well Information">
+              <Rows rows={WELL_INFORMATION} />
+            </Card>
 
-        <Card icon={ScrollText} title="Lease Information">
-          <Rows rows={LEASE_INFORMATION} />
-        </Card>
+            <Card icon={ScrollText} title="Lease Information">
+              <Rows rows={LEASE_INFORMATION} />
+            </Card>
 
-        <Card icon={Layers} title="Wellbore" badge={WELLBORE.kind}>
-          <Wellbore />
-        </Card>
-      </div>
+            <Card icon={Layers} title="Wellbore" badge={WELLBORE.kind}>
+              <Wellbore />
+            </Card>
+          </div>
 
-      {/* ---------------- activity · location · wellbore ---------------- */}
-      <div className="mt-3 grid gap-3 xl:grid-cols-3">
-        <Card icon={FileText} title="Latest Well Activity and Production">
-          {/* One column: at half the card's width the dates were truncating to
+          {/* ---------------- activity · location · wellbore ---------------- */}
+          <div className="mt-3 grid gap-3 xl:grid-cols-3">
+            <Card icon={FileText} title="Latest Well Activity and Production">
+              {/* One column: at half the card's width the dates were truncating to
               "12-03…" and "0…", which is worse than a taller card. */}
-          <Rows rows={WELL_ACTIVITY} />
-        </Card>
+              <Rows rows={WELL_ACTIVITY} />
+            </Card>
 
-        <Card icon={MapPin} title="Location">
-          {/* The tile and the coordinates side by side: a pinned map says
+            <Card icon={MapPin} title="Location">
+              {/* The tile and the coordinates side by side: a pinned map says
               "where" faster than four numbers do. */}
-          <div className="mt-3 flex items-stretch gap-4">
-            <LocationMark />
-            <Rows
-              rows={WELL_LOCATION}
-              airy
-              className="mt-0 min-w-0 flex-1 self-center"
-            />
-          </div>
-        </Card>
+              <div className="mt-3 flex items-stretch gap-4">
+                <LocationMark />
+                <Rows
+                  rows={WELL_LOCATION}
+                  airy
+                  className="mt-0 min-w-0 flex-1 self-center"
+                />
+              </div>
+            </Card>
 
-        <div className="flex flex-col gap-3">
-          <Card icon={Building2} title="Operator Info">
-            <div className="mt-[10px] flex items-baseline justify-between gap-3 text-[12px]">
-              <span className="shrink-0 text-mv-muted">{OPERATOR_INFO.label}</span>
-              <span className="text-right font-semibold text-mv-ink">
-                {well.operator || OPERATOR_INFO.value}
-              </span>
-            </div>
-          </Card>
+            <div className="flex flex-col gap-3">
+              <Card icon={Building2} title="Operator Info">
+                <div className="mt-[10px] flex items-baseline justify-between gap-3 text-[12px]">
+                  <span className="shrink-0 text-mv-muted">
+                    {OPERATOR_INFO.label}
+                  </span>
+                  <span className="text-right font-semibold text-mv-ink">
+                    {well.operator || OPERATOR_INFO.value}
+                  </span>
+                </div>
+              </Card>
 
-          <Card icon={Ruler} title="Depth & Geometry">
-            {/* One column, like the cards beside it: two columns cut every
+              <Card icon={Ruler} title="Depth & Geometry">
+                {/* One column, like the cards beside it: two columns cut every
                 depth down to "11,4…". */}
-            <Rows rows={DEPTH_GEOMETRY} />
-          </Card>
-        </div>
-      </div>
+                <Rows rows={DEPTH_GEOMETRY} />
+              </Card>
+            </div>
+          </div>
 
-      {/* ---------------- production ---------------- */}
-      <div className="mt-3">
-        <ProductionChart />
-      </div>
+          {/* ---------------- production ---------------- */}
+          <div className="mt-3">
+            <ProductionChart />
+          </div>
 
-      {/* ---------------- diagnostics · integrity · cohort ----------------
+          {/* ---------------- diagnostics · integrity · cohort ----------------
           Two across, then the cohort table on its own row: at a third of the
           width its five bars had no room to differ, and the difference between
           them is the whole point of that card. */}
-      <div className="mt-3 grid gap-3 xl:grid-cols-2">
-        <Card
-          title="Decline Diagnostics"
-          aside="What the rate curve anchors reveal"
-          className="flex flex-col"
-        >
-          {/* Two columns of seven, not one of fourteen: on one column this card
+          <div className="mt-3 grid gap-3 xl:grid-cols-2">
+            <Card
+              title="Decline Diagnostics"
+              aside="What the rate curve anchors reveal"
+              className="flex flex-col"
+            >
+              {/* Two columns of seven, not one of fourteen: on one column this card
               ran to twice the height of the one beside it, and the pair read as
               a long list with a chart stranded at the top right.
 
               `auto-rows-fr` lets the rows share whatever height the taller card
               sets, so the two finish level. */}
-          <dl className="mt-2 grid flex-1 auto-rows-fr gap-x-6 sm:grid-cols-2">
-            {DECLINE_ROWS.map((row) => (
-              <div
-                key={row.label}
-                className="flex items-center justify-between gap-3 border-b border-mv-line py-[6px] text-[12px]"
-              >
-                <dt className="min-w-0 truncate text-mv-slate">{row.label}</dt>
-                <dd className="flex items-baseline gap-[5px] whitespace-nowrap">
-                  <span
-                    className={`font-bold tabular-nums ${
-                      row.tone === "down"
-                        ? "text-mv-red"
-                        : row.tone === "up"
-                          ? "text-mv-green-deep"
-                          : "text-mv-ink"
-                    }`}
+              <dl className="mt-2 grid flex-1 auto-rows-fr gap-x-6 sm:grid-cols-2">
+                {DECLINE_ROWS.map((row) => (
+                  <div
+                    key={row.label}
+                    className="flex items-center justify-between gap-3 border-b border-mv-line py-[6px] text-[12px]"
                   >
-                    {row.value}
-                  </span>
-                  {row.unit && (
-                    <span className="text-[10.5px] text-mv-muted">{row.unit}</span>
-                  )}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </Card>
+                    <dt className="min-w-0 truncate text-mv-slate">
+                      {row.label}
+                    </dt>
+                    <dd className="flex items-baseline gap-[5px] whitespace-nowrap">
+                      <span
+                        className={`font-bold tabular-nums ${
+                          row.tone === "down"
+                            ? "text-mv-red"
+                            : row.tone === "up"
+                              ? "text-mv-green-deep"
+                              : "text-mv-ink"
+                        }`}
+                      >
+                        {row.value}
+                      </span>
+                      {row.unit && (
+                        <span className="text-[10.5px] text-mv-muted">
+                          {row.unit}
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </Card>
 
-        <Card
-          title="Reserve Integrity"
-          aside="Stated Depletion vs Well Age"
-          className="flex flex-col"
-        >
-          {/* The chart takes the slack and the note sits on the floor of the
+            <Card
+              title="Reserve Integrity"
+              aside="Stated Depletion vs Well Age"
+              className="flex flex-col"
+            >
+              {/* The chart takes the slack and the note sits on the floor of the
               card, rather than both bunching at the top with a gap below. */}
-          <div className="mt-4 flex min-h-[168px] flex-1 items-end gap-3">
-            {RESERVE_INTEGRITY.bars.map((bar, index) => (
-              <div key={bar.label} className="flex flex-1 flex-col items-center">
-                <span className="mb-[6px] text-[11px] font-bold tabular-nums text-mv-ink">
-                  {bar.value}%
-                </span>
-                <div
-                  className="w-full rounded-t-md"
-                  style={{
-                    // Scaled from 40%, so the differences between 83 and 97
-                    // are visible rather than five near-identical columns.
-                    height: `${((bar.value - 40) / 60) * 120}px`,
-                    background: BAR_COLOURS[index % BAR_COLOURS.length],
-                  }}
-                />
-                <span className="mt-[6px] text-[9.5px] text-mv-muted">
-                  {bar.label}
-                </span>
-                <span className="text-[9px] text-mv-muted/70">{bar.count}</span>
+              <div className="mt-4 flex min-h-[168px] flex-1 items-end gap-3">
+                {RESERVE_INTEGRITY.bars.map((bar, index) => (
+                  <div
+                    key={bar.label}
+                    className="flex flex-1 flex-col items-center"
+                  >
+                    <span className="mb-[6px] text-[11px] font-bold tabular-nums text-mv-ink">
+                      {bar.value}%
+                    </span>
+                    <div
+                      className="w-full rounded-t-md"
+                      style={{
+                        // Scaled from 40%, so the differences between 83 and 97
+                        // are visible rather than five near-identical columns.
+                        height: `${((bar.value - 40) / 60) * 120}px`,
+                        background: BAR_COLOURS[index % BAR_COLOURS.length],
+                      }}
+                    />
+                    <span className="mt-[6px] text-[9.5px] text-mv-muted">
+                      {bar.label}
+                    </span>
+                    <span className="text-[9px] text-mv-muted/70">
+                      {bar.count}
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
 
-          <Note tone="red" icon={ArrowDown}>
-            {RESERVE_INTEGRITY.note}
-          </Note>
-        </Card>
+              <Note tone="red" icon={ArrowDown}>
+                {RESERVE_INTEGRITY.note}
+              </Note>
+            </Card>
 
-        {/*
+            {/*
           The chart and its reading side by side, not stacked: the two notes
           are what the bars are for, and under them they read as footnotes to a
           chart that has already been passed over.
         */}
-        <div className="grid gap-4 rounded-xl border border-mv-line bg-white p-4 xl:col-span-2 xl:grid-cols-2 xl:gap-6">
-          <div className="min-w-0">
-            <h3 className="text-[13px] font-bold leading-none text-mv-ink">
-              Cohort EUR — the tell
-            </h3>
-            <div className="mt-[6px] text-[10.5px] text-mv-muted">
-              median booked EUR by age
-            </div>
+            <div className="grid gap-4 rounded-xl border border-mv-line bg-white p-4 xl:col-span-2 xl:grid-cols-2 xl:gap-6">
+              <div className="min-w-0">
+                <h3 className="text-[13px] font-bold leading-none text-mv-ink">
+                  Cohort EUR — the tell
+                </h3>
+                <div className="mt-[6px] text-[10.5px] text-mv-muted">
+                  median booked EUR by age
+                </div>
 
-            {/*
+                {/*
               One colour, not five. These are the same measure at five ages, so
               colouring them differently would suggest five kinds of thing —
               the point is the shape of the sequence, which the bar lengths
               already carry.
             */}
+                <div className="mt-3">
+                  {COHORT_EUR.bars.map((bar) => (
+                    <div
+                      key={bar.label}
+                      className="flex items-center gap-3 py-[7px]"
+                    >
+                      <span className="w-[58px] shrink-0 text-[11px] text-mv-slate">
+                        {bar.label}
+                      </span>
+                      <span className="h-[8px] min-w-0 flex-1 overflow-hidden rounded-full bg-[#eef0f2]">
+                        <span
+                          className="block h-full rounded-full bg-mv-green-deep"
+                          style={{ width: `${(bar.value / 400_000) * 100}%` }}
+                        />
+                      </span>
+                      <span className="w-[56px] shrink-0 text-right text-[11.5px] font-bold tabular-nums text-mv-ink">
+                        {bar.display}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex min-w-0 flex-col justify-center gap-3">
+                {COHORT_EUR.notes.map((note, index) => (
+                  <Note
+                    key={note}
+                    tone={index === 0 ? "red" : "blue"}
+                    icon={index === 0 ? ArrowDown : Info}
+                    flush
+                  >
+                    {note}
+                  </Note>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ---------------- the written read ---------------- */}
+          <div className="mt-3 rounded-xl border border-mv-line bg-white p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <Heading
+                title="Insight Summary"
+                aside="What the completion record says once it is read against the rest of the collection"
+              />
+
+              {/* Labelled as written, not measured: the read below is generated
+              from the figures, and saying so is the difference between a
+              summary and a claim. */}
+              <span className="ml-auto shrink-0 rounded-full bg-mv-mint px-[10px] py-[4px] text-[10px] font-extrabold uppercase tracking-[.08em] text-mv-green-deep">
+                Well Summary AI
+              </span>
+            </div>
+
             <div className="mt-3">
-              {COHORT_EUR.bars.map((bar) => (
-                <div key={bar.label} className="flex items-center gap-3 py-[7px]">
-                  <span className="w-[58px] shrink-0 text-[11px] text-mv-slate">
-                    {bar.label}
-                  </span>
-                  <span className="h-[8px] min-w-0 flex-1 overflow-hidden rounded-full bg-[#eef0f2]">
+              <div className="text-[10px] font-extrabold uppercase tracking-[.09em] text-mv-muted">
+                Headline Read{" "}
+                <span className="font-semibold normal-case tracking-normal text-mv-muted/70">
+                  auto-generated · every figure traceable to a field or an
+                  aggregate
+                </span>
+              </div>
+              <p className="mt-2 text-[12px] leading-[1.6] text-mv-slate">
+                {INSIGHT_SUMMARY.headline}
+              </p>
+            </div>
+
+            {/* One per row, not three across: these are findings to be read in
+            order, and a three-column grid made six equal boxes whose heights
+            were set by whichever text ran longest. */}
+            <div className="mt-4 flex flex-col gap-[10px]">
+              {INSIGHT_SUMMARY.cards.map((card) => (
+                <div
+                  key={card.title}
+                  className={`rounded-xl border p-[14px] ${TONES[card.tone].card}`}
+                >
+                  <div className="flex items-start gap-2">
                     <span
-                      className="block h-full rounded-full bg-mv-green-deep"
-                      style={{ width: `${(bar.value / 400_000) * 100}%` }}
+                      aria-hidden="true"
+                      className={`mt-[3px] h-[8px] w-[8px] shrink-0 rounded-full ${TONES[card.tone].dot}`}
                     />
-                  </span>
-                  <span className="w-[56px] shrink-0 text-right text-[11.5px] font-bold tabular-nums text-mv-ink">
-                    {bar.display}
-                  </span>
+                    <div className="min-w-0">
+                      <div className="text-[12px] font-bold leading-tight text-mv-ink">
+                        {card.title}
+                      </div>
+                      <p className="mt-[5px] text-[11.5px] leading-[1.55] text-mv-slate">
+                        {card.body}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
-
-          <div className="flex min-w-0 flex-col justify-center gap-3">
-            {COHORT_EUR.notes.map((note, index) => (
-              <Note
-                key={note}
-                tone={index === 0 ? "red" : "blue"}
-                icon={index === 0 ? ArrowDown : Info}
-                flush
-              >
-                {note}
-              </Note>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ---------------- the written read ---------------- */}
-      <div className="mt-3 rounded-xl border border-mv-line bg-white p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Heading
-            title="Insight Summary"
-            aside="What the completion record says once it is read against the rest of the collection"
-          />
-
-          {/* Labelled as written, not measured: the read below is generated
-              from the figures, and saying so is the difference between a
-              summary and a claim. */}
-          <span className="ml-auto shrink-0 rounded-full bg-mv-mint px-[10px] py-[4px] text-[10px] font-extrabold uppercase tracking-[.08em] text-mv-green-deep">
-            Well Summary AI
-          </span>
-        </div>
-
-        <div className="mt-3">
-          <div className="text-[10px] font-extrabold uppercase tracking-[.09em] text-mv-muted">
-            Headline Read{" "}
-            <span className="font-semibold normal-case tracking-normal text-mv-muted/70">
-              auto-generated · every figure traceable to a field or an aggregate
-            </span>
-          </div>
-          <p className="mt-2 text-[12px] leading-[1.6] text-mv-slate">
-            {INSIGHT_SUMMARY.headline}
-          </p>
-        </div>
-
-        {/* One per row, not three across: these are findings to be read in
-            order, and a three-column grid made six equal boxes whose heights
-            were set by whichever text ran longest. */}
-        <div className="mt-4 flex flex-col gap-[10px]">
-          {INSIGHT_SUMMARY.cards.map((card) => (
-            <div
-              key={card.title}
-              className={`rounded-xl border p-[14px] ${TONES[card.tone].card}`}
-            >
-              <div className="flex items-start gap-2">
-                <span
-                  aria-hidden="true"
-                  className={`mt-[3px] h-[8px] w-[8px] shrink-0 rounded-full ${TONES[card.tone].dot}`}
-                />
-                <div className="min-w-0">
-                  <div className="text-[12px] font-bold leading-tight text-mv-ink">
-                    {card.title}
-                  </div>
-                  <p className="mt-[5px] text-[11.5px] leading-[1.55] text-mv-slate">
-                    {card.body}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }
@@ -424,10 +475,16 @@ function Heading({
   return (
     <div className="flex items-center gap-2">
       {Icon ? (
-        <Icon size={14} className="shrink-0 text-mv-green-deep" aria-hidden="true" />
+        <Icon
+          size={14}
+          className="shrink-0 text-mv-green-deep"
+          aria-hidden="true"
+        />
       ) : null}
 
-      <h3 className="text-[12.5px] font-bold leading-none text-mv-ink">{title}</h3>
+      <h3 className="text-[12.5px] font-bold leading-none text-mv-ink">
+        {title}
+      </h3>
 
       {aside && (
         <span className="hidden truncate text-[10.5px] text-mv-muted lg:block">
@@ -460,7 +517,9 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <div className={`rounded-xl border border-mv-line bg-white p-4 ${className}`}>
+    <div
+      className={`rounded-xl border border-mv-line bg-white p-4 ${className}`}
+    >
       <Heading icon={icon} title={title} aside={aside} badge={badge} />
       {children}
     </div>
@@ -588,7 +647,12 @@ function LocationMark() {
 
       {/* The pin, centred: a green disc with the marker cut out of it. */}
       <span className="absolute left-1/2 top-1/2 grid h-[38px] w-[38px] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-[3px] border-white bg-mv-green-deep shadow-mv">
-        <MapPin size={18} strokeWidth={2} className="text-white" aria-hidden="true" />
+        <MapPin
+          size={18}
+          strokeWidth={2}
+          className="text-white"
+          aria-hidden="true"
+        />
       </span>
     </div>
   );
@@ -663,7 +727,6 @@ function Wellbore() {
           ))}
         </svg>
       </div>
-
     </>
   );
 }
