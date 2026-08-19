@@ -451,6 +451,9 @@ export function MapChrome({
         {toolsOpen ? (
           <ToolsPanel
             activeId={activeTool ?? undefined}
+            /* Over bubbles the tools have no wells to measure, so the panel
+               says what to do instead of arming one. */
+            wellsVisible={wellsVisible}
             onSelect={(id) => {
               if (
                 id === "draw-area" ||
