@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronUp,
   Search,
+  X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -521,6 +522,12 @@ export function FiltersPanel({
    */
   const pickedQueryRef = useRef<string | null>(null);
   /*
+   * What the last pick ticked. Clearing the box has to undo the pick as well
+   * as the text — a filter still on the map with an empty search box is the
+   * panel disagreeing with what is drawn.
+   */
+  const lastPickRef = useRef<{ sectionId: string; label: string } | null>(null);
+  /*
    * The query these results answer. Anything else in the box means an answer
    * is still coming — which covers the debounce window as well as the request
    * itself. A plain `loading` flag cannot: it only goes up when the timer
@@ -732,8 +739,45 @@ export function FiltersPanel({
      * skips a query that was filled in by a pick.
      */
     pickedQueryRef.current = suggestion.label.trim();
+    lastPickRef.current = suggestion.sectionId
+      ? { sectionId: suggestion.sectionId, label: suggestion.label }
+      : null;
     setSearchedFor(suggestion.label.trim());
     setQuery(suggestion.label);
+    setSuggestionsOpen(false);
+  }
+
+  /*
+   * Empties the box, and takes the pick with it.
+   *
+   * Whatever the pick ticked is unticked here; if that leaves nothing ticked
+   * anywhere, the effect above notices and clears the map without waiting for
+   * Apply. If other sections are still ticked, Apply lights up instead — the
+   * search is one filter among several, not a master switch.
+   */
+  function clearSearch() {
+    const pick = lastPickRef.current;
+
+    if (pick) {
+      setChecked((previous) => {
+        const next = new Set(previous[pick.sectionId]);
+        next.delete(pick.label);
+        return { ...previous, [pick.sectionId]: next };
+      });
+      setPickedParams((previous) => {
+        const section = { ...previous[pick.sectionId] };
+        delete section[pick.label];
+        return { ...previous, [pick.sectionId]: section };
+      });
+      setDirty(true);
+    }
+
+    lastPickRef.current = null;
+    pickedQueryRef.current = null;
+    setQuery("");
+    setSearchHits([]);
+    setSearchError(null);
+    setSearchedFor("");
     setSuggestionsOpen(false);
   }
 
@@ -848,9 +892,21 @@ export function FiltersPanel({
               placeholder="Lease, operator, or county"
               className="min-w-0 flex-1 border-0 bg-transparent text-[11.5px] lg:text-[12.5px] leading-tight text-mv-ink outline-none placeholder:text-mv-muted"
             />
+            {query !== "" && (
+              <button
+                type="button"
+                onClick={clearSearch}
+                aria-label="Clear the search"
+                title="Clear the search"
+                className="grid h-[18px] w-[18px] shrink-0 cursor-pointer place-items-center rounded text-mv-muted hover:bg-[#f1f2f4] hover:text-mv-red"
+              >
+                <X size={12} strokeWidth={2.5} aria-hidden="true" />
+              </button>
+            )}
+
             <Search
               size={14}
-              className="text-mv-muted group-focus-within:text-mv-green-deep"
+              className="shrink-0 text-mv-muted group-focus-within:text-mv-green-deep"
               aria-hidden="true"
             />
           </div>
