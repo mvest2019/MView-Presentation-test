@@ -2966,12 +2966,12 @@ export function MapExplorerView() {
       */}
       {status === "ready" && (clustersLoading || wellsLoading) && (
         <div className="absolute inset-0 z-40 grid place-items-center bg-white/35 backdrop-blur-[3px]">
-          <div className="flex items-center gap-[10px] rounded-full border border-mv-line bg-white px-[16px] py-[9px] shadow-mv-lg">
+          <div className="flex items-center gap-[13px] rounded-full border border-mv-line bg-white px-[22px] py-[13px] shadow-mv-lg">
             <span
               aria-hidden="true"
-              className="h-[14px] w-[14px] shrink-0 animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
+              className="h-[20px] w-[20px] shrink-0 animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
             />
-            <span className="text-[12.5px] font-semibold leading-none text-mv-slate">
+            <span className="text-[15px] font-semibold leading-none text-mv-slate">
               {/* The second cluster band is a finer aggregation of the first,
                   so it is named for what it is. */}
               {clustersLoading
