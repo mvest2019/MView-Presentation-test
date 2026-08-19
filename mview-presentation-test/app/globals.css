@@ -308,3 +308,64 @@
   box-shadow: 0 1px 3px rgba(13, 14, 23, 0.25);
   cursor: pointer;
 }
+
+/* ----------------------------------------------------------------------------
+   The filters rail.
+
+   Written here rather than as utility classes because the panel's geometry is
+   the one thing on the map that must not depend on anything being generated,
+   resolved or shared out at runtime:
+
+   - `.mv-filters-rail` is the card's box on the map. Its height is set in
+     pixels from JavaScript, measured off the map itself; the `calc` here is
+     only what it stands on until that first measurement lands.
+   - `.mv-filters-card` is two rows and nothing else: the scrolling list, then
+     the Apply footer. `minmax(0, 1fr)` is what lets the list be shorter than
+     its own content — with `auto` the row grows to fit every section and
+     pushes the footer off the end of the card, which is exactly the fault this
+     replaces. The footer's `auto` row is as tall as the button and, being the
+     last row, is at the bottom by definition rather than by being pushed
+     there.
+
+   No `flex-1`, no `mt-auto`, no `justify-between`: those distribute leftover
+   space, and distributing is a calculation that can come out wrong. Rows are
+   an instruction that cannot.
+   ------------------------------------------------------------------------- */
+.mv-filters-rail {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  height: calc(100% - 36px);
+}
+
+.mv-filters-card {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  /*
+   * `clip`, never `hidden`. This is the actual fault this file was written
+   * for.
+   *
+   * `overflow: hidden` still makes an element a scroll container — it only
+   * hides the scrollbars. Something inside this card overflows it (its
+   * scrollHeight measured 7,593px against a 823px box), so ticking a checkbox
+   * low in the list let the browser scroll the *card* to bring the focused
+   * input into view: measured at `scrollTop: 514`. The card's own box never
+   * moved, so nothing looked wrong about its height — but everything inside it
+   * rode 514px upwards, which put the Apply button in the middle of the card
+   * with white below it. That needs enough content to overflow, which is why
+   * it took three open sections to show up.
+   *
+   * `clip` cuts off exactly the same pixels but creates no scroll container at
+   * all, so there is nothing for focus, `scrollIntoView` or a stray wheel
+   * event to move.
+   */
+  overflow: clip;
+}
+
+/* The scrolling half. `min-height: 0` is what allows a grid item to be
+   smaller than its content; without it the row refuses to shrink and the
+   card grows past the height it was given. */
+.mv-filters-body {
+  min-height: 0;
+  overflow-y: auto;
+}

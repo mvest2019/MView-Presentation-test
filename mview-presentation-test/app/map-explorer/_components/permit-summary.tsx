@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+import { AiSummary } from "./ai-summary";
+import { PermitDetailsTable } from "./permit-details-table";
 import { PERMIT_SUMMARY } from "./well-insights-data";
 import type { SelectedWell } from "./well-insights-panel";
 
@@ -105,6 +107,15 @@ export function PermitSummary({ well }: { well: SelectedWell }) {
               />
             </Card>
           </div>
+        </div>
+
+        {/* ---------------- the filing itself, then the read on it ------- */}
+        <div className="mt-3">
+          <PermitDetailsTable />
+        </div>
+
+        <div className="mt-3">
+          <AiSummary />
         </div>
       </div>
     </div>
