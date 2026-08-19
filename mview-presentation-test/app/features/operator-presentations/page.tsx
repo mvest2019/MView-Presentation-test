@@ -1,8 +1,11 @@
-import { CalendarDays, Clock, Presentation, UserRound } from "lucide-react";
 import type { Metadata } from "next";
 
 import { Breadcrumbs } from "@/app/_components/breadcrumbs";
-import { displayXsClass, eyebrowClass } from "@/app/_components/typography";
+import { displayXsClass } from "@/app/_components/typography";
+import {
+  ALL_OPERATORS,
+  getPresentationsPage,
+} from "@/lib/operator-presentations-api";
 import { presentationsSummary } from "@/lib/operator-presentations";
 
 import { PresentationsPage } from "./presentations-page";
@@ -80,31 +83,32 @@ const BREADCRUMB_JSON_LD = {
   ],
 };
 
-/** The KPI strip. Static: every figure describes the library, not the filtered view. */
-const KPIS = [
-  {
-    Icon: Presentation,
-    value: String(summary.total),
-    label: "Presentations on file",
-  },
-  {
-    Icon: UserRound,
-    value: String(summary.operators),
-    label: "Operators covered",
-  },
-  {
-    Icon: CalendarDays,
-    value: String(summary.inLatestPeriod),
-    label: `In ${summary.latestPeriod}`,
-  },
-  {
-    Icon: Clock,
-    value: summary.latestLabel,
-    label: "Most recent",
-  },
-] as const;
+/**
+ * The library's size, for the heading's count.
+ *
+ * ONE CACHED READ, SERVER-SIDE. The figure used to come from the fixture, which now
+ * disagrees with the endpoint — 18 against 190. Reading page one unfiltered gives the
+ * real `totalCount`, and `getPresentationsPage` caches it, so this costs nothing per
+ * visit. A failure falls back to hiding the count rather than printing a wrong one.
+ */
+async function libraryTotal(): Promise<number | null> {
+  try {
+    const result = await getPresentationsPage({
+      operatorName: ALL_OPERATORS,
+      startDate: "",
+      endDate: "",
+      page: 1,
+    });
+    return result.totalCount || null;
+  } catch (error) {
+    console.error("[presentations] total unavailable", error);
+    return null;
+  }
+}
 
-export default function OperatorPresentationsRoute() {
+export default async function OperatorPresentationsRoute() {
+  const total = await libraryTotal();
+
   return (
     <div className="pb-4">
       <script
@@ -126,15 +130,13 @@ export default function OperatorPresentationsRoute() {
 
           <div className="flex flex-wrap items-end justify-between gap-6">
             <div>
-              <p className={`${eyebrowClass} mt-[14px]`}>
-                Investor relations · free to browse
-              </p>
-              <h1 className={`${displayXsClass} mb-2 mt-[10px] text-mv-ink`}>
+              <h1 className={`${displayXsClass} mb-2 mt-[14px] text-mv-ink`}>
                 Operator presentations
               </h1>
               <p className="max-w-[580px] text-[14.5px] text-mv-muted">
-                Quarterly results and investor decks from operators active across
-                Texas — filter, skim the summary, and open the full presentation.
+                Quarterly results and investor decks from operators active
+                across Texas — filter, skim the summary, and open the full
+                presentation.
               </p>
             </div>
 
@@ -143,39 +145,17 @@ export default function OperatorPresentationsRoute() {
                 screens rather than squeezing the heading. Once wrapped it aligns
                 left with everything above it — a "18" floating against the right
                 edge under a left-aligned lede reads as a mistake. */}
-            <p className="flex-none text-right leading-[1.1] max-[767px]:text-left">
-              <b className="block text-[30px] font-bold tracking-[-.02em] tabular-nums text-mv-green-deep">
-                {summary.total}
-              </b>
-              <span className="text-[12px] font-bold uppercase tracking-[.08em] text-mv-muted">
-                Presentations
-              </span>
-            </p>
+            {total === null ? null : (
+              <p className="flex-none text-right leading-[1.1] max-[767px]:text-left">
+                <b className="block text-[30px] font-bold tracking-[-.02em] tabular-nums text-mv-green-deep">
+                  {total}
+                </b>
+                <span className="text-[12px] font-bold uppercase tracking-[.08em] text-mv-muted">
+                  Presentations
+                </span>
+              </p>
+            )}
           </div>
-
-          <ul className="m-0 mt-5 grid list-none grid-cols-4 gap-[14px] p-0 max-[900px]:grid-cols-2 max-[520px]:grid-cols-1">
-            {KPIS.map(({ Icon, value, label }) => (
-              <li
-                key={label}
-                className="flex items-center gap-[14px] rounded-[14px] border border-mv-line bg-white px-[18px] py-4 shadow-[0_1px_2px_rgba(16,20,30,.05)]"
-              >
-                <span
-                  aria-hidden="true"
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-[11px] bg-mv-tint text-mv-green-deep"
-                >
-                  <Icon className="h-5 w-5" strokeWidth={1.8} />
-                </span>
-                <span className="min-w-0">
-                  <b className="block text-[23px] font-bold leading-none tracking-[-.02em] text-mv-ink">
-                    {value}
-                  </b>
-                  <span className="mt-[3px] block text-[12px] text-mv-muted">
-                    {label}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ul>
         </div>
       </div>
 
