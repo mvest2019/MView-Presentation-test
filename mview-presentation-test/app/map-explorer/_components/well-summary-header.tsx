@@ -21,11 +21,28 @@ import {
  * second, differently-shaped copy.
  */
 
+/*
+ * The two records a well has with the Railroad Commission. The wells feed
+ * already labels each row `recordType: "Permit" | "Completion"`; these are the
+ * same two, as a choice of which one the summary is read from.
+ */
+export const RECORDS = ["Completion", "Permit"] as const;
+
+export type WellRecord = (typeof RECORDS)[number];
+
 /** A field needs quoting when it holds a comma, a quote or a line break. */
 const CSV_QUOTE = new RegExp('[",\\n]');
 const CSV_NEWLINE = "\r\n";
 
-export function WellSummaryHeader({ well }: { well: SelectedWell }) {
+export function WellSummaryHeader({
+  well,
+  record,
+  onRecordChange,
+}: {
+  well: SelectedWell;
+  record: WellRecord;
+  onRecordChange: (record: WellRecord) => void;
+}) {
   function exportSummary() {
     const cell = (value: string) =>
       CSV_QUOTE.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
@@ -68,9 +85,31 @@ export function WellSummaryHeader({ well }: { well: SelectedWell }) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
       <div className="min-w-0">
-        <h2 className="text-[19px] font-extrabold leading-tight text-mv-ink">
-          Well Summary
-        </h2>
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <h2 className="text-[19px] font-extrabold leading-tight text-mv-ink">
+            Well Summary
+          </h2>
+
+          {/* Which of the well's two filings the summary is read from — the
+              same two the wells feed labels each row with. */}
+          <div className="flex items-baseline gap-3">
+            {RECORDS.map((name) => (
+              <button
+                key={name}
+                type="button"
+                aria-pressed={record === name}
+                onClick={() => onRecordChange(name)}
+                className={`cursor-pointer text-[12.5px] font-semibold underline-offset-[3px] ${
+                  record === name
+                    ? "text-mv-green-deep underline"
+                    : "text-mv-muted hover:text-mv-green-deep hover:underline"
+                }`}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        </div>
         <p className="mt-[3px] text-[11.5px] text-mv-slate">
           Comprehensive overview of well performance and reserves
         </p>

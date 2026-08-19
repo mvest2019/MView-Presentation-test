@@ -370,15 +370,15 @@ const SAMPLE_AREA_SHARE = 0.36;
  *
  * A box that simply appears says "here is a box"; a box that grows out of one
  * corner says "this is the gesture" — which is the whole reason it is there.
- * Fifty-five frames at 40ms is a little over two seconds: slower than the drag
- * it stands in for, because it is being watched rather than made, and at half
- * that it was over before the eye had found it.
+ * Ninety frames at 40ms is three and a half seconds: far slower than the drag
+ * it stands in for, because it is being watched rather than made, and on a map
+ * this busy a quick one was over before the eye had found it.
  */
-const SAMPLE_FRAMES = 55;
+const SAMPLE_FRAMES = 90;
 const SAMPLE_INTERVAL_MS = 40;
 
 /** One corner of the sample tract per beat, as if being clicked out. */
-const SAMPLE_CORNER_MS = 480;
+const SAMPLE_CORNER_MS = 750;
 const WELL_ZOOM_SCALE = 200_000;
 
 type ScreenPoint = { x: number; y: number };
@@ -1991,6 +1991,7 @@ export function MapExplorerView() {
                       status: String(attributes.status ?? ""),
                       wtype: String(attributes.wtype ?? ""),
                       county: String(attributes.county ?? ""),
+                      recordType: String(attributes.recordType ?? ""),
                       lon: Number(attributes.lon),
                       lat: Number(attributes.lat),
                       x,
@@ -2966,12 +2967,12 @@ export function MapExplorerView() {
       */}
       {status === "ready" && (clustersLoading || wellsLoading) && (
         <div className="absolute inset-0 z-40 grid place-items-center bg-white/35 backdrop-blur-[3px]">
-          <div className="flex items-center gap-[10px] rounded-full border border-mv-line bg-white px-[16px] py-[9px] shadow-mv-lg">
+          <div className="flex items-center gap-[13px] rounded-full border border-mv-line bg-white px-[22px] py-[13px] shadow-mv-lg">
             <span
               aria-hidden="true"
-              className="h-[14px] w-[14px] shrink-0 animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
+              className="h-[20px] w-[20px] shrink-0 animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
             />
-            <span className="text-[12.5px] font-semibold leading-none text-mv-slate">
+            <span className="text-[15px] font-semibold leading-none text-mv-slate">
               {/* The second cluster band is a finer aggregation of the first,
                   so it is named for what it is. */}
               {clustersLoading

@@ -20,6 +20,48 @@ export const WELL_HEADER = {
   performance: "Good",
 };
 
+/*
+ * The permit record, as data.
+ *
+ * The other half of the summary: `recordType` on a well is either "Permit" or
+ * "Completion", and this is what the permit filing carries. Static like the
+ * rest — only the identity strip is real — so it is the same well's permit
+ * whichever well is clicked.
+ */
+export const PERMIT_SUMMARY = {
+  status: "Approved",
+  filingPurpose: "New Drill",
+  leaseWell: [
+    { label: "Lease Name", value: "Ogle" },
+    { label: "County", value: "Archer" },
+    { label: "District", value: "09" },
+  ],
+  typeDirection: [
+    { label: "Well Type", value: "Permitted Location" },
+    { label: "Direction", value: "Vertical" },
+    { label: "New Permit", value: "No" },
+  ],
+  permitInformation: [
+    { label: "Filing Purpose", value: "New Drill" },
+    { label: "Permit Date", value: "05-08-2014" },
+  ],
+  operatorField: {
+    left: [
+      { label: "Operator", value: "Glen D. Gonzenbach Llc (310223)" },
+      { label: "Field Name", value: "Arrowhead (Caddo)" },
+    ],
+    right: [
+      { label: "Reservoir", value: "Barnett Shale" },
+      { label: "Field No.", value: "03900500" },
+    ],
+  },
+  coordinates: [
+    { label: "Surface", value: "33.720538, -98.494098" },
+    { label: "Bottom-Hole", value: "33.720538, -98.494098" },
+  ],
+  nearestWell: { distance: "0.75891 miles", direction: "South" },
+};
+
 /** The six figures across the top. */
 export const WELL_METRICS = [
   { label: "Last Month Oil", value: "10,826", unit: "BBL", kind: "oil" },
