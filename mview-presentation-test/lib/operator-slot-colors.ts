@@ -10,6 +10,11 @@
  * a colour may be defined. Slots one to three are the existing `mv-green-deep`,
  * `mv-amber` and `mv-blue`; the fourth is `mv-plum`.
  *
+ * ONLY THE PRODUCTION COMPARE TOOL STILL USES THESE. The statistics tool dropped
+ * per-operator colour entirely: its trend section is one chart per operator, each
+ * already carrying that operator's logo and name, so there was no shared axis for a
+ * colour to disambiguate and the hues were decorating rather than informing.
+ *
  * Slot order is fixed and meaningful: the colour identifies the *slot*, not the
  * operator, which is what lets a picker's dot, a card's spine and a chart's line
  * be matched without reading a legend.

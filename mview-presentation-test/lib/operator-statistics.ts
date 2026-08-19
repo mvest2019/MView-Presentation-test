@@ -7,11 +7,15 @@
  * row by row. Keeping it pure means the numbers can be checked without rendering,
  * and it is the layer that changes when a real endpoint replaces the fixture.
  *
- * THE SEAM. The page never touches `operator-statistics-data`. It calls
- * `listStatisticsOptions()` for the picker and `buildStatisticsSelection()` for the
- * chosen slugs; everything else takes the resulting `StatisticsOperator[]`. Those
- * two become async reads against an endpoint and nothing above this file changes
- * shape.
+ * THE SEAM, NOW THAT THE ENDPOINTS EXIST. The picker searches
+ * `/api/operators/names`, and the whole selection is read in one call through
+ * `/api/operators/compare`; `toStatisticsOperatorFromApi` turns one such record into
+ * the `StatisticsOperator` every block below already took. So the fetching lives in
+ * `operator-compare-api.ts`, this file stayed pure, and none of the matrices,
+ * leaders or trend cards changed at all.
+ *
+ * The fixture is down to one job: `exampleSelection()` names the four operators the
+ * "Try an example" button seeds. Their figures are fetched like any other.
  *
  * WHY CELLS ARE DESCRIBED, NOT RENDERED. A matrix cell is not always a string —
  * some carry a unit in smaller type, an activity pill, a trend arrow, or an em
@@ -23,12 +27,16 @@
 import {
   OPERATOR_STATISTICS_RECORDS,
   STATISTICS_TREND_YEARS,
-  type OperatorStatisticsRecord,
 } from "./operator-statistics-data";
-import { SLOT_COLORS } from "./operator-slot-colors";
+import type { StatisticsOperatorData } from "./operator-statistics-shape";
 
 export { STATISTICS_TREND_YEARS };
-export { COMPARE_SLOT_COUNT, SLOT_COLORS, SLOT_LABELS } from "./operator-slot-colors";
+export type { StatisticsOperatorData } from "./operator-statistics-shape";
+export {
+  COMPARE_SLOT_COUNT,
+  SLOT_COLORS,
+  SLOT_LABELS,
+} from "./operator-slot-colors";
 
 /** The empty value for a slot — no operator chosen. */
 export const NO_OPERATOR = "";
@@ -41,16 +49,23 @@ const GAS_TO_OIL = 15;
 
 /** A selected operator, with everything the page renders already computed. */
 export interface StatisticsOperator {
-  /** 0–3. Fixes the colour and the column order. */
+  /**
+   * 0–3, the picker position. It fixes the column order, and nothing else now: this
+   * tool carries no per-operator colour, because its trend section is one chart per
+   * operator rather than a shared axis needing a legend.
+   */
   slot: number;
-  color: string;
-  rank: number;
-  slug: string;
+  /** Null when the source reports no statewide rank — see `StatisticsOperatorData`. */
+  rank: number | null;
+  /** Null when no detail-page slug is known; the profile link is dropped then. */
+  slug: string | null;
   name: string;
   /** The name, shortened for tight cells and chips. */
   short: string;
-  /** Two initials, for the logo tile. */
+  /** Two initials, for the tile when there is no logo. */
   monogram: string;
+  /** Same-origin logo path, or null when the operator has none on file. */
+  logoUrl: string | null;
   operatorNumber: string;
   boeTotal: number;
   oilTotal: number;
@@ -86,7 +101,8 @@ export interface StatisticsOperator {
 export function formatVolume(value: number): string {
   if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`;
   if (value >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
-  if (value >= 1e3) return `${Math.round(value / 1e3).toLocaleString("en-US")}K`;
+  if (value >= 1e3)
+    return `${Math.round(value / 1e3).toLocaleString("en-US")}K`;
   return String(Math.round(value));
 }
 
@@ -103,6 +119,17 @@ export function titleCase(value: string): string {
 }
 
 /**
+ * Initials of the first two words — the logo tile's content.
+ *
+ * Derived from the name rather than waiting for the comparison, so a slot shows its
+ * tile the moment an operator is picked instead of a second later.
+ */
+export function monogramOf(name: string): string {
+  const words = name.match(/[A-Za-z]+/g) ?? [];
+  return `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}`.toUpperCase();
+}
+
+/**
  * The name, shortened. Long registered names ("Kinder Morgan Production Co, LLC")
  * break a table header or a chip, so past 24 characters it is cut at a word or
  * comma boundary and elided — the design's `csShort`.
@@ -112,56 +139,19 @@ function shortName(name: string): string {
   return `${name.slice(0, 22).replace(/[ ,]+$/, "")}…`;
 }
 
-/** Initials of the first two words — the logo tile's content. */
-function monogram(filedName: string): string {
-  const words = filedName.match(/[A-Za-z]+/g) ?? [];
-  return `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}`.toUpperCase();
-}
-
-/* --------------------------------------------------------------------------
-   Reading the fixture
-   -------------------------------------------------------------------------- */
-
-export interface StatisticsOption {
-  slug: string;
-  rank: number;
-  name: string;
-  short: string;
-  monogram: string;
-  operatorNumber: string;
-  /** Shown beside the name in the dropdown, as `2.37B BOE`. */
-  boeLabel: string;
-  /** Lower-cased name and number, so the picker can filter without re-deriving. */
-  haystack: string;
-}
-
-/** Every operator the tool can compare, in statewide rank order. */
-export function listStatisticsOptions(): StatisticsOption[] {
-  return OPERATOR_STATISTICS_RECORDS.map((record) => ({
-    slug: record.slug,
-    rank: record.rank,
-    name: record.name,
-    short: shortName(record.name),
-    monogram: monogram(record.filedName),
-    operatorNumber: record.operatorNumber,
-    boeLabel: `${formatVolume(record.boeTotal)} BOE`,
-    // Both the filed and the display name, so "pioneer" and "RES USA" both match.
-    haystack:
-      `${record.name} ${record.filedName} ${record.operatorNumber}`.toLowerCase(),
-  }));
-}
-
-/** How many operators the picker can offer — used in its "type to search all" hint. */
-export const STATISTICS_OPERATOR_COUNT = OPERATOR_STATISTICS_RECORDS.length;
-
 /**
  * The design's "Try an example" selection: the first, second, third and fifth
  * ranked operators. Fifth rather than fourth so the example is not simply the top
  * four, which would make the picker look like it had done nothing.
+ *
+ * IT SEEDS NAMES, NOT FIGURES. Which four operators make a good demonstration is a
+ * curated product choice, and it is the one thing the fixture is still good for.
+ * Every number that appears afterwards is fetched for these names like any other
+ * selection — the example chooses who to compare, not what the comparison says.
  */
 export function exampleSelection(): string[] {
   return [0, 1, 2, 4].map(
-    (index) => OPERATOR_STATISTICS_RECORDS[index]?.slug ?? NO_OPERATOR,
+    (index) => OPERATOR_STATISTICS_RECORDS[index]?.name ?? NO_OPERATOR,
   );
 }
 
@@ -170,68 +160,59 @@ export function emptySelection(): string[] {
   return [NO_OPERATOR, NO_OPERATOR, NO_OPERATOR, NO_OPERATOR];
 }
 
-function toStatisticsOperator(
-  record: OperatorStatisticsRecord,
+/**
+ * Turn one fetched operator into the shape every block on the page renders.
+ *
+ * THE SEAM between the API and the view. `StatisticsOperatorData` carries only what
+ * the endpoints know; the four derived figures are computed here, once per
+ * operator, rather than in a component that would redo them on every render — and
+ * rather than on the wire, where a derived value would be cached as though it were
+ * data.
+ *
+ * Slot numbers are the *picker* positions, so an operator in slot D keeps slot D's
+ * colour even when C is empty.
+ */
+export function toStatisticsOperatorFromApi(
+  data: StatisticsOperatorData,
   slot: number,
 ): StatisticsOperator {
-  const current = record.trend?.at(-1) ?? null;
-  const previous = record.trend?.at(-2) ?? null;
+  const current = data.boeCurrent;
+  const previous = data.boePrevious;
 
   return {
     slot,
-    color: SLOT_COLORS[slot] ?? SLOT_COLORS[0],
-    rank: record.rank,
-    slug: record.slug,
-    name: record.name,
-    short: shortName(record.name),
-    monogram: monogram(record.filedName),
-    operatorNumber: record.operatorNumber,
-    boeTotal: record.boeTotal,
-    oilTotal: record.oilTotal,
-    gasTotal: record.gasTotal,
-    leases: record.leases,
-    counties: record.counties,
-    headquarters: record.headquarters,
-    topCounties: record.topCounties.map(titleCase),
-    trend: record.trend,
+    rank: data.rank,
+    slug: data.slug,
+    name: data.name,
+    short: shortName(data.name),
+    monogram: data.monogram,
+    logoUrl: data.logoUrl,
+    operatorNumber: data.operatorNumber,
+    boeTotal: data.boeTotal,
+    oilTotal: data.oilTotal,
+    gasTotal: data.gasTotal,
+    leases: data.leases,
+    counties: data.counties,
+    headquarters: data.headquarters,
+    topCounties: data.topCounties.map(titleCase),
+    trend: data.trend,
     boeCurrent: current,
     boePrevious: previous,
     yearOverYear:
       current !== null && previous !== null && previous !== 0
         ? ((current - previous) / previous) * 100
         : null,
-    perLease: record.leases > 0 ? record.boeTotal / record.leases : 0,
+    perLease: data.leases > 0 ? data.boeTotal / data.leases : 0,
     // Oil's share of BOE, from the raw volumes rather than from `boeTotal`, so the
     // 15:1 conversion is applied once and visibly.
     oilPct:
-      record.oilTotal + record.gasTotal / GAS_TO_OIL > 0
+      data.oilTotal + data.gasTotal / GAS_TO_OIL > 0
         ? Math.round(
-            (record.oilTotal /
-              (record.oilTotal + record.gasTotal / GAS_TO_OIL)) *
+            (data.oilTotal / (data.oilTotal + data.gasTotal / GAS_TO_OIL)) *
               100,
           )
         : 0,
   };
-}
-
-/**
- * Resolve the four picker values into operators, skipping empty slots and any
- * slug with no record. Slot numbers are the *picker* positions, so an operator in
- * slot D keeps slot D's colour even when C is empty.
- */
-export function buildStatisticsSelection(
-  selection: readonly string[],
-): StatisticsOperator[] {
-  const operators: StatisticsOperator[] = [];
-
-  selection.forEach((slug, slot) => {
-    if (!slug) return;
-    const record = OPERATOR_STATISTICS_RECORDS.find((item) => item.slug === slug);
-    if (!record) return;
-    operators.push(toStatisticsOperator(record, slot));
-  });
-
-  return operators;
 }
 
 /* --------------------------------------------------------------------------
@@ -364,10 +345,10 @@ function metricRow(
 /** "Company information" — registration and footprint. */
 export function buildCompanyRows(operators: StatisticsOperator[]): MatrixRow[] {
   return [
-    metricRow(
-      "Headquarters",
-      operators,
-      (o) => (o.headquarters ? { kind: "text", value: o.headquarters } : { kind: "missing" }),
+    metricRow("Headquarters", operators, (o) =>
+      o.headquarters
+        ? { kind: "text", value: o.headquarters }
+        : { kind: "missing" },
     ),
     metricRow("Operator no.", operators, (o) => ({
       kind: "text",
@@ -399,12 +380,17 @@ export function buildCompanyRows(operators: StatisticsOperator[]): MatrixRow[] {
     // Every operator in this extract is one the directory reports as active; the
     // row exists because the design shows it, and it will carry real per-operator
     // status the moment the endpoint supplies one.
-    metricRow("Activity status", operators, () => ({ kind: "status", active: true })),
+    metricRow("Activity status", operators, () => ({
+      kind: "status",
+      active: true,
+    })),
   ];
 }
 
 /** "Production metrics" — reported volumes. */
-export function buildProductionRows(operators: StatisticsOperator[]): MatrixRow[] {
+export function buildProductionRows(
+  operators: StatisticsOperator[],
+): MatrixRow[] {
   const years = STATISTICS_TREND_YEARS;
   const latest = years.at(-1);
   const prior = years.at(-2);
@@ -478,13 +464,20 @@ export function buildTrendRows(operators: StatisticsOperator[]): MatrixRow[] {
 }
 
 /** The collapsible matrix — both blocks above, under group headings. */
-export function buildFullMatrixRows(operators: StatisticsOperator[]): MatrixRow[] {
+export function buildFullMatrixRows(
+  operators: StatisticsOperator[],
+): MatrixRow[] {
   return [
     { kind: "group", label: "Company information" },
-    ...buildCompanyRows(operators).filter((row) => row.kind !== "metric" || row.label !== "Activity status"),
+    ...buildCompanyRows(operators).filter(
+      (row) => row.kind !== "metric" || row.label !== "Activity status",
+    ),
     { kind: "group", label: "Production metrics" },
     ...buildProductionRows(operators),
-    metricRow("Activity status", operators, () => ({ kind: "status", active: true })),
+    metricRow("Activity status", operators, () => ({
+      kind: "status",
+      active: true,
+    })),
   ];
 }
 
@@ -515,7 +508,10 @@ export function buildStatisticsCsvRows(
     ["Gas (Mcf)", ...operators.map((o) => String(o.gasTotal))],
     ["Oil share %", ...operators.map((o) => String(o.oilPct))],
     ["Total BOE", ...operators.map((o) => String(o.boeTotal))],
-    ["Production per lease (BOE)", ...operators.map((o) => o.perLease.toFixed(0))],
+    [
+      "Production per lease (BOE)",
+      ...operators.map((o) => o.perLease.toFixed(0)),
+    ],
   ];
 
   STATISTICS_TREND_YEARS.forEach((year, index) => {
@@ -538,6 +534,8 @@ export function buildStatisticsCsvRows(
 /** RFC 4180 quoting: wrap every field, double any embedded quote. */
 export function toCsv(rows: string[][]): string {
   return rows
-    .map((row) => row.map((field) => `"${field.replace(/"/g, '""')}"`).join(","))
+    .map((row) =>
+      row.map((field) => `"${field.replace(/"/g, '""')}"`).join(","),
+    )
     .join("\r\n");
 }
