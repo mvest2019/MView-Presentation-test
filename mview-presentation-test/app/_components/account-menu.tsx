@@ -71,7 +71,7 @@ export function AccountMenu({ user }: { user: SessionUser }) {
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex cursor-pointer items-center gap-[6px] rounded-lg border-0 bg-transparent px-1 py-1 font-sans text-sm font-semibold text-[#cbd5e1] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green"
+        className="flex cursor-pointer items-center gap-[6px] rounded-lg border-0 bg-transparent px-1 py-1 font-sans text-sm font-semibold text-mv-slate hover:text-mv-green-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
       >
         <UserRound aria-hidden="true" className="h-[17px] w-[17px]" />
         <span className="max-[767px]:hidden">Hi, {firstName}</span>
