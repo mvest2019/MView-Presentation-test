@@ -15,6 +15,7 @@ import {
   Search,
   Share2,
   Table2,
+  X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -596,6 +597,29 @@ export function MapChrome({
                 placeholder="API number (e.g 123-45678)"
                 className="w-full min-w-0 border-0 bg-transparent text-[12.5px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted lg:w-[148px]"
               />
+              {placeQuery !== "" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    /*
+                      The same undoing the box does when it is emptied by hand:
+                      the number stops filtering the map, the dropdown closes,
+                      and focus goes back to the field so the next number can
+                      be typed straight away.
+                    */
+                    setPlaceQuery("");
+                    setPlaceOpen(false);
+                    onClearApi();
+                    searchInputRef.current?.focus();
+                  }}
+                  aria-label="Clear the API number"
+                  title="Clear the API number"
+                  className="grid h-[18px] w-[18px] shrink-0 cursor-pointer place-items-center rounded text-mv-muted hover:bg-[#f1f2f4] hover:text-mv-red"
+                >
+                  <X size={12} strokeWidth={2.5} aria-hidden="true" />
+                </button>
+              )}
+
               <Search
                 size={15}
                 aria-hidden="true"
