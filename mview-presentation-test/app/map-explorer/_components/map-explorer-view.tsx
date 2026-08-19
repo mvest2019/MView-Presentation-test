@@ -1991,6 +1991,7 @@ export function MapExplorerView() {
                       status: String(attributes.status ?? ""),
                       wtype: String(attributes.wtype ?? ""),
                       county: String(attributes.county ?? ""),
+                      recordType: String(attributes.recordType ?? ""),
                       lon: Number(attributes.lon),
                       lat: Number(attributes.lat),
                       x,

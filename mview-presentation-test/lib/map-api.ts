@@ -244,6 +244,8 @@ export type MapWell = {
    * the map marks the bottom of the bore with.
    */
   profile?: string;
+  /** Which filing the row came from — "Permit", "Completion". */
+  recordType?: string;
   icon: string;
   wtype: string;
   status: string;

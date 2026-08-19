@@ -114,6 +114,7 @@ export function buildWellGraphics(
       status: well.status,
       wtype: well.wtype,
       county: well.county,
+      recordType: well.recordType ?? "",
     };
 
     const path = borePath(well);
