@@ -177,12 +177,19 @@ type FiltersPanelProps = {
   onCollapse?: () => void;
   /** Positioning; the panel places itself nowhere on its own. */
   className?: string;
+  /**
+   * The height the caller measured off the map, in pixels. An inline style
+   * because it is a measurement, not a design decision — and because it must
+   * beat any class that would have the card size itself from its content.
+   */
+  style?: React.CSSProperties;
 };
 
 export function FiltersPanel({
   onApply,
   onCollapse,
   className = "",
+  style,
 }: FiltersPanelProps) {
   /* The live county list, with the two states any request has besides its
      result. `loading` starts true because the request starts on mount. */
@@ -764,15 +771,22 @@ export function FiltersPanel({
   return (
     <div
       /*
-        No height class here. The caller pins the card between a top and a
-        bottom edge, which already gives it a definite height — adding
-        `h-full` on top made it 100% of the map *starting* at the top inset,
-        so the card hung past the bottom edge by the two insets combined.
-        The footer's `mt-auto` is what keeps Apply at the bottom.
+        Everything about this card's shape — two rows, the overflow, the
+        height it is given — lives in `.mv-filters-card` and `.mv-filters-rail`
+        in `globals.css`, as plain CSS. Only the paint is utilities.
+
+        That is deliberate. A utility class exists because a build step
+        generated it; if one of `h-[calc(100%-36px)]` or
+        `grid-rows-[minmax(0,1fr)_auto]` is ever missing from the stylesheet,
+        the card silently falls back to sizing itself from its content — a
+        short card with the Apply button stranded in the middle of it. Written
+        by hand, in a file that is always served whole, there is nothing to
+        miss.
       */
-      className={`flex w-[196px] flex-col md:w-[224px] lg:w-[252px] overflow-hidden rounded-xl border border-mv-line bg-white shadow-mv-lg ${className}`}
+      style={style}
+      className={`mv-filters-card w-[196px] rounded-xl border border-mv-line bg-white shadow-mv-lg md:w-[224px] lg:w-[252px] ${className}`}
     >
-      <div className="mv-thin-scroll min-h-0 flex-1 overflow-y-auto px-[14px]">
+      <div className="mv-thin-scroll mv-filters-body px-[14px]">
         {/* ---------------- header ---------------- */}
         <div className="flex items-center gap-2 pb-3 pt-[14px]">
           <h2 className="text-[14px] lg:text-[15px] font-bold leading-none text-mv-ink">
@@ -958,11 +972,9 @@ export function FiltersPanel({
           Outside the scroll container, so the sections scroll under it and
           this stays put — the button has to be reachable without scrolling to
           the end of two hundred and seventy counties. */}
-      {/* `mt-auto` as well as the body's `flex-1`: when the sections are short
-          — collapsed, or their lists still loading — the body does not always
-          claim the free space, and the footer floated up the card leaving
-          white below it. Pushing from below pins it either way. */}
-      <div className="mt-auto shrink-0 border-t border-mv-line bg-white px-[14px] pb-[12px] pt-[12px]">
+      {/* The card's second row, so it is at the bottom by definition rather
+          than by being pushed there. */}
+      <div className="border-t border-mv-line bg-white px-[14px] pb-[12px] pt-[12px]">
         <button
           type="button"
           disabled={!canApply}
@@ -1047,13 +1059,25 @@ function CheckboxSection({
           key={item.name}
           className="flex cursor-pointer items-center gap-2 py-[5px]"
         >
-          <input
-            type="checkbox"
-            className="sr-only"
-            checked={checked.has(item.name)}
-            onChange={() => onToggleItem(item.name)}
-          />
-          <Checkbox checked={checked.has(item.name)} />
+          {/*
+            The real checkbox sits exactly where the drawn one is, invisible
+            over it, rather than being tucked away with `sr-only`.
+
+            `sr-only` positions the input absolutely as a 1×1 box with a -1px
+            margin. Clicking the label focuses it, and the browser then scrolls
+            that box into view — which is not the row you clicked, so the list
+            jumped. Over the drawn box it is already in view, and there is
+            nothing to scroll to.
+          */}
+          <span className="relative grid h-[15px] w-[15px] shrink-0 place-items-center">
+            <input
+              type="checkbox"
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              checked={checked.has(item.name)}
+              onChange={() => onToggleItem(item.name)}
+            />
+            <Checkbox checked={checked.has(item.name)} />
+          </span>
           {/* Without a count to keep clear of, a long name may wrap rather
               than be cut off. */}
           <span
@@ -1162,8 +1186,10 @@ function Highlighted({ text, query }: { text: string; query: string }) {
 /*
  * The radio and checkbox are drawn rather than styled natively: `accent-color`
  * cannot produce the mock's hollow ring with a green dot, and it leaves the
- * unchecked border the platform grey. The real input sits behind each of these
- * in `sr-only`, so keyboard and screen-reader behaviour is the browser's.
+ * unchecked border the platform grey. The real input sits over each of these,
+ * transparent and the same size, so keyboard and screen-reader behaviour is
+ * the browser's — and so focusing one scrolls to the row it belongs to rather
+ * than to a 1×1 box parked somewhere else.
  */
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for the commented-out My leases section

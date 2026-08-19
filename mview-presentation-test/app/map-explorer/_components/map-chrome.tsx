@@ -165,6 +165,33 @@ export function MapChrome({
 
   const filtersOpen = filtersOpenByTab[viewTab];
 
+  /*
+   * The filters rail's height, in pixels, measured off this layer.
+   *
+   * `ResizeObserver` rather than a one-off read: the map changes height when
+   * the Insights split moves, when the window resizes and when the browser's
+   * own chrome slides away, and the rail has to follow all three. The observer
+   * fires once as soon as it starts watching, which is where the first
+   * measurement comes from — nothing is set from the effect body itself.
+   *
+   * The 36 is the 12px inset above the card and the 24px below it.
+   */
+  const chromeRef = useRef<HTMLDivElement>(null);
+  const [railHeight, setRailHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    const layer = chromeRef.current;
+    if (!layer || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => {
+      const height = layer.clientHeight - 36;
+      setRailHeight(height > 0 ? height : null);
+    });
+
+    observer.observe(layer);
+    return () => observer.disconnect();
+  }, []);
+
   const setFiltersOpen = (open: boolean) =>
     setFiltersOpenByTab((current) => ({ ...current, [viewTab]: open }));
   const [shareOpen, setShareOpen] = useState(false);
@@ -386,7 +413,7 @@ export function MapChrome({
   return (
     /* The layer is click-through so the map keeps its drag; each control opts
        itself back in with `pointer-events-auto`. */
-    <div className="pointer-events-none absolute inset-0 z-20">
+    <div ref={chromeRef} className="pointer-events-none absolute inset-0 z-20">
       {/* Filters is a standing panel, not a dropdown — it stays open while you
           work the map, so no outside-click dismissal. The chevron closes it.
           `z-10` lifts it over the scale card, which shares this corner. */}
@@ -394,9 +421,20 @@ export function MapChrome({
         <FiltersPanel
           onApply={onApplyFilters}
           onCollapse={() => setFiltersOpen(false)}
-          // Stretched top to bottom, so the rail lines up with the map's own
-          // edges rather than stopping short of them.
-          className="pointer-events-auto absolute bottom-6 left-3 top-3 z-10"
+          /*
+           * The card's height is measured off the map, not derived from it.
+           *
+           * Every version of this that let CSS work the height out — a top
+           * edge with a bottom edge, then a percentage, then a stretched grid
+           * cell — could come out short on some machines, leaving the Apply
+           * button stranded mid-card with white beneath it. A number in pixels
+           * cannot: `railHeight` is this layer's own height less the 12px
+           * inset above and the 24px below, remeasured whenever the map
+           * resizes. The `.mv-filters-rail` class holds the position and a
+           * `calc` for the first paint, before the measurement lands.
+           */
+          className="mv-filters-rail pointer-events-auto z-10"
+          style={railHeight === null ? undefined : { height: railHeight }}
         />
       ) : (
         <EdgeTab
