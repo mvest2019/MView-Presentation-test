@@ -1,7 +1,10 @@
 "use client";
 
+import { useState } from "react";
+
 import {
   ChevronRight,
+  ZoomIn,
   Crosshair,
   LandPlot,
   Lock,
@@ -50,6 +53,15 @@ export const MAP_TOOLS: MapTool[] = [
 type ToolsPanelProps = {
   /** The tool currently armed, if any — its button reads as pressed. */
   activeId?: string;
+  /**
+   * Whether the map is drawing individual wells rather than count bubbles.
+   *
+   * Every tool here measures wells: the area's count and its CSV, the tract's
+   * wells-inside, the watch circle's tally. Over bubbles there are no wells to
+   * read, so the tools would answer nothing — the panel says so rather than
+   * arming a tool that cannot work.
+   */
+  wellsVisible?: boolean;
   onSelect?: (id: string) => void;
   /** The chevron in the header — collapses the panel back to the tab. */
   onCollapse?: () => void;
@@ -60,11 +72,15 @@ type ToolsPanelProps = {
 
 export function ToolsPanel({
   activeId,
+  wellsVisible = true,
   onSelect,
   onCollapse,
   className = "",
   tools = MAP_TOOLS,
 }: ToolsPanelProps) {
+  /* Raised by a click made while the map is still on bubbles. */
+  const [asked, setAsked] = useState(false);
+
   return (
     <div
       className={`w-[164px] rounded-l-xl border border-r-0 border-mv-line bg-white p-[10px] md:w-[178px] lg:w-[196px] lg:p-3 shadow-mv-lg ${className}`}
@@ -89,7 +105,21 @@ export function ToolsPanel({
             key={id}
             type="button"
             aria-pressed={id === activeId}
-            onClick={() => onSelect?.(id)}
+            aria-disabled={!wellsVisible}
+            title={
+              wellsVisible
+                ? undefined
+                : "Zoom in until the wells appear — this tool reads well data"
+            }
+            onClick={() => {
+              // Over bubbles the click asks for the wells instead of arming.
+              if (!wellsVisible) {
+                setAsked(true);
+                return;
+              }
+              setAsked(false);
+              onSelect?.(id);
+            }}
             className={`flex w-full cursor-pointer items-center gap-2 rounded-[10px] border px-[10px] py-[7px] text-left lg:gap-[10px] lg:px-3 lg:py-[10px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep ${
               id === activeId
                 ? "border-mv-green-deep bg-mv-mint"
@@ -109,6 +139,26 @@ export function ToolsPanel({
           </button>
         ))}
       </div>
+
+      {/* Why nothing happened, in the panel that was clicked rather than in a
+          toast somewhere else on the map. It stands quietly until a click asks
+          for a tool, and then says so in amber. */}
+      {!wellsVisible && (
+        <p
+          role={asked ? "alert" : undefined}
+          className={`mt-2 flex items-start gap-[7px] rounded-[10px] border px-[9px] py-[8px] text-[11px] leading-snug lg:mt-[10px] ${
+            asked
+              ? "border-mv-amber bg-mv-amber-bg text-mv-amber"
+              : "border-mv-line bg-[#fafbfa] text-mv-muted"
+          }`}
+        >
+          <ZoomIn size={13} strokeWidth={2} className="mt-[1px] shrink-0" aria-hidden="true" />
+          <span>
+            These tools read individual wells. Zoom in until the wells appear
+            in place of the count bubbles.
+          </span>
+        </p>
+      )}
     </div>
   );
 }
