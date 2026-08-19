@@ -520,6 +520,14 @@ export type VerificationResult = { ok: boolean; message: string };
  * var pointing verification elsewhere would produce an account that can never be
  * confirmed. Tying it to `AUTH_API_URL` means the whole auth surface moves
  * together or not at all, and switching hosts stays a config change.
+ *
+ * HISTORY, worth one line: `send-code` answered 502 on mview-dev-api for most of
+ * 2026-08-19 — it passed its own validation and then died trying to send the
+ * mail, which blocked sign-up entirely because Create account is gated on a
+ * confirmed code. Fixed on the backend the same day; it now answers 200 with
+ * `expires_in_minutes: 5`. Neither path below changed, and no client change was
+ * needed. Recorded only so an identical 502 is recognised rather than re-debugged
+ * as a path problem.
  */
 function verificationPath(name: "send-code" | "verify-code"): string {
   const versioned = /\/api\/v\d+$/.test(authBase());
@@ -543,6 +551,17 @@ function isMissingRoute(status: number): boolean {
   return status === 404;
 }
 
+/**
+ * `{ email, username }` AND NOTHING ELSE (Ryan, 2026-08-19: "don't pass password
+ * to send code api").
+ *
+ * The live site's `sendEmailVerificationCode` takes an optional third `password`
+ * argument and spreads it in when truthy, and this briefly mirrored that. It is
+ * deliberately NOT mirrored any more: the endpoint does not need it — its
+ * validator only ever complains about `email` and `username` — and sending a
+ * password to a route that issues a one-time code puts a credential in a request
+ * that has no use for it.
+ */
 export async function sendVerificationCode(
   email: string,
   username: string,
@@ -619,9 +638,42 @@ export async function verifyCode(
       };
     }
 
-    const record = (body ?? {}) as { success?: boolean; verified?: boolean };
+    /*
+     * `data.is_verified` IS THE ANSWER, and it is checked first (contract from
+     * Ryan, 2026-08-19). A success looks like:
+     *
+     *   {"status_code":200,
+     *    "data":{"email":"…","is_verified":true,"verified_at":"…"},
+     *    "error":"","message":"Email verified successfully"}
+     *
+     * There is no top-level `success` or `verified` in that shape, so this used
+     * to fall all the way through to "the envelope code is under 400" and call a
+     * 200 verified on the strength of the status alone. That is the one thing
+     * this function must not get wrong: a 200 carrying `is_verified: false` would
+     * have unlocked Create account for an unconfirmed address.
+     *
+     * `data` needs the typeof guard because it is NOT always an object — the
+     * failure envelopes send `"data": ""` (confirmed against the 400 for a wrong
+     * code), and `"".is_verified` is undefined rather than an error, which would
+     * silently resume the old fall-through.
+     *
+     * The two legacy keys stay as fallbacks below it: the other host answers with
+     * `success`, and nothing is gained by dropping a branch that costs a `??`.
+     */
+    const record = (body ?? {}) as {
+      success?: boolean;
+      verified?: boolean;
+      data?: { is_verified?: boolean } | string | null;
+    };
+    const data =
+      typeof record.data === "object" && record.data !== null
+        ? record.data
+        : null;
     const ok =
-      record.success ?? record.verified ?? envelopeCode(status, body) < 400;
+      data?.is_verified ??
+      record.success ??
+      record.verified ??
+      envelopeCode(status, body) < 400;
 
     if (upstreamDown(status, body)) {
       console.error(

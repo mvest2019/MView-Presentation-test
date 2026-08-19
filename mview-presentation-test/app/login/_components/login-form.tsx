@@ -3,8 +3,8 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 
 import { signInAction } from "@/app/_components/auth-actions";
 import { loginSchema, type LoginValues } from "@/app/_components/auth-schema";
@@ -14,7 +14,6 @@ import {
   Divider,
   Field,
   Fine,
-  FormError,
   OrDivider,
   PasswordInput,
   Req,
@@ -31,8 +30,6 @@ import { GoogleSignIn } from "@/app/_components/google-sign-in";
  */
 export function LoginForm({ next }: { next: string }) {
   const router = useRouter();
-  const [failure, setFailure] = useState<string | null>(null);
-  const [googleFailure, setGoogleFailure] = useState<string | null>(null);
 
   const {
     register,
@@ -44,10 +41,11 @@ export function LoginForm({ next }: { next: string }) {
   });
 
   async function onValid(values: LoginValues) {
-    setFailure(null);
     const result = await signInAction(values);
     if (!result.ok) {
-      setFailure(result.message);
+      /* A toast, matching sign-up. These two forms are siblings and shared the
+         same inline slot; moving only one would leave the pair inconsistent. */
+      toast.error(result.message);
       return;
     }
     router.push(next);
@@ -63,18 +61,14 @@ export function LoginForm({ next }: { next: string }) {
         lede="Access your Mineral View account."
       />
 
-      <GoogleSignIn next={next} onError={setGoogleFailure} />
-      {/* `mt-2` matters: the button carries only `mb-1`, so without it this sat
-          4px under the border and read as part of the button rather than as a
-          message about it. */}
-      {googleFailure && (
-        <p
-          role="alert"
-          className="mb-1 mt-2 text-[12.5px] font-semibold leading-[1.45] text-[#b3261e]"
-        >
-          {googleFailure}
-        </p>
-      )}
+      {/* A TOAST, not a line under the button (Ryan, 2026-08-19).
+          Nothing here is about what was typed — every message this can carry is
+          about Google or the API being unreachable ("Google's sign-in script
+          could not load", "Sign-in is temporarily unavailable"). The inline
+          version had to be styled to sit against the button without reading as
+          part of it, and it pushed the whole form down as it appeared. See the
+          note in `ui/sonner.tsx` on why field errors did NOT move. */}
+      <GoogleSignIn next={next} onError={(message) => toast.warning(message)} />
 
       {/* Lower case here on purpose — `OrDivider` sets `uppercase`, so this
           renders as "OR WITH EMAIL". */}
@@ -132,15 +126,6 @@ export function LoginForm({ next }: { next: string }) {
             />
           )}
         </Field>
-
-        {/* UNDER THE PASSWORD FIELD, not at the top of the form.
-            "That email and password did not match." is a statement about the two
-            inputs directly above it. At the top it sat immediately beneath the
-            "or continue with email" divider, touching neither field and close
-            enough to the Google button to read as a complaint about that
-            instead. `-mt-[8px]` pulls it back against the password input, past
-            that `Field`'s own 14px bottom margin. */}
-        <FormError message={failure} className="-mt-[8px] mb-3" />
 
         {/* Unchecked by default, as the design specifies: shared and family
             devices. Checked, the session cookie lasts 30 days; unchecked it

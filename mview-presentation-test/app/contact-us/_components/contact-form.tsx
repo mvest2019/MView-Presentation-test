@@ -1,9 +1,10 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowUpRight, CircleCheck } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { ArrowUpRight } from "lucide-react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 
 import { contactConfig as cfg } from "./contact-config";
 import { contactSchema, type ContactValues } from "./contact-schema";
@@ -58,29 +59,19 @@ export function ContactForm() {
   /** Set only when a send fails; success is announced by the toast alone. */
   const [failure, setFailure] = useState("");
 
-  /**
-   * Success toast — the one and only confirmation of a send. The button label
-   * stays put and no inline line is added, so the news is told once.
+  /*
+   * Success is announced by the shared toast (`_components/ui/sonner.tsx`), which
+   * replaced a hand-rolled one that lived here (Ryan, 2026-08-19: "you can use
+   * toast msg from shadcn").
    *
-   * `fixed`, so it cannot affect either card's height — the point the whole
-   * layout has been fighting over. Auto-hides after 6s.
+   * WHAT WENT WITH IT: a `fixed` panel at `top-[84px] z-50`, a `useState` for
+   * whether it was showing, a `useRef` holding a `setTimeout`, and a cleanup
+   * effect for that timer. The ref was also the repo's only lint error — the
+   * React Compiler rejects a ref that a render-phase call can reach — and it is
+   * gone rather than worked around, because sonner owns the timeout now. The
+   * reasons the old panel was `fixed` still hold and still apply: the toaster is
+   * mounted in the root layout, so it cannot affect either card's height.
    */
-  const [toast, setToast] = useState(false);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-    },
-    [],
-  );
-
-  function showToast() {
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    setToast(true);
-    toastTimer.current = setTimeout(() => setToast(false), 6000);
-  }
-
   async function onValid(values: ContactValues) {
     setFailure("");
     try {
@@ -97,7 +88,9 @@ export function ContactForm() {
       // looking like it still needs sending. Only on success — on failure the
       // text is kept so the visitor does not have to retype it.
       reset();
-      showToast();
+      toast.success("Your message has been sent successfully.", {
+        description: "We'll get back to you soon!",
+      });
     } catch {
       // Covers a rejected request and a blocked one alike: a CORS failure
       // surfaces here as a TypeError, not as a status code.
@@ -107,24 +100,6 @@ export function ContactForm() {
 
   return (
     <div className="flex h-full flex-col rounded-mv border border-mv-line bg-mv-card p-[22px] shadow-mv">
-      {toast && (
-        <div
-          role="status"
-          aria-live="polite"
-          /* Width is set, not left to the content: as a shrink-to-fit box the
-             message wrapped over five lines on a phone. `w-[calc(100vw-24px)]`
-             takes the screen less a small margin, `max-w-[380px]` stops it
-             stretching on a desktop. */
-          className="fixed left-1/2 top-[84px] z-50 flex w-[calc(100vw-24px)] max-w-[380px] -translate-x-1/2 items-start gap-2.5 rounded-[12px] bg-mv-green-ink px-[18px] py-[14px] shadow-mv-lg"
-        >
-          <CircleCheck className="mt-[1px] h-[19px] w-[19px] flex-none text-mv-green" />
-          <p className="m-0 text-[13.5px] font-semibold leading-[1.45] text-mv-green">
-            Your message has been sent successfully. We&rsquo;ll get back to you
-            soon!
-          </p>
-        </div>
-      )}
-
       <div className="mb-2 text-[12px] font-bold uppercase tracking-[.12em] text-mv-green-deep">
         Send a message
       </div>
@@ -138,7 +113,7 @@ export function ContactForm() {
 
       {/* Typing clears a previous failure notice — it refers to an attempt the
           visitor has now moved on from. Nothing else to reset: the button label
-          never changed, and the toast times itself out. */}
+          never changed, and sonner times the success toast out itself. */}
       <form
         noValidate
         onSubmit={handleSubmit(onValid)}

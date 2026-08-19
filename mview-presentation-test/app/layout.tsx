@@ -3,6 +3,7 @@ import { Lexend_Deca } from "next/font/google";
 
 import { SiteFooter } from "./_components/site-footer";
 import { SiteHeader } from "./_components/site-header";
+import { Toaster } from "./_components/ui/sonner";
 import { getSessionUser } from "@/lib/session";
 import "./globals.css";
 
@@ -49,6 +50,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           {children}
         </main>
         <SiteFooter />
+        {/* Transient, page-level notices only — see the note in `ui/sonner.tsx`.
+            Field validation stays inline against the field it is about, where a
+            screen reader meets it in the form's own tab order. */}
+        <Toaster />
       </body>
     </html>
   );
