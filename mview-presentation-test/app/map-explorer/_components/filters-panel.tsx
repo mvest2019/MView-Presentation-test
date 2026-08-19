@@ -723,7 +723,16 @@ export function FiltersPanel({
       }));
     }
 
+    /*
+     * The box now holds the result's own name, which is rarely the text that
+     * was typed to find it — "KARNE" finds "KARNES". `searching` compares the
+     * box against the query the results answer, so without this line those two
+     * never match again and the dropdown is stuck saying "Searching…" over a
+     * blurred list, for a request that will never be made: the effect below
+     * skips a query that was filled in by a pick.
+     */
     pickedQueryRef.current = suggestion.label.trim();
+    setSearchedFor(suggestion.label.trim());
     setQuery(suggestion.label);
     setSuggestionsOpen(false);
   }
@@ -825,7 +834,16 @@ export function FiltersPanel({
                 setActiveSuggestion(0);
                 setSuggestionsOpen(true);
               }}
-              onFocus={() => setSuggestionsOpen(true)}
+              /*
+               * Clicking back into a box that already holds a picked result
+               * reopens nothing: the list would only offer the answer that is
+               * already in the box. Typing opens it again.
+               */
+              onFocus={() => {
+                if (pickedQueryRef.current !== query.trim()) {
+                  setSuggestionsOpen(true);
+                }
+              }}
               onKeyDown={onSearchKeyDown}
               placeholder="Lease, operator, or county"
               className="min-w-0 flex-1 border-0 bg-transparent text-[11.5px] lg:text-[12.5px] leading-tight text-mv-ink outline-none placeholder:text-mv-muted"
