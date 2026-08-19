@@ -3,12 +3,13 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
+import { toast } from "sonner";
 
 import {
   registerAction,
-  resendCodeAction,
+  sendCodeAction,
   verifyCodeAction,
 } from "@/app/_components/auth-actions";
 import {
@@ -21,7 +22,6 @@ import {
   Divider,
   Field,
   Fine,
-  FormError,
   OrDivider,
   PasswordInput,
   Req,
@@ -33,26 +33,62 @@ import { GoogleSignIn } from "@/app/_components/google-sign-in";
 /**
  * Sign up — the design's `route:signup`, wired to the live endpoints.
  *
- * Three states, exactly as the mockup walks them:
- *   form → verify (six-digit code) → verified
+ * THE ORDER IS THE LIVE SITE'S (Ryan, 2026-08-19: "check current website flow
+ * for register need same"). It verifies the address FIRST and creates the
+ * account last:
  *
- * The email code GATES the account, which is the design's rule and the API's:
- * `userRegistration` creates the row, `send-code` mails the digits, and only a
- * confirmed `verify-code` opens the verified panel. The prototype accepted any
- * six digits and hard-coded 482916; nothing of that is carried over.
+ *   fill the form → Verify Email → 6-digit code → Register → signed in
+ *
+ * This is the reverse of what was here. The old flow submitted the form, created
+ * the account, mailed a code, and swapped the whole card for a verify panel and
+ * then a "verified" panel with a Continue button. Nothing about that matched
+ * `app/register/_components/RegisterForm.tsx` in the live repo, where:
+ *
+ *   · the verification lives INSIDE the form, between the last field and the
+ *     terms checkbox, and the card never swaps out;
+ *   · "Verify Email" is disabled until every required field is valid
+ *     (`allRequiredFieldsValid`), so the code cannot be requested for an address
+ *     that is about to be rejected;
+ *   · Register is disabled until the code is confirmed, and `handleRegisterSubmit`
+ *     refuses outright — "Please verify your email before registering.";
+ *   · a confirmed registration signs the member straight in and routes them on,
+ *     rather than ending on a panel with a button.
+ *
+ * The prototype accepted any six digits and hard-coded 482916; nothing of that
+ * is carried over.
+ *
+ * ONE DELIBERATE DEPARTURE, and it is the account type — see `DEFAULT_MEMBER_TYPE`
+ * in `auth-actions.ts`. The live form opens `MemberTypePopup` to ask owner vs
+ * professional; here everyone is a mineral owner and nothing is asked.
+ *
+ * The live site's plan machinery is also absent, because this form chooses no
+ * plan: no `subscriptionid`/`price` in the payload beyond the free default, and
+ * none of its `/welcome` or `/payment` routing.
  */
-type Stage = "form" | "verify" | "verified";
+const RESEND_COOLDOWN_SECONDS = 300;
 
-export function RegisterForm() {
+export function RegisterForm({ next }: { next: string }) {
   const router = useRouter();
-  const [stage, setStage] = useState<Stage>("form");
-  const [failure, setFailure] = useState<string | null>(null);
-  /* Kept apart from `failure`: a Google problem belongs next to the Google
-     button, not in the form's error slot halfway down the card. */
-  const [googleFailure, setGoogleFailure] = useState<string | null>(null);
-  const [email, setEmail] = useState("");
-  /* Held past the form step for the resend call, which needs a `username`. */
-  const [fullName, setFullName] = useState("");
+
+  /*
+   * VERIFICATION STATE, held as the two ADDRESSES rather than as booleans.
+   *
+   * `verifiedEmail` is what the code actually confirmed, and `codeSentTo` is
+   * where the current code went. Both compare against the live email field
+   * instead of latching a `emailVerified` flag, which closes a hole the live site
+   * has: over there `emailVerified` is a plain boolean, so verifying address A
+   * and then editing the box to address B leaves the flag true and registers B
+   * unverified. Deriving it means changing the address silently un-verifies it
+   * and the Verify Email button comes back, with no effect and no reset call.
+   */
+  const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null);
+  const [codeSentTo, setCodeSentTo] = useState<string | null>(null);
+  const [digits, setDigits] = useState<string[]>(Array(6).fill(""));
+  const [sending, setSending] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [cooldown, setCooldown] = useState(0);
+  const boxes = useRef<(HTMLInputElement | null)[]>([]);
 
   const {
     register,
@@ -68,7 +104,6 @@ export function RegisterForm() {
       password: "",
       phone: "",
       mailingAddress: "",
-      inviteCode: "",
     },
   });
 
@@ -80,30 +115,123 @@ export function RegisterForm() {
   // whole component. `useWatch` subscribes to the one field instead.
   const agreed = useWatch({ control, name: "terms" });
 
-  async function onValid(values: RegisterValues) {
-    setFailure(null);
-    const result = await registerAction(values);
+  /* Watched because the verification block reacts to them as they are typed:
+     these four gate the Verify Email button, and the address decides whether an
+     existing confirmation still counts. */
+  const watched = useWatch({
+    control,
+    name: ["fullName", "email", "password", "phone"],
+  });
+  const [nameNow, emailRaw, passwordNow, phoneNow] = watched;
+  const emailNow = (emailRaw ?? "").trim();
+
+  const emailVerified =
+    verifiedEmail !== null &&
+    verifiedEmail.toLowerCase() === emailNow.toLowerCase();
+  const awaitingCode = codeSentTo !== null && !emailVerified;
+
+  /*
+   * The live site's `allRequiredFieldsValid`, field for field: name, email and
+   * password must be valid, and phone must be valid OR empty — which the schema
+   * already encodes, since every phone check short-circuits on "".
+   *
+   * Checked against the SCHEMA rather than re-implemented, so this gate and the
+   * messages under the inputs can never disagree about what "valid" means.
+   */
+  const canSendCode =
+    registerSchema.shape.fullName.safeParse(nameNow ?? "").success &&
+    registerSchema.shape.email.safeParse(emailRaw ?? "").success &&
+    registerSchema.shape.password.safeParse(passwordNow ?? "").success &&
+    registerSchema.shape.phone.safeParse(phoneNow ?? "").success;
+
+  /* Resend ticker — the live site's, at the same 300s. The updater is a callback
+     rather than a bare `setCooldown(n - 1)`, which is what keeps this out of
+     `react-hooks/set-state-in-effect`. */
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = setInterval(
+      () => setCooldown((left) => (left > 0 ? left - 1 : 0)),
+      1000,
+    );
+    return () => clearInterval(id);
+  }, [cooldown]);
+
+  async function sendCode() {
+    setSending(true);
+    setOtpError(null);
+    /* Address and name only — no password (Ryan, 2026-08-19). The password field
+       is still WATCHED, but only so `canSendCode` can require a valid one before
+       this button unlocks; the value itself never leaves the form until the
+       registration call. */
+    const result = await sendCodeAction(emailNow, nameNow ?? "");
+    setSending(false);
+
     if (!result.ok) {
-      setFailure(result.message);
+      toast.error(result.message || "Could not send the code. Please try again.");
       return;
     }
-    setEmail(values.email);
-    setFullName(values.fullName);
-    setStage("verify");
+
+    setCodeSentTo(emailNow);
+    setDigits(Array(6).fill(""));
+    setCooldown(RESEND_COOLDOWN_SECONDS);
+    toast.success("Verification code sent to your email.");
   }
 
-  if (stage === "verified") {
-    return <VerifiedPanel onContinue={() => router.push("/")} />;
+  async function verifyOtp(code: string) {
+    if (code.length !== 6 || !codeSentTo) {
+      setOtpError("Enter the 6-digit code.");
+      return;
+    }
+
+    setVerifying(true);
+    setOtpError(null);
+    /* Verified against the address the code was SENT to, not against whatever is
+       in the box now — those can differ, and confirming the wrong one is exactly
+       the hole this avoids. */
+    const result = await verifyCodeAction(codeSentTo, code);
+    setVerifying(false);
+
+    if (!result.ok) {
+      setOtpError(result.message || "Invalid or expired code. Please try again.");
+      return;
+    }
+
+    setVerifiedEmail(codeSentTo);
+    setCodeSentTo(null);
+    setOtpError(null);
+    setCooldown(0);
+    toast.success("Email verified!");
   }
 
-  if (stage === "verify") {
-    return (
-      <VerifyPanel
-        email={email}
-        fullName={fullName}
-        onVerified={() => setStage("verified")}
-      />
-    );
+  async function onValid(values: RegisterValues) {
+    /* The live site's guard, kept even though the button is disabled: a form can
+       still be submitted by pressing Enter in a field, and the account must not
+       be created for an unconfirmed address. */
+    if (!emailVerified) {
+      toast.error("Please verify your email before registering.");
+      return;
+    }
+
+    const result = await registerAction(values);
+    if (!result.ok) {
+      /*
+       * A TOAST, not the line that used to sit under the password field (Ryan,
+       * 2026-08-19, on "That email address already has an account. Sign in
+       * instead.").
+       *
+       * `error` rather than `warning` deliberately: this is the red inline
+       * message's replacement, so it keeps the red treatment and stays distinct
+       * from the amber Google/API-fault toasts above the form.
+       */
+      toast.error(result.message);
+      return;
+    }
+
+    toast.success("Registration Successful");
+    /* `registerAction` signed them in and set the cookie, so the tree on screen
+       is still the signed-out one — `refresh` is what re-renders the header. */
+    router.push(next);
+    router.refresh();
   }
 
   return (
@@ -115,15 +243,9 @@ export function RegisterForm() {
 
       {/* The same endpoint as sign-in: the backend resolves existing-vs-new
           from the Google token, so there is no separate "sign up with Google". */}
-      <GoogleSignIn onError={setGoogleFailure} />
-      {googleFailure && (
-        <p
-          role="alert"
-          className="mb-1 mt-2 text-[12.5px] font-semibold leading-[1.45] text-[#b3261e]"
-        >
-          {googleFailure}
-        </p>
-      )}
+      {/* A toast, for the reason sign-in's carries — these are Google and API
+          faults, not anything about this form. */}
+      <GoogleSignIn onError={(message) => toast.warning(message)} />
 
       {/* Lower case on purpose — `OrDivider` sets `uppercase`. */}
       <OrDivider label="or with email" />
@@ -189,17 +311,6 @@ export function RegisterForm() {
           )}
         </Field>
 
-        {/* UNDER THE PASSWORD FIELD, matching sign-in. Every failure this can
-            carry — "that email address already has an account", a rejected
-            password, an upstream fault — is about the credentials above it, and
-            at the top of the form it sat under the "or with email" divider where
-            it read as a complaint about the Google button instead.
-
-            It is NOT the last field on this form, so it does not sit directly
-            above the submit button as sign-in's does; the fields that follow are
-            optional, and this stays with the three required ones it concerns. */}
-        <FormError message={failure} className="-mt-[8px] mb-3" />
-
         <Field
           label={
             <>
@@ -249,25 +360,155 @@ export function RegisterForm() {
           )}
         </Field>
 
-        <Field
-          label={
+        {/* NO INVITE CODE FIELD (Ryan, 2026-08-19: "don't show double
+            verification code box").
+
+            It was the design's, and it read as a SECOND code box: its placeholder
+            was "e.g. 4821-0653" and it sat immediately above the verification
+            block, so with the digits open the form appeared to ask for two codes.
+            Removing it rather than restyling it, for two reasons beyond the
+            confusion — the live register form has no such field, and this one was
+            never sent anywhere. `registerUser` has no parameter for it, so
+            whatever was typed here was validated and then dropped. Nothing is
+            lost. If invitations are built later they need an API field first. */}
+
+        {/* ----- Email verification (gates Register) -----
+            Position is the live site's: after the last field, immediately before
+            the terms checkbox, inside the form rather than replacing it. */}
+        <div className="mb-3">
+          {emailVerified ? (
+            <div className="flex items-center gap-2 rounded-[10px] border border-mv-mint-line bg-mv-mint px-[14px] py-[11px] text-[14px] font-semibold text-mv-green-deep">
+              <span aria-hidden="true">✓</span>
+              Email verified
+            </div>
+          ) : !awaitingCode ? (
             <>
-              Invite code <Optional />
+              <button
+                type="button"
+                onClick={sendCode}
+                disabled={sending || !canSendCode}
+                /* Disabled until every required field is valid, so the code is
+                   never sent for details the API is about to reject. */
+                title={
+                  canSendCode ? undefined : "Fill in the fields above first"
+                }
+                className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-[10px] border-2 border-mv-green-deep bg-white px-4 font-sans text-[14px] font-bold leading-[1.2] text-mv-green-deep transition-colors hover:bg-mv-mint disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-white"
+              >
+                {sending ? "Sending…" : "Verify email"}
+              </button>
+              <p className="mt-2 inline-block rounded-[6px] bg-mv-mint px-[10px] py-1 text-[11.5px] font-semibold text-mv-green-deep">
+                Click the Verify email button to get a 6-digit code on your
+                email.
+              </p>
             </>
-          }
-          error={errors.inviteCode?.message}
-          hint="Enter an invite code if one was provided to you."
-        >
-          {(props) => (
-            <input
-              {...props}
-              {...register("inviteCode")}
-              type="text"
-              autoComplete="off"
-              placeholder="e.g. 4821-0653"
-            />
+          ) : (
+            <div className="rounded-[12px] border border-mv-mint-line bg-[#f7fbf9] p-3">
+              <p className="m-0 mb-[10px] text-[12.5px] leading-[1.5] text-mv-muted">
+                Enter the 6-digit code sent to{" "}
+                <strong className="font-bold text-mv-ink">{codeSentTo}</strong>
+              </p>
+
+              <div className="mb-[10px] flex gap-[6px]">
+                {digits.map((digit, index) => (
+                  <input
+                    key={index}
+                    ref={(el) => {
+                      boxes.current[index] = el;
+                    }}
+                    value={digit}
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={1}
+                    aria-label={`Digit ${index + 1}`}
+                    onChange={(event) => {
+                      const value = event.target.value
+                        .replace(/\D/g, "")
+                        .slice(-1);
+                      setOtpError(null);
+                      const nextDigits = [...digits];
+                      nextDigits[index] = value;
+                      setDigits(nextDigits);
+                      if (value && index < 5) boxes.current[index + 1]?.focus();
+                      /* Auto-submits on the sixth digit, as the live site's
+                         `onComplete` does — nobody should have to find a button
+                         after typing a code they just read. */
+                      const joined = nextDigits.join("");
+                      if (joined.length === 6) verifyOtp(joined);
+                    }}
+                    onKeyDown={(event) => {
+                      // Backspace on an empty box steps back, so a mistyped code
+                      // can be cleared without reaching for the mouse.
+                      if (
+                        event.key === "Backspace" &&
+                        !digits[index] &&
+                        index > 0
+                      ) {
+                        boxes.current[index - 1]?.focus();
+                      }
+                    }}
+                    onPaste={(event) => {
+                      const pasted = event.clipboardData
+                        .getData("text")
+                        .replace(/\D/g, "")
+                        .slice(0, 6);
+                      if (!pasted) return;
+                      event.preventDefault();
+                      const nextDigits = Array(6).fill("");
+                      for (let i = 0; i < pasted.length; i += 1) {
+                        nextDigits[i] = pasted[i];
+                      }
+                      setDigits(nextDigits);
+                      boxes.current[Math.min(pasted.length, 5)]?.focus();
+                      if (pasted.length === 6) verifyOtp(pasted);
+                    }}
+                    className="h-11 w-[38px] rounded-[9px] border border-mv-line text-center text-[18px] font-bold text-mv-ink outline-none focus:border-mv-green focus:outline-2 focus:outline-mv-green"
+                  />
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between text-[12.5px]">
+                {cooldown > 0 ? (
+                  <span className="text-mv-muted">
+                    Resend in {Math.floor(cooldown / 60)}:
+                    {String(cooldown % 60).padStart(2, "0")}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={sendCode}
+                    disabled={sending}
+                    className="cursor-pointer border-0 bg-transparent p-0 font-sans text-[12.5px] font-semibold text-mv-green-deep underline disabled:cursor-not-allowed disabled:opacity-55"
+                  >
+                    Resend code
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCodeSentTo(null);
+                    setDigits(Array(6).fill(""));
+                    setOtpError(null);
+                    setCooldown(0);
+                  }}
+                  className="cursor-pointer border-0 bg-transparent p-0 font-sans text-[12.5px] font-semibold text-mv-muted underline hover:text-mv-green-deep"
+                >
+                  Change email
+                </button>
+              </div>
+
+              {(verifying || otpError) && (
+                <p
+                  role={otpError ? "alert" : "status"}
+                  className={`mt-2 text-[12.5px] font-semibold ${
+                    otpError ? "text-[#b3261e]" : "text-mv-muted"
+                  }`}
+                >
+                  {verifying ? "Verifying…" : otpError}
+                </p>
+              )}
+            </div>
           )}
-        </Field>
+        </div>
 
         <div className="mb-3 mt-[2px]">
           <CheckRow {...register("terms")}>
@@ -296,10 +537,13 @@ export function RegisterForm() {
           </CheckRow>
         </div>
 
-        <SubmitButton disabled={!agreed || isSubmitting}>
-          {isSubmitting
-            ? "Creating your account…"
-            : "Create account & verify email"}
+        {/* `!emailVerified` is the live site's gate (`disabled={isLoading ||
+            !emailVerified}`), and the label no longer promises to verify: the
+            code is already confirmed by the time this is pressable, so "Create
+            account & verify email" described the old order and would now be a
+            lie. */}
+        <SubmitButton disabled={!agreed || !emailVerified || isSubmitting}>
+          {isSubmitting ? "Creating your account…" : "Create account"}
         </SubmitButton>
 
         <Fine className="mt-2">
@@ -353,175 +597,16 @@ function Optional({ children }: { children?: React.ReactNode }) {
   );
 }
 
-/**
- * The six-digit code step.
+/*
+ * `VerifyPanel` and `VerifiedPanel` WERE HERE and are gone with the reordering.
  *
- * Six separate boxes, as the design draws them, with paste and backspace
- * handled — a code arrives from an email and is almost always pasted, and a
- * six-box control that cannot take a paste is worse than one text field.
+ * They were the two cards the old flow swapped in after submitting: a six-digit
+ * step, then an "Email verified — your free account is ready" panel with a
+ * Continue button. The live site has neither. Verification is now a block inside
+ * the form above (the digit boxes, the paste and backspace handling and the
+ * resend cooldown all moved there intact), and a confirmed registration signs the
+ * member in and routes them on, so there is nothing left for a terminal panel to
+ * say.
  */
-function VerifyPanel({
-  email,
-  fullName,
-  onVerified,
-}: {
-  email: string;
-  /** Carried through only so "Resend the code" can supply the required
-      `username` — see `resendCodeAction`. */
-  fullName: string;
-  onVerified: () => void;
-}) {
-  const [digits, setDigits] = useState<string[]>(Array(6).fill(""));
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [resent, setResent] = useState<string | null>(null);
-  const boxes = useRef<(HTMLInputElement | null)[]>([]);
-
-  const code = digits.join("");
-
-  function setAt(index: number, value: string) {
-    setError(null);
-    const next = [...digits];
-    next[index] = value;
-    setDigits(next);
-    if (value && index < 5) boxes.current[index + 1]?.focus();
-  }
-
-  async function submit() {
-    setBusy(true);
-    setError(null);
-    const result = await verifyCodeAction(email, code);
-    setBusy(false);
-    if (!result.ok) {
-      setError(result.message);
-      return;
-    }
-    onVerified();
-  }
-
-  return (
-    <>
-      <AuthHead
-        title="Check your email"
-        lede={`We sent a 6-digit code to ${email}.`}
-      />
-
-      <div className="rounded-[12px] border border-mv-line bg-[#f7fbf9] p-4">
-        <p className="m-0 mb-[10px] text-[12px] leading-[1.5] text-mv-muted">
-          Your account opens{" "}
-          <strong className="font-bold">only after this code is confirmed</strong>{" "}
-          — it proves the address is really yours, so your record, alerts and
-          anything the county mails through us reach you and nobody else.
-        </p>
-
-        <div className="mb-[10px] flex gap-[6px]">
-          {digits.map((digit, index) => (
-            <input
-              key={index}
-              ref={(el) => {
-                boxes.current[index] = el;
-              }}
-              value={digit}
-              inputMode="numeric"
-              maxLength={1}
-              aria-label={`Digit ${index + 1}`}
-              onChange={(event) =>
-                setAt(index, event.target.value.replace(/\D/g, "").slice(-1))
-              }
-              onKeyDown={(event) => {
-                // Backspace on an empty box steps back, so a mistyped code can
-                // be cleared without reaching for the mouse.
-                if (event.key === "Backspace" && !digits[index] && index > 0) {
-                  boxes.current[index - 1]?.focus();
-                }
-              }}
-              onPaste={(event) => {
-                const pasted = event.clipboardData
-                  .getData("text")
-                  .replace(/\D/g, "")
-                  .slice(0, 6);
-                if (!pasted) return;
-                event.preventDefault();
-                const next = Array(6).fill("");
-                for (let i = 0; i < pasted.length; i += 1) next[i] = pasted[i];
-                setDigits(next);
-                boxes.current[Math.min(pasted.length, 5)]?.focus();
-              }}
-              className="h-12 w-[42px] rounded-[9px] border border-mv-line text-center text-[20px] font-bold text-mv-ink outline-none focus:border-mv-green focus:outline-2 focus:outline-mv-green"
-            />
-          ))}
-        </div>
-
-        {error && (
-          <p role="alert" className="mb-[10px] text-[13px] font-semibold text-[#b3261e]">
-            {error}
-          </p>
-        )}
-        {resent && (
-          <p role="status" className="mb-[10px] text-[13px] text-mv-green-deep">
-            {resent}
-          </p>
-        )}
-
-        <button
-          type="button"
-          onClick={submit}
-          disabled={code.length !== 6 || busy}
-          className="w-full cursor-pointer rounded-[10px] border-2 border-transparent bg-mv-green px-[18px] py-[10px] font-sans text-[14px] font-bold text-mv-green-ink hover:brightness-[1.05] disabled:cursor-not-allowed disabled:opacity-55"
-        >
-          {busy ? "Verifying…" : "Verify & create my account"}
-        </button>
-
-        <p className="mt-2 text-center text-[12px] text-mv-muted">
-          Didn&apos;t get it?{" "}
-          <button
-            type="button"
-            onClick={async () => {
-              setResent(null);
-              setError(null);
-              const result = await resendCodeAction(email, fullName);
-              if (result.ok) setResent("A new code is on its way.");
-              else setError(result.message);
-            }}
-            className="cursor-pointer border-0 bg-transparent p-0 font-sans text-[12px] font-semibold text-mv-green-deep underline"
-          >
-            Resend the code
-          </button>{" "}
-          · check spam · codes expire in 15 minutes
-        </p>
-      </div>
-    </>
-  );
-}
-
-function VerifiedPanel({ onContinue }: { onContinue: () => void }) {
-  return (
-    <>
-      <AuthHead
-        title="Email verified"
-        lede="Your free account is ready."
-      />
-      <div className="rounded-[12px] border border-[#bfe6d3] bg-mv-mint p-4 text-center">
-        <div aria-hidden="true" className="text-[26px] text-mv-green-deep">
-          ✓
-        </div>
-        <h2 className="mb-1 mt-1 font-sans text-[16px] font-bold text-mv-ink">
-          Email verified — your free account is ready
-        </h2>
-        <p className="m-0 mb-3 text-[12px] text-mv-muted">
-          Your acceptance of the Terms was recorded with the document version and
-          timestamp.
-        </p>
-        <button
-          type="button"
-          onClick={onContinue}
-          className="w-full cursor-pointer rounded-[10px] border-2 border-transparent bg-mv-green px-[18px] py-[10px] font-sans text-[14px] font-bold text-mv-green-ink hover:brightness-[1.05]"
-        >
-          Continue →
-        </button>
-      </div>
-    </>
-  );
-}
 
 export { inputClass };

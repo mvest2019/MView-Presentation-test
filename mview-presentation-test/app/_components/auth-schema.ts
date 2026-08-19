@@ -5,8 +5,10 @@ import { z } from "zod";
  *
  * THE FIELDS ARE THE DESIGN'S — `marketing/src/routes/login.html` and
  * `signup.html` in the redesign build: one "Full name" box rather than a first
- * and last, a single mailing-address line, an invite code, and a required
- * consent checkbox. Nothing is added to or removed from that set here.
+ * and last, a single mailing-address line, and a required consent checkbox.
+ *
+ * The design also draws an INVITE CODE. That one is deliberately not here — see
+ * the note where it used to sit, below `mailingAddress`.
  *
  * The PASSWORD RULES are the API's, ported from `isPasswordValid` in the live
  * repo: 8 characters with an upper, a lower, a digit and a symbol. The design's
@@ -16,21 +18,27 @@ import { z } from "zod";
  * failure is shown against the field.
  */
 
+/*
+ * ONE CHECK, ONE MESSAGE (Ryan, 2026-08-19 — supplied the wording).
+ *
+ * This was a `.min(1)` for "Please enter your email address." and a `.regex()`
+ * for "That doesn't look like an email address.". The supplied copy covers both
+ * cases in a single sentence, and the regex alone already rejects an empty or
+ * whitespace-only value — verified: "", "   " and "nope" all fail it — so the
+ * length check would only ever repeat this message and is gone rather than
+ * duplicated.
+ */
 const email = z
   .string()
   .trim()
-  .min(1, "Please enter your email address.")
-  .regex(
-    /^[^@\s]+@[^@\s]+\.[^@\s]+$/,
-    "That doesn't look like an email address.",
-  );
+  .regex(/^[^@\s]+@[^@\s]+\.[^@\s]+$/, "Valid email address is required.");
 
 /** Only shape-checked once something is typed — all three are optional. */
 const optionalText = z.string().trim();
 
 export const loginSchema = z.object({
   email,
-  password: z.string().min(1, "Please enter your password."),
+  password: z.string().min(1, "Password is required."),
   // Unchecked by default, deliberately: the design notes this is for shared and
   // family devices ("v42 · Pragati").
   remember: z.boolean(),
@@ -42,12 +50,26 @@ export const registerSchema = z.object({
   fullName: z
     .string()
     .trim()
-    .min(1, "Please enter your name.")
+    .min(1, "Full name is required.")
     .regex(/^[A-Za-z\s'.-]+$/, "A name should only contain letters."),
   email,
+  /*
+   * TWO LENGTH CHECKS, in this order, because the supplied copy distinguishes
+   * the empty field from a short one: `.min(1)` catches "" and `.min(8)` catches
+   * everything shorter than the rule. Zod collects issues in check order and the
+   * resolver shows the first, so an empty box reads "Password is required." and
+   * "abc" reads "Must be at least 8 characters." — verified against zod 4.4.3
+   * rather than assumed.
+   *
+   * The four character-class messages below were NOT supplied and are unchanged.
+   * They must stay: they are the API's own password rule (`isPasswordValid` in
+   * the live repo), and dropping them would let the form submit and come back
+   * with an opaque 400 from the endpoint.
+   */
   password: z
     .string()
-    .min(8, "Use at least 8 characters.")
+    .min(1, "Password is required.")
+    .min(8, "Must be at least 8 characters.")
     .regex(/[A-Z]/, "Include at least one capital letter.")
     .regex(/[a-z]/, "Include at least one lower-case letter.")
     .regex(/\d/, "Include at least one number.")
@@ -84,7 +106,9 @@ export const registerSchema = z.object({
       "Enter a 10-digit phone number, like (555) 555-0123.",
     ),
   mailingAddress: optionalText,
-  inviteCode: optionalText,
+  /* `inviteCode` WAS HERE and is gone with its field — it read as a second
+     verification code box, the live form has no such field, and nothing ever
+     sent it. See the note in `register-form.tsx`. */
   terms: z.literal(true, { message: "Please accept the terms to continue." }),
 });
 

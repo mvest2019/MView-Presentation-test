@@ -45,22 +45,62 @@ export async function signInAction(values: unknown): Promise<ActionResult> {
 }
 
 /**
- * Creates the account, then asks the API to email a code.
- *
- * NO SESSION IS STARTED HERE. The design is explicit that the code gates the
- * account — "no session is issued and the account stays unusable until the code
- * round-trips" — so signing the visitor in at this point would defeat the step
- * that follows.
- */
-/**
- * Everyone signs up as a Mineral Owner (Ryan, 2026-08-13).
+ * Everyone signs up as a Mineral Owner (Ryan, 2026-08-13, restated 2026-08-19:
+ * "don't ask for professional by default take mineral owner").
  *
  * The account-type question and its dialog are gone: the value is fixed rather
- * than asked. `mineral_owner` is also the API's own default for the Google flow,
- * so the two paths agree without either having to prompt.
+ * than asked. This is the ONE deliberate departure from the live site's register
+ * flow, which opens `MemberTypePopup` (`app/pricing/_components/MemberTypePopUp`)
+ * and branches its landing page on `memberType === 'professional'`. Neither the
+ * popup nor that branch is ported. `mineral_owner` is also the API's own default
+ * for the Google flow, so the two paths agree without either having to prompt.
  */
 const DEFAULT_MEMBER_TYPE: MemberTypeValue = "mineral_owner";
 
+/**
+ * Signs in straight after a successful registration, retrying a few times.
+ *
+ * PORTED FROM `signInAfterRegistration` in the live repo's `RegisterForm.tsx`,
+ * including the reason it retries. The credentials were accepted by the
+ * registration endpoint moments earlier, so a login failure on the very next
+ * call is almost never actually wrong credentials — it is far more likely the
+ * new row is not yet readable from whatever login reads (replica lag /
+ * write-then-read consistency), which surfaces as an intermittent "invalid
+ * credentials" nobody can reproduce on demand.
+ *
+ * Same shape as the original: three attempts, `attempt * 400`ms between them.
+ */
+async function signInAfterRegistration(
+  email: string,
+  password: string,
+  attempt = 1,
+): Promise<Awaited<ReturnType<typeof loginUser>>> {
+  const MAX_ATTEMPTS = 3;
+  const result = await loginUser(email, password);
+  if (!result.ok && attempt < MAX_ATTEMPTS) {
+    await new Promise((resolve) => setTimeout(resolve, attempt * 400));
+    return signInAfterRegistration(email, password, attempt + 1);
+  }
+  return result;
+}
+
+/**
+ * Creates the account. THE EMAIL IS ALREADY VERIFIED BY THE TIME THIS RUNS.
+ *
+ * ORDER REVERSED to match the live site (Ryan, 2026-08-19: "check current
+ * website flow for register need same"). This used to create the account and
+ * then email a code; `handleRegisterSubmit` over there refuses to submit at all
+ * until `emailVerified` is true, so the code round-trips FIRST and registration
+ * is the last step rather than the first. Two consequences worth knowing:
+ *
+ *   · No `sendVerificationCode` call here any more. The form asks for the code
+ *     itself, before it ever calls this.
+ *   · A SESSION IS NOW STARTED, which it deliberately was not before. The old
+ *     comment argued the code gates the account so signing in here would defeat
+ *     the step that follows — true when verification came second, meaningless now
+ *     that nothing follows. The live site signs in immediately and lands the new
+ *     member on a page, so this does too.
+ */
 export async function registerAction(values: unknown): Promise<ActionResult> {
   const parsed = registerSchema.safeParse(values);
   if (!parsed.success) {
@@ -79,19 +119,20 @@ export async function registerAction(values: unknown): Promise<ActionResult> {
   });
   if (!created.ok) return { ok: false, message: created.message };
 
-  const sent = await sendVerificationCode(email, splitName(fullName).first);
-  if (!sent.ok) {
-    // The ACCOUNT EXISTS at this point. Saying "registration failed" would send
-    // them round again into an "already registered" error, so the message names
-    // what actually went wrong and what to do about it.
+  const signedIn = await signInAfterRegistration(email, password);
+  if (!signedIn.ok) {
+    // The ACCOUNT EXISTS at this point, so "registration failed" would be a lie
+    // that sends them round again into an "already registered" error. The live
+    // site shows a bare "Invalid Credentials" here; this names the state the
+    // visitor is actually in and what to do about it.
     return {
       ok: false,
       message:
-        sent.message ||
-        "Your account was created, but we could not send the code. Try signing in, or resend it.",
+        "Your account was created, but we could not sign you in. Please sign in.",
     };
   }
 
+  await startSession(signedIn.user, true);
   return { ok: true };
 }
 
@@ -101,14 +142,25 @@ export async function registerAction(values: unknown): Promise<ActionResult> {
  * `/email-verification/send-code` rejects a blank one — `{}` answers 422 with
  * "please provide username" — so this passed `""` and every resend failed with
  * a validation error about a field the visitor cannot see. The name is already
- * on screen from the form they just submitted, so it is threaded through rather
- * than re-fetched.
+ * typed into the form the visitor is still looking at, so it is threaded through
+ * rather than re-fetched.
  *
  * The fallback is the local part of the address: the endpoint only needs
  * something to greet the reader with, and refusing to resend because a name went
  * missing would be a worse outcome than an email addressed to "jane".
  */
-export async function resendCodeAction(
+/*
+ * SERVES BOTH THE FIRST SEND AND EVERY RESEND, which is why it is no longer
+ * called `resendCodeAction`. In the live site one handler does both jobs —
+ * `handleSendOtp` is wired to the "Verify Email" button and to "Resend Code"
+ * alike — and the endpoint does not distinguish them.
+ *
+ * `fullName` is passed as the live site passes it — `handleSendOtp` sends
+ * `${firstName} ${lastName}` — but the password it also sends is NOT passed on
+ * (Ryan, 2026-08-19). Only the address and a name reach the endpoint; see
+ * `sendVerificationCode`.
+ */
+export async function sendCodeAction(
   email: string,
   fullName: string,
 ): Promise<ActionResult> {
@@ -121,7 +173,7 @@ export async function resendCodeAction(
   const sent = await sendVerificationCode(parsed.data, username);
   return sent.ok
     ? { ok: true }
-    : { ok: false, message: sent.message || "We could not resend the code." };
+    : { ok: false, message: sent.message || "We could not send the code." };
 }
 
 /** Confirms the code. Only this opens the account. */

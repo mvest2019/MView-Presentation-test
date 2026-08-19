@@ -327,32 +327,17 @@ export function SubmitButton({
   );
 }
 
-/**
- * `role="alert"` so a failure is read out when it appears.
+/*
+ * `FormError` WAS HERE and is deliberately gone (Ryan, 2026-08-19: "instead of
+ * showing that msg here show in toast msg").
  *
- * `className` is for PLACEMENT, not decoration. Sign-in renders this under the
- * password field, where the preceding `Field`'s own 14px bottom margin would
- * otherwise leave it floating clear of the input it is about; it passes a
- * negative top margin to close that gap. Register keeps it above the fields and
- * passes nothing, so the default spacing is unchanged there.
+ * It rendered the submit-level failure — "That email address already has an
+ * account. Sign in instead.", "That email and password did not match." — as a
+ * red line under the password field. Both callers now raise `toast.error`
+ * instead, so nothing referenced it. Do not reinstate it for FIELD validation:
+ * that already has its own slot on `Field`, which keeps the message beside the
+ * input and in the form's tab order.
  */
-export function FormError({
-  message,
-  className = "mb-2",
-}: {
-  message: string | null;
-  className?: string;
-}) {
-  if (!message) return null;
-  return (
-    <p
-      role="alert"
-      className={`text-[13px] font-semibold text-[#b3261e] ${className}`}
-    >
-      {message}
-    </p>
-  );
-}
 
 /** `.tiny.muted`, centred — the reassurance lines under the button. */
 export function Fine({
