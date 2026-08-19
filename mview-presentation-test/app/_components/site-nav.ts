@@ -264,42 +264,44 @@ export const footerCompanyLinksBottom: NavLink[] = [
  * The real Mineral View logo — the Cloudinary assets the live site uses. Never
  * hand-recreate either as SVG.
  *
- * TWO ASSETS, one per breakpoint, both named explicitly by Ryan (2026-08-13):
- * `icons/mineralview-logo.png` on desktop, `icons/logo.jpg.jpg` on mobile.
+ * TWO SETS, and which one a surface takes depends on how dark that surface is.
+ * They are NOT interchangeable, so read this before moving one:
  *
- * BOTH ARE USED RAW — no Cloudinary transform on either. That is a deliberate
- * instruction, given twice and confirmed after seeing the rendered result
- * (Ryan, 2026-08-13). Earlier revisions recoloured the desktop wordmark; every
- * one of those is gone. Do not reintroduce a transform without asking.
+ *   `graphics/mview-logo.png` + `graphics/mview-logo-icon.png` — the LIGHT-GROUND
+ *   pair, supplied 2026-08-19 for the white header. Green `#00CD95` and BLACK on a
+ *   transparent ground; there is no white anywhere in either palette. They read on
+ *   white and go invisible on `mv-ink`.
  *
- * THE KNOWN CONSEQUENCE, so nobody rediscovers it as a bug: the desktop file is
- * drawn for the live site's BLACK header — green "MINERAL" plus WHITE "VIEW". On
- * this build's white header the word VIEW is white-on-white and does not show,
- * and the icon's inner V and upper arc drop out for the same reason. The header
- * reads "MINERAL" with a partial mark beside it. That is the asset, not a bug in
- * this file.
+ *   `icons/mineralview-logo.png` — the DARK-GROUND wordmark, which the footer
+ *   still uses. Green "MINERAL" plus WHITE "VIEW", so it is the exact inverse:
+ *   it reads on black and loses the word VIEW on white.
  *
- * If it should ever read in full, the fix is NOT a colour swap — the icon's inner
- * V is the same pure white as the VIEW text, so one swap darkens both and turns
- * the mark into a dark blob. The two real options are a dark ground behind the
- * logo, or a dark header bar; either shows the asset exactly as the live site
- * does.
+ * That inversion is why the header and the footer point at different files rather
+ * than sharing one. Swap either and half the wordmark disappears — this is the bug
+ * that has been rediscovered several times.
  *
- * The mobile file is a JPG and so has no alpha: its black ground is baked into
- * the pixels and renders as a black tile whatever sits behind it — which is why
- * the mark reads there and not on desktop. A small corner radius in the header
- * keeps that tile looking deliberate rather than like a clipped image.
+ * ALL USED RAW — no Cloudinary transform on any of them. That is a deliberate
+ * instruction, given twice and confirmed after seeing the rendered result (Ryan,
+ * 2026-08-13). Earlier revisions recoloured the desktop wordmark; every one of
+ * those is gone. Do not reintroduce a transform without asking. A colour swap is
+ * never the fix for a logo that does not read — pick the pair drawn for the ground
+ * it sits on.
+ *
+ * HISTORY, so the header's shape makes sense: between 2026-08-13 and 2026-08-19
+ * the header was BLACK, and the mobile slot was a JPG with a baked-in black tile.
+ * Both existed only because the light pair did not exist yet and the dark wordmark
+ * had to be given a dark ground somehow. The new assets removed the need for both,
+ * so the bar is white again and the dark ground behind the logo is gone.
  */
 export const logo = {
   /**
-   * Desktop header — the wordmark, the supplied URL VERBATIM.
+   * Desktop header — the wordmark, the supplied URL VERBATIM (Ryan, 2026-08-19).
    *
-   * Do not add a transform here. It has been asked for twice and confirmed after
-   * seeing the result (Ryan, 2026-08-13); see the note above for what that means
-   * on a white header and for the two ways to change it if that is ever wanted.
+   * Green and black on transparency, so it needs a LIGHT ground and must not be
+   * put on the footer. Do not add a transform here.
    */
   desktop: {
-    src: "https://res.cloudinary.com/mview/image/upload/icons/mineralview-logo.png",
+    src: "https://res.cloudinary.com/mview/image/upload/graphics/mview-logo.png",
     width: 577,
     height: 132,
   },
@@ -307,16 +309,19 @@ export const logo = {
    * Mobile header — the square icon mark on its own, so the bar keeps its room
    * for the burger and the CTA at phone widths.
    *
-   * A JPG, so it has NO transparency: the black ground is baked into the file and
-   * shows as a black tile. That is the asset as it exists; it cannot be made
-   * transparent by a URL parameter.
+   * A transparent PNG, unlike the JPG it replaces: there is no baked-in tile, so
+   * the mark sits directly on the white bar and needs no corner radius.
    */
   mobile: {
-    src: "https://res.cloudinary.com/mview/image/upload/icons/logo.jpg.jpg",
+    src: "https://res.cloudinary.com/mview/image/upload/graphics/mview-logo-icon.png",
     width: 63,
     height: 63,
   },
-  /** Dark surfaces (the footer) — the wordmark, where white "VIEW" reads. */
+  /**
+   * Dark surfaces (the footer) — the OLD wordmark, deliberately. Its "VIEW" is
+   * white, which is what makes it read on `mv-ink` and exactly what makes it fail
+   * on the header. Do not point this at the `graphics/` pair.
+   */
   onDark: {
     src: "https://res.cloudinary.com/mview/image/upload/icons/mineralview-logo.png",
     width: 577,
