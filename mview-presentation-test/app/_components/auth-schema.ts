@@ -43,9 +43,34 @@ import { z } from "zod";
  * "that is not an address" and this had been collapsed to one combined sentence.
  * `.trim()` runs first, so "   " counts as blank rather than as malformed.
  */
+/*
+ * TRIMMED **AND** LOWER-CASED (Ryan, 2026-08-19: "removes extra spaces from the
+ * email but does not convert uppercase letters to lowercase").
+ *
+ * `.trim()` was here on its own, so "  Trim.Chouguleu30@gmail.COM  " reached the
+ * API as "Trim.Chouguleu30@gmail.COM". Whether that signs in depends entirely on
+ * whether the backend happens to compare case-insensitively — and if it does not,
+ * an account created from one capitalisation cannot be signed into from another,
+ * which looks like a wrong password and cannot be diagnosed from the page.
+ *
+ * THE WHOLE ADDRESS, local part included. RFC 5321 does technically allow the
+ * part before the @ to be case-sensitive, so this is not lossless in the strictest
+ * reading — but no mail provider in practice treats "Jane@" and "jane@" as
+ * different mailboxes, and normalising is what makes sign-in agree with the
+ * registration that created the account. Doing only the domain would leave exactly
+ * the bug being fixed.
+ *
+ * SHARED BY BOTH FORMS on purpose: register stores what this produces and sign-in
+ * sends what this produces, so the two cannot disagree. `login-throttle.ts` keys
+ * its buckets on a lower-cased address for the same reason.
+ *
+ * Transforms run before the checks below, so `.min(1)` sees the trimmed string and
+ * "   " is reported as missing rather than malformed. Verified against zod 4.4.3.
+ */
 const email = z
   .string()
   .trim()
+  .toLowerCase()
   .min(1, "Email is required")
   .regex(/^[^@\s]+@[^@\s]+\.[^@\s]+$/, "Please enter a valid email");
 
