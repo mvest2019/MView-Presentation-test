@@ -2,8 +2,6 @@
 
 import { Table2 } from "lucide-react";
 
-import { PERMIT_TABLE } from "./well-insights-data";
-
 /*
  * The permit filing as one row.
  *
@@ -16,7 +14,12 @@ import { PERMIT_TABLE } from "./well-insights-data";
  * beside every value. It scrolls sideways on a narrow card; the scrollbar says
  * so on its own.
  */
-export function PermitDetailsTable() {
+export function PermitDetailsTable({
+  columns,
+}: {
+  /** The filing's own columns, in its own order. */
+  columns: { label: string; value: string; tone?: "green" }[];
+}) {
   return (
     <section className="overflow-hidden rounded-xl border border-mv-line bg-white">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-mv-line px-4 py-[11px]">
@@ -35,7 +38,7 @@ export function PermitDetailsTable() {
         <table className="w-full border-collapse text-left">
           <thead>
             <tr className="bg-[#fafbfa]">
-              {PERMIT_TABLE.map((column) => (
+              {columns.map((column) => (
                 <th
                   key={column.label}
                   scope="col"
@@ -49,7 +52,7 @@ export function PermitDetailsTable() {
 
           <tbody>
             <tr>
-              {PERMIT_TABLE.map((column) => (
+              {columns.map((column) => (
                 <td
                   key={column.label}
                   className={`whitespace-nowrap px-4 py-[13px] text-[12.5px] font-semibold ${

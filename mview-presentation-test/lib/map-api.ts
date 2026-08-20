@@ -583,3 +583,81 @@ export const getWellProductionMap = async (
     throw new Error(String(error) || "Failed to fetch production");
   }
 };
+
+/** One well's permit filing, as the permit endpoint reports it. */
+export type MapWellPermit = {
+  identity: {
+    api: string;
+    wellNumber: string | null;
+    statusNumber: string | null;
+    filingPurpose: string | null;
+    filingType: string | null;
+    permitStatus: string | null;
+    isNewPermit: boolean | null;
+  };
+  lease: {
+    leaseNumber: string | null;
+    leaseName: string | null;
+    acres: number | null;
+    district: string | null;
+    fieldNumber: string | null;
+    fieldName: string | null;
+    play: string | null;
+  } | null;
+  wellType: { wtype: string | null; direction: string | null } | null;
+  permit: {
+    permitDate: string | null;
+    permitDateBasis: string | null;
+    issuedDate: string | null;
+  } | null;
+  operator: {
+    operator: string | null;
+    operatorNumber: string | null;
+    fieldName: string | null;
+    fieldNumber: string | null;
+    reservoir: string | null;
+  } | null;
+  location: {
+    lon: number | null;
+    lat: number | null;
+    bhLon: number | null;
+    bhLat: number | null;
+  } | null;
+  nearestWell: {
+    distanceMiles: number | null;
+    direction: string | null;
+  } | null;
+};
+
+/**
+ * GET /api/v1/map/wells/{api}/permit
+ *
+ * The permit side of a well: what was applied for, when it cleared, and where
+ * it is.
+ *
+ * Null for a well with no permit. The service answers 404 in that case, which
+ * is an answer and not a failure — most wells on the map were drilled long
+ * before there was a permit record to find, and "no permit on file" is what
+ * the reader needs to be told.
+ */
+export const getWellPermitMap = async (
+  api: string,
+): Promise<MapWellPermit | null> => {
+  try {
+    const response = await fetch(
+      `${process.env.MAP_BASE_URL}/api/v1/map/wells/${encodeURIComponent(api)}/permit`,
+    );
+
+    if (response.status === 404) return null;
+
+    const data = await response.json();
+
+    if (response.ok && data?.identity?.api) {
+      return data as MapWellPermit;
+    } else {
+      throw new Error("Failed to fetch the permit");
+    }
+  } catch (error) {
+    throw new Error(String(error) || "Failed to fetch the permit");
+  }
+};
