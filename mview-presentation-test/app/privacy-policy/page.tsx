@@ -363,7 +363,7 @@ export default function PrivacyPolicyPage() {
                          `text-white` loses to it, since both target the same
                          property and a descendant selector is the more specific of
                          the two. `!no-underline` is here for the same reason. */
-                      className="mt-4 inline-flex items-center justify-center rounded-[10px] bg-mv-green px-[18px] py-[10px] text-sm font-bold !text-white !no-underline hover:brightness-[1.05]"
+                      className="mt-4 inline-flex items-center justify-center rounded-[10px] bg-mv-green px-[18px] py-[10px] text-sm font-bold !text-black !no-underline hover:brightness-[1.05]"
                     >
                       Contact us
                     </Link>
