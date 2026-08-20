@@ -468,7 +468,13 @@ export function RegisterForm({ next }: { next: string }) {
             the terms checkbox, inside the form rather than replacing it. */}
         <div className="mb-3">
           {emailVerified ? (
-            <div className="flex items-center gap-2 rounded-[10px] border border-mv-mint-line bg-mv-mint px-[14px] py-[11px] text-[14px] font-semibold text-mv-green-deep">
+            /* `justify-center` (Ryan, 2026-08-19: "email verified text need to be
+               center align"). The panel is full width and the label is two words,
+               so left-aligned it sat in the corner of a wide green band. The tick
+               travels with the text because both are flex children of this row —
+               centring the row centres the pair as a unit rather than the words
+               alone. */
+            <div className="flex items-center justify-center gap-2 rounded-[10px] border border-mv-mint-line bg-mv-mint px-[14px] py-[11px] text-[14px] font-semibold text-mv-green-deep">
               <span aria-hidden="true">✓</span>
               Email verified
             </div>

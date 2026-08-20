@@ -5,13 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { toast } from "sonner";
 
 import { signInAction } from "@/app/_components/auth-actions";
 import { loginSchema, type LoginValues } from "@/app/_components/auth-schema";
 import {
   AuthHead,
-  CheckRow,
   Divider,
   Field,
   Fine,
@@ -33,6 +31,9 @@ import { GoogleSignIn } from "@/app/_components/google-sign-in";
 export function LoginForm({ next }: { next: string }) {
   const router = useRouter();
   const [failure, setFailure] = useState<string | null>(null);
+  /* Kept apart from `failure`: a Google fault belongs under the Google button,
+     not in the form's error slot next to the password field. */
+  const [googleFailure, setGoogleFailure] = useState<string | null>(null);
 
   const {
     register,
@@ -40,7 +41,7 @@ export function LoginForm({ next }: { next: string }) {
     formState: { errors, isSubmitting },
   } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "", remember: false },
+    defaultValues: { email: "", password: "" },
   });
 
   async function onValid(values: LoginValues) {
@@ -72,14 +73,27 @@ export function LoginForm({ next }: { next: string }) {
         lede="Access your Mineral View account."
       />
 
-      {/* A TOAST, not a line under the button (Ryan, 2026-08-19).
-          Nothing here is about what was typed — every message this can carry is
-          about Google or the API being unreachable ("Google's sign-in script
-          could not load", "Sign-in is temporarily unavailable"). The inline
-          version had to be styled to sit against the button without reading as
-          part of it, and it pushed the whole form down as it appeared. See the
-          note in `ui/sonner.tsx` on why field errors did NOT move. */}
-      <GoogleSignIn next={next} onError={(message) => toast.warning(message)} />
+      {/* NO TOASTS ON THIS PAGE AT ALL (Ryan, 2026-08-19: "don't show toast
+          msg"). This was `toast.warning`, on the argument that a Google or API
+          fault is not about anything the visitor typed and so does not belong in
+          the form. It is inline again, and under the GOOGLE button rather than in
+          the form's own error slot above "Sign in" — every message it can carry
+          ("Google's sign-in script could not load", "Sign-in is temporarily
+          unavailable") is about the control directly above it, and putting it
+          beside the password fields would blame the wrong thing.
+
+          `mt-2` matters: the button carries only `mb-1`, so without it this sat
+          4px under the border and read as part of the button rather than as a
+          message about it. */}
+      <GoogleSignIn next={next} onError={setGoogleFailure} />
+      {googleFailure && (
+        <p
+          role="alert"
+          className="mb-1 mt-2 text-[12.5px] font-semibold leading-[1.45] text-mv-red"
+        >
+          {googleFailure}
+        </p>
+      )}
 
       {/* Lower case here on purpose — `OrDivider` sets `uppercase`, so this
           renders as "OR WITH EMAIL". */}
@@ -150,20 +164,22 @@ export function LoginForm({ next }: { next: string }) {
           )}
         </Field>
 
-        {/* Unchecked by default, as the design specifies: shared and family
-            devices. Checked, the session cookie lasts 30 days; unchecked it
-            lasts the browser session. */}
-        <div className="mb-3 mt-[2px]">
-          {/* Copy supplied verbatim (Ryan, 2026-08-19). It explains what ticking
-              the box buys and where it stops, which is the pair of facts the
-              label alone could not carry without becoming a sentence. */}
-          <CheckRow
-            {...register("remember")}
-            hint="Stay signed in without entering your credentials each time. Sign in again after logging out."
-          >
-            <span className="text-[13px]">Stay signed in on this device</span>
-          </CheckRow>
-        </div>
+        {/* NO "STAY SIGNED IN" CHECKBOX (Ryan, 2026-08-19, confirmed as the whole
+            row rather than just its (i)).
+
+            It was the design's, unchecked by default for shared and family
+            devices, and it chose the cookie's lifetime: ticked gave 30 days,
+            unticked gave the browser session. THAT CHOICE IS GONE WITH IT — every
+            sign-in now gets the persistent 30-day cookie, set in `signInAction`.
+            The live site's sign-in has no such checkbox either and persists by
+            default, so this is the behaviour it matches.
+
+            Worth being clear that this is a real trade, not just less UI: someone
+            on a borrowed machine can no longer ask for a session that ends when
+            the browser closes. Signing out still clears the cookie, so the way to
+            leave no trace is now to sign out rather than to have planned ahead.
+            `remember` is off `loginSchema` for the same reason — a field nothing
+            can set does not belong in the shape. */}
 
         {/* IMMEDIATELY ABOVE THE BUTTON. Every message this carries is about the
             two fields above and the press that follows — wrong credentials, the
