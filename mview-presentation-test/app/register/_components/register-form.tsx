@@ -145,7 +145,22 @@ export function RegisterForm({ next }: { next: string }) {
     name: ["fullName", "email", "password", "phone"],
   });
   const [nameNow, emailRaw, passwordNow, phoneNow] = watched;
-  const emailNow = (emailRaw ?? "").trim();
+  /*
+   * NORMALISED THE SAME WAY THE SCHEMA DOES — trimmed and lower-cased (see the
+   * note on `email` in `auth-schema.ts`).
+   *
+   * This was `.trim()` only, which mattered because THIS value, not the parsed
+   * one, is what the verification steps use: it is what `send-code` is asked for
+   * and what gets stored as `codeSentTo` for `verify-code`. Registration, by
+   * contrast, posts the schema's output. So a mixed-case address had the code
+   * issued against one spelling and the account created against another, and
+   * whether that worked came down to the backend comparing case-insensitively.
+   *
+   * With both sides normalised the comparison below no longer needs to lower-case
+   * anything, but it is kept explicit rather than relying on this line staying as
+   * it is.
+   */
+  const emailNow = (emailRaw ?? "").trim().toLowerCase();
 
   const emailVerified =
     verifiedEmail !== null &&
