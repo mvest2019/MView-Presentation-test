@@ -443,3 +443,99 @@ export const getTableMap = async (params: {
     throw new Error(String(error) || "Failed to fetch the table");
   }
 };
+
+/** One well's completion record, as the summary endpoint reports it. */
+export type MapWellSummary = {
+  identity: {
+    api: string;
+    wellNumber: string | null;
+    operator: string | null;
+    operatorNumber: string | null;
+    county: string | null;
+    district: string | null;
+    status: string | null;
+    wtype: string | null;
+    performance: string | null;
+    recordType: string | null;
+    lon: number | null;
+    lat: number | null;
+  };
+  lease: {
+    leaseNumber: string | null;
+    leaseName: string | null;
+    acres: number | null;
+    district: string | null;
+    fieldNumber: string | null;
+    fieldName: string | null;
+    play: string | null;
+  } | null;
+  wellbore: {
+    profile: string | null;
+    startDepth: number | null;
+    endDepth: number | null;
+    totalDepth: number | null;
+    trueVerticalDepth: number | null;
+    nearestWellFt: number | null;
+    nearestWellDirection: string | null;
+  } | null;
+  dates: {
+    spud: string | null;
+    completion: string | null;
+    firstProduction: string | null;
+    lastProduction: string | null;
+    ageYears: number | null;
+  } | null;
+  filing: {
+    type: string | null;
+    purpose: string | null;
+    permitStatus: string | null;
+    statusNumber: string | null;
+    issuedDate: string | null;
+    isNewPermit: boolean | null;
+  } | null;
+  production: {
+    lastMonthOil: number | null;
+    lastMonthGas: number | null;
+    nextMonthEstOil: number | null;
+    nextMonthEstGas: number | null;
+    reserveOil: number | null;
+    reserveGas: number | null;
+    lastYearOil: number | null;
+    lastYearGas: number | null;
+    avgEstMonthlyBoe: number | null;
+  } | null;
+  analytics: {
+    oilStep: number | null;
+    gasStep: number | null;
+    impliedAnnualOil: number | null;
+    lastMonthGor: number | null;
+    forecastGor: number | null;
+    reserveToProductionMonths: number | null;
+  } | null;
+};
+
+/**
+ * GET /api/v1/map/wells/{api}/summary
+ *
+ * Everything the completion record holds for one well — the identity, the
+ * lease, the wellbore, its filing dates and its production. The API number
+ * goes in the path, so it is encoded rather than concatenated.
+ */
+export const getWellSummaryMap = async (
+  api: string,
+): Promise<MapWellSummary> => {
+  try {
+    const response = await fetch(
+      `${process.env.MAP_BASE_URL}/api/v1/map/wells/${encodeURIComponent(api)}/summary`,
+    );
+    const data = await response.json();
+
+    if (response.ok && data?.identity?.api) {
+      return data as MapWellSummary;
+    } else {
+      throw new Error("Failed to fetch the well summary");
+    }
+  } catch (error) {
+    throw new Error(String(error) || "Failed to fetch the well summary");
+  }
+};
