@@ -305,7 +305,25 @@ export async function registerUser(input: RegisterInput): Promise<AuthResult> {
     if (/already registered/i.test(message)) {
       return {
         ok: false,
-        message: "That email address already has an account. Sign in instead.",
+        /*
+         * "This email is already registered." (Ryan, 2026-08-19), replacing "That
+         * email address already has an account. Sign in instead."
+         *
+         * This is the LIVE SITE'S wording, character for character —
+         * `handleRegisterSubmit` in the live `RegisterForm.tsx` matches the same
+         * `.includes('already registered')` on the same API error and raises
+         * exactly this string. So the two apps now say the same thing for the
+         * same rejection.
+         *
+         * The dropped half was "Sign in instead." — the instruction, not the
+         * fact. It is not missed: the form already ends in "Already have an
+         * account? Sign in", so the route out is on screen either way.
+         *
+         * The API's own text is "This Email Id is already registered with us.
+         * Please try with another email.", which is why the test matches on the
+         * substring rather than the whole sentence.
+         */
+        message: "This email is already registered.",
       };
     }
     return { ok: false, message };

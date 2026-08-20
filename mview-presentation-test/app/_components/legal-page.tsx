@@ -25,7 +25,19 @@ import { headingBase } from "./typography";
 
 export function legalMetadata(title: string, description: string): Metadata {
   return {
-    title: `${title} | Mineral View`,
+    /*
+     * A DASH, NOT A PIPE (Ryan, 2026-08-19: "Privacy Policy - Mineral View" needed
+     * instead of "Privacy Policy | Mineral View").
+     *
+     * This is the live site's own tab title, so the two now match — worth having
+     * because these pages share deep links with the live host and a bookmark or a
+     * search result should not read differently depending on which one served it.
+     *
+     * SHARED, so this changes BOTH legal pages: Privacy Policy and Terms &
+     * Conditions. Deliberate — a pipe on one and a dash on the other would be
+     * worse than either.
+     */
+    title: `${title} - Mineral View`,
     description,
     // Legal pages are boilerplate that search engines should index once, on the
     // canonical host, but they are not what anyone should land on from search.
