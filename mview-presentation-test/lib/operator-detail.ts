@@ -177,6 +177,24 @@ export function listOperatorDetailSlugs(): string[] {
 }
 
 /**
+ * The detail-page slug for an operator number, or null when this site has no page
+ * for it.
+ *
+ * WHY IT HAS TO BE ASKED. The route is prerendered from `listOperatorDetailSlugs()`,
+ * so a slug outside that set 404s. Related operators arrive from the API as numbers,
+ * and several of them have no page here — a card for one must render as plain text
+ * rather than as a link into nothing. Guessing a slug from the name would 404 just
+ * as reliably, only less visibly.
+ */
+export function detailSlugForNumber(operatorNumber: string): string | null {
+  return (
+    OPERATOR_STATISTICS_RECORDS.find(
+      (record) => record.operatorNumber === operatorNumber,
+    )?.slug ?? null
+  );
+}
+
+/**
  * The operator a URL names, or null when the slug matches nothing — which the
  * route turns into a 404 rather than an empty page. Slugs are the API's own
  * `operator_name_url`, so they are what the listing table already links to.

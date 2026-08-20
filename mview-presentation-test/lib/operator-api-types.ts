@@ -69,6 +69,18 @@ export const OPERATOR_ENDPOINTS = {
   counties: "/api/v1/operators/counties",
   search: "/api/v1/operators/search",
   /**
+   * Every operator's name, as a `GET`. Measured: 24,742 records, 2.10 MB of JSON,
+   * 342 KB gzipped — and only two fields, `operator_name` and
+   * `cleaned_operator_name`. There is NO operator number on any record, so a name
+   * chosen from this list still has to be resolved through `search` before
+   * anything can be looked up by it.
+   *
+   * Its size is why it is read on the server and cached rather than handed to the
+   * browser: 342 KB to populate a combobox would cost more than the rest of the
+   * page put together.
+   */
+  names: "/api/v1/operators/names",
+  /**
    * Every operator in one `GET`, for the CSV export. Returns the same
    * `{ result, total_count }` envelope and the same record shape as `search`, so
    * the rows map through `toOperatorRows` unchanged.

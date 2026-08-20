@@ -3,6 +3,7 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 
 import {
+  operatorLogoPath,
   OPERATOR_ENDPOINTS,
   type OperatorCountiesResponse,
   type OperatorPlayTypesResponse,
@@ -309,4 +310,263 @@ export async function fetchOperatorLogo(
     // response means repeat views of the same page cost no upstream request.
     next: { revalidate: REVALIDATE_SECONDS, tags: ["operators"] },
   });
+}
+
+/* ==========================================================================
+   GET /api/v1/operators/names
+   ========================================================================== */
+
+/** One operator's two spellings, and where to find its logo. */
+export interface OperatorName {
+  /** The regulator's filed name, upper case: `PIONEER NATURAL RES. USA, INC.` */
+  filed: string;
+  /** The display spelling: `Pioneer Natural RES USA, Inc`. */
+  cleaned: string;
+  /**
+   * Both spellings and the operator number, lower-cased, so one pass matches a
+   * search on any of them. The number is included because operators are looked up
+   * by RRC number as often as by name, and a searcher who types 665748 means
+   * exactly one operator.
+   */
+  haystack: string;
+  /**
+   * The operator's number, parsed out of the logo URL — the only place this
+   * endpoint reveals one. Null when the URL is missing or shaped differently.
+   */
+  operatorNumber: string | null;
+  /**
+   * Same-origin logo path, or null when the record carries no usable URL.
+   *
+   * OUR PATH, NOT THE API'S. The endpoint reports an absolute URL on the API host,
+   * and that response is served `cross-origin-resource-policy: same-origin` — so an
+   * `<img>` pointed straight at it downloads a valid PNG and is then refused by the
+   * browser. `operatorLogoPath` re-points it at the route that re-serves the bytes.
+   *
+   * It also happens to be the only place this endpoint reveals an operator NUMBER,
+   * which is embedded in the URL.
+   */
+  logoPath: string | null;
+}
+
+/** `https://…/api/v1/operators/953595/logo` → `953595`. Null if the shape differs. */
+function operatorNumberFromLogo(url: unknown): string | null {
+  if (typeof url !== "string") return null;
+  return /\/operators\/([^/]+)\/logo/.exec(url)?.[1] ?? null;
+}
+
+/**
+ * Every operator name, cached.
+ *
+ * IT IS BIG AND THAT IS THE WHOLE REASON THIS IS A SERVER READER: 24,742 records,
+ * 2.10 MB of JSON, 342 KB gzipped. Sending it to the browser to populate a
+ * combobox would cost more transfer than the rest of the page and would land on
+ * the main thread as a 24,742-element parse. Held here instead, one process-wide
+ * copy behind `unstable_cache`, and queried through `/api/operators/names`.
+ *
+ * A blank or malformed record is dropped rather than allowed to render an empty
+ * row in the picker. Throws if the endpoint is unreachable or sends the wrong
+ * shape; the route handler degrades instead of failing the page.
+ */
+/**
+ * IN-PROCESS MEMO, NOT `unstable_cache`, AND THAT IS DELIBERATE.
+ *
+ * Next's data cache refuses any entry over 2 MB. This list is 24,742 records — 4.11
+ * MB of JSON, and 5.35 MB once parsed and indexed — so `unstable_cache` silently
+ * declined to store it and logged `items over 2MB can not be cached`. The effect was
+ * the opposite of caching: every reader re-downloaded and re-parsed the whole
+ * directory.
+ *
+ * A module-level memo has no size ceiling. It is per server instance rather than
+ * shared, and it is lost on a cold start, which is a real limitation — but "warm per
+ * instance" beats "never cached", and the alternative of trimming the payload under
+ * 2 MB would mean dropping the search index the picker needs.
+ *
+ * The TTL matches the revalidate the other readers use, so the directory goes stale
+ * at the same rate as everything else here.
+ */
+let namesMemo: { at: number; value: OperatorName[] } | null = null;
+let namesInFlight: Promise<OperatorName[]> | null = null;
+
+async function readOperatorNames(): Promise<OperatorName[]> {
+  return await (async (): Promise<OperatorName[]> => {
+    const payload = await getJson<unknown>(OPERATOR_ENDPOINTS.names);
+
+    const rows = (payload as { data?: unknown })?.data;
+    if (!Array.isArray(rows)) {
+      throw new Error(
+        "GET /api/v1/operators/names did not return { data: [] }",
+      );
+    }
+
+    const names: OperatorName[] = [];
+    for (const entry of rows) {
+      const record = entry as Record<string, unknown>;
+      const filed =
+        typeof record.operator_name === "string"
+          ? record.operator_name.trim()
+          : "";
+      const cleaned =
+        typeof record.cleaned_operator_name === "string"
+          ? record.cleaned_operator_name.trim()
+          : "";
+      // Either spelling alone is enough to offer the operator; both blank is not.
+      if (filed === "" && cleaned === "") continue;
+
+      const operatorNumber = operatorNumberFromLogo(record.operator_logo);
+
+      names.push({
+        filed: filed || cleaned,
+        cleaned: cleaned || filed,
+        operatorNumber,
+        haystack: `${cleaned} ${filed} ${operatorNumber ?? ""}`
+          .trim()
+          .toLowerCase(),
+        logoPath: operatorNumber ? operatorLogoPath(operatorNumber) : null,
+      });
+    }
+
+    return names;
+  })();
+}
+
+export async function getOperatorNames(): Promise<OperatorName[]> {
+  const fresh =
+    namesMemo && Date.now() - namesMemo.at < REVALIDATE_SECONDS * 1000;
+  if (fresh && namesMemo) return namesMemo.value;
+
+  // One read at a time: without this, four pickers opening at once would each start
+  // their own 4.11 MB download before the first finished.
+  namesInFlight ??= readOperatorNames()
+    .then((value) => {
+      namesMemo = { at: Date.now(), value };
+      return value;
+    })
+    .finally(() => {
+      namesInFlight = null;
+    });
+
+  try {
+    return await namesInFlight;
+  } catch (error) {
+    // Serve a stale copy rather than nothing when a refresh fails.
+    if (namesMemo) return namesMemo.value;
+    throw error;
+  }
+}
+
+/**
+ * Tokens that stay upper case when a name has to be title-cased by hand.
+ *
+ * Acronyms and legal suffixes: "BP PLC" must not become "Bp Plc", and "OXY USA
+ * INC." reads correctly as "OXY USA Inc." rather than "Oxy Usa Inc.".
+ */
+const KEEP_UPPER = new Set([
+  "APA",
+  "BP",
+  "CMS",
+  "EQT",
+  "EP",
+  "E&P",
+  "GP",
+  "LLC",
+  "LLP",
+  "LP",
+  "LTD",
+  "NGL",
+  "OXY",
+  "PLC",
+  "SE",
+  "SM",
+  "USA",
+  "XTO",
+  "II",
+  "III",
+  "IV",
+]);
+
+/**
+ * A shouty filed name, made readable — the LAST resort, not the first.
+ *
+ * Only reached when the directory has no entry for the operator at all, which is the
+ * case for the public issuers here: BP, Chevron, CMS Energy, Dominion. Word by word,
+ * anything in `KEEP_UPPER` stays as it is and everything else is title-cased, so
+ * "CMS ENERGY" becomes "CMS Energy" rather than "Cms Energy".
+ *
+ * It is a heuristic and it is imperfect — "EXXONMOBIL" comes out "Exxonmobil" — which
+ * is exactly why the directory's own spelling is preferred wherever one exists.
+ */
+function titleCaseFiled(filed: string): string {
+  return filed
+    .toLowerCase()
+    .split(/(\s+)/)
+    .map((token) => {
+      if (/^\s+$/.test(token) || token === "") return token;
+      const bare = token.replace(/[^A-Za-z&]/g, "").toUpperCase();
+      if (KEEP_UPPER.has(bare)) return token.toUpperCase();
+      return token.replace(/^[a-z]/, (c) => c.toUpperCase());
+    })
+    .join("");
+}
+
+/**
+ * Do two spellings plausibly name the same company?
+ *
+ * Compares the leading alphabetic word, which is the part a company is known by. It
+ * exists only to reject a number match that points at a different company — see the
+ * duplicated operator number in `casedNameLookup`.
+ */
+function sameCompany(a: string, b: string): boolean {
+  const lead = (value: string) =>
+    (value.toLowerCase().match(/[a-z]+/) ?? [""])[0].slice(0, 6);
+  const first = lead(a);
+  return first !== "" && first === lead(b);
+}
+
+/**
+ * Filed spelling → cased spelling, from the directory that is already cached.
+ *
+ * BY NUMBER FIRST, THEN BY NAME. The operator number is the reliable key: several of
+ * these filed names do not match the directory's spelling of the same company, and
+ * matching on the name alone left a third of the list SHOUTING beside properly cased
+ * neighbours. Where neither key hits — a public issuer with no Texas registration —
+ * the name is title-cased locally.
+ *
+ * A failure must not fail the page, so the fallback chain ends at something readable
+ * rather than at an exception.
+ */
+export async function getCasedNameLookup(): Promise<
+  (filed: string, operatorNumber?: string | null) => string
+> {
+  try {
+    const directory = await getOperatorNames();
+    const byNumber = new Map<string, string>();
+    const byFiled = new Map<string, string>();
+
+    for (const entry of directory) {
+      if (entry.operatorNumber)
+        byNumber.set(entry.operatorNumber, entry.cleaned);
+      byFiled.set(entry.filed.toUpperCase(), entry.cleaned);
+    }
+
+    return (filed: string, operatorNumber?: string | null) => {
+      /* The filed name first: it is an exact key and cannot collide. */
+      const byName = byFiled.get(filed.toUpperCase());
+      if (byName) return byName;
+
+      /* Then the number — but only when it names the same company. Operator numbers
+         are NOT unique in this response: "MURPHY OIL CORPORATION" and
+         "FREEPORTMCMORAN OIL & GAS LLC" both arrive as 285230, and trusting that
+         blindly relabelled Murphy as Freeport and dropped Murphy from the filter
+         entirely. Comparing the leading word catches exactly that. */
+      if (operatorNumber) {
+        const byNo = byNumber.get(operatorNumber);
+        if (byNo && sameCompany(filed, byNo)) return byNo;
+      }
+
+      return titleCaseFiled(filed);
+    };
+  } catch (error) {
+    console.error("[presentations] name casing unavailable", error);
+    return (filed: string) => titleCaseFiled(filed);
+  }
 }

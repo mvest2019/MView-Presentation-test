@@ -1,6 +1,7 @@
 import "server-only";
 
-import type { ChangeRow } from "./operator-detail-data";
+import type { ChangeEvidence, ChangeRow } from "./operator-detail-data";
+import { rewriteWording } from "./what-changed-ai";
 
 /**
  * "What changed" — the panel, from the Python service that measures it.
@@ -39,7 +40,7 @@ const REQUEST_TIMEOUT_MS = 60_000;
 const REVALIDATE_SECONDS = 1800;
 
 export type PanelWriter =
-  "claude-api" | "claude-cli" | "measured" | "deterministic";
+  "claude-api" | "claude-cli" | "gemini" | "measured" | "deterministic";
 
 export interface WhatChangedPanel {
   kind: "panel";
@@ -67,9 +68,16 @@ const KINDS = new Set(["up", "down", "add", "flag", "swap"]);
 const WRITERS = new Set([
   "claude-api",
   "claude-cli",
+  // The service reports this when its own Gemini path wrote the rows. Missing from
+  // this set, it fell through to `measured` and a model-written panel was labelled
+  // as a fallback one — the exact confusion `writer` exists to prevent.
+  "gemini",
   "measured",
   "deterministic",
 ]);
+
+/** Wording the service produced without a model, and which this app may re-phrase. */
+const UNWRITTEN = new Set<PanelWriter>(["measured", "deterministic"]);
 
 function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -83,6 +91,57 @@ function text(value: unknown): string {
  * `kind` becomes `flag` rather than throwing — a new signal type upstream should read
  * as a neutral finding, not take the section down.
  */
+/**
+ * The working behind one finding, if the service sent any.
+ *
+ * VALIDATED FIELD BY FIELD, like everything else from this service. The panel is the
+ * one place on the page where prose comes from a model, so nothing here is trusted to
+ * be the shape it should be: a malformed `rows` entry is dropped rather than rendered
+ * as `undefined`, and a row with no usable evidence returns undefined so the UI simply
+ * does not offer to expand it.
+ *
+ * Numbers are NOT reformatted. `v` arrives already rendered ("161", "1,617 leases")
+ * because signals.py computed it; re-deriving or re-rounding it here would create a
+ * second definition of the same figure.
+ */
+function toEvidence(raw: unknown): ChangeEvidence | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const record = raw as Record<string, unknown>;
+
+  const rows = (Array.isArray(record.rows) ? record.rows : []).flatMap(
+    (entry): ChangeEvidence["rows"][number][] => {
+      const row = entry as Record<string, unknown>;
+      const k = text(row.k);
+      const v = text(row.v);
+      // A label with no value, or a value with no label, is not a table row.
+      if (k === "" || v === "") return [];
+      return [{ k, v, note: text(row.note) }];
+    },
+  );
+
+  const series = (Array.isArray(record.series) ? record.series : []).flatMap(
+    (entry): ChangeEvidence["series"][number][] => {
+      const point = entry as Record<string, unknown>;
+      const label = text(point.label);
+      const value =
+        typeof point.value === "number" && Number.isFinite(point.value)
+          ? point.value
+          : null;
+      if (label === "" || value === null) return [];
+      return [{ label, value, on: point.on === true }];
+    },
+  );
+
+  const why = text(record.why);
+  const method = text(record.method);
+
+  // Nothing worth opening a row for.
+  if (why === "" && method === "" && rows.length === 0 && series.length === 0) {
+    return undefined;
+  }
+  return { why, rows, method, series };
+}
+
 function toRows(raw: unknown): ChangeRow[] {
   if (!Array.isArray(raw)) return [];
   return raw.flatMap((entry): ChangeRow[] => {
@@ -96,6 +155,7 @@ function toRows(raw: unknown): ChangeRow[] {
         headline,
         detail: text(record.rest),
         source: text(record.source),
+        evidence: toEvidence(record.evidence),
       },
     ];
   });
@@ -182,17 +242,52 @@ export async function fetchWhatChanged(
     return { kind: "empty", detail: "no findings for the current window" };
   }
 
-  const writer = text(body.writer);
-  return {
+  const reported = text(body.writer);
+  const panel: WhatChangedPanel = {
     kind: "panel",
     operatorNumber: text(body.operator_no) || operatorNumber,
     operatorName: text(body.operator_name),
     asOfLabel: text(body.as_of_label),
     activityDays:
       typeof body.activity_days === "number" ? body.activity_days : 90,
-    writer: (WRITERS.has(writer) ? writer : "measured") as PanelWriter,
+    writer: (WRITERS.has(reported) ? reported : "measured") as PanelWriter,
     writerNote: text(body.writer_note),
     cached: body.cached === true,
     rows,
   };
+
+  /*
+   * THE WORDING STEP, WHEN THE SERVICE DID NOT DO IT.
+   *
+   * The service phrases its own rows whenever it has a provider configured, and a
+   * deployment that reaches a service like that needs nothing here — hence the guard.
+   * What it covers is the Vercel case: the service is behind a tunnel with no AI key
+   * of its own, so it returns measured wording, and the model call happens here where
+   * `GEMINI_API_KEY` is a platform environment variable. See `what-changed-ai.ts`.
+   *
+   * It cannot fail the panel. `rewriteWording` returns the rows it was handed if
+   * anything goes wrong, so the worst case is the wording that already arrived.
+   */
+  if (UNWRITTEN.has(panel.writer)) {
+    const rewrite = await rewriteWording(rows, {
+      operatorName: panel.operatorName,
+      operatorNumber: panel.operatorNumber,
+      asOfLabel: panel.asOfLabel,
+      activityDays: panel.activityDays,
+    });
+
+    if (rewrite.byModel) {
+      panel.rows = rewrite.rows;
+      panel.writer = "gemini";
+      // The service's note explains why *its* model stayed out of it, which is no
+      // longer interesting once one wrote the rows on screen.
+      panel.writerNote = "";
+    } else if (rewrite.note !== "") {
+      panel.writerNote = [panel.writerNote, rewrite.note]
+        .filter((part) => part !== "")
+        .join("; ");
+    }
+  }
+
+  return panel;
 }

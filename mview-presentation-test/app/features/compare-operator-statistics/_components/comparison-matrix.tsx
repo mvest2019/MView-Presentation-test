@@ -1,7 +1,11 @@
 import { ArrowDown, ArrowUp } from "lucide-react";
 
-import { OperatorMonogram } from "@/app/_components/operator-monogram";
-import type { MatrixCell, MatrixRow, StatisticsOperator } from "@/lib/operator-statistics";
+import { OperatorLogo } from "@/app/_components/operator-logo";
+import type {
+  MatrixCell,
+  MatrixRow,
+  StatisticsOperator,
+} from "@/lib/operator-statistics";
 
 /**
  * The comparison table — metrics down the side, operators across the top.
@@ -56,17 +60,24 @@ export function ComparisonMatrix({
             </th>
             {operators.map((operator) => (
               <th
-                key={operator.slug}
+                key={operator.operatorNumber}
                 scope="col"
                 className="sticky top-0 z-[4] whitespace-nowrap bg-mv-table-head px-[15px] py-[13px] text-left text-[12px] font-semibold text-white"
               >
                 <span className="flex items-center gap-2">
-                  <OperatorMonogram monogram={operator.monogram} size={24} />
+                  <OperatorLogo
+                    url={operator.logoUrl}
+                    monogram={operator.monogram}
+                    size={24}
+                    radius={10}
+                  />
                   <span className="flex flex-col leading-[1.15]">
                     <span>{operator.short}</span>
-                    <span className="mt-[2px] text-[12px] font-normal text-mv-on-head-soft">
-                      #{operator.rank} statewide
-                    </span>
+                    {operator.rank === null ? null : (
+                      <span className="mt-[2px] text-[12px] font-normal text-mv-on-head-soft">
+                        #{operator.rank} statewide
+                      </span>
+                    )}
                   </span>
                 </span>
               </th>
@@ -98,7 +109,7 @@ export function ComparisonMatrix({
                   const isBest = index === row.bestIndex;
                   return (
                     <td
-                      key={operators[index]?.slug ?? index}
+                      key={operators[index]?.operatorNumber ?? index}
                       className={`whitespace-nowrap border-b border-mv-line-soft px-[15px] py-3 tabular-nums ${
                         isBest
                           ? "bg-mv-tint font-bold text-mv-green-deep [tr:hover_&]:!bg-mv-tint-strong"
@@ -134,18 +145,26 @@ function Cell({ cell }: { cell: MatrixCell }) {
     case "text":
       // Addresses and county lists are prose, not figures — they should wrap and
       // they should not be forced onto the tabular-numbers face.
-      return <span className="whitespace-normal [font-variant-numeric:normal]">{cell.value}</span>;
+      return (
+        <span className="whitespace-normal [font-variant-numeric:normal]">
+          {cell.value}
+        </span>
+      );
 
     case "value":
       return (
         <>
-          <span className={cell.strong ? "font-bold" : undefined}>{cell.value}</span>
+          <span className={cell.strong ? "font-bold" : undefined}>
+            {cell.value}
+          </span>
           {/* A real space, not just the margin — without it a screen reader reads
               "231KBOE" as one token. */}
           {cell.unit ? (
             <>
               {" "}
-              <span className="text-[12px] font-medium text-mv-muted">{cell.unit}</span>
+              <span className="text-[12px] font-medium text-mv-muted">
+                {cell.unit}
+              </span>
             </>
           ) : null}
         </>
@@ -193,7 +212,9 @@ function Cell({ cell }: { cell: MatrixCell }) {
         cell.percent > 0.5 ? "up" : cell.percent < -0.5 ? "down" : "flat";
 
       if (direction === "flat") {
-        return <span className="text-[12.5px] font-bold text-mv-muted">flat</span>;
+        return (
+          <span className="text-[12.5px] font-bold text-mv-muted">flat</span>
+        );
       }
 
       const Icon = direction === "up" ? ArrowUp : ArrowDown;

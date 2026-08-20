@@ -1144,11 +1144,35 @@ export interface ConditionCard {
   icon: "production" | "leases" | "permits" | "completions";
 }
 
+/**
+ * The working behind one finding, as the analysis service computes it.
+ *
+ * IT SHIPS WITH THE PANEL, so opening a row is instant and costs no request. Every
+ * figure here is already computed upstream and only formatted for display — the UI
+ * must never become a second place a number is worked out, or there are two
+ * definitions of the same figure.
+ */
+export interface ChangeEvidence {
+  /** What the measure means, in a sentence a mineral owner can act on. */
+  why: string;
+  /** Label / value / qualifier, as a small table. */
+  rows: readonly { k: string; v: string; note: string }[];
+  /** How the figure was measured, for someone who wants to check it. */
+  method: string;
+  /** An optional series for a sparkline; `on` marks the month in question. */
+  series: readonly { label: string; value: number; on: boolean }[];
+}
+
 export interface ChangeRow {
   kind: "up" | "down" | "add" | "flag" | "swap";
   headline: string;
   detail: string;
   source: string;
+  /**
+   * Present on rows from the analysis service, absent on the fixture rows — which is
+   * why it is optional rather than required. A row without it simply does not expand.
+   */
+  evidence?: ChangeEvidence;
 }
 
 export const OPERATOR_CONDITION_CARDS: Readonly<

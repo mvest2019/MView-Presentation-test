@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, Search } from "lucide-react";
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import {
   CONTROL_CARET,
@@ -51,6 +51,16 @@ import { usePagedResource } from "./use-paged-resource";
  * one, keyed by lease number so picking a different lease remounts it clean. This
  * component owns only which lease is selected; that card owns its own fetch, paging and
  * failure.
+ *
+ * THE VIEW FOLLOWS THE SELECTION. Opening a lease scrolls down to the wells card,
+ * closing it scrolls back up to this one — because on a page this tall the card that
+ * appears is usually below the fold, and without it the click looks like it did nothing.
+ *
+ * That scroll is driven by an INTENT REF SET IN THE HANDLER, not by an effect watching
+ * `openLease`. The distinction matters: the filters also clear the selection, and
+ * deriving the scroll from the state change would yank the page while someone is still
+ * typing in the search field. Only a click on a lease name or on the close button
+ * records an intent, so only those two scroll.
  */
 
 const EM_DASH = "—";
@@ -80,6 +90,40 @@ export function OperatorLeases({
 
   const searchId = useId();
   const countyId = useId();
+
+  const leasesCard = useRef<HTMLElement | null>(null);
+  const wellsCard = useRef<HTMLDivElement | null>(null);
+  /** Which card the last click asked to bring into view; null means "do not scroll". */
+  const scrollTo = useRef<"wells" | "leases" | null>(null);
+
+  /**
+   * Bring the requested card into view, once the DOM reflects the new selection.
+   *
+   * An effect rather than the handler itself, because on open the wells card does not
+   * exist yet when the click runs — it is mounted by the render this triggers. By the
+   * time an effect runs the ref is populated and the card already has its full height
+   * (it mounts with skeleton rows), so the scroll lands where the card actually settles
+   * instead of chasing it as rows arrive.
+   *
+   * `scroll-margin-top` on each target clears the sticky site header; `scrollIntoView`
+   * honours it, which is why there is no header height hardcoded in here.
+   */
+  useEffect(() => {
+    const target = scrollTo.current;
+    if (target === null) return;
+    scrollTo.current = null;
+
+    const node = target === "wells" ? wellsCard.current : leasesCard.current;
+    if (!node) return;
+
+    node.scrollIntoView({
+      // Someone who has asked their OS for less motion gets the jump, not the glide.
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+      block: "start",
+    });
+  }, [openLease]);
 
   /* Typing must not fire a request per keystroke. The timer is cleared on every
      change, so only a pause reaches the API — and it lands back on page one, since
@@ -114,7 +158,12 @@ export function OperatorLeases({
 
   return (
     <div className="flex flex-col gap-[22px]">
-      <section className="overflow-hidden rounded-2xl border border-mv-line bg-white shadow-mv">
+      {/* `scroll-mt` is the offset the sticky site header needs — 64px of header plus a
+          little air, so scrolling back here does not tuck the heading underneath it. */}
+      <section
+        ref={leasesCard}
+        className="scroll-mt-[80px] overflow-hidden rounded-2xl border border-mv-line bg-white shadow-mv"
+      >
         <div className="px-[22px] pb-3 pt-5 max-[560px]:px-4">
           <h2 className={cardTitleClass}>Operator leases</h2>
           <p className="mt-1 text-[13px] text-mv-muted">
@@ -261,13 +310,13 @@ export function OperatorLeases({
                       <th scope="row" className={`${td} text-left`}>
                         <button
                           type="button"
-                          onClick={() =>
-                            setOpenLease((current) =>
-                              current?.leaseNumber === lease.leaseNumber
-                                ? null
-                                : lease,
-                            )
-                          }
+                          onClick={() => {
+                            /* Clicking the open lease again closes it, so the scroll
+                               goes back to this table; anything else opens and follows
+                               the wells card down. */
+                            scrollTo.current = isOpen ? "leases" : "wells";
+                            setOpenLease(isOpen ? null : lease);
+                          }}
                           aria-expanded={isOpen}
                           className="inline-flex cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left text-[13.5px] font-semibold text-mv-ink hover:text-mv-green-deep hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
                         >
@@ -314,14 +363,20 @@ export function OperatorLeases({
       </section>
 
       {/* Keyed by lease, so a different selection remounts rather than reusing the
-          previous lease's page number and rows. */}
+          previous lease's page number and rows. The wrapper exists to hold the scroll
+          ref and its header offset without `LeaseWells` needing to know either. */}
       {openLease ? (
-        <LeaseWells
-          key={openLease.leaseNumber}
-          operatorNumber={operatorNumber}
-          lease={openLease}
-          onClose={() => setOpenLease(null)}
-        />
+        <div ref={wellsCard} className="scroll-mt-[80px]">
+          <LeaseWells
+            key={openLease.leaseNumber}
+            operatorNumber={operatorNumber}
+            lease={openLease}
+            onClose={() => {
+              scrollTo.current = "leases";
+              setOpenLease(null);
+            }}
+          />
+        </div>
       ) : null}
     </div>
   );
