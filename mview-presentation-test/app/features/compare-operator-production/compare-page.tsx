@@ -1,15 +1,12 @@
 "use client";
 
 import {
-  ArrowDown,
-  ArrowUp,
   ChevronDown,
   Droplet,
   Flame,
   Gauge,
   Lock,
   MapPin,
-  Minus,
   TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
@@ -24,7 +21,6 @@ import {
   COMPARE_YEARS,
   SLOT_COLORS,
   buildComparison,
-  buildMomentumRows,
   compoundGrowth,
   defaultSelection,
   findLeaders,
@@ -34,10 +30,8 @@ import {
   listCompareCounties,
   listCompareOptions,
   mboePerLease,
-  sparklinePoints,
   type CompareLeaders,
   type CompareOperator,
-  type MomentumRow,
 } from "@/lib/operator-compare";
 
 import { ProductionOverTime } from "./_components/production-over-time";
@@ -46,8 +40,8 @@ import { ProductionOverTime } from "./_components/production-over-time";
  * Compare Operator Production — everything below the page header.
  *
  * WHY ONE FILE. Same call as the operator listing: each band here (pickers,
- * identity cards, the generated read, the leaderboard, the mix bars, the two
- * tables, the CTA) is markup used by this page and nothing else, and all of it
+ * identity cards, the generated read, the leaderboard, the mix bars, the stats
+ * table) is markup used by this page and nothing else, and all of it
  * reads one piece of state — which operators are selected. Splitting the listing
  * into eight one-caller modules made it harder to follow, so these are
  * module-local components, read top to bottom in render order.
@@ -223,14 +217,6 @@ export function ComparePage() {
             <MixCard operators={operators} />
           </section>
 
-          {/* ---- momentum ---- */}
-          <section className="pb-[26px]">
-            <SectionHead title="Momentum & growth" />
-            <div className="overflow-hidden rounded-2xl border border-mv-line bg-white shadow-mv">
-              <MomentumTable rows={buildMomentumRows(operators)} />
-            </div>
-          </section>
-
           {/* ---- comparison stats ---- */}
           <section className="pb-[26px]">
             <SectionHead
@@ -243,25 +229,6 @@ export function ComparePage() {
           </section>
         </>
       )}
-
-      {/* ---- CTA ---- */}
-      <section className="pt-[26px]">
-        <div className="rounded-2xl bg-[linear-gradient(120deg,var(--color-mv-forest),var(--color-mv-night))] px-[34px] py-[34px] text-center shadow-mv max-[560px]:px-5">
-          <h2 className="font-sans text-[23px] font-bold leading-[1.2] tracking-[-.02em] text-white">
-            Compare the operators on your leases — free.
-          </h2>
-          <p className="mx-auto mb-5 mt-2 max-w-[520px] text-sm text-mv-on-deep-soft">
-            Run any two-to-four Texas operators, save comparisons, and get alerts
-            when one changes.
-          </p>
-          <Link
-            href="/signup?from=compare-production"
-            className={buttonClass({ variant: "primary", size: "lg", className: "text-[15px]" })}
-          >
-            Create a free account →
-          </Link>
-        </div>
-      </section>
     </div>
   );
 }
@@ -391,11 +358,15 @@ function RankPill({ rank }: { rank: number }) {
  */
 function IdentityCard({ operator }: { operator: CompareOperator }) {
   return (
-    <article className="rounded-[14px] border border-mv-line bg-white p-4 shadow-[0_1px_2px_rgba(24,24,27,.05)]">
+    <article className="flex h-full flex-col rounded-[14px] border border-mv-line bg-white p-4 shadow-[0_1px_2px_rgba(24,24,27,.05)]">
       <div className="flex min-w-0 items-center gap-[11px]">
         <OperatorMonogram monogram={operator.monogram} size={42} />
         <div className="min-w-0">
-          <h3 className="text-[13.5px] font-bold leading-[1.25] text-mv-ink">
+          {/* Two lines' worth of height whether the name needs them or not.
+              "XTO Energy, Inc" fits one line and "Occidental Permian, Ltd" takes
+              two, which is what pushed each card's "Most active" block to a
+              different height. */}
+          <h3 className="min-h-[34px] text-[13.5px] font-bold leading-[1.25] text-mv-ink">
             <Link
               href={`/operators/${operator.slug}`}
               className="text-mv-ink no-underline hover:text-mv-green-deep hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
@@ -421,7 +392,10 @@ function IdentityCard({ operator }: { operator: CompareOperator }) {
         </p>
       ) : null}
 
-      <div className="mt-3 border-t border-mv-line-soft pt-3">
+      {/* `mt-auto` pins this to the bottom of the card. Grid rows already stretch
+          every card to the same height, so the four figure blocks then sit on one
+          line regardless of how much the blocks above them differ. */}
+      <div className="mt-auto border-t border-mv-line-soft pt-3">
         <dl className="m-0 grid grid-cols-2 gap-x-3">
           <div className="min-w-0">
             <dt className="text-[11px] font-bold uppercase tracking-[.05em] text-mv-muted">
@@ -446,11 +420,6 @@ function IdentityCard({ operator }: { operator: CompareOperator }) {
             </dd>
           </div>
         </dl>
-        {/* Kept from the line this block replaces, so removing the BOE figure does
-            not also quietly remove the county count that sat beside it. */}
-        <p className="mt-[10px] text-[12px] text-mv-muted">
-          {operator.counties} producing counties
-        </p>
       </div>
     </article>
   );
@@ -539,8 +508,9 @@ function GeneratedRead({ leaders }: { leaders: CompareLeaders }) {
  * place. Splitting the leader by commodity says something BOE cannot: the largest
  * producer overall is often neither the largest oil producer nor the largest gas
  * producer, and which one a mineral owner cares about depends on what their acreage
- * produces. Growth is not lost — it is still in "Momentum & growth" below, and still
- * in the generated read above.
+ * produces. Growth is no longer tiled or tabled — the momentum table was removed
+ * with this page's other trimming — but it is still stated in the generated read
+ * above, which is the one place left that reports it.
  */
 function Leaderboard({ leaders }: { leaders: CompareLeaders }) {
   return (
@@ -725,121 +695,17 @@ function MixCard({ operators }: { operators: CompareOperator[] }) {
 }
 
 /* ==========================================================================
-   Tables
+   Table
 
-   Both use the site's dark table header, and both scroll sideways rather than
-   shrink: dropping the header below 12px is exactly what the design's 11.5px did,
-   and it is what the legible-font-size audit fails on.
+   Uses the site's dark table header, and scrolls sideways rather than shrink:
+   dropping the header below 12px is exactly what the design's 11.5px did, and it
+   is what the legible-font-size audit fails on.
    ========================================================================== */
 
 const TH_BASE =
   "whitespace-nowrap bg-mv-table-head px-[15px] py-[13px] text-[12px] font-semibold uppercase tracking-[.04em] text-white";
 
 const TD_BASE = "whitespace-nowrap border-b border-mv-line-soft bg-white px-[15px] py-[13px]";
-
-/** A signed change with a direction glyph — the design's `.dd`. */
-function Delta({ percent }: { percent: number }) {
-  const direction = percent > 0.5 ? "up" : percent < -0.5 ? "down" : "flat";
-  const Icon = direction === "up" ? ArrowUp : direction === "down" ? ArrowDown : Minus;
-  const tone =
-    direction === "up"
-      ? "text-mv-green-deep"
-      : direction === "down"
-        ? "text-mv-down"
-        : "text-mv-muted";
-
-  return (
-    <span className={`inline-flex items-center gap-[3px] font-bold tabular-nums ${tone}`}>
-      <Icon aria-hidden="true" className="h-3 w-3" strokeWidth={3} />
-      {Math.abs(percent).toFixed(1)}%
-    </span>
-  );
-}
-
-function MomentumTable({ rows }: { rows: MomentumRow[] }) {
-  return (
-    <div className="relative overflow-x-auto">
-      <table className="w-full min-w-[680px] border-separate border-spacing-0 text-[13.5px]">
-        <caption className="sr-only">
-          Momentum and growth in BOE for the selected operators, {COMPARE_YEARS[0]}
-          –{COMPARE_YEARS.at(-1)}
-        </caption>
-        <thead>
-          <tr>
-            <th scope="col" className={`${TH_BASE} text-left`}>
-              Operator
-            </th>
-            <th scope="col" className={`${TH_BASE} text-right`}>
-              Latest yr
-            </th>
-            <th scope="col" className={`${TH_BASE} text-right`}>
-              YoY
-            </th>
-            <th scope="col" className={`${TH_BASE} text-right`}>
-              {COMPARE_YEARS.length}-yr / yr
-            </th>
-            <th scope="col" className={`${TH_BASE} text-left`}>
-              Shape
-            </th>
-            <th scope="col" className={`${TH_BASE} text-right`}>
-              Swing
-            </th>
-            <th scope="col" className={`${TH_BASE} text-left`}>
-              Read
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.operator.slug} className="[&:hover>*]:bg-mv-row-hover">
-              <th scope="row" className={`${TD_BASE} text-left`}>
-                <span className="flex items-center gap-[9px] font-semibold text-mv-ink">
-                  <OperatorMonogram monogram={row.operator.monogram} size={24} />
-                  {row.operator.short}
-                </span>
-              </th>
-              <td className={`${TD_BASE} text-right tabular-nums text-mv-ink-soft`}>
-                {row.latest.toFixed(1)}M
-              </td>
-              <td className={`${TD_BASE} text-right`}>
-                <Delta percent={row.yearOverYear} />
-              </td>
-              <td className={`${TD_BASE} text-right`}>
-                <Delta percent={row.compoundGrowth} />
-              </td>
-              <td className={TD_BASE}>
-                <svg aria-hidden="true" width="90" height="26" viewBox="0 0 90 26" className="block">
-                  <polyline
-                    points={sparklinePoints(row.operator.boe, 90, 26)}
-                    fill="none"
-                    stroke={row.operator.color}
-                    strokeWidth="2"
-                  />
-                </svg>
-              </td>
-              <td className={`${TD_BASE} text-right tabular-nums text-mv-ink-soft`}>
-                ±{row.swing.toFixed(0)}%
-              </td>
-              <td className={TD_BASE}>
-                <span
-                  className={`text-[12.5px] font-bold ${
-                    row.direction === "up"
-                      ? "text-mv-green-deep"
-                      : row.direction === "down"
-                        ? "text-mv-down"
-                        : "text-mv-muted"
-                  }`}
-                >
-                  {row.read}
-                </span>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 
 function StatsTable({ operators }: { operators: CompareOperator[] }) {
   return (

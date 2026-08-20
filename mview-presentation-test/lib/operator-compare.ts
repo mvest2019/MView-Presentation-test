@@ -2,8 +2,8 @@
  * Compare Operator Production — the arithmetic, with no React in it.
  *
  * Every number the page shows is derived here: cumulative volumes, the oil/gas
- * split, year-over-year, compound growth, swing, production per lease, and which
- * operator leads each of those. Keeping it in a pure module means the figures can
+ * split, compound growth, production per lease, and which operator leads each of
+ * those. Keeping it in a pure module means the figures can
  * be checked without rendering anything, and it is the layer that changes when a
  * real compare endpoint replaces the fixture — see the seam note below.
  *
@@ -134,19 +134,11 @@ export function formatCount(value: number): string {
 /* --------------------------------------------------------------------------
    Series arithmetic
 
-   Each takes a series already in millions. They read the whole series, not the
-   brushed window: the brush scopes the chart and the year table, while momentum
-   and the generated read always describe the full filed record. Changing that
-   would let the page claim "10-yr growth" from three years of data.
+   Each takes a series already in millions, and reads the WHOLE series rather than
+   the brushed window: the brush scopes the chart and the year table, while the
+   generated read always describes the full filed record. Changing that would let
+   the page claim "10-yr growth" from three years of data.
    -------------------------------------------------------------------------- */
-
-/** Change from the second-to-last year to the last, as a percentage. */
-export function yearOverYear(series: number[]): number {
-  const previous = series.at(-2);
-  const latest = series.at(-1);
-  if (previous === undefined || latest === undefined || previous === 0) return 0;
-  return (latest / previous - 1) * 100;
-}
 
 /** Compound annual growth across the series, as a percentage per year. */
 export function compoundGrowth(series: number[]): number {
@@ -156,23 +148,6 @@ export function compoundGrowth(series: number[]): number {
     return 0;
   }
   return (Math.pow(last / first, 1 / (series.length - 1)) - 1) * 100;
-}
-
-/**
- * Mean absolute year-on-year move — how much the operator's output jumps about,
- * regardless of direction. A steady 3% climb and a ±40% sawtooth can share a
- * growth rate; this is what separates them.
- */
-export function swing(series: number[]): number {
-  if (series.length < 2) return 0;
-  let total = 0;
-  for (let index = 1; index < series.length; index += 1) {
-    const previous = series[index - 1];
-    const current = series[index];
-    if (previous === undefined || current === undefined || previous === 0) continue;
-    total += Math.abs(current / previous - 1);
-  }
-  return (total / (series.length - 1)) * 100;
 }
 
 /**
@@ -418,47 +393,6 @@ export function findLeaders(
 /* --------------------------------------------------------------------------
    Table rows
    -------------------------------------------------------------------------- */
-
-export interface MomentumRow {
-  operator: CompareOperator;
-  /** Millions of BOE in the most recent filed year. */
-  latest: number;
-  yearOverYear: number;
-  compoundGrowth: number;
-  swing: number;
-  /** "Growing" / "Declining" / "Flat / cyclical". */
-  read: string;
-  direction: "up" | "down" | "flat";
-}
-
-/**
- * Momentum, always on BOE. The design's thresholds: past ±3% compound growth an
- * operator is growing or declining, and inside that band it is flat or cyclical
- * — which the swing column then tells apart.
- */
-export function buildMomentumRows(
-  operators: CompareOperator[],
-): MomentumRow[] {
-  return operators.map((operator) => {
-    const growth = compoundGrowth(operator.boe);
-    const direction = growth > 3 ? "up" : growth < -3 ? "down" : "flat";
-
-    return {
-      operator,
-      latest: operator.boe.at(-1) ?? 0,
-      yearOverYear: yearOverYear(operator.boe),
-      compoundGrowth: growth,
-      swing: swing(operator.boe),
-      read:
-        direction === "up"
-          ? "Growing"
-          : direction === "down"
-            ? "Declining"
-            : "Flat / cyclical",
-      direction,
-    };
-  });
-}
 
 export interface StatRow {
   label: string;
