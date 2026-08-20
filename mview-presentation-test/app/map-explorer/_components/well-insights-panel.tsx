@@ -19,6 +19,7 @@ import { getWellSummaryMap, type MapWellSummary } from "@/lib/map-api";
 
 import { PermitSummary } from "./permit-summary";
 import { ProductionChart } from "./production-chart";
+import { WellboreDiagram } from "./wellbore-diagram";
 import { WellSummaryHeader, type WellRecord } from "./well-summary-header";
 import { wellSummaryFields } from "./well-summary-fields";
 
@@ -39,8 +40,6 @@ import {
  * history, reserves, decline and filings are not in the map API yet, and
  * `well-insights-data.ts` is the single place to replace when they are.
  */
-
-const OIL = "#12a13f";
 
 /*
  * What the cards show before the summary lands: the labels, with an em dash
@@ -284,7 +283,13 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
                   title="Wellbore"
                   badge={fields?.wellboreKind ?? WELLBORE.kind}
                 >
-                  <Wellbore />
+                  {/* Drawn to the record's own profile: a vertical hole is not
+                  illustrated with a mile of lateral. */}
+                  <WellboreDiagram
+                    kind={fields?.wellboreKind ?? WELLBORE.kind}
+                    surface={WELLBORE.surface}
+                    formation={WELLBORE.formation}
+                  />
                 </Card>
               </div>
 
@@ -544,15 +549,26 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
             </div>
 
             {loading && (
-              <div className="absolute inset-0 z-10 grid place-items-center bg-white/35">
-                <div className="flex items-center gap-[13px] rounded-full border border-mv-line bg-white px-[22px] py-[13px] shadow-mv-lg">
-                  <span
-                    aria-hidden="true"
-                    className="h-[20px] w-[20px] shrink-0 animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
-                  />
-                  <span className="text-[15px] font-semibold leading-none text-mv-slate">
-                    Loading this well&rsquo;s record…
-                  </span>
+              /*
+                The veil covers the whole record; the message rides the middle
+                of the *screen*, not the middle of the record.
+                
+                `inset-0` here is a couple of thousand pixels tall — the record
+                scrolls — so a centred pill sat far below the fold. `sticky
+                top-1/2` keeps it half way down the scrollport wherever the
+                reader happens to be.
+              */
+              <div className="pointer-events-none absolute inset-0 z-10 bg-white/40">
+                <div className="sticky top-1/2 flex justify-center">
+                  <div className="flex items-center gap-[13px] rounded-full border border-mv-line bg-white px-[22px] py-[13px] shadow-mv-lg">
+                    <span
+                      aria-hidden="true"
+                      className="h-[20px] w-[20px] shrink-0 animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
+                    />
+                    <span className="text-[15px] font-semibold leading-none text-mv-slate">
+                      Loading this well&rsquo;s record…
+                    </span>
+                  </div>
                 </div>
               </div>
             )}
@@ -804,78 +820,6 @@ function LocationMark() {
 }
 
 /** The wellbore in section: down, then out along the lateral. */
-function Wellbore() {
-  return (
-    <>
-      {/*
-        Three bands, not one flat panel: the section is a picture of ground,
-        and the colour change is what says the bore has left the near-surface
-        and entered the producing formation.
-      */}
-      <div className="mt-3 overflow-hidden rounded-lg">
-        <svg
-          viewBox="0 0 300 120"
-          className="h-[120px] w-full"
-          role="img"
-          aria-label="Horizontal wellbore in section"
-        >
-          <rect x="0" y="0" width="300" height="34" fill="#f3efe4" />
-          <rect x="0" y="34" width="300" height="46" fill="#eae4d3" />
-          <rect x="0" y="80" width="300" height="40" fill="#dff0e4" />
-
-          <text
-            x="10"
-            y="14"
-            className="text-[6px] font-bold uppercase tracking-[.12em]"
-            fill="#8a8a5f"
-          >
-            {WELLBORE.surface}
-          </text>
-          <text
-            x="10"
-            y="50"
-            className="text-[6px] font-bold uppercase tracking-[.12em]"
-            fill="#2e8f6d"
-          >
-            Horizontal
-          </text>
-          <text
-            x="232"
-            y="76"
-            className="text-[6px] font-bold uppercase tracking-[.12em]"
-            fill="#2e8f6d"
-          >
-            {WELLBORE.formation}
-          </text>
-
-          {/* Down from the wellhead, then out along the lateral. */}
-          <path
-            d="M30 8 L30 74 Q30 92 52 92 L286 92"
-            fill="none"
-            stroke="#111827"
-            strokeWidth="3"
-            strokeLinecap="round"
-          />
-
-          {/* Perforations, hanging off the lateral into the formation. */}
-          {Array.from({ length: 17 }, (_, index) => (
-            <line
-              key={index}
-              x1={70 + index * 13}
-              y1="92"
-              x2={70 + index * 13}
-              y2="104"
-              stroke={OIL}
-              strokeWidth="1.6"
-              strokeLinecap="round"
-            />
-          ))}
-        </svg>
-      </div>
-    </>
-  );
-}
-
 /** `TOM GREEN` reads better as `Tom Green` beside the operator's own casing. */
 function titleCase(value: string): string {
   return value
