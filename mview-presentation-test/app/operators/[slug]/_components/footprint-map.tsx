@@ -7,17 +7,24 @@ import { useState } from "react";
  *
  * WHY THE PATHS ARE NOT IN HERE. All 254 county outlines are 64 KB of geometry, and
  * they are identical for every operator. The server component renders them into the
- * HTML — already carrying each county's oil AND gas shade as CSS custom properties —
- * and passes the finished `<svg>` in as `children`. So the geometry gzips inside the
- * document and never enters a client bundle; this file ships only the toggle and the
- * tooltip.
+ * HTML and passes the finished `<svg>` in as `children`; `CountyShading` then writes
+ * each county's oil AND gas bucket onto them as data attributes once the API answers.
+ * So the geometry gzips inside the document and never enters a client bundle; this file
+ * ships only the toggle and the tooltip.
  *
- * That is also why switching metric costs nothing: it flips one class on the
- * wrapper, and CSS repaints the fills from the other custom property. No React
- * re-render, no 254-element reconcile.
+ * That is also why switching metric costs nothing: it flips one class on the wrapper,
+ * and CSS repaints the fills from the other attribute. No refetch, no React re-render,
+ * no 254-element reconcile.
  *
- * The tooltip reads `data-county` / `data-oil` / `data-gas` off the hovered path, so
- * it needs no copy of the data either.
+ * The tooltip reads `data-county` / `data-oil` / `data-gas` off the hovered path, so it
+ * needs no copy of the data either.
+ *
+ * WHICH COUNTIES ARE HOVERABLE IS DECIDED IN CSS, NOT HERE — worth knowing before
+ * changing `onPointerMove`. Counties the API reported nothing for get
+ * `pointer-events:none` (see `CHOROPLETH_CSS`), so the pointer passes straight through
+ * them to the `<svg>`, `closest("path[data-county]")` finds nothing, and the tooltip
+ * clears on its own. The rule follows the visible metric, because a county can report
+ * oil and not gas. Filtering here as well would duplicate that logic in a second place.
  */
 
 export type MapMetric = "oil" | "gas";
@@ -112,13 +119,14 @@ export function FootprintMap({
             <div className="mb-1 text-[12.5px] font-extrabold">
               {hover.county}
             </div>
+            {/* Only the metric being shaded. Both figures are kept in `hover`, so
+                switching tab while the pointer sits still swaps the line correctly
+                without needing another pointer event. */}
             <div className="flex justify-between gap-4 text-mv-on-deep-muted">
-              <span>Oil</span>
-              <b className="font-bold tabular-nums text-white">{hover.oil}</b>
-            </div>
-            <div className="flex justify-between gap-4 text-mv-on-deep-muted">
-              <span>Gas</span>
-              <b className="font-bold tabular-nums text-white">{hover.gas}</b>
+              <span className="capitalize">{metric}</span>
+              <b className="font-bold tabular-nums text-white">
+                {metric === "gas" ? hover.gas : hover.oil}
+              </b>
             </div>
           </div>
         ) : null}

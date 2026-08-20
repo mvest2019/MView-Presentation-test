@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { Breadcrumbs } from "@/app/_components/breadcrumbs";
-import { displayXsClass, eyebrowClass } from "@/app/_components/typography";
+import { displayXsClass } from "@/app/_components/typography";
 import { STATISTICS_TREND_YEARS } from "@/lib/operator-statistics";
 
 import { StatisticsPage } from "./statistics-page";
@@ -96,7 +96,7 @@ export default function CompareOperatorStatisticsRoute() {
 
       {/* The design's `.cs-head`: a paler band separating the page's own heading
           from the site header above it. */}
-      <div className="border-b border-mv-line bg-[linear-gradient(180deg,var(--color-mv-card),var(--color-mv-card-tint))]">
+      <div className="bg-white">
         <div className="mx-auto max-w-[1180px] px-[22px] pb-6 pt-5 max-[767px]:px-4">
           <Breadcrumbs
             items={[
@@ -106,9 +106,7 @@ export default function CompareOperatorStatisticsRoute() {
             ]}
           />
 
-          <p className={`${eyebrowClass} mt-[14px]`}>Operator tools · free to use</p>
-
-          <h1 className={`${displayXsClass} mb-[6px] mt-2 text-mv-ink`}>
+          <h1 className={`${displayXsClass} mb-[6px] mt-[14px] text-mv-ink`}>
             Compare operator statistics
           </h1>
           <p className="max-w-[640px] text-[14.5px] text-mv-muted">
