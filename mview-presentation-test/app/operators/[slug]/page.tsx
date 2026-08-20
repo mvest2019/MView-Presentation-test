@@ -320,11 +320,7 @@ export default async function OperatorDetailRoute({
             request nor the model call touches first paint — the section reserves its
             height and fills in when approached. See `operator-what-changed.tsx`. */}
         <section className="pt-[26px]">
-          <SectionHead
-            eyebrow="Auto-generated"
-            title="What changed"
-            aside="Measured from RRC records · last 90 days"
-          />
+          <SectionHead title="What changed" />
           <DeferredSection minHeight={520} label="What changed">
             <OperatorWhatChanged operatorNumber={operator.operatorNumber} />
           </DeferredSection>
@@ -332,9 +328,9 @@ export default async function OperatorDetailRoute({
 
         {/* ---- 4 · footprint ---- */}
         <section className="pt-[26px]">
-          <p className={eyebrowClass}>Footprint</p>
+          {/* `mt-[7px]` went with the eyebrow that used to sit above this. */}
           <h2
-            className={`${sectionTitleClass} mb-[14px] mt-[7px] flex items-center gap-[11px] text-mv-ink before:h-[19px] before:w-1 before:rounded-full before:bg-mv-green-deep before:content-['']`}
+            className={`${sectionTitleClass} mb-[14px] flex items-center gap-[11px] text-mv-ink before:h-[19px] before:w-1 before:rounded-full before:bg-mv-green-deep before:content-['']`}
           >
             Where {operator.name.split(/[ ,]/)[0]} operates across Texas
           </h2>
@@ -484,9 +480,9 @@ export default async function OperatorDetailRoute({
         {/* ---- 9 · related operators ---- */}
         {related.length === 0 ? null : (
           <section className="pt-[26px]">
-            <p className={eyebrowClass}>Peers</p>
+            {/* `mt-[7px]` went with the eyebrow that used to sit above this. */}
             <h2
-              className={`${sectionTitleClass} mt-[7px] flex items-center gap-[11px] text-mv-ink before:h-[19px] before:w-1 before:rounded-full before:bg-mv-green-deep before:content-['']`}
+              className={`${sectionTitleClass} flex items-center gap-[11px] text-mv-ink before:h-[19px] before:w-1 before:rounded-full before:bg-mv-green-deep before:content-['']`}
             >
               Related operators
             </h2>

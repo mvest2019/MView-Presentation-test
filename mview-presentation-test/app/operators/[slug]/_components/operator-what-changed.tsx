@@ -8,7 +8,6 @@ import {
   Plus,
   RefreshCw,
   Repeat,
-  Sparkles,
 } from "lucide-react";
 import { Fragment, useCallback, useEffect, useState } from "react";
 
@@ -16,7 +15,7 @@ import type { ChangeEvidence, ChangeRow } from "@/lib/operator-detail-data";
 import type { WhatChangedPanel } from "@/lib/operator-what-changed-api";
 
 /**
- * "What changed" — six measured findings, phrased by Claude.
+ * "What changed" — six measured findings, phrased by a model.
  *
  * IT FETCHES ON MOUNT, AND IT MOUNTS LATE. The parent wraps this in
  * `DeferredSection`, so nothing here runs until the section is approached: no request
@@ -24,17 +23,21 @@ import type { WhatChangedPanel } from "@/lib/operator-what-changed-api";
  * JavaScript the page must evaluate. The wrapper reserves the section's height, so the
  * skeleton and the finished panel occupy the same space and the arrival shifts nothing.
  *
- * THE FIGURES ARE NOT THE MODEL'S. The service measures the changes from MongoDB,
- * ranks them, and sends the finished findings to Claude to rephrase. Direction and
- * attribution are carried from the measurement, and any output containing a number
- * that was not in the input is rejected. So `writer` is a note about prose, never
- * about accuracy — which is why the footer states it plainly instead of hiding it.
+ * THE FIGURES ARE NOT THE MODEL'S. The changes are measured from MongoDB and ranked
+ * before a model is asked anything; it is then sent finished findings and told only to
+ * rephrase them. Direction and attribution are carried from the measurement, and any
+ * output containing a number that was not in the input is rejected. So `writer` is a
+ * note about prose, never about accuracy.
  *
- * SIX STATES, DRAWN SEPARATELY. Skeleton while it loads; the panel on success; a
+ * `writer` IS CARRIED BUT NO LONGER DRAWN (requested). The panel used to end with a
+ * badge saying whether the wording was the model's or the measured fallback. Removing
+ * it costs the one on-page signal that a run fell back, so a panel stuck on measured
+ * wording is now invisible from the page — read `writer` from
+ * `/api/operators/<no>/what-changed` to tell.
+ *
+ * FOUR STATES, DRAWN SEPARATELY. Skeleton while it loads; the panel on success; a
  * sentence when the operator has no measurable window; an alert with a retry when the
- * service is unreachable or timed out; and, inside a successful panel, a quiet note
- * when the wording is the measured fallback rather than the model's. A fallback that
- * looks identical to a clean run is a fallback nobody notices is stuck.
+ * service is unreachable or timed out.
  */
 
 const CHANGE_ICONS = {
@@ -338,58 +341,25 @@ export function OperatorWhatChanged({
   }
 
   /* ---- success ---- */
+  /* `panel.writer` is still reported by the service and still carried on the panel —
+     it is simply no longer drawn. Whoever needs to know which wording arrived reads
+     it from `/api/operators/<no>/what-changed`. */
   const { panel } = loaded;
-  /* Which writers are a model. Listed rather than inverted against the fallbacks so a
-     writer nobody taught this component about reads as "measured" — understating what
-     wrote the panel is the safe way to be wrong about it. */
-  const modelWrote =
-    panel.writer === "gemini" ||
-    panel.writer === "claude-api" ||
-    panel.writer === "claude-cli";
 
   return (
-    <>
-      <ul className="m-0 grid list-none gap-[10px] p-0">
-        {panel.rows.map((row) => (
-          <ChangeItem
-            key={row.headline}
-            row={row}
-            isOpen={openRow === row.headline}
-            onToggle={() =>
-              setOpenRow((current) =>
-                current === row.headline ? null : row.headline,
-              )
-            }
-          />
-        ))}
-      </ul>
-
-      {/* Which wording arrived, stated rather than implied. The figures are the same
-          either way — only the phrasing differs — so this says that outright instead
-          of leaving a reader to wonder whether the numbers changed too. */}
-      <p className="mt-[10px] flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-mv-muted">
-        <span
-          className={`inline-flex items-center gap-[5px] rounded-full px-[9px] py-[2px] font-semibold ${
-            modelWrote
-              ? "bg-mv-tint text-mv-green-deep"
-              : "bg-mv-sand-tint text-mv-sand"
-          }`}
-        >
-          {modelWrote ? (
-            <Sparkles
-              aria-hidden="true"
-              className="h-[11px] w-[11px]"
-              strokeWidth={2.2}
-            />
-          ) : null}
-          {modelWrote ? "AI wording" : "Measured wording"}
-        </span>
-        <span>
-          Figures measured from RRC records as of {panel.asOfLabel} · last{" "}
-          {panel.activityDays} days of filings
-          {modelWrote ? " · phrasing only is AI-written" : ""}
-        </span>
-      </p>
-    </>
+    <ul className="m-0 grid list-none gap-[10px] p-0">
+      {panel.rows.map((row) => (
+        <ChangeItem
+          key={row.headline}
+          row={row}
+          isOpen={openRow === row.headline}
+          onToggle={() =>
+            setOpenRow((current) =>
+              current === row.headline ? null : row.headline,
+            )
+          }
+        />
+      ))}
+    </ul>
   );
 }
