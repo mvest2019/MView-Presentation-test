@@ -21,7 +21,6 @@ import {
   CheckRow,
   Divider,
   Field,
-  Fine,
   OrDivider,
   PasswordInput,
   Req,
@@ -408,7 +407,21 @@ export function RegisterForm({ next }: { next: string }) {
                 <strong className="font-bold text-mv-ink">{codeSentTo}</strong>
               </p>
 
-              <div className="mb-[10px] flex gap-[6px]">
+              {/* CENTRED (Ryan, 2026-08-19: "OTP boxes are positioned toward
+                  the left instead of being centered in the available area").
+                  Six 38px boxes and five 6px gaps come to 258px inside a panel
+                  roughly twice that, so with no justification they sat hard left
+                  under a caption that runs the full width, leaving a visible
+                  empty half to their right.
+
+                  Deliberately NOT the live site's rule here, which is
+                  `justify-between` under `sm` and `justify-start` above it — so
+                  on desktop the live boxes are left-aligned exactly as this was.
+                  Centred on request. `justify-center` rather than `mx-auto`
+                  because the flex row itself is the full-width element; the row
+                  below it keeps `justify-between` so Resend and Change email
+                  stay pinned to the panel's edges. */}
+              <div className="mb-[10px] flex justify-center gap-[6px]">
                 {digits.map((digit, index) => (
                   <input
                     key={index}
@@ -468,7 +481,24 @@ export function RegisterForm({ next }: { next: string }) {
 
               <div className="flex items-center justify-between text-[12.5px]">
                 {cooldown > 0 ? (
-                  <span className="text-mv-muted">
+                  /*
+                   * `mv-slate` AND SEMIBOLD (Ryan, 2026-08-19: "Resend in 4:45 is
+                   * difficult to read because the text is too light").
+                   *
+                   * It was `text-mv-muted` — #6b7280 on this panel's #f7fbf9 —
+                   * which measures 4.63:1. That squeaks past AA's 4.5 for body
+                   * copy, so it was not a failure on paper, but it is 12.5px type
+                   * and it was the ONLY thing in the row at normal weight: the
+                   * "Change email" button beside it is semibold, so the countdown
+                   * read as the faded half of a pair. #1e293b takes it to 14.0:1.
+                   *
+                   * Matching the weight rather than out-shouting it: the row now
+                   * has one weight throughout, and "Change email" stays the
+                   * actionable one by being underlined with a hover colour, not by
+                   * being the darker of the two. `tabular-nums` so the seconds
+                   * ticking 9→8 does not shift the text width each second.
+                   */
+                  <span className="font-semibold tabular-nums text-mv-slate">
                     Resend in {Math.floor(cooldown / 60)}:
                     {String(cooldown % 60).padStart(2, "0")}
                   </span>
@@ -490,7 +520,13 @@ export function RegisterForm({ next }: { next: string }) {
                     setOtpError(null);
                     setCooldown(0);
                   }}
-                  className="cursor-pointer border-0 bg-transparent p-0 font-sans text-[12.5px] font-semibold text-mv-muted underline hover:text-mv-green-deep"
+                  /* `mv-slate`, not `mv-muted`, for the same reason the countdown
+                     beside it changed. Darkening only the countdown left this at
+                     4.63:1 against 14.0 — the actionable half of the row lighter
+                     than the passive half, which is the wrong way round. Now both
+                     sit at 14.0 and the underline plus the green hover are what
+                     mark this one as the control. */
+                  className="cursor-pointer border-0 bg-transparent p-0 font-sans text-[12.5px] font-semibold text-mv-slate underline hover:text-mv-green-deep"
                 >
                   Change email
                 </button>
@@ -546,32 +582,29 @@ export function RegisterForm({ next }: { next: string }) {
           {isSubmitting ? "Creating your account…" : "Create account"}
         </SubmitButton>
 
-        <Fine className="mt-2">
-          Free plan • No credit card required • Cancel anytime
-        </Fine>
-        <Fine className="mt-[6px]">
-          Your acceptance of the Terms of Use and Privacy Policy is recorded.
-        </Fine>
-        <Fine className="mt-[10px]">
-          After you claim a record, we verify your ownership before displaying
-          ownership data. Verification may take up to 24 hours.
-        </Fine>
+        {/* NO SMALL PRINT UNDER THE BUTTON (Ryan, 2026-08-19: "Remove the
+            text"). Four `Fine` blocks stood here, all from the design:
 
-        {/* ONE HORIZONTAL LINE, not a stacked bullet list (Ryan, 2026-08-17:
-            "need that horizontal to reduce space"). As a <ul> this was six lines
-            and 72px of the fifth consecutive block of small print above the
-            footer — two of those lines were the list's own leading, spent on two
-            items of three words each.
+              · "Free plan • No credit card required • Cancel anytime"
+              · "Your acceptance of the Terms of Use and Privacy Policy is
+                 recorded."
+              · "After you claim a record, we verify your ownership before
+                 displaying ownership data. Verification may take up to 24 hours."
+              · "Free plan includes: 1 owner profile • 1 visible lease • Upgrade
+                 at any time."
 
-            Back to `Fine`, which is what the four notes above it use, with the
-            same `•` separators as the "Free plan • No credit card required"
-            line. Every phrase is kept verbatim; only the layout changed. The <ul>
-            is not missed — with two short items on one line there is no list to
-            navigate, and it reads as the sentence it always was. */}
-        <Fine className="mt-3">
-          Free plan includes: 1 owner profile • 1 visible lease • Upgrade at any
-          time.
-        </Fine>
+            Together they were six lines of grey type between the submit button
+            and the sign-in link — the last of them had already been flattened
+            from a <ul> on 2026-08-17 to claw back space, which treated the
+            symptom. The live register form carries none of it (its only footer is
+            the phone and help@ links), so removing it moves toward that form
+            rather than away from it.
+
+            None of it was load-bearing: the free plan and the recorded consent
+            are both stated by the pricing page and the terms themselves, and the
+            24-hour note describes a step that happens long after this form. If
+            any single line is wanted back, `Fine` still exists and sign-in still
+            uses it. */}
       </form>
 
       <Divider />

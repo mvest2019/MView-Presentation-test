@@ -199,6 +199,29 @@ export interface RegisterInput {
   /** The design's single "Street, city, state, ZIP" box. */
   mailingAddress?: string;
   memberType?: MemberTypeValue;
+  /**
+   * The terms checkbox, sent to the API as `tnc` — REQUIRED (Ryan, 2026-08-19).
+   *
+   * Omitting it was a 422, and the check runs BEFORE the duplicate-email lookup,
+   * so no account could be created no matter what the form said:
+   *
+   *   omitted      → 422 {"msg":"Please accept the Terms of Service and Privacy
+   *                       Policy…","param":"tnc"}     ← no `value` key at all
+   *   `tnc: false` → 422, same message, with `"value": false`
+   *   `tnc: true`  → passes validation (probed against an address that already
+   *                  had an account, so it answered 400 "already registered")
+   *
+   * Worth noting the `false` case is reported separately from the omitted one, so
+   * the endpoint is not silently defaulting the field — it rejects both, but it
+   * does read what is sent.
+   *
+   * Threaded from the checkbox rather than hardcoded `true` at the call site. The
+   * schema already refuses to validate unless it is ticked (`z.literal(true)`), so
+   * the value is always true by the time it gets here — but a payload field that
+   * asserts consent should carry what the visitor actually did, not a constant
+   * that would keep saying "accepted" if that gate ever moved.
+   */
+  acceptedTerms: boolean;
 }
 
 /**
@@ -235,6 +258,8 @@ export async function registerUser(input: RegisterInput): Promise<AuthResult> {
       zip_code: null,
       phone_number: input.phone?.trim() || null,
       subscriptionid: FREE_SUBSCRIPTION_ID,
+      // `tnc`, not `terms` — the API's own field name. See `acceptedTerms`.
+      tnc: input.acceptedTerms,
       login_type: "web",
       login_json: {},
       visitorId: await getVisitorId(),

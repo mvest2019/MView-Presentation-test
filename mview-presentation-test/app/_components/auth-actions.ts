@@ -107,7 +107,8 @@ export async function registerAction(values: unknown): Promise<ActionResult> {
     return { ok: false, message: "Please check the details above." };
   }
 
-  const { fullName, email, password, phone, mailingAddress } = parsed.data;
+  const { fullName, email, password, phone, mailingAddress, terms } =
+    parsed.data;
 
   const created = await registerUser({
     fullName,
@@ -116,6 +117,11 @@ export async function registerAction(values: unknown): Promise<ActionResult> {
     phone,
     mailingAddress,
     memberType: DEFAULT_MEMBER_TYPE,
+    /* Goes to the API as `tnc`. Taken from the parsed form rather than passed as
+       `true`: the schema's `z.literal(true)` means this action cannot get here
+       with it unticked, so the two agree — but the value that asserts consent
+       should be the one the visitor supplied. */
+    acceptedTerms: terms,
   });
   if (!created.ok) return { ok: false, message: created.message };
 

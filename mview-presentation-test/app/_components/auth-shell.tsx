@@ -1,7 +1,6 @@
 "use client";
 
 import { Info } from "lucide-react";
-import Image from "next/image";
 import { useId, useState, type ReactNode } from "react";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
@@ -29,11 +28,30 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 /** `.auth-shell` + `.wrap` + `.card.card-pad.auth-card`. */
 export function AuthShell({ children }: { children: ReactNode }) {
   return (
-    // 24px of top padding, not the stylesheet's 44px: at 44 the card floated
-    // clear of the header with a band of empty page above it that read as a
-    // rendering fault rather than as breathing room. The 80px bottom stays —
-    // it is what keeps the card off the fold on short viewports.
-    <div className="min-h-[calc(100vh-64px)] pb-20 pt-6">
+    /*
+     * 24px of top padding, not the stylesheet's 44px: at 44 the card floated
+     * clear of the header with a band of empty page above it that read as a
+     * rendering fault rather than as breathing room.
+     *
+     * BOTTOM IS 32px, NOT THE 80px THIS CARRIED (Ryan, 2026-08-19: "Remove that
+     * space"). Measured on /register before the change: exactly 80px of empty
+     * band between the card and the dark footer, all of it this padding — the
+     * card's own margin was already zero and the footer sat flush against this
+     * wrapper.
+     *
+     * The 80px used to be justified here as "what keeps the card off the fold on
+     * short viewports". IT NEVER DID THAT JOB: `min-h` already guarantees the
+     * wrapper fills the viewport, and on any page whose content exceeds that —
+     * which /register does by 480px — the padding only ever added a gap below
+     * the card. So it bought nothing and cost the band in the screenshot.
+     *
+     * 32px/24px is not a fresh guess: it is `pageShellClass`, which every
+     * library and legal page already uses after this same complaint was raised
+     * on 2026-08-17. Not zero, for the reason recorded there — butted against
+     * the footer the card looks clipped rather than finished. `pb-20` was the
+     * last one left in the app; nothing is now on a different value.
+     */
+    <div className="min-h-[calc(100vh-64px)] pb-8 pt-6 max-[767px]:pb-6">
       <div className="mx-auto max-w-[1200px] px-7 max-[767px]:px-4">
         <div className="mx-auto max-w-[520px] rounded-mv border border-mv-line bg-mv-card p-[22px] shadow-mv">
           {children}
@@ -44,24 +62,25 @@ export function AuthShell({ children }: { children: ReactNode }) {
 }
 
 /**
- * The centred logo, heading and lede.
+ * The centred heading and lede.
  *
- * The logo is the DESIGN'S OWN asset URL, `e_replace_color:0f1b16:48:ffffff` —
- * white swapped for near-black. That transform is required here and is not the
- * one the header uses: this card is white, and the untransformed file has a
- * white "VIEW" that would be invisible on it.
+ * NO LOGO (Ryan, 2026-08-19: "remove the logo from form both login and
+ * registration"). It was the design's own asset, at a Cloudinary URL carrying an
+ * `e_replace_color:0f1b16:48:ffffff` transform so the wordmark's white "VIEW"
+ * did not vanish against this white card.
+ *
+ * Removed HERE rather than at the two call sites on purpose: `AuthHead` is used
+ * by sign-in and sign-up and nothing else, so this one edit covers both forms and
+ * they cannot drift apart. The mark is still in the header directly above the
+ * card, which is what made a second copy inside it redundant.
+ *
+ * That also dropped the file's only `next/image` usage, so the import went with
+ * it — and with it the `priority` hint that was making this a preload candidate
+ * on both pages.
  */
 export function AuthHead({ title, lede }: { title: string; lede: string }) {
   return (
     <div className="mb-[18px] text-center">
-      <Image
-        src="https://res.cloudinary.com/mview/image/upload/e_replace_color:0f1b16:48:ffffff/f_auto,q_auto,w_320/f_auto/icons/mineralview-logo.png"
-        alt="Mineral View"
-        width={320}
-        height={73}
-        priority
-        className="mx-auto mb-[14px] block h-[30px] w-auto"
-      />
       <h1 className="font-sans text-[24px] font-semibold tracking-[-.01em] text-mv-ink">
         {title}
       </h1>
