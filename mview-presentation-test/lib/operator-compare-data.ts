@@ -16,6 +16,13 @@
  * `boe` is the operator's barrels of oil equivalent as the prototype computed it
  * (gas at 15:1). Nothing is derived at render time.
  *
+ * `activeLeases`, `productionStart` and `productionEnd` were read from
+ * `POST /api/v1/operators/details` for each of the eight, because the prototype
+ * export does not carry them. Baked in rather than fetched so this page stays
+ * static: it renders four operators from a set of eight, and a request per
+ * selection change would make an instant page wait on the network for three
+ * table rows.
+ *
  * Names arrive from the regulator in upper case; `name` is the display form and
  * `filedName` keeps the original for matching against the search API later.
  */
@@ -47,6 +54,24 @@ export interface OperatorCompareRecord {
   boeTotal: number;
   leases: number;
   counties: number;
+  /**
+   * Leases currently producing, against `leases` as the lifetime count.
+   *
+   * From `operator_condition.producing_leases.count` on
+   * `POST /api/v1/operators/details` — a DIFFERENT snapshot from the prototype
+   * export the rest of this record comes from, which is why its companion
+   * `total_leases` disagrees with `leases` by a few dozen. `leases` is kept as the
+   * prototype filed it so the per-lease efficiency figure the design was reviewed
+   * against does not move.
+   */
+  activeLeases: number;
+  /**
+   * First and latest filed production month, worded as the API words them
+   * ("March 1997", "May 2026") rather than re-formatted — the string is what is
+   * displayed, so parsing and re-printing it would only add a way to be wrong.
+   */
+  productionStart: string;
+  productionEnd: string;
   /** Most-active counties, highest first. */
   topCounties: string[];
   series: OperatorCompareYear[];
@@ -66,6 +91,9 @@ export const OPERATOR_COMPARE_RECORDS: readonly OperatorCompareRecord[] =
     "boeTotal": 2367474174,
     "leases": 10264,
     "counties": 79,
+    "activeLeases": 4204,
+    "productionStart": "March 1997",
+    "productionEnd": "May 2026",
     "topCounties": [
       "MIDLAND",
       "UPTON",
@@ -142,6 +170,9 @@ export const OPERATOR_COMPARE_RECORDS: readonly OperatorCompareRecord[] =
     "boeTotal": 2109092343,
     "leases": 11366,
     "counties": 110,
+    "activeLeases": 3680,
+    "productionStart": "May 1998",
+    "productionEnd": "May 2026",
     "topCounties": [
       "GONZALES",
       "MONTAGUE",
@@ -218,6 +249,9 @@ export const OPERATOR_COMPARE_RECORDS: readonly OperatorCompareRecord[] =
     "boeTotal": 1706939749,
     "leases": 13180,
     "counties": 108,
+    "activeLeases": 1547,
+    "productionStart": "February 2001",
+    "productionEnd": "May 2026",
     "topCounties": [
       "MIDLAND",
       "GAINES",
@@ -294,6 +328,9 @@ export const OPERATOR_COMPARE_RECORDS: readonly OperatorCompareRecord[] =
     "boeTotal": 1291678867,
     "leases": 743,
     "counties": 24,
+    "activeLeases": 209,
+    "productionStart": "February 2000",
+    "productionEnd": "May 2026",
     "topCounties": [
       "YOAKUM",
       "ECTOR",
@@ -370,6 +407,9 @@ export const OPERATOR_COMPARE_RECORDS: readonly OperatorCompareRecord[] =
     "boeTotal": 1188206430,
     "leases": 5589,
     "counties": 22,
+    "activeLeases": 3896,
+    "productionStart": "February 2012",
+    "productionEnd": "May 2026",
     "topCounties": [
       "MARTIN",
       "MIDLAND",
@@ -446,6 +486,9 @@ export const OPERATOR_COMPARE_RECORDS: readonly OperatorCompareRecord[] =
     "boeTotal": 1184992447,
     "leases": 14447,
     "counties": 114,
+    "activeLeases": 426,
+    "productionStart": "January 1993",
+    "productionEnd": "May 2026",
     "topCounties": [
       "KARNES",
       "WISE",
@@ -522,6 +565,9 @@ export const OPERATOR_COMPARE_RECORDS: readonly OperatorCompareRecord[] =
     "boeTotal": 1116538489,
     "leases": 5901,
     "counties": 75,
+    "activeLeases": 656,
+    "productionStart": "January 1993",
+    "productionEnd": "May 2026",
     "topCounties": [
       "MIDLAND",
       "CULBERSON",
@@ -598,6 +644,9 @@ export const OPERATOR_COMPARE_RECORDS: readonly OperatorCompareRecord[] =
     "boeTotal": 1010967673,
     "leases": 7976,
     "counties": 123,
+    "activeLeases": 1633,
+    "productionStart": "January 1993",
+    "productionEnd": "May 2026",
     "topCounties": [
       "REAGAN",
       "GLASSCOCK",

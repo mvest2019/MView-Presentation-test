@@ -57,7 +57,12 @@ export interface CompareOperator {
   /** Position in the statewide production ranking. */
   rank: number;
   leases: number;
+  /** Leases currently producing, against `leases` as the lifetime count. */
+  activeLeases: number;
   counties: number;
+  /** First and latest filed production month, as the record words them. */
+  productionStart: string;
+  productionEnd: string;
   /** Most-active counties, title-cased, highest first. */
   topCounties: string[];
   /** Millions of BOE per year, one per `COMPARE_YEARS` index. */
@@ -285,7 +290,10 @@ function toCompareOperator(
     operatorNumber: record.operatorNumber,
     rank: rankOf(index),
     leases: record.leases,
+    activeLeases: record.activeLeases,
     counties: record.counties,
+    productionStart: record.productionStart,
+    productionEnd: record.productionEnd,
     topCounties: record.topCounties.map(titleCase),
     boe: record.series.map((year) => Number((year.boe / 1e6).toFixed(1))),
     oil: record.series.map((year) => Number((year.oil / 1e6).toFixed(1))),
@@ -343,6 +351,15 @@ function topBy(
 export interface CompareLeaders {
   /** By cumulative BOE, highest first — the whole ranking, not just the winner. */
   byVolume: CompareOperator[];
+  /**
+   * Most oil and most gas produced across the filed record.
+   *
+   * SEPARATE FROM `byVolume`, because BOE folds gas into oil at 15:1 and so hides
+   * exactly the distinction these two exist to draw: the largest producer overall is
+   * frequently neither the largest oil producer nor the largest gas producer.
+   */
+  oil: CompareOperator;
+  gas: CompareOperator;
   efficiency: CompareOperator;
   growth: CompareOperator;
   footprint: CompareOperator;
@@ -364,12 +381,22 @@ export function findLeaders(
 ): CompareLeaders | null {
   const byVolume = topBy(operators, (operator) => operator.cumBoe);
   const leader = byVolume[0];
+  const oil = topBy(operators, (operator) => operator.cumOil)[0];
+  const gas = topBy(operators, (operator) => operator.cumGas)[0];
   const efficiency = topBy(operators, mboePerLease)[0];
   const growth = topBy(operators, (operator) => compoundGrowth(operator.boe))[0];
   const footprint = topBy(operators, (operator) => operator.counties)[0];
   const oilWeighted = topBy(operators, (operator) => operator.oilPct)[0];
 
-  if (!leader || !efficiency || !growth || !footprint || !oilWeighted) {
+  if (
+    !leader ||
+    !oil ||
+    !gas ||
+    !efficiency ||
+    !growth ||
+    !footprint ||
+    !oilWeighted
+  ) {
     return null;
   }
 
@@ -377,6 +404,8 @@ export function findLeaders(
 
   return {
     byVolume,
+    oil,
+    gas,
     efficiency,
     growth,
     footprint,
@@ -437,35 +466,57 @@ export interface StatRow {
   value: (operator: CompareOperator) => string;
 }
 
-/** The comparison-stats rows, in the design's order. */
+/**
+ * `March 1997` -> `Mar 1997`, so a date range fits one table cell.
+ *
+ * Only the month word is shortened, and only when it is long enough to need it —
+ * "May 2026" is left alone rather than padded to a fake abbreviation.
+ */
+function shortMonth(value: string): string {
+  return value.replace(/^([A-Za-z]{4,})/, (month) => month.slice(0, 3));
+}
+
+/**
+ * The comparison-stats rows, in the requested order.
+ *
+ * UNITS LIVE IN THE VALUE, NOT THE LABEL. The labels are the ones asked for — "Oil
+ * Produced", not "Cumulative oil (bbl)" — but a bare "1.91B" in a cell is a figure a
+ * reader has to guess the unit of, so the unit rides with the number. `cumOil` is
+ * millions of barrels and `cumGas` millions of Mcf, which is what `formatMillions`
+ * scales; labelling gas as barrels would be the easy mistake here.
+ */
 export const COMPARE_STAT_ROWS: readonly StatRow[] = [
   {
     label: "Rank statewide — by reported production",
     value: (operator) => `#${operator.rank}`,
   },
   {
-    label: `Cumulative BOE (15:1) — ${COMPARE_YEARS[0]}–${COMPARE_YEARS.at(-1)}`,
-    value: (operator) => formatMillions(operator.cumBoe),
+    label: "Oil Produced",
+    value: (operator) => `${formatMillions(operator.cumOil)} bbl`,
   },
   {
-    label: "Cumulative oil (bbl)",
-    value: (operator) => formatMillions(operator.cumOil),
+    label: "Gas Produced",
+    value: (operator) => `${formatMillions(operator.cumGas)} Mcf`,
   },
   {
-    label: "Cumulative gas (Mcf)",
-    value: (operator) => formatMillions(operator.cumGas),
-  },
-  { label: "Oil share of BOE", value: (operator) => `${operator.oilPct}%` },
-  {
-    label: "Leases on record",
+    label: "Leases on Record",
     value: (operator) => formatCount(operator.leases),
   },
   {
-    label: "Producing counties",
+    label: "Active Leases",
+    value: (operator) => formatCount(operator.activeLeases),
+  },
+  {
+    label: "Producing Counties",
     value: (operator) => String(operator.counties),
   },
   {
-    label: "Production per lease",
-    value: (operator) => `${mboePerLease(operator).toFixed(0)} MBOE`,
+    label: "Latest Production Date",
+    value: (operator) => operator.productionEnd,
+  },
+  {
+    label: "Average Production Range",
+    value: (operator) =>
+      `${shortMonth(operator.productionStart)} – ${shortMonth(operator.productionEnd)}`,
   },
 ];

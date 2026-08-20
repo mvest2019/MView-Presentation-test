@@ -3,8 +3,9 @@
 import {
   ArrowDown,
   ArrowUp,
-  BarChart3,
   ChevronDown,
+  Droplet,
+  Flame,
   Gauge,
   Lock,
   MapPin,
@@ -189,11 +190,7 @@ export function ComparePage() {
         <>
           {/* ---- identity cards ---- */}
           <section className="py-[26px]">
-            <SectionHead
-              eyebrow="Comparing"
-              title="Operators in this comparison"
-              sub="RRC number and most-active counties for each — consistent with the operator directory."
-            />
+            <SectionHead title="Operators in this comparison" />
             <div className="grid grid-cols-4 gap-[14px] max-[940px]:grid-cols-2 max-[520px]:grid-cols-1">
               {operators.map((operator) => (
                 <IdentityCard key={operator.slug} operator={operator} />
@@ -209,7 +206,6 @@ export function ComparePage() {
           {/* ---- leaderboard ---- */}
           <section className="pb-[26px]">
             <SectionHead
-              eyebrow="At a glance"
               title="Who leads on what"
               sub="The biggest operator isn't always the best one to have on your lease."
             />
@@ -223,21 +219,13 @@ export function ComparePage() {
 
           {/* ---- oil vs gas mix ---- */}
           <section className="pb-[26px]">
-            <SectionHead
-              eyebrow="Commodity exposure"
-              title="Oil vs gas mix"
-              sub="Which commodity each operator's barrels come from — and how balanced the split is."
-            />
+            <SectionHead title="Oil vs gas mix" />
             <MixCard operators={operators} />
           </section>
 
           {/* ---- momentum ---- */}
           <section className="pb-[26px]">
-            <SectionHead
-              eyebrow="Direction"
-              title="Momentum & growth"
-              sub={`Latest year, year-over-year, ${COMPARE_YEARS.length}-year trend and volatility — from the filed record.`}
-            />
+            <SectionHead title="Momentum & growth" />
             <div className="overflow-hidden rounded-2xl border border-mv-line bg-white shadow-mv">
               <MomentumTable rows={buildMomentumRows(operators)} />
             </div>
@@ -246,7 +234,6 @@ export function ComparePage() {
           {/* ---- comparison stats ---- */}
           <section className="pb-[26px]">
             <SectionHead
-              eyebrow="Scale & efficiency"
               title="Comparison stats"
               sub={`Every figure real · cumulative ${COMPARE_YEARS[0]}–${COMPARE_YEARS.at(-1)}.`}
             />
@@ -340,26 +327,36 @@ function SelectField({
    ========================================================================== */
 
 /** The design's `.cp-sechead` — eyebrow, rule-marked h2, and a sub beside it. */
+/**
+ * A section's heading, with both the eyebrow and the trailing note optional.
+ *
+ * Several sections now carry the title alone (requested). Each optional part is
+ * dropped from the markup rather than rendered empty, so a heading without an eyebrow
+ * does not keep the gap the eyebrow used to fill — and `mt-[7px]`, which only ever
+ * existed to space the title away from the eyebrow, goes with it.
+ */
 function SectionHead({
   eyebrow,
   title,
   sub,
 }: {
-  eyebrow: string;
+  eyebrow?: string;
   title: string;
-  sub: string;
+  sub?: string;
 }) {
   return (
     <div className="mb-[14px] flex flex-wrap items-end justify-between gap-4">
       <div>
-        <p className={eyebrowClass}>{eyebrow}</p>
+        {eyebrow ? <p className={eyebrowClass}>{eyebrow}</p> : null}
         <h2
-          className={`${sectionTitleClass} mt-[7px] flex items-center gap-[11px] text-mv-ink before:h-[19px] before:w-1 before:rounded-full before:bg-mv-green-deep before:content-['']`}
+          className={`${sectionTitleClass} ${eyebrow ? "mt-[7px]" : ""} flex items-center gap-[11px] text-mv-ink before:h-[19px] before:w-1 before:rounded-full before:bg-mv-green-deep before:content-['']`}
         >
           {title}
         </h2>
       </div>
-      <p className="max-w-[440px] text-[13px] text-mv-muted">{sub}</p>
+      {sub ? (
+        <p className="max-w-[440px] text-[13px] text-mv-muted">{sub}</p>
+      ) : null}
     </div>
   );
 }
@@ -377,17 +374,24 @@ function RankPill({ rank }: { rank: number }) {
    Identity cards
    ========================================================================== */
 
+/**
+ * One operator's card.
+ *
+ * NO SLOT COLOUR (requested). Each card used to carry its chart colour as a spine down
+ * the left edge, which matched a card to its line without reading the legend. Four
+ * differently-coloured spines was the "multiple colours" being asked about, so the
+ * cards are now uniform and the chart's own legend does the matching. The colour is
+ * still on the operator and still used where it earns its place — the chart lines, the
+ * legend, and the table headers that label a column.
+ *
+ * OIL AND GAS RATHER THAN BOE (requested). BOE folds gas into oil at 15:1, so a single
+ * figure cannot say which commodity an operator actually produces. Two figures can, and
+ * they come straight off the record — `cumOil` in barrels, `cumGas` in Mcf — with the
+ * unit beside each, because "7.24B" alone is a number a reader has to guess the unit of.
+ */
 function IdentityCard({ operator }: { operator: CompareOperator }) {
   return (
-    <article className="relative overflow-hidden rounded-[14px] border border-mv-line bg-white p-4 shadow-[0_1px_2px_rgba(24,24,27,.05)]">
-      {/* The slot's colour as a spine down the left edge, so a card and its line
-          on the chart are matched without reading the legend. */}
-      <span
-        aria-hidden="true"
-        className="absolute inset-y-0 left-0 w-1"
-        style={{ background: operator.color }}
-      />
-
+    <article className="rounded-[14px] border border-mv-line bg-white p-4 shadow-[0_1px_2px_rgba(24,24,27,.05)]">
       <div className="flex min-w-0 items-center gap-[11px]">
         <OperatorMonogram monogram={operator.monogram} size={42} />
         <div className="min-w-0">
@@ -417,14 +421,37 @@ function IdentityCard({ operator }: { operator: CompareOperator }) {
         </p>
       ) : null}
 
-      <p className="mt-3 flex items-baseline justify-between gap-2 border-t border-mv-line-soft pt-3">
-        <span className="text-[19px] font-bold tracking-[-.02em] tabular-nums text-mv-ink">
-          {formatMillions(operator.cumBoe)}
-        </span>
-        <span className="text-[12px] text-mv-muted">
-          cumulative BOE · {operator.counties} counties
-        </span>
-      </p>
+      <div className="mt-3 border-t border-mv-line-soft pt-3">
+        <dl className="m-0 grid grid-cols-2 gap-x-3">
+          <div className="min-w-0">
+            <dt className="text-[11px] font-bold uppercase tracking-[.05em] text-mv-muted">
+              Oil produced
+            </dt>
+            <dd className="m-0 mt-[3px] text-[16px] font-bold leading-none tracking-[-.02em] tabular-nums text-mv-ink">
+              {formatMillions(operator.cumOil)}{" "}
+              <span className="text-[11px] font-semibold text-mv-muted">
+                bbl
+              </span>
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-[11px] font-bold uppercase tracking-[.05em] text-mv-muted">
+              Gas produced
+            </dt>
+            <dd className="m-0 mt-[3px] text-[16px] font-bold leading-none tracking-[-.02em] tabular-nums text-mv-ink">
+              {formatMillions(operator.cumGas)}{" "}
+              <span className="text-[11px] font-semibold text-mv-muted">
+                Mcf
+              </span>
+            </dd>
+          </div>
+        </dl>
+        {/* Kept from the line this block replaces, so removing the BOE figure does
+            not also quietly remove the county count that sat beside it. */}
+        <p className="mt-[10px] text-[12px] text-mv-muted">
+          {operator.counties} producing counties
+        </p>
+      </div>
     </article>
   );
 }
@@ -505,23 +532,34 @@ function GeneratedRead({ leaders }: { leaders: CompareLeaders }) {
    Leaderboard
    ========================================================================== */
 
+/**
+ * The four leader tiles (set as requested).
+ *
+ * Cumulative volume and fastest growth are gone; most oil and most gas take their
+ * place. Splitting the leader by commodity says something BOE cannot: the largest
+ * producer overall is often neither the largest oil producer nor the largest gas
+ * producer, and which one a mineral owner cares about depends on what their acreage
+ * produces. Growth is not lost — it is still in "Momentum & growth" below, and still
+ * in the generated read above.
+ */
 function Leaderboard({ leaders }: { leaders: CompareLeaders }) {
-  const volume = leaders.byVolume[0];
-  if (!volume) return null;
-
   return (
     <div className="grid grid-cols-4 gap-[14px] max-[940px]:grid-cols-2 max-[520px]:grid-cols-1">
       <LeaderTile
-        Icon={BarChart3}
-        caption="Highest cumulative volume"
-        value={formatMillions(volume.cumBoe)}
-        unit="BOE"
-        operator={volume}
-        note={
-          leaders.volumeMultiple
-            ? `${leaders.volumeMultiple.toFixed(1)}× the next operator`
-            : "Top of this set"
-        }
+        Icon={Droplet}
+        caption="Highest oil produced"
+        value={formatMillions(leaders.oil.cumOil)}
+        unit="bbl"
+        operator={leaders.oil}
+        note={`${leaders.oil.oilPct}% of its BOE comes from oil`}
+      />
+      <LeaderTile
+        Icon={Flame}
+        caption="Highest gas produced"
+        value={formatMillions(leaders.gas.cumGas)}
+        unit="Mcf"
+        operator={leaders.gas}
+        note={`${100 - leaders.gas.oilPct}% of its BOE comes from gas`}
       />
       <LeaderTile
         Icon={Gauge}
@@ -530,14 +568,6 @@ function Leaderboard({ leaders }: { leaders: CompareLeaders }) {
         unit="MBOE / lease"
         operator={leaders.efficiency}
         note={`From ${formatCount(leaders.efficiency.leases)} leases on record`}
-      />
-      <LeaderTile
-        Icon={TrendingUp}
-        caption={`Fastest ${COMPARE_YEARS.length}-yr growth`}
-        value={formatPercentChange(compoundGrowth(leaders.growth.boe))}
-        unit="per year"
-        operator={leaders.growth}
-        note={`Compound growth, ${COMPARE_YEARS[0]} → ${COMPARE_YEARS.at(-1)}`}
       />
       <LeaderTile
         Icon={MapPin}
