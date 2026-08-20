@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
@@ -14,6 +15,7 @@ import {
   Divider,
   Field,
   Fine,
+  FormError,
   OrDivider,
   PasswordInput,
   Req,
@@ -30,6 +32,7 @@ import { GoogleSignIn } from "@/app/_components/google-sign-in";
  */
 export function LoginForm({ next }: { next: string }) {
   const router = useRouter();
+  const [failure, setFailure] = useState<string | null>(null);
 
   const {
     register,
@@ -41,11 +44,19 @@ export function LoginForm({ next }: { next: string }) {
   });
 
   async function onValid(values: LoginValues) {
+    setFailure(null);
     const result = await signInAction(values);
     if (!result.ok) {
-      /* A toast, matching sign-up. These two forms are siblings and shared the
-         same inline slot; moving only one would leave the pair inconsistent. */
-      toast.error(result.message);
+      /*
+       * ON THE PAGE, not in a toast (Ryan, 2026-08-19: "instead of showing in
+       * toast show on page"). The toast covered the "Sign in to Mineral View"
+       * heading, and no floating position avoided that — see `FormError` and the
+       * position note in `ui/sonner.tsx`.
+       *
+       * Rendered immediately above the submit button, which is what the request
+       * asked for and what keeps it out of the way of everything else.
+       */
+      setFailure(result.message);
       return;
     }
     router.push(next);
@@ -74,7 +85,19 @@ export function LoginForm({ next }: { next: string }) {
           renders as "OR WITH EMAIL". */}
       <OrDivider label="or with email" />
 
-      <form onSubmit={handleSubmit(onValid)} noValidate>
+      {/* Typing clears the notice: it describes an attempt the visitor has now
+          moved on from, and leaving "Email or password is incorrect." above the
+          button while they retype makes the form look like it is still refusing
+          them. Cheaper than wiring a reset into every field — one handler on the
+          form catches all of them, and `failure &&` keeps it to a no-op once
+          there is nothing to clear. */}
+      <form
+        onSubmit={handleSubmit(onValid)}
+        onChange={() => {
+          if (failure) setFailure(null);
+        }}
+        noValidate
+      >
         {/* Both fields carry the asterisk, as sign-up's do. Sign-in had none,
             which left the form looking as though something on it were optional
             when nothing is. */}
@@ -131,10 +154,22 @@ export function LoginForm({ next }: { next: string }) {
             devices. Checked, the session cookie lasts 30 days; unchecked it
             lasts the browser session. */}
         <div className="mb-3 mt-[2px]">
-          <CheckRow {...register("remember")}>
+          {/* Copy supplied verbatim (Ryan, 2026-08-19). It explains what ticking
+              the box buys and where it stops, which is the pair of facts the
+              label alone could not carry without becoming a sentence. */}
+          <CheckRow
+            {...register("remember")}
+            hint="Stay signed in without entering your credentials each time. Sign in again after logging out."
+          >
             <span className="text-[13px]">Stay signed in on this device</span>
           </CheckRow>
         </div>
+
+        {/* IMMEDIATELY ABOVE THE BUTTON. Every message this carries is about the
+            two fields above and the press that follows — wrong credentials, the
+            throttle, an unreachable service — so it belongs in the gap between
+            them, where it is read on the way to trying again. */}
+        <FormError message={failure} />
 
         <SubmitButton disabled={isSubmitting}>
           {isSubmitting ? "Signing in…" : "Sign in"}

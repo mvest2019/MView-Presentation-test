@@ -50,7 +50,21 @@ export interface AuthUser {
 
 export type AuthResult =
   | { ok: true; user: AuthUser; alreadyExisted?: boolean }
-  | { ok: false; message: string; needsEmailVerification?: boolean };
+  | {
+      ok: false;
+      message: string;
+      needsEmailVerification?: boolean;
+      /**
+       * The API REJECTED THE CREDENTIALS, as opposed to being unreachable or
+       * misconfigured.
+       *
+       * Only this counts towards the sign-in throttle. Without the distinction a
+       * 502 or a missing JWT_SECRET would rack up "failures" and lock out someone
+       * whose password was right all along, turning an outage into a lockout —
+       * and, since the message is generic either way, one they could not diagnose.
+       */
+      credentialsRejected?: boolean;
+    };
 
 /** The account-type dialog's value. */
 export type MemberTypeValue = "mineral_owner" | "professional";
@@ -179,7 +193,7 @@ function envelopeCode(status: number, body: unknown): number {
  *
  * Worth separating because every fallback below names the thing the visitor most
  * likely did wrong, and on a 5xx all of them are false: a 502 from the gateway
- * would otherwise be reported as "That email and password did not match" to
+ * would otherwise be reported as "Email or password is incorrect." to
  * someone whose password was perfect, or as "That code is invalid or expired" to
  * someone holding a code that had minutes left. Both send people off to fix
  * something that was never broken.
@@ -306,18 +320,31 @@ export async function registerUser(input: RegisterInput): Promise<AuthResult> {
 /* ──────────────────────────────────────────────────────────────── sign in ── */
 
 /**
- * The 401 sentinels, rewritten for a reader.
+ * ONE MESSAGE FOR EVERY FAILED SIGN-IN, whatever the reason.
  *
- * The subscription one is deliberately NOT in here: it is the only one carrying
- * information a visitor cannot get anywhere else, so it passes through word for
- * word. "Please register" is rewritten because on its own it reads as an order
- * with no explanation.
+ * ACCOUNT ENUMERATION FIX (Ryan, 2026-08-19). A `SIGN_IN_MESSAGES` map used to
+ * translate each of the API's 401 sentinels into its own sentence:
+ *
+ *   "please register"                → "We have no account for that email…"
+ *   "incorrect email or password"    → "That email and password did not match."
+ *
+ * The backend distinguishes "no such account" from "wrong password", and that map
+ * faithfully passed the distinction to the page — so anyone could test an address
+ * and be told, for free, whether it was registered here. Harvesting a list of
+ * customers took one script and no credentials.
+ *
+ * The map is gone rather than reworded. A lookup table keyed on upstream strings
+ * invites the next person to add a helpful case to it, which is how this got
+ * here; with one constant there is nothing to extend. `signInMessage` now returns
+ * this for every non-infrastructure failure, INCLUDING sentinels nobody has seen
+ * yet — it used to `return raw` for anything unmapped, so a new backend message
+ * would have been printed to the visitor verbatim.
+ *
+ * The cost is real and accepted: someone who has genuinely forgotten whether they
+ * signed up is no longer told. "Forgot password?" sits beside the field for
+ * exactly that, and sign-up will tell them if they try it.
  */
-const SIGN_IN_MESSAGES: Record<string, string> = {
-  "please register": "We have no account for that email. Create one first.",
-  "incorrect email or password": "That email and password did not match.",
-  "username or password incorrect": "That email and password did not match.",
-};
+const CREDENTIALS_MESSAGE = "Email or password is incorrect.";
 
 /**
  * Server-side misconfiguration, as opposed to anything a visitor did.
@@ -347,9 +374,6 @@ const INFRASTRUCTURE = /not configured|internal server|jwt_secret|unavailable/i;
 const SHOW_UPSTREAM = process.env.AUTH_SHOW_UPSTREAM_ERRORS === "1";
 
 function signInMessage(raw: string): string {
-  const known = SIGN_IN_MESSAGES[raw.trim().toLowerCase()];
-  if (known) return known;
-
   if (INFRASTRUCTURE.test(raw)) {
     // Kept where an engineer will see it; the visitor gets a plain sentence.
     console.error(`[auth] upstream configuration error: ${raw}`);
@@ -358,7 +382,20 @@ function signInMessage(raw: string): string {
       : "Sign-in is temporarily unavailable. Please try again shortly.";
   }
 
-  return raw;
+  /*
+   * EVERYTHING ELSE COLLAPSES, and the upstream text is logged rather than shown.
+   * `raw` is what distinguished the failures, so returning it in any form is the
+   * leak. It still has to reach a log: without it, diagnosing a real 401 storm
+   * would mean guessing, and this is the only place the API's own words appear.
+   *
+   * `SHOW_UPSTREAM` deliberately does NOT reveal it here as it does above. That
+   * flag exists for preview deployments, and a preview that leaks enumeration is
+   * still a leak — the log is enough for whoever is testing.
+   */
+  if (raw && raw !== CREDENTIALS_MESSAGE) {
+    console.error(`[auth] sign-in refused, upstream said: ${raw}`);
+  }
+  return CREDENTIALS_MESSAGE;
 }
 
 /**
@@ -416,11 +453,21 @@ export async function loginUser(
       };
     }
 
+    const message = signInMessage(
+      /* The default only decides what the INFRASTRUCTURE test sees when the body
+         carries no message at all; `signInMessage` collapses every
+         non-infrastructure outcome to `CREDENTIALS_MESSAGE` regardless. Passing
+         the constant keeps the two in step so nobody reading this line thinks a
+         distinct sentence still reaches the page. */
+      messageFrom(body, CREDENTIALS_MESSAGE),
+    );
     return {
       ok: false,
-      message: signInMessage(
-        messageFrom(body, "That email and password did not match."),
-      ),
+      message,
+      /* Only a real rejection is throttle-worthy. `signInMessage` returns the
+         "temporarily unavailable" sentence for a misconfigured upstream, and that
+         must not count towards a lockout. */
+      credentialsRejected: message === CREDENTIALS_MESSAGE,
     };
   } catch {
     return {

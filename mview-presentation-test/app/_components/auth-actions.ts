@@ -9,6 +9,11 @@ import {
   type MemberTypeValue,
   verifyCode,
 } from "@/lib/auth-api";
+import {
+  checkLoginThrottle,
+  clearLoginFailures,
+  recordLoginFailure,
+} from "@/lib/login-throttle";
 import { endSession, startSession } from "@/lib/session";
 
 import { codeSchema, loginSchema, registerSchema } from "./auth-schema";
@@ -37,9 +42,40 @@ export async function signInAction(values: unknown): Promise<ActionResult> {
     return { ok: false, message: "Please check the details above." };
   }
 
-  const result = await loginUser(parsed.data.email, parsed.data.password);
-  if (!result.ok) return { ok: false, message: result.message };
+  /*
+   * THROTTLE CHECKED BEFORE THE API IS CALLED, not after (Ryan, 2026-08-19).
+   *
+   * A blocked attempt must not reach `login_user` at all — refusing it after the
+   * round-trip would still let a guess-loop hammer the upstream at full rate and
+   * would protect nothing but our own error message.
+   *
+   * Read `lib/login-throttle.ts` before relying on this: the counters are in
+   * process memory and this route is not the only way to reach the endpoint, so it
+   * raises the cost of a scripted attack against this form rather than protecting
+   * the account. The limit that protects the account belongs on the API.
+   */
+  const throttled = await checkLoginThrottle(parsed.data.email);
+  if (throttled.blocked) return { ok: false, message: throttled.message };
 
+  const result = await loginUser(parsed.data.email, parsed.data.password);
+  if (!result.ok) {
+    /*
+     * Counted only when the credentials were actually rejected. A 502 or an unset
+     * JWT_SECRET also lands here, and counting those would lock out someone whose
+     * password was right — an outage turning into a lockout.
+     */
+    if (result.credentialsRejected) {
+      await recordLoginFailure(parsed.data.email);
+      /* Re-checked so the eleventh failure is TOLD it is blocked, instead of being
+         handed the generic message and only discovering the block on the next
+         attempt. */
+      const nowBlocked = await checkLoginThrottle(parsed.data.email);
+      if (nowBlocked.blocked) return { ok: false, message: nowBlocked.message };
+    }
+    return { ok: false, message: result.message };
+  }
+
+  await clearLoginFailures(parsed.data.email);
   await startSession(result.user, parsed.data.remember);
   return { ok: true };
 }
