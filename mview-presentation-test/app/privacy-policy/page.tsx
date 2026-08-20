@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { LegalPage, LegalSection, legalMetadata } from "../_components/legal-page";
 
 /**
@@ -254,7 +256,15 @@ export default function PrivacyPolicyPage() {
               <LegalSection id="deactivation" title="Revoking Consent or Deactivating Your Account">
                     <p>
                       You may deactivate or request to deletion of your Mineral View account
-                      at your convenience by communicating with us through email
+                      {/* `{" "}` IS LOAD-BEARING (Ryan, 2026-08-19: "need
+                          space"). JSX strips the newline between text and an
+                          element, so "email" and the address rendered welded
+                          together as "emailsupport@mineralview.com". The live site
+                          has the identical markup and the identical defect — this
+                          is a port artefact reproduced faithfully, not a rewrite
+                          of the clause. Adding a word boundary is not rewording
+                          it; every character of the legal text is unchanged. */}
+                      at your convenience by communicating with us through email{" "}
                       <a
                         href="mailto:support@mineralview.com"
                       >
@@ -315,7 +325,14 @@ export default function PrivacyPolicyPage() {
                       >
                         https://www.mineralview.com
                       </a>
-                      .Website. You may contact us directly if you have any questions
+                      {/* ". Website." — a space added after the full stop, nothing
+                          removed. The live text really is ".Website." with the
+                          stop and no space, so "…mineralview.com.Website." ran
+                          together. Only the space is new: the stray full stop is
+                          the live site's and stays, because deleting a character
+                          from a legal clause is a different decision from adding
+                          the space that was asked for. */}
+                      . Website. You may contact us directly if you have any questions
                       regarding the content and material on the Website or if you have
                       any questions about our Privacy Policy. Please contact our
                       Compliance Officer at 7301 Ranch Road 620 N Suite 155-194,
@@ -323,19 +340,46 @@ export default function PrivacyPolicyPage() {
                       or local consumer protection office or the Better Business
                       Bureau.
                     </p>
+
+                    {/* A BUTTON, AND ONLY A BUTTON (Ryan, 2026-08-19: "here need
+                        contact us button").
+
+                        Read the note below before growing this back into a card.
+                        A full `LegalContact` panel was removed from this spot on
+                        2026-08-17 because it repeated the Austin address that the
+                        paragraph above already gives, and the objection then was
+                        "show only one info for contact us". A link to the contact
+                        form repeats nothing, so it does not reopen that: the
+                        clause still carries every contact detail, and this is
+                        purely the route to the form. Do not re-add the address,
+                        the phone number or the support email alongside it. */}
+                    <Link
+                      href="/contact-us"
+                      /* `!text-white`, and the `!` is required (Ryan, 2026-08-19:
+                         "button text need to be white"). `LEGAL_BODY` styles every
+                         descendant anchor with `[&_a]:text-mv-blue`, which is what
+                         made this button's label render blue on green — the same
+                         rule that colours the real links in the prose. A plain
+                         `text-white` loses to it, since both target the same
+                         property and a descendant selector is the more specific of
+                         the two. `!no-underline` is here for the same reason. */
+                      className="mt-4 inline-flex items-center justify-center rounded-[10px] bg-mv-green px-[18px] py-[10px] text-sm font-bold !text-black !no-underline hover:brightness-[1.05]"
+                    >
+                      Contact us
+                    </Link>
                   </LegalSection>
 
-      {/* NO SECOND CONTACT BLOCK (Ryan, 2026-08-17: "show only one info for
-          contact us"). A `LegalContact` card sat directly under the section
-          above, repeating the same Austin address in a green panel — two contact
-          details a card apart, which reads as though they might differ.
+      {/* NO SECOND CONTACT CARD. A `LegalContact` panel sat directly under the
+          section above, repeating the same Austin address in a green box — two
+          contact details a card apart, which reads as though they might differ.
 
           The SECTION is the one kept, and the card is the one dropped, because
           the section is a clause of the policy itself: its wording is the
           document, and the live site ends the page on it with no extra card. The
-          card was ours. What went with it — the support address, the phone number
-          and a "Send us a message" button — is all in the site footer, and the
-          support address also appears in "About Data Download" above. */}
+          card was ours. What went with it — the support address and the phone
+          number — is all in the site footer, and the support address also appears
+          in "About Data Download" above. Its "Send us a message" button is the one
+          part that came back, as the plain link inside the section above. */}
     </LegalPage>
   );
 }
