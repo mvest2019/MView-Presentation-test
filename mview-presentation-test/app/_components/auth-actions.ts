@@ -76,7 +76,13 @@ export async function signInAction(values: unknown): Promise<ActionResult> {
   }
 
   await clearLoginFailures(parsed.data.email);
-  await startSession(result.user, parsed.data.remember);
+  /* `true`, not `parsed.data.remember` — the checkbox that used to decide this is
+     gone (Ryan, 2026-08-19), so every sign-in gets the persistent 30-day cookie
+     rather than one that dies with the browser session. Matches the live site,
+     which has no such checkbox and persists by default, and matches the Google
+     flow below, which already passed `true` on the grounds that choosing Google is
+     a deliberate sign-in on this device. */
+  await startSession(result.user, true);
   return { ok: true };
 }
 

@@ -80,9 +80,11 @@ const optionalText = z.string().trim();
 export const loginSchema = z.object({
   email,
   password: z.string().min(1, "Password is required"),
-  // Unchecked by default, deliberately: the design notes this is for shared and
-  // family devices ("v42 · Pragati").
-  remember: z.boolean(),
+  /* `remember: z.boolean()` WAS HERE, and went with the "Stay signed in on this
+     device" checkbox (Ryan, 2026-08-19). Nothing can set it any more, and the
+     session cookie is now always persistent — see the note where the checkbox
+     used to be in `login-form.tsx`. If the option comes back, this field and the
+     `startSession` argument come back together. */
 });
 
 export type LoginValues = z.infer<typeof loginSchema>;
