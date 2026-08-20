@@ -73,11 +73,61 @@ export type LoginValues = z.infer<typeof loginSchema>;
 const PASSWORD_RULE =
   /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).+$/;
 
+/**
+ * Applies `ok` to a number's AREA CODE and its EXCHANGE (the first and second
+ * groups of three), returning true if both pass.
+ *
+ * Shared so the two structural phone rules test exactly the same two substrings —
+ * they differ only in what they assert about each, and one of them silently
+ * checking a different slice than the other is the kind of drift that produces a
+ * message describing a fault the value does not have.
+ *
+ * Returns TRUE for an empty value (the field is optional) and for anything that
+ * is not ten digits, so the "exactly 10 digits" rule keeps ownership of that
+ * message instead of three rules firing at once about the same typo.
+ */
+function forEachNanpPart(
+  value: string,
+  ok: (part: string) => boolean,
+): boolean {
+  if (value === "") return true;
+  const digits = value.replace(/\D/g, "");
+  if (digits.length !== 10) return true;
+  return ok(digits.slice(0, 3)) && ok(digits.slice(3, 6));
+}
+
 export const registerSchema = z.object({
+  /*
+   * LENGTH BOUNDS ADDED (Ryan, 2026-08-19), after a 98-character run of keyboard
+   * mash was accepted: there was a `min(1)` and NO CEILING at all.
+   *
+   * THE API IMPOSES NEITHER, which is why this has to. Probed at 20, 50, 51, 64,
+   * 100, 200, 255 and 256 characters against `f_name`: every one passed
+   * validation and reached the duplicate-email check, so the endpoint expresses
+   * no limit and picking a number here cannot cause a 422 it would have caught.
+   * (It also means an over-long name would only ever fail later, at whatever the
+   * column width turns out to be, with no message worth showing.)
+   *
+   * 2 as the floor, not 1: this is a FULL name, so a single character is not a
+   * plausible one. Deliberately not "two words" — that would reject mononyms and
+   * anyone who goes by one name, which is a worse failure than accepting a typo.
+   *
+   * 50 as the ceiling, and it is not a fresh number: `contact-schema.ts` already
+   * caps a name at 50 there. Note it applies that PER field across a separate
+   * first and last, so 50 on this combined box is the stricter reading — chosen
+   * over 100 because 100 would still have accepted the string that prompted this,
+   * and because 50 comfortably fits a long real name ("Maria del Carmen Fernández
+   * de la Vega Sanz" is 42).
+   *
+   * `.trim()` runs before both, so leading and trailing spaces count towards
+   * neither bound.
+   */
   fullName: z
     .string()
     .trim()
     .min(1, "Full Name is required")
+    .min(2, "Full Name must be at least 2 characters")
+    .max(50, "Full Name must be 50 characters or less")
     .regex(/^[A-Za-z\s'.-]+$/, "Full Name should contain only letters"),
   email,
   /*
@@ -133,7 +183,58 @@ export const registerSchema = z.object({
     )
     .refine(
       (v) => v === "" || v.replace(/\D/g, "").length === 10,
-      "Phone number must be 10 digits",
+      /* Supplied wording (Ryan, 2026-08-19), replacing the live site's own
+         "Phone number must be 10 digits". "exactly" is worth the two syllables:
+         the rule is a single length, not a floor, and the old phrasing read as a
+         minimum to anyone typing an 11-digit number with a country code. */
+      "Phone number must contain exactly 10 digits.",
+    )
+    /*
+     * SHAPE, not just length (Ryan, 2026-08-19: "0000000000 passes. Consider
+     * rejecting all-identical digits / invalid area codes").
+     *
+     * Ten digits was the only test, so every repdigit and every impossible area
+     * code got through and was posted to the API as a phone number.
+     *
+     * All-identical first, because it is the case in the report and it deserves
+     * its own sentence. Note the structural rule below already catches 0000000000
+     * and 1111111111 on its own (both start 0/1) — this exists for 2222222222 and
+     * up, which are structurally legal and still obviously not numbers.
+     */
+    .refine(
+      (v) => v === "" || !/^(\d)\1{9}$/.test(v.replace(/\D/g, "")),
+      "That doesn't look like a real phone number.",
+    )
+    /*
+     * NANP structure, and only the parts that are genuinely impossible rather
+     * than merely unassigned — an over-strict rule here rejects real numbers, and
+     * this list does not change.
+     *
+     *   · An area code and an exchange both start 2–9. 0 and 1 are reserved as
+     *     trunk prefixes, so "(012)" and "(555) 123" style numbers cannot exist.
+     *   · Neither may be N11: 211, 311, 411, 511, 611, 711, 811, 911 are service
+     *     codes. This is why 9111234567 has to fail.
+     *
+     * DELIBERATELY NOT CHECKED: 555-01XX, the range reserved for fiction. It is
+     * technically unusable, but this form's own placeholder is "(555) 555-0123" —
+     * rejecting the example printed in the field would be a worse bug than
+     * accepting a fake number. Verified the placeholder still passes everything
+     * above. Also not checked: unassigned area codes, which change over time and
+     * would need a maintained list to avoid rejecting new ones.
+     *
+     * TWO REFINES, NOT ONE, because one message could not describe both faults
+     * honestly. Merged, "cannot start with 0 or 1" was shown for "(911) …" — a
+     * number that starts with 9 — which is the same defect as a password rule
+     * that enforces a lower-case letter without mentioning it. Each rule now
+     * states the thing it actually tests.
+     */
+    .refine(
+      (v) => forEachNanpPart(v, (part) => /^[2-9]/.test(part)),
+      "An area code or prefix cannot start with 0 or 1.",
+    )
+    .refine(
+      (v) => forEachNanpPart(v, (part) => !/^\d11$/.test(part)),
+      "An area code or prefix cannot be a service code like 411 or 911.",
     ),
   mailingAddress: optionalText,
   /* `inviteCode` WAS HERE and is gone with its field — it read as a second

@@ -66,6 +66,29 @@ import { GoogleSignIn } from "@/app/_components/google-sign-in";
  */
 const RESEND_COOLDOWN_SECONDS = 300;
 
+/**
+ * `5551234567` → `(555) 123-4567`, ported from `formatPhoneNumber` in the live
+ * repo's `app/register/_components/RegistrationValidation.ts`.
+ *
+ * THE TEN-DIGIT CAP IS `slice(6, 10)`. Everything past the tenth digit is
+ * discarded rather than rejected, so an 11th keystroke is simply absorbed — which
+ * is what stops a bare run of digits sneaking past the control's `maxLength`.
+ *
+ * Partial input formats as it grows, so the punctuation appears under the caret
+ * rather than all at once at the end: "5" → "(5", "5551" → "(555) 1". That is the
+ * live behaviour and the reason the opening bracket is unbalanced mid-type.
+ *
+ * Returns "" for an empty or all-punctuation string, which matters because the
+ * field is optional and the schema's checks all short-circuit on "".
+ */
+function formatPhoneNumber(value: string): string {
+  const numbers = value.replace(/\D/g, "");
+  if (numbers.length === 0) return "";
+  if (numbers.length <= 3) return `(${numbers}`;
+  if (numbers.length <= 6) return `(${numbers.slice(0, 3)}) ${numbers.slice(3)}`;
+  return `(${numbers.slice(0, 3)}) ${numbers.slice(3, 6)}-${numbers.slice(6, 10)}`;
+}
+
 export function RegisterForm({ next }: { next: string }) {
   const router = useRouter();
 
@@ -287,6 +310,12 @@ export function RegisterForm({ next }: { next: string }) {
               type="text"
               autoComplete="name"
               placeholder="Enter your full name"
+              /* Same belt-and-braces as the phone box below: the schema's `max(50)`
+                 is the rule, and this stops the 50th character being exceeded in
+                 the control at all — including by paste — rather than accepting a
+                 wall of text and complaining afterwards. Keep the two numbers in
+                 step; the schema has the last word. */
+              maxLength={50}
             />
           )}
         </Field>
@@ -337,23 +366,53 @@ export function RegisterForm({ next }: { next: string }) {
           error={errors.phone?.message}
           hint="Optional — a second way to reach you about your record and account recovery. Never sold, never shared."
         >
-          {(props) => (
-            <input
-              {...props}
-              {...register("phone")}
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
-              placeholder="(555) 555-0123"
-              /* 14 = the placeholder's own length, "(555) 555-0123" — ten digits
-                 plus the brackets, space and dash someone may type around them.
-                 A hard stop in the control as well as in the schema, so a runaway
-                 string like the 27-digit one this replaced cannot be entered at
-                 all rather than being caught after the fact. The schema still has
-                 the last word: this caps characters, it cannot count digits. */
-              maxLength={14}
-            />
-          )}
+          {(props) => {
+            /*
+             * FORMATTED AS IT IS TYPED, which is what actually enforces ten
+             * digits (Ryan, 2026-08-19: "need to type only 10 digit restrict").
+             *
+             * `maxLength={14}` alone could not do it. 14 is the length of the
+             * FORMATTED number, "(555) 555-0123" — so someone typing bare digits
+             * got fourteen of them in before the control stopped, which is the
+             * "57643578426788" in the report. Dropping maxLength to 10 is not the
+             * fix either: it would then refuse the last four characters of the
+             * number the placeholder itself shows.
+             *
+             * `formatPhoneNumber` resolves both. It keeps only digits, keeps only
+             * the FIRST TEN of those (`slice(6, 10)` is the hard cap), and rebuilds
+             * the punctuation — so an 11th digit has nowhere to go and is dropped
+             * as it is typed.
+             *
+             * NO `maxLength` ANY MORE, and removing it was a fix, not a tidy-up.
+             * The attribute truncates the RAW string before this handler ever runs,
+             * so a paste longer than 14 characters lost its tail and then got
+             * formatted from the survivors: "+1 (555) 555-0123" (17 chars) became
+             * "(155) 555-50" — eight digits, wrong area code, silently. Measured,
+             * not guessed. The formatter is the real cap: its longest possible
+             * output is the 14 of "(555) 555-0123", so the attribute could never
+             * fire on a legitimate value and only ever did harm.
+             *
+             * The event's value is rewritten BEFORE it is handed to react-hook-form
+             * so the store only ever holds the formatted string; there is no second
+             * source of truth and no `setValue` round-trip to fall out of step with
+             * validation.
+             */
+            const phone = register("phone");
+            return (
+              <input
+                {...props}
+                {...phone}
+                onChange={(event) => {
+                  event.target.value = formatPhoneNumber(event.target.value);
+                  phone.onChange(event);
+                }}
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="(555) 555-0123"
+              />
+            );
+          }}
         </Field>
 
         <Field

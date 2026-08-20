@@ -1,7 +1,7 @@
 "use client";
 
 import { Info } from "lucide-react";
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
@@ -50,8 +50,21 @@ export function AuthShell({ children }: { children: ReactNode }) {
      * on 2026-08-17. Not zero, for the reason recorded there — butted against
      * the footer the card looks clipped rather than finished. `pb-20` was the
      * last one left in the app; nothing is now on a different value.
+     *
+     * AND `min-h` IS GONE TOO (Ryan, 2026-08-19: "remove that space from both
+     * pages"). Cutting the padding to 32px was not enough on sign-in, because the
+     * padding was only part of it: `min-h-[calc(100vh-64px)]` resolved to 656px
+     * against content that needed 599, so the wrapper was STRETCHED 57px and the
+     * visible gap was 89 — the 32 plus the stretch. Measured, not inferred.
+     *
+     * What it was for was keeping the dark footer below the fold on a short page.
+     * It is not missed: the footer is 552px tall on its own, so even with the
+     * wrapper shrunk to its content the page still overflows the viewport and the
+     * footer still starts off-screen. The gap is now the same 32px on both auth
+     * pages as everywhere else, rather than sign-in quietly carrying 89 because
+     * its card happens to be shorter than the viewport.
      */
-    <div className="min-h-[calc(100vh-64px)] pb-8 pt-6 max-[767px]:pb-6">
+    <div className="pb-8 pt-6 max-[767px]:pb-6">
       <div className="mx-auto max-w-[1200px] px-7 max-[767px]:px-4">
         <div className="mx-auto max-w-[520px] rounded-mv border border-mv-line bg-mv-card p-[22px] shadow-mv">
           {children}
@@ -278,13 +291,65 @@ export function inputClass(invalid: boolean): string {
 }
 
 /** `.pw-wrap` + `.pw-eye`. */
+/**
+ * How long a revealed password stays revealed before it re-masks itself.
+ *
+ * Long enough to read back a typed passphrase and spot the wrong character;
+ * short enough that walking away from the desk does not leave it on screen.
+ */
+const REVEAL_TIMEOUT_MS = 15_000;
+
 export function PasswordInput({
   className,
   ...rest
 }: React.InputHTMLAttributes<HTMLInputElement>) {
   const [shown, setShown] = useState(false);
+  /*
+   * On the WRAPPER, not the input. `rest` carries react-hook-form's own `ref`
+   * from `register()`, and a second `ref` on the same element would clobber it —
+   * taking the field's registration, focus-on-error and validation with it. The
+   * wrapper is ours, and `closest("form")` reaches the form from either.
+   */
+  const wrap = useRef<HTMLDivElement>(null);
+
+  /*
+   * RE-MASK ON SUBMIT (Ryan, 2026-08-19: the password "remains visible
+   * indefinitely" after revealing it and submitting a failed sign-in).
+   *
+   * Nothing used to turn the reveal off but a second click on the eye. A failed
+   * attempt leaves the visitor reading an error with their password sitting in
+   * plain text — and because sign-in failures now surface as a toast rather than
+   * inline, their attention is at the top of the screen, not on the field.
+   *
+   * A listener on the form rather than a prop threaded down from each caller:
+   * this component is used by sign-in and sign-up, and the behaviour should not
+   * depend on either remembering to ask for it. The `submit` event still fires
+   * when react-hook-form calls `preventDefault`, so this runs on a rejected
+   * submit as well as an accepted one.
+   */
+  useEffect(() => {
+    if (!shown) return;
+    const form = wrap.current?.closest("form");
+    if (!form) return;
+    const onSubmit = () => setShown(false);
+    form.addEventListener("submit", onSubmit);
+    return () => form.removeEventListener("submit", onSubmit);
+  }, [shown]);
+
+  /*
+   * AND AFTER A TIMEOUT, for the case submitting never happens: revealed, then
+   * abandoned on a shared or unattended screen. `setShown` is inside the timer
+   * callback rather than the effect body, which is what keeps this clear of
+   * `react-hooks/set-state-in-effect`.
+   */
+  useEffect(() => {
+    if (!shown) return;
+    const id = setTimeout(() => setShown(false), REVEAL_TIMEOUT_MS);
+    return () => clearTimeout(id);
+  }, [shown]);
+
   return (
-    <div className="relative">
+    <div ref={wrap} className="relative">
       <input
         {...rest}
         type={shown ? "text" : "password"}
@@ -309,21 +374,82 @@ export function PasswordInput({
 /** `.auth-check` — a 17px box beside its label. */
 export function CheckRow({
   children,
+  hint,
   ...rest
-}: React.InputHTMLAttributes<HTMLInputElement> & { children: ReactNode }) {
+}: React.InputHTMLAttributes<HTMLInputElement> & {
+  children: ReactNode;
+  /** Optional (i) note, shown on hover. Same treatment as `Field`'s `hint`. */
+  hint?: ReactNode;
+}) {
+  const generatedId = useId();
+  /* A caller-supplied id has to win, or `htmlFor` below would point at an input
+     that renamed itself out from under it. */
+  const inputId = (rest.id as string | undefined) ?? generatedId;
+  const hintId = `${inputId}-hint`;
+
+  /*
+   * NO LONGER A WRAPPING <label>, and that is what makes the hint possible.
+   *
+   * This was `<label>` around the box and the text, which is the tidiest way to
+   * make the words clickable — but the tooltip trigger is a <button>, and a
+   * button inside a label toggles the checkbox when pressed. Hovering to read a
+   * note is one thing; reading it and finding you had also ticked the box is
+   * another.
+   *
+   * So the row is a <div>, the text carries `htmlFor`, and the trigger sits
+   * OUTSIDE that label. Clicking the words still toggles the box — the
+   * association is by id now rather than by nesting — and pressing the (i) does
+   * nothing but open the tooltip.
+   */
   return (
-    <label className="mt-[10px] flex items-start gap-[10px] text-[13px] text-mv-slate">
+    <div className="mt-[10px] flex items-start gap-[10px] text-[13px] text-mv-slate">
       <input
         type="checkbox"
         {...rest}
+        id={inputId}
+        aria-describedby={hint ? hintId : rest["aria-describedby"]}
         /* 20px, not the stylesheet's 17px: beside 13px label text a 17px box
            read as undersized next to every other control on the card. `mt-0`
            follows from the height — at 17px the box needed a pixel of nudge to
            sit on the text's first line, at 20px it already does. */
         className="mt-0 h-5 w-5 flex-none cursor-pointer accent-mv-green-deep"
       />
-      <span>{children}</span>
-    </label>
+      {/* `flex-wrap` and the `inline` label: the terms row runs to three lines,
+          and the (i) has to follow the END of the text rather than sit in a
+          column of its own. `items-baseline` keeps the glyph on the last line's
+          baseline instead of centring it against the whole block. */}
+      <span className="flex flex-wrap items-baseline gap-x-[5px]">
+        <label htmlFor={inputId} className="cursor-pointer">
+          {children}
+        </label>
+        {hint ? (
+          <>
+            <Tooltip>
+              <TooltipTrigger
+                type="button"
+                aria-label="About this option"
+                /* Same treatment as `Field`'s hint trigger, so the two read as
+                   one control rather than two similar ones. */
+                className="inline-flex shrink-0 translate-y-[2px] cursor-help items-center justify-center rounded-full bg-transparent p-0 text-mv-muted transition hover:text-mv-green-deep focus-visible:text-mv-green-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep data-[state=delayed-open]:text-mv-green-deep"
+              >
+                <Info aria-hidden className="h-[15px] w-[15px]" />
+              </TooltipTrigger>
+              <TooltipContent>{hint}</TooltipContent>
+            </Tooltip>
+            {/*
+             * The permanent copy `aria-describedby` points at — Radix only mounts
+             * tooltip content while the tooltip is OPEN, so without this the
+             * checkbox would describe nothing for anyone who never hovers.
+             * `sr-only`, never `hidden`: display:none drops it from the
+             * accessibility tree entirely. Same reasoning as `Field`.
+             */}
+            <span id={hintId} className="sr-only">
+              {hint}
+            </span>
+          </>
+        ) : null}
+      </span>
+    </div>
   );
 }
 
@@ -347,16 +473,51 @@ export function SubmitButton({
 }
 
 /*
- * `FormError` WAS HERE and is deliberately gone (Ryan, 2026-08-19: "instead of
- * showing that msg here show in toast msg").
+ * The submit-level failure, on the page rather than in a toast.
  *
- * It rendered the submit-level failure — "That email address already has an
- * account. Sign in instead.", "That email and password did not match." — as a
- * red line under the password field. Both callers now raise `toast.error`
- * instead, so nothing referenced it. Do not reinstate it for FIELD validation:
- * that already has its own slot on `Field`, which keeps the message beside the
- * input and in the form's tab order.
+ * THIS HAS BEEN ROUND THE HOUSES — read before moving it again. It began as a red
+ * line under the password field; it was replaced by `toast.error` on 2026-08-19
+ * ("instead of showing that msg here show in toast msg"); it is back, same day,
+ * because the toast covered the page heading and no floating position avoided
+ * that ("The error message should be positioned above/below the login button or
+ * within the form, without covering the page heading or other important
+ * content").
+ *
+ * The thing that kept going wrong was PLACEMENT, not the medium. Under the
+ * password field it sat mid-form with inputs below it; as a toast it floated over
+ * the title. Sign-in now renders it immediately above the submit button, which is
+ * both the last thing read before pressing and inside the form's own flow, so it
+ * can cover nothing.
+ *
+ * `role="alert"` so it is announced when it appears — a toast got that for free
+ * from sonner's live region, and an inline element has to ask.
+ *
+ * NOT FOR FIELD VALIDATION. That has its own slot on `Field`, beside the input it
+ * concerns and in the tab order. This is only for a whole-submit outcome the API
+ * decided: wrong credentials, a throttle, an unreachable service.
  */
+export function FormError({
+  message,
+  className = "mb-3",
+}: {
+  message: string | null;
+  className?: string;
+}) {
+  if (!message) return null;
+  return (
+    <p
+      role="alert"
+      /* JUST THE SENTENCE (Ryan, 2026-08-19: "Don't show that red box only show
+         msg"). This briefly had a tinted panel and a border, on the argument that
+         an unadorned line above a full-width green button reads as more fine
+         print. Overruled — and the red plus the semibold weight still separate it
+         from the grey `Fine` notes, which are neither. */
+      className={`text-[13px] font-semibold text-mv-red ${className}`}
+    >
+      {message}
+    </p>
+  );
+}
 
 /** `.tiny.muted`, centred — the reassurance lines under the button. */
 export function Fine({
