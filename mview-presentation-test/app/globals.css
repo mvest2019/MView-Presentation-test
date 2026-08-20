@@ -330,3 +330,38 @@
   min-height: 0;
   overflow-y: auto;
 }
+
+/* ----------------------------------------------------------------------------
+   Two handles, one track.
+
+   The chart's month window is two range inputs, and side by side they drew two
+   tracks with a seam down the middle. Stacked instead: the track below is a
+   plain element, both inputs sit over it with no track of their own, and only
+   their thumbs take the pointer — otherwise the upper input would swallow
+   every drag meant for the lower one.
+   ------------------------------------------------------------------------- */
+.mv-range-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.mv-range-overlay::-webkit-slider-runnable-track {
+  background: transparent;
+}
+
+.mv-range-overlay::-moz-range-track {
+  background: transparent;
+}
+
+.mv-range-overlay::-webkit-slider-thumb {
+  pointer-events: auto;
+}
+
+.mv-range-overlay::-moz-range-thumb {
+  pointer-events: auto;
+}

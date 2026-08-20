@@ -284,39 +284,3 @@ export const INSIGHT_SUMMARY = {
     },
   ],
 };
-
-/*
- * Monthly oil and gas, history then forecast.
- *
- * Generated rather than typed out: eight years is ninety-six points a stream,
- * and the shape is what matters — a sharp ramp, a peak in the first year, then
- * a hyperbolic decline that flattens out. Deterministic, so the chart does not
- * change between renders.
- */
-export const PRODUCTION_START_YEAR = 2025;
-export const PRODUCTION_END_YEAR = 2032;
-
-/** Months of history before the forecast takes over. */
-export const PRODUCTION_HISTORY_MONTHS = 11;
-
-export type ProductionPoint = { month: number; oil: number; gas: number };
-
-export const PRODUCTION_SERIES: ProductionPoint[] = Array.from(
-  { length: (PRODUCTION_END_YEAR - PRODUCTION_START_YEAR + 1) * 12 },
-  (_, month) => {
-    // Ramp over the first two months, then decline hyperbolically.
-    const ramp = Math.min(1, (month + 0.35) / 2);
-    const decline = 1 / (1 + 0.55 * Math.max(0, month - 2));
-    // A small repeating wobble while the well is still being reported.
-    const wobble =
-      month < PRODUCTION_HISTORY_MONTHS
-        ? 1 + 0.07 * Math.sin(month * 1.7)
-        : 1;
-
-    return {
-      month,
-      oil: Math.round(57_000 * ramp * decline * wobble),
-      gas: Math.round(74_000 * ramp * decline * wobble),
-    };
-  },
-);

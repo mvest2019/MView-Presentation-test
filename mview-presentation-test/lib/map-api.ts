@@ -539,3 +539,47 @@ export const getWellSummaryMap = async (
     throw new Error(String(error) || "Failed to fetch the well summary");
   }
 };
+
+/** One month of allocated production. */
+export type MapProductionPoint = {
+  month: string;
+  oil: number | null;
+  gas: number | null;
+};
+
+export type MapWellProduction = {
+  api: string;
+  points: MapProductionPoint[];
+  from: string | null;
+  to: string | null;
+};
+
+/**
+ * GET /api/v1/map/wells/{api}/production
+ *
+ * The monthly oil and gas series behind the production chart — reported months
+ * and forecast months in one list, oldest first.
+ */
+export const getWellProductionMap = async (
+  api: string,
+): Promise<MapWellProduction> => {
+  try {
+    const response = await fetch(
+      `${process.env.MAP_BASE_URL}/api/v1/map/wells/${encodeURIComponent(api)}/production`,
+    );
+    const data = await response.json();
+
+    if (response.ok && Array.isArray(data?.points)) {
+      return {
+        api: String(data.api ?? api),
+        points: data.points as MapProductionPoint[],
+        from: data.from ?? null,
+        to: data.to ?? null,
+      };
+    } else {
+      throw new Error("Failed to fetch production");
+    }
+  } catch (error) {
+    throw new Error(String(error) || "Failed to fetch production");
+  }
+};

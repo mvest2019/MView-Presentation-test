@@ -15,7 +15,12 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-import { getWellSummaryMap, type MapWellSummary } from "@/lib/map-api";
+import {
+  getWellProductionMap,
+  getWellSummaryMap,
+  type MapProductionPoint,
+  type MapWellSummary,
+} from "@/lib/map-api";
 
 import { PermitSummary } from "./permit-summary";
 import { ProductionChart } from "./production-chart";
@@ -115,6 +120,18 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
   const [summary, setSummary] = useState<MapWellSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  /*
+   * The monthly series behind the chart, asked for separately.
+   *
+   * Its own request because it is its own endpoint and its own size — two
+   * hundred months against a page of fields — so the record does not wait on
+   * the chart, nor the chart on the record.
+   */
+  const [production, setProduction] = useState<MapProductionPoint[] | null>(
+    null,
+  );
+  const [productionError, setProductionError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!well.api) return;
 
@@ -133,6 +150,32 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
           failure instanceof Error
             ? failure.message
             : "Could not load this well's summary.",
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [well.api]);
+
+  useEffect(() => {
+    if (!well.api) return;
+
+    let cancelled = false;
+
+    getWellProductionMap(well.api)
+      .then((answer) => {
+        if (cancelled) return;
+        setProduction(answer.points);
+        setProductionError(null);
+      })
+      .catch((failure: unknown) => {
+        if (cancelled) return;
+        setProduction([]);
+        setProductionError(
+          failure instanceof Error
+            ? failure.message
+            : "Could not load production for this well.",
         );
       });
 
@@ -339,7 +382,15 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
 
               {/* ---------------- production ---------------- */}
               <div className="mt-3">
-                <ProductionChart />
+                <ProductionChart
+                  points={production ?? []}
+                  /* The endpoint sends reported and forecast months in one
+                     list; the record's last reported month is what separates
+                     them. */
+                  historyThrough={summary?.dates?.lastProduction ?? null}
+                  loading={production === null && productionError === null}
+                  error={productionError}
+                />
               </div>
 
               {/* ---------------- diagnostics · integrity · cohort ----------------
