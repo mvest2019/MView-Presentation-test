@@ -14,7 +14,6 @@ import { notFound } from "next/navigation";
 import { Breadcrumbs } from "@/app/_components/breadcrumbs";
 import { buttonClass } from "@/app/_components/button";
 import { OperatorLogo } from "@/app/_components/operator-logo";
-import { OperatorMonogram } from "@/app/_components/operator-monogram";
 import {
   displayXsClass,
   eyebrowClass,
@@ -26,7 +25,6 @@ import {
   findOperatorDetail,
   mergeOperatorDetails,
   formatCount,
-  formatVolume,
   listOperatorDetailSlugs,
   type ConditionCard,
   type OperatorDetail,
@@ -36,6 +34,10 @@ import { TEXAS_COUNTY_PATHS, TEXAS_VIEWBOX } from "@/lib/texas-county-paths";
 import { FootprintMap } from "./_components/footprint-map";
 import { getOperatorCounties } from "@/lib/operator-api";
 import { fetchOperatorDetails } from "@/lib/operator-details-api";
+import {
+  getRelatedOperators,
+  type RelatedOperator,
+} from "@/lib/operator-related-api";
 
 import { DeferredSection } from "./_components/deferred-section";
 import { OperatorLeases } from "./_components/operator-leases";
@@ -104,6 +106,27 @@ async function loadOperator(slug: string) {
   );
 }
 
+/**
+ * The related-operators band, read on the server.
+ *
+ * IT OVERLAPS THE DETAIL READ rather than queuing behind it: the two do not depend
+ * on each other, so the page waits for the slower of the pair instead of their sum.
+ *
+ * A failure degrades to an empty band. This is one supporting section on a page full
+ * of them, and losing it is not worth losing the page.
+ */
+async function loadRelated(operatorNumber: string): Promise<RelatedOperator[]> {
+  try {
+    return await getRelatedOperators(operatorNumber);
+  } catch (error) {
+    console.error("[operator-detail] related operators unavailable", {
+      operatorNumber,
+      error,
+    });
+    return [];
+  }
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -166,7 +189,12 @@ export default async function OperatorDetailRoute({
   const operator = await loadOperator(slug);
   if (!operator) notFound();
 
-  const countyOptions = await loadCountyOptions();
+  /* Both reads are independent of each other, so they overlap: the page waits for
+     the slower of the two rather than their sum. */
+  const [countyOptions, related] = await Promise.all([
+    loadCountyOptions(),
+    loadRelated(operator.operatorNumber),
+  ]);
 
   return (
     <div className="pb-4">
@@ -454,36 +482,28 @@ export default async function OperatorDetailRoute({
         </section>
 
         {/* ---- 9 · related operators ---- */}
-        <section className="pt-[26px]">
-          <p className={eyebrowClass}>Peers</p>
-          <h2
-            className={`${sectionTitleClass} mt-[7px] flex items-center gap-[11px] text-mv-ink before:h-[19px] before:w-1 before:rounded-full before:bg-mv-green-deep before:content-['']`}
-          >
-            Related operators
-          </h2>
-          <p className="mb-[14px] mt-[7px] text-[13px] text-mv-muted">
-            Other major Texas operators — open any profile to compare.
-          </p>
-          <div className="grid grid-cols-4 gap-[14px] max-[940px]:grid-cols-2 max-[520px]:grid-cols-1">
-            {operator.peers.map((peer) => (
-              <Link
-                key={peer.slug}
-                href={`/operators/${peer.slug}`}
-                className="flex items-center gap-[11px] rounded-[14px] border border-mv-line bg-white p-4 !no-underline shadow-[0_1px_2px_rgba(24,24,27,.05)] transition-[transform,box-shadow,border-color] hover:-translate-y-px hover:border-mv-mint-line hover:shadow-mv focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
-              >
-                <OperatorMonogram monogram={peer.monogram} size={40} />
-                <span className="min-w-0">
-                  <span className="block truncate text-[13.5px] font-bold text-mv-ink">
-                    {peer.shortName}
-                  </span>
-                  <span className="mt-[2px] block text-[12px] tabular-nums text-mv-muted">
-                    {formatVolume(peer.boeTotal)} BOE
-                  </span>
-                </span>
-              </Link>
-            ))}
-          </div>
-        </section>
+        {related.length === 0 ? null : (
+          <section className="pt-[26px]">
+            <p className={eyebrowClass}>Peers</p>
+            <h2
+              className={`${sectionTitleClass} mt-[7px] flex items-center gap-[11px] text-mv-ink before:h-[19px] before:w-1 before:rounded-full before:bg-mv-green-deep before:content-['']`}
+            >
+              Related operators
+            </h2>
+            <p className="mb-[14px] mt-[7px] text-[13px] text-mv-muted">
+              Operators the record associates with{" "}
+              {operator.name.split(/[ ,]/)[0]}
+              {related.some((peer) => peer.slug)
+                ? " — open any profile to compare."
+                : "."}
+            </p>
+            <div className="grid grid-cols-4 gap-[14px] max-[940px]:grid-cols-2 max-[520px]:grid-cols-1">
+              {related.map((peer) => (
+                <RelatedCard key={peer.operatorNumber} peer={peer} />
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* ---- 10 · CTA ---- */}
         <section className="pt-[26px]">
@@ -661,6 +681,60 @@ function PanelRow({
  * boundary. `--b-oil` / `--b-gas` are bucket 0–5 mapped to a colour by the rules
  * below.
  */
+/** Initials of the first two words, for a card with no logo on file. */
+function monogramOf(name: string): string {
+  const words = name.match(/[A-Za-z]+/g) ?? [];
+  return `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}`.toUpperCase();
+}
+
+/**
+ * One related-operator card.
+ *
+ * A LINK ONLY WHERE THERE IS A PAGE TO LINK TO. `slug` is null for an operator this
+ * site does not prerender, and `/operators/null` would 404 — so those render as a
+ * plain tile carrying the same information without the affordance.
+ *
+ * The logo is the API's own, served from our origin; the initials stand in when an
+ * operator has none. No production figure: this endpoint does not report one, and
+ * the old fixture's BOE line had no source here.
+ */
+function RelatedCard({ peer }: { peer: RelatedOperator }) {
+  const inner = (
+    <>
+      <OperatorLogo
+        url={peer.logoUrl}
+        monogram={monogramOf(peer.name)}
+        size={40}
+        radius={10}
+      />
+      <span className="min-w-0">
+        <span className="block truncate text-[13.5px] font-bold text-mv-ink">
+          {peer.name}
+        </span>
+        <span className="mt-[2px] block text-[12px] tabular-nums text-mv-muted">
+          Operator no. {peer.operatorNumber}
+        </span>
+      </span>
+    </>
+  );
+
+  const shell =
+    "flex items-center gap-[11px] rounded-[14px] border border-mv-line bg-white p-4 shadow-[0_1px_2px_rgba(24,24,27,.05)]";
+
+  if (!peer.slug) {
+    return <div className={shell}>{inner}</div>;
+  }
+
+  return (
+    <Link
+      href={`/operators/${peer.slug}`}
+      className={`${shell} !no-underline transition-[transform,box-shadow,border-color] hover:-translate-y-px hover:border-mv-mint-line hover:shadow-mv focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep`}
+    >
+      {inner}
+    </Link>
+  );
+}
+
 /**
  * The county geometry — server-rendered, deliberately.
  *

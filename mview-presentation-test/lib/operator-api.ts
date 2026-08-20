@@ -453,3 +453,120 @@ export async function getOperatorNames(): Promise<OperatorName[]> {
     throw error;
   }
 }
+
+/**
+ * Tokens that stay upper case when a name has to be title-cased by hand.
+ *
+ * Acronyms and legal suffixes: "BP PLC" must not become "Bp Plc", and "OXY USA
+ * INC." reads correctly as "OXY USA Inc." rather than "Oxy Usa Inc.".
+ */
+const KEEP_UPPER = new Set([
+  "APA",
+  "BP",
+  "CMS",
+  "EQT",
+  "EP",
+  "E&P",
+  "GP",
+  "LLC",
+  "LLP",
+  "LP",
+  "LTD",
+  "NGL",
+  "OXY",
+  "PLC",
+  "SE",
+  "SM",
+  "USA",
+  "XTO",
+  "II",
+  "III",
+  "IV",
+]);
+
+/**
+ * A shouty filed name, made readable — the LAST resort, not the first.
+ *
+ * Only reached when the directory has no entry for the operator at all, which is the
+ * case for the public issuers here: BP, Chevron, CMS Energy, Dominion. Word by word,
+ * anything in `KEEP_UPPER` stays as it is and everything else is title-cased, so
+ * "CMS ENERGY" becomes "CMS Energy" rather than "Cms Energy".
+ *
+ * It is a heuristic and it is imperfect — "EXXONMOBIL" comes out "Exxonmobil" — which
+ * is exactly why the directory's own spelling is preferred wherever one exists.
+ */
+function titleCaseFiled(filed: string): string {
+  return filed
+    .toLowerCase()
+    .split(/(\s+)/)
+    .map((token) => {
+      if (/^\s+$/.test(token) || token === "") return token;
+      const bare = token.replace(/[^A-Za-z&]/g, "").toUpperCase();
+      if (KEEP_UPPER.has(bare)) return token.toUpperCase();
+      return token.replace(/^[a-z]/, (c) => c.toUpperCase());
+    })
+    .join("");
+}
+
+/**
+ * Do two spellings plausibly name the same company?
+ *
+ * Compares the leading alphabetic word, which is the part a company is known by. It
+ * exists only to reject a number match that points at a different company — see the
+ * duplicated operator number in `casedNameLookup`.
+ */
+function sameCompany(a: string, b: string): boolean {
+  const lead = (value: string) =>
+    (value.toLowerCase().match(/[a-z]+/) ?? [""])[0].slice(0, 6);
+  const first = lead(a);
+  return first !== "" && first === lead(b);
+}
+
+/**
+ * Filed spelling → cased spelling, from the directory that is already cached.
+ *
+ * BY NUMBER FIRST, THEN BY NAME. The operator number is the reliable key: several of
+ * these filed names do not match the directory's spelling of the same company, and
+ * matching on the name alone left a third of the list SHOUTING beside properly cased
+ * neighbours. Where neither key hits — a public issuer with no Texas registration —
+ * the name is title-cased locally.
+ *
+ * A failure must not fail the page, so the fallback chain ends at something readable
+ * rather than at an exception.
+ */
+export async function getCasedNameLookup(): Promise<
+  (filed: string, operatorNumber?: string | null) => string
+> {
+  try {
+    const directory = await getOperatorNames();
+    const byNumber = new Map<string, string>();
+    const byFiled = new Map<string, string>();
+
+    for (const entry of directory) {
+      if (entry.operatorNumber)
+        byNumber.set(entry.operatorNumber, entry.cleaned);
+      byFiled.set(entry.filed.toUpperCase(), entry.cleaned);
+    }
+
+    return (filed: string, operatorNumber?: string | null) => {
+      /* The filed name first: it is an exact key and cannot collide. */
+      const byName = byFiled.get(filed.toUpperCase());
+      if (byName) return byName;
+
+      /* Then the number — but only when it names the same company. Operator numbers
+         are NOT unique in this response: "MURPHY OIL CORPORATION" and
+         "FREEPORTMCMORAN OIL & GAS LLC" both arrive as 285230, and trusting that
+         blindly relabelled Murphy as Freeport and dropped Murphy from the filter
+         entirely. Comparing the leading word catches exactly that. */
+      if (operatorNumber) {
+        const byNo = byNumber.get(operatorNumber);
+        if (byNo && sameCompany(filed, byNo)) return byNo;
+      }
+
+      return titleCaseFiled(filed);
+    };
+  } catch (error) {
+    console.error("[presentations] name casing unavailable", error);
+    return (filed: string) => titleCaseFiled(filed);
+  }
+}
