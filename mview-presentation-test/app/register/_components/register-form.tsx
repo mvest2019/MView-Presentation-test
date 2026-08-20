@@ -192,6 +192,24 @@ export function RegisterForm({ next }: { next: string }) {
 
     if (!result.ok) {
       setOtpError(result.message || "Invalid or expired code. Please try again.");
+      /*
+       * CLEAR THE BOXES AND GO BACK TO THE FIRST ONE (Ryan, 2026-08-19: after a
+       * failed attempt "nothing is accepted").
+       *
+       * The rejected digits used to stay put, and because every box is
+       * `maxLength={1}` a box that already holds a character is AT its limit — the
+       * browser drops the keystroke and `onChange` never fires. So the six boxes
+       * were effectively read-only after one wrong code, with no way forward
+       * except backspacing through all six.
+       *
+       * Emptying them is also the right behaviour on its own terms: a rejected
+       * code is not a starting point for the next attempt, and the caret belongs
+       * where the retype starts. `select()` on focus (below) fixes the same
+       * lock-out for the general case — correcting a single digit mid-code —
+       * which this alone would not.
+       */
+      setDigits(Array(6).fill(""));
+      boxes.current[0]?.focus();
       return;
     }
 
@@ -395,9 +413,14 @@ export function RegisterForm({ next }: { next: string }) {
               >
                 {sending ? "Sending…" : "Verify email"}
               </button>
+              {/* Copy supplied verbatim (Ryan, 2026-08-19). The curly quotes are
+                  literal characters, not `&ldquo;`/`&rdquo;` — this is a JSX text
+                  position so either decodes, and the file already carries `…` and
+                  `•` directly. `react/no-unescaped-entities` only objects to
+                  straight `"`, `'`, `>` and `}`, so “ ” pass untouched. */}
               <p className="mt-2 inline-block rounded-[6px] bg-mv-mint px-[10px] py-1 text-[11.5px] font-semibold text-mv-green-deep">
-                Click the Verify email button to get a 6-digit code on your
-                email.
+                Click the “Verify Email” button to receive a 6-digit verification
+                code in your email.
               </p>
             </>
           ) : (
@@ -433,6 +456,24 @@ export function RegisterForm({ next }: { next: string }) {
                     autoComplete="one-time-code"
                     maxLength={1}
                     aria-label={`Digit ${index + 1}`}
+                    /*
+                     * SELECT WHAT IS ALREADY THERE, so typing REPLACES it.
+                     *
+                     * This is what makes a filled box editable at all. With
+                     * `maxLength={1}` a box holding a digit is at its limit, so
+                     * the browser silently discards the next keystroke and
+                     * `onChange` never runs — the box reads as broken. With the
+                     * character selected, the keystroke replaces the selection
+                     * instead of appending, the length never exceeds one, and the
+                     * handler fires normally.
+                     *
+                     * BOTH handlers on purpose. `focus` covers arriving by keyboard
+                     * or programmatically; `click` re-selects after a mouse press,
+                     * because the mouseup that follows focus collapses the
+                     * selection to a caret and would undo it.
+                     */
+                    onFocus={(event) => event.currentTarget.select()}
+                    onClick={(event) => event.currentTarget.select()}
                     onChange={(event) => {
                       const value = event.target.value
                         .replace(/\D/g, "")
@@ -546,12 +587,38 @@ export function RegisterForm({ next }: { next: string }) {
           )}
         </div>
 
+        {/*
+          BOTH LEGAL LINKS OPEN A NEW TAB (Ryan, 2026-08-19). In the same tab they
+          unloaded the page, and coming back left every field blank — name, email,
+          password, phone, address, the checkbox and the verification state — so
+          reading the terms you are being asked to accept cost you the whole form
+          and a fresh round-trip for the code.
+
+          `rel="noopener noreferrer"`: `noopener` denies the opened page a
+          `window.opener` handle back to this one, and `noreferrer` keeps the
+          register URL out of its Referer. Neither is strictly needed for a
+          same-origin page we control, but these are the links most likely to be
+          repointed at a hosted policy later, and the attributes should already be
+          there when that happens.
+
+          NOT the other half of the suggestion — form state is NOT persisted across
+          navigation. Doing that means writing the PASSWORD field into
+          sessionStorage, where any script on the origin can read it and it
+          outlives the tab; and restoring `verifiedEmail` from storage would let a
+          tampered value walk straight past the gate that gets the account created.
+          Not leaving the page in the first place removes the need for either.
+
+          The "Sign in" link below and sign-in's own "Forgot password?" stay in this
+          tab deliberately: those are exits, not detours.
+        */}
         <div className="mb-3 mt-[2px]">
           <CheckRow {...register("terms")}>
             <strong className="font-bold text-mv-ink">
               I agree to the{" "}
               <Link
                 href="/terms-condition"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-mv-green-deep no-underline hover:underline"
               >
                 Terms of Use
@@ -559,6 +626,8 @@ export function RegisterForm({ next }: { next: string }) {
               and{" "}
               <Link
                 href="/privacy-policy"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-mv-green-deep no-underline hover:underline"
               >
                 Privacy Policy
