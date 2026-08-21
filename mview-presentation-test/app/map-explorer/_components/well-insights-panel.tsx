@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   ArrowDown,
@@ -29,6 +29,7 @@ import {
   WELLBORE,
 } from "./well-insights-data";
 import { PermitSummary } from "./permit-summary";
+import { downloadSummaryPdf } from "./download-summary";
 import { ProductionChart } from "./production-chart";
 import { WellboreDiagram } from "./wellbore-diagram";
 import { WellSummaryHeader, type WellRecord } from "./well-summary-header";
@@ -135,6 +136,31 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
   const [record, setRecord] = useState<WellRecord>("Completion");
 
   /*
+   * The permit summary's own node, and whether there is one.
+   *
+   * Export lives in the header, the filing is rendered by `PermitSummary`, and
+   * neither is inside the other — so the panel that renders both holds the ref
+   * between them. `print-summary.ts` is what turns it into a PDF.
+   */
+  const permitRef = useRef<HTMLDivElement>(null);
+  const [permitReady, setPermitReady] = useState(false);
+  /* Composing the pages takes a moment, and a button that looks idle while it
+     happens gets pressed again. */
+  const [exporting, setExporting] = useState(false);
+
+  const downloadPermit = useCallback(async () => {
+    setExporting(true);
+    try {
+      await downloadSummaryPdf(
+        permitRef.current,
+        `permit-${well.api || "summary"}`,
+      );
+    } finally {
+      setExporting(false);
+    }
+  }, [well.api]);
+
+  /*
    * The completion record for the clicked well.
    *
    * Fetched by API number, which is the only thing the map knows for certain
@@ -229,12 +255,21 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
         record={record}
         loadedAt={loadedAt}
         fields={fields}
+        permitExport={{
+          ready: permitReady,
+          busy: exporting,
+          download: downloadPermit,
+        }}
         onRecordChange={setRecord}
       />
 
       {record === "Permit" ? (
         <div className="mt-3">
-          <PermitSummary well={well} />
+          <PermitSummary
+            well={well}
+            printRef={permitRef}
+            onReady={setPermitReady}
+          />
         </div>
       ) : (
         <>

@@ -12,6 +12,12 @@ import type { WellSummaryFields } from "./well-summary-fields";
  * cards render — rather than asking the service for a second, differently
  * shaped copy. Until the record has arrived there is nothing to write, so the
  * button waits.
+ *
+ * What it writes depends on which record is open. The completion summary is a
+ * page of labelled figures, and a spreadsheet is what anyone does with those,
+ * so it exports CSV. The permit is a filing — a document — and a document
+ * stays a document: it downloads as a PDF that looks like the card on screen.
+ * See `download-summary.ts`.
  */
 
 /*
@@ -46,6 +52,7 @@ export function WellSummaryHeader({
   record,
   loadedAt,
   fields,
+  permitExport,
   onRecordChange,
 }: {
   well: SelectedWell;
@@ -60,6 +67,18 @@ export function WellSummaryHeader({
   loadedAt: string | null;
   /** The record's own rows, or null while it is still being fetched. */
   fields: WellSummaryFields | null;
+  /**
+   * How to export the permit, when the permit is what is open.
+   *
+   * The permit summary is rendered by a sibling component, so the panel that
+   * holds both hands the action down rather than this file reaching for a node
+   * it does not own. `busy` is the second or so the capture takes.
+   */
+  permitExport?: {
+    ready: boolean;
+    busy: boolean;
+    download: () => void;
+  };
   onRecordChange: (record: WellRecord) => void;
 }) {
   function exportSummary() {
@@ -109,6 +128,32 @@ export function WellSummaryHeader({
     URL.revokeObjectURL(url);
   }
 
+  /*
+   * One button, whichever record is open — Export is Export. Only what it
+   * writes and what it says changes.
+   */
+  const isPermit = record === "Permit";
+  const exportAction = isPermit
+    ? {
+        label: permitExport?.busy ? "Preparing…" : "Export PDF",
+        disabled: !permitExport?.ready || permitExport.busy,
+        title: permitExport?.busy
+          ? "Composing the pages"
+          : permitExport?.ready
+            ? "Download this permit summary as PDF"
+            : "Waiting for this well's permit",
+        run: () => permitExport?.download(),
+      }
+    : {
+        label: "Export",
+        disabled: fields === null,
+        title:
+          fields === null
+            ? "Waiting for this well's record"
+            : "Download this summary as CSV",
+        run: exportSummary,
+      };
+
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
       <div className="min-w-0">
@@ -145,17 +190,13 @@ export function WellSummaryHeader({
       <div className="ml-auto flex items-center gap-3">
         <button
           type="button"
-          onClick={exportSummary}
-          disabled={fields === null}
-          title={
-            fields === null
-              ? "Waiting for this well's record"
-              : "Download this summary as CSV"
-          }
+          onClick={exportAction.run}
+          disabled={exportAction.disabled}
+          title={exportAction.title}
           className="inline-flex items-center gap-[7px] rounded-lg border border-mv-line bg-white px-[13px] py-[7px] text-[12.5px] font-semibold text-mv-ink enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Download size={14} strokeWidth={2} aria-hidden="true" />
-          Export
+          {exportAction.label}
         </button>
 
         <span className="flex items-center gap-[6px] text-[11px] text-mv-muted">
