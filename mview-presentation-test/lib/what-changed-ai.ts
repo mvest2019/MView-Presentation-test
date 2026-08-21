@@ -1,5 +1,6 @@
 import "server-only";
 
+import Anthropic from "@anthropic-ai/sdk";
 import { unstable_cache } from "next/cache";
 
 import type { ChangeRow } from "./operator-detail-data";
@@ -23,9 +24,17 @@ import type { ChangeRow } from "./operator-detail-data";
  *                        run anywhere — including here, on Vercel, where an
  *                        environment variable is a thing that exists.
  *
- * So the wording step moves into this app and the key becomes `GEMINI_API_KEY` in the
+ * So the wording step moves into this app and the key becomes `AI_SUMMARY_KEY` in the
  * Vercel project. The service keeps its own provider path untouched for local runs; if
  * it already had a model write the rows, this does not run.
+ *
+ * CLAUDE WRITES IT BY DEFAULT. `AI_PROVIDER` picks the vendor when it is set; when it
+ * is not, a present key means Claude, so one variable is the whole configuration.
+ * Gemini remains available for `AI_PROVIDER=gemini`.
+ *
+ * FRESH ON EVERY RENDER, by default. The wording is not reused between requests, so
+ * refreshing the page gives differently-phrased rows over the same measured figures —
+ * at the cost of one model call per render of this section. See `cacheSeconds`.
  *
  * THE KEY CANNOT REACH THE BROWSER. `server-only` above means a client component that
  * imports this file fails the build. The key is read from `process.env` inside a
@@ -34,10 +43,11 @@ import type { ChangeRow } from "./operator-detail-data";
  * in any response this app sends: the browser receives the finished rows and nothing
  * else. Nothing here logs it, and the only text put into an error is Google's own.
  *
- * THE GUARANTEES ARE THE SERVICE'S, PORTED EXACTLY. The prompt, the balanced-array
- * extraction, the numeric guard and the fall back to measured wording are the same
- * rules as `mv/summarize.py`, because moving where the call happens must not change
- * what the panel is allowed to say. `kind`, `source` and `evidence` are carried across
+ * THE GUARANTEES ARE THE SERVICE'S, PORTED EXACTLY, AND THEY DO NOT DEPEND ON THE
+ * VENDOR. The prompt, the balanced-array extraction, the numeric guard and the fall
+ * back to measured wording are the same rules as `mv/summarize.py`, and both providers
+ * go through them — so switching vendor changes who phrases the rows and nothing about
+ * what they are allowed to say. `kind`, `source` and `evidence` are carried across
  * from the measured row and never read from the model, and a row quoting a figure that
  * was not in its input is rejected outright. The model can change how a finding reads
  * and nothing about what it says.
@@ -49,6 +59,14 @@ import type { ChangeRow } from "./operator-detail-data";
 
 /** The pool of figures a row may quote. Ported from `summarize._NUM`. */
 const NUMBER_PATTERN = /\d[\d,]*\.?\d*/g;
+
+/**
+ * The Claude model the wording is written by.
+ *
+ * Overridable with `AI_SUMMARY_MODEL` for a deliberate change; not something to lower
+ * casually, since this text is what a mineral owner reads.
+ */
+const DEFAULT_CLAUDE_MODEL = "claude-opus-5";
 
 /** Current as of writing; the 2.5 family 404s for recently created projects. */
 const DEFAULT_MODEL = "gemini-3.5-flash";
@@ -84,6 +102,14 @@ export interface Rewrite {
   rows: ChangeRow[];
   /** True only when every row on screen was phrased by the model. */
   byModel: boolean;
+  /**
+   * WHICH vendor phrased them — `claude` or `gemini` — and "" when none did.
+   *
+   * Reported rather than assumed, because the panel's badge and its `writer` field
+   * say who wrote the wording. Hardcoding one vendor there meant a Claude-written
+   * panel reporting itself as Gemini.
+   */
+  provider: string;
   /** Why the model did not write, when it did not. Empty on a clean run. */
   note: string;
 }
@@ -93,32 +119,43 @@ function envText(name: string): string {
 }
 
 /**
- * The key, read at call time.
+ * The API key, read at call time.
+ *
+ * `AI_SUMMARY_KEY` IS THE NAME TO SET, and it is read first because it is the variable
+ * that exists on the deployment. One name serves both providers: which vendor it
+ * belongs to is `AI_PROVIDER`'s job, not the key name's. The provider-specific names
+ * are still honoured so an existing local `.env.local` keeps working.
  *
  * NOT A MODULE CONSTANT. A top-level `const KEY = process.env...` is inlined at build
  * time, which on Vercel means the value baked into the build rather than the one
  * configured now — and it makes the key a value the bundler has seen. Reading it inside
  * a function keeps it a runtime lookup on the server.
  */
-function geminiKey(): string {
-  return envText("GEMINI_API_KEY");
+function aiKey(): string {
+  return (
+    envText("AI_SUMMARY_KEY") ||
+    envText("ANTHROPIC_API_KEY") ||
+    envText("GEMINI_API_KEY")
+  );
 }
 
 /**
- * Which provider writes the wording here, from `AI_PROVIDER`.
+ * Which provider writes the wording here.
  *
- * UNSET MEANS "NOT THIS APP'S JOB", which is what every existing install wants: the
- * service picks its own provider and this step stays out of the way. Only an explicit
- * `AI_PROVIDER=gemini` turns it on, so adding this file changes nothing until the
- * deployment asks for it.
+ * ONE VARIABLE IS ENOUGH. `AI_PROVIDER` decides when it is set; when it is not, a
+ * present key means Claude. So a deployment that sets only `AI_SUMMARY_KEY` gets
+ * Claude-written wording, which is what was asked for, and a deployment that sets
+ * nothing at all still makes no model call.
  *
- * `claude` AND `claude-cli` ARE DELIBERATELY NOT HANDLED HERE. The CLI is a local
- * process and cannot exist in a serverless function, and the Messages API path already
- * lives in the service. Silently answering a request for one provider with another is
- * how a deployment ends up billing a vendor nobody chose.
+ * `claude-cli` IS DELIBERATELY NOT HANDLED. It shells out to a local binary, which
+ * cannot exist in a serverless function. Answering a request for one provider with
+ * another is how a deployment ends up billing a vendor nobody chose, so an unsupported
+ * value is reported rather than substituted.
  */
 function providerName(): string {
-  return envText("AI_PROVIDER").toLowerCase();
+  const explicit = envText("AI_PROVIDER").toLowerCase();
+  if (explicit !== "") return explicit;
+  return aiKey() === "" ? "" : "claude";
 }
 
 /** Every number in a string, normalised so `1,234` and `1234` compare equal. */
@@ -300,6 +337,74 @@ function validate(
 }
 
 /**
+ * One call to Claude, through the official SDK.
+ *
+ * THE MODEL IS `claude-opus-5` and effort is `low`. This is a rewrite of supplied
+ * facts, not a reasoning task: low effort is the documented setting for simple work and
+ * keeps the per-render cost down, while thinking stays on — disabling it on this model
+ * has two known failure modes, one of which writes into the visible text.
+ *
+ * NO TEMPERATURE. Sampling parameters are rejected on this model family; determinism
+ * comes from the prompt and from the numeric guard, not from a temperature of zero.
+ *
+ * THE SDK, NOT `fetch`. It carries the auth header, the API version, typed errors and
+ * retry/timeout handling, so none of that is reimplemented here.
+ */
+async function callClaude(prompt: string): Promise<string> {
+  const apiKey = aiKey();
+  if (apiKey === "") {
+    throw new Error("AI_SUMMARY_KEY is not set on this deployment");
+  }
+
+  const client = new Anthropic({
+    apiKey,
+    // Kept well inside a serverless function's ceiling, and the SDK's own retries
+    // are bounded so one slow call cannot outlive the request.
+    timeout: CALL_TIMEOUT_MS,
+    maxRetries: 1,
+  });
+
+  try {
+    const message = await client.messages.create({
+      model: envText("AI_SUMMARY_MODEL") || DEFAULT_CLAUDE_MODEL,
+      max_tokens: MAX_OUTPUT_TOKENS,
+      output_config: { effort: "low" },
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    // A safety decline is not an outage: it lands on the measured wording like any
+    // other failure, but it says so rather than reading as a timeout.
+    if (message.stop_reason === "refusal") {
+      throw new Error(
+        `Claude declined the prompt (${message.stop_details?.category ?? "unspecified"})`,
+      );
+    }
+
+    const written = message.content
+      .filter((block): block is Anthropic.TextBlock => block.type === "text")
+      .map((block) => block.text)
+      .join("")
+      .trim();
+
+    if (written === "") throw new Error("Claude returned empty text");
+    return written;
+  } catch (error) {
+    // Typed classes, most specific first — a rate limit and a bad key need different
+    // answers, and string-matching the message is how that distinction gets lost.
+    if (error instanceof Anthropic.AuthenticationError) {
+      throw new Error("Claude rejected the API key (check AI_SUMMARY_KEY)");
+    }
+    if (error instanceof Anthropic.RateLimitError) {
+      throw new Error("Claude rate-limited this deployment");
+    }
+    if (error instanceof Anthropic.APIError) {
+      throw new Error(`Claude API error ${error.status}: ${error.message}`);
+    }
+    throw error;
+  }
+}
+
+/**
  * One call to Gemini. Returns the model's text, or throws with something readable.
  *
  * THE KEY GOES IN A HEADER, NOT THE QUERY STRING. Gemini accepts `?key=`, and that is
@@ -307,9 +412,9 @@ function validate(
  * logs and crash reports. `x-goog-api-key` does not.
  */
 async function callGemini(prompt: string): Promise<string> {
-  const key = geminiKey();
+  const key = aiKey();
   if (key === "") {
-    throw new Error("GEMINI_API_KEY is not set on this deployment");
+    throw new Error("AI_SUMMARY_KEY is not set on this deployment");
   }
 
   const model = envText("GEMINI_MODEL") || DEFAULT_MODEL;
@@ -380,21 +485,42 @@ async function callGemini(prompt: string): Promise<string> {
 }
 
 /**
- * `callGemini`, cached on the prompt.
+ * How long a piece of wording may be reused, in seconds. `0` disables reuse.
  *
- * WHY THIS IS CACHED AND THE SERVICE CALL IS NOT ENOUGH. The upstream panel read is
- * already cached, so on a cache hit the findings cost nothing — and re-phrasing
- * identical findings on every request would put a paid, multi-second HTTPS call in
- * front of a section that otherwise serves instantly. The prompt is a pure function of
- * the findings, so the same findings reuse the same wording and a genuinely new month
- * gets a new key on its own.
+ * ZERO BY DEFAULT (requested): the section should read differently when the page is
+ * refreshed, and it cannot do that if the wording is served from a cache. That means a
+ * model call per render of this section — it is lazy-loaded, so only for a reader who
+ * scrolls to it, but it is a real per-view cost on a page that is otherwise static.
  *
- * A THROW IS NOT CACHED, which is the behaviour worth having: a 403 or a timeout is
- * retried on the next request rather than pinned for an hour.
+ * SET `AI_SUMMARY_CACHE_SECONDS` TO PUT IT BACK. `3600` restores the previous
+ * behaviour — one call per hour per operator — if the bill or the latency matters more
+ * than fresh phrasing. The measured figures are unaffected either way: they come from
+ * the analysis service, which has its own cache.
  */
-const cachedGemini = unstable_cache(
-  async (_operatorNumber: string, prompt: string) => callGemini(prompt),
-  ["what-changed-ai", "gemini", "v1"],
+function cacheSeconds(): number {
+  const raw = envText("AI_SUMMARY_CACHE_SECONDS");
+  if (raw === "") return 0;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+}
+
+/**
+ * The wording, cached on the provider and the prompt — used only when caching is on.
+ *
+ * KEYED ON THE PROVIDER TOO, so switching `AI_PROVIDER` does not serve the other
+ * vendor's phrasing for the rest of the window.
+ *
+ * A THROW IS NOT CACHED, which is the behaviour worth having: a 401 or a timeout is
+ * retried on the next request rather than pinned for an hour.
+ *
+ * `revalidate` is read at module scope by `unstable_cache`, so the window is fixed for
+ * the life of the server. That is why the zero case bypasses this wrapper entirely
+ * rather than passing `revalidate: 0` — a cache with a zero window is still a cache.
+ */
+const cachedWording = unstable_cache(
+  async (_operatorNumber: string, provider: string, prompt: string) =>
+    provider === "gemini" ? callGemini(prompt) : callClaude(prompt),
+  ["what-changed-ai", "wording", "v2"],
   { revalidate: REVALIDATE_SECONDS, tags: ["what-changed-ai"] },
 );
 
@@ -412,41 +538,55 @@ export async function rewriteWording(
   const provider = providerName();
 
   if (provider === "" || provider === "none" || provider === "off") {
-    return { rows, byModel: false, note: "" };
+    return { rows, byModel: false, provider: "", note: "" };
   }
-  if (provider !== "gemini") {
+
+  const send =
+    provider === "claude" || provider === "anthropic"
+      ? callClaude
+      : provider === "gemini"
+        ? callGemini
+        : null;
+
+  if (!send) {
     return {
       rows,
       byModel: false,
+      provider: "",
       note:
-        `AI_PROVIDER=${provider} is written by the analysis service, not by this ` +
-        "app; set AI_PROVIDER=gemini here to phrase the wording on the server",
+        `AI_PROVIDER=${provider} is not a provider this app can run — ` +
+        "use claude or gemini, or leave it unset to let the analysis service decide",
     };
   }
-  if (geminiKey() === "") {
+  if (aiKey() === "") {
     return {
       rows,
       byModel: false,
-      note: "AI_PROVIDER=gemini is selected but GEMINI_API_KEY is not set on this deployment",
+      provider: "",
+      note: `AI_PROVIDER=${provider} is selected but AI_SUMMARY_KEY is not set on this deployment`,
     };
   }
-  if (rows.length === 0) return { rows, byModel: false, note: "" };
+  if (rows.length === 0)
+    return { rows, byModel: false, provider: "", note: "" };
 
   const prompt = buildPrompt(rows, facts);
   let last = "";
 
   for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
     try {
-      // The retry deliberately bypasses the cache. Validation is deterministic, so a
-      // cached body that failed the guard would fail it again — the only retry worth
-      // making is a fresh call.
+      /* THE FIRST ATTEMPT GOES THROUGH THE CACHE ONLY WHEN CACHING IS ON. With
+         `AI_SUMMARY_CACHE_SECONDS=0` — the default — every render asks the model
+         again, which is what "it should change when the page is refreshed" means.
+         The retry always bypasses: validation is deterministic, so a cached body
+         that failed the guard would fail it again. */
       const raw =
-        attempt === 1
-          ? await cachedGemini(facts.operatorNumber, prompt)
-          : await callGemini(prompt);
+        attempt === 1 && cacheSeconds() > 0
+          ? await cachedWording(facts.operatorNumber, provider, prompt)
+          : await send(prompt);
       return {
         rows: validate(extractJsonArray(raw), rows, facts),
         byModel: true,
+        provider: provider === "anthropic" ? "claude" : provider,
         note: "",
       };
     } catch (error) {
@@ -454,5 +594,5 @@ export async function rewriteWording(
     }
   }
 
-  return { rows, byModel: false, note: last };
+  return { rows, byModel: false, provider: "", note: last };
 }
