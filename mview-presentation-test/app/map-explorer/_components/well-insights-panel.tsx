@@ -24,11 +24,11 @@ import {
 
 import {
   COHORT_EUR,
-  INSIGHT_SUMMARY,
   RESERVE_INTEGRITY,
   WELLBORE,
 } from "./well-insights-data";
 import { PermitSummary } from "./permit-summary";
+import { AiSummary } from "./ai-summary";
 import { downloadSummaryPdf } from "./download-summary";
 import { ProductionChart } from "./production-chart";
 import { WellboreDiagram } from "./wellbore-diagram";
@@ -42,10 +42,11 @@ import { wellSummaryFields } from "./well-summary-fields";
  * `/wells/{api}/production` for the chart. Nothing on this page is written
  * here — where the response has no value, the row shows an em dash.
  *
- * Three cards are not the service's yet: reserve integrity, cohort EUR and the
- * written read. They compare this well against the rest of the collection,
- * which no per-well endpoint answers, so they stay in `well-insights-data.ts`
- * until one does. Everything else on the page is this well's own.
+ * Two cards are not the service's yet: reserve integrity and cohort EUR. They
+ * compare this well against the rest of the collection, which no per-well
+ * endpoint answers, so they stay in `well-insights-data.ts` until one does.
+ * Everything else on the page is this well's own — including the written read at
+ * the foot of it, which the model now writes from this record.
  */
 
 /*
@@ -607,53 +608,28 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
                 </div>
               </div>
 
-              {/* ---------------- the written read ---------------- */}
-              <div className="mt-3 rounded-xl border border-mv-line bg-white p-4">
-                {/* The heading says AI, so the badge beside it said it twice. */}
-                <Heading
-                  title="AI Summary"
-                  aside="What the completion record says once it is read against the rest of the collection"
+              {/* ---------------- the written read ----------------
+          The permit tab's card, on this tab's record: same component, same
+          model, same key — `/api/completion-summary` reads the completion where
+          the other route reads the filing. It replaces the fixed six findings
+          that used to sit here, which described a different well. */}
+              <div className="mt-3">
+                <AiSummary
+                  api={well.api}
+                  endpoint="/api/completion-summary"
+                  caption="written from this well's own record"
+                  loadingLabel="Reading the record…"
+                  title={
+                    fields
+                      ? `${well.lease || "This well"} · ${fields.header.wellNumber}`
+                      : well.api
+                  }
+                  context={
+                    fields
+                      ? `${fields.header.status} ${fields.wellboreKind} well · ${titleCase(fields.header.county)} County · ${fields.operator.value}`
+                      : ""
+                  }
                 />
-
-                <div className="mt-3">
-                  <div className="text-[10px] font-extrabold uppercase tracking-[.09em] text-mv-muted">
-                    Headline Read{" "}
-                    <span className="font-semibold normal-case tracking-normal text-mv-muted/70">
-                      auto-generated · every figure traceable to a field or an
-                      aggregate
-                    </span>
-                  </div>
-                  <p className="mt-2 text-[12px] leading-[1.6] text-mv-slate">
-                    {INSIGHT_SUMMARY.headline}
-                  </p>
-                </div>
-
-                {/* One per row, not three across: these are findings to be read in
-            order, and a three-column grid made six equal boxes whose heights
-            were set by whichever text ran longest. */}
-                <div className="mt-4 flex flex-col gap-[10px]">
-                  {INSIGHT_SUMMARY.cards.map((card) => (
-                    <div
-                      key={card.title}
-                      className={`rounded-xl border p-[14px] ${TONES[card.tone].card}`}
-                    >
-                      <div className="flex items-start gap-2">
-                        <span
-                          aria-hidden="true"
-                          className={`mt-[3px] h-[8px] w-[8px] shrink-0 rounded-full ${TONES[card.tone].dot}`}
-                        />
-                        <div className="min-w-0">
-                          <div className="text-[12px] font-bold leading-tight text-mv-ink">
-                            {card.title}
-                          </div>
-                          <p className="mt-[5px] text-[11.5px] leading-[1.55] text-mv-slate">
-                            {card.body}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
               </div>
             </div>
 

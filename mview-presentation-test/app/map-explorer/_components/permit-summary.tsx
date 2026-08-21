@@ -246,6 +246,10 @@ export function PermitSummary({
           <div className="mt-3">
             <AiSummary
               api={well.api}
+              endpoint="/api/permit-summary"
+              caption="written from this permit's own fields"
+              loadingLabel="Reading the permit…"
+
               title={
                 fields
                   ? `${fields.leaseWell[0].value} · ${fields.header.wellNumber}`
