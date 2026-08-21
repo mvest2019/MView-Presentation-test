@@ -924,7 +924,7 @@ const CHOROPLETH_CSS = `
    than the white it was: white borders vanish against the white no-data fill, and the
    requirement is that the county outlines stay visible and identical on both metrics.
    This grey reads against blank white and against the darkest green and red alike. */
-.tx-map path{stroke:#ccd6dc;stroke-width:.8;fill:var(--ramp-0);transition:fill .12s}
+.tx-map path{stroke:#8fa2ad;stroke-width:.8;fill:var(--ramp-0);transition:fill .12s}
 .tx-map path[data-oil-bucket="1"]{fill:var(--ramp-1)}
 .tx-map path[data-oil-bucket="2"]{fill:var(--ramp-2)}
 .tx-map path[data-oil-bucket="3"]{fill:var(--ramp-3)}
