@@ -41,6 +41,7 @@ import type {
   OperatorCondition,
   OperatorDetailsResponse,
 } from "./operator-details-api";
+import type { ResolvedOperator } from "./operator-slug-api";
 import { OPERATOR_STATISTICS_RECORDS } from "./operator-statistics-data";
 
 export { COMPARE_YEARS, OPERATOR_ILLUSTRATIVE_NOTE };
@@ -77,8 +78,16 @@ export interface OperatorDetail {
   boeTotal: number;
   oilTotal: number;
   gasTotal: number;
-  /** Oil's share of BOE, whole percent. */
-  oilPct: number;
+  /**
+   * Oil's share of BOE, whole percent — or null when it cannot be computed.
+   *
+   * NOT STORED ANY MORE. It used to be arithmetic on the FIXTURE's lifetime totals,
+   * which put a fixture-derived percentage beside live oil, gas and BOE figures on
+   * the same panel; for Pioneer that read 80% where the live totals give 79.8%. It is
+   * now derived from the live response by `oilShareOfBoe`, so it moves when the
+   * figures it describes move, and is null when the endpoint sends neither total.
+   */
+  oilPct: number | null;
 
   /** Annual oil/gas/BOE, or null when no series is filed for this operator. */
   series: readonly OperatorCompareYear[] | null;
@@ -135,7 +144,8 @@ export interface OperatorPeer {
 export function formatVolume(value: number): string {
   if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`;
   if (value >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
-  if (value >= 1e3) return `${Math.round(value / 1e3).toLocaleString("en-US")}K`;
+  if (value >= 1e3)
+    return `${Math.round(value / 1e3).toLocaleString("en-US")}K`;
   return String(Math.round(value));
 }
 
@@ -167,6 +177,53 @@ function locationOf(address: string | null): string | null {
   return parts.slice(-2).join(", ");
 }
 
+/**
+ * A volume string from the API into a number.
+ *
+ * The endpoint formats these for display — `"1,907,873.826 (MBBL)"` — so the digits
+ * are read off the front and the unit tag ignored. Returns null when there is nothing
+ * numeric, rather than 0: a missing figure and a zero figure are different facts.
+ */
+function volumeValue(raw: string | null): number | null {
+  if (!raw) return null;
+  const match = /-?[\d,]*\.?\d+/.exec(raw);
+  if (!match) return null;
+  const value = Number(match[0].replace(/,/g, ""));
+  return Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Oil's share of BOE, from the live totals.
+ *
+ * BOTH ARRIVE IN THE SAME UNIT — the endpoint reports oil and BOE alike in MBBL —
+ * so the ratio needs no conversion. Measured for Pioneer: 1,907,873.826 of
+ * 2,390,697.170 is 79.8%, where the fixture's own totals gave 80%.
+ *
+ * PREFERS THE PAIR IT IS NAMED FOR. Oil over BOE is the definition; oil over
+ * (oil + gas/15) is only a reconstruction of BOE, used when the endpoint sends no BOE
+ * total. Gas is Mcf against oil in MBBL there, which is why 15 appears — the same
+ * conversion the API's own BOE uses.
+ *
+ * NULL, NOT ZERO, when there is nothing to divide. A page that cannot compute this
+ * omits the row instead of asserting 0%.
+ */
+export function oilShareOfBoe(
+  oilProduced: string | null,
+  gasProduced: string | null,
+  boeProduced: string | null,
+): number | null {
+  const oil = volumeValue(oilProduced);
+  if (oil === null) return null;
+
+  const boe = volumeValue(boeProduced);
+  if (boe !== null && boe > 0) return Math.round((oil / boe) * 100);
+
+  const gas = volumeValue(gasProduced);
+  if (gas === null) return null;
+  const reconstructed = oil + gas / 15;
+  return reconstructed > 0 ? Math.round((oil / reconstructed) * 100) : null;
+}
+
 /* --------------------------------------------------------------------------
    Resolving a slug
    -------------------------------------------------------------------------- */
@@ -195,9 +252,71 @@ export function detailSlugForNumber(operatorNumber: string): string | null {
 }
 
 /**
- * The operator a URL names, or null when the slug matches nothing — which the
- * route turns into a 404 rather than an empty page. Slugs are the API's own
- * `operator_name_url`, so they are what the listing table already links to.
+ * A base record from the LIVE directory row, for any operator in the API.
+ *
+ * WHY THIS REPLACES `findOperatorDetail` ON THE ROUTE. That one looks the slug up in a
+ * 30-record fixture, so the other ~24,700 operators the listing links to answered 404.
+ * `lib/operator-slug-api.ts` resolves any slug through `/operators/search`, and this
+ * turns the row it finds into the shape the page renders.
+ *
+ * IT CARRIES NO FIXTURE FIGURE. Every numeric field here is either from the row or
+ * zero-as-unknown, and `mergeOperatorDetails` then layers `/operators/details` over
+ * it. The fixture-only collections are empty, which is a state the page already
+ * handles — each section asks whether its own data exists, and every one of them
+ * (leases, per-county production, recent wells, the annual chart, what-changed) reads
+ * its own live endpoint from `operatorNumber` anyway.
+ *
+ * `rank` IS 0 UNTIL THE DETAIL READ SUPPLIES IT. The directory row has no statewide
+ * rank; `/operators/details` does, as `statewide_rank`. Zero renders as no rank rather
+ * than as first place — see the page's own guard.
+ */
+export function baseFromDirectory(row: ResolvedOperator): OperatorDetail {
+  return {
+    slug: row.slug,
+    name: row.name,
+    filedName: row.filedName,
+    operatorNumber: row.operatorNumber,
+    monogram: monogramOf(row.filedName || row.name),
+    rank: 0,
+    headquarters: null,
+    location: null,
+    topCounties: [],
+    leases: row.leases,
+    counties: row.counties,
+    boeTotal: 0,
+    oilTotal: 0,
+    gasTotal: 0,
+    oilPct: null,
+
+    series: null,
+    countyRows: [],
+    leaseRows: [],
+    conditionCards: [],
+    changeRows: [],
+    peers: [],
+
+    status: row.status,
+    contactNumber: null,
+    firstProduction: null,
+    lastProduction: null,
+    seoName: null,
+    seoUrl: null,
+    oilProduced: null,
+    gasProduced: null,
+    boeProduced: null,
+    currentYearBoe: null,
+    previousYearBoe: null,
+    activeCounties: [],
+    conditionAsOf: null,
+  };
+}
+
+/**
+ * The operator a URL names, or null when the slug matches nothing.
+ *
+ * NO LONGER ON THE ROUTE — kept because `listOperatorDetailSlugs` and
+ * `detailSlugForNumber` still read the same fixture for prerendering and for deciding
+ * which related-operator cards may link. The page itself resolves slugs live.
  */
 export function findOperatorDetail(slug: string): OperatorDetail | null {
   const record = OPERATOR_STATISTICS_RECORDS.find((item) => item.slug === slug);
@@ -206,8 +325,6 @@ export function findOperatorDetail(slug: string): OperatorDetail | null {
   const compare = OPERATOR_COMPARE_RECORDS.find(
     (item) => item.operatorNumber === record.operatorNumber,
   );
-
-  const denominator = record.oilTotal + record.gasTotal / 15;
 
   return {
     slug: record.slug,
@@ -224,8 +341,9 @@ export function findOperatorDetail(slug: string): OperatorDetail | null {
     boeTotal: record.boeTotal,
     oilTotal: record.oilTotal,
     gasTotal: record.gasTotal,
-    oilPct:
-      denominator > 0 ? Math.round((record.oilTotal / denominator) * 100) : 0,
+    // Derived from the live response in `mergeOperatorDetails`; there is nothing
+    // trustworthy to compute it from here.
+    oilPct: null,
 
     series: compare?.series ?? null,
     countyRows: OPERATOR_COUNTY_ROWS[record.operatorNumber] ?? [],
@@ -410,8 +528,18 @@ function hashSeed(value: string): number {
 }
 
 const MONTHS = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
 ] as const;
 
 /** Weighted so "Producing" is the common case, as the prototype has it. */
@@ -467,7 +595,9 @@ export function leaseWells(lease: OperatorLeaseRow): LeaseWell[] {
     oilLeft -= oil;
     gasLeft -= gas;
 
-    const status = WELL_STATUSES[Math.floor(random() * WELL_STATUSES.length)] ?? WELL_STATUSES[0];
+    const status =
+      WELL_STATUSES[Math.floor(random() * WELL_STATUSES.length)] ??
+      WELL_STATUSES[0];
     const api = `42-${countyCode}-${`0000${30000 + Math.floor(random() * 19999)}`.slice(-5)}`;
     const year = 2009 + Math.floor(random() * 17);
     const month = 1 + Math.floor(random() * 12);
@@ -513,9 +643,12 @@ export function leaseWells(lease: OperatorLeaseRow): LeaseWell[] {
 export function mergeOperatorDetails(
   base: OperatorDetail,
   response: OperatorDetailsResponse | null,
-): OperatorDetail {
+): OperatorDetail | null {
   const record = response?.operator_details[0];
-  if (!record) return base;
+  // NULL, NOT `base`. Returning the base here meant a failed read rendered the
+  // fixture's figures with nothing on screen saying so — stale data presented as
+  // live. The caller now shows its unavailable state instead.
+  if (!record) return null;
 
   return {
     ...base,
@@ -538,6 +671,12 @@ export function mergeOperatorDetails(
     boeProduced: record.TotalBOEproduction || null,
     currentYearBoe: record.Current_Year_BOE_Prod || null,
     previousYearBoe: record.Previous_Year_BOE_Prod || null,
+    // Derived from the three volumes directly above, so it cannot disagree with them.
+    oilPct: oilShareOfBoe(
+      record.Totaloilproduction || null,
+      record.Totalgasproduction || null,
+      record.TotalBOEproduction || null,
+    ),
     topCounties:
       (record.top_producing_counties?.length ?? 0) > 0
         ? record.top_producing_counties.map((entry) => titleCase(entry.county))
@@ -576,16 +715,38 @@ function buildConditionCards(
     `${value >= 0 ? "+" : "−"}${Math.abs(value).toFixed(1)}%`;
 
   return [
-    {
-      label: "Latest monthly BOE",
-      value: latest.mmboe.toFixed(1),
-      unit: "MMBOE",
-      direction: latest.mom.direction,
-      delta: `${Math.abs(latest.mom.change_percent).toFixed(1)}%`,
-      window: "MoM",
-      foot: `vs ${latest.yoy.month_label}: ${signed(latest.yoy.change_percent)}`,
-      icon: "production",
-    },
+    /*
+     * THE BOE CARD ONLY EXISTS WHERE THERE IS BOE. An operator with no filed
+     * production returns this block with every figure null — `mmboe`, both
+     * comparisons, the month labels — so reading `.toFixed()` off it threw as soon as
+     * the route stopped being limited to thirty major producers. The card is omitted
+     * rather than shown as "0.0 MMBOE", which would assert a measurement nobody made.
+     *
+     * The month-on-month and year-on-year parts are guarded separately: a first
+     * reported month has a figure but nothing to compare it to.
+     */
+    ...(latest.mmboe === null
+      ? []
+      : [
+          {
+            label: "Latest monthly BOE",
+            value: latest.mmboe.toFixed(1),
+            unit: "MMBOE",
+            ...(latest.mom.direction === null
+              ? {}
+              : { direction: latest.mom.direction, window: "MoM" }),
+            ...(latest.mom.change_percent === null
+              ? {}
+              : {
+                  delta: `${Math.abs(latest.mom.change_percent).toFixed(1)}%`,
+                }),
+            foot:
+              latest.yoy.change_percent === null || !latest.yoy.month_label
+                ? "No comparable month on record"
+                : `vs ${latest.yoy.month_label}: ${signed(latest.yoy.change_percent)}`,
+            icon: "production" as const,
+          },
+        ]),
     {
       label: "Producing leases",
       value: formatCount(leases.count),
