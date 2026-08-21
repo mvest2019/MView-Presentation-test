@@ -7,7 +7,7 @@ import {
   operatorLogoPath,
   publicOperatorApiBaseUrl,
 } from "./operator-api-types";
-import { detailSlugForNumber } from "./operator-detail";
+import { slugForOperatorNumber } from "./operator-slug-api";
 
 /**
  * `POST /api/v1/operators/related-operators` — the "Related operators" band.
@@ -33,10 +33,18 @@ import { detailSlugForNumber } from "./operator-detail";
  * operator — four more per page, thirty pages at build — for one line of text. Not
  * worth it, and inventing the number is not an option.
  *
- * A CARD LINKS ONLY WHERE THIS SITE HAS A PAGE. The detail route is prerendered from
- * its own set of slugs, so `detailSlugForNumber` decides: a related operator inside
- * that set becomes a link, one outside it stays plain text. A slug guessed from the
- * name would 404 just as reliably, only less visibly.
+ * EVERY CARD LINKS NOW. This endpoint reports `operator_no` and no slug, so a card's
+ * URL used to come from a 30-record lookup — which left most cards as plain,
+ * unclickable text even though the operator plainly exists. `slugForOperatorNumber`
+ * asks the directory for the API's own `operator_name_url`, so a relation becomes a
+ * real link to a page that now exists for every operator.
+ *
+ * THE FOUR RESOLVE IN PARALLEL, so the band costs one round trip's latency rather
+ * than four, and each number is cached on its own — the large operators appear as a
+ * relation of many others and are resolved once for the whole site.
+ *
+ * A NUMBER THAT DOES NOT RESOLVE STILL RENDERS, as plain text. Better a card without a
+ * link than a link into a 404.
  */
 
 export interface RelatedOperator {
@@ -83,27 +91,43 @@ async function readRelated(operatorNumber: string): Promise<RelatedOperator[]> {
 
   const displayNameFor = await getCasedNameLookup();
 
-  const related: RelatedOperator[] = [];
+  /* De-duplicated first, so a repeated operator is not resolved twice. The same
+     operator twice would also render as two identical cards. */
+  const unique: { number: string; filed: string; logo: boolean }[] = [];
   const seen = new Set<string>();
 
   for (const row of rows as RelatedRecord[]) {
     const number = text(row.operator_no);
     const filed = text(row.operator_name);
     if (number === "" || filed === "") continue;
-    // The same operator twice would render as two identical cards.
     if (seen.has(number)) continue;
     seen.add(number);
-
-    related.push({
-      name: displayNameFor(filed, number),
-      operatorNumber: number,
-      /* `operator_logo` says whether one exists; the bytes come from our origin,
-         because the API serves logos `cross-origin-resource-policy: same-origin`
-         and a browser refuses to embed those. */
-      logoUrl: text(row.operator_logo) ? operatorLogoPath(number) : null,
-      slug: detailSlugForNumber(number),
-    });
+    unique.push({ number, filed, logo: Boolean(text(row.operator_logo)) });
   }
+
+  /* One slug lookup each, all at once. A failure resolves to null rather than
+     rejecting: one unlinkable card is better than no band. */
+  const slugs = await Promise.all(
+    unique.map((entry) =>
+      slugForOperatorNumber(entry.number).catch((error: unknown) => {
+        console.error("[operator-related] slug unavailable", {
+          operatorNumber: entry.number,
+          error,
+        });
+        return null;
+      }),
+    ),
+  );
+
+  const related: RelatedOperator[] = unique.map((entry, index) => ({
+    name: displayNameFor(entry.filed, entry.number),
+    operatorNumber: entry.number,
+    /* `operator_logo` says whether one exists; the bytes come from our origin,
+       because the API serves logos `cross-origin-resource-policy: same-origin`
+       and a browser refuses to embed those. */
+    logoUrl: entry.logo ? operatorLogoPath(entry.number) : null,
+    slug: slugs[index] ?? null,
+  }));
 
   // The endpoint already orders by `priority`; this only guards a malformed row.
   return related;
