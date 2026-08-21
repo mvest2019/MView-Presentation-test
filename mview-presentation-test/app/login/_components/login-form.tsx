@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { signInAction } from "@/app/_components/auth-actions";
@@ -76,6 +76,33 @@ export function LoginForm({ next }: { next: string }) {
     defaultValues: { email: "", password: "" },
   });
 
+  /*
+   * FOCUS BACK TO THE EMAIL FIELD AFTER A SERVER-SIDE FAILURE (Ryan, 2026-08-19:
+   * "keyboard focus is lost and moves to the <body> element instead of the Email
+   * field").
+   *
+   * WHY FOCUS IS LOST AT ALL: the submit button is `disabled` while the request is
+   * in flight, and a disabled element cannot hold focus — so clicking Sign in
+   * blurs to `<body>` and nothing claims it back. A keyboard or screen-reader user
+   * is returned to the top of the document with no idea the form refused them.
+   *
+   * IN AN EFFECT, NOT IN THE SUBMIT HANDLER, and that is the fix for the second
+   * report of this. `setFocus` used to be called inline right after
+   * `setFailure(...)` — which runs BEFORE React commits that state, and before
+   * react-hook-form flips `isSubmitting` back to false and re-renders again. The
+   * focus call therefore raced two renders; it measured as working locally and
+   * still failed on the deployed build. An effect keyed on `failure` runs after
+   * the commit, so the field is settled by the time focus moves.
+   *
+   * VALIDATION failures are NOT handled here — react-hook-form's
+   * `shouldFocusError` is on by default and already lands on the first invalid
+   * field, confirmed as `INPUT[email]`. Adding a second mechanism for that path
+   * would mean two things fighting over the same element.
+   */
+  useEffect(() => {
+    if (failure) setFocus("email");
+  }, [failure, setFocus]);
+
   async function onValid(values: LoginValues) {
     setFailure(null);
     const result = await signInAction(values);
@@ -90,24 +117,6 @@ export function LoginForm({ next }: { next: string }) {
        * asked for and what keeps it out of the way of everything else.
        */
       setFailure(result.message);
-      /*
-       * FOCUS BACK TO THE EMAIL FIELD (Ryan, 2026-08-19: after the failure
-       * "document.activeElement is <body>. Focus is lost entirely, so
-       * screen-reader and keyboard users get no position").
-       *
-       * Measured before fixing: pressing Sign in with a cleared focus left
-       * `activeElement === document.body`, because the submit button is disabled
-       * for the duration of the request and a disabled element cannot hold focus.
-       * Nothing then claimed it back, so a keyboard user was returned to the top
-       * of the document and had to tab in again to retry.
-       *
-       * VALIDATION failures already do this — react-hook-form's `shouldFocusError`
-       * is on by default and focuses the first invalid field, which I confirmed
-       * lands on `INPUT[email]`. Only this server-side branch was missing it, so
-       * only this branch adds it, using RHF's own `setFocus` rather than a ref so
-       * the two paths end in the same place.
-       */
-      setFocus("email");
       return;
     }
     router.push(next);

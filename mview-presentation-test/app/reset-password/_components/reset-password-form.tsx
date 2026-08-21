@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 
 import {
@@ -82,12 +82,18 @@ function RequestLink() {
     defaultValues: { email: "" },
   });
 
+  /* In an effect, not inline after `setFailure` — see the note on sign-in's copy
+     of this: called inline it races the commit and the `isSubmitting` re-render,
+     which is how the same fix failed on a deployed build once already. */
+  useEffect(() => {
+    if (failure) setFocus("email");
+  }, [failure, setFocus]);
+
   async function onValid(values: ForgotPasswordValues) {
     setFailure(null);
     const result = await requestPasswordResetAction(values);
     if (!result.ok) {
       setFailure(result.message);
-      setFocus("email");
       return;
     }
     setSent(true);
@@ -218,12 +224,16 @@ function SetNewPassword({ token }: { token: string }) {
     defaultValues: { password: "", confirmPassword: "" },
   });
 
+  /* Same reasoning as above — after the commit, not inside the handler. */
+  useEffect(() => {
+    if (failure) setFocus("password");
+  }, [failure, setFocus]);
+
   async function onValid(values: ResetPasswordValues) {
     setFailure(null);
     const result = await resetPasswordAction(token, values);
     if (!result.ok) {
       setFailure(result.message);
-      setFocus("password");
       return;
     }
     setDone(true);
