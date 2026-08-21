@@ -477,15 +477,14 @@ function DrawerSignOut({ onDone }: { onDone: () => void }) {
 /* ------------------------------------------------------------------ menus --- */
 
 /**
- * The Explore mega menu: three bordered columns, 660px wide, centred under the
- * bar rather than aligned to its left edge.
+ * The Explore mega menu: two bordered columns, 450px wide, centred under its
+ * trigger.
  *
- * The wrapper is `static` on purpose. `absolute` positioning resolves against
- * the nearest positioned ancestor, so with a `relative` wrapper the panel would
- * hang off the trigger and run past the viewport on the right; `static` lets it
- * resolve against the bar, which is `relative`. Centring is then
- * `left-1/2 -translate-x-1/2` against that same box. The mockup anchors it
- * `left:0`; centred was asked for (Ryan, 2026-08-11).
+ * The wrapper is `relative` so the panel centres on the Explore button. At the
+ * original 660px the panel had to centre under the bar instead (a `static`
+ * wrapper resolving against the bar) or it would run past the viewport on the
+ * right; at 450px it fits under the trigger on every desktop width the bar
+ * renders at.
  */
 function ExploreMenu({
   label,
@@ -502,7 +501,7 @@ function ExploreMenu({
   onNavigate: () => void;
 }) {
   return (
-    <div className="group static flex h-16 items-center">
+    <div className="group relative flex h-16 items-center">
       <button
         type="button"
         aria-expanded={open}
