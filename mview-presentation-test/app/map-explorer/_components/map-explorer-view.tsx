@@ -23,11 +23,19 @@ import {
   type AreaMeasurement,
 } from "./measure-area-panel";
 import { MeasureBar } from "./measure-bar";
-import { NEARBY_RADII, NearbyPanel, NearbyPrompt } from "./nearby-panel";
+import {
+  NEARBY_RADII,
+  NearbyPanel,
+  NearbyPrompt,
+  type NearbyAnswer,
+  type NearbyLease,
+} from "./nearby-panel";
 import {
   getClusterListMap,
   getLegendListMap,
+  getLeaseNearbyMap,
   getMatchedWellsMap,
+  getWellSummaryMap,
   getWellListMap,
   type MapTableRow,
   type MapWell,
@@ -42,10 +50,9 @@ import {
   type WellCluster,
 } from "./cluster-graphics";
 import {
-  lookupCounty,
-  downloadNearbyCsv,
+  downloadNearbyFilings,
   measureTract,
-  nearbyStats,
+  nearestWellsTo,
   wellsInArea,
   wellsInBox,
   METRES_PER_MILE,
@@ -249,8 +256,6 @@ type ActiveTool =
 const CIRCLE_STEP_DEGREES = 6;
 
 /** The radius the watch card opens on, matching the mock. */
-const DEFAULT_WATCH_RADIUS_MILES = 2;
-
 /**
  * Insights opens on an even split. The bounds stop the drag from collapsing
  * either side to nothing — a map you cannot see is not a map, and the summary
@@ -380,6 +385,16 @@ const SAMPLE_INTERVAL_MS = 40;
 /** One corner of the sample tract per beat, as if being clicked out. */
 const SAMPLE_CORNER_MS = 750;
 const WELL_ZOOM_SCALE = 200_000;
+
+/**
+ * How many wells out from the click to try before giving up on the lease.
+ *
+ * Records without a lease number are common enough that the nearest well alone
+ * fails often; four is enough to get past a run of them without turning one
+ * click into a burst of requests. They are tried in order and it stops at the
+ * first that answers, so the usual cost is one.
+ */
+const LEASE_TRIES = 4;
 
 type ScreenPoint = { x: number; y: number };
 
@@ -511,37 +526,6 @@ function sampleLine(view: EsriView | null): [LonLat, LonLat] | null {
       latitude: box.midLat + box.spanLat * 0.1,
     },
   ];
-}
-
-/*
- * Where the sample watch circle goes.
- *
- * The busiest bubble on screen rather than the middle of the view: a two-mile
- * circle dropped on the centre of a statewide map landed in empty country and
- * reported nought wells and a nearest bore 33 miles away, which demonstrates
- * the tool finding nothing. Falls back to the middle when there are no bubbles
- * — the wells themselves are already the close view.
- */
-function samplePoint(
-  view: EsriView | null,
-  clusters: WellCluster[],
-): LonLat | null {
-  const box = viewBox(view);
-  if (!box) return null;
-
-  const inView = clusters.filter(
-    ({ at: [lon, lat] }) =>
-      lon >= box.west && lon <= box.east && lat >= box.south && lat <= box.north,
-  );
-
-  const busiest = inView.reduce<WellCluster | null>(
-    (best, cluster) => (!best || cluster.count > best.count ? cluster : best),
-    null,
-  );
-
-  return busiest
-    ? { longitude: busiest.at[0], latitude: busiest.at[1] }
-    : { longitude: box.midLon, latitude: box.midLat };
 }
 
 /*
@@ -693,6 +677,40 @@ export function MapExplorerView() {
   const tractLayerRef = useRef<EsriGraphicsLayer | null>(null);
 
   const [nearby, setNearby] = useState<Nearby | null>(null);
+  /*
+   * Whether the lease card is open — kept apart from which tool is armed.
+   *
+   * Arming ends at the first map click, and that click is a legitimate thing
+   * to do while the card is up: the circle is the other way of asking. Tying
+   * the card to `activeTool` meant a stray click threw away the lease and the
+   * answer it had already fetched.
+   */
+  const [leaseNearbyOpen, setLeaseNearbyOpen] = useState(false);
+  /** The distance being asked about — one of the service's own rings. */
+  const [watchRadius, setWatchRadius] = useState<number>(NEARBY_RADII[0]);
+  /*
+   * The lease under the point that was clicked, once it is known.
+   *
+   * The service answers by lease, and a click is a point — so the lease has to
+   * be found first: the nearest loaded well, then that well's record, which
+   * carries the district and the lease number the key is made of. Null until
+   * it comes back, and while it is null the card shows its search instead.
+   */
+  /**
+   * The lease the click was traced to, and what the service said about it.
+   *
+   * Two states rather than one because they arrive separately: the lease comes
+   * from the nearest well's record, then the ring is asked for. `problem`
+   * carries either failure — a click that could not be traced to a lease, or a
+   * lease the service could not answer for — because to the reader they are the
+   * same thing: no answer, and a reason.
+   */
+  const [watchLease, setWatchLease] = useState<NearbyLease | null>(null);
+  const [watchAnswer, setWatchAnswer] = useState<NearbyAnswer>({
+    kind: "looking",
+  });
+  /** Guards against a slower lookup landing after a newer click. */
+  const leaseRequestRef = useRef(0);
   /**
    * Cluster under the pointer, with its bubble's top edge on screen and how
    * tall the bubble is — the card needs the height to flip below it when there
@@ -747,11 +765,7 @@ export function MapExplorerView() {
   const wellHoverRef = useRef(0);
 
   /** Undefined while the county lookup is in flight. */
-  const [nearbyCounty, setNearbyCounty] = useState<string | null | undefined>(
-    undefined,
-  );
   /** Guards against a slow lookup landing after a newer pick. */
-  const countyRequestRef = useRef(0);
 
   const activeToolRef = useRef<ActiveTool>(null);
   /*
@@ -2203,17 +2217,10 @@ export function MapExplorerView() {
             longitude: event.mapPoint.longitude,
             latitude: event.mapPoint.latitude,
           };
-          const next: Nearby = {
-            at,
-            radiusMiles: DEFAULT_WATCH_RADIUS_MILES,
-            stats: nearbyStats(
-              clustersRef.current,
-              at,
-              DEFAULT_WATCH_RADIUS_MILES,
-              ctors.geodesic,
-              ctors.Point,
-            ),
-          };
+          /* A fresh click starts at the tightest ring, which is what the
+             service is asked for first. */
+          const next: Nearby = { at, radiusMiles: NEARBY_RADII[0] };
+          setWatchRadius(NEARBY_RADII[0]);
 
           nearbyRef.current = next;
           setNearby(next);
@@ -2221,12 +2228,69 @@ export function MapExplorerView() {
           frameRadius(at);
           anchorBars();
 
-          const request = ++countyRequestRef.current;
-          setNearbyCounty(undefined);
-          void lookupCounty(at).then((name) => {
-            // Ignore a result that a newer pick has already superseded.
-            if (request === countyRequestRef.current) setNearbyCounty(name);
-          });
+          /*
+           * And ask the service what is near the lease that point sits on.
+           *
+           * The circle above is measured from what the map has loaded; this is
+           * the lease's own record. Two steps, because a click knows only
+           * where it landed: the nearest well, then that well's summary, which
+           * is where the district and the lease number come from.
+           */
+          const candidates = nearestWellsTo(at, wellsRef.current, LEASE_TRIES);
+          const leaseRequest = ++leaseRequestRef.current;
+
+          /* The card says something in every branch below, including the ones
+             that fail — a click that answers with nothing reads as a broken
+             tool. */
+          setLeaseNearbyOpen(true);
+          setWatchLease(null);
+          setWatchAnswer({ kind: "looking" });
+
+          if (candidates.length === 0) {
+            setWatchAnswer({
+              kind: "problem",
+              message:
+                "No well is loaded near that point, so there is no lease to ask about. Zoom in until the wells are drawn, then click your land again.",
+            });
+          } else {
+            /*
+             * Outward from the click until a record names its lease.
+             *
+             * A well's record does not always carry a lease number, and
+             * without one there is no key to ask the service about. Rather
+             * than give up on the nearest well, the next few are tried in
+             * order — one at a time, stopping at the first that answers, so
+             * the usual case is still a single request.
+             */
+            void (async () => {
+              for (const well of candidates) {
+                let summary;
+                try {
+                  summary = await getWellSummaryMap(well.api);
+                } catch {
+                  continue;
+                }
+                if (leaseRequest !== leaseRequestRef.current) return;
+
+                const district =
+                  summary.lease?.district ?? summary.identity?.district;
+                const number = summary.lease?.leaseNumber;
+                if (!district || !number) continue;
+
+                setWatchLease({
+                  key: `${district}-${number}`,
+                  name: summary.lease?.leaseName ?? well.lease,
+                });
+                return;
+              }
+
+              if (leaseRequest !== leaseRequestRef.current) return;
+              setWatchAnswer({
+                kind: "problem",
+                message: `None of the ${candidates.length} wells nearest that point names a lease number on its record, so the service cannot be asked about a lease there. Try clicking closer to a well.`,
+              });
+            })();
+          }
 
           activeToolRef.current = null;
           setActiveTool(null);
@@ -2478,68 +2542,6 @@ export function MapExplorerView() {
     [anchorBars, drawMeasurement],
   );
 
-  /** Opens the sample watch circle out from its centre. */
-  const playSampleWatch = useCallback(
-    (at: LonLat) => {
-      const ctors = ctorsRef.current;
-      if (!ctors) return;
-
-      /*
-       * Frame it first, as picking a point does.
-       *
-       * At the opening scale a two-mile circle is three pixels across — the
-       * sample was drawing correctly and there was simply nothing to see.
-       */
-      frameRadius(at);
-
-      clearInterval(sampleTimerRef.current);
-      let frame = 0;
-
-      const step = () => {
-        frame += 1;
-        const through = Math.min(1, frame / SAMPLE_FRAMES);
-        const eased = 1 - (1 - through) ** 3;
-        // Never quite zero: a circle of no radius has nothing to draw.
-        const radiusMiles = Math.max(
-          0.05,
-          DEFAULT_WATCH_RADIUS_MILES * eased,
-        );
-
-        const stats = nearbyStats(
-          clustersRef.current,
-          at,
-          radiusMiles,
-          ctors.geodesic,
-          ctors.Point,
-        );
-        drawNearby({ at, radiusMiles, stats });
-        if (through < 1) return;
-
-        clearInterval(sampleTimerRef.current);
-        sampleTimerRef.current = undefined;
-
-        const next: Nearby = {
-          at,
-          radiusMiles: DEFAULT_WATCH_RADIUS_MILES,
-          stats,
-        };
-        nearbyRef.current = next;
-        setNearby(next);
-        setSampleOf("whats-near-my-land");
-
-        const request = ++countyRequestRef.current;
-        setNearbyCounty(undefined);
-        void lookupCounty(at).then((name) => {
-          if (request === countyRequestRef.current) setNearbyCounty(name);
-        });
-      };
-
-      step();
-      sampleTimerRef.current = setInterval(step, SAMPLE_INTERVAL_MS);
-    },
-    [drawNearby, frameRadius],
-  );
-
   /*
    * Clicks the sample tract out corner by corner, which is the gesture it is
    * standing in for — one beat each, then the ring closes and is measured.
@@ -2606,10 +2608,8 @@ export function MapExplorerView() {
 
       // The county lookup is in flight for the old pick; its answer is no
       // longer wanted.
-      countyRequestRef.current += 1;
       nearbyRef.current = null;
       setNearby(null);
-      setNearbyCounty(undefined);
       drawNearby(null);
 
       tractRef.current = [];
@@ -2617,10 +2617,20 @@ export function MapExplorerView() {
       drawTract([], false);
 
       // Draw an area opens with a worked example rather than an empty map.
+      /* Arming opens nothing: the card appears on the first click. */
+      setLeaseNearbyOpen(false);
+      leaseRequestRef.current += 1;
+      setWatchLease(null);
+      setWatchAnswer({ kind: "looking" });
+
       /*
-       * Every tool opens with a worked example rather than an empty map: each
-       * one waits for a gesture, and which gesture is not something the panel
+       * The drawing tools open with a worked example rather than an empty map:
+       * each waits for a gesture, and which gesture is not something a panel
        * can say in a sentence anybody reads.
+       *
+       * "What's near my land?" has none. It no longer waits for a gesture —
+       * it asks which lease, and the card that asks is the instruction. A
+       * demo circle only put a second answer on the map beside the real one.
        */
       if (tool === "draw-area") {
         const sample = sampleArea(viewRef.current);
@@ -2628,9 +2638,6 @@ export function MapExplorerView() {
       } else if (tool === "measure-distance") {
         const line = sampleLine(viewRef.current);
         if (line) playSampleLine(line[0], line[1]);
-      } else if (tool === "whats-near-my-land") {
-        const at = samplePoint(viewRef.current, clustersRef.current);
-        if (at) playSampleWatch(at);
       } else if (tool === "measure-area") {
         const corners = sampleTract(viewRef.current);
         if (corners) playSampleTract(corners);
@@ -2644,29 +2651,20 @@ export function MapExplorerView() {
       playSampleArea,
       playSampleLine,
       playSampleTract,
-      playSampleWatch,
     ],
   );
 
   const changeWatchRadius = useCallback(
     (radiusMiles: number) => {
       const current = nearbyRef.current;
-      const ctors = ctorsRef.current;
-      if (!current || !ctors) return;
+      if (!current) return;
 
-      const next: Nearby = {
-        ...current,
-        radiusMiles,
-        stats: nearbyStats(
-          clustersRef.current,
-          current.at,
-          radiusMiles,
-          ctors.geodesic,
-          ctors.Point,
-        ),
-      };
+      /* The circle is redrawn here; the figures come from the effect below,
+         which asks the service for the new ring. */
+      const next: Nearby = { ...current, radiusMiles };
       nearbyRef.current = next;
       setNearby(next);
+      setWatchRadius(radiusMiles);
       drawNearby(next);
       anchorBars();
     },
@@ -2674,10 +2672,8 @@ export function MapExplorerView() {
   );
 
   const clearNearby = useCallback(() => {
-    countyRequestRef.current += 1;
     nearbyRef.current = null;
     setNearby(null);
-    setNearbyCounty(undefined);
     drawNearby(null);
   }, [drawNearby]);
 
@@ -2775,12 +2771,46 @@ export function MapExplorerView() {
   );
 
   const downloadNearby = useCallback(() => {
-    const current = nearbyRef.current;
-    const ctors = ctorsRef.current;
-    if (current && ctors) {
-      downloadNearbyCsv(clustersRef.current, current, ctors.geodesic, ctors.Point);
-    }
-  }, []);
+    if (watchAnswer.kind === "ready") downloadNearbyFilings(watchAnswer.data);
+  }, [watchAnswer]);
+
+  /*
+   * The ring itself, asked for whenever the lease or the distance changes.
+   *
+   * Kept as an effect rather than done in the click and again in the radius
+   * buttons: both of those only change what is being asked, and one place that
+   * notices is less to keep in step. The answer is stored against what it
+   * answers, so a slower reply for a distance no longer chosen is ignored
+   * rather than shown.
+   */
+  useEffect(() => {
+    if (!watchLease) return;
+
+    let cancelled = false;
+    const asked = `${watchLease.key}@${watchRadius}`;
+
+    getLeaseNearbyMap(watchLease.key, watchRadius)
+      .then((found) => {
+        if (cancelled || asked !== `${watchLease.key}@${watchRadius}`) return;
+        setWatchAnswer(
+          found ? { kind: "ready", data: found } : { kind: "no-ring" },
+        );
+      })
+      .catch((failure: unknown) => {
+        if (cancelled) return;
+        setWatchAnswer({
+          kind: "problem",
+          message:
+            failure instanceof Error
+              ? failure.message
+              : "Could not read what is near this lease.",
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [watchLease, watchRadius]);
 
   const clearArea = useCallback(() => {
     areaRef.current = null;
@@ -3080,9 +3110,39 @@ export function MapExplorerView() {
         />
       )}
 
-      {status === "ready" && activeTool === "whats-near-my-land" && (
-        <NearbyPrompt />
-      )}
+      {/*
+          Armed, this tool asks which lease — that is what the service holds
+          rings for, and a lease is what "my land" means. The prompt underneath
+          keeps the other way in: clicking the map still draws the circle and
+          the quick local estimate.
+      */}
+      {/*
+          Armed, this tool asks which lease — a lease is what "my land" means,
+          and it is what the service holds rings for.
+
+          Both ways in are on screen at once, which is why this one sits at the
+          top: the sample circle and the card it opens own the bottom of the
+          map, and the two were landing on the same pixels. Clicking the map
+          still draws the circle and its local estimate; naming the lease is
+          what asks the service.
+      */}
+      {/*
+          The lease card stays up until it is closed, whatever the map does
+          around it. Clicking the map is the other way of asking — it draws the
+          circle and its local estimate — and doing that must not discard an
+          answer the service has already given.
+      */}
+      {/*
+          Only once a click has found a lease. There is nothing to show before
+          that — the question is asked by clicking your land, and the prompt
+          below says so.
+
+          Keyed by the lease, so a new click opens the card on the new lease
+          rather than leaving the last answer on screen while the next loads.
+      */}
+      {status === "ready" &&
+        activeTool === "whats-near-my-land" &&
+        !leaseNearbyOpen && <NearbyPrompt />}
 
       {status === "ready" &&
         (activeTool === "measure-area" || tractResult) && (
@@ -3103,21 +3163,18 @@ export function MapExplorerView() {
           />
         )}
 
-      {status === "ready" && nearby && (
+      {/* One card for this tool: the circle on the map, and what the service
+          says about the lease under it. */}
+      {status === "ready" && leaseNearbyOpen && nearby && (
         <NearbyPanel
           className="absolute bottom-6 left-1/2"
           coordinates={nearby.at}
-          county={nearbyCounty}
-          radiusMiles={nearby.radiusMiles}
-          stats={nearby.stats}
+          radiusMiles={watchRadius}
+          lease={watchLease}
+          answer={watchAnswer}
           onRadiusChange={changeWatchRadius}
           onDownload={downloadNearby}
-          sample={sampleOf === "whats-near-my-land"}
-          onClose={
-            sampleOf === "whats-near-my-land"
-              ? () => dismissSample("whats-near-my-land")
-              : clearNearby
-          }
+          onClose={clearNearby}
         />
       )}
 

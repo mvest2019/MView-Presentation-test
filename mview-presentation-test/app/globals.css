@@ -248,19 +248,25 @@
    under a table whose columns continue past the edge: there the bar is the
    only thing saying so, and #d3d7dd on white is close to invisible.
 
-   Chrome prefers `scrollbar-color` over the `::-webkit-scrollbar` rules when a
-   page sets both, and Firefox reads only the former, so the colour is stated
-   twice and the two must be kept in step. `scrollbar-width: thin` is inherited
-   from the class above; the explicit height is what Chrome uses when it takes
-   the pseudo-element path instead.
+   Both standard properties are put back to `auto` on purpose. Chrome uses one
+   path or the other: with `scrollbar-color` or a non-auto `scrollbar-width`
+   set it renders the standard bar and ignores every `::-webkit-scrollbar` rule
+   — and `thin` is about 11px, wider than wanted, with no way to ask for less
+   because the property takes no length. Returning both to their initial value
+   hands Chrome back to the pseudo-elements below, where a width can be named.
+
+   The cost is Firefox, which reads only the standard properties and so draws
+   its own default bar here rather than a black one. A narrower bar in the
+   browser this is used in beats a black one everywhere.
    ---------------------------------------------------------------------------- */
 .mv-thin-scroll.mv-scroll-dark {
-  scrollbar-color: var(--color-mv-ink) var(--color-mv-line-soft);
+  scrollbar-width: auto;
+  scrollbar-color: auto;
 }
 
 .mv-thin-scroll.mv-scroll-dark::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
+  width: 6px;
+  height: 6px;
 }
 
 .mv-thin-scroll.mv-scroll-dark::-webkit-scrollbar-track {

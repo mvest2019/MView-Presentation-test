@@ -41,13 +41,35 @@ export type MapTool = {
   icon: LucideIcon;
   /** Renders the amber PRO badge and marks the button as gated. */
   pro?: boolean;
+  /**
+   * Whether the tool needs the map to be drawing individual wells.
+   *
+   * True for everything that measures what is on screen. False for a tool that
+   * asks the service a question instead — naming a lease needs no zoom, and
+   * gating it behind one meant the reader had to find their land on the map
+   * before they could ask what was near it.
+   */
+  needsWells?: boolean;
 };
 
 export const MAP_TOOLS: MapTool[] = [
-  { id: "draw-area", label: "Draw an area", icon: SquareDashed, pro: true },
-  { id: "measure-distance", label: "Measure distance", icon: Ruler },
+  {
+    id: "draw-area",
+    label: "Draw an area",
+    icon: SquareDashed,
+    pro: true,
+    needsWells: true,
+  },
+  {
+    id: "measure-distance",
+    label: "Measure distance",
+    icon: Ruler,
+    needsWells: true,
+  },
+  /* Answered by the service from the lease's own records, so it works at any
+     zoom — see `lease-nearby.tsx`. */
   { id: "whats-near-my-land", label: "What's near my land?", icon: Crosshair },
-  { id: "measure-area", label: "Measure area", icon: LandPlot },
+  { id: "measure-area", label: "Measure area", icon: LandPlot, needsWells: true },
 ];
 
 type ToolsPanelProps = {
@@ -100,20 +122,24 @@ export function ToolsPanel({
       </div>
 
       <div className="flex flex-col gap-2 lg:gap-[10px]">
-        {tools.map(({ id, label, icon: Icon, pro }) => (
+        {tools.map(({ id, label, icon: Icon, pro, needsWells }) => {
+          /* Only the tools that measure the map wait for the map. */
+          const gated = Boolean(needsWells) && !wellsVisible;
+
+          return (
           <button
             key={id}
             type="button"
             aria-pressed={id === activeId}
-            aria-disabled={!wellsVisible}
+            aria-disabled={gated}
             title={
-              wellsVisible
-                ? undefined
-                : "Zoom in until the wells appear — this tool reads well data"
+              gated
+                ? "Zoom in until the wells appear — this tool reads well data"
+                : undefined
             }
             onClick={() => {
               // Over bubbles the click asks for the wells instead of arming.
-              if (!wellsVisible) {
+              if (gated) {
                 setAsked(true);
                 return;
               }
@@ -136,8 +162,9 @@ export function ToolsPanel({
               {label}
             </span>
             {pro && <ProBadge />}
-          </button>
-        ))}
+            </button>
+          );
+        })}
       </div>
 
       {/* Why nothing happened, in the panel that was clicked rather than in a
