@@ -5,8 +5,6 @@ import { unstable_cache } from "next/cache";
 import {
   operatorLogoPath,
   OPERATOR_ENDPOINTS,
-  type OperatorCountiesResponse,
-  type OperatorPlayTypesResponse,
   type OperatorSearchRequest,
   type OperatorSearchResponse,
 } from "./operator-api-types";
@@ -142,96 +140,103 @@ async function getJson<T>(path: string): Promise<T> {
   }
 }
 
-/**
- * `GET /api/v1/operators/playtypes`. Response shape and field notes live in
- * `operator-api-types.ts`.
- */
+/* ==========================================================================
+   The three option-list endpoints
+
+   `/playtypes`, `/counties` and `/district-codes` are the same shape: one key
+   holding a flat array of upper-case strings. They were written out separately
+   while there were two of them, with a note that a third arriving was the point
+   to factor all three. District codes is that third, so here it is.
+
+   WHAT STAYS PER-ENDPOINT: the JSON key (`playtypes`, `counties`,
+   `districtCodes` — note the camelCase on the last), the cache key, and the
+   sentence logged when a list comes back empty, because "the filter will show
+   only its default option" means something different for each filter.
+
+   ORDER IS PRESERVED IN ALL THREE. Counties arrive alphabetical, districts in
+   the regulator's own sequence (`06`, `6E`, `7B`… `08`, `8A`, `09`). Re-sorting
+   districts as strings would read wrong to anyone who knows them.
+   ========================================================================== */
 
 /**
- * Play type names for the directory's filter, in the order the API returns them.
+ * One option list, read and validated.
  *
  * Throws if the API is unreachable, answers non-2xx, or sends something that is
- * not `{ playtypes: string[] }`. Callers decide how to degrade; nothing is
- * swallowed silently.
+ * not `{ [key]: string[] }`. Callers decide how to degrade; nothing is swallowed
+ * silently. A single non-string or blank entry is dropped rather than allowed to
+ * blank the whole filter.
  */
+async function readOptionList(
+  endpoint: string,
+  key: string,
+  emptyWarning: string,
+): Promise<string[]> {
+  const payload = await getJson<unknown>(endpoint);
+
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !(key in payload) ||
+    !Array.isArray((payload as Record<string, unknown>)[key])
+  ) {
+    throw new Error(`GET ${endpoint} did not return { ${key}: string[] }`);
+  }
+
+  const values = ((payload as Record<string, unknown>)[key] as unknown[])
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+  if (values.length === 0) console.warn(emptyWarning);
+  return values;
+}
+
+/** Play type names for the directory's filter, in the order the API returns them. */
 export const getOperatorPlayTypes = unstable_cache(
-  async (): Promise<string[]> => {
-    const payload = await getJson<unknown>(OPERATOR_ENDPOINTS.playTypes);
-
-    if (
-      !payload ||
-      typeof payload !== "object" ||
-      !("playtypes" in payload) ||
-      !Array.isArray((payload as OperatorPlayTypesResponse).playtypes)
-    ) {
-      throw new Error(
-        "GET /api/v1/operators/playtypes did not return { playtypes: string[] }",
-      );
-    }
-
-    const names = (payload as OperatorPlayTypesResponse).playtypes
-      // Defensive: one non-string or blank entry should not blank the filter.
-      .filter((value): value is string => typeof value === "string")
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0);
-
-    if (names.length === 0) {
-      console.warn(
-        "[operator-api] /playtypes returned no usable play types — the filter " +
-          "will show only its default option.",
-      );
-    }
-
-    return names;
-  },
+  async (): Promise<string[]> =>
+    readOptionList(
+      OPERATOR_ENDPOINTS.playTypes,
+      "playtypes",
+      "[operator-api] /playtypes returned no usable play types — the filter " +
+        "will show only its default option.",
+    ),
   ["operator-play-types"],
   { revalidate: REVALIDATE_SECONDS, tags: ["operators"] },
 );
 
 /**
- * County names for the directory's filter and the county browse grid, in the
- * order the API returns them (alphabetical, upper case).
+ * County names for the directory's filter and the county browse grid.
  *
- * Deliberately a near-copy of `getOperatorPlayTypes` rather than a shared
- * `{ key: string[] }` helper: the two are independent endpoints that happen to
- * agree on shape today, and folding them together would mean touching the working
- * play types reader. If a third list endpoint appears, that is the point to
- * factor all three.
- *
- * Throws if the API is unreachable, answers non-2xx, or sends something that is
- * not `{ counties: string[] }`. Callers decide how to degrade.
+ * 255 entries, and NOT the canonical list of 254 Texas counties — see
+ * `OperatorCountiesResponse` for what is in it and what is missing.
  */
 export const getOperatorCounties = unstable_cache(
-  async (): Promise<string[]> => {
-    const payload = await getJson<unknown>(OPERATOR_ENDPOINTS.counties);
-
-    if (
-      !payload ||
-      typeof payload !== "object" ||
-      !("counties" in payload) ||
-      !Array.isArray((payload as OperatorCountiesResponse).counties)
-    ) {
-      throw new Error(
-        "GET /api/v1/operators/counties did not return { counties: string[] }",
-      );
-    }
-
-    const names = (payload as OperatorCountiesResponse).counties
-      // Defensive: one non-string or blank entry should not blank the filter.
-      .filter((value): value is string => typeof value === "string")
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0);
-
-    if (names.length === 0) {
-      console.warn(
-        "[operator-api] /counties returned no usable counties — the filter will " +
-          "show only its default option and the browse grid will be empty.",
-      );
-    }
-
-    return names;
-  },
+  async (): Promise<string[]> =>
+    readOptionList(
+      OPERATOR_ENDPOINTS.counties,
+      "counties",
+      "[operator-api] /counties returned no usable counties — the filter will " +
+        "show only its default option and the browse grid will be empty.",
+    ),
   ["operator-counties"],
+  { revalidate: REVALIDATE_SECONDS, tags: ["operators"] },
+);
+
+/**
+ * Railroad Commission district codes, in the regulator's own order.
+ *
+ * Strings, not numbers: `01` keeps its leading zero and `6E`/`7B`/`7C`/`8A` are
+ * not numeric at all. The compare payload matches on these exact strings.
+ */
+export const getOperatorDistrictCodes = unstable_cache(
+  async (): Promise<string[]> =>
+    readOptionList(
+      OPERATOR_ENDPOINTS.districtCodes,
+      "districtCodes",
+      "[operator-api] /district-codes returned no usable codes — the district " +
+        "filter will show only its default option.",
+    ),
+  ["operator-district-codes"],
   { revalidate: REVALIDATE_SECONDS, tags: ["operators"] },
 );
 

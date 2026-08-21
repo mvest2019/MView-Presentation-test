@@ -14,7 +14,6 @@ import {
   COMPARE_SLOT_COUNT,
   MIN_OPERATORS,
   NO_OPERATOR,
-  STATISTICS_TREND_YEARS,
   buildCompanyRows,
   buildFullMatrixRows,
   buildProductionRows,
@@ -33,7 +32,7 @@ import {
 } from "@/lib/operator-statistics";
 
 import { ComparisonMatrix } from "./_components/comparison-matrix";
-import { OperatorSlotPicker } from "./_components/operator-slot-picker";
+import { OperatorSlotPicker } from "@/app/_components/operator-slot-picker";
 import { TrendCards } from "./_components/trend-cards";
 import { useOperatorComparison } from "./_components/use-operator-comparison";
 
@@ -48,7 +47,7 @@ import { useOperatorComparison } from "./_components/use-operator-comparison";
  *
  * What is deliberately separate:
  *   · `lib/operator-statistics.ts` — every calculation and every table row.
- *   · `_components/operator-slot-picker.tsx` — the combobox, which owns three
+ *   · `app/_components/operator-slot-picker.tsx` — the combobox, which owns three
  *     interaction states per slot and re-renders on every keystroke.
  *   · `_components/comparison-matrix.tsx` and `trend-cards.tsx` — server
  *     components, so four tables and four charts cost no client JavaScript.
@@ -78,6 +77,10 @@ export function StatisticsPage() {
      The endpoint does not answer in the order it was asked — requesting Pioneer,
      EOG, XTO, Devon returns EOG, Devon, Pioneer, XTO — so zipping by index would
      quietly show one operator's numbers under another's name. */
+  /* The trend years the response was built against. Empty until a comparison has
+     arrived, which is also when nothing reads them. */
+  const trendYears = state.status === "ready" ? state.years : EMPTY_YEARS;
+
   const byName = useMemo(() => {
     if (state.status !== "ready") return null;
     return new Map(
@@ -144,7 +147,7 @@ export function StatisticsPage() {
   }
 
   function exportCsv() {
-    const csv = toCsv(buildStatisticsCsvRows(operators));
+    const csv = toCsv(buildStatisticsCsvRows(operators, trendYears));
     // A client-side blob: every figure is already in the browser, so a round trip
     // would only add latency and an endpoint to maintain.
     const url = URL.createObjectURL(
@@ -255,6 +258,7 @@ export function StatisticsPage() {
         <Results
           operators={operators}
           leaders={leaders}
+          years={trendYears}
           onEdit={editSelection}
           onExport={exportCsv}
         />
@@ -332,6 +336,9 @@ function EmptyState({ onExample }: { onExample: () => void }) {
   );
 }
 
+/** Stable, so a render before the comparison lands does not churn dependents. */
+const EMPTY_YEARS: readonly number[] = [];
+
 /* ==========================================================================
    Results
    ========================================================================== */
@@ -339,16 +346,17 @@ function EmptyState({ onExample }: { onExample: () => void }) {
 function Results({
   operators,
   leaders,
+  years,
   onEdit,
   onExport,
 }: {
   operators: StatisticsOperator[];
   leaders: StatisticsLeaders;
+  /** The trend years from the API — see `useOperatorComparison`. */
+  years: readonly number[];
   onEdit: () => void;
   onExport: () => void;
 }) {
-  const years = STATISTICS_TREND_YEARS;
-
   return (
     <>
       {/* ---- toolbar ---- */}
@@ -495,7 +503,7 @@ function Results({
         </p>
         <ComparisonMatrix
           operators={operators}
-          rows={buildProductionRows(operators)}
+          rows={buildProductionRows(operators, years)}
           caption="Reported production volumes for the selected operators"
         />
       </section>
@@ -506,7 +514,7 @@ function Results({
           title="Historical production trends"
           sub={`Annual BOE, ${years[0]}–${years.at(-1)} · from filed RRC records.`}
         />
-        <TrendCards operators={operators} />
+        <TrendCards operators={operators} years={years} />
         <p className="mb-3 text-[12.5px] text-mv-muted">
           Each card is scaled to its own operator, so the lines show shape
           rather than relative size. Best value each year is marked{" "}
@@ -514,7 +522,7 @@ function Results({
         </p>
         <ComparisonMatrix
           operators={operators}
-          rows={buildTrendRows(operators)}
+          rows={buildTrendRows(operators, years)}
           caption={`Annual BOE by year, ${years[0]} to ${years.at(-1)}`}
         />
         <p className="mt-[10px] text-[12px] text-mv-muted">
@@ -541,7 +549,7 @@ function Results({
             </p>
             <ComparisonMatrix
               operators={operators}
-              rows={buildFullMatrixRows(operators)}
+              rows={buildFullMatrixRows(operators, years)}
               caption="Every compared metric for the selected operators"
             />
           </div>

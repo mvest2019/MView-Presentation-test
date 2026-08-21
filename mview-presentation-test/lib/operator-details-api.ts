@@ -41,12 +41,18 @@ export interface OperatorDetailsTopCounty {
 }
 
 /** A month-over-month or year-over-year comparison. */
+/**
+ * A month-on-month or year-on-year comparison.
+ *
+ * NULLABLE THROUGHOUT, like the block that holds it: an operator with nothing to
+ * compare returns every field null rather than omitting the object.
+ */
 export interface OperatorDetailsComparison {
-  month: string;
-  month_label: string;
-  boe: number;
-  change_percent: number;
-  direction: "up" | "down";
+  month: string | null;
+  month_label: string | null;
+  boe: number | null;
+  change_percent: number | null;
+  direction: "up" | "down" | null;
 }
 
 export interface OperatorDetailsRecord {
@@ -89,11 +95,19 @@ export interface OperatorDetailsRecord {
 export interface OperatorCondition {
   /** ISO date the whole block was computed for. */
   as_of: string;
+  /**
+   * EVERY FIELD HERE CAN BE NULL, and the type says so because the live response
+   * does. An operator with no filed production — a services company, say — returns
+   * the block with `month`, `boe`, `mmboe` and both comparisons all null. Modelling
+   * them as required is what made the detail page crash with
+   * `Cannot read properties of null (reading 'toFixed')` the moment the route stopped
+   * being limited to thirty major producers.
+   */
   latest_monthly_boe: {
-    month: string;
-    month_label: string;
-    boe: number;
-    mmboe: number;
+    month: string | null;
+    month_label: string | null;
+    boe: number | null;
+    mmboe: number | null;
     mom: OperatorDetailsComparison;
     yoy: OperatorDetailsComparison;
   };
@@ -182,7 +196,10 @@ export async function fetchOperatorDetails(
 
     // TEMPORARY — remove after inspecting. Server-side only (this module is
     // `server-only`), so it prints in the `next dev` terminal, never the browser.
-    console.log(`[operator-details-api] ${operatorNumber}`, JSON.stringify(body, null, 2));
+    console.log(
+      `[operator-details-api] ${operatorNumber}`,
+      JSON.stringify(body, null, 2),
+    );
 
     if (!isDetailsResponse(body)) {
       console.error("[operator-detail] unexpected details body", {

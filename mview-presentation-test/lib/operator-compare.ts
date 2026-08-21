@@ -2,8 +2,8 @@
  * Compare Operator Production — the arithmetic, with no React in it.
  *
  * Every number the page shows is derived here: cumulative volumes, the oil/gas
- * split, year-over-year, compound growth, swing, production per lease, and which
- * operator leads each of those. Keeping it in a pure module means the figures can
+ * split, compound growth, production per lease, and which operator leads each of
+ * those. Keeping it in a pure module means the figures can
  * be checked without rendering anything, and it is the layer that changes when a
  * real compare endpoint replaces the fixture — see the seam note below.
  *
@@ -57,7 +57,12 @@ export interface CompareOperator {
   /** Position in the statewide production ranking. */
   rank: number;
   leases: number;
+  /** Leases currently producing, against `leases` as the lifetime count. */
+  activeLeases: number;
   counties: number;
+  /** First and latest filed production month, as the record words them. */
+  productionStart: string;
+  productionEnd: string;
   /** Most-active counties, title-cased, highest first. */
   topCounties: string[];
   /** Millions of BOE per year, one per `COMPARE_YEARS` index. */
@@ -129,19 +134,11 @@ export function formatCount(value: number): string {
 /* --------------------------------------------------------------------------
    Series arithmetic
 
-   Each takes a series already in millions. They read the whole series, not the
-   brushed window: the brush scopes the chart and the year table, while momentum
-   and the generated read always describe the full filed record. Changing that
-   would let the page claim "10-yr growth" from three years of data.
+   Each takes a series already in millions, and reads the WHOLE series rather than
+   the brushed window: the brush scopes the chart and the year table, while the
+   generated read always describes the full filed record. Changing that would let
+   the page claim "10-yr growth" from three years of data.
    -------------------------------------------------------------------------- */
-
-/** Change from the second-to-last year to the last, as a percentage. */
-export function yearOverYear(series: number[]): number {
-  const previous = series.at(-2);
-  const latest = series.at(-1);
-  if (previous === undefined || latest === undefined || previous === 0) return 0;
-  return (latest / previous - 1) * 100;
-}
 
 /** Compound annual growth across the series, as a percentage per year. */
 export function compoundGrowth(series: number[]): number {
@@ -151,23 +148,6 @@ export function compoundGrowth(series: number[]): number {
     return 0;
   }
   return (Math.pow(last / first, 1 / (series.length - 1)) - 1) * 100;
-}
-
-/**
- * Mean absolute year-on-year move — how much the operator's output jumps about,
- * regardless of direction. A steady 3% climb and a ±40% sawtooth can share a
- * growth rate; this is what separates them.
- */
-export function swing(series: number[]): number {
-  if (series.length < 2) return 0;
-  let total = 0;
-  for (let index = 1; index < series.length; index += 1) {
-    const previous = series[index - 1];
-    const current = series[index];
-    if (previous === undefined || current === undefined || previous === 0) continue;
-    total += Math.abs(current / previous - 1);
-  }
-  return (total / (series.length - 1)) * 100;
 }
 
 /**
@@ -285,7 +265,10 @@ function toCompareOperator(
     operatorNumber: record.operatorNumber,
     rank: rankOf(index),
     leases: record.leases,
+    activeLeases: record.activeLeases,
     counties: record.counties,
+    productionStart: record.productionStart,
+    productionEnd: record.productionEnd,
     topCounties: record.topCounties.map(titleCase),
     boe: record.series.map((year) => Number((year.boe / 1e6).toFixed(1))),
     oil: record.series.map((year) => Number((year.oil / 1e6).toFixed(1))),
@@ -343,6 +326,15 @@ function topBy(
 export interface CompareLeaders {
   /** By cumulative BOE, highest first — the whole ranking, not just the winner. */
   byVolume: CompareOperator[];
+  /**
+   * Most oil and most gas produced across the filed record.
+   *
+   * SEPARATE FROM `byVolume`, because BOE folds gas into oil at 15:1 and so hides
+   * exactly the distinction these two exist to draw: the largest producer overall is
+   * frequently neither the largest oil producer nor the largest gas producer.
+   */
+  oil: CompareOperator;
+  gas: CompareOperator;
   efficiency: CompareOperator;
   growth: CompareOperator;
   footprint: CompareOperator;
@@ -364,12 +356,22 @@ export function findLeaders(
 ): CompareLeaders | null {
   const byVolume = topBy(operators, (operator) => operator.cumBoe);
   const leader = byVolume[0];
+  const oil = topBy(operators, (operator) => operator.cumOil)[0];
+  const gas = topBy(operators, (operator) => operator.cumGas)[0];
   const efficiency = topBy(operators, mboePerLease)[0];
   const growth = topBy(operators, (operator) => compoundGrowth(operator.boe))[0];
   const footprint = topBy(operators, (operator) => operator.counties)[0];
   const oilWeighted = topBy(operators, (operator) => operator.oilPct)[0];
 
-  if (!leader || !efficiency || !growth || !footprint || !oilWeighted) {
+  if (
+    !leader ||
+    !oil ||
+    !gas ||
+    !efficiency ||
+    !growth ||
+    !footprint ||
+    !oilWeighted
+  ) {
     return null;
   }
 
@@ -377,6 +379,8 @@ export function findLeaders(
 
   return {
     byVolume,
+    oil,
+    gas,
     efficiency,
     growth,
     footprint,
@@ -390,82 +394,63 @@ export function findLeaders(
    Table rows
    -------------------------------------------------------------------------- */
 
-export interface MomentumRow {
-  operator: CompareOperator;
-  /** Millions of BOE in the most recent filed year. */
-  latest: number;
-  yearOverYear: number;
-  compoundGrowth: number;
-  swing: number;
-  /** "Growing" / "Declining" / "Flat / cyclical". */
-  read: string;
-  direction: "up" | "down" | "flat";
-}
-
-/**
- * Momentum, always on BOE. The design's thresholds: past ±3% compound growth an
- * operator is growing or declining, and inside that band it is flat or cyclical
- * — which the swing column then tells apart.
- */
-export function buildMomentumRows(
-  operators: CompareOperator[],
-): MomentumRow[] {
-  return operators.map((operator) => {
-    const growth = compoundGrowth(operator.boe);
-    const direction = growth > 3 ? "up" : growth < -3 ? "down" : "flat";
-
-    return {
-      operator,
-      latest: operator.boe.at(-1) ?? 0,
-      yearOverYear: yearOverYear(operator.boe),
-      compoundGrowth: growth,
-      swing: swing(operator.boe),
-      read:
-        direction === "up"
-          ? "Growing"
-          : direction === "down"
-            ? "Declining"
-            : "Flat / cyclical",
-      direction,
-    };
-  });
-}
-
 export interface StatRow {
   label: string;
   /** One formatted cell per operator, in the order given. */
   value: (operator: CompareOperator) => string;
 }
 
-/** The comparison-stats rows, in the design's order. */
+/**
+ * `March 1997` -> `Mar 1997`, so a date range fits one table cell.
+ *
+ * Only the month word is shortened, and only when it is long enough to need it —
+ * "May 2026" is left alone rather than padded to a fake abbreviation.
+ */
+function shortMonth(value: string): string {
+  return value.replace(/^([A-Za-z]{4,})/, (month) => month.slice(0, 3));
+}
+
+/**
+ * The comparison-stats rows, in the requested order.
+ *
+ * UNITS LIVE IN THE VALUE, NOT THE LABEL. The labels are the ones asked for — "Oil
+ * Produced", not "Cumulative oil (bbl)" — but a bare "1.91B" in a cell is a figure a
+ * reader has to guess the unit of, so the unit rides with the number. `cumOil` is
+ * millions of barrels and `cumGas` millions of Mcf, which is what `formatMillions`
+ * scales; labelling gas as barrels would be the easy mistake here.
+ */
 export const COMPARE_STAT_ROWS: readonly StatRow[] = [
   {
     label: "Rank statewide — by reported production",
     value: (operator) => `#${operator.rank}`,
   },
   {
-    label: `Cumulative BOE (15:1) — ${COMPARE_YEARS[0]}–${COMPARE_YEARS.at(-1)}`,
-    value: (operator) => formatMillions(operator.cumBoe),
+    label: "Oil Produced",
+    value: (operator) => `${formatMillions(operator.cumOil)} bbl`,
   },
   {
-    label: "Cumulative oil (bbl)",
-    value: (operator) => formatMillions(operator.cumOil),
+    label: "Gas Produced",
+    value: (operator) => `${formatMillions(operator.cumGas)} Mcf`,
   },
   {
-    label: "Cumulative gas (Mcf)",
-    value: (operator) => formatMillions(operator.cumGas),
-  },
-  { label: "Oil share of BOE", value: (operator) => `${operator.oilPct}%` },
-  {
-    label: "Leases on record",
+    label: "Leases on Record",
     value: (operator) => formatCount(operator.leases),
   },
   {
-    label: "Producing counties",
+    label: "Active Leases",
+    value: (operator) => formatCount(operator.activeLeases),
+  },
+  {
+    label: "Producing Counties",
     value: (operator) => String(operator.counties),
   },
   {
-    label: "Production per lease",
-    value: (operator) => `${mboePerLease(operator).toFixed(0)} MBOE`,
+    label: "Latest Production Date",
+    value: (operator) => operator.productionEnd,
+  },
+  {
+    label: "Average Production Range",
+    value: (operator) =>
+      `${shortMonth(operator.productionStart)} – ${shortMonth(operator.productionEnd)}`,
   },
 ];

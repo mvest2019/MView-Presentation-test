@@ -6,11 +6,8 @@ import { memo, useEffect, useId, useRef, useState } from "react";
 
 import { Button } from "@/app/_components/button";
 import { Pager as SharedPager } from "@/app/_components/pager";
-import {
-  CONTROL_CARET,
-  CONTROL_TINT,
-  SELECT_CLASS,
-} from "@/app/_components/control-styles";
+import { CONTROL_TINT } from "@/app/_components/control-styles";
+import { SelectControl } from "@/app/_components/select-control";
 import { OperatorLogo } from "@/app/_components/operator-logo";
 import {
   fieldGroupLabelClass,
@@ -260,9 +257,9 @@ function QuickFilters({
    every control goes full width so nothing is squeezed under a usable size.
    ========================================================================== */
 
-/* `CONTROL_TINT`, `SELECT_CLASS` and `CONTROL_CARET` live in
-   `app/_components/control-styles.ts` — the production chart's county filter has to
-   look like these controls, so the classes are shared rather than duplicated. */
+/* `SelectControl` itself now lives in `app/_components/select-control.tsx`, shared
+   with the operator detail page and the production comparison so all three pages
+   carry the same dropdown rather than three that merely resemble each other. */
 
 /* The Play Type and Status options no longer carry trailing counts. Those came
    from the local fixture, and the search endpoint reports a single `total_count`
@@ -362,38 +359,6 @@ function FindBar({
           </option>
         ))}
       </SelectControl>
-    </div>
-  );
-}
-
-function SelectControl({
-  label,
-  value,
-  onChange,
-  className,
-  children,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  className: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={`relative ${className}`}>
-      <select
-        aria-label={label}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={`${SELECT_CLASS} ${CONTROL_TINT} min-h-[44px]`}
-      >
-        {children}
-      </select>
-      <ChevronDown
-        aria-hidden="true"
-        className={CONTROL_CARET}
-        strokeWidth={1.8}
-      />
     </div>
   );
 }

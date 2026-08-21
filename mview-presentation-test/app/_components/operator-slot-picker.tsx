@@ -82,8 +82,9 @@ export function OperatorSlotPicker({
   onSelect,
   onClear,
   inputRef,
+  slotLabel,
 }: {
-  /** 0–3. Drives the colour dot and the A–D label. */
+  /** 0–3. Drives the colour dot and, by default, the A–D label. */
   slot: number;
   /** The chosen operator's name, or "" when the slot is empty. */
   value: string;
@@ -99,6 +100,14 @@ export function OperatorSlotPicker({
   onClear: () => void;
   /** Lets the page focus this field from "Edit selection". */
   inputRef?: (element: HTMLInputElement | null) => void;
+  /**
+   * What to call this slot, when "A"–"D" is not the page's language.
+   *
+   * The statistics tool numbers its slots by letter; the production comparison has
+   * always numbered them 1–4, and reusing this picker there should not silently
+   * relabel a control people already know. Defaults to the letter.
+   */
+  slotLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   /** null means "not searching" — the field shows the selected operator instead. */
@@ -358,7 +367,7 @@ export function OperatorSlotPicker({
               : "var(--color-mv-scroll)",
           }}
         />
-        Operator {SLOT_LABELS[slot]}
+        Operator {slotLabel ?? SLOT_LABELS[slot]}
         {slot >= 2 ? " · optional" : ""}
       </label>
 
@@ -435,7 +444,7 @@ export function OperatorSlotPicker({
               <button
                 type="button"
                 tabIndex={-1}
-                aria-label={`Clear operator ${SLOT_LABELS[slot]}`}
+                aria-label={`Clear operator ${slotLabel ?? SLOT_LABELS[slot]}`}
                 // `pointerdown` default is prevented so clearing does not first
                 // blur the input and close the popup out from under the click.
                 onPointerDown={(event) => event.preventDefault()}

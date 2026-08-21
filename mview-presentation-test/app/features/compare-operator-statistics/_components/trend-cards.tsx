@@ -1,6 +1,5 @@
 import { OperatorLogo } from "@/app/_components/operator-logo";
 import {
-  STATISTICS_TREND_YEARS,
   formatVolume,
   type StatisticsOperator,
 } from "@/lib/operator-statistics";
@@ -35,19 +34,36 @@ const VIEW = { width: 200, height: 52 } as const;
  */
 const TREND_COLOR = "var(--color-mv-green-deep)";
 
-export function TrendCards({ operators }: { operators: StatisticsOperator[] }) {
+export function TrendCards({
+  operators,
+  years,
+}: {
+  operators: StatisticsOperator[];
+  /** The trend years from the API, so a card labels its own first year correctly. */
+  years: readonly number[];
+}) {
   return (
     <div className="mb-4 grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-[14px]">
       {operators.map((operator) => (
-        <TrendCard key={operator.operatorNumber} operator={operator} />
+        <TrendCard
+          key={operator.operatorNumber}
+          operator={operator}
+          years={years}
+        />
       ))}
     </div>
   );
 }
 
-function TrendCard({ operator }: { operator: StatisticsOperator }) {
+function TrendCard({
+  operator,
+  years,
+}: {
+  operator: StatisticsOperator;
+  years: readonly number[];
+}) {
   const gradientId = `trend-${operator.operatorNumber}`;
-  const first = STATISTICS_TREND_YEARS[0];
+  const first = years[0];
 
   if (!operator.trend) {
     return (

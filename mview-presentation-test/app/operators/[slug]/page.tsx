@@ -22,13 +22,14 @@ import {
 import { operatorLogoPath } from "@/lib/operator-api-types";
 import {
   OPERATOR_ILLUSTRATIVE_NOTE,
-  findOperatorDetail,
+  baseFromDirectory,
   mergeOperatorDetails,
   formatCount,
   listOperatorDetailSlugs,
   type ConditionCard,
   type OperatorDetail,
 } from "@/lib/operator-detail";
+import { resolveOperatorSlug } from "@/lib/operator-slug-api";
 import { TEXAS_COUNTY_PATHS, TEXAS_VIEWBOX } from "@/lib/texas-county-paths";
 
 import { FootprintMap } from "./_components/footprint-map";
@@ -39,7 +40,7 @@ import {
   type RelatedOperator,
 } from "@/lib/operator-related-api";
 
-import { DeferredSection } from "./_components/deferred-section";
+import { DeferredSection } from "@/app/_components/deferred-section";
 import { OperatorLeases } from "./_components/operator-leases";
 import { OperatorWhatChanged } from "./_components/operator-what-changed";
 import { CountyProduction } from "./_components/county-production";
@@ -70,19 +71,23 @@ import { ProductionOverTime } from "./_components/production-over-time";
  * rendered into the HTML rather than passed as props, so it gzips in the document
  * and never enters a bundle.
  *
- * SECTIONS ARE GATED ON REAL DATA (Akshay, 2026-08-13). Ten candidate detail
- * endpoints all answer 404, so this is fixture-backed, and the fixture does not
- * describe every operator equally — see `lib/operator-detail.ts`. A section renders
- * only where that operator's data exists, which is why one operator's page is fuller
- * than another's. It is thinner because the record is, not because the page is
- * broken. Two blocks are the prototype's own hardcoded illustrations and appear only
- * for the operator they were written about.
+ * EVERY OPERATOR HAS A PAGE. The slug used to be looked up in a 30-record fixture,
+ * so the other ~24,700 the listing links to answered 404. `resolveOperatorSlug` now
+ * matches it against `/operators/search`'s own `operator_name_url`, and every figure
+ * on the page comes from `/operators/details` or from a section's own endpoint.
+ *
+ * SECTIONS ARE GATED ON REAL DATA. Each asks whether its own data exists, which is
+ * why one operator's page is fuller than another's — it is thinner because the record
+ * is, not because the page is broken.
+ *
+ * A FAILED DETAIL READ IS AN ERROR STATE, NOT OLD DATA. It used to fall back to the
+ * fixture's figures with nothing saying they were not live. See `loadOperator`.
  */
 
 export function generateStaticParams() {
-  // The 30 operators the fixture covers are prerendered. Anything else the listing
-  // links to is rendered on demand and 404s if the slug matches no record, which is
-  // the correct answer until an endpoint can resolve the other 24,714.
+  // The thirty best-known operators are prerendered so the common pages are static.
+  // Every other slug renders on demand and is resolved live, so this is a warm-cache
+  // list rather than the set of pages that exist.
   return listOperatorDetailSlugs().map((slug) => ({ slug }));
 }
 
@@ -91,18 +96,84 @@ const SITE_URL = (
 ).replace(/\/+$/, "");
 
 /**
- * Resolve a slug into a fully merged detail.
+ * Resolve a slug into a detail, or say which way it failed.
  *
- * Called by both `generateMetadata` and the page body. Next deduplicates `fetch`
- * within a render pass and `fetchOperatorDetails` is cached besides, so the two
- * awaits share ONE upstream request rather than issuing two.
+ * THREE OUTCOMES, NOT TWO, because they need three different pages:
+ *
+ *   `unknown`      the slug names no operator in the directory -> 404.
+ *   `unavailable`  the operator exists but `/operators/details` did not answer ->
+ *                  an error state. It used to render the FIXTURE's figures here,
+ *                  with nothing on screen saying they were not live.
+ *   `ok`           the live record.
+ *
+ * ANY OPERATOR RESOLVES NOW, not just the thirty in the fixture. `resolveOperatorSlug`
+ * matches the slug against `/operators/search`'s own `operator_name_url`, so every
+ * operator the listing links to has a page.
+ *
+ * Called by both `generateMetadata` and the page body. Both reads are cached, so the
+ * two awaits share one round trip rather than issuing two.
  */
-async function loadOperator(slug: string) {
-  const base = findOperatorDetail(slug);
-  if (!base) return null;
-  return mergeOperatorDetails(
-    base,
-    await fetchOperatorDetails(base.operatorNumber),
+type DetailLoad =
+  | { status: "unknown" }
+  | { status: "unavailable"; name: string; slug: string }
+  | { status: "ok"; operator: OperatorDetail };
+
+async function loadOperator(slug: string): Promise<DetailLoad> {
+  const row = await resolveOperatorSlug(slug);
+  if (!row) return { status: "unknown" };
+
+  const merged = mergeOperatorDetails(
+    baseFromDirectory(row),
+    await fetchOperatorDetails(row.operatorNumber),
+  );
+
+  // `mergeOperatorDetails` returns null when the details endpoint gave nothing. The
+  // directory row still has the operator's name, which is enough to say WHOSE page
+  // could not be loaded.
+  if (!merged) {
+    return { status: "unavailable", name: row.name, slug: row.slug };
+  }
+  return { status: "ok", operator: merged };
+}
+
+/**
+ * Shown when the operator exists but its figures did not arrive.
+ *
+ * DELIBERATELY NOT A 404 AND NOT THE FIXTURE. The operator is real — the directory
+ * resolved it — so a 404 would be a lie, and the fixture's figures would be stale data
+ * dressed as live. This says what happened and offers the way back, in the same card
+ * language the rest of the site uses for a failed read.
+ */
+function DetailUnavailable({ name }: { name: string }) {
+  return (
+    <div className="mx-auto max-w-[1180px] px-[22px] py-16 max-[767px]:px-4">
+      <Breadcrumbs
+        items={[
+          { label: "Home", href: "/" },
+          { label: "Know Your Operators", href: "/operators" },
+          { label: name },
+        ]}
+      />
+      <div
+        role="alert"
+        className="mt-6 rounded-2xl border border-mv-sand-line bg-mv-sand-tint px-6 py-8 text-center"
+      >
+        <h1 className={`${displayXsClass} mb-2 text-mv-ink`}>{name}</h1>
+        <p className="mx-auto max-w-[520px] text-sm text-mv-ink-soft">
+          This operator&rsquo;s production record could not be loaded just now.
+          Nothing is wrong with the operator — the records service did not
+          answer. Reloading in a moment usually resolves it.
+        </p>
+        <p className="mt-5">
+          <Link
+            href="/operators"
+            className={buttonClass({ variant: "primary" })}
+          >
+            Back to the operator directory
+          </Link>
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -133,17 +204,37 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const operator = await loadOperator(slug);
+  const load = await loadOperator(slug);
 
-  if (!operator) {
+  if (load.status === "unknown") {
     return { title: "Operator not found | Mineral View" };
   }
+
+  /* A page that could not read its figures must not be indexed with a description
+     full of them, and must not claim a rank it does not have. */
+  if (load.status === "unavailable") {
+    return {
+      title: `${load.name} — Texas operator profile | Mineral View`,
+      robots: { index: false, follow: true },
+      alternates: { canonical: `/operators/${load.slug}` },
+    };
+  }
+
+  const operator = load.operator;
 
   // `seo_operator_name` is the API's own marketing alias ("Pioneer Natural
   // Resources" rather than "Pioneer Natural RES USA, Inc"), which is what people
   // actually search for. Falls back to the filed name when absent.
   const title = `${operator.seoName ?? operator.name} (${operator.operatorNumber}) — Texas operator profile | Mineral View`;
-  const description = `${operator.name} operates ${formatCount(operator.leases)} leases across ${operator.counties} Texas counties and ranks #${operator.rank} statewide by reported production. Production, footprint and county breakdown from Railroad Commission records.`;
+  /* The rank clause is dropped when the API sends none, rather than published as
+     "#0 statewide". */
+  const description =
+    `${operator.name} operates ${formatCount(operator.leases)} leases across ` +
+    `${operator.counties} Texas counties` +
+    (operator.rank > 0
+      ? ` and ranks #${operator.rank} statewide by reported production`
+      : "") +
+    `. Production, footprint and county breakdown from Railroad Commission records.`;
   const path = `/operators/${operator.slug}`;
 
   return {
@@ -186,8 +277,12 @@ export default async function OperatorDetailRoute({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const operator = await loadOperator(slug);
-  if (!operator) notFound();
+  const load = await loadOperator(slug);
+  if (load.status === "unknown") notFound();
+  if (load.status === "unavailable") {
+    return <DetailUnavailable name={load.name} />;
+  }
+  const operator = load.operator;
 
   /* Both reads are independent of each other, so they overlap: the page waits for
      the slower of the two rather than their sum. */
@@ -275,7 +370,8 @@ export default async function OperatorDetailRoute({
                 {operator.status === "active" ? "Active" : "Inactive"}
               </li>
               {[
-                `#${operator.rank} statewide`,
+                // Omitted rather than shown as "#0" when the API reports no rank.
+                ...(operator.rank > 0 ? [`#${operator.rank} statewide`] : []),
                 `${formatCount(operator.leases)} leases`,
                 `${operator.counties} counties`,
               ].map((pill) => (
@@ -411,11 +507,16 @@ export default async function OperatorDetailRoute({
                   }
                   numeric
                 />
-                <PanelRow
-                  label="Oil share of BOE"
-                  value={`${operator.oilPct}%`}
-                  numeric
-                />
+                {/* DERIVED FROM THE THREE VOLUMES ABOVE, not from the fixture.
+                    Omitted when the endpoint sends nothing to divide — a share of
+                    BOE nobody can compute is not 0%. */}
+                {operator.oilPct === null ? null : (
+                  <PanelRow
+                    label="Oil share of BOE"
+                    value={`${operator.oilPct}%`}
+                    numeric
+                  />
+                )}
                 <PanelRow
                   label="BOE (15:1)"
                   value={

@@ -31,7 +31,19 @@ export type ComparisonState =
   /** Fewer than two operators chosen — nothing to compare and nothing requested. */
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "ready"; operators: StatisticsOperatorData[] }
+  | {
+      status: "ready";
+      operators: StatisticsOperatorData[];
+      /**
+       * The years every `trend` array is indexed by, from the response.
+       *
+       * They travel with the operators because the trend figures are positional: a
+       * client that assumed a fixed window would mislabel a column the moment the
+       * API's own years moved, which is exactly what the old hardcoded 2021–2025
+       * window did to 2026.
+       */
+      years: number[];
+    }
   | { status: "error" };
 
 /**
@@ -45,8 +57,14 @@ function keyOf(names: readonly string[]): string {
   return JSON.stringify([...names].sort());
 }
 
+/** What one resolved comparison holds. */
+interface CachedComparison {
+  operators: StatisticsOperatorData[];
+  years: number[];
+}
+
 /** key → the comparison, or null for a failure. Shared for the life of the page. */
-const comparisonCache = new Map<string, StatisticsOperatorData[] | null>();
+const comparisonCache = new Map<string, CachedComparison | null>();
 
 export function useOperatorComparison(selected: readonly string[]): {
   state: ComparisonState;
@@ -70,9 +88,14 @@ export function useOperatorComparison(selected: readonly string[]): {
       .then(async (response) => {
         if (!response.ok)
           throw new Error(`Comparison failed (${response.status})`);
-        const payload: { operators?: StatisticsOperatorData[] } =
-          await response.json();
-        comparisonCache.set(key, payload.operators ?? []);
+        const payload: {
+          operators?: StatisticsOperatorData[];
+          years?: number[];
+        } = await response.json();
+        comparisonCache.set(key, {
+          operators: payload.operators ?? [],
+          years: payload.years ?? [],
+        });
       })
       .catch(() => {
         // An aborted request was superseded, not failed — the newer selection owns
@@ -95,7 +118,11 @@ export function useOperatorComparison(selected: readonly string[]): {
         ? { status: "loading" }
         : answered === null
           ? { status: "error" }
-          : { status: "ready", operators: answered };
+          : {
+              status: "ready",
+              operators: answered.operators,
+              years: answered.years,
+            };
 
   return {
     state,
