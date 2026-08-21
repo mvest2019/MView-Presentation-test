@@ -1554,6 +1554,9 @@ export function MapExplorerView() {
         status: row.status,
         wtype: row.wtype,
         county: row.county,
+        /* The table's rows carry no record label, so this falls back to the
+           completion — see the panel. */
+        record: "",
       });
       setViewTab("insights");
     },
@@ -2070,6 +2073,9 @@ export function MapExplorerView() {
                 status: hovered.status,
                 wtype: hovered.wtype,
                 county: hovered.county,
+                /* Which of the well's two records this row is — it decides
+                   which summary the panel opens. */
+                record: hovered.recordType ?? "",
               });
               setViewTab("insights");
               return;
@@ -2092,6 +2098,7 @@ export function MapExplorerView() {
                   status: String(attributes.status ?? ""),
                   wtype: String(attributes.wtype ?? ""),
                   county: String(attributes.county ?? ""),
+                  record: String(attributes.recordType ?? ""),
                 });
                 setViewTab("insights");
               })

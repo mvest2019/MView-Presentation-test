@@ -16,13 +16,15 @@ import { Clock, Download } from "lucide-react";
  */
 
 /*
- * The two records a well has with the Railroad Commission. The wells feed
- * already labels each row `recordType: "Permit" | "Completion"`; these are the
- * same two, as a choice of which one the summary is read from.
+ * The two records a well has with the Railroad Commission.
+ *
+ * Not a choice any more. The wells feed labels every row
+ * `recordType: "Permit" | "Completion"`, so the well that was clicked already
+ * says which of the two it is — and a switcher offering the other one mostly
+ * offered a record that does not exist. The panel reads the label; this is
+ * only the name for it.
  */
-export const RECORDS = ["Completion", "Permit"] as const;
-
-export type WellRecord = (typeof RECORDS)[number];
+export type WellRecord = "Completion" | "Permit";
 
 /** What the panel hands down for each record's Export. */
 export type RecordExport = {
@@ -50,8 +52,8 @@ export function WellSummaryHeader({
   loadedAt,
   completionExport,
   permitExport,
-  onRecordChange,
 }: {
+  /** Which of the well's two records this is, from the well itself. */
   record: WellRecord;
   /**
    * When this well's record came back, as an ISO string.
@@ -69,7 +71,6 @@ export function WellSummaryHeader({
    */
   completionExport: RecordExport;
   permitExport: RecordExport;
-  onRecordChange: (record: WellRecord) => void;
 }) {
   /*
    * One button, whichever record is open — Export is Export. Only the record
@@ -87,25 +88,11 @@ export function WellSummaryHeader({
             Well Summary
           </h2>
 
-          {/* Which of the well's two filings the summary is read from — the
-              same two the wells feed labels each row with. */}
-          <div className="flex items-baseline gap-3">
-            {RECORDS.map((name) => (
-              <button
-                key={name}
-                type="button"
-                aria-pressed={record === name}
-                onClick={() => onRecordChange(name)}
-                className={`cursor-pointer text-[12.5px] font-semibold underline-offset-[3px] ${
-                  record === name
-                    ? "text-mv-green-deep underline"
-                    : "text-mv-muted hover:text-mv-green-deep hover:underline"
-                }`}
-              >
-                {name}
-              </button>
-            ))}
-          </div>
+          {/* Which record this is, said rather than offered: the well's own
+              label decides it, so there is nothing here to pick. */}
+          <span className="rounded-full bg-mv-mint px-[9px] py-[4px] text-[10px] font-extrabold uppercase leading-none tracking-[.08em] text-mv-green-deep">
+            {record}
+          </span>
         </div>
         <p className="mt-[3px] text-[11.5px] text-mv-slate">
           Comprehensive overview of well performance and reserves

@@ -125,16 +125,26 @@ export type SelectedWell = {
   status: string;
   wtype: string;
   county: string;
+  /** The wells feed's own `recordType` — "Permit", "Completion", or empty. */
+  record?: string;
 };
 
 export function WellInsightsPanel({ well }: { well: SelectedWell }) {
   /*
-   * Which filing is on screen. A well has two records with the Commission and
-   * they describe different things — the permit is what was applied for, the
-   * completion what was drilled — so they are two summaries, not one summary
-   * with a couple of fields swapped.
+   * Which filing is on screen — the well's own, not a choice.
+   *
+   * A well has two records with the Commission and they describe different
+   * things: the permit is what was applied for, the completion what was
+   * drilled. Which one the map handed over is what `recordType` says, so a
+   * permit row opens the permit and a completion row opens the completion.
+   *
+   * Anything else reads as a completion. The table's rows do not carry the
+   * label, and a completion summary of a well is the safer default: it is what
+   * most wells on the map have.
    */
-  const [record, setRecord] = useState<WellRecord>("Completion");
+  const record: WellRecord = /permit/i.test(well.record ?? "")
+    ? "Permit"
+    : "Completion";
 
   /*
    * The permit summary's own node, and whether there is one.
@@ -280,7 +290,6 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
           busy: exporting,
           download: downloadPermit,
         }}
-        onRecordChange={setRecord}
       />
 
       {record === "Permit" ? (
