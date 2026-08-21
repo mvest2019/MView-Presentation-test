@@ -7,18 +7,24 @@
  */
 
 import { type AreaMeasurement } from "./measure-area-panel";
-import { type NearbyStats } from "./nearby-panel";
-import { type MapWell } from "@/lib/map-api";
+import { type MapLeaseNearby, type MapWell } from "@/lib/map-api";
 
 import { type WellCluster } from "./cluster-graphics";
 
 export type LonLat = { longitude: number; latitude: number };
 
-/** A picked point and the circle drawn around it. */
+/**
+ * A picked point and the circle drawn around it.
+ *
+ * Geometry only. What is inside the circle is answered by
+ * `/map/leases/{key}/nearby` for the lease under the point, not counted here —
+ * the old local tally is gone, and with it the figures it could not know:
+ * permits it always reported as nought, and wells it could only see if the map
+ * had already loaded them.
+ */
 export type Nearby = {
   at: LonLat;
   radiusMiles: number;
-  stats: NearbyStats;
 };
 
 /** The two Esri pieces the maths needs — the rest of the SDK stays out. */
@@ -38,8 +44,6 @@ export type GeodesicUtils = {
   /** `azimuth` is degrees clockwise from north. */
   pointFromDistance(from: unknown, meters: number, azimuth: number): LonLat;
 };
-
-const WATCH_CSV_FILENAME = "mineral-view-nearby.csv";
 
 /** A drawn rectangle, in degrees. */
 export type Area = { west: number; south: number; east: number; north: number };
@@ -61,69 +65,6 @@ export function clustersInArea(clusters: WellCluster[], area: Area) {
       latitude >= area.south &&
       latitude <= area.north,
   );
-}
-
-/**
- * What the watch card reports.
- *
- * Same caveat as the drawn area: the map holds aggregated bubbles, not
- * individual bores, so "wells" counts whole clusters falling inside the circle
- * and "nearest bore" measures to a cluster centre. Permits are always zero —
- * there is no permit layer to read. All three become real queries once the well
- * layer lands; only the numbers change, not this card.
- */
-export function nearbyStats(
-  clusters: WellCluster[],
-  at: LonLat,
-  radiusMiles: number,
-  geodesic: GeodesicUtils,
-  Point: PointCtor,
-): NearbyStats {
-  const centre = new Point({
-    longitude: at.longitude,
-    latitude: at.latitude,
-    spatialReference: { wkid: 4326 },
-  });
-
-  const radiusMetres = radiusMiles * METRES_PER_MILE;
-  let wells = 0;
-  let inside = 0;
-  let newestYear: number | null = null;
-  let nearest = Infinity;
-
-  for (const cluster of clusters) {
-    const metres = geodesic.geodesicDistance(
-      centre,
-      new Point({
-        longitude: cluster.at[0],
-        latitude: cluster.at[1],
-        spatialReference: { wkid: 4326 },
-      }),
-      "meters",
-    ).distance;
-
-    if (metres <= radiusMetres) {
-      wells += cluster.count;
-      inside += 1;
-      if (
-        cluster.newestYear !== null &&
-        (newestYear === null || cluster.newestYear > newestYear)
-      ) {
-        newestYear = cluster.newestYear;
-      }
-    }
-    if (metres < nearest) nearest = metres;
-  }
-
-  return {
-    permits: 0,
-    wells,
-    nearestBoreMiles: nearest === Infinity ? null : nearest / METRES_PER_MILE,
-    // The clusters carry no operator attribution, so everything inside falls
-    // into the same catch-all bucket the county list uses.
-    operators: inside ? [{ name: "All other operators", count: inside }] : [],
-    newestYear,
-  };
 }
 
 /**
@@ -165,58 +106,6 @@ export async function lookupCounty(at: LonLat): Promise<string | null> {
   } catch {
     return null;
   }
-}
-
-export function downloadNearbyCsv(
-  clusters: WellCluster[],
-  watch: Nearby,
-  geodesic: GeodesicUtils,
-  Point: PointCtor,
-): void {
-  const centre = new Point({
-    longitude: watch.at.longitude,
-    latitude: watch.at.latitude,
-    spatialReference: { wkid: 4326 },
-  });
-  const radiusMetres = watch.radiusMiles * METRES_PER_MILE;
-
-  const rows: (string | number)[][] = [
-    ["longitude", "latitude", "wells", "newest_year"],
-  ];
-
-  for (const cluster of clusters) {
-    const metres = geodesic.geodesicDistance(
-      centre,
-      new Point({
-        longitude: cluster.at[0],
-        latitude: cluster.at[1],
-        spatialReference: { wkid: 4326 },
-      }),
-      "meters",
-    ).distance;
-    if (metres <= radiusMetres) {
-      // Blank rather than "null" — the source reports no drill year.
-      rows.push([
-        cluster.at[0],
-        cluster.at[1],
-        cluster.count,
-        cluster.newestYear ?? "",
-      ]);
-    }
-  }
-
-  const url = URL.createObjectURL(
-    new Blob([rows.map((row) => row.join(",")).join("\r\n")], {
-      type: "text/csv;charset=utf-8",
-    }),
-  );
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = WATCH_CSV_FILENAME;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
 }
 
 /**
@@ -414,3 +303,142 @@ export function wellsInBox(
   ).length;
 }
 
+
+/**
+ * The loaded wells nearest a point, closest first.
+ *
+ * Several rather than one, because the nearest well cannot always answer the
+ * question asked of it: a fair number of records carry no lease number, and
+ * without one there is no lease key to ask the service about. Walking outward
+ * finds the nearest well that can.
+ *
+ * Which well is closest is all this has to get right, so it compares squared
+ * degrees rather than calling the geodesic — with longitude scaled by the
+ * cosine of the latitude, because a degree of longitude is shorter than a
+ * degree of latitude everywhere but the equator. Without that correction, at
+ * Texas latitudes an east-west gap reads about 15% nearer than it is, which is
+ * enough to order two wells wrongly.
+ *
+ * A horizontal well is measured from both ends of its bore: the surface hole
+ * can sit a mile from the part of the well that is actually under the point.
+ */
+export function nearestWellsTo(
+  at: LonLat,
+  wells: MapWell[],
+  limit: number,
+): MapWell[] {
+  const scale = Math.cos((at.latitude * Math.PI) / 180);
+
+  const measured = wells.map((well) => {
+    const ends: [number, number][] = [[well.lon, well.lat]];
+    if (well.bhLon !== undefined && well.bhLat !== undefined) {
+      ends.push([well.bhLon, well.bhLat]);
+    }
+
+    let away = Infinity;
+    for (const [lon, lat] of ends) {
+      const east = (lon - at.longitude) * scale;
+      const north = lat - at.latitude;
+      away = Math.min(away, east * east + north * north);
+    }
+
+    return { well, away };
+  });
+
+  return measured
+    .sort((one, other) => one.away - other.away)
+    .slice(0, limit)
+    .map(({ well }) => well);
+}
+
+/** A field needs quoting when it holds a comma, a quote or a line break. */
+const CSV_QUOTE = new RegExp('[",\\n]');
+
+/**
+ * The filings the service returned, as a spreadsheet.
+ *
+ * The filings rather than the wells: the ring's well count is a total, and the
+ * events are the only thing that comes back row by row.
+ */
+export function downloadNearbyFilings(nearby: MapLeaseNearby) {
+  const cell = (value: string) =>
+    CSV_QUOTE.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+
+  const rows = [
+    [
+      "type",
+      "lease",
+      "well",
+      "api",
+      "operator",
+      "direction",
+      "status",
+      "date",
+      "date basis",
+      "miles",
+      "bearing",
+      "longitude",
+      "latitude",
+    ],
+    ...nearby.events.map((event) => [
+      event.type,
+      event.leaseName,
+      event.well,
+      event.api,
+      event.operator,
+      event.direction ?? "",
+      event.status ?? "",
+      event.date ?? "",
+      event.dateBasis ?? "",
+      event.distanceMiles === null ? "" : String(event.distanceMiles),
+      event.bearing ?? "",
+      event.lon === null ? "" : String(event.lon),
+      event.lat === null ? "" : String(event.lat),
+    ]),
+  ];
+
+  const url = URL.createObjectURL(
+    new Blob([rows.map((row) => row.map(cell).join(",")).join("\r\n")], {
+      type: "text/csv;charset=utf-8",
+    }),
+  );
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `near-${nearby.lease.key}-${nearby.radiusMiles}mi.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** Mean Earth radius, in metres. */
+const EARTH_RADIUS_METRES = 6371008.8;
+const SQUARE_METRES_PER_ACRE = 4046.8564224;
+const SQUARE_METRES_PER_SQUARE_MILE = 2589988.110336;
+
+/**
+ * How big a drawn box is on the ground.
+ *
+ * Spherical rather than ellipsoidal: the exact form for a lat/long rectangle,
+ * `R² · Δλ · |sin φ₂ − sin φ₁|`, which is within about half a per cent of the
+ * ellipsoid at any size a reader draws. Checked against a section — a
+ * one-mile square at latitude 31.5 comes out at 640 acres and 1.00 square
+ * miles.
+ *
+ * No Esri constructors, so it stays a plain function like everything else here
+ * and can be called before the view is ready.
+ */
+export function boxArea(area: Area): { acres: number; squareMiles: number } {
+  const radians = (degrees: number) => (degrees * Math.PI) / 180;
+
+  const metres =
+    EARTH_RADIUS_METRES *
+    EARTH_RADIUS_METRES *
+    Math.abs(radians(area.east) - radians(area.west)) *
+    Math.abs(Math.sin(radians(area.north)) - Math.sin(radians(area.south)));
+
+  return {
+    acres: metres / SQUARE_METRES_PER_ACRE,
+    squareMiles: metres / SQUARE_METRES_PER_SQUARE_MILE,
+  };
+}

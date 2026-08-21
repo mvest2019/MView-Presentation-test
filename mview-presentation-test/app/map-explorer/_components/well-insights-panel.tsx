@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   ArrowDown,
@@ -24,11 +24,12 @@ import {
 
 import {
   COHORT_EUR,
-  INSIGHT_SUMMARY,
   RESERVE_INTEGRITY,
   WELLBORE,
 } from "./well-insights-data";
 import { PermitSummary } from "./permit-summary";
+import { AiSummary } from "./ai-summary";
+import { downloadSummaryPdf } from "./download-summary";
 import { ProductionChart } from "./production-chart";
 import { WellboreDiagram } from "./wellbore-diagram";
 import { WellSummaryHeader, type WellRecord } from "./well-summary-header";
@@ -41,10 +42,11 @@ import { wellSummaryFields } from "./well-summary-fields";
  * `/wells/{api}/production` for the chart. Nothing on this page is written
  * here — where the response has no value, the row shows an em dash.
  *
- * Three cards are not the service's yet: reserve integrity, cohort EUR and the
- * written read. They compare this well against the rest of the collection,
- * which no per-well endpoint answers, so they stay in `well-insights-data.ts`
- * until one does. Everything else on the page is this well's own.
+ * Two cards are not the service's yet: reserve integrity and cohort EUR. They
+ * compare this well against the rest of the collection, which no per-well
+ * endpoint answers, so they stay in `well-insights-data.ts` until one does.
+ * Everything else on the page is this well's own — including the written read at
+ * the foot of it, which the model now writes from this record.
  */
 
 /*
@@ -123,16 +125,66 @@ export type SelectedWell = {
   status: string;
   wtype: string;
   county: string;
+  /** The wells feed's own `recordType` — "Permit", "Completion", or empty. */
+  record?: string;
 };
 
 export function WellInsightsPanel({ well }: { well: SelectedWell }) {
   /*
-   * Which filing is on screen. A well has two records with the Commission and
-   * they describe different things — the permit is what was applied for, the
-   * completion what was drilled — so they are two summaries, not one summary
-   * with a couple of fields swapped.
+   * Which filing is on screen — the well's own, not a choice.
+   *
+   * A well has two records with the Commission and they describe different
+   * things: the permit is what was applied for, the completion what was
+   * drilled. Which one the map handed over is what `recordType` says, so a
+   * permit row opens the permit and a completion row opens the completion.
+   *
+   * Anything else reads as a completion. The table's rows do not carry the
+   * label, and a completion summary of a well is the safer default: it is what
+   * most wells on the map have.
    */
-  const [record, setRecord] = useState<WellRecord>("Completion");
+  const record: WellRecord = /permit/i.test(well.record ?? "")
+    ? "Permit"
+    : "Completion";
+
+  /*
+   * The permit summary's own node, and whether there is one.
+   *
+   * Export lives in the header, the filing is rendered by `PermitSummary`, and
+   * neither is inside the other — so the panel that renders both holds the ref
+   * between them. `print-summary.ts` is what turns it into a PDF.
+   */
+  const permitRef = useRef<HTMLDivElement>(null);
+  const [permitReady, setPermitReady] = useState(false);
+  /* The completion record's node, for the same reason — the button that saves
+     it lives in the header above, not inside the record. */
+  const completionRef = useRef<HTMLDivElement>(null);
+  /* Composing the pages takes a moment, and a button that looks idle while it
+     happens gets pressed again. */
+  const [exporting, setExporting] = useState(false);
+
+  const downloadPermit = useCallback(async () => {
+    setExporting(true);
+    try {
+      await downloadSummaryPdf(
+        permitRef.current,
+        `permit-${well.api || "summary"}`,
+      );
+    } finally {
+      setExporting(false);
+    }
+  }, [well.api]);
+
+  const downloadCompletion = useCallback(async () => {
+    setExporting(true);
+    try {
+      await downloadSummaryPdf(
+        completionRef.current,
+        `completion-${well.api || "summary"}`,
+      );
+    } finally {
+      setExporting(false);
+    }
+  }, [well.api]);
 
   /*
    * The completion record for the clicked well.
@@ -225,16 +277,28 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
   return (
     <div className="mv-thin-scroll h-full overflow-y-auto bg-mv-bg p-3 lg:p-4">
       <WellSummaryHeader
-        well={well}
         record={record}
         loadedAt={loadedAt}
-        fields={fields}
-        onRecordChange={setRecord}
+        completionExport={{
+          /* Nothing to capture until the record is on the page. */
+          ready: fields !== null,
+          busy: exporting,
+          download: downloadCompletion,
+        }}
+        permitExport={{
+          ready: permitReady,
+          busy: exporting,
+          download: downloadPermit,
+        }}
       />
 
       {record === "Permit" ? (
         <div className="mt-3">
-          <PermitSummary well={well} />
+          <PermitSummary
+            well={well}
+            printRef={permitRef}
+            onReady={setPermitReady}
+          />
         </div>
       ) : (
         <>
@@ -253,7 +317,10 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
               em dash, and a page of dashes reads as a well with no data rather
               than a well still loading. */}
           <div className="relative">
+            {/* The ref is inside the veil, as on the permit side: the PDF is of
+                the record, not of the spinner that was over it. */}
             <div
+              ref={completionRef}
               aria-busy={loading}
               className={
                 loading ? "pointer-events-none select-none blur-[2px]" : ""
@@ -572,61 +639,28 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
                 </div>
               </div>
 
-              {/* ---------------- the written read ---------------- */}
-              <div className="mt-3 rounded-xl border border-mv-line bg-white p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Heading
-                    title="Insight Summary"
-                    aside="What the completion record says once it is read against the rest of the collection"
-                  />
-
-                  {/* Labelled as written, not measured: the read below is generated
-              from the figures, and saying so is the difference between a
-              summary and a claim. */}
-                  <span className="ml-auto shrink-0 rounded-full bg-mv-mint px-[10px] py-[4px] text-[10px] font-extrabold uppercase tracking-[.08em] text-mv-green-deep">
-                    Well Summary AI
-                  </span>
-                </div>
-
-                <div className="mt-3">
-                  <div className="text-[10px] font-extrabold uppercase tracking-[.09em] text-mv-muted">
-                    Headline Read{" "}
-                    <span className="font-semibold normal-case tracking-normal text-mv-muted/70">
-                      auto-generated · every figure traceable to a field or an
-                      aggregate
-                    </span>
-                  </div>
-                  <p className="mt-2 text-[12px] leading-[1.6] text-mv-slate">
-                    {INSIGHT_SUMMARY.headline}
-                  </p>
-                </div>
-
-                {/* One per row, not three across: these are findings to be read in
-            order, and a three-column grid made six equal boxes whose heights
-            were set by whichever text ran longest. */}
-                <div className="mt-4 flex flex-col gap-[10px]">
-                  {INSIGHT_SUMMARY.cards.map((card) => (
-                    <div
-                      key={card.title}
-                      className={`rounded-xl border p-[14px] ${TONES[card.tone].card}`}
-                    >
-                      <div className="flex items-start gap-2">
-                        <span
-                          aria-hidden="true"
-                          className={`mt-[3px] h-[8px] w-[8px] shrink-0 rounded-full ${TONES[card.tone].dot}`}
-                        />
-                        <div className="min-w-0">
-                          <div className="text-[12px] font-bold leading-tight text-mv-ink">
-                            {card.title}
-                          </div>
-                          <p className="mt-[5px] text-[11.5px] leading-[1.55] text-mv-slate">
-                            {card.body}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              {/* ---------------- the written read ----------------
+          The permit tab's card, on this tab's record: same component, same
+          model, same key — `/api/completion-summary` reads the completion where
+          the other route reads the filing. It replaces the fixed six findings
+          that used to sit here, which described a different well. */}
+              <div className="mt-3">
+                <AiSummary
+                  api={well.api}
+                  endpoint="/api/completion-summary"
+                  caption="written from this well's own record"
+                  loadingLabel="Reading the record…"
+                  title={
+                    fields
+                      ? `${well.lease || "This well"} · ${fields.header.wellNumber}`
+                      : well.api
+                  }
+                  context={
+                    fields
+                      ? `${fields.header.status} ${fields.wellboreKind} well · ${titleCase(fields.header.county)} County · ${fields.operator.value}`
+                      : ""
+                  }
+                />
               </div>
             </div>
 

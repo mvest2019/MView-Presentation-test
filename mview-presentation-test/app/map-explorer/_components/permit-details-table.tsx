@@ -11,8 +11,18 @@ import { Table2 } from "lucide-react";
  *
  * One row is a strange thing to make a table of, but it is what the record is
  * — and a table is what makes the column names legible without repeating them
- * beside every value. It scrolls sideways on a narrow card; the scrollbar says
- * so on its own.
+ * beside every value.
+ *
+ * The header row is bold and near-black; the values under it are normal weight
+ * in the softer ink. That difference is what makes a table read as a table —
+ * both rows in semibold read as two headers, one of which happened to hold
+ * numbers. The one exception is an approved status, which stays bold and green
+ * because it is the answer anyone opens this card for.
+ *
+ * It scrolls sideways on a narrow card, and the scrollbar is the only thing
+ * that says so — the last columns are past the edge with nothing else to hint
+ * at them. Hence `mv-scroll-dark` rather than the pale bar the dropdowns use:
+ * a hint nobody sees is not a hint.
  */
 export function PermitDetailsTable({
   columns,
@@ -34,7 +44,7 @@ export function PermitDetailsTable({
         </h2>
       </div>
 
-      <div className="mv-thin-scroll overflow-x-auto">
+      <div className="mv-thin-scroll mv-scroll-dark overflow-x-auto">
         <table className="w-full border-collapse text-left">
           <thead>
             <tr className="bg-[#fafbfa]">
@@ -55,8 +65,10 @@ export function PermitDetailsTable({
               {columns.map((column) => (
                 <td
                   key={column.label}
-                  className={`whitespace-nowrap px-4 py-[13px] text-[12.5px] font-semibold ${
-                    column.tone === "green" ? "text-mv-green-deep" : "text-mv-ink"
+                  className={`whitespace-nowrap px-4 py-[13px] text-[12.5px] font-normal ${
+                    column.tone === "green"
+                      ? "font-semibold text-mv-green-deep"
+                      : "text-mv-slate"
                   }`}
                 >
                   {column.value}
