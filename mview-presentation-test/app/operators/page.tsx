@@ -99,7 +99,7 @@ const FEATURE_CARDS = [
     // record — see the note at the top of that route.
     href: "/features/compare-operator-production",
     icon: "▮▮",
-    title: "Compare Operator Production",
+    title: "Compare Operators Performance",
     body: "Put 2–4 operators side by side on reported production — real figures, ranked within their play.",
     cta: "Open the comparison →",
   },

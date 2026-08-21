@@ -82,7 +82,7 @@ async function loadFilterOptions(): Promise<ProductionFilterOptions> {
 const DEFAULT_WINDOW = defaultProductionWindow(new Date().getFullYear());
 const YEAR_RANGE = `${DEFAULT_WINDOW.fromYear}–${DEFAULT_WINDOW.toYear}`;
 
-const PAGE_TITLE = `Compare Operator Production — Texas oil & gas operators side by side | Mineral View`;
+const PAGE_TITLE = `Compare Operators Performance — Texas oil & gas operators side by side | Mineral View`;
 
 const PAGE_DESCRIPTION = `Put two to four Texas operators side by side on filed annual production, ${YEAR_RANGE}. Real Railroad Commission figures — cumulative volumes, oil vs gas mix, growth and production per lease. Free to use.`;
 
@@ -166,7 +166,7 @@ export default async function CompareOperatorProductionRoute() {
           {/* The one h1. The lede repeats the year range because that is the
               first thing a visitor needs to know the page can answer. */}
           <h1 className={`${displayXsClass} mb-[6px] mt-2 text-mv-ink`}>
-            Compare operator production
+            Compare Operators Performance
           </h1>
           <p className="max-w-[600px] text-[14.5px] text-mv-muted">
             Put two to four Texas operators side by side on filed annual
