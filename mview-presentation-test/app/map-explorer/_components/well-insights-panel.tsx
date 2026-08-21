@@ -145,6 +145,9 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
    */
   const permitRef = useRef<HTMLDivElement>(null);
   const [permitReady, setPermitReady] = useState(false);
+  /* The completion record's node, for the same reason — the button that saves
+     it lives in the header above, not inside the record. */
+  const completionRef = useRef<HTMLDivElement>(null);
   /* Composing the pages takes a moment, and a button that looks idle while it
      happens gets pressed again. */
   const [exporting, setExporting] = useState(false);
@@ -155,6 +158,18 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
       await downloadSummaryPdf(
         permitRef.current,
         `permit-${well.api || "summary"}`,
+      );
+    } finally {
+      setExporting(false);
+    }
+  }, [well.api]);
+
+  const downloadCompletion = useCallback(async () => {
+    setExporting(true);
+    try {
+      await downloadSummaryPdf(
+        completionRef.current,
+        `completion-${well.api || "summary"}`,
       );
     } finally {
       setExporting(false);
@@ -252,10 +267,14 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
   return (
     <div className="mv-thin-scroll h-full overflow-y-auto bg-mv-bg p-3 lg:p-4">
       <WellSummaryHeader
-        well={well}
         record={record}
         loadedAt={loadedAt}
-        fields={fields}
+        completionExport={{
+          /* Nothing to capture until the record is on the page. */
+          ready: fields !== null,
+          busy: exporting,
+          download: downloadCompletion,
+        }}
         permitExport={{
           ready: permitReady,
           busy: exporting,
@@ -289,7 +308,10 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
               em dash, and a page of dashes reads as a well with no data rather
               than a well still loading. */}
           <div className="relative">
+            {/* The ref is inside the veil, as on the permit side: the PDF is of
+                the record, not of the spinner that was over it. */}
             <div
+              ref={completionRef}
               aria-busy={loading}
               className={
                 loading ? "pointer-events-none select-none blur-[2px]" : ""
