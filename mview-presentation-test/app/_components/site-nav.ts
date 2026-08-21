@@ -68,7 +68,8 @@ export const barNav: BarItem[] = [
 ];
 
 /**
- * The Explore mega menu — three columns, thirteen destinations.
+ * The Explore mega menu — two columns, eight destinations. The "Data download"
+ * column is hidden for now; its entries are kept below, commented out.
  *
  * Labels and descriptions are the mockup's. The hrefs are NOT: the mockup links
  * every item to `#`, so these paths are inferred from the route names the design
@@ -127,27 +128,27 @@ export const exploreNav: MegaColumn[] = [
       },
     ],
   },
-  {
-    heading: "Data download",
-    links: [
-      {
-        label: "Packages by region",
-        href: "/data/packages",
-        sub: "Delaware, Anadarko, statewide",
-      },
-      {
-        label: "Filter and download",
-        href: "/data/download",
-        sub: "Pick your rows, export",
-      },
-      {
-        label: "Free samples",
-        href: "/data/samples",
-        sub: "Try before you buy",
-        dividerBefore: true,
-      },
-    ],
-  },
+  // {
+  //   heading: "Data download",
+  //   links: [
+  //     {
+  //       label: "Packages by region",
+  //       href: "/data/packages",
+  //       sub: "Delaware, Anadarko, statewide",
+  //     },
+  //     {
+  //       label: "Filter and download",
+  //       href: "/data/download",
+  //       sub: "Pick your rows, export",
+  //     },
+  //     {
+  //       label: "Free samples",
+  //       href: "/data/samples",
+  //       sub: "Try before you buy",
+  //       dividerBefore: true,
+  //     },
+  //   ],
+  // },
 ];
 
 /**

@@ -517,7 +517,7 @@ function ExploreMenu({
 
       <div
         aria-label={label}
-        className={`absolute left-1/2 top-[calc(100%+8px)] z-[80] w-[660px] max-w-[calc(100vw-40px)] -translate-x-1/2 flex-wrap rounded-xl border border-mv-line bg-white p-[14px] shadow-[0_12px_30px_rgba(13,14,23,.14)] group-hover:flex ${
+        className={`absolute left-1/2 top-[calc(100%+8px)] z-[80] w-[450px] max-w-[calc(100vw-40px)] -translate-x-1/2 flex-wrap rounded-xl border border-mv-line bg-white p-[14px] shadow-[0_12px_30px_rgba(13,14,23,.14)] group-hover:flex ${
           open ? "flex" : "hidden"
         }`}
       >
