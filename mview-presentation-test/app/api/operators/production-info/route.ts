@@ -1,0 +1,63 @@
+import { NextResponse } from "next/server";
+
+import { fetchProductionInfo } from "@/lib/operator-production-api";
+import {
+  hasProductionSelection,
+  productionFiltersFromQuery,
+} from "@/lib/operator-production-filters";
+
+/**
+ * `GET /api/operators/production-info?operator=…&county=…&from=…&to=…`
+ *
+ * The operators, their figures and the four "who leads on what" tiles — everything
+ * the Compare Operator Production page shows EXCEPT the chart, which has its own
+ * endpoint and its own route beside this one. Two routes rather than one because the
+ * two are wanted at different moments: this one on Apply, the chart's when the chart
+ * is approached. Folding them together would make the fold-visible half wait for the
+ * half nobody has scrolled to yet.
+ *
+ * A GET, so the browser and any shared cache can answer a filter set that has
+ * already been asked for. The upstream call is a POST; that is an upstream detail.
+ *
+ * NO OPERATORS IS NOT A REQUEST. An empty `search_text` comes back with an empty
+ * operator list, so the page's prompt is the correct answer and a round trip would
+ * only confirm it.
+ */
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const filters = productionFiltersFromQuery(
+    url.searchParams,
+    new Date().getFullYear(),
+  );
+
+  if (!hasProductionSelection(filters)) {
+    return NextResponse.json({
+      info: { operators: [], leaders: {}, totalOperators: 0 },
+    });
+  }
+
+  try {
+    const info = await fetchProductionInfo(filters);
+    return NextResponse.json(
+      { info },
+      {
+        headers: {
+          // Shared caches hold this; the browser does not. `max-age=0` stops a client
+          // replaying a payload whose SHAPE changed under it after a deploy — which is
+          // exactly how a newly added field reads as missing for ten minutes. Repeat
+          // applications within a session are already answered from memory by the hook.
+          "Cache-Control":
+            "public, max-age=0, s-maxage=600, stale-while-revalidate=3600",
+        },
+      },
+    );
+  } catch (error) {
+    // Upstream is intermittent by nature — see the note in `operator-api.ts`. The page
+    // offers a retry rather than losing the applied filters.
+    console.error("[production-info] read failed", { filters, error });
+    return NextResponse.json(
+      { error: "The comparison could not be loaded." },
+      { status: 502 },
+    );
+  }
+}
