@@ -278,7 +278,10 @@ export async function fetchWhatChanged(
 
     if (rewrite.byModel) {
       panel.rows = rewrite.rows;
-      panel.writer = "gemini";
+      /* Named by the provider that actually wrote, not assumed. `claude-api` is the
+         existing writer value for "the Messages API phrased this", which is what the
+         badge and the panel's own `writer` field already understand. */
+      panel.writer = rewrite.provider === "gemini" ? "gemini" : "claude-api";
       // The service's note explains why *its* model stayed out of it, which is no
       // longer interesting once one wrote the rows on screen.
       panel.writerNote = "";
