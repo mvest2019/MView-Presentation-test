@@ -1,7 +1,7 @@
 "use client";
 
 import { Info } from "lucide-react";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
@@ -304,43 +304,26 @@ export function PasswordInput({
   ...rest
 }: React.InputHTMLAttributes<HTMLInputElement>) {
   const [shown, setShown] = useState(false);
-  /*
-   * On the WRAPPER, not the input. `rest` carries react-hook-form's own `ref`
-   * from `register()`, and a second `ref` on the same element would clobber it —
-   * taking the field's registration, focus-on-error and validation with it. The
-   * wrapper is ours, and `closest("form")` reaches the form from either.
-   */
-  const wrap = useRef<HTMLDivElement>(null);
 
   /*
-   * RE-MASK ON SUBMIT (Ryan, 2026-08-19: the password "remains visible
-   * indefinitely" after revealing it and submitting a failed sign-in).
+   * NO RE-MASK ON SUBMIT — the timeout below is the whole mechanism.
    *
-   * Nothing used to turn the reveal off but a second click on the eye. A failed
-   * attempt leaves the visitor reading an error with their password sitting in
-   * plain text — and because sign-in failures now surface as a toast rather than
-   * inline, their attention is at the top of the screen, not on the field.
+   * There WAS a form `submit` listener here, added earlier the same day for "the
+   * password remains visible indefinitely after the user enables Show Password
+   * and submits an unsuccessful login attempt". It was removed on the follow-up
+   * (Ryan, 2026-08-19): re-masking on submit "defeats the purpose of the toggle at
+   * exactly the moment it's needed" — you reveal the password precisely to check
+   * it, and hiding it the instant the attempt fails takes it away before you can.
    *
-   * A listener on the form rather than a prop threaded down from each caller:
-   * this component is used by sign-in and sign-up, and the behaviour should not
-   * depend on either remembering to ask for it. The `submit` event still fires
-   * when react-hook-form calls `preventDefault`, so this runs on a rejected
-   * submit as well as an accepted one.
+   * Both notes asked for the same guarantee, and the original wording offered a
+   * choice: re-masked "after submission OR after a short timeout". The timeout
+   * satisfies it without the conflict, so it is the one kept. Nothing stays
+   * revealed indefinitely either way.
    */
-  useEffect(() => {
-    if (!shown) return;
-    const form = wrap.current?.closest("form");
-    if (!form) return;
-    const onSubmit = () => setShown(false);
-    form.addEventListener("submit", onSubmit);
-    return () => form.removeEventListener("submit", onSubmit);
-  }, [shown]);
 
   /*
-   * AND AFTER A TIMEOUT, for the case submitting never happens: revealed, then
-   * abandoned on a shared or unattended screen. `setShown` is inside the timer
-   * callback rather than the effect body, which is what keeps this clear of
-   * `react-hooks/set-state-in-effect`.
+   * `setShown` is inside the timer callback rather than the effect body, which is
+   * what keeps this clear of `react-hooks/set-state-in-effect`.
    */
   useEffect(() => {
     if (!shown) return;
@@ -349,7 +332,7 @@ export function PasswordInput({
   }, [shown]);
 
   return (
-    <div ref={wrap} className="relative">
+    <div className="relative">
       <input
         {...rest}
         type={shown ? "text" : "password"}
@@ -499,13 +482,26 @@ export function SubmitButton({
 export function FormError({
   message,
   className = "mb-3",
+  id,
 }: {
   message: string | null;
   className?: string;
+  /**
+   * Lets the inputs point `aria-describedby` here (Ryan, 2026-08-19: after a
+   * server failure "both inputs are aria-invalid='false' with no
+   * aria-describedby pointing at the error").
+   *
+   * `role="alert"` alone only ANNOUNCES the sentence once, as it appears. It does
+   * not associate it with anything, so a screen-reader user who then tabs back to
+   * the email box hears the label and no hint of why the form refused. The
+   * association is what survives past the announcement.
+   */
+  id?: string;
 }) {
   if (!message) return null;
   return (
     <p
+      id={id}
       role="alert"
       /* JUST THE SENTENCE (Ryan, 2026-08-19: "Don't show that red box only show
          msg"). This briefly had a tinted panel and a border, on the argument that

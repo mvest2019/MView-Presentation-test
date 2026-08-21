@@ -278,3 +278,35 @@ export type RegisterValues = z.infer<typeof registerSchema>;
 export const codeSchema = z
   .string()
   .regex(/^\d{6}$/, "Enter the six digits from the email.");
+
+/* ──────────────────────────────────────────────────── password reset ── */
+
+/** Step 1 — the address to send a reset link to. Same `email` as everywhere. */
+export const forgotPasswordSchema = z.object({ email });
+
+export type ForgotPasswordValues = z.infer<typeof forgotPasswordSchema>;
+
+/**
+ * Step 2 — the new password, twice.
+ *
+ * SAME RULE AS SIGN-UP, extracted rather than retyped: a password the register
+ * form would accept and this one would not (or the reverse) is a trap, and the
+ * API applies one rule to both.
+ *
+ * THE CONFIRM FIELD IS OURS, not the live site's requirement — it is here because
+ * this is the one form where a typo is expensive. Getting it wrong locks you out
+ * of the account you were recovering, and the link is single-use, so the way back
+ * is to request another one. `path` puts the mismatch on the second box, which is
+ * the one to correct.
+ */
+export const resetPasswordSchema = z
+  .object({
+    password: registerSchema.shape.password,
+    confirmPassword: z.string().min(1, "Re-enter the password to confirm it."),
+  })
+  .refine((values) => values.password === values.confirmPassword, {
+    message: "Those passwords do not match.",
+    path: ["confirmPassword"],
+  });
+
+export type ResetPasswordValues = z.infer<typeof resetPasswordSchema>;
