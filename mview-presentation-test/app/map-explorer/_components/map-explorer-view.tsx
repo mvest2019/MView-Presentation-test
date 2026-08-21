@@ -2677,7 +2677,22 @@ export function MapExplorerView() {
     drawNearby(null);
   }, [drawNearby]);
 
-  const changeViewTab = useCallback((tab: ViewTab) => setViewTab(tab), []);
+  const changeViewTab = useCallback((tab: ViewTab) => {
+    /*
+     * Coming back to the map puts the ring out.
+     *
+     * The ring is there to find the well you just picked while the summary is
+     * open beside it. Returning to the full map is done with that well, and a
+     * ring left pulsing over it marks a choice nobody is looking at any more —
+     * and cannot be dismissed, since clicking it only picks the well again.
+     */
+    if (tab === "map") {
+      clearInterval(pulseTimerRef.current);
+      highlightLayerRef.current?.removeAll();
+    }
+
+    setViewTab(tab);
+  }, []);
 
   /*
    * The Insights divider. Pointer capture rather than window listeners: the
