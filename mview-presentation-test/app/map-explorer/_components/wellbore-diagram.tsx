@@ -37,7 +37,7 @@ export function WellboreDiagram({
   kind: string | null | undefined;
   /** The ground-level note, top left. */
   surface: string;
-  /** The producing formation, bottom right. */
+  /** The producing formation, bottom right. Empty where none is recorded. */
   formation: string;
 }) {
   const shape = shapeOf(kind);
@@ -107,14 +107,19 @@ export function WellboreDiagram({
         >
           {label}
         </text>
-        <text
-          x="232"
-          y="76"
-          className="text-[6px] font-bold uppercase tracking-[.12em]"
-          fill="#2e8f6d"
-        >
-          {formation}
-        </text>
+        {/* Only where the record names one — an empty label left a stray
+            fragment of the field name's baseline in the corner. */}
+        {formation && (
+          <text
+            x="290"
+            y="76"
+            textAnchor="end"
+            className="text-[6px] font-bold uppercase tracking-[.12em]"
+            fill="#2e8f6d"
+          >
+            {formation}
+          </text>
+        )}
 
         <path
           d={bore}

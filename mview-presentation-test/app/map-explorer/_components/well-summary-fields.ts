@@ -8,10 +8,9 @@ import { type MapWellSummary } from "@/lib/map-api";
  * for `wellSummaryFields(summary)` and renders exactly what it rendered when
  * these came from `well-insights-data.ts`.
  *
- * Only what the endpoint actually sends is here. The production history, the
- * decline curve's own diagnostics, the reserve and cohort comparisons and the
- * written read stay in `well-insights-data.ts` until there is something to
- * replace them with.
+ * Only what the endpoint actually sends is here. Where a field is missing the
+ * row reads as an em dash rather than borrowing a figure from the fixed values
+ * these used to come from.
  */
 
 export type Row = { label: string; value: string };
@@ -172,11 +171,14 @@ export function wellSummaryFields(summary: MapWellSummary) {
 
     wellboreKind: text(wellbore?.profile),
 
+    /* The producing interval, for the label inside the wellbore picture. */
+    formation: lease?.play ?? lease?.fieldName ?? "",
+
     /*
-     * The rows of Decline Diagnostics this response can answer. The rest of
-     * that card — the life GOR, the GOR trend, the oil-to-gas step ratio and
-     * the reserve against the integral of the curve — is not in it, and stays
-     * as it was.
+     * Decline diagnostics, as far as this response can answer them. The four
+     * rows it cannot — life GOR, the GOR trend, the oil-to-gas step ratio and
+     * the reserve against the integral of the curve — are gone rather than
+     * filled in from elsewhere.
      */
     decline: [
       {

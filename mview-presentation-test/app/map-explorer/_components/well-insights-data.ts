@@ -1,126 +1,16 @@
 /*
- * The single-well summary, as data.
+ * What the Completion summary still has no endpoint for.
  *
- * All of it is static and all of it is the same for whichever well is clicked:
- * none of production history, reserves, decline or filings is in the map API
- * yet. Only the top strip is real, and only the parts the map already knows —
- * the API number, the county, the status.
+ * Everything the service answers — the identity, the lease, the wellbore, the
+ * dates, the production and the analytics — comes from
+ * `/wells/{api}/summary` and `/wells/{api}/production` and is mapped in
+ * `well-summary-fields.ts`. What is left here is the part of the Insights page
+ * the API does not cover yet: the reserve and cohort comparisons, the written
+ * read, and the two labels inside the wellbore picture.
  *
- * Replace this file wholesale when a well-detail endpoint exists.
+ * The permit side of this file is gone — `/wells/{api}/permit` answers all of
+ * it, and the permit's summary is written by the model.
  */
-
-/** When the summary was last read, as the header prints it. */
-export const SUMMARY_UPDATED = "May 12, 2025 10:30 AM";
-
-export const WELL_HEADER = {
-  wellNumber: "1",
-  api: "42-255-38043",
-  county: "Karnes",
-  status: "Producing",
-  performance: "Good",
-};
-
-/*
- * The written read on the permit — five things worth knowing, generated.
- *
- * `**bold**` marks the figures inside a sentence and `` `code` `` marks a
- * field or table name in the basis line; `ai-summary.tsx` renders both. Static
- * like the rest of this file: when a summariser exists, this is the shape to
- * hand back.
- */
-export const PERMIT_AI_SUMMARY = {
-  subtitle: "five things worth knowing about this well",
-  title: "Falks Gas Unit 1 · A1H",
-  context: "Approved New Drill permit · Sugarkane (Eagle Ford) · Karnes County",
-  generated: "2026-08-19 12:46",
-  lead: "An approved New Drill permit for the longest lateral yet proposed on a lease that has already produced 5.19 MMBOE — still undrilled 285 days into a closing permit window.",
-  findings: [
-    {
-      title: "This is infill on proven rock, not a wildcat",
-      badge: "Strength",
-      tone: "green" as const,
-      body: "Ten wells already produce on this same lease, having recovered **951,829 bbl** of oil and **25.4 Bcf** of gas — about **5.19 MMBOE** — with eight still flowing a combined **5,782 BOE per month**. The permit's target, Eagle Ford, is the better of the two producing intervals here: the eight Eagle Ford wells average **536 MBOE** against **449 MBOE** for the two Austin Chalk wells.",
-    },
-    {
-      title: "The longest lateral ever proposed on this lease",
-      badge: "Design",
-      tone: "blue" as const,
-      body: "At **7,473 ft** of surface-to-bottom-hole displacement, A1H exceeds the previous best on the lease (C5H at 6,995 ft) and runs **25% above** the 5,989 ft lease average. It heads north-west on a **320.5° azimuth** as the westernmost of a five-well pad — A1H through A5H share one surface location within 75 ft and fan out to **36,387 ft** of combined new reservoir contact.",
-    },
-    {
-      title: "Approved quickly, but sitting undrilled",
-      badge: "Watch",
-      tone: "amber" as const,
-      body: "The permit cleared in **11 days**, close to the field average of 11.2 and the Karnes County average of 10.6. Since then **285 days** have passed with no producing wellbore linked to it, leaving roughly **445 days** of the standard two-year permit validity. All five pad permits carry identical dates, so the whole programme burns its window together.",
-    },
-    {
-      title: "The nearest-well figure above understates reality",
-      badge: "Data issue",
-      tone: "red" as const,
-      body: "The record reports the nearest well at **1.02564 miles** west. In fact a producing Eagle Ford horizontal on this very lease — 42-255-32279 (B2H), which has made 131,988 bbl and 3.64 Bcf — sits just **259 ft** away, and **seven completions** are closer than the well the record names. The stored distance is internally consistent, so the calculation appears to run against a restricted record set rather than all completions.",
-    },
-    {
-      title: "Strong neighbourhood, but a real cancellation base rate",
-      badge: "Balance",
-      tone: "slate" as const,
-      body: "Of 588 completions within five miles, **66% still produce** and **69%** of rated wells score Good with only four rated Poor. Against that, **24.4%** of the 336 permits ever filed in Sugarkane ended Cancelled or Abandoned, and two of the ten lease wells are already inactive — including the closest one. Scaling the most recent Eagle Ford phase's per-foot intensity to this lateral implies roughly **108 Mbbl oil** and **3.0 Bcf gas**, though that is an analogue rather than a reserves estimate.",
-    },
-  ],
-  basis:
-    "Built from `Api_No 42-255-38339` in `GeoMapPortal.WellGeoData` where `Record_Type` is `Permit`, joined by `lease_name` and location to `Completion` records — the only record type in the collection that carries production and reserves. Laterals, azimuth, review time and distances are computed from the stored coordinate and date fields; the two-year validity is the standard RRC W-1 convention, not a stored value. Permit records hold no depth, acreage or production of their own, so all performance figures come from the joined completions.",
-};
-
-/** The six figures across the top. */
-export const WELL_METRICS = [
-  { label: "Last Month Oil", value: "10,826", unit: "BBL", kind: "oil" },
-  { label: "Last Month Gas", value: "19,117", unit: "MCF", kind: "gas" },
-  { label: "Next Month Est Oil", value: "9,467", unit: "BBL", kind: "oil" },
-  { label: "Next Month Est Gas", value: "16,718", unit: "MCF", kind: "gas" },
-  { label: "Reserve Oil", value: "75,000", unit: "BBL", kind: "reserve" },
-  { label: "Reserve Gas", value: "130,000", unit: "MCF", kind: "reserve" },
-] as const;
-
-export const WELL_INFORMATION = [
-  { label: "Well Type", value: "Oil" },
-  { label: "Direction", value: "Horizontal" },
-  { label: "Well Age", value: "1 year" },
-  { label: "Reservoir/Play", value: "Eagle Ford Shale" },
-];
-
-export const LEASE_INFORMATION = [
-  { label: "Lease Name", value: "Metz-Korth-Rru Usw A" },
-  { label: "Lease No.", value: "13071" },
-  { label: "Acres", value: "5,618.53" },
-  { label: "District", value: "02" },
-];
-
-export const OPERATOR_INFO = {
-  label: "Operator",
-  value: "Burlington Resources O & G Co Lp (109335)",
-};
-
-export const DEPTH_GEOMETRY = [
-  { label: "Start Depth", value: "11,490 ft" },
-  { label: "True Vertical", value: "13,360 ft" },
-  { label: "End Depth", value: "25,289 ft" },
-  { label: "Nearest Well", value: "0.009 miles" },
-];
-
-export const WELL_ACTIVITY = [
-  { label: "Filing Type", value: "New Well" },
-  { label: "Filing Purpose", value: "Drilling" },
-  { label: "Spud Date", value: "12-03-2024" },
-  { label: "First Production", value: "03-19-2025" },
-  { label: "Completion Date", value: "03-2025" },
-  { label: "Last Production", value: "04-2026" },
-];
-
-export const WELL_LOCATION = [
-  { label: "Latitude", value: "52.38143° N" },
-  { label: "Longitude", value: "97.65799° W" },
-  { label: "Survey", value: "J POITEVENT" },
-  { label: "Blk / Sec", value: "41 / 19" },
-];
 
 export const WELLBORE = {
   kind: "Horizontal",
@@ -136,24 +26,6 @@ export const WELLBORE = {
     { label: "Last rep.", value: "Jan '26" },
   ],
 };
-
-/** Decline diagnostics: what the rate curve anchors reveal. */
-export const DECLINE_ROWS = [
-  { label: "Last month oil", value: "10,826.53", unit: "BBL", tone: "ink" },
-  { label: "Next month est oil", value: "9,467.70", unit: "BBL", tone: "ink" },
-  { label: "Month-on-month step", value: "-12.55", unit: "%", tone: "down" },
-  { label: "Implied annual effective", value: "80.0", unit: "%", tone: "ink" },
-  { label: "Last month gas", value: "19,117.48", unit: "MCF", tone: "ink" },
-  { label: "Next month est gas", value: "16,718.12", unit: "MCF", tone: "ink" },
-  { label: "Gas MoM step", value: "-12.55", unit: "%", tone: "down" },
-  { label: "Oil ÷ gas step ratio", value: "1.0000", unit: "", tone: "ink" },
-  { label: "Life GOR", value: "1,369", unit: "SCF/BBL", tone: "ink" },
-  { label: "Last month GOR", value: "1,766", unit: "SCF/BBL", tone: "ink" },
-  { label: "GOR trend to date", value: "+29", unit: "%", tone: "up" },
-  { label: "Forecast GOR", value: "1,766", unit: "frozen", tone: "ink" },
-  { label: "R/P on last month", value: "0.58", unit: "yr · 7 months", tone: "down" },
-  { label: "Reserve ÷ integral of curve", value: "93.4", unit: "%", tone: "ink" },
-] as const;
 
 /** Reserve integrity: stated depletion against well age. */
 export const RESERVE_INTEGRITY = {

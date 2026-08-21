@@ -28,8 +28,8 @@ import type { SelectedWell } from "./well-insights-panel";
  * the operator, where it is and what is nearest to it. The county is the map's
  * own, because the permit record does not carry one.
  *
- * The written read underneath is still `PERMIT_AI_SUMMARY`: there is no
- * endpoint that generates it.
+ * The written read underneath is generated from the same filing, through
+ * `/api/permit-summary` — see that route for where the key lives.
  */
 
 /*
@@ -218,8 +218,22 @@ export function PermitSummary({ well }: { well: SelectedWell }) {
             />
           </div>
 
+          {/* Written from the same filing the cards above draw, by way of
+              `/api/permit-summary` — the key stays on the server. */}
           <div className="mt-3">
-            <AiSummary />
+            <AiSummary
+              api={well.api}
+              title={
+                fields
+                  ? `${fields.leaseWell[0].value} · ${fields.header.wellNumber}`
+                  : well.api
+              }
+              context={
+                fields
+                  ? `${fields.header.status} ${fields.header.filingPurpose} permit · ${fields.operatorField[1].value} · ${fields.leaseWell[1].value} County`
+                  : ""
+              }
+            />
           </div>
         </div>
       </div>

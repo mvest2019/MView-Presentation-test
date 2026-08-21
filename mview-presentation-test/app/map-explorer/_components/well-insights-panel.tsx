@@ -22,28 +22,29 @@ import {
   type MapWellSummary,
 } from "@/lib/map-api";
 
+import {
+  COHORT_EUR,
+  INSIGHT_SUMMARY,
+  RESERVE_INTEGRITY,
+  WELLBORE,
+} from "./well-insights-data";
 import { PermitSummary } from "./permit-summary";
 import { ProductionChart } from "./production-chart";
 import { WellboreDiagram } from "./wellbore-diagram";
 import { WellSummaryHeader, type WellRecord } from "./well-summary-header";
 import { wellSummaryFields } from "./well-summary-fields";
 
-import {
-  COHORT_EUR,
-  DECLINE_ROWS,
-  INSIGHT_SUMMARY,
-  OPERATOR_INFO,
-  RESERVE_INTEGRITY,
-  WELLBORE,
-} from "./well-insights-data";
-
 /*
  * The summary for one well.
  *
- * The top strip takes what the map already knows about the clicked well — its
- * API number, county and status. Everything below is static: production
- * history, reserves, decline and filings are not in the map API yet, and
- * `well-insights-data.ts` is the single place to replace when they are.
+ * Every field comes from the service: `/wells/{api}/summary` for the record and
+ * `/wells/{api}/production` for the chart. Nothing on this page is written
+ * here — where the response has no value, the row shows an em dash.
+ *
+ * Three cards are not the service's yet: reserve integrity, cohort EUR and the
+ * written read. They compare this well against the rest of the collection,
+ * which no per-well endpoint answers, so they stay in `well-insights-data.ts`
+ * until one does. Everything else on the page is this well's own.
  */
 
 /*
@@ -76,6 +77,30 @@ const DEPTH_LABELS = [
   "True Vertical",
   "End Depth",
   "Nearest Well",
+];
+
+/* The decline rows carry a unit and a tone, so their placeholder must too. */
+const DECLINE_LOADING = (label: string) => ({
+  label,
+  value: "—",
+  unit: "",
+  tone: "ink" as const,
+});
+
+const DECLINE_LABELS = [
+  "Last month oil",
+  "Next month est oil",
+  "Month-on-month step",
+  "Implied annual effective",
+  "Last month gas",
+  "Next month est gas",
+  "Gas MoM step",
+  "Last month GOR",
+  "Forecast GOR",
+  "Reserves at last month's rate",
+  "Last year oil",
+  "Last year gas",
+  "Average est monthly",
 ];
 
 const WELL_METRICS_LOADING = [
@@ -119,6 +144,8 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
    */
   const [summary, setSummary] = useState<MapWellSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** When the record came back — what the header's "last updated" means. */
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
 
   /*
    * The monthly series behind the chart, asked for separately.
@@ -142,6 +169,7 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
         if (cancelled) return;
         setSummary(answer);
         setError(null);
+        setLoadedAt(new Date().toISOString());
       })
       .catch((failure: unknown) => {
         if (cancelled) return;
@@ -199,6 +227,8 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
       <WellSummaryHeader
         well={well}
         record={record}
+        loadedAt={loadedAt}
+        fields={fields}
         onRecordChange={setRecord}
       />
 
@@ -331,7 +361,8 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
                   <WellboreDiagram
                     kind={fields?.wellboreKind ?? WELLBORE.kind}
                     surface={WELLBORE.surface}
-                    formation={WELLBORE.formation}
+                    /* The record's own producing interval where it names one. */
+                    formation={fields?.formation || WELLBORE.formation}
                   />
                 </Card>
               </div>
@@ -363,9 +394,7 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
                 <div className="flex flex-col gap-3">
                   <Card icon={Building2} title="Operator Info">
                     <div className="mt-[10px] flex items-baseline justify-between gap-3 text-[12px]">
-                      <span className="shrink-0 text-mv-muted">
-                        {OPERATOR_INFO.label}
-                      </span>
+                      <span className="shrink-0 text-mv-muted">Operator</span>
                       <span className="text-right font-semibold text-mv-ink">
                         {fields?.operator.value ?? well.operator ?? "—"}
                       </span>
@@ -410,7 +439,9 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
               `auto-rows-fr` lets the rows share whatever height the taller card
               sets, so the two finish level. */}
                   <dl className="mt-2 grid flex-1 auto-rows-fr gap-x-6 sm:grid-cols-2">
-                    {(fields?.decline ?? DECLINE_ROWS).map((row) => (
+                    {(
+                      fields?.decline ?? DECLINE_LABELS.map(DECLINE_LOADING)
+                    ).map((row) => (
                       <div
                         key={row.label}
                         className="flex items-center justify-between gap-3 border-b border-mv-line py-[6px] text-[12px]"
@@ -774,45 +805,6 @@ function Rows({
   );
 }
 
-function Note({
-  tone,
-  icon: Icon,
-  flush,
-  children,
-}: {
-  tone: "red" | "blue";
-  /** A marked disc rather than a plain dot, where the note carries the point. */
-  icon?: typeof Info;
-  /** Drop the top margin, for notes a parent already spaces. */
-  flush?: boolean;
-  children: React.ReactNode;
-}) {
-  const look = tone === "red" ? TONES.red : TONES.blue;
-
-  return (
-    <div
-      className={`flex items-start gap-[10px] rounded-lg border p-[12px] ${
-        flush ? "" : "mt-3"
-      } ${look.card}`}
-    >
-      {Icon ? (
-        <span
-          aria-hidden="true"
-          className={`grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full ${look.dot}`}
-        >
-          <Icon size={11} strokeWidth={3} className="text-white" />
-        </span>
-      ) : (
-        <span
-          aria-hidden="true"
-          className={`mt-[3px] h-[8px] w-[8px] shrink-0 rounded-full ${look.dot}`}
-        />
-      )}
-      <p className="text-[11px] leading-[1.55] text-mv-slate">{children}</p>
-    </div>
-  );
-}
-
 /**
  * A map tile with the well pinned on it.
  *
@@ -866,6 +858,45 @@ function LocationMark() {
           aria-hidden="true"
         />
       </span>
+    </div>
+  );
+}
+
+function Note({
+  tone,
+  icon: Icon,
+  flush,
+  children,
+}: {
+  tone: "red" | "blue";
+  /** A marked disc rather than a plain dot, where the note carries the point. */
+  icon?: typeof Info;
+  /** Drop the top margin, for notes a parent already spaces. */
+  flush?: boolean;
+  children: React.ReactNode;
+}) {
+  const look = tone === "red" ? TONES.red : TONES.blue;
+
+  return (
+    <div
+      className={`flex items-start gap-[10px] rounded-lg border p-[12px] ${
+        flush ? "" : "mt-3"
+      } ${look.card}`}
+    >
+      {Icon ? (
+        <span
+          aria-hidden="true"
+          className={`grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full ${look.dot}`}
+        >
+          <Icon size={11} strokeWidth={3} className="text-white" />
+        </span>
+      ) : (
+        <span
+          aria-hidden="true"
+          className={`mt-[3px] h-[8px] w-[8px] shrink-0 rounded-full ${look.dot}`}
+        />
+      )}
+      <p className="text-[11px] leading-[1.55] text-mv-slate">{children}</p>
     </div>
   );
 }
