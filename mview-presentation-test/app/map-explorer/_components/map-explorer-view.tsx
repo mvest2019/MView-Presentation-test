@@ -3066,7 +3066,15 @@ export function MapExplorerView() {
       {status === "ready" && hoveredCluster && clusters[hoveredCluster.index] && (
         <ClusterTooltip
           cluster={clusters[hoveredCluster.index]}
-          canOpen={readout.zoom < CLUSTER_ZOOM_STEPS[1]}
+          /* The first level opens the area; the second zooms to the wells.
+             Past the well band the bubbles are gone, so neither applies. */
+          action={
+            readout.zoom < CLUSTER_ZOOM_STEPS[1]
+              ? "area"
+              : readout.zoom < WELL_ZOOM
+                ? "wells"
+                : null
+          }
           at={{ x: hoveredCluster.x, y: hoveredCluster.y }}
           bubble={hoveredCluster.bubble}
         />
