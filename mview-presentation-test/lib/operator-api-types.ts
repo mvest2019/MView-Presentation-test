@@ -56,6 +56,31 @@ export interface OperatorCountiesResponse {
 }
 
 /* ==========================================================================
+   GET /api/v1/operators/district-codes
+   ========================================================================== */
+
+/**
+ * Live response, measured — all 13 of them, and the whole body is 84 bytes:
+ *   { "districtCodes": ["01","02","03","04","05","06","6E","7B","7C",
+ *                       "08","8A","09","10"] }
+ *
+ * THE KEY IS camelCase where the other two lists are lower case, which is why
+ * these three readers cannot share a key name even though they share a shape.
+ *
+ * NOT NUMBERS, AND NOT SORTABLE AS SUCH. `6E`, `7B`, `7C` and `8A` are Railroad
+ * Commission district letters, and the numeric ones keep a leading zero (`01`,
+ * not `1`). They are strings end to end: parsing one to a number loses the zero,
+ * and the compare payload matches on the string.
+ *
+ * THE ORDER IS THE REGULATOR'S, not alphabetical — `06` before `6E` before `7B`,
+ * and `08` before `8A` before `09`. It is the order a land professional reads
+ * districts in, so it is preserved rather than re-sorted.
+ */
+export interface OperatorDistrictCodesResponse {
+  districtCodes: string[];
+}
+
+/* ==========================================================================
    POST /api/v1/operators/search
    ========================================================================== */
 
@@ -67,6 +92,7 @@ export interface OperatorCountiesResponse {
 export const OPERATOR_ENDPOINTS = {
   playTypes: "/api/v1/operators/playtypes",
   counties: "/api/v1/operators/counties",
+  districtCodes: "/api/v1/operators/district-codes",
   search: "/api/v1/operators/search",
   /**
    * Every operator's name, as a `GET`. Measured: 24,742 records, 2.10 MB of JSON,

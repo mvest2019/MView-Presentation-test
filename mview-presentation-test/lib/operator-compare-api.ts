@@ -158,11 +158,50 @@ function toData(
  * Cached on the exact set of names. The key is built from them sorted, so picking
  * A then B and picking B then A are one cache entry rather than two.
  */
+/**
+ * How many trend years the matrix shows.
+ *
+ * The response carries the operator's whole filed history — 29 years, 1998 to 2026,
+ * measured — and a table 29 columns wide is not readable. Five is the shape the
+ * section was designed at; what changed is WHICH five, since they are now the five
+ * most recent years the API actually reports rather than a hardcoded 2021–2025.
+ */
+const TREND_YEARS_SHOWN = 5;
+
+/**
+ * The years to plot, from the response itself.
+ *
+ * THE UNION ACROSS OPERATORS, so a year one operator reports and another does not
+ * still gets a column — with an empty cell for the one that has no figure, which is
+ * what the matrix already draws for a missing value.
+ *
+ * NEWEST YEARS KEPT. Taking the tail is what stops 2026 being discarded the moment
+ * the API starts reporting it, which is exactly what the fixed 2021–2025 window did.
+ */
+function trendYearsFrom(rows: readonly CompareRecord[]): number[] {
+  const years = new Set<number>();
+  for (const row of rows) {
+    const map = row.Historical_Production_Trends;
+    if (!map || typeof map !== "object") continue;
+    for (const key of Object.keys(map)) {
+      const year = Number(key);
+      if (Number.isInteger(year) && year > 0) years.add(year);
+    }
+  }
+  return [...years].sort((a, b) => a - b).slice(-TREND_YEARS_SHOWN);
+}
+
+/** The comparison, and the years its trend figures are aligned to. */
+export interface OperatorComparison {
+  operators: StatisticsOperatorData[];
+  /** Ascending. Every operator's `trend` array is indexed by this. */
+  years: number[];
+}
+
 async function readComparison(
   names: readonly string[],
-  years: readonly number[],
-): Promise<StatisticsOperatorData[]> {
-  if (names.length === 0) return [];
+): Promise<OperatorComparison> {
+  if (names.length === 0) return { operators: [], years: [] };
 
   /* Cleaned → filed, from the list that is already in memory. This is the whole
      reason the browser never has to know that two spellings exist. */
@@ -176,7 +215,7 @@ async function readComparison(
     .map((name) => filedFor.get(name.trim().toLowerCase()))
     .filter((name): name is string => Boolean(name));
 
-  if (filed.length === 0) return [];
+  if (filed.length === 0) return { operators: [], years: [] };
 
   const response = await fetch(
     `${publicOperatorApiBaseUrl()}/api/v1/operators/compare`,
@@ -196,11 +235,17 @@ async function readComparison(
   const rows = (payload as { data?: { operators_data?: unknown } })?.data
     ?.operators_data;
 
-  if (!Array.isArray(rows)) return [];
+  if (!Array.isArray(rows)) return { operators: [], years: [] };
 
-  return rows
-    .map((row) => toData(row as CompareRecord, years))
-    .filter((row): row is StatisticsOperatorData => row !== null);
+  const records = rows as CompareRecord[];
+  const years = trendYearsFrom(records);
+
+  return {
+    operators: records
+      .map((row) => toData(row, years))
+      .filter((row): row is StatisticsOperatorData => row !== null),
+    years,
+  };
 }
 
 /**
@@ -212,6 +257,6 @@ async function readComparison(
  */
 export const getOperatorComparison = unstable_cache(
   readComparison,
-  ["operator-comparison", "v2-logo"],
+  ["operator-comparison", "v3-live-years"],
   { revalidate: 600, tags: ["operators"] },
 );

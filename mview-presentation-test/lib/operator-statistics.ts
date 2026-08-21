@@ -24,13 +24,9 @@
  * correctly from one small switch.
  */
 
-import {
-  OPERATOR_STATISTICS_RECORDS,
-  STATISTICS_TREND_YEARS,
-} from "./operator-statistics-data";
+import { OPERATOR_STATISTICS_RECORDS } from "./operator-statistics-data";
 import type { StatisticsOperatorData } from "./operator-statistics-shape";
 
-export { STATISTICS_TREND_YEARS };
 export type { StatisticsOperatorData } from "./operator-statistics-shape";
 export {
   COMPARE_SLOT_COUNT,
@@ -75,7 +71,10 @@ export interface StatisticsOperator {
   headquarters: string | null;
   /** Most-active counties, title-cased, highest first. */
   topCounties: string[];
-  /** Annual BOE for `STATISTICS_TREND_YEARS`, or null when none is filed. */
+  /**
+   * Annual BOE, indexed by the years the API reported — see `trendYearsFrom`. Null
+   * when the operator has no filed series.
+   */
   trend: number[] | null;
   /** BOE in the latest trend year, or null without a series. */
   boeCurrent: number | null;
@@ -134,7 +133,7 @@ export function monogramOf(name: string): string {
  * break a table header or a chip, so past 24 characters it is cut at a word or
  * comma boundary and elided — the design's `csShort`.
  */
-function shortName(name: string): string {
+export function shortName(name: string): string {
   if (name.length <= 24) return name;
   return `${name.slice(0, 22).replace(/[ ,]+$/, "")}…`;
 }
@@ -390,8 +389,8 @@ export function buildCompanyRows(operators: StatisticsOperator[]): MatrixRow[] {
 /** "Production metrics" — reported volumes. */
 export function buildProductionRows(
   operators: StatisticsOperator[],
+  years: readonly number[],
 ): MatrixRow[] {
-  const years = STATISTICS_TREND_YEARS;
   const latest = years.at(-1);
   const prior = years.at(-2);
 
@@ -444,8 +443,11 @@ export function buildProductionRows(
  * is the highest filed figure for that year; a year where nobody has a series has
  * no best rather than an arbitrary one.
  */
-export function buildTrendRows(operators: StatisticsOperator[]): MatrixRow[] {
-  const years = [...STATISTICS_TREND_YEARS];
+export function buildTrendRows(
+  operators: StatisticsOperator[],
+  trendYears: readonly number[],
+): MatrixRow[] {
+  const years = [...trendYears];
   const latest = years.at(-1);
 
   return years
@@ -466,6 +468,7 @@ export function buildTrendRows(operators: StatisticsOperator[]): MatrixRow[] {
 /** The collapsible matrix — both blocks above, under group headings. */
 export function buildFullMatrixRows(
   operators: StatisticsOperator[],
+  years: readonly number[],
 ): MatrixRow[] {
   return [
     { kind: "group", label: "Company information" },
@@ -473,7 +476,7 @@ export function buildFullMatrixRows(
       (row) => row.kind !== "metric" || row.label !== "Activity status",
     ),
     { kind: "group", label: "Production metrics" },
-    ...buildProductionRows(operators),
+    ...buildProductionRows(operators, years),
     metricRow("Activity status", operators, () => ({
       kind: "status",
       active: true,
@@ -495,6 +498,7 @@ export function buildFullMatrixRows(
  */
 export function buildStatisticsCsvRows(
   operators: StatisticsOperator[],
+  years: readonly number[],
 ): string[][] {
   const rows: string[][] = [
     ["Metric", ...operators.map((o) => o.name)],
@@ -514,7 +518,7 @@ export function buildStatisticsCsvRows(
     ],
   ];
 
-  STATISTICS_TREND_YEARS.forEach((year, index) => {
+  years.forEach((year, index) => {
     rows.push([
       `BOE ${year}`,
       ...operators.map((o) => (o.trend ? String(o.trend[index] ?? "") : "")),

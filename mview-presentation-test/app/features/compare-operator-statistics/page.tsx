@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 
 import { Breadcrumbs } from "@/app/_components/breadcrumbs";
 import { displayXsClass } from "@/app/_components/typography";
-import { STATISTICS_TREND_YEARS } from "@/lib/operator-statistics";
 
 import { StatisticsPage } from "./statistics-page";
 
@@ -31,12 +30,21 @@ import { StatisticsPage } from "./statistics-page";
  * tool compares. Worth deciding before it goes in a sitemap.
  */
 
-const YEAR_RANGE = `${STATISTICS_TREND_YEARS[0]}–${STATISTICS_TREND_YEARS.at(-1)}`;
+/**
+ * The trend window, described rather than named.
+ *
+ * IT USED TO NAME 2021–2025, from the fixture's `STATISTICS_TREND_YEARS`. The table
+ * now plots whichever five years the API reports — 2022–2026 as of writing, and it
+ * moves on its own — so naming years here would be a claim this page cannot keep. The
+ * span is still stated, which is what the description is for; the exact years are on
+ * the page itself, where they are the API's own.
+ */
+const TREND_WINDOW = "five-year";
 
 const PAGE_TITLE =
   "Compare Operator Statistics — Texas oil & gas operators head-to-head | Mineral View";
 
-const PAGE_DESCRIPTION = `Put two to four Texas operators head-to-head on company profile, leases, counties, reported production and the ${YEAR_RANGE} BOE trend. Real Railroad Commission records — free to use.`;
+const PAGE_DESCRIPTION = `Put two to four Texas operators head-to-head on company profile, leases, counties, reported production and the latest ${TREND_WINDOW} BOE trend. Real Railroad Commission records — free to use.`;
 
 const PATH = "/features/compare-operator-statistics";
 
@@ -111,8 +119,8 @@ export default function CompareOperatorStatisticsRoute() {
           </h1>
           <p className="max-w-[640px] text-[14.5px] text-mv-muted">
             Put two to four operators head-to-head on company profile, reported
-            production, and five-year trend — everything from the public record, in
-            one scannable view.
+            production, and five-year trend — everything from the public record,
+            in one scannable view.
           </p>
         </div>
       </div>

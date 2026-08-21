@@ -6,7 +6,6 @@ import {
   ALL_OPERATORS,
   getPresentationsPage,
 } from "@/lib/operator-presentations-api";
-import { presentationsSummary } from "@/lib/operator-presentations";
 
 import { PresentationsPage } from "./presentations-page";
 
@@ -35,33 +34,57 @@ import { PresentationsPage } from "./presentations-page";
  * STATICALLY PRERENDERED. No cookie, header or search param is read.
  */
 
-const summary = presentationsSummary();
-
 const PAGE_TITLE =
   "Operator Presentations — Texas oil & gas investor decks and quarterly results | Mineral View";
 
-const PAGE_DESCRIPTION = `Quarterly results and investor presentations from ${summary.operators} operators active across Texas. Filter by operator or date, skim the summary, and open the full deck. Free to browse.`;
-
 const PATH = "/features/operator-presentations";
 
-export const metadata: Metadata = {
-  title: PAGE_TITLE,
-  description: PAGE_DESCRIPTION,
-  alternates: { canonical: PATH },
-  openGraph: {
+/**
+ * The description, with the library's real size in it.
+ *
+ * IT USED TO SAY "18 operators", counted from the fixture, while the endpoint holds
+ * 190 presentations — a wrong number in the one sentence search engines read. It now
+ * states the deck count from `libraryTotal()`, which is the SAME cached read the
+ * heading already makes, so the correct figure costs no extra request.
+ *
+ * WHY THE DECK COUNT AND NOT AN OPERATOR COUNT. The operator list comes from
+ * `getPresentationOperators`, which walks 32 pages to build itself; putting that on
+ * the metadata path would add 32 upstream requests to every build of this page, and
+ * this endpoint has already timed out at build once. The count that is cheap is the
+ * one page one reports.
+ *
+ * NO COUNT AT ALL rather than a guess when the read fails — the sentence still reads.
+ */
+function pageDescription(total: number | null): string {
+  const scale =
+    total === null
+      ? "Quarterly results and investor presentations from Texas operators."
+      : `Browse ${total.toLocaleString("en-US")} quarterly results and investor presentations from Texas operators.`;
+  return `${scale} Filter by operator or date, skim the summary, and open the full deck. Free to browse.`;
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const description = pageDescription(await libraryTotal());
+
+  return {
     title: PAGE_TITLE,
-    description: PAGE_DESCRIPTION,
-    url: PATH,
-    siteName: "Mineral View",
-    type: "website",
-    locale: "en_US",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: PAGE_TITLE,
-    description: PAGE_DESCRIPTION,
-  },
-};
+    description,
+    alternates: { canonical: PATH },
+    openGraph: {
+      title: PAGE_TITLE,
+      description,
+      url: PATH,
+      siteName: "Mineral View",
+      type: "website",
+      locale: "en_US",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: PAGE_TITLE,
+      description,
+    },
+  };
+}
 
 const SITE_URL = (
   process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.mineralview.com"

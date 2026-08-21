@@ -1,10 +1,53 @@
 import type { Metadata } from "next";
 
 import { Breadcrumbs } from "@/app/_components/breadcrumbs";
-import { displayXsClass, eyebrowClass } from "@/app/_components/typography";
-import { COMPARE_YEARS } from "@/lib/operator-compare";
+import { displayXsClass } from "@/app/_components/typography";
+import {
+  getOperatorCounties,
+  getOperatorDistrictCodes,
+  getOperatorPlayTypes,
+} from "@/lib/operator-api";
+import {
+  defaultProductionWindow,
+  emptyProductionFilters,
+} from "@/lib/operator-production-filters";
+import type { ProductionFilterOptions } from "@/lib/operator-production-shape";
 
 import { ComparePage } from "./compare-page";
+
+/**
+ * The filter bar's option lists, read on the server.
+ *
+ * ALL THREE ARE CACHED UPSTREAM, so this costs no request per visitor — and because
+ * they are read here rather than in the browser, opening a dropdown is instant and the
+ * page ships no code to populate one. The same `/counties` and `/playtypes` reads the
+ * operator listing uses, so an option list cannot disagree between the two pages.
+ *
+ * A FAILING LIST DEGRADES TO EMPTY rather than taking the page down. A filter with no
+ * options is a filter that offers nothing; a page that 500s offers nothing at all, and
+ * the comparison itself does not depend on any of these being present.
+ *
+ * THEY OVERLAP. None depends on another, so the page waits for the slowest rather than
+ * the sum of the three.
+ */
+async function loadFilterOptions(): Promise<ProductionFilterOptions> {
+  const [counties, playTypes, districtCodes] = await Promise.all([
+    getOperatorCounties().catch((error: unknown) => {
+      console.error("[compare-production] counties unavailable", error);
+      return [] as string[];
+    }),
+    getOperatorPlayTypes().catch((error: unknown) => {
+      console.error("[compare-production] play types unavailable", error);
+      return [] as string[];
+    }),
+    getOperatorDistrictCodes().catch((error: unknown) => {
+      console.error("[compare-production] district codes unavailable", error);
+      return [] as string[];
+    }),
+  ]);
+
+  return { counties, playTypes, districtCodes };
+}
 
 /**
  * Compare Operator Production — `/features/compare-operator-production`.
@@ -27,7 +70,17 @@ import { ComparePage } from "./compare-page";
  * most of why this page's LCP is a static document rather than a request.
  */
 
-const YEAR_RANGE = `${COMPARE_YEARS[0]}–${COMPARE_YEARS.at(-1)}`;
+/**
+ * The window the page actually opens on, from the same helper the filters use.
+ *
+ * IT USED TO COME FROM `COMPARE_YEARS` — the fixture's fixed 2016–2025 — while the
+ * chart plots whatever the API returns for the applied range. The two agreed only by
+ * coincidence, and the copy would have gone stale on its own next year.
+ * `defaultProductionWindow` is what `initialFilters` below is built from, so the
+ * sentence and the request are now the same decision read twice.
+ */
+const DEFAULT_WINDOW = defaultProductionWindow(new Date().getFullYear());
+const YEAR_RANGE = `${DEFAULT_WINDOW.fromYear}–${DEFAULT_WINDOW.toYear}`;
 
 const PAGE_TITLE = `Compare Operator Production — Texas oil & gas operators side by side | Mineral View`;
 
@@ -79,7 +132,16 @@ const BREADCRUMB_JSON_LD = {
   ],
 };
 
-export default function CompareOperatorProductionRoute() {
+export default async function CompareOperatorProductionRoute() {
+  const currentYear = new Date().getFullYear();
+  const options = await loadFilterOptions();
+  /* No operator selected, and the default ten-year window. The page therefore opens
+     with nothing requested — see the note on the two filter sets in `compare-page`. */
+  const initialFilters = {
+    ...emptyProductionFilters(currentYear),
+    ...defaultProductionWindow(currentYear),
+  };
+
   return (
     <div className="pb-4">
       <script
@@ -101,21 +163,19 @@ export default function CompareOperatorProductionRoute() {
             ]}
           />
 
-          <p className={`${eyebrowClass} mt-[14px]`}>Operator tools · free to use</p>
-
           {/* The one h1. The lede repeats the year range because that is the
               first thing a visitor needs to know the page can answer. */}
           <h1 className={`${displayXsClass} mb-[6px] mt-2 text-mv-ink`}>
             Compare operator production
           </h1>
           <p className="max-w-[600px] text-[14.5px] text-mv-muted">
-            Put two to four Texas operators side by side on filed annual production
-            — real RRC figures, {YEAR_RANGE}.
+            Put two to four Texas operators side by side on filed annual
+            production — real RRC figures, {YEAR_RANGE}.
           </p>
         </div>
       </div>
 
-      <ComparePage />
+      <ComparePage options={options} initialFilters={initialFilters} />
     </div>
   );
 }

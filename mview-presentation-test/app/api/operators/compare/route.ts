@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 
 import { getOperatorComparison } from "@/lib/operator-compare-api";
-import { STATISTICS_TREND_YEARS } from "@/lib/operator-statistics-data";
 
 /**
  * `GET /api/operators/compare?names=…&names=…` — the whole comparison in one read.
@@ -30,17 +29,18 @@ export async function GET(request: Request) {
     .filter((name) => name !== "");
 
   if (names.length < 2) {
-    return NextResponse.json({ operators: [] });
+    return NextResponse.json({ operators: [], years: [] });
   }
 
   try {
-    const operators = await getOperatorComparison(
-      names,
-      STATISTICS_TREND_YEARS,
-    );
+    /* The trend years come from the response, not from a constant — see
+       `trendYearsFrom`. They travel with the operators because every `trend` array is
+       indexed by them, so a client that had to guess the years could mislabel a
+       column. */
+    const { operators, years } = await getOperatorComparison(names);
 
     return NextResponse.json(
-      { operators },
+      { operators, years },
       {
         headers: {
           // Shared caches hold this, the browser does not: `max-age=0` keeps a client

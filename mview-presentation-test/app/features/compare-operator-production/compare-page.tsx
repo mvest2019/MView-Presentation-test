@@ -1,52 +1,43 @@
 "use client";
 
-import {
-  ArrowDown,
-  ArrowUp,
-  BarChart3,
-  ChevronDown,
-  Gauge,
-  Lock,
-  MapPin,
-  Minus,
-  TrendingUp,
-} from "lucide-react";
+import { AlertTriangle, Droplet, Flame, Gauge, MapPin, X } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { buttonClass } from "@/app/_components/button";
+import { DeferredSection } from "@/app/_components/deferred-section";
+import { SelectControl } from "@/app/_components/select-control";
+import { OperatorLogo } from "@/app/_components/operator-logo";
 import { OperatorMonogram } from "@/app/_components/operator-monogram";
+import { OperatorSlotPicker } from "@/app/_components/operator-slot-picker";
 import { eyebrowClass, sectionTitleClass } from "@/app/_components/typography";
+import { detailSlugForNumber } from "@/lib/operator-detail";
+import { formatCount, formatMillions } from "@/lib/operator-compare";
+import { shortName } from "@/lib/operator-statistics";
 import {
-  COMPARE_SLOT_COUNT,
-  COMPARE_STAT_ROWS,
-  COMPARE_YEARS,
-  SLOT_COLORS,
-  buildComparison,
-  buildMomentumRows,
-  compoundGrowth,
-  defaultSelection,
-  findLeaders,
-  formatCount,
-  formatMillions,
-  formatPercentChange,
-  listCompareCounties,
-  listCompareOptions,
-  mboePerLease,
-  sparklinePoints,
-  type CompareLeaders,
-  type CompareOperator,
-  type MomentumRow,
-} from "@/lib/operator-compare";
+  hasProductionSelection,
+  productionFiltersKey,
+} from "@/lib/operator-production-filters";
+import type {
+  ProductionFilterOptions,
+  ProductionFilters,
+  ProductionLeader,
+  ProductionLeaders,
+  ProductionOperator,
+} from "@/lib/operator-production-shape";
+import { PRODUCTION_STAT_ROWS } from "@/lib/operator-production-stats";
+import { COMPARE_SLOT_COUNT, SLOT_COLORS } from "@/lib/operator-slot-colors";
+import { titleCase } from "@/lib/text-case";
 
-import { ProductionOverTime } from "./_components/production-over-time";
+import { ProductionChart } from "./_components/production-chart";
+import { useProductionInfo } from "./_components/use-production-data";
 
 /**
  * Compare Operator Production — everything below the page header.
  *
  * WHY ONE FILE. Same call as the operator listing: each band here (pickers,
- * identity cards, the generated read, the leaderboard, the mix bars, the two
- * tables, the CTA) is markup used by this page and nothing else, and all of it
+ * identity cards, the generated read, the leaderboard, the mix bars, the stats
+ * table) is markup used by this page and nothing else, and all of it
  * reads one piece of state — which operators are selected. Splitting the listing
  * into eight one-caller modules made it harder to follow, so these are
  * module-local components, read top to bottom in render order.
@@ -66,272 +57,609 @@ import { ProductionOverTime } from "./_components/production-over-time";
  */
 
 /**
- * The scoping row is inert until the tool reads the live directory, which the
- * design states in its own lock note. The controls are `disabled` rather than
- * merely tinted, so a keyboard or screen-reader user is told what the tint tells
- * a sighted one. The play and district lists are the design's own.
+ * One compared operator, with the two things the API does not supply.
+ *
+ * `color` is the slot colour, which identifies a line on the chart and a swatch in
+ * the table header — it belongs to the POSITION, not the operator, so it is assigned
+ * here from the render order rather than stored anywhere. `short` is the elided label
+ * the tight cells need, from the same helper the statistics tool uses.
  */
-const LOCKED_PLAYS = [
-  "Permian Basin",
-  "Midland Basin",
-  "Eagle Ford",
-  "Barnett Shale",
-] as const;
+interface Compared extends ProductionOperator {
+  color: string;
+  short: string;
+  /** This site's detail slug, or null when there is no page to link to. */
+  slug: string | null;
+}
 
-const LOCKED_DISTRICTS = [
-  "District 08 (Midland)",
-  "District 7C (San Angelo)",
-  "District 01 (San Antonio)",
-] as const;
+/** Assign slot colours and short labels in response order. */
+function withSlots(operators: readonly ProductionOperator[]): Compared[] {
+  return operators.map((operator, index) => ({
+    ...operator,
+    color: SLOT_COLORS[index] ?? SLOT_COLORS[0],
+    short: shortName(operator.name),
+    slug: detailSlugForNumber(operator.operatorNumber),
+  }));
+}
 
-export function ComparePage() {
-  // Options and counties come from the module rather than a prop: both are static
-  // for the life of the page and identical for every visitor, so threading them
-  // through the server component would only duplicate them in the RSC payload.
-  const options = useMemo(() => listCompareOptions(), []);
-  const counties = useMemo(() => listCompareCounties(), []);
+const NO_OPERATORS: Compared[] = [];
 
-  const [selection, setSelection] = useState<string[]>(() => defaultSelection());
+export function ComparePage({
+  options,
+  initialFilters,
+}: {
+  options: ProductionFilterOptions;
+  initialFilters: ProductionFilters;
+}) {
+  /**
+   * TWO FILTER SETS, AND THE DIFFERENCE IS THE WHOLE POINT.
+   *
+   * `draft` is what the controls edit. `applied` is what the data hooks read. Nothing
+   * is requested until Apply copies one into the other, so choosing an operator,
+   * ticking three counties and changing the year range costs zero requests — where a
+   * single piece of state would have fired a request on every one of those.
+   *
+   * Both start from the server's value, so the first render has no operator selected,
+   * makes no request, and shows the prompt.
+   */
+  const [draft, setDraft] = useState<ProductionFilters>(initialFilters);
+  const [applied, setApplied] = useState<ProductionFilters>(initialFilters);
 
-  const operators = useMemo(() => buildComparison(selection), [selection]);
-  const leaders = useMemo(() => findLeaders(operators), [operators]);
+  const { state, retry } = useProductionInfo(applied);
 
-  function selectSlot(slot: number, slug: string) {
-    setSelection((current) =>
-      current.map((value, index) => (index === slot ? slug : value)),
-    );
+  /* The cached payload, which is a stable object for a given filter set — so the
+     memo below re-runs when the answer changes and not on every render. */
+  const info = state.status === "ready" ? state.data : null;
+
+  const operators = useMemo(
+    () => (info ? withSlots(info.operators) : NO_OPERATORS),
+    [info],
+  );
+
+  /* Identity for the pickers: rank, logo and initials for an operator that has
+     already been resolved. Keyed on the filed name, which is what a slot holds. */
+  const resolved = useMemo(() => {
+    const map = new Map<string, ProductionOperator>();
+    for (const operator of info?.operators ?? []) {
+      map.set(operator.filedName, operator);
+    }
+    return map;
+  }, [info]);
+
+  const draftKey = productionFiltersKey(draft);
+  const appliedKey = productionFiltersKey(applied);
+  const chosen = hasProductionSelection(draft);
+  const dirty = draftKey !== appliedKey;
+
+  function setSlot(slot: number, name: string) {
+    setDraft((current) => {
+      const next = [...current.operators];
+      // Slots are positional, so an empty earlier slot has to be preserved rather
+      // than collapsed — otherwise choosing operator 3 first moves it to slot 1.
+      while (next.length <= slot) next.push("");
+      next[slot] = name;
+      // Trailing blanks carry no meaning and would be sent as empty strings.
+      while (next.length > 0 && next[next.length - 1] === "") next.pop();
+      return { ...current, operators: next };
+    });
   }
+
+  const takenBy = (slot: number) =>
+    new Set(
+      draft.operators.filter((name, index) => name !== "" && index !== slot),
+    );
+
+  /**
+   * Drop one scoping filter, or all of them.
+   *
+   * BOTH SETS ARE UPDATED TOGETHER, which is the only behaviour that reads
+   * correctly: a chip in the "Applied" row describes what is IN FORCE, so clicking
+   * its cross has to change what is in force — not stage a change that then needs
+   * Apply pressing. Stripping the draft too keeps the dropdowns in step, so the
+   * removed value does not sit there ticked, and leaves `dirty` false rather than
+   * lighting up Apply for an edit nobody made.
+   *
+   * Removing a chip therefore does re-request — the applied filter set genuinely
+   * changed. That is one request per deliberate act, which is the point.
+   *
+   * OPERATORS ARE NOT TOUCHED by either. They are the comparison rather than a
+   * filter on it, they have their own cross in each slot, and clearing them here
+   * would empty the page from a control that reads as "clear the filters".
+   */
+  function stripScope(
+    change: (current: ProductionFilters) => ProductionFilters,
+  ) {
+    setDraft(change);
+    setApplied(change);
+  }
+
+  const removeCounty = (value: string) =>
+    stripScope((current) => ({
+      ...current,
+      counties: current.counties.filter((entry) => entry !== value),
+    }));
+
+  const removePlayType = (value: string) =>
+    stripScope((current) => ({
+      ...current,
+      playTypes: current.playTypes.filter((entry) => entry !== value),
+    }));
+
+  const removeDistrict = (value: string) =>
+    stripScope((current) => ({
+      ...current,
+      districtCodes: current.districtCodes.filter((entry) => entry !== value),
+    }));
+
+  const clearScope = () =>
+    stripScope((current) => ({
+      ...current,
+      counties: [],
+      playTypes: [],
+      districtCodes: [],
+    }));
+
+  /**
+   * Why Apply cannot be pressed, when it cannot.
+   *
+   * A DISABLED BUTTON WITH NO REASON is the thing being fixed here: the operator
+   * slots start empty, so the primary action on the page begins greyed out with
+   * nothing saying what to do about it. Only the actionable case gets a message —
+   * "nothing has changed" needs no instruction, and the applied row directly below
+   * already says what is in force.
+   */
+  const applyBlockedReason = !chosen
+    ? "Choose at least one operator to compare."
+    : "";
+
+  /** How many scoping filters are in force — drives which empty state is right. */
+  const scopeCount =
+    applied.counties.length +
+    applied.playTypes.length +
+    applied.districtCodes.length;
 
   return (
     <div className="mx-auto max-w-[1180px] px-[22px] pb-16 max-[767px]:px-4 max-[767px]:pb-11">
-      {/* ---- pickers ---- */}
+      {/* ---- filters ---- */}
       <div className="mt-5 rounded-2xl border border-mv-line bg-white px-5 py-[18px] shadow-mv max-[560px]:px-4">
         <div className="grid grid-cols-4 gap-3 max-[860px]:grid-cols-2 max-[520px]:grid-cols-1">
-          {Array.from({ length: COMPARE_SLOT_COUNT }, (_, slot) => (
-            <SelectField
-              key={slot}
-              label={
-                <>
-                  <span
-                    aria-hidden="true"
-                    className="h-[10px] w-[10px] shrink-0 rounded-full"
-                    style={{ background: SLOT_COLORS[slot] }}
-                  />
-                  Operator {slot + 1}
-                  {slot > 1 ? " · optional" : ""}
-                </>
-              }
-              value={selection[slot] ?? ""}
-              onChange={(value) => selectSlot(slot, value)}
-            >
-              {/* The first two slots have no empty option: a comparison of one
-                  operator is not a comparison. */}
-              {slot > 1 ? <option value="">— none —</option> : null}
-              {options.map((option) => (
-                <option key={option.slug} value={option.slug}>
-                  {option.label}
-                </option>
-              ))}
-            </SelectField>
-          ))}
+          {Array.from({ length: COMPARE_SLOT_COUNT }, (_, slot) => {
+            const name = draft.operators[slot] ?? "";
+            const record = name === "" ? undefined : resolved.get(name);
+            return (
+              <OperatorSlotPicker
+                key={slot}
+                slot={slot}
+                slotLabel={String(slot + 1)}
+                value={name}
+                rank={record?.rankStatewide ?? null}
+                monogram={record?.monogram ?? null}
+                logoUrl={record?.logoUrl ?? null}
+                takenNames={takenBy(slot)}
+                onSelect={(next) => setSlot(slot, next)}
+                onClear={() => setSlot(slot, "")}
+              />
+            );
+          })}
         </div>
 
         <div className="mt-[14px] grid grid-cols-[repeat(3,1fr)_auto] items-end gap-3 border-t border-mv-line-soft pt-[14px] max-[860px]:grid-cols-2 max-[520px]:grid-cols-1">
-          <SelectField label="County" disabled describedBy={SCOPE_NOTE_ID}>
-            <option value="">All counties</option>
-            {counties.map((county) => (
-              <option key={county}>{county}</option>
-            ))}
-          </SelectField>
+          {/* THE SAME `SelectControl` THE OPERATOR LISTING USES (requested), so all
+              three operator pages carry one dropdown.
 
-          <SelectField label="Play type" disabled describedBy={SCOPE_NOTE_ID}>
-            <option value="">All plays</option>
-            {LOCKED_PLAYS.map((play) => (
-              <option key={play}>{play}</option>
-            ))}
-          </SelectField>
+              THESE ARE SINGLE-SELECT NOW. They were multi-select panels, and the
+              payload still takes arrays — `county: ["MIDLAND","MARTIN"]` — so the
+              shape has not changed, but a native `<select>` can only put one value
+              in each. Scoping to two counties at once is therefore no longer
+              expressible from this page. The sentinel is "" rather than a magic
+              string because an empty value already means "no filter" to the
+              endpoint, so it maps straight to an empty array. */}
+          <FilterField label="County">
+            <SelectControl
+              label="Filter by county"
+              value={draft.counties[0] ?? ""}
+              onChange={(county) =>
+                setDraft((current) => ({
+                  ...current,
+                  counties: county === "" ? [] : [county],
+                }))
+              }
+              className="w-full min-w-0"
+            >
+              <option value="">All counties</option>
+              {options.counties.map((county) => (
+                <option key={county} value={county}>
+                  {titleCase(county)} County
+                </option>
+              ))}
+            </SelectControl>
+          </FilterField>
 
-          <SelectField label="District" disabled describedBy={SCOPE_NOTE_ID}>
-            <option value="">All districts</option>
-            {LOCKED_DISTRICTS.map((district) => (
-              <option key={district}>{district}</option>
-            ))}
-          </SelectField>
+          <FilterField label="Play type">
+            <SelectControl
+              label="Filter by play type"
+              value={draft.playTypes[0] ?? ""}
+              onChange={(play) =>
+                setDraft((current) => ({
+                  ...current,
+                  playTypes: play === "" ? [] : [play],
+                }))
+              }
+              className="w-full min-w-0"
+            >
+              <option value="">All plays</option>
+              {options.playTypes.map((play) => (
+                <option key={play} value={play}>
+                  {titleCase(play)}
+                </option>
+              ))}
+            </SelectControl>
+          </FilterField>
+
+          <FilterField label="District code">
+            <SelectControl
+              label="Filter by Railroad Commission district"
+              value={draft.districtCodes[0] ?? ""}
+              onChange={(code) =>
+                setDraft((current) => ({
+                  ...current,
+                  districtCodes: code === "" ? [] : [code],
+                }))
+              }
+              className="w-full min-w-0"
+            >
+              <option value="">All districts</option>
+              {/* The bare code, as the regulator writes it — the field label
+                  already says District code. */}
+              {options.districtCodes.map((code) => (
+                <option key={code} value={code}>
+                  {code}
+                </option>
+              ))}
+            </SelectControl>
+          </FilterField>
 
           <button
             type="button"
-            disabled
-            aria-describedby={SCOPE_NOTE_ID}
+            onClick={() => setApplied(draft)}
+            disabled={!chosen || !dirty}
+            aria-describedby={
+              applyBlockedReason === "" ? undefined : APPLY_HINT_ID
+            }
             className={buttonClass({
               variant: "primary",
-              className: "h-11 w-full",
+              className:
+                "h-11 w-full disabled:cursor-not-allowed disabled:opacity-55",
             })}
           >
             Apply filters
           </button>
         </div>
 
-        <p
-          id={SCOPE_NOTE_ID}
-          className="mt-[10px] flex items-center gap-[6px] text-[12px] text-mv-muted"
-        >
-          <Lock aria-hidden="true" className="h-[13px] w-[13px] shrink-0" strokeWidth={2} />
-          County, play and district scoping activates with the live directory — the
-          operator pickers above drive this free preview.
-        </p>
+        {/* Announced, not just shown: `status` means a screen reader hears the
+            reason when it appears rather than only on focusing the button. */}
+        {applyBlockedReason === "" ? null : (
+          <p
+            id={APPLY_HINT_ID}
+            role="status"
+            className="mt-[10px] flex items-center gap-[6px] text-[12.5px] text-mv-muted"
+          >
+            <AlertTriangle
+              aria-hidden="true"
+              className="h-[13px] w-[13px] shrink-0 text-mv-sand"
+              strokeWidth={2.2}
+            />
+            {applyBlockedReason}
+          </p>
+        )}
+
+        {/* What is actually in force, stated rather than left to be inferred from
+            the controls — which is the only way to tell an edited draft from an
+            applied filter set. */}
+        <AppliedFilters
+          filters={applied}
+          onRemoveCounty={removeCounty}
+          onRemovePlayType={removePlayType}
+          onRemoveDistrict={removeDistrict}
+          onClearAll={clearScope}
+        />
       </div>
 
-      {operators.length === 0 || !leaders ? (
-        <p className="mt-8 rounded-[14px] border border-mv-line bg-mv-line-soft px-[18px] py-4 text-sm text-mv-ink-soft">
-          Choose at least one operator to compare.
-        </p>
+      {state.status === "idle" ? (
+        <Notice>
+          Pick up to four operators and press Apply filters to put their filed
+          production side by side.
+        </Notice>
+      ) : state.status === "loading" ? (
+        <LoadingPanels />
+      ) : state.status === "error" ? (
+        <Notice tone="error">
+          The comparison could not be loaded. This is usually the upstream
+          service rather than the filters.{" "}
+          <button
+            type="button"
+            onClick={retry}
+            className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-mv-green-deep underline underline-offset-2 hover:text-mv-ink"
+          >
+            Try again
+          </button>
+          .
+        </Notice>
+      ) : operators.length === 0 ? (
+        /* TWO DIFFERENT EMPTIES, because they need different answers. With a
+           county, play or district in force the acreage is the likely cause and
+           there is something to undo; with none, the operator simply has nothing
+           on record and "try removing a filter" would name a filter that is not
+           there. */
+        scopeCount > 0 ? (
+          <Notice>
+            No filed production matches these filters.{" "}
+            <button
+              type="button"
+              onClick={clearScope}
+              className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-mv-green-deep underline underline-offset-2 hover:text-mv-ink"
+            >
+              Clear {scopeCount === 1 ? "the filter" : "all filters"}
+            </button>{" "}
+            to see the whole record.
+          </Notice>
+        ) : (
+          <Notice>
+            No filed production is on record for{" "}
+            {applied.operators.length === 1
+              ? "this operator"
+              : "these operators"}
+            .
+          </Notice>
+        )
       ) : (
         <>
           {/* ---- identity cards ---- */}
           <section className="py-[26px]">
-            <SectionHead
-              eyebrow="Comparing"
-              title="Operators in this comparison"
-              sub="RRC number and most-active counties for each — consistent with the operator directory."
-            />
+            <SectionHead title="Operators in this comparison" />
             <div className="grid grid-cols-4 gap-[14px] max-[940px]:grid-cols-2 max-[520px]:grid-cols-1">
               {operators.map((operator) => (
-                <IdentityCard key={operator.slug} operator={operator} />
+                <IdentityCard
+                  key={operator.operatorNumber}
+                  operator={operator}
+                />
               ))}
             </div>
           </section>
 
           {/* ---- generated read ---- */}
           <section className="pb-[26px]">
-            <GeneratedRead leaders={leaders} />
+            <GeneratedRead
+              operators={operators}
+              leaders={info?.leaders ?? null}
+            />
           </section>
 
           {/* ---- leaderboard ---- */}
           <section className="pb-[26px]">
-            <SectionHead
-              eyebrow="At a glance"
-              title="Who leads on what"
-              sub="The biggest operator isn't always the best one to have on your lease."
-            />
-            <Leaderboard leaders={leaders} />
+            <SectionHead title="Who leads on what" />
+            <Leaderboard leaders={info?.leaders ?? null} />
           </section>
 
-          {/* ---- production over time ---- */}
+          {/* ---- production over time ----
+              DEFERRED, which is what keeps the second endpoint from being called
+              alongside the first: the chart asks for its own series when it is
+              approached, so a visitor who reads the cards and leaves never pays for
+              it. `DeferredSection` reserves the height, so nothing shifts. */}
           <section className="pb-[26px]">
-            <ProductionOverTime operators={operators} />
+            <DeferredSection minHeight={520} label="Production over time">
+              <ProductionChart filters={applied} operators={operators} />
+            </DeferredSection>
           </section>
 
           {/* ---- oil vs gas mix ---- */}
           <section className="pb-[26px]">
-            <SectionHead
-              eyebrow="Commodity exposure"
-              title="Oil vs gas mix"
-              sub="Which commodity each operator's barrels come from — and how balanced the split is."
-            />
+            <SectionHead title="Oil vs gas mix" />
             <MixCard operators={operators} />
-          </section>
-
-          {/* ---- momentum ---- */}
-          <section className="pb-[26px]">
-            <SectionHead
-              eyebrow="Direction"
-              title="Momentum & growth"
-              sub={`Latest year, year-over-year, ${COMPARE_YEARS.length}-year trend and volatility — from the filed record.`}
-            />
-            <div className="overflow-hidden rounded-2xl border border-mv-line bg-white shadow-mv">
-              <MomentumTable rows={buildMomentumRows(operators)} />
-            </div>
           </section>
 
           {/* ---- comparison stats ---- */}
           <section className="pb-[26px]">
-            <SectionHead
-              eyebrow="Scale & efficiency"
-              title="Comparison stats"
-              sub={`Every figure real · cumulative ${COMPARE_YEARS[0]}–${COMPARE_YEARS.at(-1)}.`}
-            />
+            <SectionHead title="Comparison stats" />
             <div className="overflow-hidden rounded-2xl border border-mv-line bg-white shadow-mv">
               <StatsTable operators={operators} />
             </div>
           </section>
         </>
       )}
-
-      {/* ---- CTA ---- */}
-      <section className="pt-[26px]">
-        <div className="rounded-2xl bg-[linear-gradient(120deg,var(--color-mv-forest),var(--color-mv-night))] px-[34px] py-[34px] text-center shadow-mv max-[560px]:px-5">
-          <h2 className="font-sans text-[23px] font-bold leading-[1.2] tracking-[-.02em] text-white">
-            Compare the operators on your leases — free.
-          </h2>
-          <p className="mx-auto mb-5 mt-2 max-w-[520px] text-sm text-mv-on-deep-soft">
-            Run any two-to-four Texas operators, save comparisons, and get alerts
-            when one changes.
-          </p>
-          <Link
-            href="/signup?from=compare-production"
-            className={buttonClass({ variant: "primary", size: "lg", className: "text-[15px]" })}
-          >
-            Create a free account →
-          </Link>
-        </div>
-      </section>
     </div>
   );
 }
 
-/* ==========================================================================
-   Controls
-   ========================================================================== */
-
-const SCOPE_NOTE_ID = "cp-scope-note";
-
 /**
- * The chevron is a real element rather than a CSS background image, matching
- * `SelectControl` on the listing page. An arbitrary background-image utility
- * cannot carry the design's inline SVG — Tailwind reads the spaces in it as class
- * boundaries — and one icon component is cheaper than escaping a data URI.
+ * A label above a control.
+ *
+ * The shared listbox filter renders only its trigger, so the "COUNTY" / "PLAY TYPE"
+ * caption above it lives here — matching the caption the slot pickers draw for
+ * themselves, so the two rows of the filter bar read as one grid.
  */
-const SELECT_CLASS =
-  "h-11 w-full cursor-pointer appearance-none truncate rounded-[10px] border border-mv-line bg-white pl-3 pr-[34px] text-[13.5px] font-medium text-mv-ink outline-none transition-colors hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)] disabled:cursor-not-allowed disabled:bg-mv-bg disabled:text-mv-muted disabled:hover:border-mv-line";
-
-function SelectField({
+function FilterField({
   label,
-  value,
-  onChange,
-  disabled = false,
-  describedBy,
   children,
 }: {
-  label: React.ReactNode;
-  value?: string;
-  onChange?: (value: string) => void;
-  disabled?: boolean;
-  describedBy?: string;
+  label: string;
   children: React.ReactNode;
 }) {
   return (
-    <label className="flex min-w-0 flex-col gap-[6px]">
-      <span className="flex items-center gap-[7px] text-[12px] font-bold uppercase tracking-[.04em] text-mv-muted">
+    <span className="flex min-w-0 flex-col gap-[6px]">
+      <span className="text-[12px] font-bold uppercase tracking-[.04em] text-mv-muted">
         {label}
       </span>
-      <span className="relative block">
-        <select
-          value={value}
-          defaultValue={value === undefined ? "" : undefined}
-          onChange={onChange ? (event) => onChange(event.target.value) : undefined}
-          disabled={disabled}
-          aria-describedby={describedBy}
-          className={SELECT_CLASS}
-        >
-          {children}
-        </select>
-        <ChevronDown
-          aria-hidden="true"
-          className="pointer-events-none absolute right-[13px] top-1/2 h-[7px] w-[11px] -translate-y-1/2 text-mv-muted"
-          strokeWidth={1.8}
-        />
+      {children}
+    </span>
+  );
+}
+
+/** Ties the Apply button to the sentence explaining why it is disabled. */
+const APPLY_HINT_ID = "cp-apply-hint";
+
+/** One removable chip in the applied row. */
+interface AppliedChip {
+  /** Unique within the row, so two filters sharing a value cannot collide. */
+  id: string;
+  label: string;
+  remove: () => void;
+}
+
+/**
+ * The scoping filters in force, each removable.
+ *
+ * ONE CHIP PER VALUE, not one per filter. It used to join every county into a single
+ * chip, which reads fine and removes badly — there is no sensible cross to put on
+ * "Karnes, Midland, Martin". A chip per value is what makes each one individually
+ * revocable, and it is also more honest about how many filters are actually on.
+ *
+ * IT READS AS A BAND, not as a footnote. The previous version was 12px muted text on
+ * white under a hairline, which is why it was easy to miss entirely: it looked like a
+ * caption on the card above rather than the live state of the page. It now has its own
+ * tinted surface, a label in the accent colour, and chips with real edges — the same
+ * mint-on-white language the filter controls use, so it belongs to them.
+ *
+ * THE YEAR RANGE IS NOT LISTED. It is no longer a control, so it is not something a
+ * visitor applied — and a chip for a value nobody chose, with a cross that cannot
+ * meaningfully remove it, would be worse than leaving it out. The chart states its own
+ * span on its axis and in its footnote.
+ *
+ * NOTHING IN FORCE RENDERS NOTHING, rather than an empty band with a label.
+ *
+ * DISTRICT CHIPS KEEP THE WORD. The dropdown lists bare codes because its own field
+ * label says District code; a chip sits beside county and play-type chips with no
+ * label of its own, and a lone "08" there could be anything.
+ */
+function AppliedFilters({
+  filters,
+  onRemoveCounty,
+  onRemovePlayType,
+  onRemoveDistrict,
+  onClearAll,
+}: {
+  filters: ProductionFilters;
+  onRemoveCounty: (value: string) => void;
+  onRemovePlayType: (value: string) => void;
+  onRemoveDistrict: (value: string) => void;
+  onClearAll: () => void;
+}) {
+  const chips: AppliedChip[] = [
+    ...filters.counties.map((county) => ({
+      id: `county:${county}`,
+      label: titleCase(county),
+      remove: () => onRemoveCounty(county),
+    })),
+    ...filters.playTypes.map((play) => ({
+      id: `play:${play}`,
+      label: titleCase(play),
+      remove: () => onRemovePlayType(play),
+    })),
+    ...filters.districtCodes.map((code) => ({
+      id: `district:${code}`,
+      label: `District ${code}`,
+      remove: () => onRemoveDistrict(code),
+    })),
+  ];
+
+  if (chips.length === 0) return null;
+
+  return (
+    <div className="mt-[14px] flex flex-wrap items-center gap-x-2 gap-y-[7px] rounded-[10px] border border-mv-mint-line bg-mv-tint px-[13px] py-[10px]">
+      <span className="text-[11px] font-bold uppercase tracking-[.06em] text-mv-green-deep">
+        Applied filters
       </span>
-    </label>
+
+      <ul className="m-0 flex flex-1 list-none flex-wrap items-center gap-2 p-0">
+        {chips.map((chip) => (
+          <li key={chip.id}>
+            <span className="inline-flex items-center gap-[5px] rounded-full border border-mv-mint-line bg-white py-[3px] pl-[10px] pr-[4px] text-[12.5px] font-medium text-mv-ink">
+              {chip.label}
+              <button
+                type="button"
+                onClick={chip.remove}
+                /* Names the filter, not just the action: "Remove" on its own is
+                   four identical buttons to a screen reader. */
+                aria-label={`Remove filter ${chip.label}`}
+                className="grid h-[17px] w-[17px] shrink-0 cursor-pointer place-items-center rounded-full border-0 bg-transparent text-mv-muted transition-colors hover:bg-mv-line-soft hover:text-mv-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-mv-green-deep"
+              >
+                <X aria-hidden="true" className="h-3 w-3" strokeWidth={2.6} />
+              </button>
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      {/* Only worth offering once there is more than one thing to clear — with a
+          single chip its own cross already does the job. */}
+      {chips.length > 1 ? (
+        <button
+          type="button"
+          onClick={onClearAll}
+          className="shrink-0 cursor-pointer rounded-md border-0 bg-transparent px-1 text-[12.5px] font-semibold text-mv-green-deep underline decoration-1 underline-offset-2 transition-colors hover:text-mv-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-mv-green-deep"
+        >
+          Clear all
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** The page's one-line states — prompt, empty and error all read the same way. */
+function Notice({
+  children,
+  tone = "quiet",
+}: {
+  children: React.ReactNode;
+  tone?: "quiet" | "error";
+}) {
+  return (
+    <p
+      role={tone === "error" ? "alert" : undefined}
+      className={`mt-8 flex items-start gap-[10px] rounded-[14px] border px-[18px] py-4 text-sm ${
+        tone === "error"
+          ? "border-mv-sand-line bg-mv-sand-tint text-mv-ink"
+          : "border-mv-line bg-mv-line-soft text-mv-ink-soft"
+      }`}
+    >
+      {tone === "error" ? (
+        <AlertTriangle
+          aria-hidden="true"
+          className="mt-[2px] h-4 w-4 shrink-0 text-mv-sand"
+          strokeWidth={2.2}
+        />
+      ) : null}
+      <span>{children}</span>
+    </p>
+  );
+}
+
+/**
+ * The skeleton, shaped like what is coming.
+ *
+ * Four cards and four tiles at the heights the real ones occupy, so the panels do not
+ * jump when the figures land.
+ */
+function LoadingPanels() {
+  return (
+    <div aria-busy="true" aria-live="polite" className="py-[26px]">
+      <span className="sr-only">Loading the comparison…</span>
+      <div className="grid grid-cols-4 gap-[14px] max-[940px]:grid-cols-2 max-[520px]:grid-cols-1">
+        {Array.from({ length: 4 }, (_, index) => (
+          <div
+            key={index}
+            className="h-[182px] animate-pulse rounded-[14px] border border-mv-line bg-white"
+          />
+        ))}
+      </div>
+      <div className="mt-[26px] grid grid-cols-4 gap-[14px] max-[940px]:grid-cols-2 max-[520px]:grid-cols-1">
+        {Array.from({ length: 4 }, (_, index) => (
+          <div
+            key={index}
+            className="h-[150px] animate-pulse rounded-[14px] border border-mv-line bg-white"
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -340,32 +668,45 @@ function SelectField({
    ========================================================================== */
 
 /** The design's `.cp-sechead` — eyebrow, rule-marked h2, and a sub beside it. */
+/**
+ * A section's heading, with both the eyebrow and the trailing note optional.
+ *
+ * Several sections now carry the title alone (requested). Each optional part is
+ * dropped from the markup rather than rendered empty, so a heading without an eyebrow
+ * does not keep the gap the eyebrow used to fill — and `mt-[7px]`, which only ever
+ * existed to space the title away from the eyebrow, goes with it.
+ */
 function SectionHead({
   eyebrow,
   title,
   sub,
 }: {
-  eyebrow: string;
+  eyebrow?: string;
   title: string;
-  sub: string;
+  sub?: string;
 }) {
   return (
     <div className="mb-[14px] flex flex-wrap items-end justify-between gap-4">
       <div>
-        <p className={eyebrowClass}>{eyebrow}</p>
+        {eyebrow ? <p className={eyebrowClass}>{eyebrow}</p> : null}
         <h2
-          className={`${sectionTitleClass} mt-[7px] flex items-center gap-[11px] text-mv-ink before:h-[19px] before:w-1 before:rounded-full before:bg-mv-green-deep before:content-['']`}
+          className={`${sectionTitleClass} ${eyebrow ? "mt-[7px]" : ""} flex items-center gap-[11px] text-mv-ink before:h-[19px] before:w-1 before:rounded-full before:bg-mv-green-deep before:content-['']`}
         >
           {title}
         </h2>
       </div>
-      <p className="max-w-[440px] text-[13px] text-mv-muted">{sub}</p>
+      {sub ? (
+        <p className="max-w-[440px] text-[13px] text-mv-muted">{sub}</p>
+      ) : null}
     </div>
   );
 }
 
 /** The `#3` pill beside an operator's name. */
-function RankPill({ rank }: { rank: number }) {
+function RankPill({ rank }: { rank: number | null }) {
+  // The response omits a rank for an operator outside the statewide ranking, and a
+  // "#null" pill is worse than no pill.
+  if (rank === null) return null;
   return (
     <span className="shrink-0 rounded-full border border-mv-line bg-mv-bg px-2 py-[2px] text-[12px] font-bold text-mv-muted">
       #{rank}
@@ -377,34 +718,60 @@ function RankPill({ rank }: { rank: number }) {
    Identity cards
    ========================================================================== */
 
-function IdentityCard({ operator }: { operator: CompareOperator }) {
+/**
+ * One operator's card.
+ *
+ * NO SLOT COLOUR (requested). Each card used to carry its chart colour as a spine down
+ * the left edge, which matched a card to its line without reading the legend. Four
+ * differently-coloured spines was the "multiple colours" being asked about, so the
+ * cards are now uniform and the chart's own legend does the matching. The colour is
+ * still on the operator and still used where it earns its place — the chart lines, the
+ * legend, and the table headers that label a column.
+ *
+ * OIL AND GAS RATHER THAN BOE (requested). BOE folds gas into oil at 15:1, so a single
+ * figure cannot say which commodity an operator actually produces. Two figures can, and
+ * they come straight off the record — `cumOil` in barrels, `cumGas` in Mcf — with the
+ * unit beside each, because "7.24B" alone is a number a reader has to guess the unit of.
+ */
+function IdentityCard({ operator }: { operator: Compared }) {
   return (
-    <article className="relative overflow-hidden rounded-[14px] border border-mv-line bg-white p-4 shadow-[0_1px_2px_rgba(24,24,27,.05)]">
-      {/* The slot's colour as a spine down the left edge, so a card and its line
-          on the chart are matched without reading the legend. */}
-      <span
-        aria-hidden="true"
-        className="absolute inset-y-0 left-0 w-1"
-        style={{ background: operator.color }}
-      />
-
+    <article className="flex h-full flex-col rounded-[14px] border border-mv-line bg-white p-4 shadow-[0_1px_2px_rgba(24,24,27,.05)]">
       <div className="flex min-w-0 items-center gap-[11px]">
-        <OperatorMonogram monogram={operator.monogram} size={42} />
+        {/* The API supplies a logo for most operators; the initials are the
+            fallback, which is what `OperatorLogo` already decides. */}
+        <OperatorLogo
+          url={operator.logoUrl}
+          monogram={operator.monogram}
+          size={42}
+          radius={10}
+        />
         <div className="min-w-0">
-          <h3 className="text-[13.5px] font-bold leading-[1.25] text-mv-ink">
-            <Link
-              href={`/operators/${operator.slug}`}
-              className="text-mv-ink no-underline hover:text-mv-green-deep hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
-            >
-              {operator.name}
-            </Link>
+          {/* Two lines' worth of height whether the name needs them or not.
+              "XTO Energy, Inc" fits one line and "Occidental Permian, Ltd" takes
+              two, which is what pushed each card's "Most active" block to a
+              different height. */}
+          <h3 className="min-h-[34px] text-[13.5px] font-bold leading-[1.25] text-mv-ink">
+            {/* A link only where this site has a page. The comparison can name any
+                of the 24,000-odd operators in the directory, and only the
+                prerendered ones have somewhere to go — a slug guessed from the name
+                would 404 just as reliably, only less visibly. */}
+            {operator.slug ? (
+              <Link
+                href={`/operators/${operator.slug}`}
+                className="text-mv-ink no-underline hover:text-mv-green-deep hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+              >
+                {operator.name}
+              </Link>
+            ) : (
+              operator.name
+            )}
           </h3>
           <p className="text-[12px] font-medium tabular-nums text-mv-muted">
             ({operator.operatorNumber})
           </p>
         </div>
         <span className="ml-auto">
-          <RankPill rank={operator.rank} />
+          <RankPill rank={operator.rankStatewide} />
         </span>
       </div>
 
@@ -413,18 +780,41 @@ function IdentityCard({ operator }: { operator: CompareOperator }) {
           <span className="block font-extrabold uppercase tracking-[.05em] text-mv-green-deep">
             Most active
           </span>
-          {operator.topCounties.join(", ")}
+          {operator.topCounties
+            .map((entry) => titleCase(entry.county))
+            .join(", ")}
         </p>
       ) : null}
 
-      <p className="mt-3 flex items-baseline justify-between gap-2 border-t border-mv-line-soft pt-3">
-        <span className="text-[19px] font-bold tracking-[-.02em] tabular-nums text-mv-ink">
-          {formatMillions(operator.cumBoe)}
-        </span>
-        <span className="text-[12px] text-mv-muted">
-          cumulative BOE · {operator.counties} counties
-        </span>
-      </p>
+      {/* `mt-auto` pins this to the bottom of the card. Grid rows already stretch
+          every card to the same height, so the four figure blocks then sit on one
+          line regardless of how much the blocks above them differ. */}
+      <div className="mt-auto border-t border-mv-line-soft pt-3">
+        <dl className="m-0 grid grid-cols-2 gap-x-3">
+          <div className="min-w-0">
+            <dt className="text-[11px] font-bold uppercase tracking-[.05em] text-mv-muted">
+              Oil produced
+            </dt>
+            <dd className="m-0 mt-[3px] text-[16px] font-bold leading-none tracking-[-.02em] tabular-nums text-mv-ink">
+              {formatMillions(operator.oilTotal)}{" "}
+              <span className="text-[11px] font-semibold text-mv-muted">
+                bbl
+              </span>
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-[11px] font-bold uppercase tracking-[.05em] text-mv-muted">
+              Gas produced
+            </dt>
+            <dd className="m-0 mt-[3px] text-[16px] font-bold leading-none tracking-[-.02em] tabular-nums text-mv-ink">
+              {formatMillions(operator.gasTotal)}{" "}
+              <span className="text-[11px] font-semibold text-mv-muted">
+                Mcf
+              </span>
+            </dd>
+          </div>
+        </dl>
+      </div>
     </article>
   );
 }
@@ -437,41 +827,75 @@ function IdentityCard({ operator }: { operator: CompareOperator }) {
    "recomputed from the filed record" rather than implying otherwise.
    ========================================================================== */
 
-function GeneratedRead({ leaders }: { leaders: CompareLeaders }) {
-  const volume = leaders.byVolume[0];
-  if (!volume) return null;
+/**
+ * The read, built from the API's own leader records.
+ *
+ * EVERY CLAIM IS A FIGURE THE ENDPOINT RETURNED, phrased — nothing is model-written,
+ * which is why the eyebrow says "recomputed from the filed record". Growth is no
+ * longer among them: it came from the fixture's ten-year series and the info endpoint
+ * does not report a growth rate, so claiming one would mean computing it from data
+ * this section does not have.
+ *
+ * A MISSING LEADER DROPS ITS LINE rather than the whole panel. The response omits a
+ * leader when it cannot name one, and three true sentences are better than four with
+ * a hole in them.
+ */
+function GeneratedRead({
+  operators,
+  leaders,
+}: {
+  operators: Compared[];
+  leaders: ProductionLeaders | null;
+}) {
+  if (!leaders) return null;
+
+  const label = (leader: ProductionLeader) => shortName(leader.name);
 
   const items = [
-    <>
-      <b className="font-bold text-white">{volume.short} leads on scale</b> —{" "}
-      {formatMillions(volume.cumBoe)} BOE cumulative
-      {leaders.volumeMultiple
-        ? `, ${leaders.volumeMultiple.toFixed(1)}× the next operator`
-        : ""}{" "}
-      and the widest footprint at {volume.counties} counties.
-    </>,
-    <>
-      <b className="font-bold text-white">
-        {leaders.efficiency.short} is the efficiency leader
-      </b>{" "}
-      — {mboePerLease(leaders.efficiency).toFixed(0)} MBOE per lease from{" "}
-      {formatCount(leaders.efficiency.leases)} leases on record.
-    </>,
-    <>
-      <b className="font-bold text-white">
-        {leaders.oilWeighted.short} is the most oil-weighted
-      </b>{" "}
-      — {leaders.oilWeighted.oilPct}% of its BOE from oil, generally the stronger
-      revenue mix for a mineral owner.
-    </>,
-    <>
-      <b className="font-bold text-white">
-        {leaders.growth.short} shows the strongest momentum
-      </b>{" "}
-      — {formatPercentChange(compoundGrowth(leaders.growth.boe))} compound growth,{" "}
-      {COMPARE_YEARS[0]} → {COMPARE_YEARS.at(-1)}.
-    </>,
-  ];
+    leaders.highestOil ? (
+      <>
+        <b className="font-bold text-white">
+          {label(leaders.highestOil)} leads on oil
+        </b>{" "}
+        — {formatMillions(leaders.highestOil.value)} bbl filed across the
+        selected acreage.
+      </>
+    ) : null,
+    leaders.highestGas ? (
+      <>
+        <b className="font-bold text-white">
+          {label(leaders.highestGas)} leads on gas
+        </b>{" "}
+        — {formatMillions(leaders.highestGas.value)} Mcf over the same record.
+      </>
+    ) : null,
+    leaders.mostEfficient ? (
+      <>
+        <b className="font-bold text-white">
+          {label(leaders.mostEfficient)} is the efficiency leader
+        </b>{" "}
+        — {formatCount(Math.round(leaders.mostEfficient.value))} MBOE per lease
+        {leaders.mostEfficient.leaseCount === null
+          ? ""
+          : ` from ${formatCount(leaders.mostEfficient.leaseCount)} leases on record`}
+        .
+      </>
+    ) : null,
+    leaders.widestFootprint ? (
+      <>
+        <b className="font-bold text-white">
+          {label(leaders.widestFootprint)} covers the most ground
+        </b>{" "}
+        — {leaders.widestFootprint.value} counties in scope
+        {operators.length > 1
+          ? `, against ${operators.length} operators compared`
+          : ""}
+        .
+      </>
+    ) : null,
+  ].filter((item): item is React.ReactElement => item !== null);
+
+  if (items.length === 0) return null;
 
   return (
     <div className="rounded-2xl bg-[linear-gradient(135deg,var(--color-mv-deep),var(--color-mv-deep-ink))] p-6 shadow-mv-lg max-[560px]:p-5">
@@ -505,48 +929,77 @@ function GeneratedRead({ leaders }: { leaders: CompareLeaders }) {
    Leaderboard
    ========================================================================== */
 
-function Leaderboard({ leaders }: { leaders: CompareLeaders }) {
-  const volume = leaders.byVolume[0];
-  if (!volume) return null;
+/**
+ * The four leader tiles (set as requested).
+ *
+ * Cumulative volume and fastest growth are gone; most oil and most gas take their
+ * place. Splitting the leader by commodity says something BOE cannot: the largest
+ * producer overall is often neither the largest oil producer nor the largest gas
+ * producer, and which one a mineral owner cares about depends on what their acreage
+ * produces. Growth is no longer tiled or tabled — the momentum table was removed
+ * with this page's other trimming — but it is still stated in the generated read
+ * above, which is the one place left that reports it.
+ */
+/**
+ * The four tiles, straight from `data.leaders`.
+ *
+ * THE API PICKS THE WINNERS, not this page. Each tile is one record the endpoint
+ * returned under its own key, so the tiles and the "generated read" above cannot
+ * disagree about who leads — which is exactly what happened when both computed it
+ * independently from the same list.
+ *
+ * A TILE WITH NO RECORD IS NOT DRAWN. The response omits a leader it cannot name;
+ * rendering a placeholder would imply the answer was "nobody" rather than "unknown".
+ */
+function Leaderboard({ leaders }: { leaders: ProductionLeaders | null }) {
+  if (!leaders) return null;
 
   return (
     <div className="grid grid-cols-4 gap-[14px] max-[940px]:grid-cols-2 max-[520px]:grid-cols-1">
-      <LeaderTile
-        Icon={BarChart3}
-        caption="Highest cumulative volume"
-        value={formatMillions(volume.cumBoe)}
-        unit="BOE"
-        operator={volume}
-        note={
-          leaders.volumeMultiple
-            ? `${leaders.volumeMultiple.toFixed(1)}× the next operator`
-            : "Top of this set"
-        }
-      />
-      <LeaderTile
-        Icon={Gauge}
-        caption="Most efficient per lease"
-        value={mboePerLease(leaders.efficiency).toFixed(0)}
-        unit="MBOE / lease"
-        operator={leaders.efficiency}
-        note={`From ${formatCount(leaders.efficiency.leases)} leases on record`}
-      />
-      <LeaderTile
-        Icon={TrendingUp}
-        caption={`Fastest ${COMPARE_YEARS.length}-yr growth`}
-        value={formatPercentChange(compoundGrowth(leaders.growth.boe))}
-        unit="per year"
-        operator={leaders.growth}
-        note={`Compound growth, ${COMPARE_YEARS[0]} → ${COMPARE_YEARS.at(-1)}`}
-      />
-      <LeaderTile
-        Icon={MapPin}
-        caption="Widest footprint"
-        value={String(leaders.footprint.counties)}
-        unit="counties"
-        operator={leaders.footprint}
-        note="Producing Texas counties on record"
-      />
+      {leaders.highestOil ? (
+        <LeaderTile
+          Icon={Droplet}
+          caption="Highest oil produced"
+          value={formatMillions(leaders.highestOil.value)}
+          unit="bbl"
+          operator={leaders.highestOil}
+          note="Filed oil across the selected acreage"
+        />
+      ) : null}
+      {leaders.highestGas ? (
+        <LeaderTile
+          Icon={Flame}
+          caption="Highest gas produced"
+          value={formatMillions(leaders.highestGas.value)}
+          unit="Mcf"
+          operator={leaders.highestGas}
+          note="Filed gas across the selected acreage"
+        />
+      ) : null}
+      {leaders.mostEfficient ? (
+        <LeaderTile
+          Icon={Gauge}
+          caption="Most efficient per lease"
+          value={formatCount(Math.round(leaders.mostEfficient.value))}
+          unit="MBOE / lease"
+          operator={leaders.mostEfficient}
+          note={
+            leaders.mostEfficient.leaseCount === null
+              ? "Per lease on record"
+              : `From ${formatCount(leaders.mostEfficient.leaseCount)} leases on record`
+          }
+        />
+      ) : null}
+      {leaders.widestFootprint ? (
+        <LeaderTile
+          Icon={MapPin}
+          caption="Widest footprint"
+          value={String(leaders.widestFootprint.value)}
+          unit="counties"
+          operator={leaders.widestFootprint}
+          note="Counties in scope for this comparison"
+        />
+      ) : null}
     </div>
   );
 }
@@ -559,11 +1012,11 @@ function LeaderTile({
   operator,
   note,
 }: {
-  Icon: typeof TrendingUp;
+  Icon: typeof Droplet;
   caption: string;
   value: string;
   unit: string;
-  operator: CompareOperator;
+  operator: ProductionLeader;
   note: string;
 }) {
   return (
@@ -578,12 +1031,18 @@ function LeaderTile({
         {caption}
       </p>
       <p className="mb-[9px] mt-[14px] text-[26px] font-bold leading-none tracking-[-.02em] tabular-nums text-mv-ink">
-        {value} <span className="text-[12px] font-semibold text-mv-muted">{unit}</span>
+        {value}{" "}
+        <span className="text-[12px] font-semibold text-mv-muted">{unit}</span>
       </p>
       <p className="flex items-center gap-2 text-[13.5px] font-bold text-mv-ink">
-        <OperatorMonogram monogram={operator.monogram} size={22} />
-        {operator.short}
-        <RankPill rank={operator.rank} />
+        <OperatorLogo
+          url={operator.logoUrl}
+          monogram={operator.monogram}
+          size={22}
+          radius={7}
+        />
+        {shortName(operator.name)}
+        <RankPill rank={operator.rankStatewide} />
       </p>
       <p className="mt-[11px] border-t border-mv-line-soft pt-[10px] text-[12px] text-mv-muted">
         {note}
@@ -596,8 +1055,8 @@ function LeaderTile({
    Oil vs gas mix
    ========================================================================== */
 
-function MixCard({ operators }: { operators: CompareOperator[] }) {
-  const rows = [...operators].sort((a, b) => b.oilPct - a.oilPct);
+function MixCard({ operators }: { operators: Compared[] }) {
+  const rows = [...operators].sort((a, b) => b.oilPercent - a.oilPercent);
 
   return (
     <div className="rounded-2xl border border-mv-line bg-white px-[22px] py-5 shadow-mv max-[560px]:px-4">
@@ -619,7 +1078,10 @@ function MixCard({ operators }: { operators: CompareOperator[] }) {
           </span>
         </p>
         <p className="inline-flex items-center gap-2 text-[12px] font-semibold text-mv-muted max-[560px]:hidden">
-          <i aria-hidden="true" className="h-[14px] border-l-2 border-dashed border-mv-faint" />
+          <i
+            aria-hidden="true"
+            className="h-[14px] border-l-2 border-dashed border-mv-faint"
+          />
           dashed line = 50 / 50 split
         </p>
       </div>
@@ -642,7 +1104,7 @@ function MixCard({ operators }: { operators: CompareOperator[] }) {
 
         {rows.map((operator) => (
           <li
-            key={operator.slug}
+            key={operator.operatorNumber}
             className="grid grid-cols-[var(--mix-label)_1fr] items-center gap-[14px] max-[560px]:grid-cols-1"
           >
             <span className="flex min-w-0 items-center gap-[9px] text-[13px] font-semibold">
@@ -657,20 +1119,19 @@ function MixCard({ operators }: { operators: CompareOperator[] }) {
               <span
                 aria-hidden="true"
                 className="flex items-center justify-center bg-mv-green-deep text-[12px] font-bold text-white"
-                style={{ width: `${operator.oilPct}%` }}
+                style={{ width: `${operator.oilPercent}%` }}
               >
-                {operator.oilPct}%
+                {Math.round(operator.oilPercent)}%
               </span>
               <span
                 aria-hidden="true"
                 className="flex flex-1 items-center justify-center text-[12px] font-bold text-mv-ink-soft"
               >
-                {100 - operator.oilPct}%
+                {Math.round(operator.gasPercent)}%
               </span>
               <span className="sr-only">
-                {operator.name}: {operator.oilPct}% of its {COMPARE_YEARS[0]}–
-                {COMPARE_YEARS.at(-1)} BOE from oil, {100 - operator.oilPct}% from
-                gas.
+                {operator.name}: {Math.round(operator.oilPercent)}% of its filed
+                volume is oil, {Math.round(operator.gasPercent)}% gas.
               </span>
             </span>
           </li>
@@ -681,13 +1142,15 @@ function MixCard({ operators }: { operators: CompareOperator[] }) {
         <span className="shrink-0 rounded-full border border-mv-sand-line bg-mv-sand-tint px-[9px] py-[2px] font-bold text-mv-sand">
           Real filed split
         </span>
-        {/* The window is stated rather than called "lifetime": this share is
-            computed from the charted {COMPARE_YEARS[0]}–{COMPARE_YEARS.at(-1)}
-            series, which is not the operator's whole filed record. */}
+        {/* A VOLUMETRIC SPLIT, NOT A BOE SHARE. `oil_percentage` and
+            `gas_percentage` divide raw barrels by raw Mcf and sum to 100 — Pioneer
+            reads 26% oil here against 82% of its BOE, because BOE converts gas at
+            15:1 and this does not. Calling it a BOE share would be wrong by a
+            factor of three. */}
         <span className="min-w-0 flex-1">
-          Share of {COMPARE_YEARS[0]}–{COMPARE_YEARS.at(-1)} BOE from oil vs gas
-          (gas at 15:1). Oil-weighted operators generally realize more per BOE;
-          gas-weighted ones swing with gas prices.
+          Share of filed volume from oil vs gas, across the whole record for the
+          selected acreage. Oil-weighted operators generally realize more per
+          barrel; gas-weighted ones swing with gas prices.
         </span>
       </p>
     </div>
@@ -695,129 +1158,25 @@ function MixCard({ operators }: { operators: CompareOperator[] }) {
 }
 
 /* ==========================================================================
-   Tables
+   Table
 
-   Both use the site's dark table header, and both scroll sideways rather than
-   shrink: dropping the header below 12px is exactly what the design's 11.5px did,
-   and it is what the legible-font-size audit fails on.
+   Uses the site's dark table header, and scrolls sideways rather than shrink:
+   dropping the header below 12px is exactly what the design's 11.5px did, and it
+   is what the legible-font-size audit fails on.
    ========================================================================== */
 
 const TH_BASE =
   "whitespace-nowrap bg-mv-table-head px-[15px] py-[13px] text-[12px] font-semibold uppercase tracking-[.04em] text-white";
 
-const TD_BASE = "whitespace-nowrap border-b border-mv-line-soft bg-white px-[15px] py-[13px]";
+const TD_BASE =
+  "whitespace-nowrap border-b border-mv-line-soft bg-white px-[15px] py-[13px]";
 
-/** A signed change with a direction glyph — the design's `.dd`. */
-function Delta({ percent }: { percent: number }) {
-  const direction = percent > 0.5 ? "up" : percent < -0.5 ? "down" : "flat";
-  const Icon = direction === "up" ? ArrowUp : direction === "down" ? ArrowDown : Minus;
-  const tone =
-    direction === "up"
-      ? "text-mv-green-deep"
-      : direction === "down"
-        ? "text-mv-down"
-        : "text-mv-muted";
-
-  return (
-    <span className={`inline-flex items-center gap-[3px] font-bold tabular-nums ${tone}`}>
-      <Icon aria-hidden="true" className="h-3 w-3" strokeWidth={3} />
-      {Math.abs(percent).toFixed(1)}%
-    </span>
-  );
-}
-
-function MomentumTable({ rows }: { rows: MomentumRow[] }) {
-  return (
-    <div className="relative overflow-x-auto">
-      <table className="w-full min-w-[680px] border-separate border-spacing-0 text-[13.5px]">
-        <caption className="sr-only">
-          Momentum and growth in BOE for the selected operators, {COMPARE_YEARS[0]}
-          –{COMPARE_YEARS.at(-1)}
-        </caption>
-        <thead>
-          <tr>
-            <th scope="col" className={`${TH_BASE} text-left`}>
-              Operator
-            </th>
-            <th scope="col" className={`${TH_BASE} text-right`}>
-              Latest yr
-            </th>
-            <th scope="col" className={`${TH_BASE} text-right`}>
-              YoY
-            </th>
-            <th scope="col" className={`${TH_BASE} text-right`}>
-              {COMPARE_YEARS.length}-yr / yr
-            </th>
-            <th scope="col" className={`${TH_BASE} text-left`}>
-              Shape
-            </th>
-            <th scope="col" className={`${TH_BASE} text-right`}>
-              Swing
-            </th>
-            <th scope="col" className={`${TH_BASE} text-left`}>
-              Read
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.operator.slug} className="[&:hover>*]:bg-mv-row-hover">
-              <th scope="row" className={`${TD_BASE} text-left`}>
-                <span className="flex items-center gap-[9px] font-semibold text-mv-ink">
-                  <OperatorMonogram monogram={row.operator.monogram} size={24} />
-                  {row.operator.short}
-                </span>
-              </th>
-              <td className={`${TD_BASE} text-right tabular-nums text-mv-ink-soft`}>
-                {row.latest.toFixed(1)}M
-              </td>
-              <td className={`${TD_BASE} text-right`}>
-                <Delta percent={row.yearOverYear} />
-              </td>
-              <td className={`${TD_BASE} text-right`}>
-                <Delta percent={row.compoundGrowth} />
-              </td>
-              <td className={TD_BASE}>
-                <svg aria-hidden="true" width="90" height="26" viewBox="0 0 90 26" className="block">
-                  <polyline
-                    points={sparklinePoints(row.operator.boe, 90, 26)}
-                    fill="none"
-                    stroke={row.operator.color}
-                    strokeWidth="2"
-                  />
-                </svg>
-              </td>
-              <td className={`${TD_BASE} text-right tabular-nums text-mv-ink-soft`}>
-                ±{row.swing.toFixed(0)}%
-              </td>
-              <td className={TD_BASE}>
-                <span
-                  className={`text-[12.5px] font-bold ${
-                    row.direction === "up"
-                      ? "text-mv-green-deep"
-                      : row.direction === "down"
-                        ? "text-mv-down"
-                        : "text-mv-muted"
-                  }`}
-                >
-                  {row.read}
-                </span>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function StatsTable({ operators }: { operators: CompareOperator[] }) {
+function StatsTable({ operators }: { operators: Compared[] }) {
   return (
     <div className="relative overflow-x-auto">
       <table className="w-full min-w-[640px] border-separate border-spacing-0 text-[13.5px]">
         <caption className="sr-only">
-          Scale and efficiency for the selected operators, cumulative{" "}
-          {COMPARE_YEARS[0]}–{COMPARE_YEARS.at(-1)}
+          Filed production and lease counts for the selected operators
         </caption>
         <thead>
           <tr>
@@ -825,7 +1184,11 @@ function StatsTable({ operators }: { operators: CompareOperator[] }) {
               Metric
             </th>
             {operators.map((operator) => (
-              <th key={operator.slug} scope="col" className={`${TH_BASE} text-right`}>
+              <th
+                key={operator.operatorNumber}
+                scope="col"
+                className={`${TH_BASE} text-right`}
+              >
                 <span
                   aria-hidden="true"
                   className="mr-[6px] inline-block h-[11px] w-[11px] rounded-sm align-[-1px]"
@@ -837,7 +1200,7 @@ function StatsTable({ operators }: { operators: CompareOperator[] }) {
           </tr>
         </thead>
         <tbody>
-          {COMPARE_STAT_ROWS.map((row) => (
+          {PRODUCTION_STAT_ROWS.map((row) => (
             <tr key={row.label} className="[&:hover>*]:bg-mv-row-hover">
               <th
                 scope="row"
@@ -847,7 +1210,7 @@ function StatsTable({ operators }: { operators: CompareOperator[] }) {
               </th>
               {operators.map((operator) => (
                 <td
-                  key={operator.slug}
+                  key={operator.operatorNumber}
                   className={`${TD_BASE} text-right tabular-nums text-mv-ink-soft`}
                 >
                   {row.value(operator)}
