@@ -410,3 +410,35 @@ export function downloadNearbyFilings(nearby: MapLeaseNearby) {
   link.remove();
   URL.revokeObjectURL(url);
 }
+
+/** Mean Earth radius, in metres. */
+const EARTH_RADIUS_METRES = 6371008.8;
+const SQUARE_METRES_PER_ACRE = 4046.8564224;
+const SQUARE_METRES_PER_SQUARE_MILE = 2589988.110336;
+
+/**
+ * How big a drawn box is on the ground.
+ *
+ * Spherical rather than ellipsoidal: the exact form for a lat/long rectangle,
+ * `R² · Δλ · |sin φ₂ − sin φ₁|`, which is within about half a per cent of the
+ * ellipsoid at any size a reader draws. Checked against a section — a
+ * one-mile square at latitude 31.5 comes out at 640 acres and 1.00 square
+ * miles.
+ *
+ * No Esri constructors, so it stays a plain function like everything else here
+ * and can be called before the view is ready.
+ */
+export function boxArea(area: Area): { acres: number; squareMiles: number } {
+  const radians = (degrees: number) => (degrees * Math.PI) / 180;
+
+  const metres =
+    EARTH_RADIUS_METRES *
+    EARTH_RADIUS_METRES *
+    Math.abs(radians(area.east) - radians(area.west)) *
+    Math.abs(Math.sin(radians(area.north)) - Math.sin(radians(area.south)));
+
+  return {
+    acres: metres / SQUARE_METRES_PER_ACRE,
+    squareMiles: metres / SQUARE_METRES_PER_SQUARE_MILE,
+  };
+}

@@ -22,6 +22,7 @@ import {
   MeasureAreaPanel,
   type AreaMeasurement,
 } from "./measure-area-panel";
+import { DrawAreaDemo } from "./draw-area-demo";
 import { MeasureBar } from "./measure-bar";
 import {
   NEARBY_RADII,
@@ -51,6 +52,7 @@ import {
 } from "./cluster-graphics";
 import {
   downloadNearbyFilings,
+  boxArea,
   measureTract,
   nearestWellsTo,
   wellsInArea,
@@ -361,16 +363,6 @@ function clusterZoomTier(zoom: number): number {
 const CLUSTER_ZOOM_SCALE = 900_000;
 
 /*
- * How much of the screen the sample box covers when Draw an area is picked.
- *
- * The tool used to arm silently and wait for a gesture nobody knew to make, so
- * it now draws one for you: a box over the middle of the view, already counted
- * and already exportable. Close it and draw your own; drag anywhere and it is
- * replaced by yours.
- */
-const SAMPLE_AREA_SHARE = 0.36;
-
-/*
  * The sample is drawn, not placed.
  *
  * A box that simply appears says "here is a box"; a box that grows out of one
@@ -550,32 +542,6 @@ function sampleTract(view: EsriView | null): LonLat[] | null {
   ];
 }
 
-/**
- * A box over the middle of whatever is on screen — the sample Draw an area
- * opens with. Null before the view has an extent to measure.
- */
-function sampleArea(view: EsriView | null): Area | null {
-  if (!view?.extent) return null;
-
-  const { xmin, ymin, xmax, ymax } = view.extent;
-  const west = mercatorToLongitude(xmin);
-  const east = mercatorToLongitude(xmax);
-  const south = mercatorToLatitude(ymin);
-  const north = mercatorToLatitude(ymax);
-
-  const halfLon = ((east - west) * SAMPLE_AREA_SHARE) / 2;
-  const halfLat = ((north - south) * SAMPLE_AREA_SHARE) / 2;
-  const midLon = (west + east) / 2;
-  const midLat = (south + north) / 2;
-
-  return {
-    west: midLon - halfLon,
-    east: midLon + halfLon,
-    south: midLat - halfLat,
-    north: midLat + halfLat,
-  };
-}
-
 /** The rectangle two opposite corners describe, whichever way round they are. */
 function boxBetween(a: LonLat, b: LonLat): Area {
   return {
@@ -686,6 +652,15 @@ export function MapExplorerView() {
    * answer it had already fetched.
    */
   const [leaseNearbyOpen, setLeaseNearbyOpen] = useState(false);
+  /*
+   * Whether the Draw-an-area demonstration is up.
+   *
+   * Its own window rather than a sample played over the live map: the two used
+   * to share one surface, so the demonstration landed on the reader's own view
+   * and had to be cleared before they could draw anything. Closing it arms the
+   * tool on a map with nothing on it.
+   */
+  const [drawDemoOpen, setDrawDemoOpen] = useState(false);
   /** The distance being asked about — one of the service's own rings. */
   const [watchRadius, setWatchRadius] = useState<number>(NEARBY_RADII[0]);
   /*
@@ -2455,46 +2430,6 @@ export function MapExplorerView() {
   }, [activeTool, drawArea]);
 
   /*
-   * Plays the sample box out from its top-left corner.
-   *
-   * The graphic is redrawn frame by frame; the card only appears at the end,
-   * because a readout counting up while the box grows draws the eye away from
-   * the box. Eased out, so it settles rather than stops.
-   */
-  const playSampleArea = useCallback(
-    (target: Area) => {
-      clearInterval(sampleTimerRef.current);
-      let frame = 0;
-
-      const step = () => {
-        frame += 1;
-        const through = Math.min(1, frame / SAMPLE_FRAMES);
-        const eased = 1 - (1 - through) ** 3;
-
-        drawArea({
-          west: target.west,
-          north: target.north,
-          east: target.west + (target.east - target.west) * eased,
-          south: target.north - (target.north - target.south) * eased,
-        });
-
-        if (through < 1) return;
-
-        clearInterval(sampleTimerRef.current);
-        sampleTimerRef.current = undefined;
-        areaRef.current = target;
-        setArea(target);
-        setSampleOf("draw-area");
-        anchorBars();
-      };
-
-      step();
-      sampleTimerRef.current = setInterval(step, SAMPLE_INTERVAL_MS);
-    },
-    [anchorBars, drawArea],
-  );
-
-  /*
    * Plays the sample line out from one end, the way a drag would.
    *
    * The distance is recomputed every frame, so the readout that lands at the
@@ -2639,10 +2574,9 @@ export function MapExplorerView() {
        * it asks which lease, and the card that asks is the instruction. A
        * demo circle only put a second answer on the map beside the real one.
        */
-      if (tool === "draw-area") {
-        const sample = sampleArea(viewRef.current);
-        if (sample) playSampleArea(sample);
-      } else if (tool === "measure-distance") {
+      setDrawDemoOpen(tool === "draw-area");
+
+      if (tool === "measure-distance") {
         const line = sampleLine(viewRef.current);
         if (line) playSampleLine(line[0], line[1]);
       } else if (tool === "measure-area") {
@@ -2655,7 +2589,6 @@ export function MapExplorerView() {
       drawMeasurement,
       drawNearby,
       drawTract,
-      playSampleArea,
       playSampleLine,
       playSampleTract,
     ],
@@ -3108,6 +3041,10 @@ export function MapExplorerView() {
               ? wellsInBox(wells, area)
               : wellsInArea(clusters, area)
           }
+          /* Exact where the wells themselves are on the map; from the bubbles
+             otherwise, which the card says out loud. */
+          exact={wells.length > 0}
+          size={boxArea(area)}
           at={areaAnchor}
           onExport={exportArea}
         />
@@ -3170,6 +3107,16 @@ export function MapExplorerView() {
           Keyed by the lease, so a new click opens the card on the new lease
           rather than leaving the last answer on screen while the next loads.
       */}
+      {/* Shown once when the tool is picked; closing it leaves the tool armed
+          on an empty map. The wells it plots are the ones the map has loaded,
+          so the field in the picture is the reader's own. */}
+      {status === "ready" && drawDemoOpen && (
+        <DrawAreaDemo
+          wells={wells}
+          onClose={() => setDrawDemoOpen(false)}
+        />
+      )}
+
       {status === "ready" &&
         activeTool === "whats-near-my-land" &&
         !leaseNearbyOpen && <NearbyPrompt />}
