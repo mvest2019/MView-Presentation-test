@@ -1,14 +1,11 @@
 "use client";
 
-import { ChevronDown, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
-import {
-  CONTROL_CARET,
-  CONTROL_TINT,
-  SELECT_CLASS,
-} from "@/app/_components/control-styles";
+import { CONTROL_TINT } from "@/app/_components/control-styles";
 import { Pager } from "@/app/_components/pager";
+import { SelectControl } from "@/app/_components/select-control";
 import { cardTitleClass } from "@/app/_components/typography";
 import {
   fetchOperatorLeases,
@@ -89,7 +86,6 @@ export function OperatorLeases({
   const [openLease, setOpenLease] = useState<LeaseRecord | null>(null);
 
   const searchId = useId();
-  const countyId = useId();
 
   const leasesCard = useRef<HTMLElement | null>(null);
   const wellsCard = useRef<HTMLDivElement | null>(null);
@@ -191,35 +187,26 @@ export function OperatorLeases({
               />
             </div>
 
-            {/* The listing's Counties control, to the class — same options, same
-                labels, same caret. */}
-            <div className="relative min-w-[180px] max-[767px]:min-w-full">
-              <label htmlFor={countyId} className="sr-only">
-                Choose a county
-              </label>
-              <select
-                id={countyId}
-                value={county}
-                onChange={(event) => {
-                  setCounty(event.target.value);
-                  setPage(1);
-                  setOpenLease(null);
-                }}
-                className={`${SELECT_CLASS} ${CONTROL_TINT} min-h-[44px]`}
-              >
-                <option value="">Counties</option>
-                {countyOptions.map((name) => (
-                  <option key={name} value={name}>
-                    {name} County
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                aria-hidden="true"
-                className={CONTROL_CARET}
-                strokeWidth={1.8}
-              />
-            </div>
+            {/* The shared `SelectControl` — the same element the listing, the
+                production chart and the comparison use, rather than a hand-rolled
+                copy of its classes that has to be kept in step by hand. */}
+            <SelectControl
+              label="Choose a county"
+              value={county}
+              onChange={(next) => {
+                setCounty(next);
+                setPage(1);
+                setOpenLease(null);
+              }}
+              className="min-w-[180px] max-[767px]:min-w-full"
+            >
+              <option value="">Counties</option>
+              {countyOptions.map((name) => (
+                <option key={name} value={name}>
+                  {name} County
+                </option>
+              ))}
+            </SelectControl>
 
             <p aria-live="polite" className="text-[12.5px] text-mv-muted">
               {firstLoad
