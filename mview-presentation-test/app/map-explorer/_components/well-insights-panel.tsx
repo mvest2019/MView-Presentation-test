@@ -609,19 +609,11 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
 
               {/* ---------------- the written read ---------------- */}
               <div className="mt-3 rounded-xl border border-mv-line bg-white p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Heading
-                    title="AI Summary"
-                    aside="What the completion record says once it is read against the rest of the collection"
-                  />
-
-                  {/* Labelled as written, not measured: the read below is generated
-              from the figures, and saying so is the difference between a
-              summary and a claim. */}
-                  <span className="ml-auto shrink-0 rounded-full bg-mv-mint px-[10px] py-[4px] text-[10px] font-extrabold uppercase tracking-[.08em] text-mv-green-deep">
-                    Well Summary AI
-                  </span>
-                </div>
+                {/* The heading says AI, so the badge beside it said it twice. */}
+                <Heading
+                  title="AI Summary"
+                  aside="What the completion record says once it is read against the rest of the collection"
+                />
 
                 <div className="mt-3">
                   <div className="text-[10px] font-extrabold uppercase tracking-[.09em] text-mv-muted">
