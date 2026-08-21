@@ -165,7 +165,37 @@ export function RegisterForm({ next }: { next: string }) {
   const emailVerified =
     verifiedEmail !== null &&
     verifiedEmail.toLowerCase() === emailNow.toLowerCase();
-  const awaitingCode = codeSentTo !== null && !emailVerified;
+
+  /*
+   * `codeSentTo === emailNow` IS THE FIX, and the whole of it (Ryan, 2026-08-19:
+   * send a code, then "directly edit the Email field" and the panel stays).
+   *
+   * This was `codeSentTo !== null && !emailVerified`, which asked whether a code
+   * had been sent but never whether it was sent to the address NOW in the box. So
+   * changing the address left the digits panel open, still captioned with the
+   * PREVIOUS one — the screenshot has the field reading `chouguleu09@` above a
+   * panel saying "code sent to chouguleu30@". Two addresses on screen, one of them
+   * the one the code would actually be checked against.
+   *
+   * OPTION TWO OF THE TWO OFFERED: reset the verification state rather than
+   * locking the field. Locking would mean a typo in the address could only be
+   * corrected through the "Change email" button, and someone who mistypes and
+   * reaches for the field first would find it dead with no explanation. Resetting
+   * never blocks anyone, and it matches how `emailVerified` above already behaves
+   * — that comparison has always un-verified a changed address, so this makes the
+   * awaiting state consistent with the verified one rather than adding a new rule.
+   *
+   * NOT AN EFFECT. Deriving it means there is no window in which the two disagree,
+   * and no `setState` in an effect for the lint rule to reject. It also means
+   * changing the address BACK restores the panel, with the code still live —
+   * correct, since that code was genuinely sent and has not expired.
+   *
+   * The account cannot be created in the reset state: "Create account" is gated on
+   * `emailVerified`, so the worst case is a visitor who has to press Verify email
+   * again, which is exactly what was asked for.
+   */
+  const awaitingCode =
+    codeSentTo !== null && codeSentTo === emailNow && !emailVerified;
 
   /*
    * The live site's `allRequiredFieldsValid`, field for field: name, email and

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Lexend_Deca } from "next/font/google";
 
+import { ScrollToTopOnNavigate } from "./_components/scroll-to-top";
 import { SiteFooter } from "./_components/site-footer";
 import { SiteHeader } from "./_components/site-header";
 import { Toaster } from "./_components/ui/sonner";
@@ -45,6 +46,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       className={`${lexendDeca.variable} h-full scroll-smooth antialiased`}
     >
       <body className="flex min-h-full flex-col bg-mv-bg font-sans text-[15px] leading-[1.55] text-mv-ink max-[767px]:text-[14px]">
+        {/* Renders nothing — it only resets the scroll position after a route
+            change, because Next 16 otherwise CARRIES IT OVER to the new page.
+            See the component for the doc quote and the two cases it skips. */}
+        <ScrollToTopOnNavigate />
         <SiteHeader user={user} />
         <main id="main" className="flex-1">
           {children}
