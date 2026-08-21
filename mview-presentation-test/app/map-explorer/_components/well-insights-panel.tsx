@@ -611,7 +611,7 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
               <div className="mt-3 rounded-xl border border-mv-line bg-white p-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <Heading
-                    title="Insight Summary"
+                    title="AI Summary"
                     aside="What the completion record says once it is read against the rest of the collection"
                   />
 
