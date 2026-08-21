@@ -661,3 +661,97 @@ export const getWellPermitMap = async (
     throw new Error(String(error) || "Failed to fetch the permit");
   }
 };
+
+/** The radii the service holds rings for. Anything else is a 400. */
+export const NEARBY_RADII_MILES = [1, 3, 5] as const;
+
+export type MapNearbyEvent = {
+  /** "New Permit", "New Completion" — what happened. */
+  type: string;
+  leaseName: string;
+  well: string;
+  operator: string;
+  /** "HORIZONTAL", "VERTICAL" — how it is being drilled. */
+  direction: string | null;
+  totalDepth: number | null;
+  purpose: string | null;
+  status: string | null;
+  /** The date, and which date it is — "approved", "filed". */
+  date: string | null;
+  dateBasis: string | null;
+  distanceMiles: number | null;
+  /** "NW", "N" — the direction of the event from the lease. */
+  bearing: string | null;
+  api: string;
+  lon: number | null;
+  lat: number | null;
+};
+
+export type MapLeaseNearby = {
+  lease: {
+    key: string;
+    name: string;
+    number: string;
+    district: string;
+    county: string;
+  };
+  radiusMiles: number;
+  /** How many other leases touch the ring. */
+  adjacentLeases: number;
+  stats: {
+    nearbyWells: number;
+    newPermits: number;
+    newCompletions: number;
+    /** Miles to the closest bore, or null when nothing is in range. */
+    closestWellMiles: number | null;
+  };
+  events: MapNearbyEvent[];
+  meta: {
+    /** How far back "new" reaches. */
+    windowMonths: number;
+    /** Activity the service could not place on the map. */
+    unplacedEvents: number;
+    distanceBasis: string;
+  };
+};
+
+/**
+ * GET /api/v1/map/leases/{key}/nearby?radius={1|3|5}
+ *
+ * What is happening around one lease: how many wells are inside the ring, how
+ * many permits and completions are new, what the closest bore is, and the
+ * recent filings themselves.
+ *
+ * The key is the lease's own, district first — `7C-04254`. It is what
+ * `/map/search` returns in `id` for a lease row, which is where the tool gets
+ * it from.
+ *
+ * Null where the service holds no ring of that size for the lease: it answers
+ * 404 with `LEASE_RING_NOT_FOUND`, and that is an answer rather than a failure
+ * — the lease exists, the ring does not, and the reader should be told to try
+ * another distance rather than shown an error.
+ */
+export const getLeaseNearbyMap = async (
+  key: string,
+  radiusMiles: number,
+): Promise<MapLeaseNearby | null> => {
+  try {
+    const response = await fetch(
+      `${process.env.MAP_BASE_URL}/api/v1/map/leases/${encodeURIComponent(key)}/nearby?radius=${radiusMiles}`,
+    );
+
+    if (response.status === 404) return null;
+
+    const data = await response.json();
+
+    if (response.ok && data?.lease?.key && data?.stats) {
+      return data as MapLeaseNearby;
+    } else {
+      throw new Error("Failed to fetch what is near this lease");
+    }
+  } catch (error) {
+    throw new Error(
+      String(error) || "Failed to fetch what is near this lease",
+    );
+  }
+};
