@@ -141,9 +141,15 @@ function messageFrom(body: unknown, fallback: string): string {
 async function post(
   path: string,
   payload: Record<string, unknown>,
+  /*
+   * The password-reset pair are PUTs, not POSTs — `GenerateResetPassowrdToken`
+   * and `ResetPassword` both answer 404 to a POST. Everything else here is a
+   * POST, so that stays the default and no existing caller changed.
+   */
+  method: "POST" | "PUT" = "POST",
 ): Promise<{ status: number; body: unknown }> {
   const response = await fetch(`${authBase()}${path}`, {
-    method: "POST",
+    method,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
     cache: "no-store",
@@ -781,5 +787,134 @@ export async function verifyCode(
     };
   } catch {
     return { ok: false, message: "That code is invalid or expired." };
+  }
+}
+
+/* ────────────────────────────────────────────────────── password reset ── */
+
+/**
+ * Step 1 — ask the API to email a reset link.
+ *
+ * `PUT /User/GenerateResetPassowrdToken` with `{ _emailid }`. The spelling of the
+ * path is the API's, typo and all; so is `_emailid`. Both are reproduced exactly
+ * because they are what the endpoint answers to.
+ *
+ * `/User/forgot-password` is an ALIAS for the same thing — probed with an
+ * identical payload and it returned an identical `{"data":"SUCCESS"}`. The older
+ * name is the one used here only because the live site uses it, so both apps hit
+ * the same route and a backend change lands on both at once.
+ *
+ * DOES NOT REVEAL WHETHER THE ADDRESS EXISTS, and neither does this function.
+ * Probed with `nobody@example.com`, which has no account, and the answer was
+ * still `{"status_code":200,"data":"SUCCESS"}`. That is the correct behaviour —
+ * a reset form that distinguishes is an enumeration oracle, exactly what was
+ * fixed on sign-in — so the caller must show one neutral sentence either way.
+ */
+export async function requestPasswordReset(
+  email: string,
+): Promise<VerificationResult> {
+  try {
+    const { status, body } = await post(
+      "/User/GenerateResetPassowrdToken",
+      { _emailid: email },
+      "PUT",
+    );
+
+    if (upstreamDown(status, body)) {
+      console.error(
+        `[auth] PUT /User/GenerateResetPassowrdToken upstream failure: ${status}`,
+      );
+      return {
+        ok: false,
+        message: "We could not send the link just now. Please try again shortly.",
+      };
+    }
+
+    /*
+     * `data` CARRIES THE VERDICT, not the status. The live site tests
+     * `status_code === 200 && !response.data?.includes('INVALID')`, because this
+     * endpoint reports a refusal inside a 200 — the same shape that made
+     * `verify-code` treat an unverified address as verified until it was fixed.
+     * `String()` first: `data` is a bare string here ("SUCCESS") but an array on
+     * the sibling endpoint, and `.includes` means different things to each.
+     */
+    const data = (body as { data?: unknown } | null)?.data;
+    const ok =
+      envelopeCode(status, body) === 200 &&
+      !String(data ?? "").toUpperCase().includes("INVALID");
+
+    return {
+      ok,
+      message: ok ? "" : messageFrom(body, "We could not send the link."),
+    };
+  } catch {
+    return {
+      ok: false,
+      message: "We could not reach the sign-in service. Please try again.",
+    };
+  }
+}
+
+/**
+ * Step 2 — set the new password, using the token from the emailed link.
+ *
+ * `PUT /User/ResetPassword` with `{ _rtoken, _newpwd }`. `/User/reset-password`
+ * is an alias; same reasoning as above for preferring the live site's spelling.
+ *
+ * AN INVALID TOKEN STILL ANSWERS HTTP 200. Probed with an all-zero UUID:
+ *
+ *   {"status_code":200,"data":[{"resetpassowrd":"INVALID_TOKEN"}],"error":""}
+ *
+ * So the status says nothing and `error` is EMPTY — the outcome lives in
+ * `data[0].resetpassowrd`, spelled the way the API spells it. Reading the status
+ * alone would report "password updated" to someone whose link had expired, and
+ * they would then fail to sign in with a password that was never stored.
+ */
+export async function resetPassword(
+  token: string,
+  newPassword: string,
+): Promise<VerificationResult> {
+  try {
+    const { status, body } = await post(
+      "/User/ResetPassword",
+      { _rtoken: token, _newpwd: newPassword },
+      "PUT",
+    );
+
+    if (upstreamDown(status, body)) {
+      console.error(`[auth] PUT /User/ResetPassword upstream failure: ${status}`);
+      return {
+        ok: false,
+        message: "We could not reset the password just now. Please try again shortly.",
+      };
+    }
+
+    const rows = (body as { data?: unknown } | null)?.data;
+    const outcome =
+      Array.isArray(rows) && rows.length > 0
+        ? (rows[0] as { resetpassowrd?: unknown }).resetpassowrd
+        : undefined;
+
+    if (String(outcome ?? "").toUpperCase() === "INVALID_TOKEN") {
+      return {
+        ok: false,
+        /* Names the cause and the way out. "Invalid token" alone leaves someone
+           re-pasting a link that will never work again — the actionable fact is
+           that these expire and a fresh one is a click away. */
+        message:
+          "That reset link is no longer valid. Request a new one and try again.",
+      };
+    }
+
+    const ok = envelopeCode(status, body) === 200 && outcome !== undefined;
+    return {
+      ok,
+      message: ok ? "" : messageFrom(body, "We could not reset that password."),
+    };
+  } catch {
+    return {
+      ok: false,
+      message: "We could not reach the sign-in service. Please try again.",
+    };
   }
 }

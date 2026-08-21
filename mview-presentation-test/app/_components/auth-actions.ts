@@ -4,6 +4,8 @@ import {
   loginUser,
   loginWithGoogle,
   registerUser,
+  requestPasswordReset,
+  resetPassword,
   sendVerificationCode,
   splitName,
   type MemberTypeValue,
@@ -16,7 +18,13 @@ import {
 } from "@/lib/login-throttle";
 import { endSession, startSession } from "@/lib/session";
 
-import { codeSchema, loginSchema, registerSchema } from "./auth-schema";
+import {
+  codeSchema,
+  forgotPasswordSchema,
+  loginSchema,
+  registerSchema,
+  resetPasswordSchema,
+} from "./auth-schema";
 
 /**
  * Sign-in, sign-up and email verification, as server actions.
@@ -284,4 +292,64 @@ export async function signInWithGoogleAction(
 
 export async function signOutAction(): Promise<void> {
   await endSession();
+}
+
+/**
+ * Step 1 of the reset — ask for the emailed link.
+ *
+ * ALWAYS RETURNS `ok`, WHATEVER THE API SAID, unless the service itself is down.
+ * That is deliberate and it is the whole point of this wrapper.
+ *
+ * The endpoint does not distinguish a known address from an unknown one — probed
+ * with `nobody@example.com` and it still answered `{"data":"SUCCESS"}` — and this
+ * must not either. Reporting "no account for that address" here would rebuild, on
+ * a form that needs no password at all, exactly the enumeration oracle that was
+ * removed from sign-in the same day. Anyone could confirm whether an address is
+ * registered by typing it.
+ *
+ * A REAL OUTAGE IS STILL REPORTED, because it is not about the address: telling
+ * someone the link is on its way when the mail was never dispatched leaves them
+ * waiting for an email that is not coming.
+ */
+export async function requestPasswordResetAction(
+  values: unknown,
+): Promise<ActionResult> {
+  const parsed = forgotPasswordSchema.safeParse(values);
+  if (!parsed.success) {
+    return { ok: false, message: "Please check the details above." };
+  }
+
+  const result = await requestPasswordReset(parsed.data.email);
+  if (!result.ok && /try again shortly|could not reach/i.test(result.message)) {
+    return { ok: false, message: result.message };
+  }
+  /* Anything else the API refused for — including an unknown address — is
+     swallowed on purpose, and logged so it is not invisible to us. */
+  if (!result.ok) {
+    console.error(`[auth] reset link not sent, upstream said: ${result.message}`);
+  }
+  return { ok: true };
+}
+
+/** Step 2 of the reset — set the new password against the emailed token. */
+export async function resetPasswordAction(
+  token: unknown,
+  values: unknown,
+): Promise<ActionResult> {
+  if (typeof token !== "string" || !token.trim()) {
+    return {
+      ok: false,
+      message: "That reset link is incomplete. Request a new one and try again.",
+    };
+  }
+
+  const parsed = resetPasswordSchema.safeParse(values);
+  if (!parsed.success) {
+    return { ok: false, message: "Please check the details above." };
+  }
+
+  const result = await resetPassword(token.trim(), parsed.data.password);
+  return result.ok
+    ? { ok: true }
+    : { ok: false, message: result.message || "We could not reset that password." };
 }

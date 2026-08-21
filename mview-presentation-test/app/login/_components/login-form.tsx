@@ -28,6 +28,36 @@ import { GoogleSignIn } from "@/app/_components/google-sign-in";
  * handlers were all demos (`onclick="…Reset link sent ✓ (demo)"`); those are
  * replaced by real calls, and only real calls.
  */
+/** The id `FormError` renders with, so both inputs can point at it. */
+const SIGN_IN_ERROR_ID = "signin-error";
+
+/**
+ * Marks a field invalid and points it at the sign-in error, WITHOUT losing the
+ * field's own error wiring.
+ *
+ * `Field` already hands each input an `aria-invalid` and an `aria-describedby`
+ * for its own validation message. A server failure is a second, independent
+ * reason the field is wrong, so this COMPOSES rather than replaces: `aria-invalid`
+ * becomes true if either is true, and the ids are concatenated — `aria-describedby`
+ * is a space-separated list, so a field can legitimately point at both its own
+ * message and the form-level one, and assistive tech reads both.
+ *
+ * Overwriting instead of composing was the tempting version and it is wrong: it
+ * would drop the field's own "Email is required" association the moment a server
+ * failure was also on screen.
+ */
+function describedByFailure(
+  props: { "aria-invalid": boolean; "aria-describedby": string | undefined },
+  failure: string | null,
+): { "aria-invalid": boolean; "aria-describedby": string | undefined } {
+  if (!failure) return props;
+  const ids = [props["aria-describedby"], SIGN_IN_ERROR_ID].filter(Boolean);
+  return {
+    "aria-invalid": true,
+    "aria-describedby": ids.join(" ") || undefined,
+  };
+}
+
 export function LoginForm({ next }: { next: string }) {
   const router = useRouter();
   const [failure, setFailure] = useState<string | null>(null);
@@ -38,6 +68,8 @@ export function LoginForm({ next }: { next: string }) {
   const {
     register,
     handleSubmit,
+    setValue,
+    setFocus,
     formState: { errors, isSubmitting },
   } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
@@ -58,6 +90,24 @@ export function LoginForm({ next }: { next: string }) {
        * asked for and what keeps it out of the way of everything else.
        */
       setFailure(result.message);
+      /*
+       * FOCUS BACK TO THE EMAIL FIELD (Ryan, 2026-08-19: after the failure
+       * "document.activeElement is <body>. Focus is lost entirely, so
+       * screen-reader and keyboard users get no position").
+       *
+       * Measured before fixing: pressing Sign in with a cleared focus left
+       * `activeElement === document.body`, because the submit button is disabled
+       * for the duration of the request and a disabled element cannot hold focus.
+       * Nothing then claimed it back, so a keyboard user was returned to the top
+       * of the document and had to tab in again to retry.
+       *
+       * VALIDATION failures already do this — react-hook-form's `shouldFocusError`
+       * is on by default and focuses the first invalid field, which I confirmed
+       * lands on `INPUT[email]`. Only this server-side branch was missing it, so
+       * only this branch adds it, using RHF's own `setFocus` rather than a ref so
+       * the two paths end in the same place.
+       */
+      setFocus("email");
       return;
     }
     router.push(next);
@@ -123,15 +173,67 @@ export function LoginForm({ next }: { next: string }) {
           }
           error={errors.email?.message}
         >
-          {(props) => (
-            <input
-              {...props}
-              {...register("email")}
-              type="email"
-              autoComplete="username"
-              placeholder="you@example.com"
-            />
-          )}
+          {(props) => {
+            const field = register("email");
+            return (
+              <input
+                {...props}
+                {...field}
+                {...describedByFailure(props, failure)}
+                type="email"
+                autoComplete="username"
+                /*
+                 * MOBILE KEYBOARD HINTS (Ryan, 2026-08-19: the field "has
+                 * spellcheck enabled and no inputmode / autocapitalize /
+                 * autocorrect", so phones "trigger auto-capitalisation and red
+                 * squiggles on email addresses").
+                 *
+                 * `type="email"` alone does NOT settle these. iOS still
+                 * capitalises the first letter and still runs autocorrect on the
+                 * local part, and both spellcheck the whole thing — so "jane@" is
+                 * offered as "Jane@" and underlined red as a misspelling. Four
+                 * attributes because they are four separate behaviours; none
+                 * implies the others.
+                 *
+                 * `autoCorrect` is not a standard attribute and React passes it
+                 * through as-is, which is the point: it is what WebKit reads.
+                 */
+                inputMode="email"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                /*
+                 * 254 = the longest address RFC 5321 permits (the SMTP path
+                 * limit). A cap the standard itself sets cannot reject a real
+                 * address, which is why this number and not a rounder one.
+                 */
+                maxLength={254}
+                /*
+                 * NORMALISE WHAT IS ON SCREEN, not just what is sent (Ryan,
+                 * 2026-08-19: leading/trailing spaces "pass client validation and
+                 * are submitted as-is").
+                 *
+                 * The value POSTED was already safe — `auth-schema.ts` trims and
+                 * lower-cases, and I proved the server receives the normalised
+                 * form. Two things were still true and worth fixing: the box went
+                 * on showing "  QA.Test@Example.COM  " after submitting
+                 * "qa.test@example.com", so what you read was not what was sent;
+                 * and anyone reasoning about a failure from the field alone was
+                 * being misled.
+                 *
+                 * On blur rather than on change, so the caret is not yanked about
+                 * mid-typing. `shouldValidate` is left off because this form
+                 * validates on submit, so there is no error state to refresh.
+                 */
+                onBlur={(event) => {
+                  const tidy = event.target.value.trim().toLowerCase();
+                  if (tidy !== event.target.value) setValue("email", tidy);
+                  field.onBlur(event);
+                }}
+                placeholder="you@example.com"
+              />
+            );
+          }}
         </Field>
 
         <Field
@@ -158,7 +260,21 @@ export function LoginForm({ next }: { next: string }) {
             <PasswordInput
               {...props}
               {...register("password")}
+              {...describedByFailure(props, failure)}
               autoComplete="current-password"
+              /*
+               * 128, and this is the one length cap worth pausing over: an input
+               * `maxLength` TRUNCATES SILENTLY, so anyone whose password is longer
+               * could never sign in and would be told only "Email or password is
+               * incorrect". 128 is chosen to make that impossible in practice —
+               * comfortably past any password a manager generates, and past the
+               * 72-byte ceiling bcrypt imposes on the hash anyway.
+               *
+               * Not lower. A tighter cap looks tidier and risks locking someone
+               * out of their own account, which is a far worse failure than
+               * accepting an over-long string and letting the API reject it.
+               */
+              maxLength={128}
               placeholder="Enter your password"
             />
           )}
@@ -185,7 +301,7 @@ export function LoginForm({ next }: { next: string }) {
             two fields above and the press that follows — wrong credentials, the
             throttle, an unreachable service — so it belongs in the gap between
             them, where it is read on the way to trying again. */}
-        <FormError message={failure} />
+        <FormError message={failure} id={SIGN_IN_ERROR_ID} />
 
         <SubmitButton disabled={isSubmitting}>
           {isSubmitting ? "Signing in…" : "Sign in"}
