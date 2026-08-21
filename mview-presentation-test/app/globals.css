@@ -241,6 +241,43 @@
 }
 
 /* ----------------------------------------------------------------------------
+   A black scrollbar, for the one place the bar has to be seen.
+
+   The thin grey bar above is right where a scrollbar is only a hint — a
+   dropdown that runs on, a filter list too long for its panel. It is wrong
+   under a table whose columns continue past the edge: there the bar is the
+   only thing saying so, and #d3d7dd on white is close to invisible.
+
+   Chrome prefers `scrollbar-color` over the `::-webkit-scrollbar` rules when a
+   page sets both, and Firefox reads only the former, so the colour is stated
+   twice and the two must be kept in step. `scrollbar-width: thin` is inherited
+   from the class above; the explicit height is what Chrome uses when it takes
+   the pseudo-element path instead.
+   ---------------------------------------------------------------------------- */
+.mv-thin-scroll.mv-scroll-dark {
+  scrollbar-color: var(--color-mv-ink) var(--color-mv-line-soft);
+}
+
+.mv-thin-scroll.mv-scroll-dark::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+.mv-thin-scroll.mv-scroll-dark::-webkit-scrollbar-track {
+  background: var(--color-mv-line-soft);
+  border-radius: 999px;
+}
+
+.mv-thin-scroll.mv-scroll-dark::-webkit-scrollbar-thumb {
+  background: var(--color-mv-ink);
+  border-radius: 999px;
+}
+
+.mv-thin-scroll.mv-scroll-dark::-webkit-scrollbar-thumb:hover {
+  background: var(--color-mv-slate);
+}
+
+/* ----------------------------------------------------------------------------
    The time-lapse year slider.
 
    `appearance: none` strips the native control but leaves the thumb, which no
