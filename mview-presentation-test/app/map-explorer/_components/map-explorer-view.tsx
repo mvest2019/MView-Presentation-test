@@ -3177,7 +3177,10 @@ export function MapExplorerView() {
                 summarise, so it says so rather than showing statewide figures
                 that have nothing to do with what was clicked. */}
             {selectedWell ? (
-              <WellInsightsPanel well={selectedWell} />
+              /* Keyed by API number: a new well is a new panel, so its own
+                 summary request starts from nothing rather than the panel
+                 showing the previous well's figures until the answer lands. */
+              <WellInsightsPanel key={selectedWell.api} well={selectedWell} />
             ) : (
               <div className="grid h-full place-items-center bg-mv-bg p-6">
                 <div className="max-w-[280px] text-center">

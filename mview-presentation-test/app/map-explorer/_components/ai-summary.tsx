@@ -1,24 +1,24 @@
 "use client";
 
 import { RefreshCw, Sparkles } from "lucide-react";
-
-import { PERMIT_AI_SUMMARY } from "./well-insights-data";
+import { useEffect, useState } from "react";
 
 /*
- * The written read on a permit: a headline, five findings, and the note on
- * where the figures came from.
+ * The written read on a permit, generated from the filing itself.
  *
- * Labelled as generated, and dated, because that is the difference between a
- * summary and a claim — the same reason the completion side badges its own
- * read. The findings are numbered rather than bulleted: they are meant to be
- * gone through in order, and the numbers give the eye somewhere to return to.
+ * Written by the model, from the filing and nothing else.
  *
- * `PERMIT_AI_SUMMARY` in `well-insights-data.ts` holds the text. Figures are
- * marked `**like this**` and field names `` `like this` ``; both are rendered
- * by `Marked` below, so the data stays plain strings.
+ * The page posts the API number to `/api/permit-summary`; that route reads the
+ * permit, hands it to the model and returns what came back — so the key stays
+ * on the server and the summary is of the record as the service holds it.
+ *
+ * Labelled and dated, because that is the difference between a summary and a
+ * claim. When the model cannot be reached the card says so rather than writing
+ * something itself: a summary nobody generated should not look like one that
+ * was.
  */
 
-const TONES = {
+const TONES: Record<string, string> = {
   green: "border-[#bfe3cc] bg-mv-mint text-mv-green-deep",
   blue: "border-[#c7d7f2] bg-[#f3f7fd] text-mv-blue",
   amber: "border-mv-amber/40 bg-mv-amber-bg text-mv-amber",
@@ -26,7 +26,95 @@ const TONES = {
   slate: "border-mv-line bg-[#f4f6f5] text-mv-slate",
 };
 
-export function AiSummary() {
+type Finding = {
+  title?: string;
+  badge?: string;
+  tone?: string;
+  body?: string;
+};
+
+type Summary = {
+  lead?: string;
+  findings?: Finding[];
+  basis?: string;
+};
+
+type State =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | {
+      kind: "ready";
+      summary: Summary;
+      generatedAt: string;
+    }
+  | { kind: "error"; message: string };
+
+export function AiSummary({
+  api,
+  title,
+  context,
+}: {
+  /** The well the summary is of. */
+  api: string;
+  /** Its name, for the card's own header. */
+  title: string;
+  /** The one-line description under it. */
+  context: string;
+}) {
+  const [state, setState] = useState<State>({ kind: "idle" });
+  /** Bumped by Regenerate; the effect below watches it. */
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    if (!api) return;
+
+    let cancelled = false;
+
+    fetch("/api/permit-summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api }),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (cancelled) return;
+
+        if (!response.ok) {
+          setState({
+            kind: "error",
+            message:
+              typeof data?.error === "string"
+                ? data.error
+                : `The summary service answered ${response.status}.`,
+          });
+          return;
+        }
+
+        setState({
+          kind: "ready",
+          summary: data.summary as Summary,
+          generatedAt: String(data.generatedAt ?? ""),
+        });
+      })
+      .catch((failure: unknown) => {
+        if (cancelled) return;
+        setState({
+          kind: "error",
+          message:
+            failure instanceof Error
+              ? failure.message
+              : "Could not reach the summary service.",
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, attempt]);
+
+  const loading = state.kind === "idle" || state.kind === "loading";
+  const findings = state.kind === "ready" ? (state.summary.findings ?? []) : [];
+
   return (
     <section className="rounded-xl border border-mv-line bg-mv-bg p-3 lg:p-4">
       {/* ---------------- what this is ---------------- */}
@@ -41,7 +129,7 @@ export function AiSummary() {
           AI Summary
         </h2>
         <p className="text-[11.5px] leading-none text-mv-muted">
-          {PERMIT_AI_SUMMARY.subtitle}
+          written from this permit&rsquo;s own fields
         </p>
       </div>
 
@@ -57,118 +145,135 @@ export function AiSummary() {
 
           <span className="min-w-0 flex-1">
             <span className="block text-[14px] font-bold leading-tight text-mv-ink">
-              {PERMIT_AI_SUMMARY.title}
+              {title}
             </span>
             <span className="mt-[4px] block text-[11.5px] leading-snug text-mv-muted">
-              {PERMIT_AI_SUMMARY.context}
+              {context}
             </span>
           </span>
 
           <span className="ml-auto text-right">
-            {/* Nothing to regenerate against yet: the text below is written by
-                hand until a summariser exists to ask. */}
             <button
               type="button"
-              disabled
-              title="Regenerating needs the summary service"
-              className="inline-flex cursor-not-allowed items-center gap-[7px] rounded-lg border border-mv-line px-[12px] py-[7px] text-[12px] font-semibold text-mv-slate opacity-60"
+              disabled={loading}
+              onClick={() => {
+                setState({ kind: "loading" });
+                setAttempt((count) => count + 1);
+              }}
+              className="inline-flex items-center gap-[7px] rounded-lg border border-mv-line px-[12px] py-[7px] text-[12px] font-semibold text-mv-slate enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-wait disabled:opacity-60"
             >
-              <RefreshCw size={13} strokeWidth={2} aria-hidden="true" />
+              <RefreshCw
+                size={13}
+                strokeWidth={2}
+                aria-hidden="true"
+                className={loading ? "animate-spin" : ""}
+              />
               Regenerate
             </button>
-            <span className="mt-[6px] block text-[10.5px] leading-none text-mv-muted">
-              Generated {PERMIT_AI_SUMMARY.generated}
-            </span>
+            {state.kind === "ready" && state.generatedAt && (
+              <span className="mt-[6px] block text-[10.5px] leading-none text-mv-muted">
+                Generated {stamp(state.generatedAt)}
+              </span>
+            )}
           </span>
         </div>
 
-        {/* ---------------- the headline read ---------------- */}
-        <p className="border-b border-mv-line px-4 py-[14px] text-[12.5px] leading-[1.6] text-mv-slate">
-          <Marked text={PERMIT_AI_SUMMARY.lead} />
-        </p>
+        {/* ---------------- the read itself ---------------- */}
+        {loading && (
+          <p className="flex items-center gap-[10px] px-4 py-[22px] text-[12.5px] text-mv-slate">
+            <span
+              aria-hidden="true"
+              className="h-[15px] w-[15px] shrink-0 animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
+            />
+            Reading the permit…
+          </p>
+        )}
 
-        {/* ---------------- the five findings ----------------
-            Ruled apart rather than boxed: five cards inside a card is one
-            border too many, and the rules already say where each one ends. */}
-        <ol className="px-4">
-          {PERMIT_AI_SUMMARY.findings.map((finding, index) => (
-            <li
-              key={finding.title}
-              className="flex gap-[12px] border-b border-mv-line py-[14px] last:border-0"
-            >
-              <span
-                aria-hidden="true"
-                className="mt-[1px] grid h-[20px] w-[20px] shrink-0 place-items-center rounded-md border border-mv-line bg-[#fafbfa] text-[10.5px] font-bold tabular-nums text-mv-slate"
-              >
-                {index + 1}
-              </span>
+        {state.kind === "error" && (
+          <div className="px-4 py-[16px]">
+            <p role="alert" className="text-[12.5px] leading-snug text-mv-red">
+              {state.message}
+            </p>
+            <p className="mt-[6px] text-[11.5px] leading-snug text-mv-muted">
+              The filing above is unaffected — it comes from the map service,
+              not from here.
+            </p>
+          </div>
+        )}
 
-              <span className="min-w-0 flex-1">
-                <span className="flex flex-wrap items-center gap-x-[10px] gap-y-1">
-                  <span className="text-[12.5px] font-bold leading-snug text-mv-ink">
-                    {finding.title}
-                  </span>
+        {state.kind === "ready" && (
+          <>
+            {state.summary.lead && (
+              <p className="border-b border-mv-line px-4 py-[14px] text-[12.5px] leading-[1.6] text-mv-slate">
+                {state.summary.lead}
+              </p>
+            )}
+
+            {/* Ruled apart rather than boxed: cards inside a card is one
+                border too many, and the rules already say where each ends. */}
+            <ol className="px-4">
+              {findings.map((finding, index) => (
+                <li
+                  key={`${finding.title ?? index}`}
+                  className="flex gap-[12px] border-b border-mv-line py-[14px] last:border-0"
+                >
                   <span
-                    className={`rounded border px-[6px] py-[3px] text-[9px] font-extrabold uppercase leading-none tracking-[.07em] ${
-                      TONES[finding.tone]
-                    }`}
+                    aria-hidden="true"
+                    className="mt-[1px] grid h-[20px] w-[20px] shrink-0 place-items-center rounded-md border border-mv-line bg-[#fafbfa] text-[10.5px] font-bold tabular-nums text-mv-slate"
                   >
-                    {finding.badge}
+                    {index + 1}
                   </span>
-                </span>
 
-                <p className="mt-[6px] text-[12px] leading-[1.6] text-mv-slate">
-                  <Marked text={finding.body} />
-                </p>
-              </span>
-            </li>
-          ))}
-        </ol>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-x-[10px] gap-y-1">
+                      <span className="text-[12.5px] font-bold leading-snug text-mv-ink">
+                        {finding.title ?? "—"}
+                      </span>
+                      {finding.badge && (
+                        <span
+                          className={`rounded border px-[6px] py-[3px] text-[9px] font-extrabold uppercase leading-none tracking-[.07em] ${
+                            TONES[finding.tone ?? "slate"] ?? TONES.slate
+                          }`}
+                        >
+                          {finding.badge}
+                        </span>
+                      )}
+                    </span>
 
-        {/* ---------------- where the figures came from ---------------- */}
-        <p className="border-t border-mv-line bg-[#fafbfa] px-4 py-[12px] text-[11px] leading-[1.6] text-mv-muted">
-          <span className="font-bold text-mv-slate">Basis.</span>{" "}
-          <Marked text={PERMIT_AI_SUMMARY.basis} />
-        </p>
+                    {finding.body && (
+                      <p className="mt-[6px] text-[12px] leading-[1.6] text-mv-slate">
+                        {finding.body}
+                      </p>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ol>
+
+            <p className="border-t border-mv-line bg-[#fafbfa] px-4 py-[12px] text-[11px] leading-[1.6] text-mv-muted">
+              <span className="font-bold text-mv-slate">Basis.</span>{" "}
+              {state.summary.basis ??
+                "Written from the permit record shown above."}{" "}
+              Generated text, not advice — check any figure against the filing
+              before relying on it.
+            </p>
+          </>
+        )}
       </div>
     </section>
   );
 }
 
-/**
- * Renders `**figures**` in ink and `` `field names` `` as chips, leaving the
- * rest as it was written.
- *
- * One pass over both markers: splitting twice meant the second pass walked the
- * elements the first had already produced.
- */
-function Marked({ text }: { text: string }) {
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+/** `2026-08-19T12:46:11Z` → `19 Aug 2026, 12:46`. */
+function stamp(iso: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return iso;
 
-  return (
-    <>
-      {parts.map((part, index) => {
-        if (part.startsWith("**") && part.endsWith("**")) {
-          return (
-            <strong key={index} className="font-bold text-mv-ink">
-              {part.slice(2, -2)}
-            </strong>
-          );
-        }
-
-        if (part.startsWith("`") && part.endsWith("`")) {
-          return (
-            <code
-              key={index}
-              className="rounded border border-mv-line bg-white px-[5px] py-[1px] font-mono text-[10.5px] text-mv-slate"
-            >
-              {part.slice(1, -1)}
-            </code>
-          );
-        }
-
-        return <span key={index}>{part}</span>;
-      })}
-    </>
-  );
+  return at.toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }

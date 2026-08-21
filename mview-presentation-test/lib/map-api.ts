@@ -443,3 +443,221 @@ export const getTableMap = async (params: {
     throw new Error(String(error) || "Failed to fetch the table");
   }
 };
+
+/** One well's completion record, as the summary endpoint reports it. */
+export type MapWellSummary = {
+  identity: {
+    api: string;
+    wellNumber: string | null;
+    operator: string | null;
+    operatorNumber: string | null;
+    county: string | null;
+    district: string | null;
+    status: string | null;
+    wtype: string | null;
+    performance: string | null;
+    recordType: string | null;
+    lon: number | null;
+    lat: number | null;
+  };
+  lease: {
+    leaseNumber: string | null;
+    leaseName: string | null;
+    acres: number | null;
+    district: string | null;
+    fieldNumber: string | null;
+    fieldName: string | null;
+    play: string | null;
+  } | null;
+  wellbore: {
+    profile: string | null;
+    startDepth: number | null;
+    endDepth: number | null;
+    totalDepth: number | null;
+    trueVerticalDepth: number | null;
+    nearestWellFt: number | null;
+    nearestWellDirection: string | null;
+  } | null;
+  dates: {
+    spud: string | null;
+    completion: string | null;
+    firstProduction: string | null;
+    lastProduction: string | null;
+    ageYears: number | null;
+  } | null;
+  filing: {
+    type: string | null;
+    purpose: string | null;
+    permitStatus: string | null;
+    statusNumber: string | null;
+    issuedDate: string | null;
+    isNewPermit: boolean | null;
+  } | null;
+  production: {
+    lastMonthOil: number | null;
+    lastMonthGas: number | null;
+    nextMonthEstOil: number | null;
+    nextMonthEstGas: number | null;
+    reserveOil: number | null;
+    reserveGas: number | null;
+    lastYearOil: number | null;
+    lastYearGas: number | null;
+    avgEstMonthlyBoe: number | null;
+  } | null;
+  analytics: {
+    oilStep: number | null;
+    gasStep: number | null;
+    impliedAnnualOil: number | null;
+    lastMonthGor: number | null;
+    forecastGor: number | null;
+    reserveToProductionMonths: number | null;
+  } | null;
+};
+
+/**
+ * GET /api/v1/map/wells/{api}/summary
+ *
+ * Everything the completion record holds for one well — the identity, the
+ * lease, the wellbore, its filing dates and its production. The API number
+ * goes in the path, so it is encoded rather than concatenated.
+ */
+export const getWellSummaryMap = async (
+  api: string,
+): Promise<MapWellSummary> => {
+  try {
+    const response = await fetch(
+      `${process.env.MAP_BASE_URL}/api/v1/map/wells/${encodeURIComponent(api)}/summary`,
+    );
+    const data = await response.json();
+
+    if (response.ok && data?.identity?.api) {
+      return data as MapWellSummary;
+    } else {
+      throw new Error("Failed to fetch the well summary");
+    }
+  } catch (error) {
+    throw new Error(String(error) || "Failed to fetch the well summary");
+  }
+};
+
+/** One month of allocated production. */
+export type MapProductionPoint = {
+  month: string;
+  oil: number | null;
+  gas: number | null;
+};
+
+export type MapWellProduction = {
+  api: string;
+  points: MapProductionPoint[];
+  from: string | null;
+  to: string | null;
+};
+
+/**
+ * GET /api/v1/map/wells/{api}/production
+ *
+ * The monthly oil and gas series behind the production chart — reported months
+ * and forecast months in one list, oldest first.
+ */
+export const getWellProductionMap = async (
+  api: string,
+): Promise<MapWellProduction> => {
+  try {
+    const response = await fetch(
+      `${process.env.MAP_BASE_URL}/api/v1/map/wells/${encodeURIComponent(api)}/production`,
+    );
+    const data = await response.json();
+
+    if (response.ok && Array.isArray(data?.points)) {
+      return {
+        api: String(data.api ?? api),
+        points: data.points as MapProductionPoint[],
+        from: data.from ?? null,
+        to: data.to ?? null,
+      };
+    } else {
+      throw new Error("Failed to fetch production");
+    }
+  } catch (error) {
+    throw new Error(String(error) || "Failed to fetch production");
+  }
+};
+
+/** One well's permit filing, as the permit endpoint reports it. */
+export type MapWellPermit = {
+  identity: {
+    api: string;
+    wellNumber: string | null;
+    statusNumber: string | null;
+    filingPurpose: string | null;
+    filingType: string | null;
+    permitStatus: string | null;
+    isNewPermit: boolean | null;
+  };
+  lease: {
+    leaseNumber: string | null;
+    leaseName: string | null;
+    acres: number | null;
+    district: string | null;
+    fieldNumber: string | null;
+    fieldName: string | null;
+    play: string | null;
+  } | null;
+  wellType: { wtype: string | null; direction: string | null } | null;
+  permit: {
+    permitDate: string | null;
+    permitDateBasis: string | null;
+    issuedDate: string | null;
+  } | null;
+  operator: {
+    operator: string | null;
+    operatorNumber: string | null;
+    fieldName: string | null;
+    fieldNumber: string | null;
+    reservoir: string | null;
+  } | null;
+  location: {
+    lon: number | null;
+    lat: number | null;
+    bhLon: number | null;
+    bhLat: number | null;
+  } | null;
+  nearestWell: {
+    distanceMiles: number | null;
+    direction: string | null;
+  } | null;
+};
+
+/**
+ * GET /api/v1/map/wells/{api}/permit
+ *
+ * The permit side of a well: what was applied for, when it cleared, and where
+ * it is.
+ *
+ * Null for a well with no permit. The service answers 404 in that case, which
+ * is an answer and not a failure — most wells on the map were drilled long
+ * before there was a permit record to find, and "no permit on file" is what
+ * the reader needs to be told.
+ */
+export const getWellPermitMap = async (
+  api: string,
+): Promise<MapWellPermit | null> => {
+  try {
+    const response = await fetch(
+      `${process.env.MAP_BASE_URL}/api/v1/map/wells/${encodeURIComponent(api)}/permit`,
+    );
+
+    if (response.status === 404) return null;
+
+    const data = await response.json();
+
+    if (response.ok && data?.identity?.api) {
+      return data as MapWellPermit;
+    } else {
+      throw new Error("Failed to fetch the permit");
+    }
+  } catch (error) {
+    throw new Error(String(error) || "Failed to fetch the permit");
+  }
+};
