@@ -162,6 +162,28 @@ function toRows(raw: unknown): ChangeRow[] {
 }
 
 /**
+ * Is the analysis service configured for this deployment at all?
+ *
+ * WHY A PAGE ASKS BEFORE RENDERING THE SECTION. Without the service URL and token the
+ * panel can only report that it is unconfigured — and it was reporting that to the
+ * public: a visitor to the live site read "The analysis service is not configured for
+ * this environment yet.", which is a note for whoever deploys, not for a mineral owner
+ * reading an operator page. A feature this deployment does not have should not occupy a
+ * heading and a card explaining its own absence.
+ *
+ * SERVER-SIDE AND FREE. Two `process.env` reads, no request, so gating the section
+ * costs nothing and happens before any markup is produced. It is deliberately NOT the
+ * same thing as the panel's error state: an outage is transient and worth showing with
+ * a retry, while a missing configuration is a deploy step and shows nothing.
+ */
+export function whatChangedConfigured(): boolean {
+  return (
+    (process.env.WHAT_CHANGED_SERVICE_URL ?? "").trim() !== "" &&
+    (process.env.WHAT_CHANGED_SERVICE_TOKEN ?? "").trim() !== ""
+  );
+}
+
+/**
  * Fetch one operator's panel.
  *
  * Throws with a message fit to show a reader. The caller decides what a failure looks

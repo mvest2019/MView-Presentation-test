@@ -20,6 +20,7 @@ import {
   sectionTitleClass,
 } from "@/app/_components/typography";
 import { operatorLogoPath } from "@/lib/operator-api-types";
+import { whatChangedConfigured } from "@/lib/operator-what-changed-api";
 import {
   OPERATOR_ILLUSTRATIVE_NOTE,
   baseFromDirectory,
@@ -119,7 +120,25 @@ type DetailLoad =
   | { status: "ok"; operator: OperatorDetail };
 
 async function loadOperator(slug: string): Promise<DetailLoad> {
-  const row = await resolveOperatorSlug(slug);
+  /*
+   * A FAILED LOOKUP IS NOT AN UNKNOWN OPERATOR, and must not fail the build.
+   * `resolveOperatorSlug` reads `/operators/search`, which prerendering calls once per
+   * page — so an upstream blip during a build used to throw out of the render and take
+   * the whole build down with it. Measured: this build failed on
+   * "POST /api/v1/operators/search failed to reach the operator API".
+   *
+   * A throw is therefore treated as "cannot resolve right now" and lands on the
+   * unavailable state, which is honest and renders. Only a SUCCESSFUL search that
+   * matched nothing is a 404 — that is the case where the slug really names no
+   * operator.
+   */
+  let row;
+  try {
+    row = await resolveOperatorSlug(slug);
+  } catch (error) {
+    console.error("[operator-detail] slug lookup failed", { slug, error });
+    return { status: "unavailable", name: "This operator", slug };
+  }
   if (!row) return { status: "unknown" };
 
   const merged = mergeOperatorDetails(
@@ -415,12 +434,19 @@ export default async function OperatorDetailRoute({
             and has Claude rephrase the finished findings. Deferred, so neither the
             request nor the model call touches first paint — the section reserves its
             height and fills in when approached. See `operator-what-changed.tsx`. */}
-        <section className="pt-[26px]">
-          <SectionHead title="What changed" />
-          <DeferredSection minHeight={520} label="What changed">
-            <OperatorWhatChanged operatorNumber={operator.operatorNumber} />
-          </DeferredSection>
-        </section>
+        {/* OMITTED ENTIRELY WHERE THE SERVICE IS NOT CONFIGURED. The heading is
+            server-rendered and the panel is not, so without this gate a deployment
+            with no analysis service showed "What changed" above a card explaining
+            that it is not configured — an internal deploy note, on a public page.
+            Checked on the server, so the section produces no markup at all. */}
+        {whatChangedConfigured() ? (
+          <section className="pt-[26px]">
+            <SectionHead title="What changed" />
+            <DeferredSection minHeight={520} label="What changed">
+              <OperatorWhatChanged operatorNumber={operator.operatorNumber} />
+            </DeferredSection>
+          </section>
+        ) : null}
 
         {/* ---- 4 · footprint ---- */}
         <section className="pt-[26px]">
