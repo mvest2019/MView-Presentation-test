@@ -1,0 +1,824 @@
+"use client";
+
+import { zodResolver } from "@hookform/resolvers/zod";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
+import { toast } from "sonner";
+
+import {
+  registerAction,
+  sendCodeAction,
+  verifyCodeAction,
+} from "@/app/_components/auth-actions";
+import {
+  registerSchema,
+  type RegisterValues,
+} from "@/app/_components/auth-schema";
+import {
+  AuthHead,
+  CheckRow,
+  Divider,
+  Field,
+  OrDivider,
+  PasswordInput,
+  Req,
+  SubmitButton,
+  inputClass,
+} from "@/app/_components/auth-shell";
+import { GoogleSignIn } from "@/app/_components/google-sign-in";
+
+/**
+ * Sign up — the design's `route:signup`, wired to the live endpoints.
+ *
+ * THE ORDER IS THE LIVE SITE'S (Ryan, 2026-08-19: "check current website flow
+ * for register need same"). It verifies the address FIRST and creates the
+ * account last:
+ *
+ *   fill the form → Verify Email → 6-digit code → Register → signed in
+ *
+ * This is the reverse of what was here. The old flow submitted the form, created
+ * the account, mailed a code, and swapped the whole card for a verify panel and
+ * then a "verified" panel with a Continue button. Nothing about that matched
+ * `app/register/_components/RegisterForm.tsx` in the live repo, where:
+ *
+ *   · the verification lives INSIDE the form, between the last field and the
+ *     terms checkbox, and the card never swaps out;
+ *   · "Verify Email" is disabled until every required field is valid
+ *     (`allRequiredFieldsValid`), so the code cannot be requested for an address
+ *     that is about to be rejected;
+ *   · Register is disabled until the code is confirmed, and `handleRegisterSubmit`
+ *     refuses outright — "Please verify your email before registering.";
+ *   · a confirmed registration signs the member straight in and routes them on,
+ *     rather than ending on a panel with a button.
+ *
+ * The prototype accepted any six digits and hard-coded 482916; nothing of that
+ * is carried over.
+ *
+ * ONE DELIBERATE DEPARTURE, and it is the account type — see `DEFAULT_MEMBER_TYPE`
+ * in `auth-actions.ts`. The live form opens `MemberTypePopup` to ask owner vs
+ * professional; here everyone is a mineral owner and nothing is asked.
+ *
+ * The live site's plan machinery is also absent, because this form chooses no
+ * plan: no `subscriptionid`/`price` in the payload beyond the free default, and
+ * none of its `/welcome` or `/payment` routing.
+ */
+const RESEND_COOLDOWN_SECONDS = 300;
+
+/**
+ * `5551234567` → `(555) 123-4567`, ported from `formatPhoneNumber` in the live
+ * repo's `app/register/_components/RegistrationValidation.ts`.
+ *
+ * THE TEN-DIGIT CAP IS `slice(6, 10)`. Everything past the tenth digit is
+ * discarded rather than rejected, so an 11th keystroke is simply absorbed — which
+ * is what stops a bare run of digits sneaking past the control's `maxLength`.
+ *
+ * Partial input formats as it grows, so the punctuation appears under the caret
+ * rather than all at once at the end: "5" → "(5", "5551" → "(555) 1". That is the
+ * live behaviour and the reason the opening bracket is unbalanced mid-type.
+ *
+ * Returns "" for an empty or all-punctuation string, which matters because the
+ * field is optional and the schema's checks all short-circuit on "".
+ */
+function formatPhoneNumber(value: string): string {
+  const numbers = value.replace(/\D/g, "");
+  if (numbers.length === 0) return "";
+  if (numbers.length <= 3) return `(${numbers}`;
+  if (numbers.length <= 6) return `(${numbers.slice(0, 3)}) ${numbers.slice(3)}`;
+  return `(${numbers.slice(0, 3)}) ${numbers.slice(3, 6)}-${numbers.slice(6, 10)}`;
+}
+
+export function RegisterForm({ next }: { next: string }) {
+  const router = useRouter();
+
+  /*
+   * VERIFICATION STATE, held as the two ADDRESSES rather than as booleans.
+   *
+   * `verifiedEmail` is what the code actually confirmed, and `codeSentTo` is
+   * where the current code went. Both compare against the live email field
+   * instead of latching a `emailVerified` flag, which closes a hole the live site
+   * has: over there `emailVerified` is a plain boolean, so verifying address A
+   * and then editing the box to address B leaves the flag true and registers B
+   * unverified. Deriving it means changing the address silently un-verifies it
+   * and the Verify Email button comes back, with no effect and no reset call.
+   */
+  const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null);
+  const [codeSentTo, setCodeSentTo] = useState<string | null>(null);
+  const [digits, setDigits] = useState<string[]>(Array(6).fill(""));
+  const [sending, setSending] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [cooldown, setCooldown] = useState(0);
+  const boxes = useRef<(HTMLInputElement | null)[]>([]);
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    formState: { errors, isSubmitting },
+  } = useForm<RegisterValues>({
+    resolver: zodResolver(registerSchema),
+    mode: "onBlur",
+    defaultValues: {
+      fullName: "",
+      email: "",
+      password: "",
+      phone: "",
+      mailingAddress: "",
+    },
+  });
+
+  // The design disables the create button until the box is ticked, rather than
+  // letting it be pressed and then complaining.
+  //
+  // `useWatch`, not `watch()`: the latter returns a fresh function each render,
+  // which React Compiler cannot memoize, so it bails out of optimising this
+  // whole component. `useWatch` subscribes to the one field instead.
+  const agreed = useWatch({ control, name: "terms" });
+
+  /* Watched because the verification block reacts to them as they are typed:
+     these four gate the Verify Email button, and the address decides whether an
+     existing confirmation still counts. */
+  const watched = useWatch({
+    control,
+    name: ["fullName", "email", "password", "phone"],
+  });
+  const [nameNow, emailRaw, passwordNow, phoneNow] = watched;
+  /*
+   * NORMALISED THE SAME WAY THE SCHEMA DOES — trimmed and lower-cased (see the
+   * note on `email` in `auth-schema.ts`).
+   *
+   * This was `.trim()` only, which mattered because THIS value, not the parsed
+   * one, is what the verification steps use: it is what `send-code` is asked for
+   * and what gets stored as `codeSentTo` for `verify-code`. Registration, by
+   * contrast, posts the schema's output. So a mixed-case address had the code
+   * issued against one spelling and the account created against another, and
+   * whether that worked came down to the backend comparing case-insensitively.
+   *
+   * With both sides normalised the comparison below no longer needs to lower-case
+   * anything, but it is kept explicit rather than relying on this line staying as
+   * it is.
+   */
+  const emailNow = (emailRaw ?? "").trim().toLowerCase();
+
+  const emailVerified =
+    verifiedEmail !== null &&
+    verifiedEmail.toLowerCase() === emailNow.toLowerCase();
+
+  /*
+   * `codeSentTo === emailNow` IS THE FIX, and the whole of it (Ryan, 2026-08-19:
+   * send a code, then "directly edit the Email field" and the panel stays).
+   *
+   * This was `codeSentTo !== null && !emailVerified`, which asked whether a code
+   * had been sent but never whether it was sent to the address NOW in the box. So
+   * changing the address left the digits panel open, still captioned with the
+   * PREVIOUS one — the screenshot has the field reading `chouguleu09@` above a
+   * panel saying "code sent to chouguleu30@". Two addresses on screen, one of them
+   * the one the code would actually be checked against.
+   *
+   * OPTION TWO OF THE TWO OFFERED: reset the verification state rather than
+   * locking the field. Locking would mean a typo in the address could only be
+   * corrected through the "Change email" button, and someone who mistypes and
+   * reaches for the field first would find it dead with no explanation. Resetting
+   * never blocks anyone, and it matches how `emailVerified` above already behaves
+   * — that comparison has always un-verified a changed address, so this makes the
+   * awaiting state consistent with the verified one rather than adding a new rule.
+   *
+   * NOT AN EFFECT. Deriving it means there is no window in which the two disagree,
+   * and no `setState` in an effect for the lint rule to reject. It also means
+   * changing the address BACK restores the panel, with the code still live —
+   * correct, since that code was genuinely sent and has not expired.
+   *
+   * The account cannot be created in the reset state: "Create account" is gated on
+   * `emailVerified`, so the worst case is a visitor who has to press Verify email
+   * again, which is exactly what was asked for.
+   */
+  const awaitingCode =
+    codeSentTo !== null && codeSentTo === emailNow && !emailVerified;
+
+  /*
+   * The live site's `allRequiredFieldsValid`, field for field: name, email and
+   * password must be valid, and phone must be valid OR empty — which the schema
+   * already encodes, since every phone check short-circuits on "".
+   *
+   * Checked against the SCHEMA rather than re-implemented, so this gate and the
+   * messages under the inputs can never disagree about what "valid" means.
+   */
+  const canSendCode =
+    registerSchema.shape.fullName.safeParse(nameNow ?? "").success &&
+    registerSchema.shape.email.safeParse(emailRaw ?? "").success &&
+    registerSchema.shape.password.safeParse(passwordNow ?? "").success &&
+    registerSchema.shape.phone.safeParse(phoneNow ?? "").success;
+
+  /* Resend ticker — the live site's, at the same 300s. The updater is a callback
+     rather than a bare `setCooldown(n - 1)`, which is what keeps this out of
+     `react-hooks/set-state-in-effect`. */
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = setInterval(
+      () => setCooldown((left) => (left > 0 ? left - 1 : 0)),
+      1000,
+    );
+    return () => clearInterval(id);
+  }, [cooldown]);
+
+  async function sendCode() {
+    setSending(true);
+    setOtpError(null);
+    /* Address and name only — no password (Ryan, 2026-08-19). The password field
+       is still WATCHED, but only so `canSendCode` can require a valid one before
+       this button unlocks; the value itself never leaves the form until the
+       registration call. */
+    const result = await sendCodeAction(emailNow, nameNow ?? "");
+    setSending(false);
+
+    if (!result.ok) {
+      toast.error(result.message || "Could not send the code. Please try again.");
+      return;
+    }
+
+    setCodeSentTo(emailNow);
+    setDigits(Array(6).fill(""));
+    setCooldown(RESEND_COOLDOWN_SECONDS);
+    toast.success("Verification code sent to your email.");
+  }
+
+  async function verifyOtp(code: string) {
+    if (code.length !== 6 || !codeSentTo) {
+      setOtpError("Enter the 6-digit code.");
+      return;
+    }
+
+    setVerifying(true);
+    setOtpError(null);
+    /* Verified against the address the code was SENT to, not against whatever is
+       in the box now — those can differ, and confirming the wrong one is exactly
+       the hole this avoids. */
+    const result = await verifyCodeAction(codeSentTo, code);
+    setVerifying(false);
+
+    if (!result.ok) {
+      setOtpError(result.message || "Invalid or expired code. Please try again.");
+      /*
+       * CLEAR THE BOXES AND GO BACK TO THE FIRST ONE (Ryan, 2026-08-19: after a
+       * failed attempt "nothing is accepted").
+       *
+       * The rejected digits used to stay put, and because every box is
+       * `maxLength={1}` a box that already holds a character is AT its limit — the
+       * browser drops the keystroke and `onChange` never fires. So the six boxes
+       * were effectively read-only after one wrong code, with no way forward
+       * except backspacing through all six.
+       *
+       * Emptying them is also the right behaviour on its own terms: a rejected
+       * code is not a starting point for the next attempt, and the caret belongs
+       * where the retype starts. `select()` on focus (below) fixes the same
+       * lock-out for the general case — correcting a single digit mid-code —
+       * which this alone would not.
+       */
+      setDigits(Array(6).fill(""));
+      boxes.current[0]?.focus();
+      return;
+    }
+
+    setVerifiedEmail(codeSentTo);
+    setCodeSentTo(null);
+    setOtpError(null);
+    setCooldown(0);
+    toast.success("Email verified!");
+  }
+
+  async function onValid(values: RegisterValues) {
+    /* The live site's guard, kept even though the button is disabled: a form can
+       still be submitted by pressing Enter in a field, and the account must not
+       be created for an unconfirmed address. */
+    if (!emailVerified) {
+      toast.error("Please verify your email before registering.");
+      return;
+    }
+
+    const result = await registerAction(values);
+    if (!result.ok) {
+      /*
+       * A TOAST, not the line that used to sit under the password field (Ryan,
+       * 2026-08-19, on "That email address already has an account. Sign in
+       * instead.").
+       *
+       * `error` rather than `warning` deliberately: this is the red inline
+       * message's replacement, so it keeps the red treatment and stays distinct
+       * from the amber Google/API-fault toasts above the form.
+       */
+      toast.error(result.message);
+      return;
+    }
+
+    toast.success("Registration Successful");
+    /* `registerAction` signed them in and set the cookie, so the tree on screen
+       is still the signed-out one — `refresh` is what re-renders the header. */
+    router.push(next);
+    router.refresh();
+  }
+
+  return (
+    <>
+      <AuthHead
+        title="Create your account"
+        lede="Create your account with your email or Google. No credit card required."
+      />
+
+      {/* The same endpoint as sign-in: the backend resolves existing-vs-new
+          from the Google token, so there is no separate "sign up with Google". */}
+      {/* A toast, for the reason sign-in's carries — these are Google and API
+          faults, not anything about this form. */}
+      <GoogleSignIn onError={(message) => toast.warning(message)} />
+
+      {/* Lower case on purpose — `OrDivider` sets `uppercase`. */}
+      <OrDivider label="or with email" />
+
+      {/* No "* Required fields" legend (Ryan, 2026-08-17). The red asterisk on
+          each label already reads as required without being explained, and the
+          line sat between the divider and the first field where it was the first
+          thing the eye landed on. `Req` still marks the labels themselves. */}
+      <form onSubmit={handleSubmit(onValid)} noValidate>
+        <Field
+          label={
+            <>
+              Full name <Req />
+            </>
+          }
+          error={errors.fullName?.message}
+        >
+          {(props) => (
+            <input
+              {...props}
+              {...register("fullName")}
+              type="text"
+              autoComplete="name"
+              placeholder="Enter your full name"
+              /* Same belt-and-braces as the phone box below: the schema's `max(50)`
+                 is the rule, and this stops the 50th character being exceeded in
+                 the control at all — including by paste — rather than accepting a
+                 wall of text and complaining afterwards. Keep the two numbers in
+                 step; the schema has the last word. */
+              maxLength={50}
+            />
+          )}
+        </Field>
+
+        <Field
+          label={
+            <>
+              Email <Req />
+            </>
+          }
+          error={errors.email?.message}
+        >
+          {(props) => (
+            <input
+              {...props}
+              {...register("email")}
+              type="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+            />
+          )}
+        </Field>
+
+        <Field
+          label={
+            <>
+              Password <Req />
+            </>
+          }
+          error={errors.password?.message}
+        >
+          {(props) => (
+            <PasswordInput
+              {...props}
+              {...register("password")}
+              autoComplete="new-password"
+              placeholder="Minimum 8 characters"
+            />
+          )}
+        </Field>
+
+        <Field
+          label={
+            <>
+              Mobile phone <Optional />
+            </>
+          }
+          error={errors.phone?.message}
+          hint="Optional — a second way to reach you about your record and account recovery. Never sold, never shared."
+        >
+          {(props) => {
+            /*
+             * FORMATTED AS IT IS TYPED, which is what actually enforces ten
+             * digits (Ryan, 2026-08-19: "need to type only 10 digit restrict").
+             *
+             * `maxLength={14}` alone could not do it. 14 is the length of the
+             * FORMATTED number, "(555) 555-0123" — so someone typing bare digits
+             * got fourteen of them in before the control stopped, which is the
+             * "57643578426788" in the report. Dropping maxLength to 10 is not the
+             * fix either: it would then refuse the last four characters of the
+             * number the placeholder itself shows.
+             *
+             * `formatPhoneNumber` resolves both. It keeps only digits, keeps only
+             * the FIRST TEN of those (`slice(6, 10)` is the hard cap), and rebuilds
+             * the punctuation — so an 11th digit has nowhere to go and is dropped
+             * as it is typed.
+             *
+             * NO `maxLength` ANY MORE, and removing it was a fix, not a tidy-up.
+             * The attribute truncates the RAW string before this handler ever runs,
+             * so a paste longer than 14 characters lost its tail and then got
+             * formatted from the survivors: "+1 (555) 555-0123" (17 chars) became
+             * "(155) 555-50" — eight digits, wrong area code, silently. Measured,
+             * not guessed. The formatter is the real cap: its longest possible
+             * output is the 14 of "(555) 555-0123", so the attribute could never
+             * fire on a legitimate value and only ever did harm.
+             *
+             * The event's value is rewritten BEFORE it is handed to react-hook-form
+             * so the store only ever holds the formatted string; there is no second
+             * source of truth and no `setValue` round-trip to fall out of step with
+             * validation.
+             */
+            const phone = register("phone");
+            return (
+              <input
+                {...props}
+                {...phone}
+                onChange={(event) => {
+                  event.target.value = formatPhoneNumber(event.target.value);
+                  phone.onChange(event);
+                }}
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="(555) 555-0123"
+              />
+            );
+          }}
+        </Field>
+
+        <Field
+          label={
+            <>
+              Mailing address{" "}
+              <Optional>(optional for now)</Optional>
+            </>
+          }
+          error={errors.mailingAddress?.message}
+          hint="You can add your address later. It is required before claiming a record to help verify ownership."
+        >
+          {(props) => (
+            <input
+              {...props}
+              {...register("mailingAddress")}
+              type="text"
+              autoComplete="street-address"
+              placeholder="Street, City, State, ZIP"
+            />
+          )}
+        </Field>
+
+        {/* NO INVITE CODE FIELD (Ryan, 2026-08-19: "don't show double
+            verification code box").
+
+            It was the design's, and it read as a SECOND code box: its placeholder
+            was "e.g. 4821-0653" and it sat immediately above the verification
+            block, so with the digits open the form appeared to ask for two codes.
+            Removing it rather than restyling it, for two reasons beyond the
+            confusion — the live register form has no such field, and this one was
+            never sent anywhere. `registerUser` has no parameter for it, so
+            whatever was typed here was validated and then dropped. Nothing is
+            lost. If invitations are built later they need an API field first. */}
+
+        {/* ----- Email verification (gates Register) -----
+            Position is the live site's: after the last field, immediately before
+            the terms checkbox, inside the form rather than replacing it. */}
+        <div className="mb-3">
+          {emailVerified ? (
+            /* `justify-center` (Ryan, 2026-08-19: "email verified text need to be
+               center align"). The panel is full width and the label is two words,
+               so left-aligned it sat in the corner of a wide green band. The tick
+               travels with the text because both are flex children of this row —
+               centring the row centres the pair as a unit rather than the words
+               alone. */
+            <div className="flex items-center justify-center gap-2 rounded-[10px] border border-mv-mint-line bg-mv-mint px-[14px] py-[11px] text-[14px] font-semibold text-mv-green-deep">
+              <span aria-hidden="true">✓</span>
+              Email verified
+            </div>
+          ) : !awaitingCode ? (
+            <>
+              <button
+                type="button"
+                onClick={sendCode}
+                disabled={sending || !canSendCode}
+                /* Disabled until every required field is valid, so the code is
+                   never sent for details the API is about to reject. */
+                title={
+                  canSendCode ? undefined : "Fill in the fields above first"
+                }
+                className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-[10px] border-2 border-mv-green-deep bg-white px-4 font-sans text-[14px] font-bold leading-[1.2] text-mv-green-deep transition-colors hover:bg-mv-mint disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-white"
+              >
+                {sending ? "Sending…" : "Verify email"}
+              </button>
+              {/* Copy supplied verbatim (Ryan, 2026-08-19). The curly quotes are
+                  literal characters, not `&ldquo;`/`&rdquo;` — this is a JSX text
+                  position so either decodes, and the file already carries `…` and
+                  `•` directly. `react/no-unescaped-entities` only objects to
+                  straight `"`, `'`, `>` and `}`, so “ ” pass untouched. */}
+              <p className="mt-2 inline-block rounded-[6px] bg-mv-mint px-[10px] py-1 text-[11.5px] font-semibold text-mv-green-deep">
+                Click the “Verify Email” button to receive a 6-digit verification
+                code in your email.
+              </p>
+            </>
+          ) : (
+            <div className="rounded-[12px] border border-mv-mint-line bg-[#f7fbf9] p-3">
+              <p className="m-0 mb-[10px] text-[12.5px] leading-[1.5] text-mv-muted">
+                Enter the 6-digit code sent to{" "}
+                <strong className="font-bold text-mv-ink">{codeSentTo}</strong>
+              </p>
+
+              {/* CENTRED (Ryan, 2026-08-19: "OTP boxes are positioned toward
+                  the left instead of being centered in the available area").
+                  Six 38px boxes and five 6px gaps come to 258px inside a panel
+                  roughly twice that, so with no justification they sat hard left
+                  under a caption that runs the full width, leaving a visible
+                  empty half to their right.
+
+                  Deliberately NOT the live site's rule here, which is
+                  `justify-between` under `sm` and `justify-start` above it — so
+                  on desktop the live boxes are left-aligned exactly as this was.
+                  Centred on request. `justify-center` rather than `mx-auto`
+                  because the flex row itself is the full-width element; the row
+                  below it keeps `justify-between` so Resend and Change email
+                  stay pinned to the panel's edges. */}
+              <div className="mb-[10px] flex justify-center gap-[6px]">
+                {digits.map((digit, index) => (
+                  <input
+                    key={index}
+                    ref={(el) => {
+                      boxes.current[index] = el;
+                    }}
+                    value={digit}
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={1}
+                    aria-label={`Digit ${index + 1}`}
+                    /*
+                     * SELECT WHAT IS ALREADY THERE, so typing REPLACES it.
+                     *
+                     * This is what makes a filled box editable at all. With
+                     * `maxLength={1}` a box holding a digit is at its limit, so
+                     * the browser silently discards the next keystroke and
+                     * `onChange` never runs — the box reads as broken. With the
+                     * character selected, the keystroke replaces the selection
+                     * instead of appending, the length never exceeds one, and the
+                     * handler fires normally.
+                     *
+                     * BOTH handlers on purpose. `focus` covers arriving by keyboard
+                     * or programmatically; `click` re-selects after a mouse press,
+                     * because the mouseup that follows focus collapses the
+                     * selection to a caret and would undo it.
+                     */
+                    onFocus={(event) => event.currentTarget.select()}
+                    onClick={(event) => event.currentTarget.select()}
+                    onChange={(event) => {
+                      const value = event.target.value
+                        .replace(/\D/g, "")
+                        .slice(-1);
+                      setOtpError(null);
+                      const nextDigits = [...digits];
+                      nextDigits[index] = value;
+                      setDigits(nextDigits);
+                      if (value && index < 5) boxes.current[index + 1]?.focus();
+                      /* Auto-submits on the sixth digit, as the live site's
+                         `onComplete` does — nobody should have to find a button
+                         after typing a code they just read. */
+                      const joined = nextDigits.join("");
+                      if (joined.length === 6) verifyOtp(joined);
+                    }}
+                    onKeyDown={(event) => {
+                      // Backspace on an empty box steps back, so a mistyped code
+                      // can be cleared without reaching for the mouse.
+                      if (
+                        event.key === "Backspace" &&
+                        !digits[index] &&
+                        index > 0
+                      ) {
+                        boxes.current[index - 1]?.focus();
+                      }
+                    }}
+                    onPaste={(event) => {
+                      const pasted = event.clipboardData
+                        .getData("text")
+                        .replace(/\D/g, "")
+                        .slice(0, 6);
+                      if (!pasted) return;
+                      event.preventDefault();
+                      const nextDigits = Array(6).fill("");
+                      for (let i = 0; i < pasted.length; i += 1) {
+                        nextDigits[i] = pasted[i];
+                      }
+                      setDigits(nextDigits);
+                      boxes.current[Math.min(pasted.length, 5)]?.focus();
+                      if (pasted.length === 6) verifyOtp(pasted);
+                    }}
+                    className="h-11 w-[38px] rounded-[9px] border border-mv-line text-center text-[18px] font-bold text-mv-ink outline-none focus:border-mv-green focus:outline-2 focus:outline-mv-green"
+                  />
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between text-[12.5px]">
+                {cooldown > 0 ? (
+                  /*
+                   * `mv-slate` AND SEMIBOLD (Ryan, 2026-08-19: "Resend in 4:45 is
+                   * difficult to read because the text is too light").
+                   *
+                   * It was `text-mv-muted` — #6b7280 on this panel's #f7fbf9 —
+                   * which measures 4.63:1. That squeaks past AA's 4.5 for body
+                   * copy, so it was not a failure on paper, but it is 12.5px type
+                   * and it was the ONLY thing in the row at normal weight: the
+                   * "Change email" button beside it is semibold, so the countdown
+                   * read as the faded half of a pair. #1e293b takes it to 14.0:1.
+                   *
+                   * Matching the weight rather than out-shouting it: the row now
+                   * has one weight throughout, and "Change email" stays the
+                   * actionable one by being underlined with a hover colour, not by
+                   * being the darker of the two. `tabular-nums` so the seconds
+                   * ticking 9→8 does not shift the text width each second.
+                   */
+                  <span className="font-semibold tabular-nums text-mv-slate">
+                    Resend in {Math.floor(cooldown / 60)}:
+                    {String(cooldown % 60).padStart(2, "0")}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={sendCode}
+                    disabled={sending}
+                    className="cursor-pointer border-0 bg-transparent p-0 font-sans text-[12.5px] font-semibold text-mv-green-deep underline disabled:cursor-not-allowed disabled:opacity-55"
+                  >
+                    Resend code
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCodeSentTo(null);
+                    setDigits(Array(6).fill(""));
+                    setOtpError(null);
+                    setCooldown(0);
+                  }}
+                  /* `mv-slate`, not `mv-muted`, for the same reason the countdown
+                     beside it changed. Darkening only the countdown left this at
+                     4.63:1 against 14.0 — the actionable half of the row lighter
+                     than the passive half, which is the wrong way round. Now both
+                     sit at 14.0 and the underline plus the green hover are what
+                     mark this one as the control. */
+                  className="cursor-pointer border-0 bg-transparent p-0 font-sans text-[12.5px] font-semibold text-mv-slate underline hover:text-mv-green-deep"
+                >
+                  Change email
+                </button>
+              </div>
+
+              {(verifying || otpError) && (
+                <p
+                  role={otpError ? "alert" : "status"}
+                  className={`mt-2 text-[12.5px] font-semibold ${
+                    otpError ? "text-[#b3261e]" : "text-mv-muted"
+                  }`}
+                >
+                  {verifying ? "Verifying…" : otpError}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/*
+          BOTH LEGAL LINKS OPEN A NEW TAB (Ryan, 2026-08-19). In the same tab they
+          unloaded the page, and coming back left every field blank — name, email,
+          password, phone, address, the checkbox and the verification state — so
+          reading the terms you are being asked to accept cost you the whole form
+          and a fresh round-trip for the code.
+
+          `rel="noopener noreferrer"`: `noopener` denies the opened page a
+          `window.opener` handle back to this one, and `noreferrer` keeps the
+          register URL out of its Referer. Neither is strictly needed for a
+          same-origin page we control, but these are the links most likely to be
+          repointed at a hosted policy later, and the attributes should already be
+          there when that happens.
+
+          NOT the other half of the suggestion — form state is NOT persisted across
+          navigation. Doing that means writing the PASSWORD field into
+          sessionStorage, where any script on the origin can read it and it
+          outlives the tab; and restoring `verifiedEmail` from storage would let a
+          tampered value walk straight past the gate that gets the account created.
+          Not leaving the page in the first place removes the need for either.
+
+          The "Sign in" link below and sign-in's own "Forgot password?" stay in this
+          tab deliberately: those are exits, not detours.
+        */}
+        <div className="mb-3 mt-[2px]">
+          <CheckRow {...register("terms")}>
+            <strong className="font-bold text-mv-ink">
+              I agree to the{" "}
+              <Link
+                href="/terms-condition"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-mv-green-deep no-underline hover:underline"
+              >
+                Terms of Use
+              </Link>{" "}
+              and{" "}
+              <Link
+                href="/privacy-policy"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-mv-green-deep no-underline hover:underline"
+              >
+                Privacy Policy
+              </Link>
+              .
+            </strong>
+            {errors.terms && (
+              <span className="mt-1 block font-semibold text-[#b3261e]">
+                {errors.terms.message}
+              </span>
+            )}
+          </CheckRow>
+        </div>
+
+        {/* `!emailVerified` is the live site's gate (`disabled={isLoading ||
+            !emailVerified}`), and the label no longer promises to verify: the
+            code is already confirmed by the time this is pressable, so "Create
+            account & verify email" described the old order and would now be a
+            lie. */}
+        <SubmitButton disabled={!agreed || !emailVerified || isSubmitting}>
+          {isSubmitting ? "Creating your account…" : "Create account"}
+        </SubmitButton>
+
+        {/* NO SMALL PRINT UNDER THE BUTTON (Ryan, 2026-08-19: "Remove the
+            text"). Four `Fine` blocks stood here, all from the design:
+
+              · "Free plan • No credit card required • Cancel anytime"
+              · "Your acceptance of the Terms of Use and Privacy Policy is
+                 recorded."
+              · "After you claim a record, we verify your ownership before
+                 displaying ownership data. Verification may take up to 24 hours."
+              · "Free plan includes: 1 owner profile • 1 visible lease • Upgrade
+                 at any time."
+
+            Together they were six lines of grey type between the submit button
+            and the sign-in link — the last of them had already been flattened
+            from a <ul> on 2026-08-17 to claw back space, which treated the
+            symptom. The live register form carries none of it (its only footer is
+            the phone and help@ links), so removing it moves toward that form
+            rather than away from it.
+
+            None of it was load-bearing: the free plan and the recorded consent
+            are both stated by the pricing page and the terms themselves, and the
+            24-hour note describes a step that happens long after this form. If
+            any single line is wanted back, `Fine` still exists and sign-in still
+            uses it. */}
+      </form>
+
+      <Divider />
+
+      <p className="text-center text-[13px] text-mv-slate">
+        Already have an account?{" "}
+        <Link
+          href="/login"
+          className="font-semibold text-mv-green-deep no-underline hover:underline"
+        >
+          Sign in
+        </Link>
+      </p>
+    </>
+  );
+}
+
+function Optional({ children }: { children?: React.ReactNode }) {
+  return (
+    <span className="font-normal text-mv-muted">
+      {children ?? "(optional)"}
+    </span>
+  );
+}
+
+/*
+ * `VerifyPanel` and `VerifiedPanel` WERE HERE and are gone with the reordering.
+ *
+ * They were the two cards the old flow swapped in after submitting: a six-digit
+ * step, then an "Email verified — your free account is ready" panel with a
+ * Continue button. The live site has neither. Verification is now a block inside
+ * the form above (the digit boxes, the paste and backspace handling and the
+ * resend cooldown all moved there intact), and a confirmed registration signs the
+ * member in and routes them on, so there is nothing left for a terminal panel to
+ * say.
+ */
+
+export { inputClass };

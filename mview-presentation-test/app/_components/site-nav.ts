@@ -68,7 +68,8 @@ export const barNav: BarItem[] = [
 ];
 
 /**
- * The Explore mega menu — three columns, thirteen destinations.
+ * The Explore mega menu — two columns, eight destinations. The "Data download"
+ * column is hidden for now; its entries are kept below, commented out.
  *
  * Labels and descriptions are the mockup's. The hrefs are NOT: the mockup links
  * every item to `#`, so these paths are inferred from the route names the design
@@ -127,27 +128,27 @@ export const exploreNav: MegaColumn[] = [
       },
     ],
   },
-  {
-    heading: "Data download",
-    links: [
-      {
-        label: "Packages by region",
-        href: "/data/packages",
-        sub: "Delaware, Anadarko, statewide",
-      },
-      {
-        label: "Filter and download",
-        href: "/data/download",
-        sub: "Pick your rows, export",
-      },
-      {
-        label: "Free samples",
-        href: "/data/samples",
-        sub: "Try before you buy",
-        dividerBefore: true,
-      },
-    ],
-  },
+  // {
+  //   heading: "Data download",
+  //   links: [
+  //     {
+  //       label: "Packages by region",
+  //       href: "/data/packages",
+  //       sub: "Delaware, Anadarko, statewide",
+  //     },
+  //     {
+  //       label: "Filter and download",
+  //       href: "/data/download",
+  //       sub: "Pick your rows, export",
+  //     },
+  //     {
+  //       label: "Free samples",
+  //       href: "/data/samples",
+  //       sub: "Try before you buy",
+  //       dividerBefore: true,
+  //     },
+  //   ],
+  // },
 ];
 
 /**
@@ -164,12 +165,24 @@ export const exploreNav: MegaColumn[] = [
  *
  * The design lists a single "Blog & News"; they are separate routes here, so
  * both appear.
+ *
+ * Each carries a `sub` so the panel reads like the Explore one rather than a
+ * bare list of four words. These are CONDENSED from each page's own standfirst,
+ * not written fresh — the full lines are far too long for a dropdown row. If the
+ * page copy changes, shorten the new line rather than inventing a replacement:
+ *   Blog     "Get the latest updates, tips, and insights on mineral rights, oil, and gas."
+ *   News     "Get real-time updates and insights on the oil and gas sector & mineral rights."
+ *   Glossary "Key industry terms and definitions related to mineral rights, oil, and gas."
+ *   FAQ      "What Mineral View is, what it isn't, and how your data is handled."
+ *
+ * `sub` is optional on the type because the mobile sheet and the library tab row
+ * share this list and show labels only.
  */
-export const learnNav: NavLink[] = [
-  { label: "Blog", href: "/blog" },
-  { label: "News", href: "/news" },
-  { label: "Glossary", href: "/glossary" },
-  { label: "FAQ", href: "/faq" },
+export const learnNav: (NavLink & { sub: string })[] = [
+  { label: "Blog", href: "/blogs", sub: "Updates, tips and insights" },
+  { label: "News", href: "/oil-and-gas-news", sub: "Oil and gas sector activity" },
+  { label: "Glossary", href: "/glossary", sub: "Key industry terms defined" },
+  { label: "FAQ", href: "/faq", sub: "What we are, and how data is handled" },
 ];
 
 export type FooterColumn = {
@@ -190,8 +203,8 @@ export const footerColumns: FooterColumn[] = [
         label: "Data for business — coverage, downloads & lookup",
         href: "/data",
       },
-      { label: "Create your free account", href: "/signup" },
-      { label: "Start a free professional account", href: "/signup/pro" },
+      { label: "Create your free account", href: "/register" },
+      { label: "Start a free professional account", href: "/register?type=pro" },
       { label: "Sign in", href: "/login" },
     ],
   },
@@ -210,16 +223,18 @@ export const footerColumns: FooterColumn[] = [
   },
   {
     heading: "Learn",
-    links: [
-      { label: "Resources", href: "/resources" },
-      { label: "Blog", href: "/blog" },
-      { label: "News", href: "/news" },
-      { label: "Watch & Listen", href: "/media" },
-      { label: "Glossary", href: "/glossary" },
-      { label: "FAQ", href: "/faq" },
-      { label: "Owner community", href: "/groups/public" },
-      { label: "Claim your record", href: "/claim" },
-    ],
+    /*
+     * THE SAME FOUR AS THE HEADER'S LEARN MENU (Ryan, 2026-08-13), and derived
+     * from `learnNav` rather than restated, so the menu, this column and the
+     * library tab row cannot disagree — trimming one trims all three.
+     *
+     * This column previously carried four more: Resources (/resources),
+     * Watch & Listen (/media), Owner community (/groups/public) and Claim your
+     * record (/claim). The first three now have NO link anywhere on the site;
+     * /claim is still reached from the notice on every article and glossary page.
+     * Worth a home somewhere if those pages get built.
+     */
+    links: learnNav.map(({ label, href }) => ({ label, href })),
   },
 ];
 
@@ -227,41 +242,90 @@ export const footerColumns: FooterColumn[] = [
 export const footerCompanyLinksTop: NavLink[] = [
   { label: "Our Story", href: "/story" },
   { label: "Reviews", href: "/reviews" },
-  { label: "Contact", href: "/contact" },
+  { label: "Contact", href: "/contact-us" },
 ];
 
+/*
+ * Terms and Privacy now point at REAL pages, on the same paths the live site uses
+ * (`/terms-condition`, `/privacy-policy`) so existing links keep working. Both
+ * previously pointed into `/legal?jump=…`, a Legal Center page that does not
+ * exist — as the remaining four still do. Those four are subsections of that
+ * unbuilt hub; leave them until it is built, or they become 404s in the footer.
+ */
 export const footerCompanyLinksBottom: NavLink[] = [
   { label: "Legal Center — all policies", href: "/legal" },
-  { label: "Terms of Use", href: "/legal?jump=leg-mv-tou" },
-  { label: "Privacy Policy", href: "/legal?jump=leg-mv-priv" },
+  { label: "Terms & Conditions", href: "/terms-condition" },
+  { label: "Privacy Policy", href: "/privacy-policy" },
   { label: "Subscription Terms", href: "/legal?jump=leg-mv-sub" },
   { label: "Lease Audit Terms", href: "/legal?jump=leg-mv-audit" },
   { label: "Group Services Terms", href: "/legal?jump=leg-mv-grpsvc" },
 ];
 
 /**
- * The real Mineral View logo — the Cloudinary asset the live site uses. Never
- * hand-recreate it as SVG. The non-green part of the mark must be dark on
- * light surfaces and white on dark ones, hence the two transforms.
+ * The real Mineral View logo — the Cloudinary assets the live site uses. Never
+ * hand-recreate either as SVG.
  *
- * The source asset is green "MINERAL" plus WHITE "VIEW", which is why the plain
- * URL suits dark surfaces and every production use of it sits on black. The
- * light-surface variant recolours only that white word — `e_replace_color` takes
- * `to:tolerance:from`, so this reads "replace #ffffff with the brand ink". The
- * green is untouched: decoded, both variants carry the identical rgb(0,200,160).
+ * TWO SETS, and which one a surface takes depends on how dark that surface is.
+ * They are NOT interchangeable, so read this before moving one:
  *
- * The target used to be #0F1B16, an off-brand near-black that came from the
- * prototype. It is now `--color-mv-green-ink` (#04231A) — the same dark the CTA
- * uses for text on green (Ryan, 2026-08-11). Keep it in step with that token.
+ *   `graphics/mview-logo.png` + `graphics/mview-logo-icon.png` — the LIGHT-GROUND
+ *   pair, supplied 2026-08-19 for the white header. Green `#00CD95` and BLACK on a
+ *   transparent ground; there is no white anywhere in either palette. They read on
+ *   white and go invisible on `mv-ink`.
+ *
+ *   `icons/mineralview-logo.png` — the DARK-GROUND wordmark, which the footer
+ *   still uses. Green "MINERAL" plus WHITE "VIEW", so it is the exact inverse:
+ *   it reads on black and loses the word VIEW on white.
+ *
+ * That inversion is why the header and the footer point at different files rather
+ * than sharing one. Swap either and half the wordmark disappears — this is the bug
+ * that has been rediscovered several times.
+ *
+ * ALL USED RAW — no Cloudinary transform on any of them. That is a deliberate
+ * instruction, given twice and confirmed after seeing the rendered result (Ryan,
+ * 2026-08-13). Earlier revisions recoloured the desktop wordmark; every one of
+ * those is gone. Do not reintroduce a transform without asking. A colour swap is
+ * never the fix for a logo that does not read — pick the pair drawn for the ground
+ * it sits on.
+ *
+ * HISTORY, so the header's shape makes sense: between 2026-08-13 and 2026-08-19
+ * the header was BLACK, and the mobile slot was a JPG with a baked-in black tile.
+ * Both existed only because the light pair did not exist yet and the dark wordmark
+ * had to be given a dark ground somehow. The new assets removed the need for both,
+ * so the bar is white again and the dark ground behind the logo is gone.
  */
 export const logo = {
-  /** Light surfaces (the header, the drawer) — "VIEW" renders brand ink. */
-  onLight:
-    "https://res.cloudinary.com/mview/image/upload/e_replace_color:04231a:48:ffffff/f_auto,q_auto,w_320/f_auto/icons/mineralview-logo.png",
-  /** Dark surfaces (the footer) — "VIEW" renders white. */
-  onDark:
-    "https://res.cloudinary.com/mview/image/upload/f_auto/f_auto,q_auto,w_320/icons/mineralview-logo.png",
-  /** Intrinsic dimensions of the source asset. */
-  width: 320,
-  height: 73,
+  /**
+   * Desktop header — the wordmark, the supplied URL VERBATIM (Ryan, 2026-08-19).
+   *
+   * Green and black on transparency, so it needs a LIGHT ground and must not be
+   * put on the footer. Do not add a transform here.
+   */
+  desktop: {
+    src: "https://res.cloudinary.com/mview/image/upload/graphics/mview-logo.png",
+    width: 577,
+    height: 132,
+  },
+  /**
+   * Mobile header — the square icon mark on its own, so the bar keeps its room
+   * for the burger and the CTA at phone widths.
+   *
+   * A transparent PNG, unlike the JPG it replaces: there is no baked-in tile, so
+   * the mark sits directly on the white bar and needs no corner radius.
+   */
+  mobile: {
+    src: "https://res.cloudinary.com/mview/image/upload/graphics/mview-logo-icon.png",
+    width: 63,
+    height: 63,
+  },
+  /**
+   * Dark surfaces (the footer) — the OLD wordmark, deliberately. Its "VIEW" is
+   * white, which is what makes it read on `mv-ink` and exactly what makes it fail
+   * on the header. Do not point this at the `graphics/` pair.
+   */
+  onDark: {
+    src: "https://res.cloudinary.com/mview/image/upload/icons/mineralview-logo.png",
+    width: 577,
+    height: 132,
+  },
 } as const;

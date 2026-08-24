@@ -2,9 +2,12 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useTransition } from "react";
 
-import { buttonClass } from "./button";
+import { AccountMenu } from "./account-menu";
+import { signOutAction } from "./auth-actions";
+import { buttonClass, primaryFillOverrideClass } from "./button";
 import {
   barNav,
   exploreNav,
@@ -12,6 +15,7 @@ import {
   logo,
   type MegaColumn,
 } from "./site-nav";
+import type { SessionUser } from "@/lib/session";
 
 /*
  * Marketing header — follows `header-mockup.html` (Ryan, 2026-08-11), which
@@ -24,8 +28,12 @@ import {
  * SVG mark for its own convenience; that must not be copied — every hand-drawn
  * reproduction of this logo has been wrong.
  *
- * The prototype swaps the right-hand actions on auth state (`data-auth`). There
- * is no auth in this build, so only the signed-out cluster is rendered.
+ * The prototype swaps the right-hand actions on auth state (`data-auth`), and so
+ * does this: signed out shows "Sign in" and "Free account", signed in shows the
+ * portal link and the account menu. The state comes from the session cookie,
+ * read on the server in `layout.tsx` and passed down — not from a class toggled
+ * on `<body>` as the prototype does, so the right cluster is in the first HTML
+ * and never flashes the wrong one.
  */
 
 type OpenMenu = "explore" | "learn" | null;
@@ -46,11 +54,33 @@ type OpenMenu = "explore" | "learn" | null;
  * `line-height:1.2` on `.btn` for exactly this reason; the mockup gets it free
  * because its own body sets no line-height.
  */
+/*
+ * WHITE BAR. The header was black between 2026-08-13 and 2026-08-19, purely because
+ * the only logo asset then available was drawn for a black ground. The `graphics/`
+ * pair supplied on the 19th is drawn for a light one, so the bar is white and the
+ * logo needs nothing round it — see the note in `site-nav.ts` on why the header and
+ * the footer deliberately point at different files.
+ *
+ * Everything in the bar therefore carries the light treatment: link colour, hover
+ * wash, active state, the "Sign in" link and the burger. The dropdown panels and
+ * the mobile drawer were always white and are unchanged.
+ */
 const navLinkBase =
-  "whitespace-nowrap rounded-[10px] border-2 border-transparent px-[10px] py-[9px] text-[13.5px] font-semibold leading-[1.2] text-mv-slate no-underline transition-colors hover:bg-[#f2f8f5] hover:text-mv-green-deep hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep";
+  "whitespace-nowrap rounded-[10px] border-2 border-transparent px-[10px] py-[9px] text-[13.5px] font-semibold leading-[1.2] text-mv-slate no-underline transition-colors hover:bg-mv-nav-hover hover:text-mv-green-deep hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep";
+
+/**
+ * The mockup's `.nl.active` — the current page's bar item, and whichever menu is
+ * open, carry the same faint green wash as hover. Without it nothing in the bar
+ * says where you are: on /glossary every item read as inactive.
+ */
+/* `!` on both properties on purpose. `navLinkBase` sets `text-mv-slate` and the
+   menu triggers used to set `bg-transparent`, and two utilities touching one
+   property resolve by stylesheet order rather than by where they sit in the class
+   string — so without these the wash and the green text both silently lost. */
+const navLinkActive = "!bg-mv-nav-hover !text-mv-green-deep";
 
 /** The menu triggers match `.nl` exactly, so they sit level with the links. */
-const menuButtonBase = `${navLinkBase} inline-flex cursor-pointer items-center gap-[5px] bg-transparent font-sans`;
+const menuButtonBase = `${navLinkBase} inline-flex cursor-pointer items-center gap-[5px] font-sans`;
 
 /** One item inside either dropdown — the mockup's `.pi`. */
 const panelItem =
@@ -63,10 +93,27 @@ const panelItem =
 const ctaMint = buttonClass({ variant: "mint", size: "lg" });
 const ctaPrimary = buttonClass({ variant: "primary", size: "lg" });
 
-export function SiteHeader() {
+export function SiteHeader({ user }: { user: SessionUser | null }) {
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const navRef = useRef<HTMLElement>(null);
+  const pathname = usePathname();
+
+  /*
+   * A bar item is current when the path is it, or sits beneath it — so
+   * /blogs/some-article keeps Learn lit, and /glossary/api-gravity too. The `"/"`
+   * guard matters: without it `startsWith("/")` would match every route and light
+   * up whichever item pointed at the home page.
+   */
+  const isCurrent = (href: string) =>
+    href === "/"
+      ? pathname === "/"
+      : pathname === href || pathname.startsWith(`${href}/`);
+
+  const exploreCurrent = exploreNav.some((column) =>
+    column.links.some((link) => isCurrent(link.href)),
+  );
+  const learnCurrent = learnNav.some((link) => isCurrent(link.href));
 
   // Close whichever menu is open on an outside click or Escape. Both also open
   // on hover, which is a `group-hover` rule on the trigger's wrapper.
@@ -111,13 +158,17 @@ export function SiteHeader() {
 
   return (
     <>
-      <a
-        href="#main"
-        className="fixed left-[10px] top-[-80px] z-[999] rounded-[10px] bg-mv-green-deep px-[18px] py-3 text-sm font-extrabold text-white !no-underline transition-[top] focus:top-[10px]"
-      >
-        Skip to main content
-      </a>
+      {/* No "Skip to main content" link (Ryan, 2026-08-13). It was the standard
+          keyboard shortcut past the nav — parked off-screen at `top-[-80px]` and
+          sliding in only on focus — but it was showing in normal use and was not
+          wanted. Removing it costs keyboard and screen-reader users the shortcut:
+          they now tab through every bar item to reach the page. Put it back if
+          that becomes a problem; nothing else depended on it, though `<main>` in
+          `layout.tsx` keeps its `id="main"`. */}
 
+      {/* White, over `mv-line` — the site's own hairline, which is what separates
+          the bar from the page below it. The footer stays `mv-ink`; the two bands
+          no longer match, which is the point of this change. */}
       <header className="sticky top-0 z-[60] border-b border-mv-line bg-white/94 backdrop-blur-[8px]">
         {/* `relative` so the Explore panel can span the bar's full width: that
             panel's wrapper is `static`, letting `left-0` resolve against this
@@ -129,37 +180,83 @@ export function SiteHeader() {
             needs 1112px and holds down to ~1127px. Hence 1240 and 1140 with a
             little slack either side. The mockup's single 1180px threshold was
             sized for a lighter six-item bar and overflowed 87px at 1024. */}
-        <div className="relative mx-auto flex h-16 max-w-[1200px] items-center gap-[26px] px-7 max-[1239px]:gap-3 max-[1239px]:px-4">
+        {/* FULL WIDTH, not the 1200px wrap the rest of the site uses (Ryan,
+            2026-08-13): the logo sits against the left edge of the bar and the
+            actions against the right, rather than both being inset by however
+            much empty bar a wide screen leaves either side.
+
+            KNOWN CONSEQUENCE: the header no longer lines up with the footer, the
+            listings or the article column, which all still wrap at 1200px. The
+            logo will sit to the left of the page content below it. That is the
+            trade this change makes; widen the others to match if the misalignment
+            reads as wrong.
+
+            The measured 1240/1140 breakpoints below are unaffected in the safe
+            direction — they were sized for a 1200px wrap, and this only ever
+            gives the bar MORE room, so nothing that fitted before can overflow
+            now. */}
+        <div className="relative flex h-16 items-center gap-[26px] px-7 max-[1239px]:gap-3 max-[1239px]:px-4">
+          {/* Two assets, swapped at 768px (Ryan, 2026-08-13): the full wordmark
+              on desktop, the square icon mark on phones, where the bar has to
+              fit the burger and the CTA as well.
+
+              Rendered as two <Image>s toggled by CSS rather than one `src` picked
+              in JS: the header is a client component, but choosing in JS would
+              mean the server sends one of them and the other pops in after
+              hydration. Both are in the markup; only one is ever displayed.
+              `alt` is on the visible-by-default one and empty on the other, so a
+              screen reader announces the link once, not twice. */}
+          {/* No ground behind the logo. The `graphics/` pair is green and black on
+              transparency, drawn for a light bar, so it reads on the white directly
+              — see `site-nav.ts`. The dark tile that used to sit here existed only
+              to rescue the old white-"VIEW" wordmark and would now swallow the
+              black half of this one. */}
           <Link href="/" aria-label="Mineral View home" className="shrink-0">
             <Image
-              src={logo.onLight}
+              src={logo.desktop.src}
               alt="Mineral View"
-              width={logo.width}
-              height={logo.height}
+              width={logo.desktop.width}
+              height={logo.desktop.height}
               priority
-              className="block h-[34px] w-auto max-[767px]:h-[26px]"
+              className="block h-[34px] w-auto max-[767px]:hidden"
+            />
+            {/* No radius: a transparent PNG, so there is no tile to soften. The
+                radius the old JPG needed went with it. */}
+            <Image
+              src={logo.mobile.src}
+              alt=""
+              width={logo.mobile.width}
+              height={logo.mobile.height}
+              priority
+              className="hidden h-[30px] w-[30px] max-[767px]:block"
             />
           </Link>
 
           {/* Collapse point is measured, not the design's 919px — see the note
               on the hamburger below. */}
+          {/* `mx-auto` centres the bar items between the logo and the actions
+              (Ryan, 2026-08-13), matching the live site. Flex splits the free
+              space equally between this element's two auto margins, which is what
+              both centres the nav AND pushes the actions to the right edge — so
+              they need no auto margin of their own above 1140px. See the note on
+              the actions block for why they get one back below it. */}
           <nav
             ref={navRef}
-            className="ml-2 flex items-center gap-[6px] max-[1239px]:gap-[2px] max-[1139px]:hidden"
+            className="mx-auto flex items-center gap-[6px] max-[1239px]:gap-[2px] max-[1139px]:hidden"
           >
             {/* The single filled CTA in the bar, on the PROTOTYPE's treatment
                 rather than the mockup's (Ryan, 2026-08-11): `.mk-claim` is 14px
                 at weight 800 with 12px side padding and the ✚ at weight 900,
                 which makes it read heavier than the nav links either side. The
                 mockup had stepped it down to 13.5/700 and dropped the icon. */}
-            {/* Filled with the LOGO's green, not `mv-green`. The design's sage
-                #54bf96 sat next to a #00cd95 mark and the two read as different
-                greens; this is the one control close enough to the logo for that
-                to show, so it is the only place the brand green is used. See the
-                token comment in `globals.css`. */}
+            {/* Colour comes from `primaryFillOverrideClass`, the same green as
+                every other primary button, so the two cannot drift. This used to
+                carry its own hover — swapping to green-deep on white — which made
+                one green behave two different ways. Size stays the prototype's
+                14px/800 with the ✚. */}
             <Link
               href="/claim"
-              className={`${navLinkBase} !border-mv-green-brand !bg-mv-green-brand !px-3 !text-sm !font-extrabold !text-mv-green-ink hover:!border-mv-green-brand-deep hover:!bg-mv-green-brand-deep hover:!text-white`}
+              className={`${navLinkBase} ${primaryFillOverrideClass} !px-3 !text-sm !font-extrabold`}
             >
               <span aria-hidden="true" className="mr-1 font-black">
                 ✚
@@ -169,13 +266,19 @@ export function SiteHeader() {
 
             {barNav.map((item) =>
               item.kind === "link" ? (
-                <Link key={item.href} href={item.href} className={navLinkBase}>
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={isCurrent(item.href) ? "page" : undefined}
+                  className={`${navLinkBase} ${isCurrent(item.href) ? navLinkActive : ""}`}
+                >
                   {item.label}
                 </Link>
               ) : item.menu === "explore" ? (
                 <ExploreMenu
                   key={item.label}
                   label={item.label}
+                  current={exploreCurrent}
                   open={openMenu === "explore"}
                   onToggle={() =>
                     setOpenMenu((current) =>
@@ -188,6 +291,7 @@ export function SiteHeader() {
                 <LearnMenu
                   key={item.label}
                   label={item.label}
+                  current={learnCurrent}
                   open={openMenu === "learn"}
                   onToggle={() =>
                     setOpenMenu((current) =>
@@ -200,164 +304,273 @@ export function SiteHeader() {
             )}
           </nav>
 
-          <div className="ml-auto flex items-center gap-[14px] max-[767px]:gap-2">
-            <Link
-              href="/login"
-              className="whitespace-nowrap text-sm font-semibold text-mv-slate no-underline hover:text-mv-green-deep hover:no-underline max-[767px]:hidden"
-            >
-              Sign in
-            </Link>
+          {/*
+            ABOVE 1140px this block is sized by its content and the nav's
+            `mx-auto` pushes it to the right edge. A third auto margin here would
+            join that split and drag the nav left of centre, so it gets none.
 
-            {/* `.mk-actions a` is nowrap in the prototype — without it "Free
-                account" breaks onto two lines and pushes the bar off 64px. */}
-            <Link
-              href="/signup"
-              className={`${ctaMint} whitespace-nowrap max-[767px]:px-[10px] max-[767px]:py-2 max-[767px]:text-xs`}
-            >
-              Free account
-            </Link>
+            BELOW 1140px it becomes `flex-1` INSTEAD OF `ml-auto` (Ryan,
+            2026-08-19: the burger "far right, but on its own"). The nav is hidden
+            at that width, so its margins stop existing and this block is all that
+            is left beside the logo. `ml-auto` used to shunt the whole group —
+            Sign in, Free account and the burger — hard against the right edge as
+            one cluster, which is what put the burger tight against the green
+            button with 8px between them.
+
+            `flex-1` makes the block span the bar instead, so its contents start
+            beside the logo and the burger's own `ml-auto` (below) can push only
+            itself to the edge. The CTA therefore reads as part of the logo group
+            and the menu control stands alone.
+          */}
+          <div className="flex items-center gap-[14px] max-[1139px]:flex-1 max-[767px]:gap-2">
+            {/* The design's `data-auth` swap: signed out shows the two CTAs,
+                signed in replaces them with the portal link and the account
+                menu. Rendered from a server-read cookie rather than toggled by a
+                class on `<body>` as the prototype does, so the correct state is
+                in the first HTML and never flashes the wrong one. */}
+            {/*
+              EVERYTHING HERE HIDES AT 1139px — the bar becomes logo + burger and
+              nothing else (Ryan, 2026-08-19, with a reference image of exactly
+              that: wordmark left, ☰ right, empty between).
+
+              ONE BREAKPOINT, AND IT IS THE BURGER'S OWN. These were a mix of
+              `max-[767px]:hidden` and no breakpoint at all, which is why a phone
+              showed logo + Free account + ☰ and an iPad showed logo + Sign in +
+              Free account + ☰. Tying them to 1139 gives a single rule with no
+              in-between state: if the burger is visible, the bar carries nothing
+              but the logo and the burger, and every action lives in the sheet.
+
+              THE SHEET HAD TO GAIN "Free account" FOR THIS TO BE SAFE — it
+              already had Find your record and Sign in, but not register, so
+              hiding this link would have left no route to sign-up on a phone at
+              all. See the drawer below.
+            */}
+            {user ? (
+              <>
+                <Link
+                  href="/portal"
+                  className={`${ctaPrimary} whitespace-nowrap max-[1139px]:hidden`}
+                >
+                  Go to your portal →
+                </Link>
+                {/* Wrapped rather than given a class of its own: `AccountMenu` owns
+                    its own popup positioning, and a display switch on the wrapper
+                    cannot disturb it. The sheet carries the portal link and Sign
+                    out, so nothing is stranded by hiding this. */}
+                <span className="max-[1139px]:hidden">
+                  <AccountMenu user={user} />
+                </span>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="whitespace-nowrap text-sm font-semibold text-mv-slate no-underline hover:text-mv-green-deep hover:no-underline max-[1139px]:hidden"
+                >
+                  Sign in
+                </Link>
+
+                {/* `.mk-actions a` is nowrap in the prototype — without it "Free
+                    account" breaks onto two lines and pushes the bar off 64px.
+                    The phone-sized padding overrides that used to sit here went
+                    with the link itself: it is not rendered at those widths any
+                    more, so shrinking it for them described nothing. */}
+                <Link
+                  href="/register"
+                  className={`${ctaMint} whitespace-nowrap max-[1139px]:hidden`}
+                >
+                  Free account
+                </Link>
+              </>
+            )}
 
             {/* Collapses at 1140px — see the note on the bar above for how that
                 figure is derived. The mockup sets no breakpoint and the design's
                 919px is far too late for a seven-item bar. */}
             <button
               type="button"
-              onClick={() => setDrawerOpen(true)}
-              aria-label="Menu"
+              onClick={() => setDrawerOpen((open) => !open)}
+              aria-label={drawerOpen ? "Close menu" : "Menu"}
               aria-expanded={drawerOpen}
-              className="hidden shrink-0 cursor-pointer rounded-lg border border-mv-line px-[10px] py-[7px] text-base leading-none text-mv-slate max-[1139px]:block"
+              /* `ml-auto` is what separates it from the CTAs: the actions block is
+                 `flex-1` at this width, so this margin eats the leftover space and
+                 leaves the burger alone at the right edge. `block` rather than
+                 `flex` would kill the margin's effect in a flex row, so the
+                 display switch stays `block` and the margin does the work. */
+              className="ml-auto hidden shrink-0 cursor-pointer rounded-lg border border-mv-line px-[10px] py-[7px] text-base leading-none text-mv-slate max-[1139px]:block"
             >
-              ☰
+              {drawerOpen ? "✕" : "☰"}
             </button>
           </div>
         </div>
       </header>
 
       {/* ---------------- mobile sheet ---------------- */}
+      {/* Full width, docked under the 64px header, rather than the 82%-wide
+          right-hand drawer this replaced (QA #3). The drawer left a strip of the
+          page showing down one side with the header's OWN logo still in it, so
+          the sheet's logo made two logos on screen at once; and a narrow overlay
+          squeezed the three "Explore ·" group labels. The header stays visible
+          and its burger becomes the close control, so the sheet needs neither a
+          logo nor a close button of its own. */}
       {drawerOpen && (
-        <div
-          className="fixed inset-0 z-[90] bg-[rgba(13,14,23,.5)]"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) closeDrawer();
-          }}
-        >
-          <div className="absolute right-0 top-0 flex h-full w-[82%] max-w-[340px] flex-col overflow-y-auto bg-white p-[22px]">
-            <button
-              type="button"
-              onClick={closeDrawer}
-              aria-label="Close menu"
-              className="absolute right-[10px] top-[10px] h-[34px] w-[34px] cursor-pointer rounded-full border border-[rgba(128,128,128,.35)] bg-transparent text-[15px] leading-none hover:bg-[rgba(128,128,128,.15)]"
-            >
-              ✕
-            </button>
+        <div className="fixed inset-x-0 bottom-0 top-16 z-[90] overflow-y-auto border-t border-mv-line bg-white px-4 pb-8 pt-3">
+          <Link
+            href="/claim"
+            onClick={closeDrawer}
+            className={`${ctaPrimary} mb-2 w-full text-center`}
+          >
+            ✚ Find your record
+          </Link>
 
-            <Image
-              src={logo.onLight}
-              alt="Mineral View"
-              width={logo.width}
-              height={logo.height}
-              className="mb-[14px] block h-[26px] w-auto"
-            />
+          {barNav.map((item) =>
+            item.kind === "link" ? (
+              <SheetLink
+                key={item.href}
+                href={item.href}
+                onNavigate={closeDrawer}
+              >
+                {item.label}
+              </SheetLink>
+            ) : item.menu === "explore" ? (
+              <div key={item.label}>
+                {exploreNav.map((column) => (
+                  <div key={column.heading}>
+                    <SheetGroup>
+                      Explore · {column.heading.toLowerCase()}
+                    </SheetGroup>
+                    {column.links.map((link) => (
+                      <SheetLink
+                        key={link.href}
+                        href={link.href}
+                        onNavigate={closeDrawer}
+                      >
+                        {link.label}
+                      </SheetLink>
+                    ))}
+                  </div>
+                ))}
+                <SheetDivider />
+              </div>
+            ) : (
+              <div key={item.label}>
+                <SheetGroup>Learn</SheetGroup>
+                {learnNav.map((link) => (
+                  <SheetLink
+                    key={link.href}
+                    href={link.href}
+                    onNavigate={closeDrawer}
+                  >
+                    {link.label}
+                  </SheetLink>
+                ))}
+                <SheetDivider />
+              </div>
+            ),
+          )}
 
-            <Link
-              href="/claim"
-              onClick={closeDrawer}
-              /* Same control as the bar's CTA, and the sheet shows the logo
-                 directly above it, so it carries the same brand green. Without
-                 the override this one button would be two different greens
-                 depending on viewport width. */
-              className={`${ctaPrimary} mb-2 !border-mv-green-brand !bg-mv-green-brand text-center hover:!bg-mv-green-brand-deep hover:!text-white`}
-            >
-              ✚ Find your record
-            </Link>
+          {user ? (
+            <>
+              <SheetLink href="/portal" onNavigate={closeDrawer}>
+                Go to your portal →
+              </SheetLink>
+              {/* The account menu in the bar is hidden below 767px, so without
+                  this there would be no way to sign out on a phone. */}
+              <DrawerSignOut onDone={closeDrawer} />
+            </>
+          ) : (
+            <>
+              <SheetLink href="/login" onNavigate={closeDrawer}>
+                Sign in
+              </SheetLink>
+              {/*
+                "Free account" MOVED HERE from the bar (Ryan, 2026-08-19). It has
+                to exist somewhere: with the bar reduced to logo + burger there is
+                otherwise no route to `/register` on a phone or an iPad at all —
+                the sheet already carried Find your record and Sign in, but never
+                sign-up.
 
-            {/* Same order as the bar: the two audience links, the Explore groups,
-                Pricing, then Learn — so the sheet and the bar agree. */}
-            {barNav.map((item) =>
-              item.kind === "link" ? (
-                <SheetLink
-                  key={item.href}
-                  href={item.href}
-                  onNavigate={closeDrawer}
-                >
-                  {item.label}
-                </SheetLink>
-              ) : item.menu === "explore" ? (
-                <div key={item.label}>
-                  {exploreNav.map((column) => (
-                    <div key={column.heading}>
-                      <SheetGroup>
-                        Explore · {column.heading.toLowerCase()}
-                      </SheetGroup>
-                      {column.links.map((link) => (
-                        <SheetLink
-                          key={link.href}
-                          href={link.href}
-                          onNavigate={closeDrawer}
-                        >
-                          {link.label}
-                        </SheetLink>
-                      ))}
-                    </div>
-                  ))}
-                  <SheetDivider />
-                </div>
-              ) : (
-                <div key={item.label}>
-                  <SheetGroup>Learn</SheetGroup>
-                  {learnNav.map((link) => (
-                    <SheetLink
-                      key={link.href}
-                      href={link.href}
-                      onNavigate={closeDrawer}
-                    >
-                      {link.label}
-                    </SheetLink>
-                  ))}
-                  <SheetDivider />
-                </div>
-              ),
-            )}
-
-            <SheetLink href="/login" onNavigate={closeDrawer}>
-              Sign in
-            </SheetLink>
-          </div>
+                Rendered as the mint CTA rather than a plain `SheetLink` so it
+                still reads as the funnel step it is, and last so the two account
+                actions sit together under the navigation rather than one being
+                buried among the links.
+              */}
+              <Link
+                href="/register"
+                onClick={closeDrawer}
+                className={`${ctaMint} mt-2 w-full text-center`}
+              >
+                Free account
+              </Link>
+            </>
+          )}
         </div>
       )}
     </>
   );
 }
 
+/**
+ * Sign out, for the mobile drawer.
+ *
+ * Its own component so the drawer does not need the menu's popup machinery — it
+ * is already a full-screen sheet, so there is nothing to open.
+ */
+function DrawerSignOut({ onDone }: { onDone: () => void }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={() =>
+        startTransition(async () => {
+          await signOutAction();
+          onDone();
+          router.refresh();
+        })
+      }
+      className="block w-full cursor-pointer border-0 border-b border-mv-line bg-transparent px-1 py-3 text-left font-sans text-[15px] font-semibold text-mv-slate hover:text-mv-green-deep disabled:opacity-60"
+    >
+      {pending ? "Signing out…" : "Sign out"}
+    </button>
+  );
+}
+
 /* ------------------------------------------------------------------ menus --- */
 
 /**
- * The Explore mega menu: three bordered columns, 660px wide, anchored to the
- * left edge of the bar rather than to its trigger.
+ * The Explore mega menu: two bordered columns, 450px wide, centred under its
+ * trigger.
  *
- * The wrapper is `static` on purpose. `absolute` positioning resolves against
- * the nearest positioned ancestor, so with a `relative` wrapper the panel would
- * hang off the trigger and run past the viewport on the right; `static` lets it
- * resolve against the bar, which is `relative`.
+ * The wrapper is `relative` so the panel centres on the Explore button. At the
+ * original 660px the panel had to centre under the bar instead (a `static`
+ * wrapper resolving against the bar) or it would run past the viewport on the
+ * right; at 450px it fits under the trigger on every desktop width the bar
+ * renders at.
  */
 function ExploreMenu({
   label,
+  current,
   open,
   onToggle,
   onNavigate,
 }: {
   label: string;
+  /** True when the open page lives inside this menu — lights the trigger. */
+  current: boolean;
   open: boolean;
   onToggle: () => void;
   onNavigate: () => void;
 }) {
   return (
-    <div className="group static flex h-16 items-center">
+    <div className="group relative flex h-16 items-center">
       <button
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className={menuButtonBase}
+        className={`${menuButtonBase} ${open || current ? navLinkActive : ""}`}
       >
         {label}
         <span aria-hidden="true" className="text-[10px]">
@@ -367,7 +580,7 @@ function ExploreMenu({
 
       <div
         aria-label={label}
-        className={`absolute left-0 top-[calc(100%+8px)] z-[80] w-[660px] max-w-[calc(100vw-40px)] flex-wrap rounded-xl border border-mv-line bg-white p-[14px] shadow-[0_12px_30px_rgba(13,14,23,.14)] group-hover:flex ${
+        className={`absolute left-1/2 top-[calc(100%+8px)] z-[80] w-[450px] max-w-[calc(100vw-40px)] -translate-x-1/2 flex-wrap rounded-xl border border-mv-line bg-white p-[14px] shadow-[0_12px_30px_rgba(13,14,23,.14)] group-hover:flex ${
           open ? "flex" : "hidden"
         }`}
       >
@@ -418,7 +631,7 @@ function MegaColumnBlock({
             className={`${panelItem} whitespace-normal`}
           >
             {link.label}
-            <span className="block pt-px text-[11px] font-normal leading-[1.35] text-[#94a3b8]">
+            <span className="block pt-px text-[11px] font-normal leading-[1.35] text-mv-sublabel">
               {link.sub}
             </span>
           </Link>
@@ -431,11 +644,14 @@ function MegaColumnBlock({
 /** The Learn dropdown: four reading destinations, right-aligned to its trigger. */
 function LearnMenu({
   label,
+  current,
   open,
   onToggle,
   onNavigate,
 }: {
   label: string;
+  /** True when the open page lives inside this menu — lights the trigger. */
+  current: boolean;
   open: boolean;
   onToggle: () => void;
   onNavigate: () => void;
@@ -449,7 +665,7 @@ function LearnMenu({
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className={menuButtonBase}
+        className={`${menuButtonBase} ${open || current ? navLinkActive : ""}`}
       >
         {label}
         <span aria-hidden="true" className="text-[10px]">
@@ -459,18 +675,26 @@ function LearnMenu({
 
       <div
         aria-label={label}
-        className={`absolute right-[-10px] top-[calc(100%+8px)] z-[80] min-w-[212px] rounded-xl border border-mv-line bg-white p-2 shadow-[0_12px_30px_rgba(13,14,23,.14)] group-hover:block ${
+        className={`absolute right-[-10px] top-[calc(100%+8px)] z-[80] w-[272px] rounded-xl border border-mv-line bg-white p-2 shadow-[0_12px_30px_rgba(13,14,23,.14)] group-hover:block ${
           open ? "block" : "hidden"
         }`}
       >
+        {/* Each row carries a one-line description, the same treatment the
+            Explore columns use. Four bare words beside that menu read as an
+            afterthought. Fixed 272px rather than the mockup's 212px min-width:
+            the descriptions need the room, and a fixed width stops the panel
+            resizing as the longest line changes. */}
         {learnNav.map((item) => (
           <Link
             key={item.href}
             href={item.href}
             onClick={onNavigate}
-            className={`${panelItem} whitespace-nowrap`}
+            className={`${panelItem} whitespace-normal`}
           >
             {item.label}
+            <span className="block pt-px text-[11px] font-normal leading-[1.35] text-mv-sublabel">
+              {item.sub}
+            </span>
           </Link>
         ))}
       </div>
@@ -482,7 +706,7 @@ function LearnMenu({
 
 function SheetGroup({ children }: { children: React.ReactNode }) {
   return (
-    <div className="px-[10px] pb-[3px] pt-2 text-[10.5px] font-semibold uppercase tracking-[.05em] text-[#94a3b8]">
+    <div className="px-[10px] pb-[3px] pt-2 text-[10.5px] font-semibold uppercase tracking-[.05em] text-mv-sublabel">
       {children}
     </div>
   );

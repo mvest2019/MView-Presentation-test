@@ -57,6 +57,29 @@ export function isBlogMode(value: string | undefined): value is BlogMode {
 }
 
 /**
+ * The order the category chips appear in, per section.
+ *
+ * Taken from the live site's own tab arrays — `categories` in
+ * `app/blogs/_components/BlogPageComponent.tsx` and
+ * `app/oil-and-gas-news/_components/NewsPageComponent.tsx` — so a reader who
+ * knows one site finds the chips where they expect on the other.
+ *
+ * This is an ORDER, not data: the categories themselves and their counts are
+ * still whatever the API returns. Sorting by count instead (what this did
+ * before) put Other second on Blog, ahead of Operator and Play Type, purely
+ * because Other happens to hold more articles — and would silently reshuffle
+ * the row every time the CMS published.
+ *
+ * A category absent from this list is NOT dropped; `getCategoryFacets` appends
+ * it. So a new CMS category still reaches the page, just after the known ones,
+ * and this list never becomes a filter on the API's data.
+ */
+export const CATEGORY_ORDER: Record<BlogMode, readonly string[]> = {
+  blog: ["Mineral Owners", "Operator", "Play Type", "Field", "Other"],
+  news: ["Most Popular", "Headline"],
+};
+
+/**
  * The API `type` string mapped back to our mode key. Anything unrecognised —
  * including a record with no `type` at all — is treated as Blog, so a stray
  * value costs an article its News tab rather than making it unreachable.
@@ -78,9 +101,8 @@ export function modeFromApiType(type: string | undefined): BlogMode {
  */
 export const SECTIONS = {
   blog: {
-    path: "/blog",
+    path: "/blogs",
     tab: "Blog",
-    kicker: "Blog",
     heading: "Blogs",
     lede: "Get the latest updates, tips, and insights on mineral rights, oil, and gas.",
     searchLabel: "Search articles",
@@ -89,9 +111,8 @@ export const SECTIONS = {
     backLabel: "← Blogs",
   },
   news: {
-    path: "/news",
+    path: "/oil-and-gas-news",
     tab: "News",
-    kicker: "News",
     heading: "Oil & Gas Industry News",
     lede: "Get real-time updates and insights on the oil and gas sector & mineral rights.",
     searchLabel: "Search news",

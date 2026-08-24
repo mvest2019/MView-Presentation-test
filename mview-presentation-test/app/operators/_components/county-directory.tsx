@@ -4,48 +4,53 @@ import { MapPin, Search } from "lucide-react";
 import Link from "next/link";
 import { memo, useDeferredValue, useId, useMemo, useState } from "react";
 
-import {
-  COUNTY_LETTERS,
-  COUNTY_LETTERS_PRESENT,
-  TEXAS_COUNTIES,
-} from "@/lib/texas-counties";
+import { COUNTY_LETTERS } from "@/lib/texas-counties";
 import { selectedControlClass } from "@/app/_components/button";
 
 /**
  * "Browse operators by county" — the design's v46 county directory: an A–Z
- * filter, a search box, and a grid over all 254 Texas counties.
+ * filter, a search box, and a grid over the counties.
  *
- * Filtering is local and instant because the county list is static public
- * record; nothing here needs the operator API. The county pages themselves do,
- * so the links are the prototype's paths against routes that do not exist yet.
+ * The list comes from `GET /api/v1/operators/counties` via `page.tsx`, the same
+ * read that fills the County filter, so the two can never offer different
+ * counties. Filtering stays local and instant — the whole list arrives in one
+ * response, so narrowing it needs no further requests.
  *
  * Letters no county starts with are rendered disabled rather than hidden, so
- * the row keeps a stable width and does not reflow as the search narrows.
+ * the row keeps a stable width and does not reflow as the search narrows. That
+ * set is derived from the response rather than a fixed alphabet, because the
+ * API's list is not the canonical 254 counties — see `OperatorCountiesResponse`.
  */
 
-export function CountyDirectory() {
+export function CountyDirectory({ counties }: { counties: string[] }) {
   const [letter, setLetter] = useState("ALL");
   const [term, setTerm] = useState("");
   const searchId = useId();
 
+  /** Which letters actually start a name in this response. */
+  const lettersPresent = useMemo(
+    () => new Set(counties.map((county) => county[0]?.toUpperCase())),
+    [counties],
+  );
+
   /**
-   * PERFORMANCE — INP. The grid renders all 254 counties, which is the bulk of
-   * this page's DOM. Filtering reads the *deferred* term so the input paints on
-   * the keystroke and the 254-item reconcile runs at low priority; `CountyLink`
-   * is memoised so only items entering or leaving the list do any work.
+   * PERFORMANCE — INP. The grid renders every county, which is the bulk of this
+   * page's DOM. Filtering reads the *deferred* term so the input paints on the
+   * keystroke and the reconcile runs at low priority; `CountyLink` is memoised so
+   * only items entering or leaving the list do any work.
    */
   const deferredTerm = useDeferredValue(term);
 
   const visible = useMemo(() => {
     const query = deferredTerm.trim().toLowerCase();
-    return TEXAS_COUNTIES.filter((county) => {
-      if (letter !== "ALL" && county[0].toUpperCase() !== letter) return false;
+    return counties.filter((county) => {
+      if (letter !== "ALL" && county[0]?.toUpperCase() !== letter) return false;
       if (query && !`${county} county, texas`.toLowerCase().includes(query)) {
         return false;
       }
       return true;
     });
-  }, [letter, deferredTerm]);
+  }, [counties, letter, deferredTerm]);
 
   function reset() {
     setTerm("");
@@ -62,7 +67,7 @@ export function CountyDirectory() {
         >
           {COUNTY_LETTERS.map((value) => {
             const disabled =
-              value !== "ALL" && !COUNTY_LETTERS_PRESENT.has(value);
+              value !== "ALL" && !lettersPresent.has(value);
             const active = value === letter;
             return (
               <button
@@ -105,7 +110,7 @@ export function CountyDirectory() {
 
       <p aria-live="polite" className="mx-[2px] mt-4 text-[13px] text-mv-muted">
         Showing <b className="font-bold text-mv-ink">{visible.length}</b> of{" "}
-        <b className="font-bold text-mv-ink">{TEXAS_COUNTIES.length}</b> counties
+        <b className="font-bold text-mv-ink">{counties.length}</b> counties
       </p>
 
       {visible.length > 0 ? (
@@ -140,7 +145,14 @@ const CountyLink = memo(function CountyLink({ county }: { county: string }) {
   )}`;
 
   return (
-    <li>
+    // PERFORMANCE. `content-visibility: auto` lets the browser skip layout and
+    // paint for tiles outside the viewport — with 255 of them that is most of the
+    // work this section costs. `contain-intrinsic-size` supplies the placeholder
+    // box so the scroll height is right before anything renders; every tile is
+    // exactly 45px tall (measured, uniform), and the `auto` keyword makes the
+    // browser remember the real size once a tile has been rendered. Nothing about
+    // the appearance changes — only when the offscreen ones get rendered.
+    <li className="[contain-intrinsic-size:auto_45px] [content-visibility:auto]">
       <Link
         href={href}
         className="group flex items-center gap-[10px] rounded-[11px] border border-mv-line bg-white px-[13px] py-[11px] text-sm font-medium text-mv-ink !no-underline transition-[border-color,color,box-shadow,transform] hover:-translate-y-px hover:border-mv-green hover:text-mv-green-deep hover:shadow-[0_5px_14px_rgba(47,138,102,.10)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep max-[560px]:px-[11px] max-[560px]:py-[10px] max-[560px]:text-[13px]"

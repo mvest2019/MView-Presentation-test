@@ -4,6 +4,7 @@ import { unstable_cache } from "next/cache";
 
 import {
   BLOG_TYPES,
+  CATEGORY_ORDER,
   type BlogDetails,
   type BlogListItem,
   type BlogMode,
@@ -116,23 +117,68 @@ const getCorpus = unstable_cache(
   { revalidate: REVALIDATE_SECONDS, tags: ["blog"] },
 );
 
-/** Categories present in one type, most-populous first, counted from the API. */
+/**
+ * Does this article match a free-text search?
+ *
+ * EXTRACTED so the category counts and the grid cannot disagree. They were two
+ * separate filters, and only the grid applied the search — so a search for
+ * "oil and gas production" narrowed the results to 2 while the chips still read
+ * "All (86) · Mineral Owners (48) · …", describing a corpus the visitor could no
+ * longer see.
+ */
+function matchesSearch(item: BlogListItem, term: string | undefined): boolean {
+  if (!term) return true;
+  return Boolean(
+    item.blog_title?.toLowerCase().includes(term) ||
+      item.Category?.toLowerCase().includes(term),
+  );
+}
+
+/**
+ * Categories present in one type, counted from the API and ordered to match the
+ * live site's chip row — see `CATEGORY_ORDER`.
+ *
+ * COUNTS ARE SCOPED TO THE SEARCH, not to the whole section: with a term
+ * active, each chip says how many of the MATCHING articles carry that category,
+ * and `total` is the size of the match. Deliberately NOT scoped to the selected
+ * category as well — a chip has to keep showing what it would give you if you
+ * pressed it, and scoping to the current one would zero every other chip.
+ *
+ * Anything the API returns that `CATEGORY_ORDER` does not name is appended,
+ * alphabetically, after the known chips. A new CMS category therefore appears on
+ * the page without a code change; it just does not jump the established order.
+ */
 export async function getCategoryFacets(
   mode: BlogMode,
+  search?: string,
 ): Promise<{ facets: CategoryFacet[]; total: number }> {
   const corpus = await getCorpus(mode);
+  const term = search?.trim().toLowerCase();
+  const scope = corpus.filter((item) => matchesSearch(item, term));
 
   const counts = new Map<string, number>();
-  for (const item of corpus) {
+  for (const item of scope) {
     const category = item.Category?.trim();
     if (category) counts.set(category, (counts.get(category) ?? 0) + 1);
   }
 
+  const order = CATEGORY_ORDER[mode];
+  // Unlisted categories sort after every listed one, so `order.length` is the
+  // rank for "not found" rather than -1, which would sort it to the front.
+  const rank = (category: string) => {
+    const index = order.indexOf(category);
+    return index === -1 ? order.length : index;
+  };
+
   const facets = [...counts.entries()]
     .map(([category, count]) => ({ category, count }))
-    .sort((a, b) => b.count - a.count || a.category.localeCompare(b.category));
+    .sort(
+      (a, b) =>
+        rank(a.category) - rank(b.category) ||
+        a.category.localeCompare(b.category),
+    );
 
-  return { facets, total: corpus.length };
+  return { facets, total: scope.length };
 }
 
 export interface BlogListQuery {
@@ -166,14 +212,10 @@ export async function getBlogList({
   const corpus = await getCorpus(mode);
   const term = search?.trim().toLowerCase();
 
-  const matching = corpus.filter((item) => {
-    if (category && item.Category !== category) return false;
-    if (!term) return true;
-    return (
-      item.blog_title?.toLowerCase().includes(term) ||
-      item.Category?.toLowerCase().includes(term)
-    );
-  });
+  const matching = corpus.filter(
+    (item) =>
+      (!category || item.Category === category) && matchesSearch(item, term),
+  );
 
   // Newest first — the endpoint's own order is not guaranteed to be by date.
   matching.sort(

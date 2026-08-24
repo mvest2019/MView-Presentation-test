@@ -1,4 +1,4 @@
-import { sanitizeHtml } from "./sanitize-html";
+import { decodeEntities, sanitizeHtml } from "./sanitize-html";
 
 /**
  * Turns CMS article HTML into something a table of contents can link into.
@@ -43,15 +43,19 @@ function slugify(text: string): string {
     .slice(0, 80);
 }
 
+/**
+ * Heading markup to the plain text a contents row shows.
+ *
+ * Entity decoding is `decodeEntities`, NOT a local list. This used to name six
+ * entities by hand, which left every other numeric one intact — a heading
+ * written "U.S.&#8211;Venezuela Tensions" reached React as the literal text
+ * `&#8211;`, so React escaped the ampersand and the rail displayed
+ * "U.S.&#8211;Venezuela". The body renders that heading correctly because it
+ * goes in as HTML, where the browser decodes it; only the text extracted for the
+ * TOC needed decoding, and only the shared decoder covers the whole range.
+ */
 function stripTags(html: string): string {
-  return html
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;|&#160;/gi, " ")
-    .replace(/&amp;|&#38;/gi, "&")
-    .replace(/&quot;|&#34;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&lt;|&#60;/gi, "<")
-    .replace(/&gt;|&#62;/gi, ">")
+  return decodeEntities(html.replace(/<[^>]*>/g, " "))
     .replace(/\s+/g, " ")
     .trim();
 }

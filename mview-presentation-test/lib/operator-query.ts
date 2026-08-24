@@ -74,11 +74,54 @@ function scopeRows(
   return computed;
 }
 
+/** Case and punctuation folded away, for comparing play names across sources. */
+function foldPlayName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+const foldedIndexCache = new WeakMap<object, Map<string, string>>();
+
+/**
+ * The row-data key for a play name, or `null` if this dataset has no rows for it.
+ *
+ * Needed because the play *names* and the play *rows* currently come from two
+ * different sources. `/api/v1/operators/playtypes` returns upper-case names
+ * ("PERMIAN BASIN"); the row data keys them in title case ("Permian Basin"). An
+ * exact lookup would send every option to an empty table, so names are matched
+ * with case and punctuation folded away.
+ *
+ * Folding closes the gap for three of the five API values. "EAGLE FORD SHALE"
+ * and "HAYNESVILLE/BOSSIER SHALE" have no counterpart at all in the current row
+ * data and correctly resolve to `null` — see the note in `app/operators/page.tsx`.
+ * This function stops being necessary once rows and names come from the same API.
+ */
+export function resolvePlayKey(
+  operatorsByPlay: Readonly<Record<string, Operator[]>>,
+  play: string,
+): string | null {
+  if (play === ALL_PLAYS) return null;
+  if (Object.prototype.hasOwnProperty.call(operatorsByPlay, play)) return play;
+
+  let index = foldedIndexCache.get(operatorsByPlay);
+  if (!index) {
+    index = new Map<string, string>();
+    for (const key of Object.keys(operatorsByPlay)) {
+      index.set(foldPlayName(key), key);
+    }
+    foldedIndexCache.set(operatorsByPlay, index);
+  }
+
+  return index.get(foldPlayName(play)) ?? null;
+}
+
 function computeScopeRows(
   operatorsByPlay: Readonly<Record<string, Operator[]>>,
   play: string,
 ): Operator[] {
-  if (play !== ALL_PLAYS) return operatorsByPlay[play] ?? [];
+  if (play !== ALL_PLAYS) {
+    const key = resolvePlayKey(operatorsByPlay, play);
+    return key ? operatorsByPlay[key] : [];
+  }
 
   const best = new Map<string, Operator>();
   for (const rows of Object.values(operatorsByPlay)) {

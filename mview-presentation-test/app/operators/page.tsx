@@ -5,10 +5,12 @@ import { Breadcrumbs } from "@/app/_components/breadcrumbs";
 import {
   displayLgClass,
   displaySmClass,
-  eyebrowClass,
   h3Class,
   inlineLink,
 } from "@/app/_components/typography";
+
+import { getOperatorCounties, getOperatorPlayTypes } from "@/lib/operator-api";
+import { getVisitorId } from "@/lib/visitor-id";
 
 import { CountyDirectory } from "./_components/county-directory";
 import { OperatorPage } from "./operator-page";
@@ -93,21 +95,25 @@ const BREADCRUMB_JSON_LD = {
 /** The three operator feature cards (`.psvc-card`), unchanged from the design. */
 const FEATURE_CARDS = [
   {
-    href: "/operators/compare-production",
+    // Built. `/features/` because the destination is a tool, not one operator's
+    // record — see the note at the top of that route.
+    href: "/features/compare-operator-production",
     icon: "▮▮",
-    title: "Compare Operator Production",
+    title: "Compare Operators Performance",
     body: "Put 2–4 operators side by side on reported production — real figures, ranked within their play.",
     cta: "Open the comparison →",
   },
   {
-    href: "/operators/compare-statistics",
+    // Built, alongside its sibling under `/features/`.
+    href: "/features/compare-operator-statistics",
     icon: "≡",
     title: "Compare Operator Statistics",
     body: "Company statistics side by side — leases, counties, rank, and production intensity.",
     cta: "Open the comparison →",
   },
   {
-    href: "/operators/presentations",
+    // Built. No "compare" in the slug — this one is a library, not a comparison.
+    href: "/features/operator-presentations",
     icon: "▣",
     title: "Operator Presentations",
     body: "A clean, shareable one-page profile of any operator — built from the public record.",
@@ -115,7 +121,67 @@ const FEATURE_CARDS = [
   },
 ];
 
-export default function OperatorsRoute() {
+/**
+ * The Play Type filter's options.
+ *
+ * Fetched here rather than in the dropdown for two reasons. The operator API
+ * sends no `Access-Control-Allow-Origin`, so a browser fetch is blocked by CORS
+ * and the call has to happen server-side regardless. And doing it here means the
+ * options are already in the HTML: no client request, no spinner, no layout shift
+ * as the list arrives, and the route stays prerendered.
+ *
+ * The failure is swallowed *here*, not in the service — `getOperatorPlayTypes`
+ * throws so nothing is hidden, and this boundary decides that a filter which
+ * cannot load its options must not take the page down with it. The dropdown then
+ * renders with just its default option and every other filter keeps working.
+ * Measured upstream reliability makes this a real path, not a formality: one
+ * connection timeout and one 522 in four cold calls.
+ */
+async function loadPlayTypes(): Promise<string[]> {
+  try {
+    return await getOperatorPlayTypes();
+  } catch (error) {
+    console.error("[operators] play types unavailable:", error);
+    return [];
+  }
+}
+
+/**
+ * County names for the filter and the browse grid — the same read serves both,
+ * so the two can never disagree about which counties exist.
+ *
+ * Degrades the same way as the play types: an empty list leaves the County filter
+ * with just its default option and the browse grid with its own empty state, and
+ * the rest of the page is unaffected.
+ */
+async function loadCounties(): Promise<string[]> {
+  try {
+    return await getOperatorCounties();
+  } catch (error) {
+    console.error("[operators] counties unavailable:", error);
+    return [];
+  }
+}
+
+export default async function OperatorsRoute() {
+  // Both reads are server-side: the play types because the API blocks browser
+  // origins, the visitor id because `cookies()` is server-only. Handing the id to
+  // the client lets it build the complete search payload; the route handler still
+  // re-asserts it from the cookie so it cannot be spoofed.
+  //
+  // THIS ROUTE IS INTENTIONALLY DYNAMIC. Reading a cookie opts it out of static
+  // prerendering, which is a deliberate trade (Akshay, 2026-08-11): the client
+  // needs the visitor id to build the exact contract payload. It costs little —
+  // the play types still come from `unstable_cache`, so a request adds no upstream
+  // call, only the render. If someone later moves the cookie read to the client to
+  // win the prerender back, that is a real option, not a bug fix; do not "restore"
+  // static by dropping the id from the payload.
+  const [playTypes, counties, visitorId] = await Promise.all([
+    loadPlayTypes(),
+    loadCounties(),
+    getVisitorId(),
+  ]);
+
   return (
     <div className="pb-16 pt-[18px] max-[767px]:pb-11">
       <script
@@ -134,18 +200,21 @@ export default function OperatorsRoute() {
         />
 
         <div className="pt-7">
-          <h1 className={displayLgClass}>Know Your Operators</h1>
+          <h1 className={displayLgClass}>Operator Directory</h1>
           <p className="mt-[6px] max-w-[640px] text-[15.5px] text-mv-muted">
             Search, filter, and rank Texas oil &amp; gas operators by reported
             production, activity, and coverage.
           </p>
         </div>
 
-        <OperatorPage />
+        <OperatorPage
+          playTypes={playTypes}
+          counties={counties}
+          visitorId={visitorId}
+        />
 
-        {/* The hrefs are the paths the prototype points at. None of those routes
-            exists yet — same situation as most of `site-nav.ts`, where every path
-            but the built ones is a placeholder. */}
+        {/* All three routes are built, each under `/features/` — see the note at
+            the top of those files for why that section rather than `/operators/`. */}
         <div className="mt-[18px] grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] items-stretch gap-4">
           {FEATURE_CARDS.map((card) => (
             <Link
@@ -166,7 +235,6 @@ export default function OperatorsRoute() {
         </div>
 
         <section className="mt-[46px]">
-          <div className={eyebrowClass}>By county · public records</div>
           <h2 className={`${displaySmClass} mt-[7px]`}>
             Browse operators by county
           </h2>
@@ -175,7 +243,7 @@ export default function OperatorsRoute() {
             Filter by letter or search to jump straight to a county — all 254.
           </p>
 
-          <CountyDirectory />
+          <CountyDirectory counties={counties} />
         </section>
 
         {/* The design's `.notice.slate` — the page's one conversion prompt. */}

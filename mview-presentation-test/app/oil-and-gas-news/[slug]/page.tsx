@@ -1,0 +1,22 @@
+import type { Metadata } from "next";
+
+import {
+  ArticlePage,
+  buildArticleMetadata,
+} from "../../blogs/_components/article-page";
+
+/** A News story. Blog articles live at `/blogs/[slug]`. */
+
+export async function generateMetadata({
+  params,
+}: PageProps<"/oil-and-gas-news/[slug]">): Promise<Metadata> {
+  const { slug } = await params;
+  return buildArticleMetadata(slug);
+}
+
+export default async function NewsArticleRoute({
+  params,
+}: PageProps<"/oil-and-gas-news/[slug]">) {
+  const { slug } = await params;
+  return <ArticlePage slug={slug} section="news" />;
+}
