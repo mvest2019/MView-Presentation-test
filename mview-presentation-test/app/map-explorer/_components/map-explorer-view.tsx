@@ -344,25 +344,23 @@ const CLUSTER_CLEAR_ZOOM = 3;
  * state is a handful of cells and the answer is not worth asking for, so
  * nothing is requested until the map is at least that close.
  */
+/**
+ * The zoom level as the reader sees it.
+ *
+ * `view.zoom` is fractional between levels, and the readout under the zoom
+ * buttons rounds it. Every band this file switches on — where the bubbles
+ * split, where the wells appear — has to round the same way, or the map
+ * disagrees with the number it is showing: at `view.zoom` 9.6 the readout said
+ * Zoom 10 while `9.6 >= 10` was false, so no wells were drawn until the next
+ * step, and the wells looked as though they began at 11.
+ */
+function zoomLevel(view: { zoom?: number } | null | undefined): number {
+  return Math.round(view?.zoom ?? 0);
+}
+
 function clusterZoomTier(zoom: number): number {
   return CLUSTER_ZOOM_STEPS.filter((step) => zoom >= step).length;
 }
-
-/*
- * Where a click on a bubble lands.
- *
- * One step down the ladder each time: a cluster opens into its sub-clusters,
- * and a sub-cluster opens into the wells themselves. The first scale sits
- * inside the second cluster band, the second past the well zoom.
- *
- * The ladder is a halving per zoom level off the opening 1:7,262,011 at zoom
- * 5 — so 900,000 is zoom 8 and 225,000 is zoom 10. 450,000 was the first
- * attempt at "past the well zoom" and lands on zoom 9, one short, which is why
- * a sub-cluster click drew more bubbles instead of wells.
- */
-const CLUSTER_ZOOM_SCALE = 900_000;
-
-const WELL_ZOOM_SCALE = 200_000;
 
 /**
  * How far outside the loaded extent counts as the same ground, in degrees.
@@ -1058,7 +1056,7 @@ export function MapExplorerView() {
 
     // Too far out to be worth asking — but what is drawn stays drawn.
     // Clearing is the zoom watcher's job, and only much further out.
-    if (clusterZoomTier(view.zoom) === 0) return;
+    if (clusterZoomTier(zoomLevel(view)) === 0) return;
 
     const { xmin, ymin, xmax, ymax } = view.extent;
     const request = ++clusterRequestRef.current;
@@ -1792,7 +1790,9 @@ export function MapExplorerView() {
             if (cancelled || !view) return;
             setReadout({
               scale: view.scale,
-              zoom: view.zoom,
+              /* Rounded here, so everything reading the readout agrees with
+                 the number printed under the zoom buttons. */
+              zoom: zoomLevel(view),
               center: {
                 longitude: view.center.longitude,
                 latitude: view.center.latitude,
@@ -1812,7 +1812,7 @@ export function MapExplorerView() {
           // A filter owns the map until it is cleared.
           if (filteredRef.current) return;
 
-          const zoom = view?.zoom ?? 0;
+          const zoom = zoomLevel(view);
 
           if (zoom < CLUSTER_CLEAR_ZOOM) {
             clearTimeout(clusterTimer);
@@ -2011,7 +2011,7 @@ export function MapExplorerView() {
            * test. Only when there is no hover — a tap, where there never was
            * one — does it ask the layer itself.
            */
-          if (!activeToolRef.current && view && view.zoom >= WELL_ZOOM) {
+          if (!activeToolRef.current && view && zoomLevel(view) >= WELL_ZOOM) {
             const wellLayer = wellLayerRef.current;
             if (!wellLayer) return;
 
@@ -2074,19 +2074,29 @@ export function MapExplorerView() {
            * belongs to whichever one was hit.
            */
           if (!activeToolRef.current) {
-            if (!view || view.zoom >= WELL_ZOOM) return;
+            if (!view || zoomLevel(view) >= WELL_ZOOM) return;
 
             const index = clusterAt(event.x, event.y);
             if (index !== -1) {
               event.stopPropagation();
               const cluster = clustersRef.current[index];
+              /*
+               * A level, not a scale.
+               *
+               * A cluster opens into its sub-clusters and a sub-cluster opens
+               * into the wells, so where each click lands is a zoom level —
+               * the band the bubbles change at. Naming a scale meant naming a
+               * number between two levels: 1:200,000 sits between zoom 10 and
+               * zoom 11, the view snapped to the nearer level, and a
+               * sub-cluster click landed a level past where the wells appear.
+               */
               view
                 .goTo({
                   center: cluster.at,
-                  scale:
-                    view.zoom >= CLUSTER_ZOOM_STEPS[1]
-                      ? WELL_ZOOM_SCALE
-                      : CLUSTER_ZOOM_SCALE,
+                  zoom:
+                    zoomLevel(view) >= CLUSTER_ZOOM_STEPS[1]
+                      ? WELL_ZOOM
+                      : CLUSTER_ZOOM_STEPS[1],
                 })
                 .catch(ignoreInterrupted);
             }
@@ -2350,10 +2360,10 @@ export function MapExplorerView() {
           })
           .catch(() => {});
 
-        if (view.zoom >= WELL_ZOOM) {
+        if (zoomLevel(view) >= WELL_ZOOM) {
           loadWells();
         } else {
-          clusterTierRef.current = clusterZoomTier(view.zoom);
+          clusterTierRef.current = clusterZoomTier(zoomLevel(view));
           loadClusters();
         }
       } catch {
