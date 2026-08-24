@@ -147,10 +147,17 @@ async function post(
    * POST, so that stays the default and no existing caller changed.
    */
   method: "POST" | "PUT" = "POST",
+  /*
+   * Extra request headers. Only the password-reset request uses this, to send an
+   * `Origin`/`Referer` a backend might build its emailed link from — see the note
+   * in `requestPasswordReset`. A server-to-server `fetch` sends neither by
+   * default, so if the API does read them it currently sees nothing.
+   */
+  headers: Record<string, string> = {},
 ): Promise<{ status: number; body: unknown }> {
   const response = await fetch(`${authBase()}${path}`, {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(payload),
     cache: "no-store",
   });
@@ -814,10 +821,43 @@ export async function requestPasswordReset(
   email: string,
 ): Promise<VerificationResult> {
   try {
+    /*
+     * ─────────────────────────────────────────────────────────────────────────
+     * THE EMAILED LINK POINTS AT PRODUCTION, AND THIS MAY NOT FIX IT.
+     *
+     * Reported 2026-08-19: the reset email that mview-dev-api sends contains a
+     * `https://mineralview.com/...` link, so testing the flow on the preview
+     * deployment means hand-editing the host out of the URL.
+     *
+     * THE LINK IS COMPOSED ENTIRELY BY THE BACKEND. Our request carries the
+     * address and nothing else — same as the live site's — and the response hands
+     * back no token and no URL, just `{"status_code":200,"data":"SUCCESS"}`. So
+     * there is nothing here to point anywhere; the host is a setting on the API.
+     *
+     * WHAT THIS SENDS, AND WHY IT IS A GUESS. `_baseurl` follows the endpoint's
+     * own naming (`_emailid`, `_rtoken`, `_newpwd`), and `Origin`/`Referer` are
+     * what a backend would read if it derived the host from the caller. Neither
+     * is confirmed: probed with EIGHT candidate field names — `_baseurl`,
+     * `_redirecturl`, `_url`, `redirectUrl`, `baseUrl`, `origin`, `callbackUrl`,
+     * `frontendUrl` — and every one returned the identical `SUCCESS`, because the
+     * endpoint ignores unknown fields silently. The response therefore cannot
+     * tell us whether any of them lands, and the only place the effect shows is
+     * the delivered email, which cannot be read from here.
+     *
+     * SO: HARMLESS IF IGNORED, correct the moment the backend honours either.
+     * Do NOT read this as the bug being fixed — CHECK A REAL EMAIL. If the link
+     * still says mineralview.com, the ask is for the backend team: make the
+     * reset-link base an environment setting, or tell us the field name and we
+     * will send that instead of guessing.
+     * ─────────────────────────────────────────────────────────────────────────
+     */
+    const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
+
     const { status, body } = await post(
       "/User/GenerateResetPassowrdToken",
-      { _emailid: email },
+      { _emailid: email, ...(siteUrl ? { _baseurl: siteUrl } : {}) },
       "PUT",
+      siteUrl ? { Origin: siteUrl, Referer: `${siteUrl}/reset-password` } : {},
     );
 
     if (upstreamDown(status, body)) {

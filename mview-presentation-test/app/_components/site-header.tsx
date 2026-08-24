@@ -304,42 +304,80 @@ export function SiteHeader({ user }: { user: SessionUser | null }) {
             )}
           </nav>
 
-          {/* `ml-auto` ONLY below 1140px. Above it the nav's `mx-auto` already
-              pushes this block to the right edge, and a third auto margin would
-              join the split and drag the nav left of centre. Below 1140 the nav
-              is `hidden`, so its margins stop existing — without this the actions
-              and the burger would bunch up against the logo instead of sitting
-              at the right edge. */}
-          <div className="flex items-center gap-[14px] max-[1139px]:ml-auto max-[767px]:gap-2">
+          {/*
+            ABOVE 1140px this block is sized by its content and the nav's
+            `mx-auto` pushes it to the right edge. A third auto margin here would
+            join that split and drag the nav left of centre, so it gets none.
+
+            BELOW 1140px it becomes `flex-1` INSTEAD OF `ml-auto` (Ryan,
+            2026-08-19: the burger "far right, but on its own"). The nav is hidden
+            at that width, so its margins stop existing and this block is all that
+            is left beside the logo. `ml-auto` used to shunt the whole group —
+            Sign in, Free account and the burger — hard against the right edge as
+            one cluster, which is what put the burger tight against the green
+            button with 8px between them.
+
+            `flex-1` makes the block span the bar instead, so its contents start
+            beside the logo and the burger's own `ml-auto` (below) can push only
+            itself to the edge. The CTA therefore reads as part of the logo group
+            and the menu control stands alone.
+          */}
+          <div className="flex items-center gap-[14px] max-[1139px]:flex-1 max-[767px]:gap-2">
             {/* The design's `data-auth` swap: signed out shows the two CTAs,
                 signed in replaces them with the portal link and the account
                 menu. Rendered from a server-read cookie rather than toggled by a
                 class on `<body>` as the prototype does, so the correct state is
                 in the first HTML and never flashes the wrong one. */}
+            {/*
+              EVERYTHING HERE HIDES AT 1139px — the bar becomes logo + burger and
+              nothing else (Ryan, 2026-08-19, with a reference image of exactly
+              that: wordmark left, ☰ right, empty between).
+
+              ONE BREAKPOINT, AND IT IS THE BURGER'S OWN. These were a mix of
+              `max-[767px]:hidden` and no breakpoint at all, which is why a phone
+              showed logo + Free account + ☰ and an iPad showed logo + Sign in +
+              Free account + ☰. Tying them to 1139 gives a single rule with no
+              in-between state: if the burger is visible, the bar carries nothing
+              but the logo and the burger, and every action lives in the sheet.
+
+              THE SHEET HAD TO GAIN "Free account" FOR THIS TO BE SAFE — it
+              already had Find your record and Sign in, but not register, so
+              hiding this link would have left no route to sign-up on a phone at
+              all. See the drawer below.
+            */}
             {user ? (
               <>
                 <Link
                   href="/portal"
-                  className={`${ctaPrimary} whitespace-nowrap max-[767px]:hidden`}
+                  className={`${ctaPrimary} whitespace-nowrap max-[1139px]:hidden`}
                 >
                   Go to your portal →
                 </Link>
-                <AccountMenu user={user} />
+                {/* Wrapped rather than given a class of its own: `AccountMenu` owns
+                    its own popup positioning, and a display switch on the wrapper
+                    cannot disturb it. The sheet carries the portal link and Sign
+                    out, so nothing is stranded by hiding this. */}
+                <span className="max-[1139px]:hidden">
+                  <AccountMenu user={user} />
+                </span>
               </>
             ) : (
               <>
                 <Link
                   href="/login"
-                  className="whitespace-nowrap text-sm font-semibold text-mv-slate no-underline hover:text-mv-green-deep hover:no-underline max-[767px]:hidden"
+                  className="whitespace-nowrap text-sm font-semibold text-mv-slate no-underline hover:text-mv-green-deep hover:no-underline max-[1139px]:hidden"
                 >
                   Sign in
                 </Link>
 
                 {/* `.mk-actions a` is nowrap in the prototype — without it "Free
-                    account" breaks onto two lines and pushes the bar off 64px. */}
+                    account" breaks onto two lines and pushes the bar off 64px.
+                    The phone-sized padding overrides that used to sit here went
+                    with the link itself: it is not rendered at those widths any
+                    more, so shrinking it for them described nothing. */}
                 <Link
                   href="/register"
-                  className={`${ctaMint} whitespace-nowrap max-[767px]:px-[10px] max-[767px]:py-2 max-[767px]:text-xs`}
+                  className={`${ctaMint} whitespace-nowrap max-[1139px]:hidden`}
                 >
                   Free account
                 </Link>
@@ -354,7 +392,12 @@ export function SiteHeader({ user }: { user: SessionUser | null }) {
               onClick={() => setDrawerOpen((open) => !open)}
               aria-label={drawerOpen ? "Close menu" : "Menu"}
               aria-expanded={drawerOpen}
-              className="hidden shrink-0 cursor-pointer rounded-lg border border-mv-line px-[10px] py-[7px] text-base leading-none text-mv-slate max-[1139px]:block"
+              /* `ml-auto` is what separates it from the CTAs: the actions block is
+                 `flex-1` at this width, so this margin eats the leftover space and
+                 leaves the burger alone at the right edge. `block` rather than
+                 `flex` would kill the margin's effect in a flex row, so the
+                 display switch stays `block` and the margin does the work. */
+              className="ml-auto hidden shrink-0 cursor-pointer rounded-lg border border-mv-line px-[10px] py-[7px] text-base leading-none text-mv-slate max-[1139px]:block"
             >
               {drawerOpen ? "✕" : "☰"}
             </button>
@@ -436,9 +479,30 @@ export function SiteHeader({ user }: { user: SessionUser | null }) {
               <DrawerSignOut onDone={closeDrawer} />
             </>
           ) : (
-            <SheetLink href="/login" onNavigate={closeDrawer}>
-              Sign in
-            </SheetLink>
+            <>
+              <SheetLink href="/login" onNavigate={closeDrawer}>
+                Sign in
+              </SheetLink>
+              {/*
+                "Free account" MOVED HERE from the bar (Ryan, 2026-08-19). It has
+                to exist somewhere: with the bar reduced to logo + burger there is
+                otherwise no route to `/register` on a phone or an iPad at all —
+                the sheet already carried Find your record and Sign in, but never
+                sign-up.
+
+                Rendered as the mint CTA rather than a plain `SheetLink` so it
+                still reads as the funnel step it is, and last so the two account
+                actions sit together under the navigation rather than one being
+                buried among the links.
+              */}
+              <Link
+                href="/register"
+                onClick={closeDrawer}
+                className={`${ctaMint} mt-2 w-full text-center`}
+              >
+                Free account
+              </Link>
+            </>
           )}
         </div>
       )}
