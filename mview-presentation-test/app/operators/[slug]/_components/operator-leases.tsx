@@ -228,8 +228,8 @@ export function OperatorLeases({
                     ["Lease Name", null, "left"],
                     ["Lease Number", null, "left"],
                     ["County", null, "left"],
-                    ["Oil Production", "bbl", "right"],
-                    ["Gas Production", "Mcf", "right"],
+                    ["Oil Produced", "bbl", "right"],
+                    ["Gas Produced", "Mcf", "right"],
                   ] as const
                 ).map(([label, unit, align]) => (
                   <th

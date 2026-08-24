@@ -57,10 +57,18 @@ export interface CountyProductionRecord {
   county: string;
   /** Barrels. */
   oil: number;
+  /** The figure exactly as the endpoint wrote it, e.g. `416.192`. */
+  oilText: string;
+  /** The unit the endpoint named for it, e.g. `MMBBL`. Empty if it named none. */
+  oilUnit: string;
   /** Mcf. */
   gas: number;
-  /** Barrels of oil equivalent. */
+  gasText: string;
+  gasUnit: string;
+  /** Barrels of oil equivalent, as the endpoint reports it. */
   boe: number;
+  boeText: string;
+  boeUnit: string;
   /** The API's own percentage — not recomputed here. */
   shareOfOperator: number;
 }
@@ -103,10 +111,33 @@ function optional(value: unknown): string | null {
 function numeric(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
-    const parsed = Number(value.replace(/,/g, ""));
+    /* STRIPPED OF EVERYTHING BUT THE NUMBER, not just commas. This endpoint sends
+       `"416.192 (MMBBL)"`, and `Number("416.192 (MMBBL)")` is NaN — so every county's
+       oil, gas and BOE was falling through to the zero below and the whole table read
+       0. Measured on Diamondback: Martin, Midland, Pecos and Reeves all showed 0
+       against 416.192, 178.359, 91.571 and 73.601 MMBBL. */
+    const parsed = Number(value.replace(/[^0-9.\-]/g, ""));
     if (Number.isFinite(parsed)) return parsed;
   }
   return 0;
+}
+
+/**
+ * The endpoint's own rendering of a volume, split from the unit it named.
+ *
+ * `"416.192 (MMBBL)"` -> `{ text: "416.192", unit: "MMBBL" }`. Both are carried to the
+ * table rather than reformatted: the figure is printed exactly as sent, and the column
+ * is headed with the unit the response actually used. The alternative was what was
+ * there — a hardcoded `bbl` over a number the API measured in MMBBL, which is a
+ * thousandfold mislabel even once the parse is fixed.
+ */
+function volumeText(value: unknown): { text: string; unit: string } {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return { text: value.toLocaleString("en-US"), unit: "" };
+  }
+  if (typeof value !== "string") return { text: "", unit: "" };
+  const match = /^\s*([^()]*?)\s*(?:\(([^)]*)\))?\s*$/.exec(value);
+  return { text: (match?.[1] ?? value).trim(), unit: (match?.[2] ?? "").trim() };
 }
 
 /**
@@ -214,11 +245,20 @@ export async function fetchCountyProduction(
 
   const rows: CountyProductionRecord[] = list.map((entry) => {
     const record = entry as Record<string, unknown>;
+    const oil = volumeText(record.total_production_oil);
+    const gas = volumeText(record.total_production_gas);
+    const boe = volumeText(record.total_production_boe);
     return {
       county: text(record.county),
       oil: numeric(record.total_production_oil),
+      oilText: oil.text,
+      oilUnit: oil.unit,
       gas: numeric(record.total_production_gas),
+      gasText: gas.text,
+      gasUnit: gas.unit,
       boe: numeric(record.total_production_boe),
+      boeText: boe.text,
+      boeUnit: boe.unit,
       shareOfOperator: numeric(record.county_share_of_operator),
     };
   });

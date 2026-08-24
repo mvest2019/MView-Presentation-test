@@ -55,7 +55,6 @@ import { usePresentations } from "./_components/use-presentations";
 const CONTROL_BASE =
   "h-[46px] w-full rounded-[11px] border bg-white px-[13px] text-sm text-mv-ink outline-none transition-[border-color,box-shadow] placeholder:text-mv-placeholder focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.15)]";
 
-const CONTROL_CLASS = `${CONTROL_BASE} border-mv-line focus-visible:border-mv-green`;
 
 /** Past this many characters the summary is clamped and offered a "Read more". */
 const SUMMARY_CLAMP = 130;
@@ -233,13 +232,14 @@ export function PresentationsPage() {
           <Field label="Operator" Icon={UserRound}>
             {(id) => (
               <>
+                {/* No `className`: this control carries the compare pages' own field
+                    chrome now, so passing the bar's input classes would fight it. */}
                 <OperatorSelect
                   id={id}
                   value={form.operator}
                   onChange={(operator, operatorNumber) =>
                     setForm((f) => ({ ...f, operator, operatorNumber }))
                   }
-                  className={CONTROL_CLASS}
                 />
                 {/* Reserved, so this column is exactly as tall as the date ones. */}
                 <p aria-hidden="true" className={MESSAGE_ROW} />

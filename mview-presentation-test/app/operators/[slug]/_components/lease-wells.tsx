@@ -149,8 +149,8 @@ export function LeaseWells({
                   ["Well name", null, "left"],
                   ["Status", null, "left"],
                   ["County", null, "left"],
-                  ["Oil Production", "bbl", "right"],
-                  ["Gas Production", "Mcf", "right"],
+                  ["Oil Produced", "bbl", "right"],
+                  ["Gas Produced", "Mcf", "right"],
                   ["Production start", null, "left"],
                 ] as const
               ).map(([label, unit, align]) => (

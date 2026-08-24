@@ -441,10 +441,15 @@ export default async function OperatorDetailRoute({
             Checked on the server, so the section produces no markup at all. */}
         {whatChangedConfigured() ? (
           <section className="pt-[26px]">
-            <SectionHead title="What changed" />
-            <DeferredSection minHeight={520} label="What changed">
-              <OperatorWhatChanged operatorNumber={operator.operatorNumber} />
-            </DeferredSection>
+            {/* The heading goes IN, rather than above: the section's Refresh button has
+                to sit on its line, and only the component that owns the panel's state
+                can place it there. `DeferredSection` moved inside with it — around the
+                panel alone, so the heading paints immediately and the request still
+                waits for the reader. */}
+            <OperatorWhatChanged
+              operatorNumber={operator.operatorNumber}
+              heading={<SectionHead title="What changed" />}
+            />
           </section>
         ) : null}
 
@@ -518,7 +523,7 @@ export default async function OperatorDetailRoute({
                 {/* Printed exactly as the API formats them, units included. The
                     fixture's raw totals are the fallback when the read failed. */}
                 <PanelRow
-                  label="Oil production"
+                  label="Oil Produced"
                   value={
                     operator.oilProduced ??
                     `${formatCount(operator.oilTotal)} bbl`
@@ -526,7 +531,7 @@ export default async function OperatorDetailRoute({
                   numeric
                 />
                 <PanelRow
-                  label="Gas production"
+                  label="Gas Produced"
                   value={
                     operator.gasProduced ??
                     `${formatCount(operator.gasTotal)} Mcf`
@@ -544,7 +549,7 @@ export default async function OperatorDetailRoute({
                   />
                 )}
                 <PanelRow
-                  label="BOE (15:1)"
+                  label="BOE Produced (15:1)"
                   value={
                     operator.boeProduced ??
                     `${formatCount(operator.boeTotal)} BOE`
@@ -744,8 +749,18 @@ function ConditionTile({ card }: { card: ConditionCard }) {
             {card.window}
           </span>
         </span>
+
+        {/* Inside the same wrapping row, so it lands in the space the chip leaves
+            rather than on a line of its own. See `footInline`. */}
+        {card.footInline ? (
+          <span className="text-[12px] font-normal text-mv-muted">
+            {card.foot}
+          </span>
+        ) : null}
       </p>
-      <p className="mt-1 text-[12px] text-mv-muted">{card.foot}</p>
+      {card.footInline ? null : (
+        <p className="mt-1 text-[12px] text-mv-muted">{card.foot}</p>
+      )}
     </div>
   );
 }
