@@ -58,7 +58,22 @@ const TABLE_LABELS = [
 const blank = (labels: string[]) =>
   labels.map((label) => ({ label, value: "—" }));
 
-export function PermitSummary({ well }: { well: SelectedWell }) {
+export function PermitSummary({
+  well,
+  printRef,
+  onReady,
+}: {
+  well: SelectedWell;
+  /**
+   * The filing itself, for the Export button in the header above.
+   *
+   * Held by the panel rather than printed from here, because the button that
+   * prints it is not in this component — see `print-summary.ts`.
+   */
+  printRef?: React.Ref<HTMLDivElement>;
+  /** Whether there is a filing worth printing. */
+  onReady?: (ready: boolean) => void;
+}) {
   /*
    * Four states, not three flags: waiting, a filing, no filing, or a failure.
    *
@@ -82,9 +97,11 @@ export function PermitSummary({ well }: { well: SelectedWell }) {
       .then((answer) => {
         if (cancelled) return;
         setState(answer ? { kind: "ready", permit: answer } : { kind: "none" });
+        onReady?.(answer !== null);
       })
       .catch((failure: unknown) => {
         if (cancelled) return;
+        onReady?.(false);
         setState({
           kind: "error",
           message:
@@ -97,6 +114,9 @@ export function PermitSummary({ well }: { well: SelectedWell }) {
     return () => {
       cancelled = true;
     };
+    // `onReady` is the panel's own setter and stable across renders; listing it
+    // would refetch the filing every time the panel re-rendered.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [well.api]);
 
   const loading = state.kind === "loading";
@@ -133,7 +153,10 @@ export function PermitSummary({ well }: { well: SelectedWell }) {
     <div className="relative">
       {/* The filing blurs behind one message while it is being fetched, as the
           completion record does. */}
+      {/* The ref sits here, inside the veil rather than around it: the PDF is
+          of the filing, not of the spinner that was over it. */}
       <div
+        ref={printRef}
         aria-busy={loading}
         className={loading ? "pointer-events-none select-none blur-[2px]" : ""}
       >
@@ -223,6 +246,10 @@ export function PermitSummary({ well }: { well: SelectedWell }) {
           <div className="mt-3">
             <AiSummary
               api={well.api}
+              endpoint="/api/permit-summary"
+              caption="written from this permit's own fields"
+              loadingLabel="Reading the permit…"
+
               title={
                 fields
                   ? `${fields.leaseWell[0].value} · ${fields.header.wellNumber}`

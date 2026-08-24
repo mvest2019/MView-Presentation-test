@@ -4,13 +4,17 @@ import { RefreshCw, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 
 /*
- * The written read on a permit, generated from the filing itself.
+ * The written read on one of a well's records, generated from the record itself.
  *
- * Written by the model, from the filing and nothing else.
+ * Written by the model, from that record and nothing else.
  *
- * The page posts the API number to `/api/permit-summary`; that route reads the
- * permit, hands it to the model and returns what came back — so the key stays
- * on the server and the summary is of the record as the service holds it.
+ * One card, both tabs: the permit summary and the completion summary are the
+ * same thing about different records, so the difference between them is which
+ * route this posts to. `/api/permit-summary` reads the filing,
+ * `/api/completion-summary` reads the completion — either way the route reads
+ * the record, hands it to the model and returns what came back, so the key
+ * stays on the server and the summary is of the record as the service holds
+ * it.
  *
  * Labelled and dated, because that is the difference between a summary and a
  * claim. When the model cannot be reached the card says so rather than writing
@@ -51,12 +55,21 @@ type State =
 
 export function AiSummary({
   api,
+  endpoint,
+  caption,
+  loadingLabel,
   title,
   context,
 }: {
   /** The well the summary is of. */
   api: string;
-  /** Its name, for the card's own header. */
+  /** Which record to read — the route that fetches it and writes the summary. */
+  endpoint: string;
+  /** What the card says it is written from, beside the heading. */
+  caption: string;
+  /** What it says while the model is reading. */
+  loadingLabel: string;
+  /** The record's name, for the card's own header. */
   title: string;
   /** The one-line description under it. */
   context: string;
@@ -70,7 +83,7 @@ export function AiSummary({
 
     let cancelled = false;
 
-    fetch("/api/permit-summary", {
+    fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ api }),
@@ -110,7 +123,7 @@ export function AiSummary({
     return () => {
       cancelled = true;
     };
-  }, [api, attempt]);
+  }, [api, endpoint, attempt]);
 
   const loading = state.kind === "idle" || state.kind === "loading";
   const findings = state.kind === "ready" ? (state.summary.findings ?? []) : [];
@@ -128,9 +141,7 @@ export function AiSummary({
         <h2 className="text-[14.5px] font-bold leading-none text-mv-ink">
           AI Summary
         </h2>
-        <p className="text-[11.5px] leading-none text-mv-muted">
-          written from this permit&rsquo;s own fields
-        </p>
+        <p className="text-[11.5px] leading-none text-mv-muted">{caption}</p>
       </div>
 
       <div className="rounded-xl border border-mv-line bg-white">
@@ -185,7 +196,7 @@ export function AiSummary({
               aria-hidden="true"
               className="h-[15px] w-[15px] shrink-0 animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
             />
-            Reading the permit…
+            {loadingLabel}
           </p>
         )}
 
@@ -195,7 +206,7 @@ export function AiSummary({
               {state.message}
             </p>
             <p className="mt-[6px] text-[11.5px] leading-snug text-mv-muted">
-              The filing above is unaffected — it comes from the map service,
+              The record above is unaffected — it comes from the map service,
               not from here.
             </p>
           </div>
@@ -253,7 +264,7 @@ export function AiSummary({
             <p className="border-t border-mv-line bg-[#fafbfa] px-4 py-[12px] text-[11px] leading-[1.6] text-mv-muted">
               <span className="font-bold text-mv-slate">Basis.</span>{" "}
               {state.summary.basis ??
-                "Written from the permit record shown above."}{" "}
+                "Written from the record shown above."}{" "}
               Generated text, not advice — check any figure against the filing
               before relying on it.
             </p>

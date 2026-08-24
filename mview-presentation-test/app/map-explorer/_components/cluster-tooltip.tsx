@@ -25,11 +25,16 @@ const MIX_COLOURS = {
 type ClusterTooltipProps = {
   cluster: WellCluster;
   /**
-   * Whether clicking still opens the area. Only on the first cluster level —
-   * past that the click has nowhere useful left to take you, so the card does
-   * not offer it.
+   * What a click on this bubble does, so the card can say so.
+   *
+   * The two bubble levels do different things: the first opens the area into
+   * its sub-clusters, the second zooms past them to the wells themselves. Both
+   * are worth saying — a sub-cluster used to offer nothing at all, which read
+   * as a dead bubble when in fact it was the click that reaches the wells.
+   *
+   * Null past the well band, where there are no bubbles left to click.
    */
-  canOpen: boolean;
+  action: "area" | "wells" | null;
   /** Screen position of the bubble's top edge, in view-container pixels. */
   at: { x: number; y: number };
   /** The bubble's diameter, so the card can sit under it when it has to. */
@@ -49,7 +54,7 @@ const CARD_WIDTH = 228;
 
 export function ClusterTooltip({
   cluster,
-  canOpen,
+  action,
   at,
   bubble,
 }: ClusterTooltipProps) {
@@ -139,9 +144,11 @@ export function ClusterTooltip({
           ))}
         </dl>
 
-        {canOpen && (
+        {action && (
           <div className="border-t border-mv-line px-[14px] py-[8px] text-[11px] font-semibold leading-none text-mv-green-deep">
-            Click to open this area
+            {action === "area"
+              ? "Click to open this area"
+              : "Click to zoom in and show the wells"}
           </div>
         )}
       </div>
