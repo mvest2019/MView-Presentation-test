@@ -7,7 +7,6 @@ import {
   ZoomIn,
   Crosshair,
   LandPlot,
-  Lock,
   Ruler,
   SquareDashed,
   type LucideIcon,
@@ -39,8 +38,6 @@ export type MapTool = {
   id: string;
   label: string;
   icon: LucideIcon;
-  /** Renders the amber PRO badge and marks the button as gated. */
-  pro?: boolean;
   /**
    * Whether the tool needs the map to be drawing individual wells.
    *
@@ -53,13 +50,7 @@ export type MapTool = {
 };
 
 export const MAP_TOOLS: MapTool[] = [
-  {
-    id: "draw-area",
-    label: "Draw an area",
-    icon: SquareDashed,
-    pro: true,
-    needsWells: true,
-  },
+  { id: "draw-area", label: "Draw an area", icon: SquareDashed, needsWells: true },
   {
     id: "measure-distance",
     label: "Measure distance",
@@ -122,7 +113,7 @@ export function ToolsPanel({
       </div>
 
       <div className="flex flex-col gap-2 lg:gap-[10px]">
-        {tools.map(({ id, label, icon: Icon, pro, needsWells }) => {
+        {tools.map(({ id, label, icon: Icon, needsWells }) => {
           /* Only the tools that measure the map wait for the map. */
           const gated = Boolean(needsWells) && !wellsVisible;
 
@@ -161,7 +152,6 @@ export function ToolsPanel({
             <span className="flex-1 text-[12px] lg:text-[13px] font-semibold leading-[1.25] text-mv-ink">
               {label}
             </span>
-            {pro && <ProBadge />}
             </button>
           );
         })}
@@ -187,18 +177,5 @@ export function ToolsPanel({
         </p>
       )}
     </div>
-  );
-}
-
-/**
- * The gate marker on Draw an area. A lock rather than the toolbar's bolt —
- * in the mock this badge reads as "locked", not "upgrade for speed".
- */
-function ProBadge() {
-  return (
-    <span className="inline-flex shrink-0 items-center gap-[3px] rounded bg-mv-amber-bg px-[5px] py-[2px] text-[8px] lg:text-[9px] font-extrabold uppercase leading-none tracking-[.06em] text-mv-amber">
-      <Lock size={8} strokeWidth={3} aria-hidden="true" />
-      Pro
-    </span>
   );
 }
