@@ -521,6 +521,16 @@ export function FiltersPanel({
    * tells the two apart.
    */
   const pickedQueryRef = useRef<string | null>(null);
+  /**
+   * Whether the search alone is what the map is filtered by.
+   *
+   * A hit can be a filter without ticking anything: it carries its own facet
+   * and parameter, and not every one of them has a row in the sections below.
+   * When that happens nothing in `checked` changes, so the effect that watches
+   * for the last box being unticked never fires — and clearing the box left
+   * the wells on the map with nothing in the panel to explain them.
+   */
+  const searchAloneRef = useRef(false);
   /*
    * What the last pick ticked. Clearing the box has to undo the pick as well
    * as the text — a filter still on the map with an empty search box is the
@@ -707,6 +717,8 @@ export function FiltersPanel({
     // those wells, rather than only ticking a box to be applied afterwards.
     if (suggestion.facet && suggestion.param) {
       onApply?.({ [suggestion.facet]: [suggestion.param] });
+      /* No section row to tick means nothing else will undo this. */
+      searchAloneRef.current = !suggestion.sectionId;
     }
 
     if (suggestion.leaseId) {
@@ -754,9 +766,20 @@ export function FiltersPanel({
    * anywhere, the effect above notices and clears the map without waiting for
    * Apply. If other sections are still ticked, Apply lights up instead — the
    * search is one filter among several, not a master switch.
+   *
+   * Where the hit ticked nothing at all — it filtered the map on its own — the
+   * map is cleared here, because no box changing means that effect will not
+   * run. The wells come off and the bubbles come back, which is what emptying
+   * the box asks for.
    */
   function clearSearch() {
     const pick = lastPickRef.current;
+
+    if (searchAloneRef.current) {
+      searchAloneRef.current = false;
+      setDirty(false);
+      onApply?.({});
+    }
 
     if (pick) {
       setChecked((previous) => {
