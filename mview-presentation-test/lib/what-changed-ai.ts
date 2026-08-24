@@ -68,8 +68,16 @@ const NUMBER_PATTERN = /\d[\d,]*\.?\d*/g;
  */
 const DEFAULT_CLAUDE_MODEL = "claude-opus-5";
 
-/** Current as of writing; the 2.5 family 404s for recently created projects. */
-const DEFAULT_MODEL = "gemini-3.5-flash";
+/**
+ * The Gemini model, matched to the one the map pages already call successfully.
+ *
+ * `lib/ai-summary.ts` defaults to `gemini-3.6-flash` and the deployment's key works
+ * against it. This file defaulted to `gemini-3.5-flash`, which is the call that came
+ * back 403 PERMISSION_DENIED — the same key, a model the project is not enabled for.
+ * Two files asking the same key for two different models is how one of them ends up
+ * being the only one that fails.
+ */
+const DEFAULT_MODEL = "gemini-3.6-flash";
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 
 /** Low, because this is a rewrite of supplied facts, not a creative task. */
@@ -142,10 +150,17 @@ function aiKey(): string {
 /**
  * Which provider writes the wording here.
  *
- * ONE VARIABLE IS ENOUGH. `AI_PROVIDER` decides when it is set; when it is not, a
- * present key means Claude. So a deployment that sets only `AI_SUMMARY_KEY` gets
- * Claude-written wording, which is what was asked for, and a deployment that sets
- * nothing at all still makes no model call.
+ * `AI_SUMMARY_PROVIDER` IS READ TOO, because that is the name the map pages' summary
+ * already uses (`lib/ai-summary.ts`) and one deployment should not need two variables
+ * meaning the same thing. `AI_PROVIDER` still wins where it is set, so an existing
+ * `.env.local` keeps working.
+ *
+ * THE DEFAULT IS INFERRED FROM THE KEY, NOT FIXED. This defaulted to Claude, and the
+ * deployment holds a Google key under `AI_SUMMARY_KEY` — so every wording call went to
+ * Anthropic carrying a Gemini key and came back 401, which reads on the page as "the
+ * model did not write this" with no hint as to why. Anthropic keys are documented to
+ * begin `sk-ant-`; anything else with a key present is Gemini, which is also what the
+ * map's summary defaults to. Explicit configuration still overrides both.
  *
  * `claude-cli` IS DELIBERATELY NOT HANDLED. It shells out to a local binary, which
  * cannot exist in a serverless function. Answering a request for one provider with
@@ -153,9 +168,14 @@ function aiKey(): string {
  * value is reported rather than substituted.
  */
 function providerName(): string {
-  const explicit = envText("AI_PROVIDER").toLowerCase();
+  const explicit = (
+    envText("AI_PROVIDER") || envText("AI_SUMMARY_PROVIDER")
+  ).toLowerCase();
   if (explicit !== "") return explicit;
-  return aiKey() === "" ? "" : "claude";
+
+  const key = aiKey();
+  if (key === "") return "";
+  return key.startsWith("sk-ant-") ? "claude" : "gemini";
 }
 
 /** Every number in a string, normalised so `1,234` and `1234` compare equal. */
