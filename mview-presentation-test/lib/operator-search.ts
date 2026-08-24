@@ -221,8 +221,8 @@ export function toOperatorRow(
   // `operator_name_url` is the API's own slug and is what the detail route will
   // key on; `seo_operator_url` is a marketing alias that is not always present.
   const slug = record.operator_name_url;
-  const oil = splitUnit(record.oil_produced_current_quarter);
-  const gas = splitUnit(record.gas_produced_current_quarter);
+  const oil = splitUnit(record.Total_Production_Oil);
+  const gas = splitUnit(record.Total_Production_Gas);
 
   return {
     key: masked ? `masked-${index}` : record.operator_number,
