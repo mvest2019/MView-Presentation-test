@@ -113,10 +113,10 @@ function productionRows(condition: OperatorCondition): ChangeRow[] {
         `${latest.month_label} filed ${formatCount(Math.round(latest.boe))} BOE` +
         `${mmboe === null ? "" : ` (${mmboe})`}, against ` +
         `${formatCount(Math.round(comparison.boe ?? 0))} BOE in ${comparison.month_label}.`,
-      source: "RRC filed production",
+      source: "Filed production record",
       evidence: evidence(
         "Filed volume is the figure a royalty cheque is calculated from, so a move here reaches an owner's statement before it reaches a headline.",
-        "Both months as reported to the Railroad Commission and returned by the operator details endpoint. Production posts on a lag, so the latest month is not the current one.",
+        "Both months as filed, returned by the operator details endpoint. Production posts on a lag, so the latest month is not the current one.",
         [
           {
             k: latest.month_label,
@@ -151,7 +151,7 @@ function permitRow(condition: OperatorCondition): ChangeRow | null {
     detail:
       `${signedCount(permits.change)} against ${formatCount(permits.prior_quarter_count)} ` +
       `in the prior quarter; ${formatCount(permits.count_365d)} over the last 365 days.`,
-    source: "RRC drilling permits",
+    source: "Filed drilling permits",
     evidence: evidence(
       "A permit is the earliest public signal that an operator intends to drill, so the count leads production by months rather than following it.",
       `Permits filed in the trailing 90 days${span === "" ? "" : ` (${span})`}, counted against the 90 days before that.`,
@@ -192,7 +192,7 @@ function completionRow(condition: OperatorCondition): ChangeRow | null {
       `${formatCount(completions.same_quarter_last_year_count)} in the same quarter last year, and ` +
       `${signedCount(completions.change_vs_prior_quarter)} against ${formatCount(completions.prior_quarter_count)} ` +
       `in the prior quarter. ${formatCount(completions.producing_count)} of them are already producing.`,
-    source: "RRC completions",
+    source: "Filed completion records",
     evidence: evidence(
       "A completion is the point a permitted well starts to matter to an owner: it is the step between a drilled hole and a producing lease.",
       "Completions in the trailing 90 days, counted against both the previous quarter and the same quarter a year earlier, because completions run seasonally.",
@@ -243,7 +243,7 @@ function leaseRow(condition: OperatorCondition): ChangeRow | null {
     kind: "flag",
     headline: `${formatCount(leases.count)} of ${formatCount(leases.total_leases)} leases are producing`,
     detail: `${share.toFixed(1)}% of the leases on record are in production.`,
-    source: "RRC lease records",
+    source: "Filed lease records",
     evidence: evidence(
       "An operator can hold far more leases than it produces from. The share in production is what says whether a given lease is likely to be earning.",
       "Producing lease count against total leases on record, as returned by the operator details endpoint. The endpoint carries no prior period for this figure, so no trend is claimed.",
