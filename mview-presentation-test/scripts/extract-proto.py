@@ -42,16 +42,57 @@ PAGES = [
     ("HOME_MARKUP", "v44 (1).html", "home"),
     ("OWNERS_MARKUP", "v44.html", "owners"),
     ("PROFESSIONALS_MARKUP", "v44 (1).html", "professionals"),
+    ("PRICING_MARKUP", "v44 (1).html", "pricing"),
 ]
 
 # Routes this app actually serves; a prototype link to anything else cannot be
 # rewritten to a real path without inventing a 404, so it is reported instead.
 APP_ROUTES = {
-    "", "home", "owners", "professionals", "operators", "faq", "glossary",
-    "blogs", "contact", "contact-us", "login", "signup", "register",
+    "", "home", "owners", "professionals", "pricing", "operators", "faq",
+    "glossary", "blogs", "contact", "contact-us", "login", "signup", "register",
     "privacy", "privacy-policy", "terms", "terms-condition", "map-explorer",
     "oil-and-gas-news", "reset-password",
 }
+# AVAILABILITY TRIM — the one place this script edits content rather than form.
+#
+# The design's pricing page lists everything the product is planned to do. Ryan,
+# 2026-08-24: show only what a customer can actually use today. That is a claim
+# about the live product, not about the design, so it cannot be derived from the
+# prototype — it is stated here explicitly and deliberately narrowly.
+#
+# Keyed on the prototype's own `data-tip-id` values, which are stable and unique
+# per feature (`pricing.tip.free.map`), so this survives copy edits and card
+# reordering. For each prefix, any feature `<li>` under it whose suffix is NOT
+# listed is dropped; a suffix listed but missing is reported, so a renamed tip id
+# fails loudly instead of silently keeping everything.
+#
+# Only the owner Free tier is trimmed so far — see the note in the run output.
+KEEP_FEATURES = {
+    "pricing.tip.free.": {"map", "opdata"},
+}
+
+# Ryan, 2026-08-24: "till show only 2" — every plan card lists at most two
+# features for now, on both the owner and the professional ladder.
+#
+# Applied AFTER `KEEP_FEATURES`, so where an explicit pick exists it wins and this
+# is a no-op; everywhere else the design's own ordering decides which two survive,
+# since the prototype lists each tier's features in priority order. Raise this to
+# put the full ladders back — it is the only number to change.
+MAX_PLAN_FEATURES = 2
+
+# The same claim, in the other place the page makes it.
+#
+# Trimming the Free card is not enough on its own: the comparison table below it
+# repeats every feature as a row, and its cells carry no tip ids, so the trim
+# above cannot reach them. Left alone the page contradicted itself — the Free card
+# no longer offered a weekly briefing or a CSV download while the table still
+# ticked both for Free. These row labels get the design's own "not included" cell
+# in the Free column instead, so both halves of the page say the same thing.
+CMP_FREE_UNAVAILABLE = {
+    "Weekly owner briefing",
+    "Downloads / exports",
+}
+
 # Classes that exist only once JavaScript runs, so they never appear in the
 # markup we scan — keeping their rules has to be explicit.
 #
@@ -156,6 +197,64 @@ def clean(html, imgs, stats):
         return 'href="/%s"' % route  # keeps it a path, not a dead fragment
 
     html = re.sub(r'href="(#/[^"]*)"', href, html)
+
+    # 4. availability trim — content, not form; see KEEP_FEATURES
+    for prefix, keep in KEEP_FEATURES.items():
+        seen = set()
+
+        def cut(m, prefix=prefix, keep=keep, seen=seen):
+            item = m.group(0)
+            tip = re.search(
+                r'data-tip-id="%s([^"]+)"' % re.escape(prefix), item
+            )
+            if not tip:
+                return item
+            seen.add(tip.group(1))
+            if tip.group(1) in keep:
+                return item
+            stats["trimmed"].append(prefix + tip.group(1))
+            return ""
+
+        html = re.sub(r"<li\b[^>]*>(?:(?!</li>).)*</li>", cut, html, flags=re.S)
+        # `seen` empty just means this page has no features under that prefix —
+        # only a page that HAS them can be missing one.
+        missing = (keep - seen) if seen else set()
+        if missing:
+            stats["missing_tips"] += [prefix + s for s in sorted(missing)]
+
+    # Cap every plan's feature list. A plan list is identified by carrying at
+    # least one `pricing.tip.*` feature, which is what distinguishes it from the
+    # page's other lists (the reassurance bullets, the "vs" columns).
+    def cap(m):
+        open_tag, inner, close_tag = m.group(1), m.group(2), m.group(3)
+        if 'data-tip-id="pricing.tip.' not in inner:
+            return m.group(0)
+        items = re.findall(r"<li\b[^>]*>(?:(?!</li>).)*</li>", inner, flags=re.S)
+        # `li.no` is the design's "not included" line ("No self-checkout"). It is
+        # a disclosure, not a claim, so it is never what gets cut — cutting it
+        # would work against the point of the trim. Only positive feature lines
+        # count towards the cap, and the exclusions ride along after them.
+        feats = [i for i in items if 'class="no"' not in i]
+        excl = [i for i in items if 'class="no"' in i]
+        if len(feats) <= MAX_PLAN_FEATURES:
+            return m.group(0)
+        stats["capped"] += len(feats) - MAX_PLAN_FEATURES
+        return open_tag + "".join(feats[:MAX_PLAN_FEATURES] + excl) + close_tag
+
+    html = re.sub(
+        r"(<ul\b[^>]*>)((?:(?!</ul>).)*)(</ul>)", cap, html, flags=re.S
+    )
+
+    # The comparison table's Free column, kept in step with the cards above.
+    for label in sorted(CMP_FREE_UNAVAILABLE):
+        html, hits = re.subn(
+            r"(<tr><th>%s</th>)<td>(?:(?!</td>).)*</td>" % re.escape(label),
+            r"\1<td>—</td>",
+            html,
+            flags=re.S,
+        )
+        if hits:
+            stats["trimmed"].append("cmp:" + label)
     return html
 
 
@@ -163,7 +262,10 @@ def clean(html, imgs, stats):
 pages, all_classes = [], set()
 for const, filename, route in PAGES:
     src = load(filename)
-    stats = {"images": 0, "unresolved": [], "links": 0, "offsite": []}
+    stats = {
+        "images": 0, "unresolved": [], "links": 0, "offsite": [],
+        "trimmed": [], "missing_tips": [], "capped": 0,
+    }
     html = clean(section(src, route), img_map(src), stats)
     for cl in re.findall(r'class="([^"]*)"', html):
         all_classes |= set(cl.split())
@@ -178,6 +280,16 @@ for const, filename, route in PAGES:
         print("    UNRESOLVED:", sorted(set(stats["unresolved"])))
     if stats["offsite"]:
         print("    off-site routes:", sorted(set(stats["offsite"])))
+    if stats["capped"]:
+        print("    feature lines capped past %d:" % MAX_PLAN_FEATURES, stats["capped"])
+    if stats["trimmed"]:
+        print("    TRIMMED as not-yet-available:", sorted(stats["trimmed"]))
+    if stats["missing_tips"]:
+        raise SystemExit(
+            "  KEEP_FEATURES names tips that are not in the markup: %s\n"
+            "  A tip id was renamed upstream. Fix the list rather than letting the"
+            " trim silently stop applying." % stats["missing_tips"]
+        )
 
 all_classes |= RUNTIME_CLASSES
 print(f"\ndistinct class and id names used across pages: {len(all_classes)}")
