@@ -33,6 +33,17 @@ export type MegaLink = NavLink & {
 
 export type MegaColumn = {
   heading: string;
+  /**
+   * Where the heading itself goes, when it has somewhere to go.
+   *
+   * THE MENU SHOWS THE HEADINGS AND NOT THE LINKS (requested), so this is what a
+   * reader now clicks. `links` is kept below rather than deleted: those destinations
+   * are the design's, and the menu should be able to offer them again the moment the
+   * pages exist. Only "Know your operators" has a real page today — every `/data/*`
+   * path under the other heading 404s, which is why it carries no href and renders as
+   * a plain label rather than a link into nothing.
+   */
+  href?: string;
   links: MegaLink[];
 };
 
@@ -105,6 +116,7 @@ export const exploreNav: MegaColumn[] = [
   },
   {
     heading: "Know your operators",
+    href: "/operators",
     links: [
       {
         label: "Oil and gas companies",
