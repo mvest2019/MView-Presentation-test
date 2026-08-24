@@ -22,7 +22,7 @@ import {
   MeasureAreaPanel,
   type AreaMeasurement,
 } from "./measure-area-panel";
-import { DrawAreaDemo } from "./draw-area-demo";
+import { ToolDemo, type DemoTool } from "./tool-demo";
 import { MeasureBar } from "./measure-bar";
 import {
   NEARBY_RADII,
@@ -362,20 +362,6 @@ function clusterZoomTier(zoom: number): number {
  */
 const CLUSTER_ZOOM_SCALE = 900_000;
 
-/*
- * The sample is drawn, not placed.
- *
- * A box that simply appears says "here is a box"; a box that grows out of one
- * corner says "this is the gesture" — which is the whole reason it is there.
- * Ninety frames at 40ms is three and a half seconds: far slower than the drag
- * it stands in for, because it is being watched rather than made, and on a map
- * this busy a quick one was over before the eye had found it.
- */
-const SAMPLE_FRAMES = 90;
-const SAMPLE_INTERVAL_MS = 40;
-
-/** One corner of the sample tract per beat, as if being clicked out. */
-const SAMPLE_CORNER_MS = 750;
 const WELL_ZOOM_SCALE = 200_000;
 
 /**
@@ -394,7 +380,14 @@ type ScreenPoint = { x: number; y: number };
 type BubbleAnchor = ScreenPoint & { bubble: number };
 
 
-/** The dashed blue both tools draw in. */
+/**
+ * The dashed blue every tool draws in.
+ *
+ * All four, since the demonstration window shows all four in it: the tract and
+ * the watch circle used to be drawn in the map's mint green, which is the
+ * colour the wells and the clusters are. A gesture the reader is making should
+ * not be the same colour as the data they are making it over.
+ */
 const TOOL_BLUE: [number, number, number] = [37, 99, 235];
 
 /**
@@ -481,66 +474,6 @@ function ignoreInterrupted(error: unknown): void {
   }
 }
 
-/** The visible extent in degrees, or null before the view has one. */
-function viewBox(view: EsriView | null) {
-  if (!view?.extent) return null;
-
-  const { xmin, ymin, xmax, ymax } = view.extent;
-  const west = mercatorToLongitude(xmin);
-  const east = mercatorToLongitude(xmax);
-  const south = mercatorToLatitude(ymin);
-  const north = mercatorToLatitude(ymax);
-
-  return {
-    west,
-    east,
-    south,
-    north,
-    midLon: (west + east) / 2,
-    midLat: (south + north) / 2,
-    spanLon: east - west,
-    spanLat: north - south,
-  };
-}
-
-/** A line across the middle of the view — the sample Measure distance draws. */
-function sampleLine(view: EsriView | null): [LonLat, LonLat] | null {
-  const box = viewBox(view);
-  if (!box) return null;
-
-  return [
-    {
-      longitude: box.midLon - box.spanLon * 0.18,
-      latitude: box.midLat - box.spanLat * 0.1,
-    },
-    {
-      longitude: box.midLon + box.spanLon * 0.18,
-      latitude: box.midLat + box.spanLat * 0.1,
-    },
-  ];
-}
-
-/*
- * Five corners around the middle of the view — the sample tract.
- *
- * Not a rectangle: Measure area exists for the shapes a box cannot describe,
- * and a square sample would say the opposite.
- */
-function sampleTract(view: EsriView | null): LonLat[] | null {
-  const box = viewBox(view);
-  if (!box) return null;
-
-  const wide = box.spanLon * 0.16;
-  const tall = box.spanLat * 0.16;
-
-  return [
-    { longitude: box.midLon - wide, latitude: box.midLat + tall * 0.5 },
-    { longitude: box.midLon - wide * 0.3, latitude: box.midLat + tall },
-    { longitude: box.midLon + wide, latitude: box.midLat + tall * 0.35 },
-    { longitude: box.midLon + wide * 0.65, latitude: box.midLat - tall },
-    { longitude: box.midLon - wide * 0.75, latitude: box.midLat - tall * 0.8 },
-  ];
-}
 
 /** The rectangle two opposite corners describe, whichever way round they are. */
 function boxBetween(a: LonLat, b: LonLat): Area {
@@ -653,14 +586,14 @@ export function MapExplorerView() {
    */
   const [leaseNearbyOpen, setLeaseNearbyOpen] = useState(false);
   /*
-   * Whether the Draw-an-area demonstration is up.
+   * Which tool is being demonstrated, if any.
    *
-   * Its own window rather than a sample played over the live map: the two used
-   * to share one surface, so the demonstration landed on the reader's own view
-   * and had to be cleared before they could draw anything. Closing it arms the
-   * tool on a map with nothing on it.
+   * Every tool opens with one, in a window rather than on the live map: the two
+   * used to share one surface, so the demonstration landed on the reader's own
+   * view and had to be cleared before they could do anything. Closing it arms
+   * the tool on a map with nothing on it.
    */
-  const [drawDemoOpen, setDrawDemoOpen] = useState(false);
+  const [demoTool, setDemoTool] = useState<DemoTool | null>(null);
   /** The distance being asked about — one of the service's own rings. */
   const [watchRadius, setWatchRadius] = useState<number>(NEARBY_RADII[0]);
   /*
@@ -928,8 +861,8 @@ export function MapExplorerView() {
         },
         symbol: {
           type: "simple-fill",
-          color: [84, 191, 150, 0.18],
-          outline: { color: [46, 143, 109], width: 1.5, style: "dash" },
+          color: [255, 255, 255, 0.22],
+          outline: { color: TOOL_BLUE, width: 1.5, style: "dash" },
         },
       }),
     );
@@ -945,7 +878,7 @@ export function MapExplorerView() {
           type: "simple-marker",
           size: 9,
           color: [255, 255, 255],
-          outline: { color: [46, 143, 109], width: 2 },
+          outline: { color: TOOL_BLUE, width: 2 },
         },
       }),
     );
@@ -989,7 +922,7 @@ export function MapExplorerView() {
           },
           symbol: {
             type: "simple-line",
-            color: [46, 143, 109],
+            color: TOOL_BLUE,
             width: 1.5,
             style: "dash",
           },
@@ -1007,8 +940,8 @@ export function MapExplorerView() {
           },
           symbol: {
             type: "simple-fill",
-            color: [84, 191, 150, 0.22],
-            outline: { color: [46, 143, 109], width: 2 },
+            color: [255, 255, 255, 0.22],
+            outline: { color: TOOL_BLUE, width: 2 },
           },
         }),
       );
@@ -1020,7 +953,7 @@ export function MapExplorerView() {
             paths: [ring],
             spatialReference: { wkid: 4326 },
           },
-          symbol: { type: "simple-line", color: [46, 143, 109], width: 2 },
+          symbol: { type: "simple-line", color: TOOL_BLUE, width: 2 },
         }),
       );
     }
@@ -1037,7 +970,7 @@ export function MapExplorerView() {
             type: "simple-marker",
             size: 9,
             color: [255, 255, 255],
-            outline: { color: [46, 143, 109], width: 2 },
+            outline: { color: TOOL_BLUE, width: 2 },
           },
         }),
       );
@@ -2430,96 +2363,6 @@ export function MapExplorerView() {
   }, [activeTool, drawArea]);
 
   /*
-   * Plays the sample line out from one end, the way a drag would.
-   *
-   * The distance is recomputed every frame, so the readout that lands at the
-   * end is the real geodesic length of the line that was drawn.
-   */
-  const playSampleLine = useCallback(
-    (from: LonLat, to: LonLat) => {
-      const ctors = ctorsRef.current;
-      if (!ctors) return;
-
-      clearInterval(sampleTimerRef.current);
-      let frame = 0;
-
-      const step = () => {
-        frame += 1;
-        const through = Math.min(1, frame / SAMPLE_FRAMES);
-        const eased = 1 - (1 - through) ** 3;
-
-        const end = {
-          longitude: from.longitude + (to.longitude - from.longitude) * eased,
-          latitude: from.latitude + (to.latitude - from.latitude) * eased,
-        };
-        const ends = [from, end].map(
-          ({ longitude, latitude }) =>
-            new ctors.Point({
-              longitude,
-              latitude,
-              spatialReference: { wkid: 4326 },
-            }),
-        );
-        const next: Measurement = {
-          from,
-          to: end,
-          meters: ctors.geodesic.geodesicDistance(ends[0], ends[1], "meters")
-            .distance,
-        };
-
-        drawMeasurement(next);
-        if (through < 1) return;
-
-        clearInterval(sampleTimerRef.current);
-        sampleTimerRef.current = undefined;
-        measurementRef.current = next;
-        setMeasurement(next);
-        setSampleOf("measure-distance");
-        anchorBars();
-      };
-
-      step();
-      sampleTimerRef.current = setInterval(step, SAMPLE_INTERVAL_MS);
-    },
-    [anchorBars, drawMeasurement],
-  );
-
-  /*
-   * Clicks the sample tract out corner by corner, which is the gesture it is
-   * standing in for — one beat each, then the ring closes and is measured.
-   */
-  const playSampleTract = useCallback(
-    (corners: LonLat[]) => {
-      clearInterval(sampleTimerRef.current);
-      let placed = 0;
-
-      const step = () => {
-        placed += 1;
-
-        if (placed <= corners.length) {
-          drawTract(corners.slice(0, placed), false);
-          return;
-        }
-
-        clearInterval(sampleTimerRef.current);
-        sampleTimerRef.current = undefined;
-        drawTract(corners, true);
-        setTractResult(
-          measureTract(clustersRef.current, wellsRef.current, corners),
-        );
-        setSampleOf("measure-area");
-        // Left empty on purpose: the next click starts a tract of its own
-        // rather than adding a sixth corner to the sample.
-        tractRef.current = [];
-      };
-
-      step();
-      sampleTimerRef.current = setInterval(step, SAMPLE_CORNER_MS);
-    },
-    [drawTract],
-  );
-
-  /*
    * Arms a tool, and clears whatever any tool drew before it.
    *
    * One drawing at a time. Clearing only the tool being armed left a drawn box
@@ -2574,24 +2417,15 @@ export function MapExplorerView() {
        * it asks which lease, and the card that asks is the instruction. A
        * demo circle only put a second answer on the map beside the real one.
        */
-      setDrawDemoOpen(tool === "draw-area");
-
-      if (tool === "measure-distance") {
-        const line = sampleLine(viewRef.current);
-        if (line) playSampleLine(line[0], line[1]);
-      } else if (tool === "measure-area") {
-        const corners = sampleTract(viewRef.current);
-        if (corners) playSampleTract(corners);
-      }
+      /*
+       * Every tool opens with a worked example rather than an empty map: each
+       * waits for a gesture, and which gesture is not something a panel can
+       * say in a sentence anybody reads. The example runs in its own window —
+       * see `tool-demo.tsx`.
+       */
+      setDemoTool(tool);
     },
-    [
-      drawArea,
-      drawMeasurement,
-      drawNearby,
-      drawTract,
-      playSampleLine,
-      playSampleTract,
-    ],
+    [drawArea, drawMeasurement, drawNearby, drawTract],
   );
 
   const changeWatchRadius = useCallback(
@@ -3063,14 +2897,14 @@ export function MapExplorerView() {
         />
       )}
 
-      {status === "ready" && activeTool === "draw-area" && (
+      {status === "ready" && !demoTool && activeTool === "draw-area" && (
         <ToolPrompt
           title="Click two opposite corners on the map, or drag a box across it."
           hint="Esc to cancel"
         />
       )}
 
-      {status === "ready" && activeTool === "measure-distance" && (
+      {status === "ready" && !demoTool && activeTool === "measure-distance" && (
         <ToolPrompt
           title="Drag from one point to another to measure the distance."
           hint="Esc to cancel"
@@ -3107,21 +2941,24 @@ export function MapExplorerView() {
           Keyed by the lease, so a new click opens the card on the new lease
           rather than leaving the last answer on screen while the next loads.
       */}
-      {/* Shown once when the tool is picked; closing it leaves the tool armed
+      {/* Shown once when a tool is picked; closing it leaves that tool armed
           on an empty map. The wells it plots are the ones the map has loaded,
           so the field in the picture is the reader's own. */}
-      {status === "ready" && drawDemoOpen && (
-        <DrawAreaDemo
+      {status === "ready" && demoTool && (
+        <ToolDemo
+          tool={demoTool}
           wells={wells}
-          onClose={() => setDrawDemoOpen(false)}
+          onClose={() => setDemoTool(null)}
         />
       )}
 
       {status === "ready" &&
+        !demoTool &&
         activeTool === "whats-near-my-land" &&
         !leaseNearbyOpen && <NearbyPrompt />}
 
       {status === "ready" &&
+        !demoTool &&
         (activeTool === "measure-area" || tractResult) && (
           <MeasureAreaPanel
             className="absolute bottom-6 left-1/2"
