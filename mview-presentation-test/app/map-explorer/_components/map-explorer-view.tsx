@@ -23,6 +23,7 @@ import {
   type AreaMeasurement,
 } from "./measure-area-panel";
 import { ToolDemo, type DemoTool } from "./tool-demo";
+import { MapToast } from "./map-toast";
 import { MeasureBar } from "./measure-bar";
 import {
   NEARBY_RADII,
@@ -726,6 +727,15 @@ export function MapExplorerView() {
     Point: PointCtor;
     geodesic: GeodesicUtils;
   } | null>(null);
+  /**
+   * The one-line confirmation over the map, or null.
+   *
+   * Applying a filter reloads the wells and often moves the view; when the
+   * matches are somewhere else the reader sees a map that has changed under
+   * them and no word about it. The toast clears itself — see `map-toast.tsx`.
+   */
+  const [toast, setToast] = useState<string | null>(null);
+
   const [readout, setReadout] = useState({
     scale: HOME_SCALE,
     zoom: 6,
@@ -1332,6 +1342,7 @@ export function MapExplorerView() {
 
       if (Object.keys(filters).length === 0) {
         filteredRef.current = false;
+        setToast("Filters cleared");
         // `clearWells` takes the ring with the wells it marked.
         clearWells();
         clusterTierRef.current = -1;
@@ -1376,6 +1387,17 @@ export function MapExplorerView() {
           wellsRef.current = wells;
           setWells(wells);
           setWellError(null);
+
+          /*
+           * Said once the matches are in, not when Apply was pressed: until
+           * the service has answered there is nothing to confirm, and a
+           * request that fails must not have been announced as a success.
+           */
+          setToast(
+            wells.length === 0
+              ? "Filters applied — no wells match"
+              : `Filters applied — ${wells.length.toLocaleString("en-US")} well${wells.length === 1 ? "" : "s"}`,
+          );
 
           clearClusters();
           layer.removeAll();
@@ -2891,6 +2913,14 @@ export function MapExplorerView() {
             setTimeLapsePlaying((playing) => !playing);
           }}
           onClose={toggleTimeLapse}
+        />
+      )}
+
+      {status === "ready" && toast && (
+        <MapToast
+          key={toast}
+          message={toast}
+          onDone={() => setToast(null)}
         />
       )}
 
