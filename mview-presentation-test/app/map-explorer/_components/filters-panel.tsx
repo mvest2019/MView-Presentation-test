@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronUp,
   Search,
+  TriangleAlert,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -949,7 +950,7 @@ export function FiltersPanel({
                 <li className="flex items-center gap-2 border-b border-mv-line px-3 py-[6px] text-[10.5px] lg:text-[11.5px] font-semibold text-mv-muted">
                   <span
                     aria-hidden="true"
-                    className="h-[11px] w-[11px] shrink-0 animate-spin rounded-full border-[1.5px] border-mv-line border-t-mv-green-deep"
+                    className="h-[16px] w-[16px] shrink-0 animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
                   />
                   Searching…
                 </li>
@@ -987,15 +988,66 @@ export function FiltersPanel({
                 </li>
               ))}
 
-              {suggestions.length === 0 && (
-                <li className="px-3 py-[9px] text-[12px] lg:text-[13px] text-mv-muted">
-                  {searching
-                    ? "Searching…"
-                    : searchError
-                      ? searchError
-                      : query.trim().length < SEARCH_MIN_CHARS
-                        ? `Type ${SEARCH_MIN_CHARS} letters to search`
-                        : "No matches"}
+              {/* Nothing to show yet.
+                  A first search has no previous answer to blur, so the wait is
+                  drawn as the rows that are coming: three bars the width of a
+                  name and its kind, pulsing. A line of text on its own left the
+                  panel looking broken for the second or two the service takes. */}
+              {suggestions.length === 0 && searching && (
+                <li aria-hidden="true" className="px-3 py-[7px]">
+                  {[0.85, 0.62, 0.73].map((width, row) => (
+                    <span
+                      key={row}
+                      className="flex animate-pulse items-center gap-2 py-[7px]"
+                      style={{ animationDelay: `${row * 140}ms` }}
+                    >
+                      <span
+                        className="h-[9px] rounded-full bg-[#eceff1]"
+                        style={{ width: `${width * 100}%` }}
+                      />
+                      <span className="ml-auto h-[13px] w-[42px] shrink-0 rounded bg-[#f4f6f7]" />
+                    </span>
+                  ))}
+                </li>
+              )}
+
+              {suggestions.length === 0 && searching && (
+                <li className="flex items-center gap-2 border-t border-mv-line px-3 py-[7px] text-[10.5px] lg:text-[11.5px] font-semibold text-mv-muted">
+                  <span
+                    aria-hidden="true"
+                    className="h-[16px] w-[16px] shrink-0 animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
+                  />
+                  Searching leases, operators and counties…
+                </li>
+              )}
+
+              {suggestions.length === 0 && !searching && (
+                <li className="px-3 py-[11px]">
+                  {searchError ? (
+                    <span className="flex items-start gap-2 text-[12px] lg:text-[12.5px] leading-snug text-mv-red">
+                      <TriangleAlert
+                        size={13}
+                        strokeWidth={2}
+                        className="mt-[1px] shrink-0"
+                        aria-hidden="true"
+                      />
+                      {searchError}
+                    </span>
+                  ) : query.trim().length < SEARCH_MIN_CHARS ? (
+                    <span className="text-[12px] lg:text-[13px] text-mv-muted">
+                      Keep typing — {SEARCH_MIN_CHARS} letters to search.
+                    </span>
+                  ) : (
+                    <span className="block">
+                      <span className="block text-[12px] lg:text-[13px] font-semibold text-mv-ink">
+                        No matches for &ldquo;{query.trim()}&rdquo;
+                      </span>
+                      <span className="mt-[3px] block text-[11px] lg:text-[11.5px] leading-snug text-mv-muted">
+                        Leases are named as the Commission records them, often
+                        the landowner&rsquo;s surname.
+                      </span>
+                    </span>
+                  )}
                 </li>
               )}
 
