@@ -18,6 +18,9 @@ import { useEffect } from "react";
  *
  *   mvProEx          ported — toggles `#proExStack > .aud-face`, all present
  *   mvClaimSources   ported — fills `.claim-src-panel`, present (see CLAIMS below)
+ *   mvPricingSeg     ported — owner/professional plan ladders, minus its hash hop
+ *   toggleBilling    ported — monthly/yearly prices
+ *   prc2Tip          ported — the 58 tooltips on the pricing table
  *   mvProExOpen      NOT portable — opens `#proExScrim`, a lightbox that lives in
  *                    the prototype's shell, not in the page section. Scrolls to the
  *                    on-page examples instead; see the note at the call site.
@@ -25,6 +28,10 @@ import { useEffect } from "react";
  *                    pointing at the prototype's own `index.html` demo build. There
  *                    is no equivalent, so the anchor keeps its `href` and behaves
  *                    like every other prototype link to a route we do not serve.
+ *
+ * The pricing page renders correctly with none of this: the markup ships the owner
+ * ladder visible, `#proPlans` `hidden`, the monthly button `.on` and every yearly
+ * price inline-`display:none`. These handlers only move it off that default.
  */
 
 /**
@@ -161,6 +168,142 @@ export function ProtoBehaviour() {
       bind(srcBtn, (event) => {
         event.preventDefault();
         sync(srcPanel.style.display === "none");
+      });
+    }
+
+    /* ---- pricing: owner / professional plan ladders ----------------------- */
+    const segOwner = root.querySelector<HTMLElement>("#prSegOwner");
+    const segPro = root.querySelector<HTMLElement>("#prSegPro");
+    const ladderOwner = root.querySelector<HTMLElement>("#prLadderOwner");
+    const ladderPro = root.querySelector<HTMLElement>("#proPlans");
+    if (segOwner && segPro) {
+      /* The prototype's own equal-height pass. The plan cards sit in a grid but
+         each is its own stacking box, so without this the shortest card's CTA
+         floats up and the row of buttons stops being a row. */
+      const equaliseCards = () => {
+        const cards = Array.from(
+          root.querySelectorAll<HTMLElement>(".pr-ladstack .plan"),
+        );
+        if (!cards.length) return;
+        for (const card of cards) card.style.minHeight = "0px";
+        const tallest = cards.reduce((max, c) => Math.max(max, c.offsetHeight), 0);
+        for (const card of cards) card.style.minHeight = `${tallest}px`;
+      };
+
+      const showSegment = (pro: boolean) => {
+        segOwner.classList.toggle("on", !pro);
+        segPro.classList.toggle("on", pro);
+        segOwner.setAttribute("aria-pressed", String(!pro));
+        segPro.setAttribute("aria-pressed", String(pro));
+        /* `hidden` rather than a class, because that is what the markup ships
+           on `#proPlans` — matching it keeps one mechanism instead of two. */
+        if (ladderOwner) ladderOwner.hidden = pro;
+        if (ladderPro) ladderPro.hidden = !pro;
+        equaliseCards();
+      };
+
+      /* The prototype navigates to `#/pricing?seg=pro` and lets its router call
+         the sync function back. We switch in place: the hash means nothing to our
+         router, and writing one would leave a stray fragment in the URL that
+         survives into shared links. The visible result is identical.
+
+         WHAT IS DROPPED with the hash hop: the prototype also rewrites
+         `document.title` per segment ("Owner pricing" / "Professional pricing").
+         Next owns the title through `metadata`, so fighting it from a click
+         handler would desynchronise the two. The page keeps one stable title. */
+      bind(segOwner, () => showSegment(false));
+      bind(segPro, () => showSegment(true));
+
+      equaliseCards();
+      const onResize = () => equaliseCards();
+      window.addEventListener("resize", onResize);
+      teardown.push(() => window.removeEventListener("resize", onResize));
+    }
+
+    /* ---- pricing: monthly / yearly ---------------------------------------- */
+    const billingButtons = Array.from(
+      root.querySelectorAll<HTMLButtonElement>(".pricing-tgl button[data-mode]"),
+    );
+    if (billingButtons.length) {
+      const showMode = (mode: string) => {
+        for (const button of billingButtons) {
+          const on = button.dataset.mode === mode;
+          button.classList.toggle("on", on);
+          /* The markup gives these no `aria-pressed`, so the only signal that a
+             period is selected is the fill colour. Adding it is the one thing
+             here that is not a straight port. */
+          button.setAttribute("aria-pressed", on ? "true" : "false");
+        }
+        for (const price of root.querySelectorAll<HTMLElement>(".pricing-price")) {
+          for (const part of price.querySelectorAll<HTMLElement>("[data-show]")) {
+            part.style.display = part.dataset.show === mode ? "" : "none";
+          }
+        }
+      };
+      for (const button of billingButtons) {
+        bind(button, () => {
+          if (button.dataset.mode) showMode(button.dataset.mode);
+        });
+      }
+      const current = billingButtons.find((b) => b.classList.contains("on"));
+      if (current?.dataset.mode) showMode(current.dataset.mode);
+    }
+
+    /* ---- pricing: the feature tooltips ------------------------------------ */
+    const tips = Array.from(root.querySelectorAll<HTMLElement>(".prc2-tip"));
+    if (tips.length) {
+      const closeAll = () => {
+        for (const tip of tips) {
+          tip.classList.remove("open");
+          tip.querySelector(".prc2-i")?.setAttribute("aria-expanded", "false");
+        }
+      };
+      for (const tip of tips) {
+        const button = tip.querySelector<HTMLElement>(".prc2-i");
+        if (!button) continue;
+        button.setAttribute("aria-expanded", "false");
+        /* Two of these tooltips sit INSIDE the segment buttons ("Mineral owners
+           (i)" / "Professionals (i)"). The prototype stops propagation on every
+           tooltip, which turns that 17x17 icon into a dead zone in the middle of
+           a tab — a click lands on it, the tooltip opens and the tab does not
+           switch. It reads as a broken tab, and it is only 2.4% of the pill, so
+           it is easy to hit by accident and hard to diagnose.
+
+           So propagation is only stopped when the tooltip is standalone. Inside a
+           button the click continues to that button's own handler: the tab
+           switches AND the explanation opens, which is what someone clicking an
+           info icon labelled "Who professional plans are for" wants. */
+        /* Starting from the PARENT: a feature tooltip's own `.prc2-i` is itself a
+           `<button>`, so `closest` from the element would always match and every
+           tooltip would leak its click. The segment ones are a `<span>` nested in
+           the tab button, which is the case this is looking for. */
+        const insideControl =
+          button.parentElement?.closest("button") != null;
+        bind(button, (event) => {
+          event.preventDefault();
+          if (!insideControl) event.stopPropagation();
+          const wasOpen = tip.classList.contains("open");
+          closeAll(); // one at a time, as the prototype does
+          if (!wasOpen) {
+            tip.classList.add("open");
+            button.setAttribute("aria-expanded", "true");
+          }
+        });
+      }
+      /* Dismissal the prototype leaves to a document click. Escape is added:
+         these open on a keyboard-reachable button, so there has to be a way back
+         out without a pointer. */
+      const onDocClick = (event: Event) => {
+        if (!(event.target as Element | null)?.closest?.(".prc2-tip")) closeAll();
+      };
+      const onKey = (event: KeyboardEvent) => {
+        if (event.key === "Escape") closeAll();
+      };
+      document.addEventListener("click", onDocClick);
+      document.addEventListener("keydown", onKey);
+      teardown.push(() => {
+        document.removeEventListener("click", onDocClick);
+        document.removeEventListener("keydown", onKey);
       });
     }
 
