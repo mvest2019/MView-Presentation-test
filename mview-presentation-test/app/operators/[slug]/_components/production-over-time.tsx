@@ -45,14 +45,22 @@ import { YearBrush } from "./year-brush";
  * and the design shows a third series. `toProductionYears` drops it at the boundary,
  * so there are two series and two summary cards rather than three.
  *
- * EVERYTHING IS IN MILLIONS. Raw barrels and Mcf are divided once, here, and every
- * figure below — axis, cards, tooltip, end pills — reads off the same scaled numbers.
- * The `MM` suffix rides on each gridline label, so the axis needs no caption of its
- * own; the strip above the plot names the applied county instead.
+ * FIGURES ARE THE RESPONSE'S OWN, UNCONVERTED (requested). This divided every value by
+ * a million and suffixed it "MM", on the belief that the endpoint answers in barrels
+ * and Mcf. It does not: it declares `oil_unit: "MBBL"` and `gas_unit: "MMCF"`, so
+ * Diamondback's 2025 oil of 212,077.007 MBBL was drawn as "0.21MM" — three orders of
+ * magnitude out, and labelled with a unit the response never used. Axis, cards, tooltip
+ * and end pills now print the number the API sent, and the unit beside it is the one
+ * the API named.
+ *
+ * THE AXIS CARRIES NO UNIT, because it cannot honestly carry one: oil and gas share a
+ * y-axis and arrive in DIFFERENT units. The old "MM" suffix papered over that. Units
+ * now sit where they belong to a single series — the summary cards, the tooltip rows,
+ * the subtitle and the footnote.
  *
  * THE PLOT IS ALWAYS AN AREA. The line/area toggle is gone on request, so the fill is
- * unconditional rather than a mode nothing can switch. Units are not lost with the old
- * "(bbl)" / "(Mcf)" labels: the subtitle and the footnote both still carry them.
+ * unconditional rather than a mode nothing can switch. The subtitle and the footnote
+ * carry the units, now named by the response rather than written in here.
  *
  * ZOOM IS A VISIBLE CONTROL. `YearBrush` under the x-axis owns the range: drag its
  * handles to narrow, drag inside to pan, press Reset or double-click to restore. The
@@ -81,10 +89,17 @@ const SERIES = [
 
 type SeriesKey = (typeof SERIES)[number]["key"];
 
-/** Millions, two decimals — the design's `181.37MM`. */
-const mm = (value: number) => (value / 1e6).toFixed(2);
-/** Millions, two decimals with a single M — the design's end pills, `786.43M`. */
-const pill = (value: number) => `${(value / 1e6).toFixed(2)}M`;
+/**
+ * The API's number, printed as sent.
+ *
+ * NO DIVISION AND NO ROUNDING. Snapped to thousandths only because that is the
+ * precision the response actually carries — its values arrive with at most three
+ * decimals — so this removes float drift from any addition without discarding data.
+ */
+const exact = (value: number) =>
+  (Math.round(value * 1000) / 1000).toLocaleString("en-US", {
+    maximumFractionDigits: 20,
+  });
 
 export function ProductionOverTime({
   operatorNumber,
@@ -133,6 +148,17 @@ export function ProductionOverTime({
     county: apiCounty,
     range,
   });
+
+  /**
+   * What the response called this series' figures — `MBBL`, `MMCF`.
+   *
+   * READ FROM THE RESPONSE, NEVER ASSUMED. The two series are in different units, so
+   * there is no single unit for this chart and nothing may print one. Empty until the
+   * first response lands, and empty if the endpoint ever stops declaring them: an
+   * unlabelled number is recoverable, a confidently wrong label is not.
+   */
+  const unitFor = (key: SeriesKey) =>
+    key === "oil" ? (graph.range?.oilUnit ?? "") : (graph.range?.gasUnit ?? "");
 
   /** The full history — the brush's domain, and never narrowed by it. */
   const all = useMemo(() => graph.full?.rows ?? [], [graph.full]);
@@ -311,8 +337,10 @@ export function ProductionOverTime({
           <div className="min-w-0">
             <h2 className={cardTitleClass}>Production over time</h2>
             <p className="mt-1 text-[13px] text-mv-muted">
-              Reported annual volumes across covered counties · oil (bbl), gas
-              (Mcf)
+              Reported annual volumes across covered counties
+              {unitFor("oil") && unitFor("gas")
+                ? ` · oil (${unitFor("oil")}), gas (${unitFor("gas")})`
+                : ""}
             </p>
           </div>
         </div>
@@ -379,9 +407,9 @@ export function ProductionOverTime({
                     <span className="inline-block h-[22px] w-[104px] animate-pulse rounded-md bg-mv-line-soft align-middle" />
                   ) : (
                     <>
-                      {mm(value)}
-                      <small className="ml-[1px] text-[12.5px] font-bold">
-                        MM
+                      {exact(value)}
+                      <small className="ml-[3px] text-[12.5px] font-bold">
+                        {unitFor(series.key)}
                       </small>
                     </>
                   )}
@@ -492,7 +520,12 @@ export function ProductionOverTime({
                 ))}
               </defs>
 
-              {/* dashed gridlines, MM labels */}
+              {/* Dashed gridlines. THE TICK LABEL IS THE ONE FIGURE HERE THAT MAY BE
+                  ROUNDED, because it is not a reported value: `step` is `peak / 4`, so
+                  these are synthetic scale marks and their decimals are an artefact of
+                  the division — "204,719.507" says nothing "204,720" does not. Rounded
+                  only where the step is large enough for whole numbers to separate the
+                  lines; a small-volume operator keeps the decimals it needs. */}
               {Array.from({ length: 5 }, (_, i) => {
                 const value = geometry.step * i;
                 const y = geometry.y(value);
@@ -513,7 +546,11 @@ export function ProductionOverTime({
                       fontSize="13"
                       fill="var(--color-mv-placeholder)"
                     >
-                      {i === 0 ? "0" : `${mm(value)}MM`}
+                      {i === 0
+                        ? "0"
+                        : geometry.step >= 100
+                          ? Math.round(value).toLocaleString("en-US")
+                          : exact(value)}
                     </text>
                   </g>
                 );
@@ -598,7 +635,7 @@ export function ProductionOverTime({
                           fontWeight="700"
                           fill="#fff"
                         >
-                          {pill(lastPoint[series.key])}
+                          {exact(lastPoint[series.key])}
                         </text>
                       </g>
                     );
@@ -637,7 +674,10 @@ export function ProductionOverTime({
                       {series.label}
                     </span>
                     <b className="font-bold tabular-nums text-white">
-                      {mm(data[hover][series.key])}MM
+                      {exact(data[hover][series.key])}
+                      <small className="ml-[3px] font-semibold text-mv-on-deep-muted">
+                        {unitFor(series.key)}
+                      </small>
                     </b>
                   </p>
                 ))}
@@ -687,7 +727,9 @@ export function ProductionOverTime({
           className="h-[14px] w-[14px] shrink-0"
           strokeWidth={1.9}
         />
-        Oil in barrels (bbl) · Gas in thousand cubic feet (Mcf)
+        {unitFor("oil") && unitFor("gas")
+          ? `Volumes as reported · oil in ${unitFor("oil")} · gas in ${unitFor("gas")}`
+          : "Volumes exactly as reported by the source."}
       </p>
     </div>
   );

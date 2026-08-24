@@ -711,39 +711,57 @@ function buildConditionCards(
   const permits = condition.new_permits_90d;
   const completions = condition.completions_90d;
 
+  /**
+   * The endpoint's own figure, printed as sent.
+   *
+   * `toFixed(1)` was padding and rounding here: Diamondback's month-on-month arrives
+   * as `2` and read "2.0%", its year-on-year as `0` and read "+0.0%", and the latest
+   * BOE of `22.743` read "22.7". None of those are numbers the API sent.
+   */
+  const exact = (value: number) =>
+    value.toLocaleString("en-US", { maximumFractionDigits: 20 });
+
   const signed = (value: number) =>
-    `${value >= 0 ? "+" : "−"}${Math.abs(value).toFixed(1)}%`;
+    `${value >= 0 ? "+" : "−"}${exact(Math.abs(value))}%`;
 
   return [
     /*
      * THE BOE CARD ONLY EXISTS WHERE THERE IS BOE. An operator with no filed
-     * production returns this block with every figure null — `mmboe`, both
+     * production returns this block with every figure null — `boe`, `mmboe`, both
      * comparisons, the month labels — so reading `.toFixed()` off it threw as soon as
      * the route stopped being limited to thirty major producers. The card is omitted
-     * rather than shown as "0.0 MMBOE", which would assert a measurement nobody made.
+     * rather than shown as "0 BOE", which would assert a measurement nobody made.
+     *
+     * IT BINDS `boe`, NOT `mmboe` (requested), so the figure on the card is the one the
+     * endpoint reports rather than a scaled-down version of it: 22,743,293.6 where this
+     * used to read 22.743. The unit comes from `boe_unit` when the response carries one
+     * — it carries none today — and falls back to `BOE`, which is what `boe` is
+     * measured in: dividing it by a million reproduces `mmboe` exactly.
      *
      * The month-on-month and year-on-year parts are guarded separately: a first
      * reported month has a figure but nothing to compare it to.
      */
-    ...(latest.mmboe === null
+    ...(latest.boe === null
       ? []
       : [
           {
             label: "Latest monthly BOE",
-            value: latest.mmboe.toFixed(1),
-            unit: "MMBOE",
+            value: exact(latest.boe),
+            unit: latest.boe_unit?.trim() || "BOE",
             ...(latest.mom.direction === null
               ? {}
               : { direction: latest.mom.direction, window: "MoM" }),
             ...(latest.mom.change_percent === null
               ? {}
               : {
-                  delta: `${Math.abs(latest.mom.change_percent).toFixed(1)}%`,
+                  delta: `${exact(Math.abs(latest.mom.change_percent))}%`,
                 }),
             foot:
               latest.yoy.change_percent === null || !latest.yoy.month_label
                 ? "No comparable month on record"
                 : `vs ${latest.yoy.month_label}: ${signed(latest.yoy.change_percent)}`,
+            // The year-on-year change sits beside the month-on-month chip, not under it.
+            footInline: true,
             icon: "production" as const,
           },
         ]),

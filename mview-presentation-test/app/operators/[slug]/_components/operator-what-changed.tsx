@@ -4,6 +4,7 @@ import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { ChangeItem } from "@/app/_components/change-item";
+import { DeferredSection } from "@/app/_components/deferred-section";
 import type { WhatChangedPanel } from "@/lib/operator-what-changed-api";
 
 /**
@@ -67,10 +68,25 @@ function Skeleton() {
   );
 }
 
-export function OperatorWhatChanged({
+/**
+ * The panel body — everything that needs the response.
+ *
+ * SEPARATE FROM THE SHELL BELOW SO THE FETCH STAYS DEFERRED. The heading and its
+ * Refresh button have to be on screen from the first paint to sit on one line; the
+ * request must NOT be. Only this half is wrapped in `DeferredSection`, so the shell
+ * renders immediately and the endpoint is still not called until the section is
+ * approached. `nonce` is the shell's way of asking for another read.
+ */
+function WhatChangedPanel({
   operatorNumber,
+  nonce,
+  onBusyChange,
+  onWriterChange,
 }: {
   operatorNumber: string;
+  nonce: number;
+  onBusyChange: (busy: boolean) => void;
+  onWriterChange: (writer: string | null) => void;
 }) {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   /**
@@ -81,7 +97,8 @@ export function OperatorWhatChanged({
    * uses, so no id has to be invented.
    */
   const [openRow, setOpenRow] = useState<string | null>(null);
-  const [nonce, setNonce] = useState(0);
+  /** Its own retry counter, for the error state's "Try again". */
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -89,10 +106,20 @@ export function OperatorWhatChanged({
 
     fetch(`/api/operators/${operatorNumber}/what-changed`, {
       signal: controller.signal,
+      /* Refresh has to reach the server to mean anything: the wording is written per
+         request, so a reply served from the browser's cache would return the same
+         sentences and the button would look broken. The measured figures behind them
+         are still cached server-side, so this costs the model call and nothing else. */
+      cache: "no-store",
     })
       .then((response) => response.json() as Promise<Loaded>)
       .then((body) => {
-        if (active) setLoaded(body);
+        if (!active) return;
+        setLoaded(body);
+        onBusyChange(false);
+        /* Told upward so the shell can say why a refresh changed nothing. `measured`
+           and `deterministic` mean no model phrased these rows. */
+        onWriterChange(body.state === "ready" ? body.panel.writer : null);
       })
       .catch(() => {
         // A cancelled fetch is not a failure — the cleanup superseded it.
@@ -101,19 +128,32 @@ export function OperatorWhatChanged({
           state: "error",
           detail: "The analysis could not be loaded.",
         });
+        onBusyChange(false);
+        onWriterChange(null);
       });
 
     return () => {
       active = false;
       controller.abort();
     };
-  }, [operatorNumber, nonce]);
+  }, [operatorNumber, nonce, attempt, onBusyChange, onWriterChange]);
 
   const retry = useCallback(() => {
     setLoaded(null);
-    setNonce((value) => value + 1);
+    setAttempt((value) => value + 1);
   }, []);
 
+  /**
+   * Ask for the panel again, and get it phrased again.
+   *
+   * WHY THIS PRODUCES DIFFERENT WORDING. The measured findings are cached server-side
+   * and will not move — nor should they, they are the filed record — but the model is
+   * asked to rephrase them on every request, so what comes back reads differently while
+   * saying the same thing. `AI_SUMMARY_CACHE_SECONDS` is what governs that; setting it
+   * above zero makes this button return the cached phrasing until the window lapses.
+   *
+   * It costs one model call, only when pressed.
+   */
   /* ---- loading ---- */
   if (loaded === null) {
     return (
@@ -180,5 +220,94 @@ export function OperatorWhatChanged({
         />
       ))}
     </ul>
+  );
+}
+
+/**
+ * The section: its heading, its Refresh button, and the deferred panel beneath.
+ *
+ * THE HEADING ARRIVES AS A PROP so the two sit on one line without this file owning a
+ * copy of `SectionHead`. The page still renders its own heading; this only decides
+ * where it goes, which is the left half of a flex row with the button on the right.
+ *
+ * THE SHELL IS NOT DEFERRED, THE PANEL IS. That split is the point: a button that only
+ * appears once the reader has scrolled to the section cannot sit on the heading's line
+ * from the first paint, and deferring the whole thing is what previously forced the
+ * button below the heading. The endpoint is still untouched until the panel is
+ * approached, so nothing here costs a request on load.
+ */
+export function OperatorWhatChanged({
+  operatorNumber,
+  heading,
+}: {
+  operatorNumber: string;
+  /** The page's own `<SectionHead title="What changed" />`. */
+  heading: React.ReactNode;
+}) {
+  const [nonce, setNonce] = useState(0);
+  const [busy, setBusy] = useState(false);
+  /** What phrased the rows on screen, once they arrive. */
+  const [writer, setWriter] = useState<string | null>(null);
+
+  const onBusyChange = useCallback((value: boolean) => setBusy(value), []);
+  const onWriterChange = useCallback(
+    (value: string | null) => setWriter(value),
+    [],
+  );
+
+  /**
+   * Ask for the panel again, and get it phrased again.
+   *
+   * The measured findings are cached server-side and will not move — they are the
+   * filed record. What changes is the phrasing, because the model is asked to rewrite
+   * on every request. See the note below for when it cannot.
+   */
+  const refresh = useCallback(() => {
+    setBusy(true);
+    setNonce((value) => value + 1);
+  }, []);
+
+  /*
+   * WHY A REFRESH CAN LEAVE THE TEXT IDENTICAL, kept as a note to whoever reads this
+   * next rather than shown on the page (the on-screen version was removed on request).
+   * With no model configured the service returns the measured sentences and this app
+   * has nothing to rephrase them with, so pressing Refresh re-reads the findings and
+   * changes nothing. Measured with no key set: `writer: "measured"` on two consecutive
+   * calls, identical wording both times. `writer` is still tracked because the button
+   * stays disabled until the first response lands.
+   */
+
+  return (
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">{heading}</div>
+
+        <div className="shrink-0">
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={busy || writer === null}
+            className="inline-flex items-center gap-2 rounded-[10px] border border-mv-line bg-white px-[13px] py-[7px] text-[12.5px] font-semibold text-mv-slate transition-colors enabled:cursor-pointer enabled:hover:border-mv-line-strong enabled:hover:bg-mv-hover disabled:cursor-not-allowed disabled:opacity-55 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+          >
+            <RefreshCw
+              aria-hidden="true"
+              className={`h-[13px] w-[13px] ${busy ? "animate-spin" : ""}`}
+              strokeWidth={2}
+            />
+            {busy ? "Refreshing…" : "Refresh"}
+          </button>
+        </div>
+      </div>
+
+      {/* Only the body waits for the reader. */}
+      <DeferredSection minHeight={520} label="What changed">
+        <WhatChangedPanel
+          operatorNumber={operatorNumber}
+          nonce={nonce}
+          onBusyChange={onBusyChange}
+          onWriterChange={onWriterChange}
+        />
+      </DeferredSection>
+    </>
   );
 }

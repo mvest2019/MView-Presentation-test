@@ -40,9 +40,6 @@ export const LEASE_PAGE_SIZE = 10;
 
 const REQUEST_TIMEOUT_MS = 15000;
 
-/** The status the lease table asks for, matching the payload this was specified with. */
-const LEASE_STATUS = "Active";
-
 export interface LeaseRecord {
   leaseNumber: string;
   leaseName: string;
@@ -189,7 +186,12 @@ export async function fetchOperatorLeases(
       pagesize: LEASE_PAGE_SIZE,
       lease_number: search,
       county,
-      status: LEASE_STATUS,
+      /* NO `status` (requested). It was pinned to "Active", which filtered the table
+         down to 4,542 of Diamondback's leases while the panel above it reported 5,596
+         Leases on Record — the same page disagreeing with itself. Omitting the key
+         returns the whole lease book, which is the figure the rest of the page uses.
+         The Status COLUMN is unaffected: it reads `status` off each row of the
+         response, so every lease still shows its own. */
       member_id: TEMP_MEMBER_ID,
     },
     signal,

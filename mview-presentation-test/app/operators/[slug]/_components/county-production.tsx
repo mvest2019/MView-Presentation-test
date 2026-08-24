@@ -21,7 +21,7 @@ import { usePagedResource } from "./use-paged-resource";
  * "Production by county" — lifetime volumes per county, from
  * `POST /api/v1/operators/production-by-county`.
  *
- * UNITS LIVE IN THE HEADERS, and they are barrels and Mcf rather than thousands. The
+ * UNITS LIVE IN THE HEADERS, and they are the ones the RESPONSE names. The
  * response carries no unit field, so it was worth pinning down: MIDLAND oil comes back
  * as 714,981,764, and `/production-graph` for MIDLAND across its whole history sums to
  * the same number — which this app labels bbl everywhere else. A header reading "MBBL"
@@ -48,17 +48,26 @@ const EM_DASH = "—";
 const CELL =
   "whitespace-nowrap border-b border-mv-line-soft bg-white px-4 py-3 text-mv-ink-soft";
 
-/** `[label, unit, align]`. A null unit prints no bracket. */
-const HEADERS = [
-  ["County", null, "left"],
-  ["Oil Production", OIL_UNIT, "right"],
-  ["Gas Production", GAS_UNIT, "right"],
-  ["Total Production", BOE_UNIT, "right"],
-  ["Share of Operator", null, "right"],
-] as const;
-
-/** Whole numbers with separators — matching every other figure on the page. */
-const volume = (value: number) => Math.round(value).toLocaleString("en-US");
+/**
+ * `[label, unit, align]`. A null unit prints no bracket.
+ *
+ * THE UNITS ARE THE RESPONSE'S, not this file's. `OIL_UNIT`/`GAS_UNIT`/`BOE_UNIT` say
+ * bbl, Mcf and BOE; this endpoint answers in MMBBL and BCF, so those constants headed
+ * every column with a unit a thousand times off. They are the fallback now, used only
+ * if a response arrives naming none.
+ */
+function headersFor(
+  rows: readonly CountyProductionRecord[],
+): readonly (readonly [string, string | null, "left" | "right"])[] {
+  const first = rows[0];
+  return [
+    ["County", null, "left"],
+    ["Oil Produced", first?.oilUnit || OIL_UNIT, "right"],
+    ["Gas Produced", first?.gasUnit || GAS_UNIT, "right"],
+    ["Total Produced", first?.boeUnit || BOE_UNIT, "right"],
+    ["Share of Operator", null, "right"],
+  ] as const;
+}
 
 export function CountyProduction({
   operatorNumber,
@@ -106,7 +115,7 @@ export function CountyProduction({
           </caption>
           <thead>
             <tr>
-              {HEADERS.map(([label, unit, align]) => (
+              {headersFor(visible).map(([label, unit, align]) => (
                 <th
                   key={label}
                   scope="col"
@@ -172,14 +181,15 @@ export function CountyProduction({
                   >
                     {titleCase(row.county) || EM_DASH}
                   </th>
+                  {/* The endpoint's own figures, printed as sent. */}
                   <td className={`${CELL} text-right tabular-nums`}>
-                    {volume(row.oil)}
+                    {row.oilText || EM_DASH}
                   </td>
                   <td className={`${CELL} text-right tabular-nums`}>
-                    {volume(row.gas)}
+                    {row.gasText || EM_DASH}
                   </td>
                   <td className={`${CELL} text-right tabular-nums`}>
-                    {volume(row.boe)}
+                    {row.boeText || EM_DASH}
                   </td>
                   <td className={`${CELL} text-right tabular-nums`}>
                     {row.shareOfOperator.toFixed(2)}%
