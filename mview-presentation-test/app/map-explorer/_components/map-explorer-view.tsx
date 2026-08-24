@@ -365,6 +365,15 @@ const CLUSTER_ZOOM_SCALE = 900_000;
 const WELL_ZOOM_SCALE = 200_000;
 
 /**
+ * How far outside the loaded extent counts as the same ground, in degrees.
+ *
+ * A ten-thousandth of a degree is about 11 metres — under a pixel at any zoom
+ * the wells are drawn at, and enough to absorb the rounding between one
+ * settled extent and the next.
+ */
+const EXTENT_EPSILON = 0.0001;
+
+/**
  * How many wells out from the click to try before giving up on the lease.
  *
  * Records without a lease number are common enough that the nearest well alone
@@ -505,6 +514,18 @@ export function MapExplorerView() {
   const wellRequestRef = useRef(0);
   /* The wells last loaded, for the export — the layer holds graphics, not rows. */
   const wellsRef = useRef<MapWell[]>([]);
+  /**
+   * The extent the wells in hand were fetched for.
+   *
+   * Kept so a zoom inside it can be answered without asking the service again
+   * — see `loadWells`. Null whenever the wells are cleared.
+   */
+  const wellsBoxRef = useRef<{
+    west: number;
+    south: number;
+    east: number;
+    north: number;
+  } | null>(null);
   const clustersRef = useRef<WellCluster[]>([]);
   const [clusters, setClusters] = useState<WellCluster[]>([]);
   /*
@@ -1101,18 +1122,44 @@ export function MapExplorerView() {
     if (!view?.extent || !ctors || !layer) return;
 
     const { xmin, ymin, xmax, ymax } = view.extent;
-    const request = ++wellRequestRef.current;
-    setWellsLoading(true);
-
-    getWellListMap({
+    const box = {
       west: mercatorToLongitude(xmin),
       south: mercatorToLatitude(ymin),
       east: mercatorToLongitude(xmax),
       north: mercatorToLatitude(ymax),
-    })
+    };
+
+    /*
+     * Zooming into ground already fetched asks for nothing.
+     *
+     * The wells for an extent include every well in it, so a closer look at
+     * part of that extent is a subset of what is already in hand — the service
+     * would answer with wells this page is holding. Only ground outside the
+     * loaded box is unknown, which is what panning and zooming out produce.
+     *
+     * The epsilon is for the frame the view settles on: a zoom that lands on
+     * the same extent can differ in the last decimal place, and that must not
+     * read as new ground.
+     */
+    const loaded = wellsBoxRef.current;
+    if (
+      loaded &&
+      box.west >= loaded.west - EXTENT_EPSILON &&
+      box.east <= loaded.east + EXTENT_EPSILON &&
+      box.south >= loaded.south - EXTENT_EPSILON &&
+      box.north <= loaded.north + EXTENT_EPSILON
+    ) {
+      return;
+    }
+
+    const request = ++wellRequestRef.current;
+    setWellsLoading(true);
+
+    getWellListMap(box)
       .then((list: MapWell[]) => {
         if (request !== wellRequestRef.current) return;
 
+        wellsBoxRef.current = box;
         wellsRef.current = list;
         setWells(list);
         setWellError(null);
@@ -1134,6 +1181,8 @@ export function MapExplorerView() {
 
   const clearWells = useCallback(() => {
     wellRequestRef.current += 1;
+    /* Nothing is held any more, so the next extent is new ground. */
+    wellsBoxRef.current = null;
     wellsRef.current = [];
     setWells([]);
     setWellsLoading(false);
