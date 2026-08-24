@@ -93,6 +93,28 @@ const nextConfig: NextConfig = {
       process.env.NEXT_PUBLIC_OPERATOR_API_BASE_URL ||
       process.env.OPERATOR_API_BASE_URL ||
       "https://mview-dev-api.mineralview.com",
+
+    /*
+     * WHERE THIS DEPLOYMENT LIVES. Two jobs:
+     *
+     *   · `metadataBase` in `app/layout.tsx` resolves canonical and Open Graph
+     *     URLs against it. Unset, it fell back to `https://www.mineralview.com`,
+     *     so this preview advertised PRODUCTION as its own canonical.
+     *   · It is the base sent on the password-reset request, so the emailed link
+     *     can point back here instead of at production (Ryan, 2026-08-19).
+     *     See `requestPasswordReset` for the large caveat on that.
+     *
+     * Defaults to the test deployment rather than production, deliberately: this
+     * repo IS the test deployment, and a wrong default that points at prod is the
+     * one that goes unnoticed. Production sets this explicitly.
+     *
+     * `VERCEL_URL` is not used as the fallback on purpose — it is the
+     * per-deployment hostname (…-i3ameuhal-….vercel.app), which changes on every
+     * push and would put a dead link in an email within a day.
+     */
+    NEXT_PUBLIC_SITE_URL:
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      "https://m-view-presentation-test.vercel.app",
   },
   images: {
     // Cloudinary serves both the Mineral View logo and every article/news
