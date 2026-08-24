@@ -93,6 +93,26 @@ CMP_FREE_UNAVAILABLE = {
     "Downloads / exports",
 }
 
+# Ryan, 2026-08-24: remove the ladder's own title block.
+#
+# The pricing page stacks two headings within one screen — "Start free. Pay only
+# if you want more." and then, a few hundred pixels later, "One ladder for every
+# owner — upgrade when it pays for itself." — each with its own green kicker
+# repeating "free to start". The second says nothing the first has not.
+#
+# Matched on the kicker's `.section-label` text, which removes the whole
+# `div.mk-kicker` (label AND heading together); dropping only the `h2` would leave
+# an orphan green label above the cards.
+#
+# BOTH LADDERS, not just the owner one that is visible by default. The
+# professional ladder has the same construction, and the reason for removing one
+# applies to the other — leaving it would mean the title appears and disappears as
+# the segment switches. Delete an entry here to put a title back.
+DROP_TITLE_BLOCKS = {
+    "Owner plans &middot; free to start",
+    "Professional plans &middot; operators &amp; advisors &middot; free to start",
+}
+
 # Classes that exist only once JavaScript runs, so they never appear in the
 # markup we scan — keeping their rules has to be explicit.
 #
@@ -154,6 +174,20 @@ def section(src, route):
         depth += -1 if t.group().startswith("</") else 1
         pos = t.end()
     return src[m.start() : src.index(">", pos) + 1]
+
+
+def element_end(html, start):
+    """Index just past the element opening at `start`, counting nested tags."""
+    tag = re.match(r"<([a-zA-Z0-9]+)", html[start:]).group(1)
+    pattern = re.compile(r"</?%s\b" % re.escape(tag), re.I)
+    depth, pos = 1, html.index(">", start) + 1
+    while depth:
+        m = pattern.search(html, pos)
+        if not m:
+            raise SystemExit("unbalanced <%s> while trimming a title block" % tag)
+        depth += -1 if m.group().startswith("</") else 1
+        pos = m.end()
+    return html.index(">", pos) + 1
 
 
 def clean(html, imgs, stats):
@@ -245,6 +279,19 @@ def clean(html, imgs, stats):
         r"(<ul\b[^>]*>)((?:(?!</ul>).)*)(</ul>)", cap, html, flags=re.S
     )
 
+    # Drop the ladder title blocks; see DROP_TITLE_BLOCKS.
+    while True:
+        for m in re.finditer(r'<div class="mk-kicker"', html):
+            end = element_end(html, m.start())
+            block = html[m.start():end]
+            label = re.search(r'class="section-label">([^<]*)<', block)
+            if label and label.group(1).strip() in DROP_TITLE_BLOCKS:
+                stats["dropped_titles"].append(label.group(1).strip())
+                html = html[:m.start()] + html[end:]
+                break
+        else:
+            break
+
     # The comparison table's Free column, kept in step with the cards above.
     for label in sorted(CMP_FREE_UNAVAILABLE):
         html, hits = re.subn(
@@ -264,7 +311,7 @@ for const, filename, route in PAGES:
     src = load(filename)
     stats = {
         "images": 0, "unresolved": [], "links": 0, "offsite": [],
-        "trimmed": [], "missing_tips": [], "capped": 0,
+        "trimmed": [], "missing_tips": [], "capped": 0, "dropped_titles": [],
     }
     html = clean(section(src, route), img_map(src), stats)
     for cl in re.findall(r'class="([^"]*)"', html):
@@ -280,6 +327,8 @@ for const, filename, route in PAGES:
         print("    UNRESOLVED:", sorted(set(stats["unresolved"])))
     if stats["offsite"]:
         print("    off-site routes:", sorted(set(stats["offsite"])))
+    if stats["dropped_titles"]:
+        print("    title blocks removed:", stats["dropped_titles"])
     if stats["capped"]:
         print("    feature lines capped past %d:" % MAX_PLAN_FEATURES, stats["capped"])
     if stats["trimmed"]:
