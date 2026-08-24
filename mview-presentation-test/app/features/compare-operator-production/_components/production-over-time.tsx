@@ -6,7 +6,6 @@ import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { cardTitleClass } from "@/app/_components/typography";
 import {
   axisLabel,
-  formatMillions,
   metricNoun,
   sparklinePoints,
   type CompareMetric,
@@ -68,11 +67,52 @@ function leftInset(width: number): number {
  * tenth of the plot on a phone, where the pills are not drawn.
  */
 function rightInset(width: number): number {
-  return width < NARROW ? 18 : 78;
+  return width < NARROW ? 18 : 104;
 }
 
-/** Height of an end pill, and the least vertical gap between two of them. */
+/**
+ * A value exactly as the API reported it, with no rounding imposed (requested).
+ *
+ * WHY THIS IS NOT COSMETIC. These figures were drawn with `toFixed(2)` and, in the
+ * table, `toFixed(1)`. Diamondback's 2016 oil arrives as 14,598 and the chart said
+ * "14.60MM" — a number the API never sent, and one a reader cannot reconcile against
+ * the filing. `toLocaleString` with no maximum asked of it prints the shortest decimal
+ * that round-trips the value, so 14,598 shows as "14.598" and nothing is invented or
+ * lost either way.
+ *
+ * THE UNIT IS UNCHANGED. The series arrives in thousands and this chart, like the cards
+ * above it, plots millions — so the displayed figure is the API's own number divided by
+ * exactly 1,000. That division is lossless and it is what keeps a line and its card
+ * reading as the same operator; it is the ROUNDING that was discarding precision, and
+ * only the rounding is gone.
+ */
+function exact(value: number): string {
+  /*
+   * SNAPPED TO THE PRECISION THE SOURCE ACTUALLY CARRIES, which is thousandths: the
+   * series arrives in whole thousands and is divided by 1,000, so a real value in
+   * millions has at most three decimals. Anything past that is binary-float noise, and
+   * it is visible — the cumulative row summed sixteen years into
+   * "1,212.4279999999999M". Rounding here discards no data, because there is no data
+   * out there to discard; it removes an artefact of adding the numbers up.
+   */
+  const snapped = Math.round(value * 1000) / 1000;
+  return snapped.toLocaleString("en-US", { maximumFractionDigits: 20 });
+}
+
+/**
+ * Height of an end pill, and the least vertical gap between two of them.
+ *
+ * `width` IS A MINIMUM NOW, not the width. An exact figure is longer than a rounded one
+ * — "14.598M" against "14.60M" — and a fixed box would clip it. `pillWidth` grows the
+ * box to its text, and `rightInset` reserves a gutter deep enough for the widest one
+ * this chart can produce, so nothing overflows the plot.
+ */
 const PILL = { width: 64, height: 22, gap: 24 } as const;
+
+/** Box width for one pill's label, at the 11.5px bold face the pill is drawn in. */
+function pillWidth(label: string): number {
+  return Math.max(PILL.width, 14 + label.length * 6.7);
+}
 
 /**
  * Where each series' end-of-line pill sits.
@@ -656,7 +696,7 @@ function ChartView({
                   />
                   {operator.label}
                 </span>
-                <b className="font-bold tabular-nums">{value.toFixed(2)}MM</b>
+                <b className="font-bold tabular-nums">{exact(value)}MM</b>
               </div>
             ))}
           </div>
@@ -784,7 +824,7 @@ const ChartBody = memo(function ChartBody({
               {/* The unit rides on the label, which is why there is no rotated
                   caption beside the axis any more. Values are already in millions,
                   so `MM` is the suffix and zero stays bare. */}
-              {value === 0 ? "0" : `${value.toFixed(2)}MM`}
+              {value === 0 ? "0" : `${exact(value)}MM`}
             </text>
           </g>
         );
@@ -868,20 +908,20 @@ const ChartBody = memo(function ChartBody({
               <rect
                 x="0"
                 y={-PILL.height / 2}
-                width={PILL.width}
+                width={pillWidth(`${exact(pill.value)}M`)}
                 height={PILL.height}
                 rx={PILL.height / 2}
                 fill={pill.series.color}
               />
               <text
-                x={PILL.width / 2}
+                x={pillWidth(`${exact(pill.value)}M`) / 2}
                 y="4"
                 textAnchor="middle"
                 fontSize="11.5"
                 fontWeight="700"
                 fill="#fff"
               >
-                {`${pill.value.toFixed(2)}M`}
+                {`${exact(pill.value)}M`}
               </text>
             </g>
           ))
@@ -992,7 +1032,7 @@ function YearTable({
                   key={operator.key}
                   className="whitespace-nowrap border-b border-mv-line-soft bg-white px-[15px] py-[13px] text-right tabular-nums text-mv-ink-soft"
                 >
-                  {(valuesFor(operator, metric)[yearIndex] ?? 0).toFixed(1)}M
+                  {exact(valuesFor(operator, metric)[yearIndex] ?? 0)}M
                 </td>
               ))}
             </tr>
@@ -1011,7 +1051,7 @@ function YearTable({
                 key={operators[slot]?.key ?? slot}
                 className="border-t-[1.5px] border-mv-line bg-mv-bg px-[15px] py-[13px] text-right font-bold tabular-nums text-mv-ink"
               >
-                {formatMillions(total)}
+                {exact(total)}M
               </td>
             ))}
           </tr>
