@@ -107,6 +107,15 @@ export interface OperatorCondition {
     month: string | null;
     month_label: string | null;
     boe: number | null;
+    /**
+     * What the endpoint calls `boe`.
+     *
+     * OPTIONAL BECAUSE IT IS NOT SENT TODAY. Measured against the live response: the
+     * details endpoint carries no `*_unit` field anywhere, so this is read when it
+     * appears and the card falls back to `BOE` until then — which is what `boe` is,
+     * established by `boe / 1e6` reproducing `mmboe` exactly (22,743,293.6 -> 22.743).
+     */
+    boe_unit?: string | null;
     mmboe: number | null;
     mom: OperatorDetailsComparison;
     yoy: OperatorDetailsComparison;

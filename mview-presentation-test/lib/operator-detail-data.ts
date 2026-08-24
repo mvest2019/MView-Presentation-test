@@ -1141,6 +1141,17 @@ export interface ConditionCard {
   delta?: string;
   window?: string;
   foot: string;
+  /**
+   * Put `foot` on the chip's line rather than under it.
+   *
+   * ONLY WHERE THE FOOT IS ITSELF A COMPARISON. The BOE card's foot is its
+   * year-on-year change, a sibling of the month-on-month chip beside it, so the two
+   * belong on one line — and that card's value is long enough to take the whole first
+   * line, which left the chip's row half empty with the comparison stranded below it.
+   * The other three cards' feet are context rather than comparisons ("of 10,324 on
+   * record"), and they stay where they are.
+   */
+  footInline?: boolean;
   icon: "production" | "leases" | "permits" | "completions";
 }
 

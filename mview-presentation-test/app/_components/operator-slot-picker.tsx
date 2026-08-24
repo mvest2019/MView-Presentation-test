@@ -475,20 +475,25 @@ export function OperatorSlotPicker({
             rows of DOM on a page that starts with nothing selected. */}
         {open ? (
           <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-40 overflow-hidden rounded-xl border border-mv-line bg-white shadow-mv-lg">
-            <p
-              aria-live="polite"
-              className="border-b border-mv-line-soft bg-mv-bg px-[13px] py-[9px] text-[12px] font-semibold text-mv-muted"
-            >
-              {loadingFirstPage
-                ? "Searching…"
-                : needle === ""
-                  ? /* Browsing. Say how many are shown AND how many exist, so the
-                       head of the list does not read as the whole directory. */
-                    `${visible.length} of ${total.toLocaleString("en-US")} operators · scroll for more, or type to search`
+            {/* NOTHING IS SAID WHILE BROWSING (requested). The strip used to read
+                "20 of 24,742 operators · scroll for more, or type to search" the moment
+                the field opened; that line is gone. The bar is dropped entirely in that
+                case rather than rendered empty, which would leave a blank grey band
+                above the first row. It still appears while a search runs and to report
+                what a search matched — feedback a reader asked for by typing, and the
+                `aria-live` region that announces the result count. */}
+            {loadingFirstPage || needle !== "" ? (
+              <p
+                aria-live="polite"
+                className="border-b border-mv-line-soft bg-mv-bg px-[13px] py-[9px] text-[12px] font-semibold text-mv-muted"
+              >
+                {loadingFirstPage
+                  ? "Searching…"
                   : total > visible.length
                     ? `${visible.length} of ${total.toLocaleString("en-US")} matching · scroll for more`
                     : `${visible.length} operator${visible.length === 1 ? "" : "s"} matching`}
-            </p>
+              </p>
+            ) : null}
 
             {loadingFirstPage ? (
               /* One row's worth of height while the request is out, so the popup

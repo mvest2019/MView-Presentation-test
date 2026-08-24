@@ -1,7 +1,11 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Search, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+
+import { OperatorLogo } from "@/app/_components/operator-logo";
+import { operatorLogoPath } from "@/lib/operator-api-types";
+import { monogramOf } from "@/lib/operator-statistics";
 
 /**
  * The Operator filter: the operators that actually have presentations.
@@ -21,8 +25,17 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
  * "217426" both find their operator. Rows show the name alone — a number on every
  * line is chrome a native select does not have.
  *
- * IT LOOKS LIKE A NATIVE SELECT: same height, border, radius and chevron as the date
- * inputs beside it, and a plain list with a solid fill on the current row.
+ * IT IS THE COMPARE PAGES' PICKER, VISUALLY (requested). Same field - search icon,
+ * the chosen operator's logo tile, a clear cross, the same focus ring - and the same
+ * popup: rows of logo, name and a "Select" affordance, with a tick on the current one.
+ * The one thing not copied is the 48px height. This sits in a filter bar whose columns
+ * are 46px and are aligned to each other, and two pixels of "exactly the same" is not
+ * worth the row going crooked.
+ *
+ * THE OPTIONS STAY DECK-ONLY. The compare picker reads `/api/operators/names`, the
+ * whole 24,742-record directory. This deliberately does not: only about thirty
+ * operators have a presentation on file, so the directory would offer thousands of
+ * choices that return nothing. Same control, same behaviour, a list that can answer.
  *
  * ARIA. The combobox-with-listbox pattern: `role="combobox"` on the input,
  * `aria-expanded`, `aria-controls`, and the highlight published through
@@ -65,14 +78,12 @@ export function OperatorSelect({
   id,
   value,
   onChange,
-  className = "",
 }: {
   id: string;
   /** The chosen operator's name, or "" for every operator. */
   value: string;
   /** The name is what the request needs; the number is passed along for display. */
   onChange: (name: string, operatorNumber: string | null) => void;
-  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   /** null means "not searching" — the field shows the current selection. */
@@ -180,103 +191,156 @@ export function OperatorSelect({
     }
   }
 
+  /** The chosen row, for the field's logo tile. */
+  const selected = rows.find((row) => row.name !== "" && row.name === value);
+
   return (
     <div ref={boxRef} className="relative min-w-0">
-      <input
-        id={id}
-        ref={inputRef}
-        type="text"
-        role="combobox"
-        aria-expanded={open}
-        aria-controls={listboxId}
-        aria-autocomplete="list"
-        aria-activedescendant={
-          open && highlight >= 0 ? optionId(highlight) : undefined
-        }
-        autoComplete="off"
-        placeholder="All operators"
-        value={query === null ? value : query}
-        onFocus={(event) => {
-          setOpen(true);
-          setHighlight(-1);
-          event.currentTarget.select();
-        }}
-        onChange={(event) => {
-          setOpen(true);
-          setQuery(event.target.value);
-          setHighlight(-1);
-        }}
-        onKeyDown={onKeyDown}
-        className={`${className} cursor-pointer truncate pr-[34px]`}
-      />
+      {/* The compare picker's field, at this bar's control height. */}
+      <div className="flex h-[46px] min-w-0 items-center gap-2 rounded-[11px] border border-mv-line bg-white pl-3 pr-[10px] transition-[border-color,box-shadow] focus-within:border-mv-green focus-within:ring-[3px] focus-within:ring-[rgba(84,191,150,.16)]">
+        {selected ? (
+          <OperatorLogo
+            url={selected.number ? operatorLogoPath(selected.number) : null}
+            monogram={monogramOf(selected.label)}
+            size={26}
+            radius={8}
+            monogramClassName="!rounded-lg"
+          />
+        ) : (
+          <Search
+            aria-hidden="true"
+            className="h-[17px] w-[17px] shrink-0 text-mv-muted"
+            strokeWidth={1.9}
+          />
+        )}
 
-      <ChevronDown
-        aria-hidden="true"
-        className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-mv-muted"
-        strokeWidth={2.2}
-      />
+        <input
+          id={id}
+          ref={inputRef}
+          type="text"
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={listboxId}
+          aria-autocomplete="list"
+          aria-activedescendant={
+            open && highlight >= 0 ? optionId(highlight) : undefined
+          }
+          autoComplete="off"
+          placeholder={ALL_LABEL}
+          value={query === null ? value : query}
+          onFocus={(event) => {
+            setOpen(true);
+            setHighlight(-1);
+            event.currentTarget.select();
+          }}
+          onChange={(event) => {
+            setOpen(true);
+            setQuery(event.target.value);
+            setHighlight(-1);
+          }}
+          onKeyDown={onKeyDown}
+          className="min-w-0 flex-1 border-0 bg-transparent text-sm font-semibold text-mv-ink outline-none placeholder:font-normal placeholder:text-mv-muted"
+        />
+
+        {value ? (
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label="Clear operator"
+            // `pointerdown` default prevented so clearing does not blur the input
+            // and close the popup out from under the click.
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={() => {
+              onChange("", null);
+              setQuery(null);
+              inputRef.current?.focus();
+            }}
+            className="shrink-0 cursor-pointer rounded-md border-0 bg-transparent p-1 text-mv-muted hover:bg-mv-bg hover:text-mv-ink"
+          >
+            <X
+              aria-hidden="true"
+              className="h-[15px] w-[15px]"
+              strokeWidth={2.2}
+            />
+          </button>
+        ) : (
+          <ChevronDown
+            aria-hidden="true"
+            className="pointer-events-none h-[7px] w-[11px] shrink-0 text-mv-muted"
+            strokeWidth={1.8}
+          />
+        )}
+      </div>
 
       {open ? (
-        /* Styled after a native select's popup: a plain list, one line per
-           operator, and a solid fill on the row you are on. No header row, no
-           per-row badges — the chrome is what made it look unlike the rest of the
-           site's dropdowns. */
-        <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-40 overflow-hidden rounded-[10px] border border-mv-line bg-white shadow-mv-lg">
-          <ul
-            ref={listRef}
-            id={listboxId}
-            role="listbox"
-            aria-label="Operator"
-            className="m-0 max-h-[280px] list-none overflow-auto py-1 [scrollbar-color:var(--color-mv-scroll)_transparent] [scrollbar-width:thin]"
-          >
-            {rows.map((row, index) => {
-              const isCurrent = row.name === value;
-              const isActive = index === highlight || isCurrent;
-              return (
-                <li
-                  key={row.name || "__all"}
-                  id={optionId(index)}
-                  role="option"
-                  aria-selected={isCurrent}
-                  data-index={index}
-                  // `pointerdown`, not `click`: the outside-pointerdown listener
-                  // would otherwise close the popup before a click could land.
-                  onPointerDown={(event) => {
-                    event.preventDefault();
-                    choose(index);
-                  }}
-                  onMouseEnter={() => setHighlight(index)}
-                  className={`cursor-pointer truncate px-3 py-[6px] text-[13.5px] leading-[1.45] ${
-                    isActive
-                      ? "bg-mv-green-deep text-white"
-                      : "bg-white text-mv-ink"
-                  }`}
-                >
-                  {row.label}
-                </li>
-              );
-            })}
-
-            {/* Both states are a row in the list rather than a banner above it, so
-                the popup keeps one shape whatever it is doing. */}
-            {loading ? (
-              <li
+        <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-40 overflow-hidden rounded-xl border border-mv-line bg-white shadow-mv-lg">
+          {loading ? (
+            /* One row's worth of height while the list is fetched, so the popup does
+               not grow from nothing under the pointer. */
+            <p className="px-[13px] py-[9px] text-[13px] text-mv-muted">
+              <span
                 aria-hidden="true"
-                className="px-3 py-[6px] text-[13.5px] text-mv-muted"
-              >
-                Loading operators…
-              </li>
-            ) : null}
-
-            {!loading && needle !== "" && rows.length === 1 ? (
-              <li
-                aria-hidden="true"
-                className="px-3 py-[6px] text-[13.5px] text-mv-muted"
-              >
-                No operators match “{query?.trim()}”.
-              </li>
-            ) : null}
-          </ul>
+                className="inline-block h-3 w-[160px] animate-pulse rounded bg-mv-line-soft align-middle"
+              />
+            </p>
+          ) : rows.length <= 1 && needle !== "" ? (
+            <p className="p-4 text-center text-[13px] text-mv-muted">
+              No operators match “{needle}”.
+            </p>
+          ) : (
+            <ul
+              ref={listRef}
+              id={listboxId}
+              role="listbox"
+              aria-label="Operator"
+              className="m-0 max-h-[280px] list-none overflow-auto p-0 [scrollbar-color:var(--color-mv-scroll)_transparent] [scrollbar-width:thin]"
+            >
+              {rows.map((row, index) => {
+                const isCurrent = row.name === value;
+                const isAll = row.name === "";
+                return (
+                  <li
+                    key={row.name || "__all"}
+                    id={optionId(index)}
+                    role="option"
+                    aria-selected={isCurrent}
+                    data-index={index}
+                    // `pointerdown`, not `click`: the outside-pointerdown listener
+                    // would otherwise close the popup before a click could land.
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      choose(index);
+                    }}
+                    onMouseEnter={() => setHighlight(index)}
+                    className={`grid cursor-pointer grid-cols-[auto_1fr_auto] items-center gap-[10px] border-b border-mv-line-soft px-[13px] py-[9px] last:border-b-0 ${
+                      index === highlight || isCurrent
+                        ? "bg-mv-tint"
+                        : "bg-white"
+                    }`}
+                  >
+                    {isAll ? (
+                      /* Keeps the three-column grid aligned without inventing a logo
+                         for a row that is not an operator. */
+                      <span aria-hidden="true" className="h-[26px] w-[26px]" />
+                    ) : (
+                      <OperatorLogo
+                        url={row.number ? operatorLogoPath(row.number) : null}
+                        monogram={monogramOf(row.label)}
+                        size={26}
+                        radius={10}
+                      />
+                    )}
+                    <span className="truncate text-[13px] font-semibold text-mv-ink">
+                      {row.label}
+                    </span>
+                    <span className="whitespace-nowrap text-[12px] font-bold text-mv-green-deep">
+                      {isCurrent ? "✓" : "Select"}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
       ) : null}
     </div>
