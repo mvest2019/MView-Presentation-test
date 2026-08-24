@@ -110,8 +110,8 @@ export function SiteHeader({ user }: { user: SessionUser | null }) {
       ? pathname === "/"
       : pathname === href || pathname.startsWith(`${href}/`);
 
-  const exploreCurrent = exploreNav.some((column) =>
-    column.links.some((link) => isCurrent(link.href)),
+  const exploreCurrent = exploreNav.some(
+    (column) => column.href !== undefined && isCurrent(column.href),
   );
   const learnCurrent = learnNav.some((link) => isCurrent(link.href));
 
@@ -391,22 +391,28 @@ export function SiteHeader({ user }: { user: SessionUser | null }) {
               </SheetLink>
             ) : item.menu === "explore" ? (
               <div key={item.label}>
-                {exploreNav.map((column) => (
-                  <div key={column.heading}>
-                    <SheetGroup>
-                      Explore · {column.heading.toLowerCase()}
-                    </SheetGroup>
-                    {column.links.map((link) => (
-                      <SheetLink
-                        key={link.href}
-                        href={link.href}
-                        onNavigate={closeDrawer}
-                      >
-                        {link.label}
-                      </SheetLink>
-                    ))}
-                  </div>
-                ))}
+                {/* The drawer follows the desktop panel: the two sections, not the
+                    eight destinations under them. */}
+                <SheetGroup>Explore</SheetGroup>
+                {exploreNav.map((column) =>
+                  column.href === undefined ? (
+                    <span
+                      key={column.heading}
+                      aria-disabled="true"
+                      className="block px-[10px] py-[9px] text-[14px] font-semibold text-mv-sublabel"
+                    >
+                      {column.heading}
+                    </span>
+                  ) : (
+                    <SheetLink
+                      key={column.heading}
+                      href={column.href}
+                      onNavigate={closeDrawer}
+                    >
+                      {column.heading}
+                    </SheetLink>
+                  ),
+                )}
                 <SheetDivider />
               </div>
             ) : (
@@ -516,16 +522,17 @@ function ExploreMenu({
 
       <div
         aria-label={label}
-        className={`absolute left-1/2 top-[calc(100%+8px)] z-[80] w-[450px] max-w-[calc(100vw-40px)] -translate-x-1/2 flex-wrap rounded-xl border border-mv-line bg-white p-[14px] shadow-[0_12px_30px_rgba(13,14,23,.14)] group-hover:flex ${
+        /* NARROWER AND STACKED, now that it holds two rows rather than two columns
+           of four: 450px of mostly empty panel under a two-item menu read as though
+           something had failed to load. `flex-col` so the rows fill the width. */
+        className={`absolute left-1/2 top-[calc(100%+8px)] z-[80] w-[268px] max-w-[calc(100vw-40px)] -translate-x-1/2 flex-col gap-[2px] rounded-xl border border-mv-line bg-white p-[10px] shadow-[0_12px_30px_rgba(13,14,23,.14)] group-hover:flex ${
           open ? "flex" : "hidden"
         }`}
       >
-        {exploreNav.map((column, index) => (
-          <MegaColumnBlock
+        {exploreNav.map((column) => (
+          <ExploreSection
             key={column.heading}
             column={column}
-            first={index === 0}
-            last={index === exploreNav.length - 1}
             onNavigate={onNavigate}
           />
         ))}
@@ -534,46 +541,46 @@ function ExploreMenu({
   );
 }
 
-function MegaColumnBlock({
+/**
+ * One Explore row: the section's heading, and nothing under it.
+ *
+ * A LINK ONLY WHERE THERE IS A PAGE. "Know your operators" goes to the operator
+ * directory; "Data coverage" has no page built, so it renders as a label with no
+ * hover state and no pointer — a row that plainly is not a target reads better than
+ * one that looks like a target and does nothing. It becomes a link by giving its
+ * column an `href`.
+ */
+function ExploreSection({
   column,
-  first,
-  last,
   onNavigate,
 }: {
   column: MegaColumn;
-  first: boolean;
-  last: boolean;
   onNavigate: () => void;
 }) {
-  return (
-    <div
-      className={`min-w-[190px] flex-1 px-[14px] ${first ? "pl-1" : ""} ${
-        last ? "" : "border-r border-mv-line"
-      }`}
-    >
-      <div className="px-2 pb-2 text-[10.5px] font-extrabold uppercase tracking-[.06em] text-mv-green-deep">
+  if (column.href === undefined) {
+    return (
+      <span
+        className="block cursor-default rounded-lg px-[10px] py-[9px] text-[13.5px] font-semibold text-mv-sublabel"
+        aria-disabled="true"
+      >
         {column.heading}
-      </div>
-      {column.links.map((link) => (
-        <div key={link.href}>
-          {link.dividerBefore && (
-            <div className="mx-[10px] my-[6px] h-px bg-mv-line" />
-          )}
-          <Link
-            href={link.href}
-            onClick={onNavigate}
-            /* `whitespace-normal` overrides `.pi`'s nowrap: the descriptions
-               wrap inside a 190px column. */
-            className={`${panelItem} whitespace-normal`}
-          >
-            {link.label}
-            <span className="block pt-px text-[11px] font-normal leading-[1.35] text-mv-sublabel">
-              {link.sub}
-            </span>
-          </Link>
-        </div>
-      ))}
-    </div>
+      </span>
+    );
+  }
+
+  return (
+    <Link
+      href={column.href}
+      onClick={onNavigate}
+      className={`${panelItem} flex items-center justify-between gap-3 py-[9px]`}
+    >
+      {column.heading}
+      {/* A quiet affordance that the row goes somewhere — the panel has no
+          descriptions left to signal it. */}
+      <span aria-hidden="true" className="text-[11px] leading-none">
+        →
+      </span>
+    </Link>
   );
 }
 
