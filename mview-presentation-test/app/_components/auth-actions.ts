@@ -297,19 +297,21 @@ export async function signOutAction(): Promise<void> {
 /**
  * Step 1 of the reset — ask for the emailed link.
  *
- * ALWAYS RETURNS `ok`, WHATEVER THE API SAID, unless the service itself is down.
- * That is deliberate and it is the whole point of this wrapper.
+ * REPORTS AN UNREGISTERED ADDRESS (Ryan, 2026-08-19: "wrong email add and click
+ * on send reset link button show success msg need to show this user is not
+ * registered").
  *
- * The endpoint does not distinguish a known address from an unknown one — probed
- * with `nobody@example.com` and it still answered `{"data":"SUCCESS"}` — and this
- * must not either. Reporting "no account for that address" here would rebuild, on
- * a form that needs no password at all, exactly the enumeration oracle that was
- * removed from sign-in the same day. Anyone could confirm whether an address is
- * registered by typing it.
+ * This used to swallow every refusal that was not an outage and return `ok`
+ * regardless, so an address with no account got the same "check your email"
+ * panel as one that did. That was deliberate — see the block on
+ * `NOT_REGISTERED_MESSAGE` in `lib/auth-api.ts` for the enumeration trade, which
+ * is real and was put in writing before this changed. It is reversed on request:
+ * the failure the API already reports is now passed through instead of hidden.
  *
- * A REAL OUTAGE IS STILL REPORTED, because it is not about the address: telling
- * someone the link is on its way when the mail was never dispatched leaves them
- * waiting for an email that is not coming.
+ * NOTHING IS INVENTED HERE. The endpoint itself answers
+ * `{"status_code":400,"data":"User is not available"}` for an unknown address, so
+ * this only surfaces a distinction the backend was already making — and already
+ * leaking to anyone who read its response.
  */
 export async function requestPasswordResetAction(
   values: unknown,
@@ -320,15 +322,7 @@ export async function requestPasswordResetAction(
   }
 
   const result = await requestPasswordReset(parsed.data.email);
-  if (!result.ok && /try again shortly|could not reach/i.test(result.message)) {
-    return { ok: false, message: result.message };
-  }
-  /* Anything else the API refused for — including an unknown address — is
-     swallowed on purpose, and logged so it is not invisible to us. */
-  if (!result.ok) {
-    console.error(`[auth] reset link not sent, upstream said: ${result.message}`);
-  }
-  return { ok: true };
+  return result.ok ? { ok: true } : { ok: false, message: result.message };
 }
 
 /** Step 2 of the reset — set the new password against the emailed token. */

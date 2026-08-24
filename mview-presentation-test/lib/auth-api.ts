@@ -606,7 +606,45 @@ export async function loginWithGoogle(
  * verification now completes by emailed link instead of by code.
  */
 
-export type VerificationResult = { ok: boolean; message: string };
+export type VerificationResult = {
+  ok: boolean;
+  message: string;
+  /**
+   * The address has no account (password reset only).
+   *
+   * Flagged separately from a generic failure so the action layer can decide what
+   * to do with it — showing it and hiding it are both defensible, and the choice
+   * should be visible at that level rather than buried in a string comparison.
+   */
+  notRegistered?: boolean;
+};
+
+/**
+ * Shown when a reset is requested for an address with no account (Ryan,
+ * 2026-08-19: "wrong email … show this user is not registered").
+ *
+ * Worded to mirror sign-up's "This email is already registered." so the two
+ * outcomes read as a matched pair rather than two unrelated sentences.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * THIS IS AN ACCOUNT-ENUMERATION ORACLE, and a deliberate one.
+ *
+ * Distinguishing "no such account" from "sent" lets anyone confirm whether an
+ * address is registered here, from a form that needs no password, at whatever
+ * rate they like. It is the same disclosure that was removed from SIGN-IN on this
+ * date, where both outcomes now collapse to "Email or password is incorrect."
+ *
+ * Kept because it was asked for explicitly after the trade was put in writing:
+ * a real person who mistypes their address otherwise waits for an email that is
+ * never coming, and the endpoint already leaks the same fact to anyone who reads
+ * its 400. Do not "fix" this back to a neutral message without checking first.
+ *
+ * If it needs mitigating rather than reverting, the throttle in
+ * `lib/login-throttle.ts` is the piece to extend — it is already keyed on email
+ * and IP and would cap how fast a list could be walked.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+const NOT_REGISTERED_MESSAGE = "This email is not registered.";
 
 /**
  * Where verification lives on whichever host `AUTH_API_URL` names.
@@ -879,6 +917,30 @@ export async function requestPasswordReset(
      * the sibling endpoint, and `.includes` means different things to each.
      */
     const data = (body as { data?: unknown } | null)?.data;
+
+    /*
+     * THE ENDPOINT DOES DISTINGUISH A KNOWN ADDRESS FROM AN UNKNOWN ONE, which an
+     * earlier note here got wrong. Measured 2026-08-19, both on `example.com` so
+     * no real mailbox was involved:
+     *
+     *   registered      → {"status_code":200,"data":"SUCCESS","error":""}
+     *   not registered  → {"status_code":400,"data":"User is not available","error":""}
+     *
+     * The earlier claim that it answered SUCCESS either way came from probing
+     * `nobody@example.com` and ASSUMING it had no account. It has one — created by
+     * accident during an earlier registration probe — so that test compared a
+     * registered address with itself. `login_user` is the cheap way to check
+     * which is which, since it says "Please register" for an unknown address and
+     * sends no mail.
+     *
+     * `error` is EMPTY on the 400 and the reason sits in `data`, so `messageFrom`
+     * cannot find it — which is why this branch reads `data` directly rather than
+     * leaving it to the generic fallback.
+     */
+    if (/user is not available/i.test(String(data ?? ""))) {
+      return { ok: false, notRegistered: true, message: NOT_REGISTERED_MESSAGE };
+    }
+
     const ok =
       envelopeCode(status, body) === 200 &&
       !String(data ?? "").toUpperCase().includes("INVALID");
