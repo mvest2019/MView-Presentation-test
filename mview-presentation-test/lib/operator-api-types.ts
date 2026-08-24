@@ -163,8 +163,16 @@ export function publicOperatorApiBaseUrl(): string {
  * the endpoint does not support it.
  */
 export const OPERATOR_SORT_FIELDS = {
-  oil: "oil_produced_current_quarter",
-  gas: "gas_produced_current_quarter",
+  /*
+   * RENAMED WITH THE COLUMNS. The endpoint dropped `oil_produced_current_quarter`
+   * and `gas_produced_current_quarter`; sorting by a name it does not know falls
+   * back to the default ordering SILENTLY, which is the trap this block already
+   * warns about — so the Oil and Gas headers had quietly stopped sorting. Probed:
+   * `Total_Production_Oil` returns Pioneer, EOG, Occidental, Diamondback, while the
+   * old name returns the same rows as a deliberately bogus field.
+   */
+  oil: "Total_Production_Oil",
+  gas: "Total_Production_Gas",
   cty: "countie_count",
 } as const;
 
@@ -243,11 +251,16 @@ export interface OperatorSearchRecord {
   seo_operator_name?: string;
   seo_operator_url?: string;
   end_productiondate: string;
-  /** Pre-formatted with units by the API, e.g. `"57,323.230 (MBBL)"`. */
-  oil_produced_current_quarter: string;
-  gas_produced_current_quarter: string;
-  oil_produced_previous_quarter: string;
-  gas_produced_previous_quarter: string;
+  /**
+   * Pre-formatted with units by the API, e.g. `"499,488.210 (MBBL)"`.
+   *
+   * THESE REPLACED `oil_produced_current_quarter`/`gas_produced_current_quarter`,
+   * which the endpoint no longer sends. They are lifetime totals rather than a
+   * quarter, and they carry their own unit — MBBL and MMCF — which `splitUnit`
+   * lifts into the column header.
+   */
+  Total_Production_Oil: string;
+  Total_Production_Gas: string;
   /** Numbers normally; the literal `"****"` on a gated row. */
   countie_count: number | typeof MASKED;
   leaseCount: number | typeof MASKED;
