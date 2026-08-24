@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BookOpen,
   ChartColumn,
   Clock,
   Download,
@@ -66,6 +67,8 @@ type MapChromeProps = {
   /** Which of Map / Table / Insights is showing. Owned by the view. */
   viewTab: ViewTab;
   onViewTabChange: (tab: ViewTab) => void;
+  /** Opens the feature guide over the map. */
+  onOpenGuide: () => void;
   /** Insights halves the map, so the toolbar sheds what will not fit. */
   compact?: boolean;
   /** Fired when an API number is chosen from the search box. */
@@ -119,6 +122,7 @@ export function MapChrome({
   onToggleFullscreen,
   viewTab,
   onViewTabChange,
+  onOpenGuide,
   compact = false,
   onSelectApi,
   onClearApi,
@@ -524,6 +528,20 @@ export function MapChrome({
               icon={Download}
               label="Export CSV"
               onClick={onExportCsv}
+            />
+          )}
+
+          {!compact && <Divider />}
+
+          {/* Stays on this URL: the guide opens over the explorer, the way
+              Table and Insights do, so reading about a feature and using it
+              are one click apart. */}
+          {!compact && (
+            <ToolbarButton
+              icon={BookOpen}
+              label="Feature guide"
+              title="What this map can do"
+              onClick={onOpenGuide}
             />
           )}
 

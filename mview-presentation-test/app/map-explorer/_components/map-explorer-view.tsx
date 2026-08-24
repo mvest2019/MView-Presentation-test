@@ -23,6 +23,7 @@ import {
   type AreaMeasurement,
 } from "./measure-area-panel";
 import { ToolDemo, type DemoTool } from "./tool-demo";
+import { MapFeatureGuide } from "./map-feature-guide";
 import { MapToast } from "./map-toast";
 import { MeasureBar } from "./measure-bar";
 import {
@@ -735,6 +736,17 @@ export function MapExplorerView() {
    * them and no word about it. The toast clears itself — see `map-toast.tsx`.
    */
   const [toast, setToast] = useState<string | null>(null);
+
+  /**
+   * Whether the feature guide is over the map.
+   *
+   * Its own flag rather than a fourth view tab: the guide is something to read
+   * about the explorer, not another way of looking at the wells, and the tab
+   * state carries per-tab things — which filters panel is open, which record is
+   * selected — that a page of prose has no use for. The map stays mounted
+   * underneath, so closing it returns the exact view that was left.
+   */
+  const [guideOpen, setGuideOpen] = useState(false);
 
   const [readout, setReadout] = useState({
     scale: HOME_SCALE,
@@ -3101,6 +3113,7 @@ export function MapExplorerView() {
           onToggleFullscreen={toggleFullscreen}
           viewTab={viewTab}
           onViewTabChange={changeViewTab}
+          onOpenGuide={() => setGuideOpen(true)}
           compact={viewTab === "insights"}
           activeTool={activeTool}
           onSelectTool={startTool}
@@ -3197,6 +3210,12 @@ export function MapExplorerView() {
 
       {/* The map stays mounted underneath — unmounting it would destroy the
           Esri view and pay for a full re-initialisation on the way back. */}
+      {/* Over everything, including the table: it is a full-page read, and
+          whatever was underneath is waiting when it closes. */}
+      {status === "ready" && guideOpen && (
+        <MapFeatureGuide onBack={() => setGuideOpen(false)} />
+      )}
+
       {status === "ready" && viewTab === "table" && (
         <WellsTable
           activeTab={viewTab}
