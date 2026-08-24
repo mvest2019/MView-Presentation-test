@@ -1,16 +1,26 @@
 "use client";
 
-import { AlertTriangle, Droplet, Flame, Gauge, MapPin, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Droplet,
+  Flame,
+  Gauge,
+  Lightbulb,
+  MapPin,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { buttonClass } from "@/app/_components/button";
+import { ChangeItem } from "@/app/_components/change-item";
 import { DeferredSection } from "@/app/_components/deferred-section";
 import { SelectControl } from "@/app/_components/select-control";
 import { OperatorLogo } from "@/app/_components/operator-logo";
 import { OperatorMonogram } from "@/app/_components/operator-monogram";
 import { OperatorSlotPicker } from "@/app/_components/operator-slot-picker";
 import { eyebrowClass, sectionTitleClass } from "@/app/_components/typography";
+import { compareFindings } from "@/lib/operator-compare-findings";
 import { detailSlugForNumber } from "@/lib/operator-detail";
 import { formatCount, formatMillions } from "@/lib/operator-compare";
 import { shortName } from "@/lib/operator-statistics";
@@ -130,6 +140,21 @@ export function ComparePage({
   const chosen = hasProductionSelection(draft);
   const dirty = draftKey !== appliedKey;
 
+  /**
+   * Put an operator in a slot, or clear one.
+   *
+   * CLEARING THE LAST OPERATOR ALSO CLEARS WHAT IS APPLIED, and that is a bug fix
+   * rather than a preference. Slots edit `draft`; the page renders `applied`. Emptying
+   * every slot therefore left the previous comparison on screen — and because Apply
+   * disables itself with nothing chosen, there was no way to get rid of it. The reader
+   * was looking at operators the controls said were not selected, with no way out
+   * except a reload.
+   *
+   * REMOVING ONE OF SEVERAL IS LEFT ALONE. That is an edit like any other: Apply lights
+   * up, the applied row still describes what is genuinely in force, and the change costs
+   * a request only when it is committed. Only the empty case is unreachable by Apply,
+   * so only the empty case is handled here — the same reasoning as `stripScope`.
+   */
   function setSlot(slot: number, name: string) {
     setDraft((current) => {
       const next = [...current.operators];
@@ -141,6 +166,21 @@ export function ComparePage({
       while (next.length > 0 && next[next.length - 1] === "") next.pop();
       return { ...current, operators: next };
     });
+
+    /* Computed from the draft this control was rendered from — what the reader just
+       acted on — rather than inside the updater above, which must stay free of side
+       effects. */
+    const clearedTheLastOne =
+      name === "" &&
+      draft.operators.every((entry, index) => index === slot || entry === "");
+
+    if (clearedTheLastOne) {
+      setApplied((current) =>
+        current.operators.length === 0
+          ? current
+          : { ...current, operators: [] },
+      );
+    }
   }
 
   const takenBy = (slot: number) =>
@@ -365,10 +405,7 @@ export function ComparePage({
       </div>
 
       {state.status === "idle" ? (
-        <Notice>
-          Pick up to four operators and press Apply filters to put their filed
-          production side by side.
-        </Notice>
+        <DoYouKnow />
       ) : state.status === "loading" ? (
         <LoadingPanels />
       ) : state.status === "error" ? (
@@ -820,25 +857,90 @@ function IdentityCard({ operator }: { operator: Compared }) {
 }
 
 /* ==========================================================================
+   Do you know?
+   ========================================================================== */
+
+/**
+ * What the page is for, shown while nothing has been applied yet.
+ *
+ * THE DEFAULT STATE USED TO BE ONE SENTENCE. A visitor who lands here before picking
+ * anyone saw a single line of instruction and no reason to bother, which is a poor
+ * first screen for the page a marketing site is trying to send people to. These are the
+ * six occasions this comparison actually answers something.
+ *
+ * ONE ACCENT, REPEATED — NOT SIX (requested). The reference design gave every row its
+ * own hue and its own icon, and the colour there encodes nothing: these are six
+ * unrelated prompts, not a scale or a set of categories. Six colours would be telling
+ * the reader to look for a meaning that is not present. So every row takes the same
+ * mint square the findings cards already use for their positive tone, and the rows
+ * themselves sit on one neutral tint.
+ *
+ * STATIC, AND FREE. No data, no state, no request — six strings and one icon, rendered
+ * only on the idle branch and replaced the moment a comparison is applied. It cannot
+ * affect the applied page at all, on either breakpoint.
+ */
+const DO_YOU_KNOW = [
+  "When your lease comes up for renewal, you can check if your operator has really performed?",
+  "Before signing a new lease, you can compare that operator’s track record against others?",
+  "During royalty talks, you can rely on real production numbers instead of promises?",
+  "Some operators show lower production than expected — you can spot it in their history.",
+  "If you’re unhappy with your operator, you can see who’s delivering better nearby?",
+  "Not all counties perform the same — comparing nearby data shows where operators really shine.",
+] as const;
+
+function DoYouKnow() {
+  return (
+    // `mt-8` is the gap the removed prompt used to hold open above this panel —
+    // without it the card sits hard against the filter bar.
+    <section className="mt-8 rounded-2xl border border-mv-line bg-white p-6 shadow-mv max-[560px]:p-5">
+      <h2 className="m-0 mb-[15px] font-sans text-[16px] font-bold leading-[1.3] text-mv-ink">
+        Do you know?
+      </h2>
+      {/* Two columns on desktop, one below 760px — the same single-column fallback
+          the card grids on this page take, so the whole page reflows together. */}
+      <ul className="m-0 grid list-none grid-cols-2 gap-[10px] p-0 max-[760px]:grid-cols-1">
+        {DO_YOU_KNOW.map((line) => (
+          <li
+            key={line}
+            className="flex items-start gap-3 rounded-[12px] border border-mv-line-soft bg-mv-bg px-[14px] py-[12px] text-[13.5px] leading-[1.55] text-mv-ink-soft"
+          >
+            <span
+              aria-hidden="true"
+              className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-lg bg-mv-tint text-mv-green-deep"
+            >
+              <Lightbulb className="h-[15px] w-[15px]" strokeWidth={2.2} />
+            </span>
+            <span className="min-w-0 flex-1">{line}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/* ==========================================================================
    Generated read
 
-   Every claim is one of the figures computed in `lib/operator-compare.ts`,
-   phrased. Nothing here is model-generated text, which is why the eyebrow says
+   Every claim is one of the figures the comparison endpoint returned, phrased.
+   Nothing here is model-generated text, which is why the eyebrow says
    "recomputed from the filed record" rather than implying otherwise.
    ========================================================================== */
 
 /**
- * The read, built from the API's own leader records.
+ * The read, as the same cards the operator detail page's "What changed" draws.
  *
- * EVERY CLAIM IS A FIGURE THE ENDPOINT RETURNED, phrased — nothing is model-written,
- * which is why the eyebrow says "recomputed from the filed record". Growth is no
- * longer among them: it came from the fixture's ten-year series and the info endpoint
- * does not report a growth rate, so claiming one would mean computing it from data
- * this section does not have.
+ * SAME STRUCTURE, ON PURPOSE (requested). This was a dark panel of four numbered
+ * sentences; it is now `ChangeItem` rows from `app/_components/change-item.tsx` — the
+ * component that section uses — so the two read identically and cannot drift apart.
  *
- * A MISSING LEADER DROPS ITS LINE rather than the whole panel. The response omits a
- * leader when it cannot name one, and three true sentences are better than four with
- * a hole in them.
+ * THE GAIN IS THE EVIDENCE. A `ChangeRow` carries its working, so each claim opens
+ * onto the figure for EVERY selected operator rather than only naming the winner.
+ * That is the comparison the page is for, and the flat sentences could not show it.
+ *
+ * NO NEW REQUEST, ON EITHER BREAKPOINT. The findings are arithmetic over `info`, which
+ * is already in memory, so this costs one `useMemo` over at most four operators and no
+ * network at all. Only the open row is state, so expanding one re-renders this list and
+ * nothing else on the page.
  */
 function GeneratedRead({
   operators,
@@ -847,81 +949,36 @@ function GeneratedRead({
   operators: Compared[];
   leaders: ProductionLeaders | null;
 }) {
-  if (!leaders) return null;
+  /** One row open at a time, keyed by headline — the same rule the panel follows. */
+  const [openRow, setOpenRow] = useState<string | null>(null);
 
-  const label = (leader: ProductionLeader) => shortName(leader.name);
+  const rows = useMemo(
+    () => compareFindings(operators, leaders),
+    [operators, leaders],
+  );
 
-  const items = [
-    leaders.highestOil ? (
-      <>
-        <b className="font-bold text-white">
-          {label(leaders.highestOil)} leads on oil
-        </b>{" "}
-        — {formatMillions(leaders.highestOil.value)} bbl filed across the
-        selected acreage.
-      </>
-    ) : null,
-    leaders.highestGas ? (
-      <>
-        <b className="font-bold text-white">
-          {label(leaders.highestGas)} leads on gas
-        </b>{" "}
-        — {formatMillions(leaders.highestGas.value)} Mcf over the same record.
-      </>
-    ) : null,
-    leaders.mostEfficient ? (
-      <>
-        <b className="font-bold text-white">
-          {label(leaders.mostEfficient)} is the efficiency leader
-        </b>{" "}
-        — {formatCount(Math.round(leaders.mostEfficient.value))} MBOE per lease
-        {leaders.mostEfficient.leaseCount === null
-          ? ""
-          : ` from ${formatCount(leaders.mostEfficient.leaseCount)} leases on record`}
-        .
-      </>
-    ) : null,
-    leaders.widestFootprint ? (
-      <>
-        <b className="font-bold text-white">
-          {label(leaders.widestFootprint)} covers the most ground
-        </b>{" "}
-        — {leaders.widestFootprint.value} counties in scope
-        {operators.length > 1
-          ? `, against ${operators.length} operators compared`
-          : ""}
-        .
-      </>
-    ) : null,
-  ].filter((item): item is React.ReactElement => item !== null);
-
-  if (items.length === 0) return null;
+  if (rows.length === 0) return null;
 
   return (
-    <div className="rounded-2xl bg-[linear-gradient(135deg,var(--color-mv-deep),var(--color-mv-deep-ink))] p-6 shadow-mv-lg max-[560px]:p-5">
-      <p className="text-[12px] font-bold uppercase tracking-[.12em] text-mv-on-deep-accent">
-        Generated read · recomputed from the filed record
-      </p>
-      <h2 className="mb-[15px] mt-[7px] font-sans text-[16px] font-bold leading-[1.3] text-white">
-        What this comparison is telling you
-      </h2>
-      <ol className="m-0 grid list-none gap-3 p-0">
-        {items.map((body, index) => (
-          <li
-            key={index}
-            className="flex items-start gap-3 text-[13.5px] leading-[1.5] text-mv-on-deep-muted"
-          >
-            <span
-              aria-hidden="true"
-              className="grid h-[23px] w-[23px] shrink-0 place-items-center rounded-[7px] bg-[rgba(84,191,150,.16)] text-[12px] font-extrabold text-mv-on-deep-accent"
-            >
-              {index + 1}
-            </span>
-            <span>{body}</span>
-          </li>
+    <>
+      {/* Heading and rows appear together. Rendering the heading outside would leave
+          it standing over nothing whenever the response names no leaders. */}
+      <SectionHead title="What this comparison is telling you" />
+      <ul className="m-0 grid list-none gap-[10px] p-0">
+        {rows.map((row) => (
+          <ChangeItem
+            key={row.headline}
+            row={row}
+            isOpen={openRow === row.headline}
+            onToggle={() =>
+              setOpenRow((current) =>
+                current === row.headline ? null : row.headline,
+              )
+            }
+          />
         ))}
-      </ol>
-    </div>
+      </ul>
+    </>
   );
 }
 

@@ -1,17 +1,9 @@
 "use client";
 
-import {
-  ArrowDown,
-  ArrowUp,
-  ChevronDown,
-  Flag,
-  Plus,
-  RefreshCw,
-  Repeat,
-} from "lucide-react";
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
-import type { ChangeEvidence, ChangeRow } from "@/lib/operator-detail-data";
+import { ChangeItem } from "@/app/_components/change-item";
 import type { WhatChangedPanel } from "@/lib/operator-what-changed-api";
 
 /**
@@ -23,11 +15,15 @@ import type { WhatChangedPanel } from "@/lib/operator-what-changed-api";
  * JavaScript the page must evaluate. The wrapper reserves the section's height, so the
  * skeleton and the finished panel occupy the same space and the arrival shifts nothing.
  *
- * THE FIGURES ARE NOT THE MODEL'S. The changes are measured from MongoDB and ranked
- * before a model is asked anything; it is then sent finished findings and told only to
- * rephrase them. Direction and attribution are carried from the measurement, and any
- * output containing a number that was not in the input is rejected. So `writer` is a
- * note about prose, never about accuracy.
+ * THE FIGURES ARE NOT THE MODEL'S. The changes are measured — from MongoDB via the
+ * analysis service, or from the operator details endpoint where that service is out of
+ * reach — and ranked before a model is asked anything; it is then sent finished
+ * findings and told only to rephrase them. Direction and attribution are carried from
+ * the measurement, and any output containing a number that was not in the input is
+ * rejected. So `writer` is a note about prose, never about accuracy.
+ *
+ * THE CARD ITSELF LIVES IN `app/_components/change-item.tsx`, shared with the
+ * comparison page's read so the two sections cannot drift apart.
  *
  * `writer` IS CARRIED BUT NO LONGER DRAWN (requested). The panel used to end with a
  * badge saying whether the wording was the model's or the measured fallback. Removing
@@ -40,190 +36,13 @@ import type { WhatChangedPanel } from "@/lib/operator-what-changed-api";
  * service is unreachable or timed out.
  */
 
-const CHANGE_ICONS = {
-  up: ArrowUp,
-  down: ArrowDown,
-  add: Plus,
-  flag: Flag,
-  swap: Repeat,
-} as const;
-
-/** Rows the skeleton draws — the service's contract is always six. */
+/** Rows the skeleton draws — the contract is always six. */
 const SKELETON_ROWS = 6;
 
 type Loaded =
   | { state: "ready"; panel: WhatChangedPanel }
   | { state: "empty"; detail: string }
   | { state: "error"; detail: string };
-
-/**
- * The working behind one finding: why the measure matters, the figures it was built
- * from, an optional sparkline, and how it was measured.
- *
- * NOTHING IS FETCHED TO OPEN A ROW. The evidence ships with the panel, so expanding is
- * instant and works offline - and no number is computed here. `v` arrives already
- * rendered because the service computed it; formatting it again would make this a
- * second definition of the same figure.
- */
-function Evidence({ evidence }: { evidence: ChangeEvidence }) {
-  const peak = Math.max(1, ...evidence.series.map((point) => point.value));
-
-  return (
-    <div className="border-t border-mv-line-soft px-[18px] pb-4 pt-3">
-      {evidence.why ? (
-        <p className="m-0 text-[13px] leading-[1.55] text-mv-ink-soft">
-          {evidence.why}
-        </p>
-      ) : null}
-
-      {evidence.rows.length > 0 ? (
-        <dl className="m-0 mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-[6px] text-[12.5px]">
-          {evidence.rows.map((row) => (
-            <Fragment key={row.k}>
-              <dt className="text-mv-muted">{row.k}</dt>
-              <dd className="m-0 font-semibold tabular-nums text-mv-ink">
-                {row.v}
-                {row.note ? (
-                  <span className="ml-[6px] font-normal text-mv-muted">
-                    {row.note}
-                  </span>
-                ) : null}
-              </dd>
-            </Fragment>
-          ))}
-        </dl>
-      ) : null}
-
-      {/* Bars rather than a chart library: this is a dozen values at 46px tall, and a
-          dependency for that would cost more than it shows. */}
-      {evidence.series.length > 1 ? (
-        <div className="mt-[14px]">
-          <div className="flex h-[46px] items-end gap-[3px]">
-            {evidence.series.map((point) => (
-              <span
-                key={point.label}
-                title={`${point.label}: ${point.value.toLocaleString("en-US")}`}
-                className={`min-w-[6px] flex-1 rounded-t-[2px] ${
-                  point.on ? "bg-mv-green-deep" : "bg-mv-line"
-                }`}
-                style={{
-                  height: `${Math.max(3, Math.round((point.value / peak) * 46))}px`,
-                }}
-              />
-            ))}
-          </div>
-          <div className="mt-1 flex gap-[3px] text-[10px] text-mv-placeholder">
-            {evidence.series.map((point) => (
-              <span
-                key={point.label}
-                className="min-w-[6px] flex-1 text-center"
-              >
-                {point.label.slice(0, 4)}
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {evidence.method ? (
-        <p className="m-0 mt-[14px] text-[12px] leading-[1.5] text-mv-muted">
-          <span className="mr-[6px] font-bold uppercase tracking-[.05em] text-mv-placeholder">
-            How this was measured
-          </span>
-          {evidence.method}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * One finding, expandable when the service sent its working.
- *
- * A REAL BUTTON, not a div with `role="button"`. The standalone panel uses the latter
- * and has to hand-wire Enter and Space; a `<button>` gets both, plus focus handling,
- * from the platform.
- *
- * ONE ROW OPEN AT A TIME, which is why `isOpen` is decided by the parent rather than
- * held here: six rows all open is a wall of text, and the point of the panel is that
- * six things are scannable at a glance.
- *
- * A ROW WITH NO EVIDENCE DOES NOT PRETEND TO EXPAND. The fixture rows carry none, so
- * they render exactly as they did before - no button, no chevron.
- */
-export function ChangeItem({
-  row,
-  isOpen = false,
-  onToggle,
-}: {
-  row: ChangeRow;
-  isOpen?: boolean;
-  onToggle?: () => void;
-}) {
-  const Icon = CHANGE_ICONS[row.kind];
-  const tone =
-    row.kind === "up"
-      ? "bg-mv-tint text-mv-green-deep"
-      : row.kind === "down"
-        ? "bg-mv-line-soft text-mv-muted"
-        : "bg-mv-sand-tint text-mv-sand";
-
-  const bodyId = `wc-ev-${row.headline.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
-
-  const head = (
-    <>
-      <span
-        aria-hidden="true"
-        className={`grid h-[26px] w-[26px] shrink-0 place-items-center rounded-lg ${tone}`}
-      >
-        <Icon className="h-[15px] w-[15px]" strokeWidth={2.2} />
-      </span>
-      <span className="min-w-0 flex-1 text-[13.5px] leading-[1.55] text-mv-ink-soft">
-        <b className="font-bold text-mv-ink">{row.headline}</b> {row.detail}
-        <span className="mt-1 block text-[12px] text-mv-muted">
-          {row.source}
-        </span>
-      </span>
-    </>
-  );
-
-  if (!row.evidence || !onToggle) {
-    return (
-      <li className="flex items-start gap-3 rounded-[14px] border border-mv-line bg-white px-[18px] py-4 shadow-[0_1px_2px_rgba(24,24,27,.05)]">
-        {head}
-      </li>
-    );
-  }
-
-  return (
-    <li className="overflow-hidden rounded-[14px] border border-mv-line bg-white shadow-[0_1px_2px_rgba(24,24,27,.05)]">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={isOpen}
-        aria-controls={bodyId}
-        className="flex w-full cursor-pointer items-start gap-3 border-0 bg-transparent px-[18px] py-4 text-left transition-colors hover:bg-mv-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-mv-green-deep"
-      >
-        {head}
-        <ChevronDown
-          aria-hidden="true"
-          className={`mt-[5px] h-4 w-4 shrink-0 text-mv-muted transition-transform ${
-            isOpen ? "rotate-180" : ""
-          }`}
-          strokeWidth={2.2}
-        />
-      </button>
-
-      {/* Mounted only while open: six panels of evidence in the DOM at once is a lot of
-          nodes for something five of which nobody is reading. */}
-      {isOpen ? (
-        <div id={bodyId}>
-          <Evidence evidence={row.evidence} />
-        </div>
-      ) : null}
-    </li>
-  );
-}
 
 /** Shimmer rows that occupy the same height the finished panel will. */
 function Skeleton() {

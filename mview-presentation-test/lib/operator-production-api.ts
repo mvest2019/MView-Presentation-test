@@ -178,6 +178,21 @@ function payloadFor(
   filters: ProductionFilters,
   dataType: string,
   operators: readonly string[],
+  /**
+   * Whether to constrain the answer to a year range.
+   *
+   * OFF FOR THE CHART, and the difference is measurable rather than cosmetic. Sending
+   * `duration` for 2016-2025 — the window `defaultProductionWindow` produces, and the
+   * only one that could be sent now that the From/To controls are gone — returns ten
+   * years and 2,363 bytes for Diamondback. Omitting it returns 2011-2026, sixteen
+   * years and 3,717 bytes: six additional years of filed record that the chart was
+   * discarding before it drew anything, for a window nobody chose.
+   *
+   * The brush under the plot is what scopes the chart now. It scopes what is already
+   * in hand, so dragging it costs no request — and it can only reach years the
+   * response actually contains, which is why the response has to carry all of them.
+   */
+  withDuration: boolean,
 ) {
   return {
     search_text: operators,
@@ -185,11 +200,15 @@ function payloadFor(
     district_code: filters.districtCodes,
     playtype: filters.playTypes,
     dataType,
-    duration: {
-      type: "year",
-      from: { year: filters.fromYear },
-      to: { year: filters.toYear },
-    },
+    ...(withDuration
+      ? {
+          duration: {
+            type: "year",
+            from: { year: filters.fromYear },
+            to: { year: filters.toYear },
+          },
+        }
+      : {}),
     member_id: TEMP_MEMBER_ID,
   };
 }
@@ -344,7 +363,11 @@ export async function fetchProductionInfo(
 
   const data = await post(
     ENDPOINTS.info,
-    payloadFor(filters, INFO_GROUPING, filed),
+    /* Kept for the info endpoint, which is measured to IGNORE `duration` entirely —
+       asking for one year returns the same totals as ten. Sending it changes nothing
+       there, so it stays rather than being removed on a guess about an endpoint whose
+       behaviour this file already documents. */
+    payloadFor(filters, INFO_GROUPING, filed, true),
   );
   const body = (data ?? {}) as Record<string, unknown>;
   const rows = Array.isArray(body.operators) ? body.operators : [];
@@ -454,7 +477,7 @@ export async function fetchProductionSeries(
 
   const data = await post(
     ENDPOINTS.series,
-    payloadFor(filters, SERIES_GROUPING, filed),
+    payloadFor(filters, SERIES_GROUPING, filed, false),
   );
   const entries = Array.isArray(data) ? data : [];
 

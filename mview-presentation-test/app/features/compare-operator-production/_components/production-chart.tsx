@@ -97,7 +97,7 @@ export function ProductionChart({
   if (!series || series.years.length === 0 || chartSeries.length === 0) {
     return (
       <Card>
-        No annual production is filed for these operators in the selected years.
+        No annual production is filed for these operators.
       </Card>
     );
   }
