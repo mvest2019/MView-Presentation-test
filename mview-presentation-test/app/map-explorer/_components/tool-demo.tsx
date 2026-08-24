@@ -47,12 +47,14 @@ const INSET = 14;
 /*
  * How long the gesture takes, and in how many steps.
  *
- * About two and a half seconds. The gesture is the whole point of the window,
- * and at a third of that it was over before the eye had found it — a
- * demonstration nobody can follow teaches nothing.
+ * About four seconds — slower than the drag it stands in for, deliberately.
+ * The gesture is the whole point of the window, and it is being watched rather
+ * than made: at the speed someone would actually draw it, it was over before
+ * the eye had found it. The tract has four corners to place inside this, which
+ * is the slowest of the four and sets the pace for the rest.
  */
-const FRAMES = 46;
-const FRAME_MS = 55;
+const FRAMES = 60;
+const FRAME_MS = 68;
 
 /** A beat on the finished shape before its reading appears. */
 const SETTLE_MS = 260;
