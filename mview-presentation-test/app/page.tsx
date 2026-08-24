@@ -1,19 +1,19 @@
-import { h1Class } from "@/app/_components/typography";
+import { ProtoPage } from "./_proto/proto-page";
+import { HOME_MARKUP } from "./_proto/markup";
 
-/*
- * Placeholder home page. The marketing pages are not built yet — this holds
- * the route so the header and footer can be reviewed in place.
+/**
+ * Home — the prototype's own page (Ryan, 2026-08-19: "take as it is html design").
+ *
+ * The markup and CSS are the document's; see `_proto/markup.ts` for exactly what
+ * was rewritten (image tokens, hash routes) and what that costs.
+ *
+ * This replaces a Tailwind rebuild of the same page. The rebuild worked, but it
+ * re-interpreted the design while translating — the "Everything else about Mineral
+ * View" folds were flattened, an audience-doors block was invented, and the family
+ * story moved. Holding the document's HTML removes the room to paraphrase.
  */
 export default function Home() {
   return (
-    <div className="mx-auto flex max-w-[1200px] flex-col items-center px-7 py-[120px] text-center max-[767px]:px-4 max-[767px]:py-20">
-      <span className="rounded-full border border-[#bfe9d8] bg-mv-mint px-[14px] py-[6px] text-[11px] font-extrabold uppercase tracking-[.12em] text-mv-green-deep">
-        Coming soon
-      </span>
-      <h1 className={`${h1Class} mt-6`}>Coming Soon</h1>
-      <p className="mt-4 max-w-[520px] text-mv-muted">
-        A clearer view of your minerals is on its way.
-      </p>
-    </div>
+    <ProtoPage markup={HOME_MARKUP} heading="A clearer view of your minerals" />
   );
 }
