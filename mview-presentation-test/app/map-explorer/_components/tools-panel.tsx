@@ -41,10 +41,11 @@ export type MapTool = {
   /**
    * Whether the tool needs the map to be drawing individual wells.
    *
-   * True for everything that measures what is on screen. False for a tool that
-   * asks the service a question instead — naming a lease needs no zoom, and
-   * gating it behind one meant the reader had to find their land on the map
-   * before they could ask what was near it.
+   * True for all four as they stand. It is a flag rather than an assumption
+   * because it has not always been true: "What's near my land?" was briefly
+   * answered by naming a lease in a search box, which needed no zoom at all.
+   * It reads the map again now — the click is traced to a lease through the
+   * nearest loaded well — so it waits for the wells with the rest.
    */
   needsWells?: boolean;
 };
@@ -57,9 +58,14 @@ export const MAP_TOOLS: MapTool[] = [
     icon: Ruler,
     needsWells: true,
   },
-  /* Answered by the service from the lease's own records, so it works at any
-     zoom — see `lease-nearby.tsx`. */
-  { id: "whats-near-my-land", label: "What's near my land?", icon: Crosshair },
+  {
+    id: "whats-near-my-land",
+    label: "What's near my land?",
+    icon: Crosshair,
+    /* The click is traced to a lease through the nearest well on the map, so
+       there has to be one — see the lookup in `map-explorer-view.tsx`. */
+    needsWells: true,
+  },
   { id: "measure-area", label: "Measure area", icon: LandPlot, needsWells: true },
 ];
 
