@@ -322,11 +322,14 @@ export const logo = {
    * Mobile header — the square icon mark on its own, so the bar keeps its room
    * for the burger and the CTA at phone widths.
    *
-   * A transparent PNG, unlike the JPG it replaces: there is no baked-in tile, so
-   * the mark sits directly on the white bar and needs no corner radius.
+   * Back to the `icons/` JPG (supplied 2026-08-25), replacing the transparent
+   * `graphics/` PNG. A JPG has no transparency, so the black tile is baked in
+   * again — which is why the header's mobile `<Image>` re-gained its radius
+   * (`rounded-full`: the mark's ring is inscribed in the square, so a circular
+   * crop bounds it exactly and the tile reads as a badge, not a black box).
    */
   mobile: {
-    src: "https://res.cloudinary.com/mview/image/upload/graphics/mview-logo-icon.png",
+    src: "https://res.cloudinary.com/mview/image/upload/icons/logo.jpg.jpg",
     width: 63,
     height: 63,
   },
