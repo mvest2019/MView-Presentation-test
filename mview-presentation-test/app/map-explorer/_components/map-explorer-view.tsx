@@ -40,6 +40,7 @@ import {
   getMatchedWellsMap,
   getWellSummaryMap,
   getWellListMap,
+  getTimeLapseMap,
   type MapTableRow,
   type MapWell,
 } from "@/lib/map-api";
@@ -68,9 +69,18 @@ import {
 } from "./map-measurements";
 
 import { exportVisible } from "./map-export";
-import { TimeLapseBar } from "./time-lapse-bar";
 import { ToolPrompt } from "./tool-prompt";
 import { buildWellGraphics } from "./well-graphics";
+import { TimeLapseBar } from "./time-lapse-bar";
+import {
+  addYear,
+  buildGrid,
+  gridToClusters,
+  resetGrid,
+  TIME_LAPSE_CLUSTER_CELL,
+  TIME_LAPSE_SUB_CLUSTER_CELL,
+  type TimeLapseGrid,
+} from "./timelapse-graphics";
 import { WellTooltip, type HoveredWell } from "./well-tooltip";
 
 import { WellsTable } from "./wells-table";
@@ -292,6 +302,23 @@ const SPLIT_KEY_STEP = 0.02;
  * do not, and reaching 8 loads again for whatever is now on screen.
  */
 const CLUSTER_ZOOM_STEPS = [5, 8];
+
+/*
+ * How long one year of the replay holds.
+ *
+ * The data spans 117 years, so this is the length of the whole replay divided
+ * by that — a little over a minute end to end.
+ *
+ * Slow on purpose. At a fifth of a second a year the decades went by faster
+ * than the bubbles could be read: the Permian and East Texas filling in after
+ * 1950 was a flicker rather than something you could watch happen. The drag
+ * handle is there for anyone who wants to move faster than this.
+ *
+ * A tick costs more than this number: redrawing the cells and re-rendering the
+ * bar adds roughly a third of a second, so the replay runs at about twice the
+ * figure below. Change this one constant to retime the whole thing.
+ */
+const TIME_LAPSE_TICK_MS = 420;
 
 /*
  * Where the bubbles give way to the wells themselves. Past this the extent is
@@ -655,25 +682,53 @@ export function MapExplorerView() {
     bubble: number;
   } | null>(null);
   /*
-   * The time-lapse. It replays whatever the map is already showing: the marks
-   * come off, then go back on a few at a time. `plotted` is how many are back;
-   * `playing` is whether more are still arriving.
+   * The time-lapse.
+   *
+   * It replays the whole state from its own endpoint rather than whatever the
+   * map happens to be holding: the wells on screen are the ones in the current
+   * extent, and a replay of those is a replay of a viewport, not of a field.
+   *
+   * The data is binned into cells server-side, so what arrives here is a count
+   * per cell per year. Everything below is the running total of that.
    */
   const [timeLapseOpen, setTimeLapseOpen] = useState(false);
+  const [timeLapseLoading, setTimeLapseLoading] = useState(false);
+  const [timeLapseError, setTimeLapseError] = useState<string | null>(null);
   const [timeLapsePlaying, setTimeLapsePlaying] = useState(false);
+  /* Which year is on screen, as an index into the years the data carries.
+     -1 is "nothing plotted yet", which is where the replay starts. */
+  const [timeLapseStep, setTimeLapseStep] = useState(-1);
+  /* The same step the interval works from. State is for the bar; the loop
+     cannot read it, since the callback closes over the value it started with. */
+  const timeLapseStepRef = useRef(-1);
   const [timeLapsePlotted, setTimeLapsePlotted] = useState(0);
-  /* How many there are to plot. State, not the queue's length: the render
-     reads it, and a ref read during render is not a dependency React tracks. */
+  /* The two grids the wells were binned into, kept for the session: the
+     answer is the whole state and does not change while the page is open. */
+  const timeLapseGridsRef = useRef<{
+    cluster: TimeLapseGrid;
+    subCluster: TimeLapseGrid;
+  } | null>(null);
+  /* The fetch-and-bin, in flight.
+     Held so the page-load warm-up and a click on the button share one — a
+     second call would be a second 48MB download of the same answer. */
+  const timeLapseLoadRef = useRef<Promise<{
+    cluster: TimeLapseGrid;
+    subCluster: TimeLapseGrid;
+  }> | null>(null);
+  /* The grid the current replay is running on, and its years. */
+  const timeLapseRunRef = useRef<TimeLapseGrid | null>(null);
+  const timeLapseYearsRef = useRef<number[]>([]);
+  /* The same years and total the ref holds, for the bar to render from — a ref
+     read during render is not something React tracks, and the compiler's lint
+     rejects it outright. */
+  const [timeLapseYears, setTimeLapseYears] = useState<number[]>([]);
   const [timeLapseTotal, setTimeLapseTotal] = useState(0);
-  /** The graphics taken off the map, waiting to be put back one by one. */
-  const timeLapseQueueRef = useRef<unknown[]>([]);
-  /*
-   * Graphics per mark. A bubble is two — the circle and its label — so the
-   * queue is twice as long as the thing being counted, and the pair has to go
-   * on together or a bubble appears with no number in it.
-   */
-  const timeLapseUnitRef = useRef(1);
+  /* The bubbles the replay owns, on the cluster layer. Held so closing can put
+     the real clusters back over the top of them. */
   const timeLapseLayerRef = useRef<EsriGraphicsLayer | null>(null);
+  /* Read by the zoom watcher, which must not reload clusters over a replay —
+     a ref because the watcher is registered once and never re-reads state. */
+  const timeLapseRef = useRef(false);
 
   /*
    * The well clicked on the map. Held as a ref, not state: nothing in React
@@ -1219,54 +1274,233 @@ export function MapExplorerView() {
     highlightLayerRef.current?.removeAll();
   }, []);
 
-  /*
-   * Opening clears the map. Whichever layer is live — bubbles or wells — its
-   * graphics are rebuilt into a queue and the layer emptied, so the replay
-   * starts from nothing on screen. Closing puts them all straight back.
+  /**
+   * Which grid the replay draws, for the zoom the map is at.
+   *
+   * The same two bands the live map uses: one bubble per district-sized cell
+   * out wide, the finer grid once those have split. Past the well band there
+   * is no grid — the replay is a cluster feature, so it stays on the coarse
+   * one rather than pretending to draw wells.
    */
-  const toggleTimeLapse = useCallback(() => {
-    const ctors = ctorsRef.current;
-    if (!ctors) return;
+  const timeLapseGrid = useCallback(() => {
+    const grids = timeLapseGridsRef.current;
+    if (!grids) return null;
+    const zoom = zoomLevel(viewRef.current);
+    return zoom >= CLUSTER_ZOOM_STEPS[1] ? grids.subCluster : grids.cluster;
+  }, []);
 
-    const wells = wellsRef.current;
-    const layer =
-      wells.length > 0 ? wellLayerRef.current : clusterLayerRef.current;
+  /**
+   * Fetches the wells and bins them, at most once per page.
+   *
+   * Called twice over a page's life and settled once: the warm-up below starts
+   * it when the map is ready, and the button awaits whatever that started. A
+   * failure clears the promise, so pressing the button again is a real retry
+   * rather than a replay of the same rejection.
+   */
+  const loadTimeLapseGrids = useCallback(async () => {
+    if (timeLapseGridsRef.current) return timeLapseGridsRef.current;
+
+    timeLapseLoadRef.current ??= getTimeLapseMap()
+      .then((data) => ({
+        cluster: buildGrid(data.wells, TIME_LAPSE_CLUSTER_CELL),
+        subCluster: buildGrid(data.wells, TIME_LAPSE_SUB_CLUSTER_CELL),
+      }))
+      .catch((error: unknown) => {
+        timeLapseLoadRef.current = null;
+        throw error;
+      });
+
+    const grids = await timeLapseLoadRef.current;
+    timeLapseGridsRef.current = grids;
+    return grids;
+  }, []);
+
+  /*
+   * Warmed as soon as the map is ready, and shown to nobody.
+   *
+   * The answer is the whole state — 465,000 rows — and fetching it on the
+   * click meant forty seconds of waiting before the first bubble. Starting it
+   * here means the data is usually in hand before anyone presses the button.
+   *
+   * It waits for `ready` and then for an idle moment, so it queues behind the
+   * map's own first requests rather than competing with them for the
+   * connection: nothing on screen depends on it, so it can afford to go last.
+   */
+  useEffect(() => {
+    if (status !== "ready") return;
+
+    const idle = window.requestIdleCallback
+      ? window.requestIdleCallback(() => void loadTimeLapseGrids().catch(() => {}), {
+          timeout: 4000,
+        })
+      : window.setTimeout(() => void loadTimeLapseGrids().catch(() => {}), 1500);
+
+    return () => {
+      if (window.cancelIdleCallback) window.cancelIdleCallback(idle as number);
+      else window.clearTimeout(idle as number);
+    };
+  }, [status, loadTimeLapseGrids]);
+
+  const closeTimeLapse = useCallback(() => {
+    timeLapseRef.current = false;
+    timeLapseLayerRef.current?.removeAll();
+    timeLapseLayerRef.current = null;
+    timeLapseRunRef.current = null;
+    setTimeLapsePlaying(false);
+    timeLapseStepRef.current = -1;
+    setTimeLapseStep(-1);
+    setTimeLapsePlotted(0);
+    setTimeLapseError(null);
+    setTimeLapseOpen(false);
+    /* The map was left showing the replay, so the real bubbles are asked for
+       again — the tier is reset so the request is not treated as a repeat. */
+    clusterTierRef.current = -1;
+    loadClusters();
+  }, [loadClusters]);
+
+  /*
+   * Opening clears the map and starts the replay from nothing.
+   *
+   * The fetch is the slow part — the source builds a list of every dated well
+   * in the state — so the bar opens first and says what it is waiting for.
+   */
+  const openTimeLapse = useCallback(async () => {
+    const layer = clusterLayerRef.current;
     if (!layer) return;
 
-    if (timeLapseOpen) {
-      // Closing: everything back on the map at once.
-      layer.removeAll();
-      layer.addMany(timeLapseQueueRef.current);
-      timeLapseQueueRef.current = [];
-      timeLapseLayerRef.current = null;
-      setTimeLapsePlaying(false);
-      setTimeLapsePlotted(0);
-      setTimeLapseTotal(0);
-      setTimeLapseOpen(false);
-      return;
-    }
-
-    const clusters = clustersRef.current;
-    const marks = wells.length > 0 ? wells.length : clusters.length;
-
-    timeLapseQueueRef.current =
-      wells.length > 0
-        ? buildWellGraphics(ctors.Graphic, wells, wellIconsRef.current)
-        : buildClusterGraphics(ctors.Graphic, clusters);
-    timeLapseUnitRef.current =
-      marks === 0 ? 1 : timeLapseQueueRef.current.length / marks;
+    timeLapseRef.current = true;
     timeLapseLayerRef.current = layer;
+    setTimeLapseOpen(true);
+    setTimeLapseError(null);
+    timeLapseStepRef.current = -1;
+    setTimeLapseStep(-1);
+    setTimeLapsePlotted(0);
+
+    /* Everything comes off: the bubbles, the wells that may be under them, and
+       the ring, which would otherwise sit over ground with nothing beneath. */
     layer.removeAll();
-    // The replay starts from an empty map, so the ring goes with everything
-    // else — it would otherwise sit over ground with nothing under it.
+    wellLayerRef.current?.removeAll();
     clearInterval(pulseTimerRef.current);
     highlightLayerRef.current?.removeAll();
-    setTimeLapseTotal(marks);
-    setTimeLapsePlotted(0);
-    setTimeLapseOpen(true);
-    // Opening is the play: the button is for pausing what is already running.
+
+    /* Usually already done — the warm-up ran when the map became ready — in
+       which case this resolves without a request and nothing says "loading". */
+    if (!timeLapseGridsRef.current) {
+      setTimeLapseLoading(true);
+      try {
+        await loadTimeLapseGrids();
+      } catch (error) {
+        setTimeLapseError(
+          error instanceof Error
+            ? error.message
+            : "Could not load the time-lapse.",
+        );
+        setTimeLapseLoading(false);
+        return;
+      }
+      setTimeLapseLoading(false);
+    }
+
+    const grid = timeLapseGrid();
+    if (!grid) return;
+
+    resetGrid(grid);
+    timeLapseRunRef.current = grid;
+    timeLapseYearsRef.current = grid.years;
+    setTimeLapseYears(grid.years);
+    setTimeLapseTotal(grid.total);
     setTimeLapsePlaying(true);
-  }, [timeLapseOpen]);
+  }, [timeLapseGrid, loadTimeLapseGrids]);
+
+  const toggleTimeLapse = useCallback(() => {
+    if (timeLapseOpen) {
+      closeTimeLapse();
+      return;
+    }
+    void openTimeLapse();
+  }, [timeLapseOpen, closeTimeLapse, openTimeLapse]);
+
+  /**
+   * Draws the map as it stood at a given step, forwards or back.
+   *
+   * The replay adds a year at a time, which only ever goes one way. Dragging
+   * the handle back has to take wells off, and a cell holds one running total
+   * rather than a history — so a seek starts from empty and re-adds every year
+   * up to the one asked for.
+   *
+   * That is cheap enough to do on every frame of a drag: the coarse grid is 79
+   * cells over 117 years, the fine one 888, and both are plain object reads.
+   *
+   * Step -1 is before the first year: an empty map, which is where the replay
+   * starts and where dragging all the way left returns to.
+   */
+  const seekTimeLapse = useCallback((step: number) => {
+    const grid = timeLapseRunRef.current;
+    const layer = timeLapseLayerRef.current;
+    const ctors = ctorsRef.current;
+    if (!grid || !layer || !ctors) return;
+
+    const years = timeLapseYearsRef.current;
+    const target = Math.max(-1, Math.min(step, years.length - 1));
+
+    resetGrid(grid);
+    let plotted = 0;
+    for (let at = 0; at <= target; at += 1) plotted += addYear(grid, years[at]);
+
+    layer.removeAll();
+    layer.addMany(buildClusterGraphics(ctors.Graphic, gridToClusters(grid)));
+
+    timeLapseStepRef.current = target;
+    setTimeLapseStep(target);
+    setTimeLapsePlotted(plotted);
+  }, []);
+
+  /*
+   * The replay itself: one year per tick.
+   *
+   * Each tick folds that year's wells into the running totals and redraws the
+   * cells that have anything in them. Redrawing rather than adding is what
+   * makes the colour move — a cell's bubble is its total so far, so it climbs
+   * the count scale as the decades pass.
+   */
+  useEffect(() => {
+    if (!timeLapsePlaying) return;
+
+    const years = timeLapseYearsRef.current;
+    const layer = timeLapseLayerRef.current;
+    const ctors = ctorsRef.current;
+    const grid = timeLapseRunRef.current;
+    if (!layer || !ctors || !grid || years.length === 0) return;
+
+    /*
+     * Everything that is not a plain state write happens here, in the tick
+     * itself, and not inside a `setState` updater.
+     *
+     * An updater has to be pure. React invokes them twice in development to
+     * prove it, and this one folded a year into the running totals and redrew
+     * the map — so every year was counted twice and drawn twice, which both
+     * doubled the numbers under the bar and made the replay crawl.
+     */
+    const timer = setInterval(() => {
+      const next = timeLapseStepRef.current + 1;
+
+      if (next >= years.length) {
+        setTimeLapsePlaying(false);
+        return;
+      }
+
+      timeLapseStepRef.current = next;
+      const arrived = addYear(grid, years[next]);
+
+      layer.removeAll();
+      layer.addMany(buildClusterGraphics(ctors.Graphic, gridToClusters(grid)));
+
+      setTimeLapseStep(next);
+      if (arrived > 0) setTimeLapsePlotted((plotted) => plotted + arrived);
+    }, TIME_LAPSE_TICK_MS);
+
+    return () => clearInterval(timer);
+  }, [timeLapsePlaying]);
 
   /**
    * Rings the picked well, with a pulse running out from it.
@@ -1610,43 +1844,6 @@ export function MapExplorerView() {
     // whatever the circle does.
   }, []);
 
-  /*
-   * The replay itself. A slice per tick rather than one mark per tick: a dense
-   * county is thousands of wells, and one at a time would take minutes. The
-   * slice is sized so any dataset takes about the same time — a little under a
-   * minute — whether it is sixty bubbles or three thousand wells.
-   *
-   * Pausing stops the interval and leaves what is drawn drawn — pressing play
-   * again carries on from there rather than starting over.
-   */
-  useEffect(() => {
-    if (!timeLapsePlaying) return;
-
-    const queue = timeLapseQueueRef.current;
-    const layer = timeLapseLayerRef.current;
-    const unit = timeLapseUnitRef.current;
-    if (!layer || queue.length === 0) return;
-
-    const marks = queue.length / unit;
-    // Spread over ~900 ticks. With the interval below that is a couple of
-    // minutes end to end for a large set — slow enough to watch the marks
-    // arrive rather than see them appear in blocks.
-    const step = Math.max(1, Math.ceil(marks / 900));
-
-    const timer = setInterval(() => {
-      setTimeLapsePlotted((current) => {
-        const next = Math.min(marks, current + step);
-        // Sliced in units, not graphics: a bubble and its label go on
-        // together, and the count below the bar counts bubbles.
-        layer.addMany(queue.slice(current * unit, next * unit));
-        if (next >= marks) setTimeLapsePlaying(false);
-        return next;
-      });
-    }, 160);
-
-    return () => clearInterval(timer);
-  }, [timeLapsePlaying]);
-
   useEffect(() => {
     // StrictMode mounts the effect twice in dev; `cancelled` stops the first
     // pass building a view into a container the second pass owns.
@@ -1843,8 +2040,9 @@ export function MapExplorerView() {
           // Panning changes nothing about which bubbles are right, so only a
           // change of zoom band asks again — and then only once the zoom has
           // settled, since this fires on every frame of it.
-          // A filter owns the map until it is cleared.
-          if (filteredRef.current) return;
+          // A filter owns the map until it is cleared, and so does a
+          // replay — reloading the bubbles would paint over it mid-year.
+          if (filteredRef.current || timeLapseRef.current) return;
 
           const zoom = zoomLevel(view);
 
@@ -2910,21 +3108,41 @@ export function MapExplorerView() {
 
       {status === "ready" && timeLapseOpen && (
         <TimeLapseBar
+          loading={timeLapseLoading}
+          error={timeLapseError}
           playing={timeLapsePlaying}
-          progress={
-            timeLapseTotal === 0 ? 0 : timeLapsePlotted / timeLapseTotal
+          year={
+            timeLapseStep >= 0 ? (timeLapseYears[timeLapseStep] ?? null) : null
           }
+          firstYear={timeLapseYears[0] ?? null}
+          lastYear={timeLapseYears[timeLapseYears.length - 1] ?? null}
           plotted={timeLapsePlotted}
           total={timeLapseTotal}
+          step={timeLapseStep}
+          steps={timeLapseYears.length}
+          onSeek={(step) => {
+            /* Taking hold of the handle stops the replay: it would otherwise
+               keep stepping forward under the drag and fight it. */
+            setTimeLapsePlaying(false);
+            seekTimeLapse(step);
+          }}
           onTogglePlay={() => {
-            // Replaying from the end starts over rather than doing nothing.
-            if (timeLapseTotal > 0 && timeLapsePlotted >= timeLapseTotal) {
+            /* Pressing play at the end starts over rather than doing
+               nothing — the map is full, and there is nothing left to add. */
+            const years = timeLapseYearsRef.current;
+            const grid = timeLapseRunRef.current;
+            if (grid && years.length > 0 && timeLapseStep >= years.length - 1) {
+              resetGrid(grid);
               timeLapseLayerRef.current?.removeAll();
+              timeLapseStepRef.current = -1;
+              setTimeLapseStep(-1);
               setTimeLapsePlotted(0);
+              setTimeLapsePlaying(true);
+              return;
             }
             setTimeLapsePlaying((playing) => !playing);
           }}
-          onClose={toggleTimeLapse}
+          onClose={closeTimeLapse}
         />
       )}
 
@@ -3104,6 +3322,7 @@ export function MapExplorerView() {
           onApplyFilters={applyFilters}
           timeLapseOpen={timeLapseOpen}
           onToggleTimeLapse={toggleTimeLapse}
+          plotting={timeLapsePlaying}
           center={readout.center}
           basemap={basemap}
           onBasemapChange={changeBasemap}

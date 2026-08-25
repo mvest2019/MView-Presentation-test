@@ -177,6 +177,15 @@ type FiltersPanelProps = {
    */
   onApply?: (filters: Record<string, string[]>) => void;
   onCollapse?: () => void;
+  /**
+   * Turns the whole card off while the map is busy.
+   *
+   * A scrim rather than an opacity on the card: fading the card itself makes
+   * it translucent, and the map shows straight through a panel that is
+   * supposed to be sitting on top of it. This keeps the white background and
+   * greys only what is printed on it.
+   */
+  disabled?: boolean;
   /** Positioning; the panel places itself nowhere on its own. */
   className?: string;
   /**
@@ -190,6 +199,7 @@ type FiltersPanelProps = {
 export function FiltersPanel({
   onApply,
   onCollapse,
+  disabled,
   className = "",
   style,
 }: FiltersPanelProps) {
@@ -863,6 +873,16 @@ export function FiltersPanel({
       style={style}
       className={`mv-filters-card w-[196px] rounded-xl border border-mv-line bg-white shadow-mv-lg md:w-[224px] lg:w-[252px] ${className}`}
     >
+      {/* Sits over the card and takes the clicks, so nothing inside needs a
+          `disabled` of its own — there are six facets, two search boxes and a
+          hundred checkboxes in here. */}
+      {disabled && (
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 z-30 cursor-not-allowed rounded-xl bg-white/65"
+        />
+      )}
+
       <div className="mv-thin-scroll mv-filters-body px-[14px]">
         {/* ---------------- header ---------------- */}
         <div className="flex items-center gap-2 pb-3 pt-[14px]">

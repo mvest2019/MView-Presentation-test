@@ -323,7 +323,7 @@
 }
 
 /* ----------------------------------------------------------------------------
-   The time-lapse year slider.
+   Range inputs — the production chart's two window handles.
 
    `appearance: none` strips the native control but leaves the thumb, which no
    utility class can reach — it is a pseudo-element, and a different one in
