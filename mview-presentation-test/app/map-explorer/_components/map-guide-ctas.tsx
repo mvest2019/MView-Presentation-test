@@ -213,7 +213,7 @@ export function PlansCta() {
       eyebrow="Plans"
       title="Put the plans side by side and take the one that fits"
       body="Free covers a single claimed lease and the whole of the map you have just been reading about. Premium adds more claimed leases and the services built on them, on the same account. Most people never need to move."
-      primary={{ href: "/pricing#plans", label: "Compare plans" }}
+      primary={{ href: "/pricing#plans", label: "Plans" }}
       secondary={{ href: "/register", label: "Start free instead" }}
     >
       <div className="overflow-hidden rounded-xl bg-white ring-1 ring-mv-line">

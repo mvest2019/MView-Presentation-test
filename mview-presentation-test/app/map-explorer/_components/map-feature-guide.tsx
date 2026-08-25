@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useState, type CSSProperties } from "react";
 import {
   PlansCta,
@@ -9,6 +10,7 @@ import {
 } from "./map-guide-ctas";
 import {
   ChartColumn,
+  ArrowRight,
   ArrowUpDown,
   Eye,
   Gauge,
@@ -368,6 +370,11 @@ export function MapFeatureGuide({ onBack }: { onBack: () => void }) {
                 title: "Six figures across the top",
                 body: "Last month's oil and gas, next month estimated, and both reserve figures.",
               },
+              {
+                icon: Download,
+                title: "The whole record, as a PDF",
+                body: "Export PDF takes the page as laid out, written summary and all, stamped with the time it was read.",
+              },
             ]}
             image={{
               src: "/map-feature/view-insights.png",
@@ -492,22 +499,22 @@ export function MapFeatureGuide({ onBack }: { onBack: () => void }) {
               {
                 icon: SquareDashed,
                 title: "Draw an area",
-                body: "Drag a box or click two corners. Every well inside is counted, with acreage and a CSV.",
+                body: "Drag a box or click two opposite corners. Every well whose bore falls inside is counted — not just the surface holes near it — with the acreage, the square miles, and a CSV of exactly those wells.",
               },
               {
                 icon: Ruler,
                 title: "Measure distance",
-                body: "Drag point to point for the distance across the ground — geodesic, not across the screen.",
+                body: "Drag from one point to another for the distance across the ground. Geodesic, not across the screen, so the reading holds wherever on the map you take it and however far you are zoomed out.",
               },
               {
                 icon: LandPlot,
                 title: "Measure area",
-                body: "Click a tract corner by corner. The acreage is geodesic: a one-mile section is 640 acres.",
+                body: "Click a tract corner by corner, then click the first again to close it. The acreage is geodesic, as a survey gives it: a nominal one-mile section comes out at 640 acres.",
               },
               {
                 icon: Crosshair,
                 title: "What's near my land",
-                body: "Click your land and the lease is looked up: wells in the ring, recent filings, closest bore.",
+                body: "Click your land and the lease under that point is looked up. You get the wells inside the ring, permits and completions from the last three months, the closest bore, and a CSV of the filings.",
               },
             ]}
             art="tools"
@@ -524,32 +531,32 @@ export function MapFeatureGuide({ onBack }: { onBack: () => void }) {
               {
                 icon: Search,
                 title: "Search by API number",
-                body: "Type as much of an API number as you have and pick from the matches.",
+                body: "Type as much of an API number as you have and pick from the matches, each tagged with the county it sits in. Faster than filtering when you already know which well you want.",
               },
               {
                 icon: Layers,
                 title: "Legends",
-                body: "The panel bottom-left names every symbol on the map. Leave it open while you learn them.",
+                body: "The panel bottom-left names every symbol on the map — permitted location, dry hole, oil, gas, the plugged variants, injection and disposal. Leave it open while you learn them.",
               },
               {
                 icon: MapIcon,
                 title: "Basemap",
-                body: "Streets by default; switch to satellite or a plain canvas when roads get in the way.",
+                body: "Streets by default; switch to satellite or a plain canvas when the roads are getting in the way of the wells, or when you want the land itself rather than what is drawn over it.",
               },
               {
                 icon: Download,
                 title: "Export CSV — what is in view",
-                body: "Writes whatever the current extent holds — wells past zoom 10, counts above it.",
+                body: "Writes whatever the current extent holds — the wells themselves past zoom 10, or the count bubbles above it. Pan, zoom and export; nothing has to be drawn or filtered first.",
               },
               {
                 icon: Share2,
                 title: "Share, save and print",
-                body: "Share links back to this view. Save image captures the map; Print map sends it to paper.",
+                body: "Share copies a link back to the exact view you are looking at. Save image captures the map as drawn, and Print map sends that capture to paper rather than the whole page.",
               },
               {
                 icon: Maximize,
                 title: "Zoom, reset and full screen",
-                body: "Zoom in and out, put the view back where it started, or take the whole window.",
+                body: "The buttons down the right zoom in and out and put the view back where it started. Full screen gives the map the whole window when the panels are in the way of it.",
               },
             ]}
             image={{
@@ -577,10 +584,19 @@ export function MapFeatureGuide({ onBack }: { onBack: () => void }) {
           className="scroll-mt-20 border-b border-mv-line-soft bg-white"
         >
           <div className="mx-auto max-w-[1180px] px-4 py-10 lg:px-8 lg:py-14">
-            <span className="inline-flex items-center gap-[7px] rounded-full bg-mv-mint px-[11px] py-[5px] text-[10px] font-extrabold uppercase tracking-[.11em] text-mv-green-deep">
-              <Download size={12} strokeWidth={2.5} aria-hidden="true" />
-              Take it with you
-            </span>
+            {/* The same chapter mark the numbered sections carry, so this
+                one reads as part of the sequence rather than as an appendix. */}
+            <div className="flex items-center gap-3 lg:gap-4">
+              <span className="inline-flex shrink-0 items-center gap-[7px] rounded-full border border-mv-mint-edge bg-mv-mint px-[11px] py-[5px] text-[10px] font-extrabold uppercase tracking-[.1em] text-mv-green-deep">
+                <Download size={12} strokeWidth={2.5} aria-hidden="true" />
+                Take it with you
+              </span>
+
+              <span
+                aria-hidden="true"
+                className="h-[2px] flex-1 rounded-full bg-gradient-to-r from-[#aab4c0] via-[#ccd3db] to-transparent"
+              />
+            </div>
 
             <h2 className="mt-4 text-[20px] font-bold leading-tight text-mv-ink lg:text-[26px]">
               Everything on screen comes off it
@@ -624,6 +640,12 @@ export function MapFeatureGuide({ onBack }: { onBack: () => void }) {
                   body: "Completion or permit, laid out as it appears on screen, in the page's own type — and the written summary comes with it, on the page where you read it.",
                   note: "completion-42-001-32729.pdf · permit-42-227-34620.pdf",
                 },
+                {
+                  icon: Crosshair,
+                  title: "Nearby filings — CSV",
+                  body: "What the lease lookup found around your land: every permit and completion in the ring, each with its distance and bearing from the point you clicked.",
+                  note: "near-7C-04254-1mi.csv",
+                },
               ].map((card) => (
                 <div
                   key={card.title}
@@ -660,7 +682,10 @@ export function MapFeatureGuide({ onBack }: { onBack: () => void }) {
                       aria-hidden="true"
                       className="mt-[1px] shrink-0 text-mv-green-deep"
                     />
-                    <span className="min-w-0 text-[11.5px] leading-snug text-mv-muted">
+                    <span
+                      title={card.note}
+                      className="min-w-0 truncate text-[11.5px] leading-snug text-mv-muted"
+                    >
                       {card.note}
                     </span>
                   </div>
@@ -826,7 +851,7 @@ function Section({
 
         <span
           aria-hidden="true"
-          className="h-px flex-1 bg-gradient-to-r from-mv-line-strong to-transparent"
+          className="h-[2px] flex-1 rounded-full bg-gradient-to-r from-[#aab4c0] via-[#ccd3db] to-transparent"
         />
       </div>
 
@@ -955,7 +980,7 @@ function Hero() {
             rather than as four separate meters. The icons are what make them
             scannable: four words in the same weight take a moment to tell
             apart, four different marks do not. */}
-        <div className="mt-10 grid grid-cols-2 gap-x-6 gap-y-5 border-t border-mv-line pt-0 sm:grid-cols-4">
+        <div className="mt-6 grid grid-cols-2 gap-x-6 gap-y-5 border-t border-mv-line pt-0 sm:grid-cols-4">
           {SLIDES.map((option, at) => {
             const live = at === index;
 
@@ -999,6 +1024,26 @@ function Hero() {
               </button>
             );
           })}
+        </div>
+
+        {/* The ask, at the top of the page as well as in the band further
+            down: someone who is already convinced by the picture beside this
+            should not have to read eight sections to find the way in. */}
+        <div className="mt-8 flex flex-wrap items-center gap-3">
+          <Link
+            href="/register"
+            className="inline-flex items-center gap-2 rounded-xl bg-mv-green-deep px-[20px] py-[12px] text-[13.5px] font-semibold text-white shadow-mv transition-[filter] hover:brightness-105"
+          >
+            Create your free account
+            <ArrowRight size={15} aria-hidden="true" />
+          </Link>
+
+          <Link
+            href="/login"
+            className="inline-flex items-center gap-2 rounded-xl bg-white px-[18px] py-[11px] text-[13.5px] font-semibold text-mv-green-deep ring-1 ring-mv-line transition-shadow hover:ring-mv-green-deep"
+          >
+            Sign in
+          </Link>
         </div>
       </div>
 
