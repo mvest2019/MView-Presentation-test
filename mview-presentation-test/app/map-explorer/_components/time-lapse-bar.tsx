@@ -3,89 +3,136 @@
 import { Pause, Play, X } from "lucide-react";
 
 /*
- * The time-lapse bar, along the bottom of the map.
+ * The bar under the replay.
  *
- * It reports presses and draws progress; the plotting itself belongs to the
- * view, which owns the layers.
+ * It reports three things, because a replay that only animates is impossible
+ * to follow: which year is on screen, how far through the span that is, and
+ * how many wells have been plotted. The year is the one that matters — the
+ * bubbles growing mean nothing without it.
  *
- * There is deliberately no year here. An earlier version showed one derived
- * from progress, which looked like data and was not — neither the cluster nor
- * the well endpoint reports a spud or completion date, so nothing on the map
- * can be placed in time. When one does, the year comes back and drives the
- * plot instead of trailing it.
+ * The track is a real range input rather than a progress bar, so the years are
+ * something you can move through rather than only watch. Dragging it back
+ * takes wells off the map: the bubbles are always the wells completed up to
+ * the year under the handle, so the map is a picture of that date and not of
+ * everywhere the replay has been.
  */
-
-type TimeLapseBarProps = {
-  playing: boolean;
-  /** 0 to 1. */
-  progress: number;
-  /** How many marks are on the map, and how many there are in total. */
-  plotted: number;
-  total: number;
-  onTogglePlay: () => void;
-  onClose: () => void;
-};
-
 export function TimeLapseBar({
+  loading,
+  error,
   playing,
-  progress,
+  year,
+  firstYear,
+  lastYear,
+  step,
+  steps,
   plotted,
   total,
+  onSeek,
   onTogglePlay,
   onClose,
-}: TimeLapseBarProps) {
+}: {
+  loading: boolean;
+  error: string | null;
+  playing: boolean;
+  /** The year on screen, or null before the first step. */
+  year: number | null;
+  firstYear: number | null;
+  lastYear: number | null;
+  /** Index of the year on screen. -1 is before the first, an empty map. */
+  step: number;
+  /** How many years the data covers. */
+  steps: number;
+  plotted: number;
+  total: number;
+  onSeek: (step: number) => void;
+  onTogglePlay: () => void;
+  onClose: () => void;
+}) {
+  const ready = !loading && !error && steps > 0;
+  const last = Math.max(0, steps - 1);
+  /* Across the years, not across the wells: the handle sits where the date is,
+     and most wells arrive in the last quarter of the span. */
+  const progress = steps === 0 ? 0 : ((step + 1) / steps) * 100;
+
   return (
-    <div className="pointer-events-auto absolute bottom-5 left-1/2 z-30 w-[min(720px,calc(100%-32px))] -translate-x-1/2 rounded-2xl border border-mv-line bg-white/97 px-4 py-[14px] shadow-mv-lg backdrop-blur-[6px]">
-      <div className="flex items-center gap-4">
+    <div className="pointer-events-auto absolute bottom-4 left-1/2 z-30 w-[min(680px,calc(100%-2rem))] -translate-x-1/2 rounded-2xl border border-mv-line bg-white/97 px-4 py-3 shadow-mv-lg backdrop-blur">
+      <div className="flex items-center gap-3">
         <button
           type="button"
           onClick={onTogglePlay}
-          aria-label={playing ? "Pause time-lapse" : "Play time-lapse"}
-          className="grid h-[34px] w-[34px] shrink-0 cursor-pointer place-items-center rounded-full bg-mv-green-deep text-white hover:brightness-105"
+          disabled={!ready}
+          aria-label={playing ? "Pause the replay" : "Play the replay"}
+          className="grid h-[34px] w-[34px] shrink-0 cursor-pointer place-items-center rounded-full bg-mv-green-deep text-white transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {playing ? (
-            <Pause size={14} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+            <Pause size={15} strokeWidth={2.5} aria-hidden="true" />
           ) : (
-            <Play size={15} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+            <Play size={15} strokeWidth={2.5} aria-hidden="true" />
           )}
         </button>
 
-        {/* A progress track, not a slider: the plot runs forwards from empty,
-            and there is nothing to scrub back to. */}
-        <div
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(progress * 100)}
-          aria-label="Time-lapse progress"
-          className="h-[6px] flex-1 overflow-hidden rounded-full bg-mv-line"
-        >
-          <div
-            className="h-full rounded-full bg-mv-green-deep transition-[width] duration-150 ease-linear"
-            style={{ width: `${progress * 100}%` }}
-          />
+        {/* The year, big enough to read from across a desk — it is the axis
+            the whole replay runs along. */}
+        <span className="w-[62px] shrink-0 text-[19px] font-extrabold leading-none tabular-nums text-mv-ink">
+          {year ?? "—"}
+        </span>
+
+        <div className="min-w-0 flex-1">
+          {/* One track under one handle, the same construction the production
+              chart's window uses: the filled part is drawn, and a transparent
+              range input sits over it to take the drag. */}
+          <div className="relative h-[7px]">
+            <div className="absolute inset-0 rounded-full bg-mv-line-soft" />
+            <div
+              className="absolute inset-y-0 left-0 rounded-full bg-mv-green-deep"
+              style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+            />
+
+            <input
+              type="range"
+              min={-1}
+              max={last}
+              step={1}
+              value={Math.min(step, last)}
+              disabled={!ready}
+              aria-label="Year"
+              aria-valuetext={year ? String(year) : "Before the first year"}
+              onChange={(event) => onSeek(Number(event.target.value))}
+              className="mv-range mv-range-overlay cursor-pointer appearance-none disabled:cursor-not-allowed"
+            />
+          </div>
+
+          <p className="mt-[9px] truncate text-[11.5px] leading-none text-mv-muted">
+            {loading ? (
+              "Loading every dated well…"
+            ) : error ? (
+              <span className="font-semibold text-mv-plum">{error}</span>
+            ) : (
+              <>
+                <span className="font-bold text-mv-slate">
+                  {plotted.toLocaleString("en-US")}
+                </span>{" "}
+                of {total.toLocaleString("en-US")} wells
+                {firstYear !== null && lastYear !== null && (
+                  <>
+                    {" · "}
+                    {firstYear}–{lastYear}
+                  </>
+                )}
+                {playing && " · plotting"}
+              </>
+            )}
+          </p>
         </div>
 
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close time-lapse"
-          className="grid h-[26px] w-[26px] shrink-0 cursor-pointer place-items-center rounded-full text-mv-muted hover:bg-[#f2f8f5] hover:text-mv-green-deep"
+          aria-label="Close the time-lapse"
+          className="grid h-[28px] w-[28px] shrink-0 cursor-pointer place-items-center rounded-lg text-mv-muted transition-colors hover:bg-mv-hover hover:text-mv-slate"
         >
-          <X size={16} aria-hidden="true" />
+          <X size={15} aria-hidden="true" />
         </button>
-      </div>
-
-      <div className="mt-[9px] flex flex-wrap items-baseline gap-x-4 gap-y-1 pl-[50px] text-[12px]">
-        <span className="text-mv-slate">
-          <span className="font-bold text-mv-ink">
-            {plotted.toLocaleString("en-US")}
-          </span>{" "}
-          of {total.toLocaleString("en-US")} plotted
-        </span>
-        <span className="text-mv-muted">
-          {playing ? "Plotting…" : plotted === 0 ? "Press play to begin" : "Paused"}
-        </span>
       </div>
     </div>
   );
