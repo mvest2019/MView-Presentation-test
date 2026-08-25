@@ -1,0 +1,951 @@
+"use client";
+
+import Image from "next/image";
+import { useEffect, useState, type CSSProperties } from "react";
+import Link from "next/link";
+import {
+  ArrowRight,
+  ChartColumn,
+  Check,
+  Crosshair,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  Filter,
+  Compass,
+  Image as ImageIcon,
+  LandPlot,
+  Map as MapIcon,
+  Layers,
+  Ruler,
+  Clock,
+  SquareDashed,
+  Table2,
+  type LucideIcon,
+} from "lucide-react";
+
+/*
+ * What this map can do, shown in place of the map.
+ *
+ * A view rather than a page: it opens over the explorer at the same URL, the
+ * way Table and Insights do, so reading about a feature and using it are one
+ * click apart. Back to map returns the exact view that was left — the map is
+ * covered, never unmounted.
+ *
+ * The pictures are the running product, captured from this build: the two map
+ * shots through the view's own `takeScreenshot`, the panels through the same
+ * capture the PDF export uses. Recapture them when the interface moves — a
+ * stale screenshot shows a product that no longer exists.
+ *
+ * Every figure quoted is one the product reports for itself. Nothing is
+ * claimed that the map cannot do today: time-lapse and the email watch are
+ * left out, since neither is finished.
+ */
+
+/**
+ * Every picture in the guide, once, for the strip that runs under the hero.
+ *
+ * The whole product in one pass — the map at both zooms, the table, the
+ * filters, the record and the chart — so the first screen
+ * says what this is without the reader scrolling for it.
+ */
+/**
+ * The four views the hero moves through, and what each one is for.
+ *
+ * One picture at a time with its own words beside it, rather than a strip of
+ * everything at once: a reader can take in one claim and one screenshot, and
+ * the next pair arrives without them doing anything.
+ */
+const SLIDES = [
+  {
+    src: "/map-feature/map-bubbles.png",
+    width: 1385,
+    height: 816,
+    alt: "The map at statewide zoom, well counts drawn as bubbles over Texas",
+    eyebrow: "The map",
+    title: "Every Texas well, on one map",
+    body: "Open it and the whole state is there — 1.1 million wells drawn as counts you can read at a glance, one bubble per district, sized by how many it holds.",
+  },
+  {
+    src: "/map-feature/map-wells-field.png",
+    width: 2800,
+    height: 1632,
+    alt: "The map at zoom 10 over Ector County, wells packed across the field, Odessa and Midland in frame",
+    eyebrow: "Zoom in",
+    title: "Down to the wells themselves",
+    body: "Past zoom 10 the bubbles give way to the wells, each carrying the Commission's own symbol — oil, gas, plugged, permitted — with horizontal bores drawn along their whole length.",
+  },
+  {
+    src: "/map-feature/view-table.png",
+    width: 2800,
+    height: 1632,
+    alt: "The whole table view: filter bar, summary strip and the rows beneath",
+    eyebrow: "The table",
+    title: "The same wells, as rows you can sort",
+    body: "Switch to Table for API, operator, lease, type, status, county and production — with counts across the top that move as you filter, and a CSV of whatever you are looking at.",
+  },
+  {
+    src: "/map-feature/view-insights.png",
+    width: 2800,
+    height: 1632,
+    alt: "The Insights view: the map on the left, the well record on the right",
+    eyebrow: "Insights",
+    title: "Open one well and read its record",
+    body: "Production and forecast, decline, reserves, the wellbore, the lease and the operator — the completion or the permit, whichever that well is, written up in plain English underneath.",
+  },
+];
+
+/** How long each slide holds before the next one takes over. */
+const SLIDE_MS = 5200;
+
+
+export function MapFeatureGuide({ onBack }: { onBack: () => void }) {
+  /*
+   * Esc closes the guide.
+   *
+   * It is the only way back: the page carries no button of its own, and the
+   * toolbar that opened it is underneath. Esc is what closes every other
+   * overlay on the map, so it is the key a reader would already try.
+   */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onBack();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onBack]);
+
+  return (
+    <div className="mv-thin-scroll absolute inset-0 z-40 overflow-y-auto bg-mv-bg">
+      {/* ---------------- hero ---------------- */}
+      <header className="relative overflow-hidden border-b border-mv-line bg-gradient-to-b from-[#eaf7ef] via-[#f4fbf7] to-white">
+        {/* Faint section lines under the whole band — the map is a grid of
+            surveys, and the page borrows the idea rather than sitting on flat
+            colour. Masked so it fades out before the content ends. */}
+        <span
+          aria-hidden="true"
+          className="mv-hero-grid pointer-events-none absolute inset-0"
+          style={{
+            maskImage:
+              "radial-gradient(80% 60% at 50% 30%, #000, transparent 75%)",
+            WebkitMaskImage:
+              "radial-gradient(80% 60% at 50% 30%, #000, transparent 75%)",
+          }}
+        />
+
+        <div className="relative mx-auto max-w-[1180px] px-4 lg:px-8">
+          <Hero />
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-[1180px] px-4 py-10 lg:px-8 lg:py-16">
+        <div className="flex flex-col gap-14 lg:gap-24">
+          {/* ---------------- 1 · the map ---------------- */}
+          <Section
+            id="map"
+            number="01"
+            icon={Layers}
+            eyebrow="The map"
+            title="Start statewide, finish at a single well"
+            lead="The map opens as count bubbles over Texas — one per district, sized and shaded by how many wells it holds. Click a bubble and it opens into sub-clusters. Click again and the wells themselves are drawn, each carrying the Railroad Commission's own symbol."
+            points={[
+              {
+                title: "Three levels, one gesture",
+                body: "Clusters at zoom 5, sub-clusters at 8, individual wells at 10. A click on a bubble takes you to the next level down and centres what you clicked, so you never have to guess how far to zoom.",
+              },
+              {
+                title: "The Commission's own symbols",
+                body: "Oil, gas, oil and gas, plugged, dry hole, permitted location, injection and disposal — each drawn as the Commission draws it, with a legend that stays open if you want it.",
+              },
+              {
+                title: "The whole bore, not just the hole",
+                body: "Horizontal and directional wells draw their full path from surface to bottom hole, so a lateral running a mile under your land is visible as a line, not a dot on someone else's tract.",
+              },
+              {
+                title: "Hover before you commit",
+                body: "The tooltip gives API number, well number, operator, status, type and county — enough to know whether a well is worth opening.",
+              },
+            ]}
+            image={{
+              src: "/map-feature/map-wells-field.png",
+              width: 2800,
+              height: 1632,
+              alt: "The map past zoom 10 over a field, wells packed across it, each with its Railroad Commission symbol",
+              caption:
+                "Past zoom 10 the bubbles give way to the wells themselves — every one its own symbol.",
+            }}
+          />
+
+          {/* ---------------- 2 · the table ---------------- */}
+          <Section
+            id="table"
+            number="02"
+            icon={Table2}
+            eyebrow="The table"
+            title="The same wells, as rows you can sort"
+            lead="Switch to Table and the map's result set becomes a grid: API number, operator, lease, type, status, county, and the oil and gas each well has produced. A summary strip above it counts what you are looking at — not the whole state."
+            points={[
+              {
+                title: "Counts for this result set",
+                body: "Total wells, the oil and gas split with percentages, how many are active, and how many distinct operators and counties are represented. Every figure recalculates when you filter.",
+              },
+              {
+                title: "Sort by what matters",
+                body: "Operator, lease, county or producing volumes. Sorting by producing oil is how you find the wells worth reading first.",
+              },
+              {
+                title: "Back to the map in one click",
+                body: "Every row has a pin that takes you to that well on the map, and clicking the row itself opens its full record in Insights.",
+              },
+              {
+                title: "Filter from the table itself",
+                body: "The same facets sit across the top of the table — operator, well type, status, county, production. Open one, tick what you want, press Apply, and the rows and the counts above them both change together. Clear puts everything back.",
+              },
+              {
+                title: "Paged, not truncated",
+                body: "A county with twenty thousand wells stays usable, and Export writes the page you are looking at rather than silently capping the file.",
+              },
+            ]}
+            image={{
+              src: "/map-feature/view-table.png",
+              width: 2800,
+              height: 1632,
+              alt: "The whole table view: filter bar, summary strip and the rows beneath",
+              caption:
+                "The whole view — filters across the top, counts, then the rows.",
+            }}
+          />
+
+          {/* ---------------- 3 · filters ---------------- */}
+          <Section
+            id="filters"
+            number="03"
+            icon={Filter}
+            eyebrow="Filters"
+            title="Narrow it to the wells you care about"
+            lead="Six facets, a lease search and production ranges. Tick what you want and press Apply; the map reloads to the matches and frames them, and the confirmation tells you how many there were."
+            points={[
+              {
+                title: "1 · Open Filters and pick what you want",
+                body: "The rail on the left holds six facets — county, operator, well type, well status, play type and field. Each list is ordered by well count and has its own search, so ANDREWS with its 21,645 wells is one keystroke away rather than a scroll through 282 counties. Tick as many as you like, across as many facets as you like.",
+              },
+              {
+                title: "2 · Press Apply, and watch the map change",
+                body: "The map reloads to the matches and frames them: filter to Andrews and the rest of Texas empties, leaving that county's wells drawn in full. The confirmation says what landed — “Filters applied — 21,645 wells”. Nothing is guessed at; that count is the service's answer.",
+              },
+              {
+                title: "3 · Narrow further, or lift one filter at a time",
+                body: "Applied filters show as chips. Remove one and the rest stay. Add production ranges to see only wells above a volume — both ends or neither, since a lone bound is not a range. Clearing the last one puts the map back where it started.",
+              },
+              {
+                title: "Or search a lease by name",
+                body: "The box at the top searches leases, operators and counties at once, each result labelled with what it is. Picking one filters the map straight away — no Apply needed — and clearing the box undoes it.",
+              },
+            ]}
+            image={{
+              src: "/map-feature/filters-choosing.png",
+              width: 2800,
+              height: 1632,
+              alt: "The filters rail with a county being searched for and ticked, before applying",
+              caption: "Search the facet, tick what you want, press Apply.",
+            }}
+          />
+
+          {/* ---------------- 4 · insights ---------------- */}
+          <Section
+            id="insights"
+            number="04"
+            icon={ChartColumn}
+            eyebrow="Insights · completion summary"
+            title="The completion summary — what the well has done"
+            lead="Pick a well and Insights opens its record. A well that has been drilled and completed shows its completion summary: the production it has reported, how fast that is falling, what is booked against it, and the hole itself. The badge beside the heading says COMPLETION so you always know which of the two filings you are reading."
+            points={[
+              {
+                title: "Production, reported and forecast",
+                body: "Monthly oil and gas on twin axes, with the forecast months marked off from the reported ones. Hover any month for its figures; narrow the window to a custom range.",
+              },
+              {
+                title: "Decline diagnostics",
+                body: "Last month against next month estimated, the month-on-month step, the implied annual decline, GOR now and forecast, and how many months the booked reserves last at the current rate.",
+              },
+              {
+                title: "The wellbore in section",
+                body: "Drawn to the record's own profile — a vertical hole goes straight down, a horizontal one turns and runs along the formation. The producing interval is named where the record names one.",
+              },
+              {
+                title: "Lease, operator, dates, depth",
+                body: "Lease name and number, acreage, district, operator and operator number, spud and completion dates, first and last production, start and true vertical depth, and the nearest well with its bearing.",
+              },
+              {
+                title: "Six figures across the top",
+                body: "Last month's oil and gas, next month estimated, and the oil and gas booked as reserves — the numbers most people open a record for, before any of the detail below them.",
+              },
+            ]}
+            image={{
+              src: "/map-feature/view-insights.png",
+              width: 2800,
+              height: 1632,
+              alt: "The Insights view: the map on the left, the well's record on the right",
+              caption:
+                "The map stays beside the record — the well you are reading is the one ringed on it.",
+            }}
+            second={{
+              src: "/map-feature/production-chart.png",
+              width: 1800,
+              height: 830,
+              alt: "Crude oil and natural gas production chart with reported and forecast months",
+              caption:
+                "Reported months to the left of the marker, forecast to the right.",
+            }}
+          />
+
+          {/* ---------------- 5 · the permit record ---------------- */}
+          <Section
+            id="permit"
+            number="05"
+            icon={FileText}
+            eyebrow="Insights · permit summary"
+            title="The permit summary — what was filed to drill"
+            lead="A well that is permitted but not yet completed opens its permit instead, badged PERMIT. It is a different document and it answers different questions: who applied, for what, where exactly, and how it stands with the Commission."
+            points={[
+              {
+                title: "The filing itself",
+                body: "Filing purpose and type, the permit date, the status number and whether the Commission has approved it — plus a details table carrying the filing's own columns in its own order, for checking the page against the record.",
+              },
+              {
+                title: "Lease, operator and field",
+                body: "Lease name, county and district; the operator with its number; the field name, reservoir and field number the permit names.",
+              },
+              {
+                title: "Where it is, to six decimals",
+                body: "Surface and bottom-hole coordinates, each with a copy button — and the nearest existing well, with the distance and the direction that well lies in.",
+              },
+              {
+                title: "Written up as well",
+                body: "A written read sits under the filing too, generated from the permit's own fields — what was applied for, how it stands, and anything the filing leaves blank.",
+              },
+            ]}
+            image={{
+              src: "/map-feature/ai-summary.png",
+              width: 1640,
+              height: 514,
+              alt: "The permit's written summary card with tone-badged findings and a basis line",
+              caption:
+                "A permit, read: status, operator, location, and the fields it leaves blank.",
+            }}
+          />
+
+          {/* ---------------- 6 · time-lapse ---------------- */}
+          <Section
+            id="timelapse"
+            number="06"
+            icon={Clock}
+            eyebrow="Time-lapse"
+            title="Watch the field fill in"
+            lead="Time-lapse replays the wells on screen in the order they were drilled, plotting them year by year until the map you started with is back. It is the quickest way to see how a field grew — where the drilling started, and where it moved."
+            points={[
+              {
+                title: "Press it and the map empties",
+                body: "Everything currently drawn is taken off and replayed from the beginning, so the sequence starts from bare ground rather than from a full map.",
+              },
+              {
+                title: "A counter, not a mystery",
+                body: "The bar reports its progress as it goes — “468 of 1,351 plotted” — so a long replay never looks like a stall.",
+              },
+              {
+                title: "Play, pause, and close",
+                body: "Pause to hold a year on screen, or close the bar to put every well back at once.",
+              },
+              {
+                title: "What is on screen is what replays",
+                body: "It works from the wells the map has loaded, so zoom to the field you care about first. Filter to a county and the replay is that county's history.",
+              },
+            ]}
+            image={{
+              src: "/map-feature/timelapse.png",
+              width: 2800,
+              height: 1632,
+              alt: "The time-lapse bar part way through a replay, with wells plotted across the field",
+              caption: "Part way through: 468 of 1,351 wells plotted.",
+            }}
+          />
+
+          {/* ---------------- 7 · tools ---------------- */}
+          <Section
+            id="tools"
+            number="07"
+            icon={Crosshair}
+            eyebrow="Tools"
+            title="Ask questions of the ground itself"
+            lead="Four tools sit over the map. Each opens with a worked example in its own window, so you can watch the gesture once before making it."
+            points={[
+              {
+                title: "Draw an area",
+                body: "Press and drag a box, or click two opposite corners. Every well inside is counted, the acreage and square miles are given, and the CSV is those wells.",
+              },
+              {
+                title: "Measure distance",
+                body: "Drag from one point to another for the distance across the ground — geodesic, not across the screen.",
+              },
+              {
+                title: "Measure area",
+                body: "Click a tract corner by corner and close it. The acreage is geodesic, as a survey gives it: a one-mile section comes out at 640 acres.",
+              },
+              {
+                title: "What's near my land",
+                body: "Click your land and the lease under it is looked up. You get the wells inside the ring, new permits and completions in the last three months, the closest bore, and the recent filings by lease, operator, distance and date — with a CSV of them.",
+              },
+            ]}
+            art="tools"
+          />
+          {/* ---------------- 8 · the rest of the chrome ---------------- */}
+          <Section
+            id="more"
+            number="08"
+            icon={Compass}
+            eyebrow="Around the map"
+            title="The smaller controls, and what each is for"
+            lead="Not everything needs a section of its own. These sit around the edge of the map and are worth knowing about before you need them."
+            points={[
+              {
+                title: "Search by API number",
+                body: "The box on the toolbar takes an API number and goes straight to that well — type as much as you have and pick from the matches. Faster than filtering when you already know which well you want.",
+              },
+              {
+                title: "Legends",
+                body: "The panel bottom-left names every symbol on the map: permitted location, dry hole, oil, gas, oil and gas, the plugged variants, canceled or abandoned locations, injection and disposal. Leave it open while you learn them.",
+              },
+              {
+                title: "Basemap",
+                body: "Streets by default; switch to satellite or a plain canvas when the roads are getting in the way of the wells.",
+              },
+              {
+                title: "Export CSV — what is in view",
+                body: "The toolbar's own export writes whatever the current extent holds: the wells themselves past zoom 10, or the count bubbles above it. Pan, zoom, export — no drawing required.",
+              },
+              {
+                title: "Share, save and print",
+                body: "Share copies a link back to the view you are looking at. Save image (PNG) captures the map as it stands, and Print map sends that capture to paper rather than dragging the whole page onto it.",
+              },
+              {
+                title: "Zoom, reset and full screen",
+                body: "The buttons down the right zoom in and out, put the view back where it started, and give the map the whole window when the panels are in the way.",
+              },
+            ]}
+            image={{
+              src: "/map-feature/view-map-chrome.png",
+              width: 2800,
+              height: 1632,
+              alt: "The map with its filters rail, toolbar, legend and zoom controls",
+              caption:
+                "Filters left, toolbar top, legend and scale bottom-left, zoom and reset right.",
+            }}
+          />
+        </div>
+
+        {/* ---------------- downloads ---------------- */}
+        <section id="guide-download" className="scroll-mt-20 pt-14 lg:pt-24">
+          <div className="rounded-2xl border border-mv-line bg-white p-5 lg:p-8">
+            <span className="inline-flex items-center gap-[7px] rounded-full bg-mv-mint px-[11px] py-[5px] text-[10px] font-extrabold uppercase tracking-[.11em] text-mv-green-deep">
+              <Download size={12} strokeWidth={2.5} aria-hidden="true" />
+              Take it with you
+            </span>
+
+            <h2 className="mt-4 text-[20px] font-bold leading-tight text-mv-ink lg:text-[26px]">
+              Everything on screen comes off it
+            </h2>
+            <p className="mt-[10px] max-w-[70ch] text-[12.5px] leading-relaxed text-mv-slate lg:text-[13.5px]">
+              Nothing is locked behind a request form. What you filtered, drew
+              or read is what downloads — filters and all. Export from the map,
+              from the table, from a drawn area, or from a well&rsquo;s own
+              record.
+            </p>
+
+            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {[
+                {
+                  icon: FileSpreadsheet,
+                  title: "Table results — CSV",
+                  body: "The rows you are looking at, filters and all, with every column the table shows.",
+                  note: "API · operator · lease · type · status · county · oil · gas",
+                },
+                {
+                  icon: SquareDashed,
+                  title: "A drawn area — CSV",
+                  body: "Every well whose bore falls inside the box you drew, not just the surface holes near it.",
+                  note: "Counted well by well past zoom 10",
+                },
+                {
+                  icon: MapIcon,
+                  title: "What is in view — CSV",
+                  body: "The toolbar's export takes the current extent as it stands: the wells past zoom 10, the counts above it.",
+                  note: "mineral-view-wells.csv",
+                },
+                {
+                  icon: ImageIcon,
+                  title: "The map itself — PNG",
+                  body: "Share → Save image captures the map as drawn, ready to drop into a report. Print map sends the same capture to paper.",
+                  note: "mineral-view-map.png",
+                },
+                {
+                  icon: FileText,
+                  title: "Well summaries — PDF",
+                  body: "Completion or permit, laid out as it appears on screen, in the page's own type — and the written summary comes with it, on the page where you read it.",
+                  note: "completion-42-001-32729.pdf · permit-42-227-34620.pdf",
+                },
+              ].map((card) => (
+                <div
+                  key={card.title}
+                  className="rounded-xl border border-mv-line bg-[#fafbfa] p-4"
+                >
+                  <span className="grid h-[30px] w-[30px] place-items-center rounded-lg bg-mv-mint text-mv-green-deep">
+                    <card.icon size={15} strokeWidth={2} aria-hidden="true" />
+                  </span>
+                  <h3 className="mt-3 text-[13px] font-bold text-mv-ink">
+                    {card.title}
+                  </h3>
+                  <p className="mt-[7px] text-[11.5px] leading-snug text-mv-slate">
+                    {card.body}
+                  </p>
+                  <p className="mt-[9px] truncate font-mono text-[10px] text-mv-muted">
+                    {card.note}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ---------------- the ask ----------------
+          Browsing is genuinely free, so the copy does not pretend otherwise —
+          the account is offered as the next step rather than as a gate.
+
+          Note: there is no visible way back to the map — Esc is the only one.
+          The button was removed on request; restore one here if that bites. */}
+        <section className="mt-10 overflow-hidden rounded-2xl border border-[#cfe8da] bg-gradient-to-r from-[#eaf7ef] via-[#f2fbf5] to-[#e6f5ec] lg:mt-14">
+          <div className="p-7 text-center lg:p-12">
+            <h2 className="text-[22px] font-bold leading-tight text-mv-ink lg:text-[30px]">
+              Register to explore the map
+            </h2>
+            <p className="mx-auto mt-3 max-w-[56ch] text-[13px] leading-relaxed text-mv-slate lg:text-[14px]">
+              Looking is free and always will be. An account takes a minute, and
+              it is how you claim your record and pick up where you left off.
+            </p>
+
+            <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+              <Link
+                href="/register"
+                className="inline-flex items-center gap-2 rounded-xl bg-mv-green-deep px-[22px] py-[13px] text-[13.5px] font-semibold text-white hover:brightness-105"
+              >
+                Create your free account
+                <ArrowRight size={15} aria-hidden="true" />
+              </Link>
+
+              <Link
+                href="/login"
+                className="inline-flex items-center gap-2 rounded-xl border border-mv-line bg-white px-[20px] py-[12px] text-[13.5px] font-semibold text-mv-green-deep hover:border-mv-green-deep"
+              >
+                Sign in
+              </Link>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ pieces */
+
+type Shot = {
+  src: string;
+  width: number;
+  height: number;
+  alt: string;
+  caption: string;
+};
+
+function Section({
+  id,
+  number,
+  icon: Icon,
+  eyebrow,
+  title,
+  lead,
+  points,
+  image,
+  second,
+  art,
+}: {
+  id: string;
+  number: string;
+  icon: LucideIcon;
+  eyebrow: string;
+  title: string;
+  lead: string;
+  points: { title: string; body: string }[];
+  image?: Shot;
+  second?: Shot;
+  art?: "tools";
+}) {
+  /* Even-numbered sections put the picture on the left. Eight identical
+     words-left/picture-right blocks read as a list rather than a story: the
+     eye settles into one gutter and stops looking. Mobile always stacks the
+     words first — the picture is the evidence, not the claim. */
+  const flipped = Number(number) % 2 === 0;
+
+  return (
+    <section id={`guide-${id}`} className="scroll-mt-20">
+      {/* ---------------- the chapter mark ----------------
+          Numeral, what this section is, and a rule out to the margin: enough
+          to read as the start of something without a heavy divider. */}
+      <div className="flex items-center gap-3 lg:gap-4">
+        <span
+          aria-hidden="true"
+          className="mv-numeral shrink-0 text-[34px] font-extrabold leading-none tabular-nums lg:text-[52px]"
+        >
+          {number}
+        </span>
+
+        <span className="inline-flex shrink-0 items-center gap-[7px] rounded-full border border-mv-mint-edge bg-mv-mint px-[11px] py-[5px] text-[10px] font-extrabold uppercase tracking-[.1em] text-mv-green-deep">
+          <Icon size={12} strokeWidth={2.5} aria-hidden="true" />
+          {eyebrow}
+        </span>
+
+        <span
+          aria-hidden="true"
+          className="h-px flex-1 bg-gradient-to-r from-mv-line to-transparent"
+        />
+      </div>
+
+      <h2 className="mt-5 max-w-[24ch] text-[24px] font-extrabold leading-[1.15] tracking-[-0.01em] text-mv-ink lg:text-[32px]">
+        {title}
+      </h2>
+      <p className="mt-3 max-w-[70ch] text-[13px] leading-relaxed text-mv-slate lg:text-[14.5px]">
+        {lead}
+      </p>
+
+      <div className="mt-8 grid gap-6 lg:mt-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.08fr)] lg:gap-12">
+        {/* What it does, in detail. One divided panel rather than a stack of
+            separate boxes: these points belong to each other, and five
+            floating cards said the opposite. */}
+        <ul
+          className={`min-w-0 divide-y divide-mv-line-soft overflow-hidden rounded-2xl border border-mv-line bg-white shadow-mv ${
+            flipped ? "lg:order-2" : ""
+          }`}
+        >
+          {points.map((point) => (
+            <li
+              key={point.title}
+              className="group flex items-start gap-3 p-[15px] transition-colors hover:bg-mv-row-hover lg:gap-[14px] lg:p-[18px]"
+            >
+              <span
+                aria-hidden="true"
+                className="mt-[1px] grid h-[20px] w-[20px] shrink-0 place-items-center rounded-md bg-mv-mint text-mv-green-deep ring-1 ring-mv-mint-edge transition-colors group-hover:bg-mv-green-deep group-hover:text-white group-hover:ring-mv-green-deep"
+              >
+                <Check size={11} strokeWidth={3} />
+              </span>
+
+              <div className="min-w-0">
+                <h3 className="text-[12.5px] font-bold leading-snug text-mv-ink lg:text-[13.5px]">
+                  {point.title}
+                </h3>
+                <p className="mt-[5px] text-[11.5px] leading-relaxed text-mv-slate lg:text-[12.5px]">
+                  {point.body}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+
+        {/* The evidence. Sticky on desktop, so a long list of points scrolls
+            against the picture it describes rather than straight past it —
+            which also closes the dead space a short list used to leave. */}
+        <div className={`min-w-0 ${flipped ? "lg:order-1" : ""}`}>
+          <div className="flex flex-col gap-4 lg:sticky lg:top-24">
+            {image && <Frame {...image} />}
+            {second && <Frame {...second} />}
+            {art === "tools" && <ToolsArt />}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * The hero: what this is on the left, what it looks like on the right.
+ *
+ * Four views, one at a time. The words and the picture change together, so
+ * every pair is a claim and its evidence rather than a wall of both.
+ *
+ * The control underneath is four named tabs, not dots: a dot says "there is
+ * more" and nothing else, while a tab says what the next thing is and lets a
+ * reader go straight to it. The active tab fills as its slide runs, which is
+ * also the only clock on the page — see `.mv-progress` in `globals.css`.
+ */
+function Hero() {
+  const [index, setIndex] = useState(0);
+  const [held, setHeld] = useState(false);
+
+  useEffect(() => {
+    if (held) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+
+    const timer = setInterval(
+      () => setIndex((current) => (current + 1) % SLIDES.length),
+      SLIDE_MS,
+    );
+    return () => clearInterval(timer);
+  }, [held]);
+
+  const slide = SLIDES[index];
+
+  return (
+    <div
+      className="grid items-center gap-9 py-10 lg:grid-cols-[minmax(0,440px)_minmax(0,1fr)] lg:gap-14 lg:py-14"
+      onMouseEnter={() => setHeld(true)}
+      onMouseLeave={() => setHeld(false)}
+    >
+      {/* ---------------- what it is ---------------- */}
+      <div className="min-w-0">
+        <span className="inline-flex items-center gap-[7px] rounded-full border border-[#bfe3cc] bg-white px-[12px] py-[6px] text-[10px] font-extrabold uppercase tracking-[.12em] text-mv-green-deep shadow-mv">
+          <Layers size={12} strokeWidth={2.5} aria-hidden="true" />
+          The map explorer
+        </span>
+
+        {/* Keyed by the slide, so the words fade in rather than swapping
+            mid-sentence. */}
+        <div key={index} className="mv-fade">
+          <h1 className="mt-5 text-[30px] font-extrabold leading-[1.1] tracking-[-0.01em] text-mv-ink lg:text-[42px]">
+            {slide.title}
+          </h1>
+          <p className="mt-4 max-w-[50ch] text-[13.5px] leading-relaxed text-mv-slate lg:text-[15.5px]">
+            {slide.body}
+          </p>
+        </div>
+
+        {/* ---------------- the four, named ---------------- */}
+        <div className="mt-9 grid grid-cols-2 gap-x-5 gap-y-4 sm:grid-cols-4">
+          {SLIDES.map((option, at) => {
+            const live = at === index;
+
+            return (
+              <button
+                key={option.src}
+                type="button"
+                onClick={() => {
+                  setIndex(at);
+                  setHeld(true);
+                }}
+                aria-current={live}
+                className="group cursor-pointer text-left"
+              >
+                <span className="block h-[3px] w-full overflow-hidden rounded-full bg-[#cfe3d8]">
+                  {live && (
+                    <span
+                      key={index}
+                      data-held={held}
+                      style={{ "--mv-slide": `${SLIDE_MS}ms` } as CSSProperties}
+                      className="mv-progress block h-full w-full bg-mv-green-deep"
+                    />
+                  )}
+                </span>
+                <span
+                  className={`mt-[9px] block text-[11px] font-bold uppercase leading-tight tracking-[.07em] transition-colors ${
+                    live
+                      ? "text-mv-green-deep"
+                      : "text-mv-muted group-hover:text-mv-slate"
+                  }`}
+                >
+                  {option.eyebrow}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ---------------- what it looks like ----------------
+          All four are mounted and cross-faded rather than swapped, so nothing
+          is fetched at the moment it is needed and the frame never collapses
+          between slides. */}
+      <div className="relative min-w-0">
+        {/* A soft wash behind the frame, so it lifts off the gradient rather
+            than sitting flat on it. */}
+        <span
+          aria-hidden="true"
+          className="absolute -inset-6 -z-10 rounded-[32px] bg-[radial-gradient(60%_60%_at_50%_40%,rgba(84,191,150,0.22),transparent_70%)] blur-2xl"
+        />
+
+        <div className="overflow-hidden rounded-2xl border border-mv-line bg-white shadow-mv-lg">
+          <div className="flex items-center gap-[6px] border-b border-mv-line bg-[#fafbfa] px-[14px] py-[9px]">
+            {[0, 1, 2].map((dot) => (
+              <span
+                key={dot}
+                aria-hidden="true"
+                className="h-[8px] w-[8px] rounded-full bg-mv-line"
+              />
+            ))}
+            <span className="ml-2 truncate text-[10px] font-semibold uppercase tracking-[.09em] text-mv-muted">
+              Mineral View · {slide.eyebrow}
+            </span>
+            <span className="ml-auto shrink-0 font-mono text-[10px] tabular-nums text-mv-muted">
+              {String(index + 1).padStart(2, "0")} / {String(SLIDES.length).padStart(2, "0")}
+            </span>
+          </div>
+
+          <div className="relative aspect-[1385/816] w-full bg-[#f7f7ee]">
+            {SLIDES.map((option, at) => (
+              <Image
+                key={option.src}
+                src={option.src}
+                width={option.width}
+                height={option.height}
+                alt={option.alt}
+                priority={at === 0}
+                sizes="(max-width: 1024px) 100vw, 720px"
+                className={`absolute inset-0 h-full w-full object-cover object-top transition-opacity duration-700 ${
+                  at === index ? "opacity-100" : "opacity-0"
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A screenshot in a window frame.
+ *
+ * The three dots and the hairline are what make a picture read as a capture of
+ * software rather than as decoration — without them a cropped panel on a pale
+ * ground looks like part of this page.
+ */
+function Frame({
+  src,
+  width,
+  height,
+  alt,
+  caption,
+  className = "",
+  priority,
+}: Shot & { className?: string; priority?: boolean }) {
+  return (
+    <figure className={`relative ${className}`}>
+      {/* The same soft wash the hero picture gets, so a screenshot lifts off
+          the page instead of lying flat on it. */}
+      <span
+        aria-hidden="true"
+        className="absolute -inset-4 -z-10 rounded-[28px] bg-[radial-gradient(60%_60%_at_50%_45%,rgba(84,191,150,0.16),transparent_70%)] blur-2xl"
+      />
+
+      <div className="overflow-hidden rounded-2xl border border-mv-line bg-white shadow-mv-lg">
+        {/* A window bar, so a flat screenshot reads as a piece of software
+            rather than as decoration. */}
+        <div className="flex items-center gap-[5px] border-b border-mv-line bg-[#fafbfa] px-[13px] py-[8px]">
+          {[0, 1, 2].map((dot) => (
+            <span
+              key={dot}
+              aria-hidden="true"
+              className="h-[7px] w-[7px] rounded-full bg-mv-line"
+            />
+          ))}
+          <span className="ml-2 truncate text-[9.5px] font-semibold uppercase tracking-[.08em] text-mv-muted">
+            Mineral View · map explorer
+          </span>
+        </div>
+
+        <Image
+          src={src}
+          width={width}
+          height={height}
+          alt={alt}
+          priority={priority}
+          sizes="(max-width: 1024px) 100vw, 620px"
+          className="block h-auto w-full"
+        />
+
+        <figcaption className="border-t border-mv-line bg-mv-card-tint px-[13px] py-[9px] text-[11px] leading-snug text-mv-muted">
+          {caption}
+        </figcaption>
+      </div>
+    </figure>
+  );
+}
+
+/** The four tools, with the readings each one lands on. */
+/**
+ * The four tools, each showing its own worked example.
+ *
+ * The pictures are the demonstration windows the tools actually open — the
+ * gesture drawn over the reader's own wells, with the reading it lands on. A
+ * card that only named the tool made the reader take the rest on trust.
+ */
+function ToolsArt() {
+  const tools = [
+    {
+      icon: SquareDashed,
+      label: "Draw an area",
+      note: "wells inside, counted",
+      src: "/map-feature/tool-draw-area.png",
+      alt: "The Draw an area window: a dashed box over a field of wells, with the count it found",
+    },
+    {
+      icon: Ruler,
+      label: "Measure distance",
+      note: "miles across the ground",
+      src: "/map-feature/tool-measure-distance.png",
+      alt: "The Measure distance window: a line drawn between two points with the distance",
+    },
+    {
+      icon: LandPlot,
+      label: "Measure area",
+      note: "acres, as a survey gives them",
+      src: "/map-feature/tool-measure-area.png",
+      alt: "The Measure area window: a tract clicked out corner by corner with its acreage",
+    },
+    {
+      icon: Crosshair,
+      label: "What's near my land",
+      note: "wells and filings around a lease",
+      src: "/map-feature/tool-nearby.png",
+      alt: "The What's near my land window: a ring around a point with the wells inside it",
+    },
+  ];
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {tools.map((tool) => (
+        <figure
+          key={tool.label}
+          className="overflow-hidden rounded-xl border border-mv-line bg-white"
+        >
+          <Image
+            src={tool.src}
+            width={1120}
+            height={902}
+            alt={tool.alt}
+            sizes="(max-width: 640px) 100vw, 260px"
+            className="block h-auto w-full border-b border-mv-line"
+          />
+          <figcaption className="flex items-start gap-[9px] p-3">
+            <span className="mt-[1px] grid h-[22px] w-[22px] shrink-0 place-items-center rounded-lg bg-mv-mint text-mv-green-deep">
+              <tool.icon size={12} strokeWidth={2} aria-hidden="true" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[12px] font-bold leading-snug text-mv-ink">
+                {tool.label}
+              </span>
+              <span className="mt-[2px] block text-[10.5px] leading-snug text-mv-muted">
+                {tool.note}
+              </span>
+            </span>
+          </figcaption>
+        </figure>
+      ))}
+    </div>
+  );
+}

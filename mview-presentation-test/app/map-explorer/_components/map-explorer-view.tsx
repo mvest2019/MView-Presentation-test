@@ -22,7 +22,9 @@ import {
   MeasureAreaPanel,
   type AreaMeasurement,
 } from "./measure-area-panel";
-import { DrawAreaDemo } from "./draw-area-demo";
+import { ToolDemo, type DemoTool } from "./tool-demo";
+import { MapFeatureGuide } from "./map-feature-guide";
+import { MapToast } from "./map-toast";
 import { MeasureBar } from "./measure-bar";
 import {
   NEARBY_RADII,
@@ -344,39 +346,32 @@ const CLUSTER_CLEAR_ZOOM = 3;
  * state is a handful of cells and the answer is not worth asking for, so
  * nothing is requested until the map is at least that close.
  */
+/**
+ * The zoom level as the reader sees it.
+ *
+ * `view.zoom` is fractional between levels, and the readout under the zoom
+ * buttons rounds it. Every band this file switches on — where the bubbles
+ * split, where the wells appear — has to round the same way, or the map
+ * disagrees with the number it is showing: at `view.zoom` 9.6 the readout said
+ * Zoom 10 while `9.6 >= 10` was false, so no wells were drawn until the next
+ * step, and the wells looked as though they began at 11.
+ */
+function zoomLevel(view: { zoom?: number } | null | undefined): number {
+  return Math.round(view?.zoom ?? 0);
+}
+
 function clusterZoomTier(zoom: number): number {
   return CLUSTER_ZOOM_STEPS.filter((step) => zoom >= step).length;
 }
 
-/*
- * Where a click on a bubble lands.
+/**
+ * How far outside the loaded extent counts as the same ground, in degrees.
  *
- * One step down the ladder each time: a cluster opens into its sub-clusters,
- * and a sub-cluster opens into the wells themselves. The first scale sits
- * inside the second cluster band, the second past the well zoom.
- *
- * The ladder is a halving per zoom level off the opening 1:7,262,011 at zoom
- * 5 — so 900,000 is zoom 8 and 225,000 is zoom 10. 450,000 was the first
- * attempt at "past the well zoom" and lands on zoom 9, one short, which is why
- * a sub-cluster click drew more bubbles instead of wells.
+ * A ten-thousandth of a degree is about 11 metres — under a pixel at any zoom
+ * the wells are drawn at, and enough to absorb the rounding between one
+ * settled extent and the next.
  */
-const CLUSTER_ZOOM_SCALE = 900_000;
-
-/*
- * The sample is drawn, not placed.
- *
- * A box that simply appears says "here is a box"; a box that grows out of one
- * corner says "this is the gesture" — which is the whole reason it is there.
- * Ninety frames at 40ms is three and a half seconds: far slower than the drag
- * it stands in for, because it is being watched rather than made, and on a map
- * this busy a quick one was over before the eye had found it.
- */
-const SAMPLE_FRAMES = 90;
-const SAMPLE_INTERVAL_MS = 40;
-
-/** One corner of the sample tract per beat, as if being clicked out. */
-const SAMPLE_CORNER_MS = 750;
-const WELL_ZOOM_SCALE = 200_000;
+const EXTENT_EPSILON = 0.0001;
 
 /**
  * How many wells out from the click to try before giving up on the lease.
@@ -394,7 +389,14 @@ type ScreenPoint = { x: number; y: number };
 type BubbleAnchor = ScreenPoint & { bubble: number };
 
 
-/** The dashed blue both tools draw in. */
+/**
+ * The dashed blue every tool draws in.
+ *
+ * All four, since the demonstration window shows all four in it: the tract and
+ * the watch circle used to be drawn in the map's mint green, which is the
+ * colour the wells and the clusters are. A gesture the reader is making should
+ * not be the same colour as the data they are making it over.
+ */
 const TOOL_BLUE: [number, number, number] = [37, 99, 235];
 
 /**
@@ -481,66 +483,6 @@ function ignoreInterrupted(error: unknown): void {
   }
 }
 
-/** The visible extent in degrees, or null before the view has one. */
-function viewBox(view: EsriView | null) {
-  if (!view?.extent) return null;
-
-  const { xmin, ymin, xmax, ymax } = view.extent;
-  const west = mercatorToLongitude(xmin);
-  const east = mercatorToLongitude(xmax);
-  const south = mercatorToLatitude(ymin);
-  const north = mercatorToLatitude(ymax);
-
-  return {
-    west,
-    east,
-    south,
-    north,
-    midLon: (west + east) / 2,
-    midLat: (south + north) / 2,
-    spanLon: east - west,
-    spanLat: north - south,
-  };
-}
-
-/** A line across the middle of the view — the sample Measure distance draws. */
-function sampleLine(view: EsriView | null): [LonLat, LonLat] | null {
-  const box = viewBox(view);
-  if (!box) return null;
-
-  return [
-    {
-      longitude: box.midLon - box.spanLon * 0.18,
-      latitude: box.midLat - box.spanLat * 0.1,
-    },
-    {
-      longitude: box.midLon + box.spanLon * 0.18,
-      latitude: box.midLat + box.spanLat * 0.1,
-    },
-  ];
-}
-
-/*
- * Five corners around the middle of the view — the sample tract.
- *
- * Not a rectangle: Measure area exists for the shapes a box cannot describe,
- * and a square sample would say the opposite.
- */
-function sampleTract(view: EsriView | null): LonLat[] | null {
-  const box = viewBox(view);
-  if (!box) return null;
-
-  const wide = box.spanLon * 0.16;
-  const tall = box.spanLat * 0.16;
-
-  return [
-    { longitude: box.midLon - wide, latitude: box.midLat + tall * 0.5 },
-    { longitude: box.midLon - wide * 0.3, latitude: box.midLat + tall },
-    { longitude: box.midLon + wide, latitude: box.midLat + tall * 0.35 },
-    { longitude: box.midLon + wide * 0.65, latitude: box.midLat - tall },
-    { longitude: box.midLon - wide * 0.75, latitude: box.midLat - tall * 0.8 },
-  ];
-}
 
 /** The rectangle two opposite corners describe, whichever way round they are. */
 function boxBetween(a: LonLat, b: LonLat): Area {
@@ -572,6 +514,18 @@ export function MapExplorerView() {
   const wellRequestRef = useRef(0);
   /* The wells last loaded, for the export — the layer holds graphics, not rows. */
   const wellsRef = useRef<MapWell[]>([]);
+  /**
+   * The extent the wells in hand were fetched for.
+   *
+   * Kept so a zoom inside it can be answered without asking the service again
+   * — see `loadWells`. Null whenever the wells are cleared.
+   */
+  const wellsBoxRef = useRef<{
+    west: number;
+    south: number;
+    east: number;
+    north: number;
+  } | null>(null);
   const clustersRef = useRef<WellCluster[]>([]);
   const [clusters, setClusters] = useState<WellCluster[]>([]);
   /*
@@ -653,14 +607,14 @@ export function MapExplorerView() {
    */
   const [leaseNearbyOpen, setLeaseNearbyOpen] = useState(false);
   /*
-   * Whether the Draw-an-area demonstration is up.
+   * Which tool is being demonstrated, if any.
    *
-   * Its own window rather than a sample played over the live map: the two used
-   * to share one surface, so the demonstration landed on the reader's own view
-   * and had to be cleared before they could draw anything. Closing it arms the
-   * tool on a map with nothing on it.
+   * Every tool opens with one, in a window rather than on the live map: the two
+   * used to share one surface, so the demonstration landed on the reader's own
+   * view and had to be cleared before they could do anything. Closing it arms
+   * the tool on a map with nothing on it.
    */
-  const [drawDemoOpen, setDrawDemoOpen] = useState(false);
+  const [demoTool, setDemoTool] = useState<DemoTool | null>(null);
   /** The distance being asked about — one of the service's own rings. */
   const [watchRadius, setWatchRadius] = useState<number>(NEARBY_RADII[0]);
   /*
@@ -774,6 +728,26 @@ export function MapExplorerView() {
     Point: PointCtor;
     geodesic: GeodesicUtils;
   } | null>(null);
+  /**
+   * The one-line confirmation over the map, or null.
+   *
+   * Applying a filter reloads the wells and often moves the view; when the
+   * matches are somewhere else the reader sees a map that has changed under
+   * them and no word about it. The toast clears itself — see `map-toast.tsx`.
+   */
+  const [toast, setToast] = useState<string | null>(null);
+
+  /**
+   * Whether the feature guide is over the map.
+   *
+   * Its own flag rather than a fourth view tab: the guide is something to read
+   * about the explorer, not another way of looking at the wells, and the tab
+   * state carries per-tab things — which filters panel is open, which record is
+   * selected — that a page of prose has no use for. The map stays mounted
+   * underneath, so closing it returns the exact view that was left.
+   */
+  const [guideOpen, setGuideOpen] = useState(false);
+
   const [readout, setReadout] = useState({
     scale: HOME_SCALE,
     zoom: 6,
@@ -928,8 +902,8 @@ export function MapExplorerView() {
         },
         symbol: {
           type: "simple-fill",
-          color: [84, 191, 150, 0.18],
-          outline: { color: [46, 143, 109], width: 1.5, style: "dash" },
+          color: [255, 255, 255, 0.22],
+          outline: { color: TOOL_BLUE, width: 1.5, style: "dash" },
         },
       }),
     );
@@ -945,7 +919,7 @@ export function MapExplorerView() {
           type: "simple-marker",
           size: 9,
           color: [255, 255, 255],
-          outline: { color: [46, 143, 109], width: 2 },
+          outline: { color: TOOL_BLUE, width: 2 },
         },
       }),
     );
@@ -989,7 +963,7 @@ export function MapExplorerView() {
           },
           symbol: {
             type: "simple-line",
-            color: [46, 143, 109],
+            color: TOOL_BLUE,
             width: 1.5,
             style: "dash",
           },
@@ -1007,8 +981,8 @@ export function MapExplorerView() {
           },
           symbol: {
             type: "simple-fill",
-            color: [84, 191, 150, 0.22],
-            outline: { color: [46, 143, 109], width: 2 },
+            color: [255, 255, 255, 0.22],
+            outline: { color: TOOL_BLUE, width: 2 },
           },
         }),
       );
@@ -1020,7 +994,7 @@ export function MapExplorerView() {
             paths: [ring],
             spatialReference: { wkid: 4326 },
           },
-          symbol: { type: "simple-line", color: [46, 143, 109], width: 2 },
+          symbol: { type: "simple-line", color: TOOL_BLUE, width: 2 },
         }),
       );
     }
@@ -1037,7 +1011,7 @@ export function MapExplorerView() {
             type: "simple-marker",
             size: 9,
             color: [255, 255, 255],
-            outline: { color: [46, 143, 109], width: 2 },
+            outline: { color: TOOL_BLUE, width: 2 },
           },
         }),
       );
@@ -1104,7 +1078,7 @@ export function MapExplorerView() {
 
     // Too far out to be worth asking — but what is drawn stays drawn.
     // Clearing is the zoom watcher's job, and only much further out.
-    if (clusterZoomTier(view.zoom) === 0) return;
+    if (clusterZoomTier(zoomLevel(view)) === 0) return;
 
     const { xmin, ymin, xmax, ymax } = view.extent;
     const request = ++clusterRequestRef.current;
@@ -1168,18 +1142,44 @@ export function MapExplorerView() {
     if (!view?.extent || !ctors || !layer) return;
 
     const { xmin, ymin, xmax, ymax } = view.extent;
-    const request = ++wellRequestRef.current;
-    setWellsLoading(true);
-
-    getWellListMap({
+    const box = {
       west: mercatorToLongitude(xmin),
       south: mercatorToLatitude(ymin),
       east: mercatorToLongitude(xmax),
       north: mercatorToLatitude(ymax),
-    })
+    };
+
+    /*
+     * Zooming into ground already fetched asks for nothing.
+     *
+     * The wells for an extent include every well in it, so a closer look at
+     * part of that extent is a subset of what is already in hand — the service
+     * would answer with wells this page is holding. Only ground outside the
+     * loaded box is unknown, which is what panning and zooming out produce.
+     *
+     * The epsilon is for the frame the view settles on: a zoom that lands on
+     * the same extent can differ in the last decimal place, and that must not
+     * read as new ground.
+     */
+    const loaded = wellsBoxRef.current;
+    if (
+      loaded &&
+      box.west >= loaded.west - EXTENT_EPSILON &&
+      box.east <= loaded.east + EXTENT_EPSILON &&
+      box.south >= loaded.south - EXTENT_EPSILON &&
+      box.north <= loaded.north + EXTENT_EPSILON
+    ) {
+      return;
+    }
+
+    const request = ++wellRequestRef.current;
+    setWellsLoading(true);
+
+    getWellListMap(box)
       .then((list: MapWell[]) => {
         if (request !== wellRequestRef.current) return;
 
+        wellsBoxRef.current = box;
         wellsRef.current = list;
         setWells(list);
         setWellError(null);
@@ -1201,6 +1201,8 @@ export function MapExplorerView() {
 
   const clearWells = useCallback(() => {
     wellRequestRef.current += 1;
+    /* Nothing is held any more, so the next extent is new ground. */
+    wellsBoxRef.current = null;
     wellsRef.current = [];
     setWells([]);
     setWellsLoading(false);
@@ -1352,6 +1354,7 @@ export function MapExplorerView() {
 
       if (Object.keys(filters).length === 0) {
         filteredRef.current = false;
+        setToast("Filters cleared");
         // `clearWells` takes the ring with the wells it marked.
         clearWells();
         clusterTierRef.current = -1;
@@ -1396,6 +1399,17 @@ export function MapExplorerView() {
           wellsRef.current = wells;
           setWells(wells);
           setWellError(null);
+
+          /*
+           * Said once the matches are in, not when Apply was pressed: until
+           * the service has answered there is nothing to confirm, and a
+           * request that fails must not have been announced as a success.
+           */
+          setToast(
+            wells.length === 0
+              ? "Filters applied — no wells match"
+              : `Filters applied — ${wells.length.toLocaleString("en-US")} well${wells.length === 1 ? "" : "s"}`,
+          );
 
           clearClusters();
           layer.removeAll();
@@ -1810,7 +1824,9 @@ export function MapExplorerView() {
             if (cancelled || !view) return;
             setReadout({
               scale: view.scale,
-              zoom: view.zoom,
+              /* Rounded here, so everything reading the readout agrees with
+                 the number printed under the zoom buttons. */
+              zoom: zoomLevel(view),
               center: {
                 longitude: view.center.longitude,
                 latitude: view.center.latitude,
@@ -1830,7 +1846,7 @@ export function MapExplorerView() {
           // A filter owns the map until it is cleared.
           if (filteredRef.current) return;
 
-          const zoom = view?.zoom ?? 0;
+          const zoom = zoomLevel(view);
 
           if (zoom < CLUSTER_CLEAR_ZOOM) {
             clearTimeout(clusterTimer);
@@ -2029,7 +2045,7 @@ export function MapExplorerView() {
            * test. Only when there is no hover — a tap, where there never was
            * one — does it ask the layer itself.
            */
-          if (!activeToolRef.current && view && view.zoom >= WELL_ZOOM) {
+          if (!activeToolRef.current && view && zoomLevel(view) >= WELL_ZOOM) {
             const wellLayer = wellLayerRef.current;
             if (!wellLayer) return;
 
@@ -2092,19 +2108,29 @@ export function MapExplorerView() {
            * belongs to whichever one was hit.
            */
           if (!activeToolRef.current) {
-            if (!view || view.zoom >= WELL_ZOOM) return;
+            if (!view || zoomLevel(view) >= WELL_ZOOM) return;
 
             const index = clusterAt(event.x, event.y);
             if (index !== -1) {
               event.stopPropagation();
               const cluster = clustersRef.current[index];
+              /*
+               * A level, not a scale.
+               *
+               * A cluster opens into its sub-clusters and a sub-cluster opens
+               * into the wells, so where each click lands is a zoom level —
+               * the band the bubbles change at. Naming a scale meant naming a
+               * number between two levels: 1:200,000 sits between zoom 10 and
+               * zoom 11, the view snapped to the nearer level, and a
+               * sub-cluster click landed a level past where the wells appear.
+               */
               view
                 .goTo({
                   center: cluster.at,
-                  scale:
-                    view.zoom >= CLUSTER_ZOOM_STEPS[1]
-                      ? WELL_ZOOM_SCALE
-                      : CLUSTER_ZOOM_SCALE,
+                  zoom:
+                    zoomLevel(view) >= CLUSTER_ZOOM_STEPS[1]
+                      ? WELL_ZOOM
+                      : CLUSTER_ZOOM_STEPS[1],
                 })
                 .catch(ignoreInterrupted);
             }
@@ -2368,10 +2394,10 @@ export function MapExplorerView() {
           })
           .catch(() => {});
 
-        if (view.zoom >= WELL_ZOOM) {
+        if (zoomLevel(view) >= WELL_ZOOM) {
           loadWells();
         } else {
-          clusterTierRef.current = clusterZoomTier(view.zoom);
+          clusterTierRef.current = clusterZoomTier(zoomLevel(view));
           loadClusters();
         }
       } catch {
@@ -2430,96 +2456,6 @@ export function MapExplorerView() {
   }, [activeTool, drawArea]);
 
   /*
-   * Plays the sample line out from one end, the way a drag would.
-   *
-   * The distance is recomputed every frame, so the readout that lands at the
-   * end is the real geodesic length of the line that was drawn.
-   */
-  const playSampleLine = useCallback(
-    (from: LonLat, to: LonLat) => {
-      const ctors = ctorsRef.current;
-      if (!ctors) return;
-
-      clearInterval(sampleTimerRef.current);
-      let frame = 0;
-
-      const step = () => {
-        frame += 1;
-        const through = Math.min(1, frame / SAMPLE_FRAMES);
-        const eased = 1 - (1 - through) ** 3;
-
-        const end = {
-          longitude: from.longitude + (to.longitude - from.longitude) * eased,
-          latitude: from.latitude + (to.latitude - from.latitude) * eased,
-        };
-        const ends = [from, end].map(
-          ({ longitude, latitude }) =>
-            new ctors.Point({
-              longitude,
-              latitude,
-              spatialReference: { wkid: 4326 },
-            }),
-        );
-        const next: Measurement = {
-          from,
-          to: end,
-          meters: ctors.geodesic.geodesicDistance(ends[0], ends[1], "meters")
-            .distance,
-        };
-
-        drawMeasurement(next);
-        if (through < 1) return;
-
-        clearInterval(sampleTimerRef.current);
-        sampleTimerRef.current = undefined;
-        measurementRef.current = next;
-        setMeasurement(next);
-        setSampleOf("measure-distance");
-        anchorBars();
-      };
-
-      step();
-      sampleTimerRef.current = setInterval(step, SAMPLE_INTERVAL_MS);
-    },
-    [anchorBars, drawMeasurement],
-  );
-
-  /*
-   * Clicks the sample tract out corner by corner, which is the gesture it is
-   * standing in for — one beat each, then the ring closes and is measured.
-   */
-  const playSampleTract = useCallback(
-    (corners: LonLat[]) => {
-      clearInterval(sampleTimerRef.current);
-      let placed = 0;
-
-      const step = () => {
-        placed += 1;
-
-        if (placed <= corners.length) {
-          drawTract(corners.slice(0, placed), false);
-          return;
-        }
-
-        clearInterval(sampleTimerRef.current);
-        sampleTimerRef.current = undefined;
-        drawTract(corners, true);
-        setTractResult(
-          measureTract(clustersRef.current, wellsRef.current, corners),
-        );
-        setSampleOf("measure-area");
-        // Left empty on purpose: the next click starts a tract of its own
-        // rather than adding a sixth corner to the sample.
-        tractRef.current = [];
-      };
-
-      step();
-      sampleTimerRef.current = setInterval(step, SAMPLE_CORNER_MS);
-    },
-    [drawTract],
-  );
-
-  /*
    * Arms a tool, and clears whatever any tool drew before it.
    *
    * One drawing at a time. Clearing only the tool being armed left a drawn box
@@ -2574,24 +2510,15 @@ export function MapExplorerView() {
        * it asks which lease, and the card that asks is the instruction. A
        * demo circle only put a second answer on the map beside the real one.
        */
-      setDrawDemoOpen(tool === "draw-area");
-
-      if (tool === "measure-distance") {
-        const line = sampleLine(viewRef.current);
-        if (line) playSampleLine(line[0], line[1]);
-      } else if (tool === "measure-area") {
-        const corners = sampleTract(viewRef.current);
-        if (corners) playSampleTract(corners);
-      }
+      /*
+       * Every tool opens with a worked example rather than an empty map: each
+       * waits for a gesture, and which gesture is not something a panel can
+       * say in a sentence anybody reads. The example runs in its own window —
+       * see `tool-demo.tsx`.
+       */
+      setDemoTool(tool);
     },
-    [
-      drawArea,
-      drawMeasurement,
-      drawNearby,
-      drawTract,
-      playSampleLine,
-      playSampleTract,
-    ],
+    [drawArea, drawMeasurement, drawNearby, drawTract],
   );
 
   const changeWatchRadius = useCallback(
@@ -3001,6 +2928,14 @@ export function MapExplorerView() {
         />
       )}
 
+      {status === "ready" && toast && (
+        <MapToast
+          key={toast}
+          message={toast}
+          onDone={() => setToast(null)}
+        />
+      )}
+
       {status === "ready" && hoveredWell && <WellTooltip well={hoveredWell} />}
 
       {status === "ready" && hoveredCluster && clusters[hoveredCluster.index] && (
@@ -3063,14 +2998,14 @@ export function MapExplorerView() {
         />
       )}
 
-      {status === "ready" && activeTool === "draw-area" && (
+      {status === "ready" && !demoTool && activeTool === "draw-area" && (
         <ToolPrompt
           title="Click two opposite corners on the map, or drag a box across it."
           hint="Esc to cancel"
         />
       )}
 
-      {status === "ready" && activeTool === "measure-distance" && (
+      {status === "ready" && !demoTool && activeTool === "measure-distance" && (
         <ToolPrompt
           title="Drag from one point to another to measure the distance."
           hint="Esc to cancel"
@@ -3107,21 +3042,24 @@ export function MapExplorerView() {
           Keyed by the lease, so a new click opens the card on the new lease
           rather than leaving the last answer on screen while the next loads.
       */}
-      {/* Shown once when the tool is picked; closing it leaves the tool armed
+      {/* Shown once when a tool is picked; closing it leaves that tool armed
           on an empty map. The wells it plots are the ones the map has loaded,
           so the field in the picture is the reader's own. */}
-      {status === "ready" && drawDemoOpen && (
-        <DrawAreaDemo
+      {status === "ready" && demoTool && (
+        <ToolDemo
+          tool={demoTool}
           wells={wells}
-          onClose={() => setDrawDemoOpen(false)}
+          onClose={() => setDemoTool(null)}
         />
       )}
 
       {status === "ready" &&
+        !demoTool &&
         activeTool === "whats-near-my-land" &&
         !leaseNearbyOpen && <NearbyPrompt />}
 
       {status === "ready" &&
+        !demoTool &&
         (activeTool === "measure-area" || tractResult) && (
           <MeasureAreaPanel
             className="absolute bottom-6 left-1/2"
@@ -3175,6 +3113,7 @@ export function MapExplorerView() {
           onToggleFullscreen={toggleFullscreen}
           viewTab={viewTab}
           onViewTabChange={changeViewTab}
+          onOpenGuide={() => setGuideOpen(true)}
           compact={viewTab === "insights"}
           activeTool={activeTool}
           onSelectTool={startTool}
@@ -3271,6 +3210,12 @@ export function MapExplorerView() {
 
       {/* The map stays mounted underneath — unmounting it would destroy the
           Esri view and pay for a full re-initialisation on the way back. */}
+      {/* Over everything, including the table: it is a full-page read, and
+          whatever was underneath is waiting when it closes. */}
+      {status === "ready" && guideOpen && (
+        <MapFeatureGuide onBack={() => setGuideOpen(false)} />
+      )}
+
       {status === "ready" && viewTab === "table" && (
         <WellsTable
           activeTab={viewTab}
