@@ -221,15 +221,17 @@ export function SiteHeader({ user }: { user: SessionUser | null }) {
               priority
               className="block h-[34px] w-auto max-[767px]:hidden"
             />
-            {/* No radius: a transparent PNG, so there is no tile to soften. The
-                radius the old JPG needed went with it. */}
+            {/* `rounded-full` because the slot is a JPG again (2026-08-25):
+                its black tile is baked in, and the circular crop bounds the
+                inscribed ring exactly — badge, not black box. Drop the radius
+                if this ever goes back to a transparent PNG. */}
             <Image
               src={logo.mobile.src}
               alt=""
               width={logo.mobile.width}
               height={logo.mobile.height}
               priority
-              className="hidden h-[30px] w-[30px] max-[767px]:block"
+              className="hidden h-[30px] w-[30px] rounded-full max-[767px]:block"
             />
           </Link>
 
