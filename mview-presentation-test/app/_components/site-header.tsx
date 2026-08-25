@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -433,10 +434,10 @@ export function SiteHeader({ user }: { user: SessionUser | null }) {
                 {item.label}
               </SheetLink>
             ) : item.menu === "explore" ? (
-              <div key={item.label}>
-                {/* The drawer follows the desktop panel: the two sections, not the
-                    eight destinations under them. */}
-                <SheetGroup>Explore</SheetGroup>
+              /* The drawer follows the desktop panel: the two sections, not the
+                 eight destinations under them — and each section is COLLAPSED
+                 until tapped, so the sheet's top level stays one screenful. */
+              <SheetSection key={item.label} label="Explore">
                 {exploreNav.map((column) =>
                   column.href === undefined ? (
                     <span
@@ -456,11 +457,9 @@ export function SiteHeader({ user }: { user: SessionUser | null }) {
                     </SheetLink>
                   ),
                 )}
-                <SheetDivider />
-              </div>
+              </SheetSection>
             ) : (
-              <div key={item.label}>
-                <SheetGroup>Learn</SheetGroup>
+              <SheetSection key={item.label} label="Learn">
                 {learnNav.map((link) => (
                   <SheetLink
                     key={link.href}
@@ -470,13 +469,18 @@ export function SiteHeader({ user }: { user: SessionUser | null }) {
                     {link.label}
                   </SheetLink>
                 ))}
-                <SheetDivider />
-              </div>
+              </SheetSection>
             ),
           )}
 
           {user ? (
             <>
+              {/* WHO IS SIGNED IN. The bar's account menu — the only other
+                  place the visitor's name and email appear — is hidden
+                  whenever the burger is (1139px), so at these widths the sheet
+                  is the identity's only home. Same block the menu's header
+                  shows: name over email, with the mark the menu trigger uses. */}
+              <DrawerIdentity user={user} />
               <SheetLink href="/portal" onNavigate={closeDrawer}>
                 Go to your portal →
               </SheetLink>
@@ -513,6 +517,42 @@ export function SiteHeader({ user }: { user: SessionUser | null }) {
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * The signed-in visitor's identity, for the mobile drawer: initials in a mint
+ * disc, full name, email. Read-only — the actions (portal, sign out) stay the
+ * rows below it, so this adds no second control for anything.
+ */
+function DrawerIdentity({ user }: { user: SessionUser }) {
+  const fullName = [user.firstName, user.lastName]
+    .filter((part) => part?.trim())
+    .join(" ")
+    .trim();
+  const initials =
+    ((user.firstName?.trim()[0] ?? "") + (user.lastName?.trim()[0] ?? ""))
+      .toUpperCase() || "•";
+  return (
+    <div className="flex items-center gap-3 border-b border-mv-line px-[10px] py-3">
+      <span
+        aria-hidden="true"
+        className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-mv-mint text-[14px] font-bold text-mv-green-deep"
+      >
+        {initials}
+      </span>
+      <div className="min-w-0">
+        {fullName && (
+          <p className="truncate text-[15px] font-bold text-mv-ink">
+            {fullName}
+          </p>
+        )}
+        {/* `truncate`, not `break-words`: a long email folding onto three
+            lines would push the sheet's actions around; the full address is
+            still available in the account menu on desktop. */}
+        <p className="truncate text-[12.5px] text-mv-muted">{user.email}</p>
+      </div>
+    </div>
   );
 }
 
@@ -711,10 +751,43 @@ function LearnMenu({
 
 /* ------------------------------------------------------------------ sheet --- */
 
-function SheetGroup({ children }: { children: React.ReactNode }) {
+/**
+ * A collapsible drawer section — Explore and Learn (2026-08-25). Their
+ * destinations used to render inline under a small uppercase label, which made
+ * the sheet one long undifferentiated list; now the section is a row like any
+ * other with a chevron, closed until tapped, so the top level reads at a
+ * glance. State is per-mount on purpose: closing and reopening the drawer
+ * starts both sections collapsed again, the common sheet behaviour.
+ *
+ * A disclosure, not navigation — the desktop bar's Explore/Learn triggers are
+ * also buttons that only open their panels, so the two stay one mental model.
+ */
+function SheetSection({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
   return (
-    <div className="px-[10px] pb-[3px] pt-2 text-[10.5px] font-semibold uppercase tracking-[.05em] text-mv-sublabel">
-      {children}
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        className="flex w-full cursor-pointer items-center justify-between rounded-lg border-0 bg-transparent px-[10px] py-2 text-left font-sans text-sm font-semibold text-mv-slate hover:bg-mv-mint hover:text-mv-green-deep"
+      >
+        {label}
+        <ChevronDown
+          aria-hidden="true"
+          className={`h-4 w-4 transition-transform duration-150 ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {/* `pl-2` steps the revealed rows in from their section row, so open
+          state reads as containment rather than more siblings. */}
+      {open && <div className="pb-1 pl-2">{children}</div>}
+      <SheetDivider />
     </div>
   );
 }
