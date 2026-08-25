@@ -519,15 +519,3 @@
   background-size: 44px 44px;
 }
 
-/* The chapter numerals on the map feature guide.
-
-   A flat pale grey read as a disabled control sitting next to the heading.
-   Fading the numeral from a stronger mint at the top to almost nothing at the
-   baseline gives it the weight of a printed chapter mark while keeping it
-   behind the title in the reading order. */
-.mv-numeral {
-  background-image: linear-gradient(180deg, #b0d6c3 0%, #e9f4ee 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
