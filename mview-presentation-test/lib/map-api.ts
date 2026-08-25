@@ -244,6 +244,14 @@ export type MapWell = {
    * the map marks the bottom of the bore with.
    */
   profile?: string;
+  /**
+   * When the well was last recompleted, ISO, where the record carries one.
+   *
+   * Null for about one well in seven — an older hole whose paperwork never
+   * gave a readable date. The time-lapse replays the dated ones and puts the
+   * rest back at the end rather than inventing a year for them.
+   */
+  recompletionDate?: string | null;
   /** Which filing the row came from — "Permit", "Completion". */
   recordType?: string;
   icon: string;

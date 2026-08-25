@@ -594,7 +594,7 @@ export function MapFeatureGuide({ onBack }: { onBack: () => void }) {
 
               <span
                 aria-hidden="true"
-                className="h-[2px] flex-1 rounded-full bg-gradient-to-r from-[#aab4c0] via-[#ccd3db] to-transparent"
+                className="h-[2px] flex-1 rounded-full bg-gradient-to-r from-[#c2c9d2] via-[#dbe0e6] to-transparent"
               />
             </div>
 
@@ -851,7 +851,7 @@ function Section({
 
         <span
           aria-hidden="true"
-          className="h-[2px] flex-1 rounded-full bg-gradient-to-r from-[#aab4c0] via-[#ccd3db] to-transparent"
+          className="h-[2px] flex-1 rounded-full bg-gradient-to-r from-[#c2c9d2] via-[#dbe0e6] to-transparent"
         />
       </div>
 

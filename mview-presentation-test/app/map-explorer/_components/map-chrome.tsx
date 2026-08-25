@@ -58,6 +58,9 @@ type MapChromeProps = {
   onSaveImage: () => void;
   /** Downloads what the map is showing — bubbles, or wells once close in. */
   onExportCsv: () => void;
+  /** The replay bar is the view's, since the plotting is. */
+  timeLapseOpen: boolean;
+  onToggleTimeLapse: () => void;
   onPrint: () => void;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
@@ -112,6 +115,8 @@ export function MapChrome({
   onBasemapChange,
   onSaveImage,
   onExportCsv,
+  timeLapseOpen,
+  onToggleTimeLapse,
   onPrint,
   isFullscreen,
   onToggleFullscreen,
@@ -509,12 +514,12 @@ export function MapChrome({
               — the mock drops it too, and Share falls back to its icon. */}
           <div className="flex flex-wrap items-center justify-end gap-2 lg:contents">
 
-          {/* Nothing behind it yet — the replay was taken out and the button
-              left where it stands, so the slot is not lost when it returns. */}
           <ToolbarButton
             icon={Clock}
             label="Time-lapse"
-            title="Replay the wells in the order they were drilled"
+            title="Replay the wells by the year they were recompleted"
+            expanded={timeLapseOpen}
+            onClick={onToggleTimeLapse}
           />
 
           <Divider />

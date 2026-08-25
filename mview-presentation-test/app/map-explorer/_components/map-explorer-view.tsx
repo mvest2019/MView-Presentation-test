@@ -71,6 +71,13 @@ import {
 import { exportVisible } from "./map-export";
 import { ToolPrompt } from "./tool-prompt";
 import { buildWellGraphics } from "./well-graphics";
+import { TimeLapseBar } from "./time-lapse-bar";
+import {
+  datedCount,
+  wellsUpTo,
+  yearsIn,
+  type TimeLapseYear,
+} from "./timelapse";
 import { WellTooltip, type HoveredWell } from "./well-tooltip";
 
 import { WellsTable } from "./wells-table";
@@ -293,6 +300,14 @@ const SPLIT_KEY_STEP = 0.02;
  */
 const CLUSTER_ZOOM_STEPS = [5, 8];
 
+
+/*
+ * How long one year of the replay holds.
+ *
+ * Slow enough to watch a field fill in rather than flash. The handle under the
+ * bar is there for anyone who wants to move faster than this.
+ */
+const TIME_LAPSE_TICK_MS = 420;
 
 /*
  * Where the bubbles give way to the wells themselves. Past this the extent is
@@ -655,6 +670,32 @@ export function MapExplorerView() {
     y: number;
     bubble: number;
   } | null>(null);
+  /*
+   * The time-lapse.
+   *
+   * It replays the wells the map is already holding, grouped by the year in
+   * each well's `recompletionDate`. No request of its own: the set on screen
+   * is the set that replays, so filtering or zooming first changes what you
+   * are watching.
+   */
+  const [timeLapseOpen, setTimeLapseOpen] = useState(false);
+  const [timeLapsePlaying, setTimeLapsePlaying] = useState(false);
+  /* Which year is on screen, as an index into `timeLapseYears`. -1 is before
+     the first: an empty map, where the replay starts. */
+  const [timeLapseStep, setTimeLapseStep] = useState(-1);
+  /* The same step the interval works from — the callback cannot read state,
+     since it closes over the value it started with. */
+  const timeLapseStepRef = useRef(-1);
+  const [timeLapseYears, setTimeLapseYears] = useState<TimeLapseYear[]>([]);
+  const timeLapseYearsRef = useRef<TimeLapseYear[]>([]);
+  /* Every well that was on the map when it opened, put back on close. */
+  const timeLapseAllRef = useRef<MapWell[]>([]);
+  /* Wells with no date, counted once on open for the bar to report. */
+  const [timeLapseUndated, setTimeLapseUndated] = useState(0);
+  /* Read by the zoom watcher, which must not reload wells over a replay — a
+     ref because the watcher is registered once and never re-reads state. */
+  const timeLapseRef = useRef(false);
+
   /*
    * The well clicked on the map. Held as a ref, not state: nothing in React
    * renders it — the highlight is a graphic on the map, drawn by the same
@@ -1230,6 +1271,147 @@ export function MapExplorerView() {
     highlightLayerRef.current?.removeAll();
   }, []);
 
+  /** Draws the wells dated up to a step, and nothing after it. */
+  const drawTimeLapse = useCallback((step: number) => {
+    const ctors = ctorsRef.current;
+    const layer = wellLayerRef.current;
+    if (!ctors || !layer) return 0;
+
+    const shown = wellsUpTo(timeLapseYearsRef.current, step);
+    layer.removeAll();
+    layer.addMany(
+      buildWellGraphics(ctors.Graphic, shown, wellIconsRef.current),
+    );
+    return shown.length;
+  }, []);
+
+  const closeTimeLapse = useCallback(() => {
+    const ctors = ctorsRef.current;
+    const layer = wellLayerRef.current;
+
+    timeLapseRef.current = false;
+    setTimeLapsePlaying(false);
+    timeLapseStepRef.current = -1;
+    setTimeLapseStep(-1);
+    setTimeLapseOpen(false);
+
+    /* Everything back at once, undated wells included. */
+    if (ctors && layer) {
+      layer.removeAll();
+      layer.addMany(
+        buildWellGraphics(
+          ctors.Graphic,
+          timeLapseAllRef.current,
+          wellIconsRef.current,
+        ),
+      );
+    }
+  }, []);
+
+  /*
+   * Opening clears the map and starts from nothing.
+   *
+   * The wells are grouped by year here, once, off the set already loaded —
+   * which is why this is instant where a replay of the whole state was not.
+   */
+  const openTimeLapse = useCallback(() => {
+    const layer = wellLayerRef.current;
+    if (!layer) return;
+
+    const wells = wellsRef.current;
+    const years = yearsIn(wells);
+    if (years.length === 0) return;
+
+    timeLapseAllRef.current = wells;
+    timeLapseYearsRef.current = years;
+    setTimeLapseYears(years);
+    setTimeLapseUndated(wells.length - datedCount(years));
+
+    timeLapseRef.current = true;
+    timeLapseStepRef.current = -1;
+    setTimeLapseStep(-1);
+    setTimeLapseOpen(true);
+
+    /* The ring goes with the wells — it would otherwise sit over ground with
+       nothing under it. */
+    clearInterval(pulseTimerRef.current);
+    highlightLayerRef.current?.removeAll();
+
+    layer.removeAll();
+    setTimeLapsePlaying(true);
+  }, []);
+
+  /**
+   * Moves the replay to a step, forwards or back.
+   *
+   * Redrawn from the years rather than added to: dragging the handle back has
+   * to take wells off the map, and a running total only ever grows.
+   */
+  const seekTimeLapse = useCallback(
+    (step: number) => {
+      const years = timeLapseYearsRef.current;
+      const target = Math.max(-1, Math.min(step, years.length - 1));
+      timeLapseStepRef.current = target;
+      setTimeLapseStep(target);
+      drawTimeLapse(target);
+    },
+    [drawTimeLapse],
+  );
+
+  const toggleTimeLapse = useCallback(() => {
+    if (!timeLapseOpen) {
+      openTimeLapse();
+      return;
+    }
+
+    /*
+     * Open but stopped — paused with the bar, or run to the end. Pressing
+     * Time-lapse again means run it, so it starts over from an empty map
+     * rather than closing. Only a replay actually in motion is put away.
+     */
+    if (!timeLapsePlaying) {
+      seekTimeLapse(-1);
+      setTimeLapsePlaying(true);
+      return;
+    }
+
+    closeTimeLapse();
+  }, [
+    timeLapseOpen,
+    timeLapsePlaying,
+    closeTimeLapse,
+    openTimeLapse,
+    seekTimeLapse,
+  ]);
+
+  /*
+   * The replay: one year per tick.
+   *
+   * The drawing happens here rather than inside a `setState` updater. React
+   * invokes updaters twice in development to prove they are pure, and one that
+   * redrew the map would do it twice a tick.
+   */
+  useEffect(() => {
+    if (!timeLapsePlaying) return;
+
+    const years = timeLapseYearsRef.current;
+    if (years.length === 0) return;
+
+    const timer = setInterval(() => {
+      const next = timeLapseStepRef.current + 1;
+      if (next >= years.length) {
+        setTimeLapsePlaying(false);
+        return;
+      }
+
+      timeLapseStepRef.current = next;
+      drawTimeLapse(next);
+      setTimeLapseStep(next);
+    }, TIME_LAPSE_TICK_MS);
+
+    return () => clearInterval(timer);
+  }, [timeLapsePlaying, drawTimeLapse]);
+
   /**
    * Rings the picked well, with a pulse running out from it.
    *
@@ -1768,8 +1950,9 @@ export function MapExplorerView() {
           // Panning changes nothing about which bubbles are right, so only a
           // change of zoom band asks again — and then only once the zoom has
           // settled, since this fires on every frame of it.
-          // A filter owns the map until it is cleared.
-          if (filteredRef.current) return;
+          // A filter owns the map until it is cleared, and so does a
+          // replay — reloading the wells would paint over it mid-year.
+          if (filteredRef.current || timeLapseRef.current) return;
 
           const zoom = zoomLevel(view);
 
@@ -2833,6 +3016,40 @@ export function MapExplorerView() {
           </div>
         )}
 
+      {status === "ready" && timeLapseOpen && (
+        <TimeLapseBar
+          playing={timeLapsePlaying}
+          year={
+            timeLapseStep >= 0
+              ? (timeLapseYears[timeLapseStep]?.year ?? null)
+              : null
+          }
+          firstYear={timeLapseYears[0]?.year ?? null}
+          lastYear={timeLapseYears[timeLapseYears.length - 1]?.year ?? null}
+          step={timeLapseStep}
+          steps={timeLapseYears.length}
+          plotted={wellsUpTo(timeLapseYears, timeLapseStep).length}
+          total={datedCount(timeLapseYears)}
+          undated={timeLapseUndated}
+          onSeek={(step) => {
+            /* Taking the handle stops the replay: it would otherwise keep
+               stepping forward under the drag and fight it. */
+            setTimeLapsePlaying(false);
+            seekTimeLapse(step);
+          }}
+          onTogglePlay={() => {
+            const years = timeLapseYearsRef.current;
+            if (years.length > 0 && timeLapseStep >= years.length - 1) {
+              seekTimeLapse(-1);
+              setTimeLapsePlaying(true);
+              return;
+            }
+            setTimeLapsePlaying((playing) => !playing);
+          }}
+          onClose={closeTimeLapse}
+        />
+      )}
+
       {status === "ready" && toast && (
         <MapToast
           key={toast}
@@ -3007,6 +3224,8 @@ export function MapExplorerView() {
           onSelectApi={selectApi}
           onClearApi={clearApi}
           onApplyFilters={applyFilters}
+          timeLapseOpen={timeLapseOpen}
+          onToggleTimeLapse={toggleTimeLapse}
           center={readout.center}
           basemap={basemap}
           onBasemapChange={changeBasemap}
