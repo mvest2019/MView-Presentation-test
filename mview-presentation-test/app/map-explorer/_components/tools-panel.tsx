@@ -7,7 +7,6 @@ import {
   ZoomIn,
   Crosshair,
   LandPlot,
-  Lock,
   Ruler,
   SquareDashed,
   type LucideIcon,
@@ -39,36 +38,34 @@ export type MapTool = {
   id: string;
   label: string;
   icon: LucideIcon;
-  /** Renders the amber PRO badge and marks the button as gated. */
-  pro?: boolean;
   /**
    * Whether the tool needs the map to be drawing individual wells.
    *
-   * True for everything that measures what is on screen. False for a tool that
-   * asks the service a question instead — naming a lease needs no zoom, and
-   * gating it behind one meant the reader had to find their land on the map
-   * before they could ask what was near it.
+   * True for all four as they stand. It is a flag rather than an assumption
+   * because it has not always been true: "What's near my land?" was briefly
+   * answered by naming a lease in a search box, which needed no zoom at all.
+   * It reads the map again now — the click is traced to a lease through the
+   * nearest loaded well — so it waits for the wells with the rest.
    */
   needsWells?: boolean;
 };
 
 export const MAP_TOOLS: MapTool[] = [
-  {
-    id: "draw-area",
-    label: "Draw an area",
-    icon: SquareDashed,
-    pro: true,
-    needsWells: true,
-  },
+  { id: "draw-area", label: "Draw an area", icon: SquareDashed, needsWells: true },
   {
     id: "measure-distance",
     label: "Measure distance",
     icon: Ruler,
     needsWells: true,
   },
-  /* Answered by the service from the lease's own records, so it works at any
-     zoom — see `lease-nearby.tsx`. */
-  { id: "whats-near-my-land", label: "What's near my land?", icon: Crosshair },
+  {
+    id: "whats-near-my-land",
+    label: "What's near my land?",
+    icon: Crosshair,
+    /* The click is traced to a lease through the nearest well on the map, so
+       there has to be one — see the lookup in `map-explorer-view.tsx`. */
+    needsWells: true,
+  },
   { id: "measure-area", label: "Measure area", icon: LandPlot, needsWells: true },
 ];
 
@@ -122,7 +119,7 @@ export function ToolsPanel({
       </div>
 
       <div className="flex flex-col gap-2 lg:gap-[10px]">
-        {tools.map(({ id, label, icon: Icon, pro, needsWells }) => {
+        {tools.map(({ id, label, icon: Icon, needsWells }) => {
           /* Only the tools that measure the map wait for the map. */
           const gated = Boolean(needsWells) && !wellsVisible;
 
@@ -161,7 +158,6 @@ export function ToolsPanel({
             <span className="flex-1 text-[12px] lg:text-[13px] font-semibold leading-[1.25] text-mv-ink">
               {label}
             </span>
-            {pro && <ProBadge />}
             </button>
           );
         })}
@@ -187,18 +183,5 @@ export function ToolsPanel({
         </p>
       )}
     </div>
-  );
-}
-
-/**
- * The gate marker on Draw an area. A lock rather than the toolbar's bolt —
- * in the mock this badge reads as "locked", not "upgrade for speed".
- */
-function ProBadge() {
-  return (
-    <span className="inline-flex shrink-0 items-center gap-[3px] rounded bg-mv-amber-bg px-[5px] py-[2px] text-[8px] lg:text-[9px] font-extrabold uppercase leading-none tracking-[.06em] text-mv-amber">
-      <Lock size={8} strokeWidth={3} aria-hidden="true" />
-      Pro
-    </span>
   );
 }

@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { MapToast } from "./map-toast";
 import { TableSearch, type SearchPick } from "./table-search";
 
 import {
@@ -291,6 +292,17 @@ export function WellsTable({
    */
   const [rows, setRows] = useState<MapTableRow[]>([]);
   const [total, setTotal] = useState(0);
+
+  /**
+   * The confirmation over the table, and whether the next answer earns one.
+   *
+   * The rows reload for all sorts of reasons — a page turn, a sort, the first
+   * paint — and only a filter the reader applied deserves saying out loud. The
+   * flag is set by Apply and by Clear, and spent by whichever answer arrives
+   * next.
+   */
+  const [toast, setToast] = useState<string | null>(null);
+  const announceRef = useRef<"applied" | "cleared" | null>(null);
   const [totalPages, setTotalPages] = useState(1);
   const [summary, setSummary] = useState<MapTableSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -347,6 +359,18 @@ export function WellsTable({
           if (cancelled) return;
           setRows(result.rows);
           setTotal(result.total);
+
+          const announce = announceRef.current;
+          if (announce) {
+            announceRef.current = null;
+            setToast(
+              announce === "cleared"
+                ? "Filters cleared"
+                : result.total === 0
+                  ? "Filters applied — no wells match"
+                  : `Filters applied — ${result.total.toLocaleString("en-US")} well${result.total === 1 ? "" : "s"}`,
+            );
+          }
           setTotalPages(Math.max(1, result.totalPages));
           setSummary(result.summary);
           setError(null);
@@ -452,6 +476,7 @@ export function WellsTable({
   }
 
   function clearAll() {
+    announceRef.current = "cleared";
     setFacets(emptyFacets());
     setAppliedFacets(emptyFacets());
     setProduction(EMPTY_PRODUCTION);
@@ -462,6 +487,7 @@ export function WellsTable({
   }
 
   function applyFacets() {
+    announceRef.current = "applied";
     // Applying is the end of choosing: whatever panel is open has served its
     // purpose, and leaving it up covers the rows it was just used to filter.
     setOpenFacet(null);
@@ -545,6 +571,12 @@ export function WellsTable({
     /* Two cards on the page background, not one flat sheet: the result header
        and its summary in the first, the grid and its pager in the second. */
     <div className="absolute inset-0 z-40 overflow-y-auto bg-mv-bg p-3 lg:p-4">
+      {/* Said over the table for the same reason it is said over the map: a
+          filter changes what is on screen somewhere the eye is not. */}
+      {toast && (
+        <MapToast key={toast} message={toast} onDone={() => setToast(null)} />
+      )}
+
       {/* No `overflow-hidden` here — the filter dropdowns open past the card's
           bottom edge and it would slice them off. The summary strip rounds its
           own bottom corners instead, which is all the clipping was for. */}
