@@ -44,12 +44,20 @@ function mapOwner(o: BackendOwner): ScoredOwner {
 /** Hero stats and the county dropdown — GET /owners/counties. */
 export async function fetchClaimMeta(): Promise<ClaimMeta> {
   const data = await getJson<{
-    total: number;
-    counties: { county: string; owners: number }[];
+    total?: number;
+    totalOwners?: number;
+    counties: { county?: string; name?: string; owners: number }[];
   }>(`${OWNERS}/counties`);
+  const counties = data.counties.map((c) => ({
+    name: c.name ?? c.county ?? "",
+    owners: c.owners,
+  }));
   return {
-    totalOwners: data.total,
-    counties: data.counties.map((c) => ({ name: c.county, owners: c.owners })),
+    totalOwners:
+      data.totalOwners ??
+      data.total ??
+      counties.reduce((sum, county) => sum + county.owners, 0),
+    counties,
   };
 }
 

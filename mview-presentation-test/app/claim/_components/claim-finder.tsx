@@ -62,9 +62,9 @@ function IntroFeatures({ meta }: { meta: ClaimMeta | null }) {
       title: meta
         ? `${meta.totalOwners.toLocaleString("en-US")} records`
         : "The whole state, indexed",
-      text: `Every county appraisal mineral roll in Texas — ${
-        meta ? meta.counties.length : "195"
-      } counties, searchable in one place.`,
+      text: meta
+        ? `Every county appraisal mineral roll in Texas — ${meta.counties.length} counties, searchable in one place.`
+        : "Every county appraisal mineral roll in Texas, searchable in one place.",
     },
     {
       icon: <PersonIcon size={17} stroke={2.2} />,
@@ -476,7 +476,7 @@ export function ClaimFinder({ signedIn }: { signedIn: boolean }) {
                     <b className="font-bold text-mv-ink">
                       {meta.totalOwners.toLocaleString("en-US")}
                     </b>{" "}
-                    owners
+                    total owners
                   </HeroPill>
                   <HeroPill>
                     <b className="font-bold text-mv-ink">
