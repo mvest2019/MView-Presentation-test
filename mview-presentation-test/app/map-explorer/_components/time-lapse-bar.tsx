@@ -8,17 +8,14 @@ import { Pause, Play, X } from "lucide-react";
  * It reports three things, because a replay that only animates is impossible
  * to follow: which year is on screen, how far through the span that is, and
  * how many wells have been plotted. The year is the one that matters — the
- * bubbles growing mean nothing without it.
+ * map filling in means nothing without it.
  *
- * The track is a real range input rather than a progress bar, so the years are
- * something you can move through rather than only watch. Dragging it back
- * takes wells off the map: the bubbles are always the wells completed up to
- * the year under the handle, so the map is a picture of that date and not of
- * everywhere the replay has been.
+ * The track is a range input rather than a progress bar, so the years are
+ * something to move through and not only watch. Dragging it back takes wells
+ * off: what is drawn is always the wells recompleted up to the year under the
+ * handle, never a trace of where the replay has been.
  */
 export function TimeLapseBar({
-  loading,
-  error,
   playing,
   year,
   firstYear,
@@ -27,12 +24,11 @@ export function TimeLapseBar({
   steps,
   plotted,
   total,
+  undated,
   onSeek,
   onTogglePlay,
   onClose,
 }: {
-  loading: boolean;
-  error: string | null;
   playing: boolean;
   /** The year on screen, or null before the first step. */
   year: number | null;
@@ -40,18 +36,20 @@ export function TimeLapseBar({
   lastYear: number | null;
   /** Index of the year on screen. -1 is before the first, an empty map. */
   step: number;
-  /** How many years the data covers. */
+  /** How many years the wells on screen cover. */
   steps: number;
   plotted: number;
+  /** Dated wells — the ones the replay can place. */
   total: number;
+  /** Wells with no date, which sit the replay out. */
+  undated: number;
   onSeek: (step: number) => void;
   onTogglePlay: () => void;
   onClose: () => void;
 }) {
-  const ready = !loading && !error && steps > 0;
+  const ready = steps > 0;
   const last = Math.max(0, steps - 1);
-  /* Across the years, not across the wells: the handle sits where the date is,
-     and most wells arrive in the last quarter of the span. */
+  /* Across the years, not the wells: the handle sits where the date is. */
   const progress = steps === 0 ? 0 : ((step + 1) / steps) * 100;
 
   return (
@@ -62,7 +60,7 @@ export function TimeLapseBar({
           onClick={onTogglePlay}
           disabled={!ready}
           aria-label={playing ? "Pause the replay" : "Play the replay"}
-          className="grid h-[34px] w-[34px] shrink-0 cursor-pointer place-items-center rounded-full bg-mv-green-deep text-white transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+          className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-full bg-mv-green-deep text-white transition-[filter] enabled:cursor-pointer enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {playing ? (
             <Pause size={15} strokeWidth={2.5} aria-hidden="true" />
@@ -73,14 +71,13 @@ export function TimeLapseBar({
 
         {/* The year, big enough to read from across a desk — it is the axis
             the whole replay runs along. */}
-        <span className="w-[62px] shrink-0 text-[19px] font-extrabold leading-none tabular-nums text-mv-ink">
+        <span className="w-[54px] shrink-0 text-[19px] font-extrabold leading-none tabular-nums text-mv-ink">
           {year ?? "—"}
         </span>
 
         <div className="min-w-0 flex-1">
-          {/* One track under one handle, the same construction the production
-              chart's window uses: the filled part is drawn, and a transparent
-              range input sits over it to take the drag. */}
+          {/* One track under one handle: the filled part is drawn, and a
+              transparent range input sits over it to take the drag. */}
           <div className="relative h-[7px]">
             <div className="absolute inset-0 rounded-full bg-mv-line-soft" />
             <div
@@ -103,25 +100,22 @@ export function TimeLapseBar({
           </div>
 
           <p className="mt-[9px] truncate text-[11.5px] leading-none text-mv-muted">
-            {loading ? (
-              "Loading every dated well…"
-            ) : error ? (
-              <span className="font-semibold text-mv-plum">{error}</span>
-            ) : (
+            <span className="font-bold text-mv-slate">
+              {plotted.toLocaleString("en-US")}
+            </span>{" "}
+            of {total.toLocaleString("en-US")} dated
+            {firstYear !== null && lastYear !== null && (
               <>
-                <span className="font-bold text-mv-slate">
-                  {plotted.toLocaleString("en-US")}
-                </span>{" "}
-                of {total.toLocaleString("en-US")} wells
-                {firstYear !== null && lastYear !== null && (
-                  <>
-                    {" · "}
-                    {firstYear}–{lastYear}
-                  </>
-                )}
-                {playing && " · plotting"}
+                {" · "}
+                {firstYear}–{lastYear}
               </>
             )}
+            {/* Said plainly rather than quietly dropped: the map had more
+                wells on it a moment ago, and this is where they went. */}
+            {undated > 0 && (
+              <> · {undated.toLocaleString("en-US")} undated, back at the end</>
+            )}
+            {playing && " · plotting"}
           </p>
         </div>
 

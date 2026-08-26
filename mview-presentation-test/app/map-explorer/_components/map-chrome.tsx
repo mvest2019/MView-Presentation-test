@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  BookOpen,
   ChartColumn,
   Clock,
   Download,
@@ -51,6 +50,9 @@ type MapChromeProps = {
   zoom: number;
   /** True once the map is close enough to draw individual wells. */
   wellsVisible: boolean;
+  /** False past the point where the bubbles come off, so the legend goes
+      with them rather than explaining an empty map. */
+  marksVisible: boolean;
   center: { longitude: number; latitude: number };
   /** Active basemap id, so the gallery can mark its tile. */
   basemap: string;
@@ -58,17 +60,9 @@ type MapChromeProps = {
   onSaveImage: () => void;
   /** Downloads what the map is showing — bubbles, or wells once close in. */
   onExportCsv: () => void;
-  /** The time-lapse bar is the view's, since the plotting is. */
+  /** The replay bar is the view's, since the plotting is. */
   timeLapseOpen: boolean;
   onToggleTimeLapse: () => void;
-  /*
-   * A replay is running.
-   *
-   * Every control keeps working while it does — the map is drawing, not busy,
-   * and there is nothing here that a replay makes unsafe to press. The spinner
-   * says so out loud: something is happening, and you are not locked out of it.
-   */
-  plotting: boolean;
   onPrint: () => void;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
@@ -76,7 +70,6 @@ type MapChromeProps = {
   viewTab: ViewTab;
   onViewTabChange: (tab: ViewTab) => void;
   /** Opens the feature guide over the map. */
-  onOpenGuide: () => void;
   /** Insights halves the map, so the toolbar sheds what will not fit. */
   compact?: boolean;
   /** Fired when an API number is chosen from the search box. */
@@ -118,6 +111,7 @@ export function MapChrome({
   scale,
   zoom,
   wellsVisible,
+  marksVisible,
   center,
   basemap,
   onBasemapChange,
@@ -125,13 +119,11 @@ export function MapChrome({
   onExportCsv,
   timeLapseOpen,
   onToggleTimeLapse,
-  plotting,
   onPrint,
   isFullscreen,
   onToggleFullscreen,
   viewTab,
   onViewTabChange,
-  onOpenGuide,
   compact = false,
   onSelectApi,
   onClearApi,
@@ -424,17 +416,6 @@ export function MapChrome({
     };
   }, [shareOpen]);
 
-  /*
-   * The controls are genuinely off while a replay plots, not merely faded.
-   *
-   * Fading them was worse than useless: `opacity` on a panel makes the panel
-   * translucent, so the map showed through the filters card and the whole
-   * thing read as broken rather than as busy. A real `disabled` greys the
-   * control and leaves its background alone, and the pill over the toolbar
-   * says why.
-   */
-  const off = plotting;
-
   return (
     /* The layer is click-through so the map keeps its drag; each control opts
        itself back in with `pointer-events-auto`. */
@@ -459,7 +440,6 @@ export function MapChrome({
            * `calc` for the first paint, before the measurement lands.
            */
           className="mv-filters-rail pointer-events-auto z-10"
-          disabled={off}
           style={railHeight === null ? undefined : { height: railHeight }}
         />
       ) : (
@@ -467,7 +447,6 @@ export function MapChrome({
           side="left"
           label="Filters"
           onClick={() => setFiltersOpen(true)}
-          disabled={off}
         />
       )}
 
@@ -498,7 +477,6 @@ export function MapChrome({
             side="right"
             label="Tools"
             onClick={() => setToolsOpen(true)}
-            disabled={off}
           />
         )}
       </div>
@@ -509,28 +487,6 @@ export function MapChrome({
         className="absolute inset-x-0 top-0 flex justify-end p-4 max-[919px]:justify-center"
       >
         <div className="pointer-events-auto relative flex w-full max-w-full flex-col items-stretch gap-2 lg:w-auto lg:flex-row lg:flex-nowrap lg:items-center lg:gap-1 lg:overflow-x-auto lg:rounded-xl lg:border lg:border-mv-line lg:bg-white/97 lg:px-[6px] lg:py-[4px] lg:shadow-mv-lg lg:backdrop-blur-[6px]">
-          {/*
-            Over the dimmed controls, not instead of them — the same treatment
-            the table gives its rows while they reload.
-
-            Dimming alone reads as a disabled toolbar and says nothing about
-            why; the pill says what is happening. It is `pointer-events-none`,
-            so nothing here is actually disabled: every button underneath still
-            takes a click, exactly as it did before.
-          */}
-          {plotting && (
-            <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
-              <span className="flex items-center gap-[9px] rounded-full border border-mv-line bg-white px-[15px] py-[8px] shadow-mv-lg">
-                <span
-                  aria-hidden="true"
-                  className="h-[13px] w-[13px] shrink-0 animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
-                />
-                <span className="text-[12.5px] font-semibold leading-none text-mv-slate">
-                  Plotting wells…
-                </span>
-              </span>
-            </div>
-          )}
           {/* A segmented control: the grey track groups the three views and
               makes the filled one read as the raised tab. */}
           <div className="flex w-full shrink-0 items-center gap-1 rounded-xl border border-mv-line bg-white/97 p-1 shadow-mv-lg backdrop-blur-[6px] lg:w-auto lg:justify-start lg:rounded-lg lg:border-0 lg:bg-[#f1f2f4] lg:p-[3px] lg:shadow-none">
@@ -540,7 +496,6 @@ export function MapChrome({
               type="button"
               aria-pressed={viewTab === id}
               onClick={() => onViewTabChange(id)}
-              disabled={off}
               /* Each tab takes a third of the card on a phone: three equal
                  targets read as one control, where content-width buttons in a
                  full-width card read as three loose chips with a gap. */
@@ -561,10 +516,9 @@ export function MapChrome({
           <div className="flex flex-wrap items-center justify-end gap-2 lg:contents">
 
           <ToolbarButton
-            disabled={off}
             icon={Clock}
             label="Time-lapse"
-            title="Replay the wells in the order they were drilled"
+            title="Replay the wells by the year they were recompleted"
             expanded={timeLapseOpen}
             onClick={onToggleTimeLapse}
           />
@@ -573,7 +527,6 @@ export function MapChrome({
 
           {!compact && (
             <ToolbarButton
-            disabled={off}
               icon={Download}
               label="Export CSV"
               onClick={onExportCsv}
@@ -582,24 +535,8 @@ export function MapChrome({
 
           {!compact && <Divider />}
 
-          {/* Stays on this URL: the guide opens over the explorer, the way
-              Table and Insights do, so reading about a feature and using it
-              are one click apart. */}
-          {!compact && (
-            <ToolbarButton
-            disabled={off}
-              icon={BookOpen}
-              label="Feature guide"
-              title="What this map can do"
-              onClick={onOpenGuide}
-            />
-          )}
-
-          {!compact && <Divider />}
-
           <span ref={shareButtonRef} className="shrink-0">
             <ToolbarButton
-            disabled={off}
               icon={Share2}
               label={compact ? "" : "Share"}
               title="Share"
@@ -763,8 +700,9 @@ export function MapChrome({
           filtersOpen ? "left-[276px] hidden lg:flex" : "left-3 flex"
         }`}
       >
-      {/* Always there, but explaining whichever of the two the map is drawing. */}
-      {legendsOpen && (
+      {/* Explains whichever of the two the map is drawing, and steps aside
+          when it is drawing neither. */}
+      {legendsOpen && marksVisible && (
         <LegendsPanel
           mode={wellsVisible ? "wells" : "clusters"}
           defaultOpen={wideScreen}

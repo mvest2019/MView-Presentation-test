@@ -16,15 +16,20 @@ import {
 } from "lucide-react";
 
 import {
+  getWellInsightsMap,
   getWellProductionMap,
   getWellSummaryMap,
   type MapProductionPoint,
+  type MapWellInsights,
   type MapWellSummary,
 } from "@/lib/map-api";
 
 import {
-  COHORT_EUR,
-  RESERVE_INTEGRITY,
+  declineRows,
+  depletionBars,
+  eurBars,
+} from "./well-insights-fields";
+import {
   WELLBORE,
 } from "./well-insights-data";
 import { PermitSummary } from "./permit-summary";
@@ -211,6 +216,32 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
   );
   const [productionError, setProductionError] = useState<string | null>(null);
 
+  /*
+   * The decline diagnostics and the two cohort charts.
+   *
+   * All three were fixed copy — one well's figures, shown for every well. The
+   * service computes them now, notes and all, so the page renders what it is
+   * given rather than deriving anything of its own.
+   */
+  const [loaded, setLoaded] = useState<MapWellInsights | null>(null);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
+
+  /*
+   * The findings, split between the two cards that show them.
+   *
+   * The first is about depletion by age, which is what the Reserve Integrity
+   * chart draws, so it sits there. Whatever is left belongs to the cohort
+   * card — and for a well with no production the service returns only the one,
+   * which is why that card has to cope with having none.
+   */
+
+  /* Only ever the answer for the well on screen. The response carries the API
+     it was computed for, so a reply that arrives after the selection moved on
+     is ignored rather than drawn under the wrong name. */
+  const insights = loaded?.api10 === well.api ? loaded : null;
+  const findings = insights?.cohorts?.findings ?? [];
+  const cohortNotes = findings.slice(1);
+
   useEffect(() => {
     if (!well.api) return;
 
@@ -230,6 +261,31 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
           failure instanceof Error
             ? failure.message
             : "Could not load this well's summary.",
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [well.api]);
+
+  useEffect(() => {
+    if (!well.api) return;
+
+    let cancelled = false;
+
+    getWellInsightsMap(well.api)
+      .then((answer) => {
+        if (cancelled) return;
+        setLoaded(answer);
+      })
+      .catch((failure: unknown) => {
+        if (cancelled) return;
+        setLoaded(null);
+        setInsightsError(
+          failure instanceof Error
+            ? failure.message
+            : "Could not load insights for this well.",
         );
       });
 
@@ -506,8 +562,9 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
               `auto-rows-fr` lets the rows share whatever height the taller card
               sets, so the two finish level. */}
                   <dl className="mt-2 grid flex-1 auto-rows-fr gap-x-6 sm:grid-cols-2">
-                    {(
-                      fields?.decline ?? DECLINE_LABELS.map(DECLINE_LOADING)
+                    {(insights
+                      ? declineRows(insights)
+                      : DECLINE_LABELS.map(DECLINE_LOADING)
                     ).map((row) => (
                       <div
                         key={row.label}
@@ -537,6 +594,22 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
                       </div>
                     ))}
                   </dl>
+
+                  {/* The service's own caveats about these figures — that an
+                      annual rate is one month compounded, that a stored zero
+                      is a gap rather than a reading. They belong under the
+                      numbers they qualify, and nothing else was rendering
+                      them. */}
+                  {(insights?.decline?.notes ?? []).map((note) => (
+                    <Note
+                      key={note.title}
+                      tone={note.tone === "warn" ? "red" : "blue"}
+                      icon={note.tone === "warn" ? ArrowDown : Info}
+                    >
+                      <span className="font-semibold">{note.title}.</span>{" "}
+                      {note.body}
+                    </Note>
+                  ))}
                 </Card>
 
                 <Card
@@ -547,24 +620,36 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
                   {/* The chart takes the slack and the note sits on the floor of the
               card, rather than both bunching at the top with a gap below. */}
                   <div className="mt-4 flex min-h-[168px] flex-1 items-end gap-3">
-                    {RESERVE_INTEGRITY.bars.map((bar, index) => (
+                    {depletionBars(insights).map((bar, index) => (
                       <div
                         key={bar.label}
                         className="flex flex-1 flex-col items-center"
                       >
-                        <span className="mb-[6px] text-[11px] font-bold tabular-nums text-mv-ink">
-                          {bar.value}%
+                        <span
+                          className={`mb-[6px] text-[11px] font-bold tabular-nums ${
+                            bar.isOwn ? "text-mv-green-deep" : "text-mv-ink"
+                          }`}
+                        >
+                          {bar.display}
                         </span>
                         <div
+                          /* Against the tallest bar rather than a fixed axis:
+                             these are medians whose range changes with the
+                             county, and a fixed ceiling flattened most of
+                             them into five near-identical columns. */
                           className="w-full rounded-t-md"
                           style={{
-                            // Scaled from 40%, so the differences between 83 and 97
-                            // are visible rather than five near-identical columns.
-                            height: `${((bar.value - 40) / 60) * 120}px`,
+                            height: `${Math.max(24, bar.share * 120)}px`,
                             background: BAR_COLOURS[index % BAR_COLOURS.length],
                           }}
                         />
-                        <span className="mt-[6px] text-[9.5px] text-mv-muted">
+                        <span
+                          className={`mt-[6px] text-[9.5px] ${
+                            bar.isOwn
+                              ? "font-bold text-mv-green-deep"
+                              : "text-mv-muted"
+                          }`}
+                        >
                           {bar.label}
                         </span>
                         <span className="text-[9px] text-mv-muted/70">
@@ -574,9 +659,24 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
                     ))}
                   </div>
 
-                  <Note tone="red" icon={ArrowDown}>
-                    {RESERVE_INTEGRITY.note}
-                  </Note>
+                  {/* The service writes these, and marks each with a tone —
+                      so the page shows what it was told rather than deciding
+                      for itself which finding is the bad news. */}
+                  {findings.slice(0, 1).map((finding) => (
+                    <Note
+                      key={finding.title}
+                      tone={finding.tone === "ok" ? "blue" : "red"}
+                      icon={finding.tone === "ok" ? Info : ArrowDown}
+                    >
+                      {finding.body}
+                    </Note>
+                  ))}
+
+                  {insightsError && (
+                    <Note tone="red" icon={ArrowDown}>
+                      {insightsError}
+                    </Note>
+                  )}
                 </Card>
 
                 {/*
@@ -584,7 +684,16 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
           are what the bars are for, and under them they read as footnotes to a
           chart that has already been passed over.
         */}
-                <div className="grid gap-4 rounded-xl border border-mv-line bg-white p-4 xl:col-span-2 xl:grid-cols-2 xl:gap-6">
+                {/*
+          The chart and its reading side by side — unless the service returned
+          only the one finding, which the card above has already used. Then the
+          chart takes the whole width rather than sitting beside an empty box.
+        */}
+                <div
+                  className={`grid gap-4 rounded-xl border border-mv-line bg-white p-4 xl:col-span-2 xl:gap-6 ${
+                    cohortNotes.length > 0 ? "xl:grid-cols-2" : ""
+                  }`}
+                >
                   <div className="min-w-0">
                     <h3 className="text-[13px] font-bold leading-none text-mv-ink">
                       Cohort EUR — the tell
@@ -600,20 +709,24 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
               already carry.
             */}
                     <div className="mt-3">
-                      {COHORT_EUR.bars.map((bar) => (
+                      {eurBars(insights).map((bar) => (
                         <div
                           key={bar.label}
                           className="flex items-center gap-3 py-[7px]"
                         >
-                          <span className="w-[58px] shrink-0 text-[11px] text-mv-slate">
+                          <span
+                            className={`w-[58px] shrink-0 text-[11px] ${
+                              bar.isOwn
+                                ? "font-bold text-mv-green-deep"
+                                : "text-mv-slate"
+                            }`}
+                          >
                             {bar.label}
                           </span>
                           <span className="h-[8px] min-w-0 flex-1 overflow-hidden rounded-full bg-[#eef0f2]">
                             <span
                               className="block h-full rounded-full bg-mv-green-deep"
-                              style={{
-                                width: `${(bar.value / 400_000) * 100}%`,
-                              }}
+                              style={{ width: `${bar.share * 100}%` }}
                             />
                           </span>
                           <span className="w-[56px] shrink-0 text-right text-[11.5px] font-bold tabular-nums text-mv-ink">
@@ -624,18 +737,23 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
                     </div>
                   </div>
 
-                  <div className="flex min-w-0 flex-col justify-center gap-3">
-                    {COHORT_EUR.notes.map((note, index) => (
-                      <Note
-                        key={note}
-                        tone={index === 0 ? "red" : "blue"}
-                        icon={index === 0 ? ArrowDown : Info}
-                        flush
-                      >
-                        {note}
-                      </Note>
-                    ))}
-                  </div>
+                  {cohortNotes.length > 0 && (
+                    <div className="flex min-w-0 flex-col justify-center gap-3">
+                      {cohortNotes.map((finding) => (
+                        <Note
+                          key={finding.title}
+                          tone={finding.tone === "warn" ? "red" : "blue"}
+                          icon={finding.tone === "warn" ? ArrowDown : Info}
+                          flush
+                        >
+                          <span className="font-semibold">
+                            {finding.title}.
+                          </span>{" "}
+                          {finding.body}
+                        </Note>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
