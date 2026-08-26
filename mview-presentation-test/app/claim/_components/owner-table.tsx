@@ -3,7 +3,15 @@
 import type { ScoredOwner } from "@/lib/claim-search/types";
 
 import { fmt, type WorkingRow } from "../_lib/working-set";
-import { btnPrimary, btnSm, EmptyState, PersonIcon, refineInput } from "./ui";
+import {
+  btnMint,
+  btnPrimary,
+  EmptyState,
+  InlineSpinner,
+  OwnerRowsSkeleton,
+  PersonIcon,
+  refineInput,
+} from "./ui";
 
 /**
  * Right panel — the owner records table. Ticking a row (checkbox or the row
@@ -12,6 +20,8 @@ import { btnPrimary, btnSm, EmptyState, PersonIcon, refineInput } from "./ui";
  */
 export function OwnerTable({
   searched,
+  busyLabel,
+  pendingOwnerKey,
   W,
   universeCount,
   corr,
@@ -25,8 +35,13 @@ export function OwnerTable({
   onClaim,
   onClearTicks,
   onClaimSelected,
+  onViewLeaseDetails,
 }: {
   searched: boolean;
+  /** Set while an API call is in flight — overlays the table with a loader. */
+  busyLabel: string | null;
+  /** The owner whose same-name lookup is running — its row shows a spinner. */
+  pendingOwnerKey: string | null;
   W: WorkingRow[];
   universeCount: number;
   corr: Record<string, string>;
@@ -40,6 +55,7 @@ export function OwnerTable({
   onClaim: (o: ScoredOwner) => void;
   onClearTicks: () => void;
   onClaimSelected: () => void;
+  onViewLeaseDetails: () => void;
 }) {
   const anyOwnerTicked = Object.keys(selO).some((k) => selO[k]);
   const selCount = Object.keys(selO).filter((k) => selO[k]).length;
@@ -68,16 +84,19 @@ export function OwnerTable({
         onChange={(e) => onRefine(e.target.value)}
       />
       <p className="mb-[6px] text-xs text-mv-muted">
-        {searched &&
-          `showing ${W.length} of ${universeCount} owner${universeCount === 1 ? "" : "s"}` +
-            (anyLeaseTicked
-              ? nameQ
-                ? ` — owners of the ticked lease still matching “${nameQ}”`
-                : ` — every owner of the ticked lease${selLeaseCount === 1 ? "" : "s"}`
-              : "")}
+        {busyLabel
+          ? busyLabel
+          : searched &&
+            `showing ${W.length} of ${universeCount} owner${universeCount === 1 ? "" : "s"}` +
+              (anyLeaseTicked
+                ? nameQ
+                  ? ` — owners of the ticked lease still matching “${nameQ}”`
+                  : ` — every owner of the ticked lease${selLeaseCount === 1 ? "" : "s"}`
+                : "")}
       </p>
-      <div className="mt-[2px] min-h-[120px] max-h-[560px] flex-1 overflow-auto rounded-xl border border-mv-line">
-        <table className="w-full min-w-[640px] border-collapse text-[12.5px]">
+      <div className="relative mt-[2px] flex min-h-[120px] flex-1 flex-col">
+        <div className="max-h-[560px] flex-1 overflow-auto rounded-xl border border-mv-line">
+          <table className="w-full min-w-[640px] border-collapse text-[12.5px]">
           <thead>
             <tr>
               {["", "Owner", "Mailing address", "Props", "Appraised", ""].map(
@@ -95,7 +114,9 @@ export function OwnerTable({
             </tr>
           </thead>
           <tbody>
-            {!searched || W.length === 0 ? (
+            {busyLabel ? (
+              <OwnerRowsSkeleton label={busyLabel} />
+            ) : !searched || W.length === 0 ? (
               <tr>
                 <td colSpan={6}>
                   {searched ? (
@@ -122,14 +143,18 @@ export function OwnerTable({
                     className={`group cursor-pointer align-top transition-colors ${on ? "bg-mv-mint" : "odd:bg-white even:bg-[#fafcfb] hover:bg-mv-mint/60"}`}
                   >
                     <td className="border-b border-[#eef2f0] px-3 py-[10px]">
-                      <input
-                        type="checkbox"
-                        checked={on}
-                        onChange={() => onTickOwner(w.key)}
-                        onClick={(e) => e.stopPropagation()}
-                        aria-label={`Select ${r[0]}`}
-                        className="h-[15px] w-[15px] cursor-pointer accent-mv-green-deep"
-                      />
+                      {pendingOwnerKey === w.key ? (
+                        <InlineSpinner />
+                      ) : (
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() => onTickOwner(w.key)}
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label={`Select ${r[0]}`}
+                          className="h-[15px] w-[15px] cursor-pointer accent-mv-green-deep"
+                        />
+                      )}
                     </td>
                     <td className="border-b border-[#eef2f0] px-3 py-[10px]">
                       <div className="font-extrabold text-mv-ink">{r[0]}</div>
@@ -177,22 +202,40 @@ export function OwnerTable({
               })
             )}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
       {selCount > 0 && (
-        <div className="mt-[10px] flex flex-wrap items-center gap-[10px] rounded-[11px] border border-mv-line border-l-4 border-l-mv-green-deep bg-white px-3 py-2">
+        /* STICKY (2026-08-25): the bar lives under a table that is often
+           taller than the viewport, so ticking rows near its top left the
+           claim action out of sight. `sticky bottom-3` pins it to the bottom
+           of the screen while the panel is in view — it floats over the last
+           table rows (hence the shadow and solid ground) and settles into its
+           natural slot once the visitor scrolls past the panel. */
+        <div className="sticky bottom-3 z-10 mt-[10px] flex flex-wrap items-center gap-[10px] rounded-[11px] border border-mv-line border-l-4 border-l-mv-green-deep bg-white px-3 py-2 shadow-[0_6px_24px_rgba(11,53,39,.18)]">
           <span className="text-[12.5px] font-semibold text-mv-slate">
             {selCount} record{selCount === 1 ? "" : "s"} ticked
             {selCount > 1 && " — claim them together as one owner"}
           </span>
+          {/* The ticked records' leases in the portal's table shape — a look
+              BEFORE claiming. It leads and the claim anchors the FAR RIGHT
+              (2026-08-25): reading order ends on the bar's one primary
+              action, in the site-wide CTA position. */}
+          <button
+            type="button"
+            onClick={onViewLeaseDetails}
+            className={`${btnMint} ml-auto`}
+          >
+            View Lease Details
+          </button>
           <button
             type="button"
             onClick={onClaimSelected}
-            className={`${btnPrimary} ${btnSm}`}
+            className={btnPrimary}
           >
             {selCount === 1
-              ? "Claim this record →"
-              : `Claim ${selCount} records together →`}
+              ? "Claim This Record →"
+              : `Claim ${selCount} Records Together →`}
           </button>
         </div>
       )}

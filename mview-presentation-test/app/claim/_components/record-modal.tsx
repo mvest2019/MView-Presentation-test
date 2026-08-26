@@ -71,15 +71,28 @@ export function RecordModal({
         aria-label="Confirm your record"
         className="flex max-h-[min(84vh,720px)] w-[min(620px,100%)] flex-col overflow-hidden rounded-2xl bg-white shadow-[0_24px_70px_rgba(15,25,20,.35)]"
       >
-        <div className="border-b border-mv-line px-[22px] pb-3 pt-[18px]">
-          <h3 className="mb-[3px] text-[17px] font-bold">
-            Is this you? — {base.r[0]}
-          </h3>
-          <p className="text-[12.5px] font-light text-mv-muted">
-            {items.length
-              ? `The same name appears at ${items.length} other address${items.length === 1 ? "" : "es"} — county rolls often keep an old address next to a newer one. Tick every record that is you.`
-              : "Check the mailing address to make sure this record is yours."}
-          </p>
+        <div className="flex items-start justify-between gap-3 border-b border-mv-line px-[22px] pb-3 pt-[18px]">
+          <div>
+            <h3 className="mb-[3px] text-[17px] font-bold">
+              Is this you? — {base.r[0]}
+            </h3>
+            <p className="text-[12.5px] font-light text-mv-muted">
+              {items.length
+                ? `The same name appears at ${items.length} other address${items.length === 1 ? "" : "es"} — county rolls often keep an old address next to a newer one. Tick every record that is you.`
+                : "Check the mailing address to make sure this record is yours."}
+            </p>
+          </div>
+          {/* Same close affordance as the lease drawer and details modal.
+              Closing is CANCEL, exactly like the footer button and Escape —
+              it must never read as a third outcome. */}
+          <button
+            type="button"
+            onClick={() => onClose(false, [])}
+            aria-label="Close"
+            className="h-8 w-8 flex-none cursor-pointer rounded-lg border border-mv-line text-[17px] leading-none text-mv-slate hover:bg-mv-bg"
+          >
+            ×
+          </button>
         </div>
         <div className="overflow-y-auto px-[22px] py-[14px]">
           <SectionLabel first>Your selected record</SectionLabel>

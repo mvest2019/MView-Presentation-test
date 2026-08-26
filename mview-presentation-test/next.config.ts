@@ -94,14 +94,16 @@ const nextConfig: NextConfig = {
       process.env.OPERATOR_API_BASE_URL ||
       "https://mview-dev-api.mineralview.com",
 
-    // Find Your Record (`/claim`) API host. Empty = same-origin: the page is
-    // served by the stand-in route handlers under `app/api/claim/*`, which run
-    // the search over the prebuilt index in `public/owners/`. When the backend
-    // team ships real endpoints for the contract in `lib/claim-search/types.ts`,
-    // point this at their host — the UI needs no other change. `NEXT_PUBLIC_`
-    // because the browser calls these endpoints directly.
+    // Find Your Record (`/claim`) API host — the backend's `/api/v1/owners/*`
+    // endpoints (shipped 2026-08-25; contract in `lib/claim-search/types.ts`).
+    // The path prefix belongs to `lib/claim-search/api.ts`, so pointing at
+    // another environment is a host swap and nothing more. `NEXT_PUBLIC_`
+    // because these endpoints send CORS and the browser calls them directly.
+    // The same-origin stand-ins and `public/owners/` index this replaced are
+    // gone — an empty value no longer means anything.
     NEXT_PUBLIC_CLAIM_API_BASE_URL:
-      process.env.NEXT_PUBLIC_CLAIM_API_BASE_URL || "",
+      process.env.NEXT_PUBLIC_CLAIM_API_BASE_URL ||
+      "https://mview-dev-api.mineralview.com",
 
     /*
      * WHERE THIS DEPLOYMENT LIVES. Two jobs:
