@@ -244,6 +244,14 @@ export type MapWell = {
    * the map marks the bottom of the bore with.
    */
   profile?: string;
+  /**
+   * When the well was last recompleted, ISO, where the record carries one.
+   *
+   * Null for about one well in seven — an older hole whose paperwork never
+   * gave a readable date. The time-lapse replays the dated ones and puts the
+   * rest back at the end rather than inventing a year for them.
+   */
+  recompletionDate?: string | null;
   /** Which filing the row came from — "Permit", "Completion". */
   recordType?: string;
   icon: string;
@@ -756,48 +764,94 @@ export const getLeaseNearbyMap = async (
   }
 };
 
-/** One row of GET /api/v1/map/timelapse/wells, exactly as it comes back. */
-export type MapTimeLapseWell = {
-  api: string;
-  lon: number;
-  lat: number;
-  /** ISO date. The service builds it from `First_recompletiondate`. */
-  firstCompletionDate: string;
+/** One row of the decline grid, as the service computes it. */
+export type MapInsightMetric = {
+  key: string;
+  label: string;
+  value: number | null;
+  unit: string | null;
+  /** "oil", "gas", "mix", "history", "totals" — which block the row belongs to. */
+  group: string | null;
+  help?: string | null;
 };
 
-/** The whole answer: mode, total, the wells, and what the service counted. */
-export type MapTimeLapse = {
-  mode: string;
-  total: number;
-  wells: MapTimeLapseWell[];
-  meta: {
-    counting: string;
-    dateField: string;
-    cached: boolean;
-    tookMs: number;
-  };
+/** A tone-badged note or finding written by the service. */
+export type MapInsightNote = {
+  tone: "ok" | "info" | "warn" | "bad" | string;
+  title: string;
+  body: string;
 };
 
-/*
- * GET /api/v1/map/timelapse/wells -> every well carrying a completion date.
+/** One age cohort, with the medians the comparison charts are drawn from. */
+export type MapInsightCohort = {
+  key: string;
+  label: string;
+  n: number;
+  medianDepletion: number | null;
+  medianEurBoe: number | null;
+  p25EurBoe: number | null;
+  p75EurBoe: number | null;
+  /** True for the cohort this well itself falls in. */
+  isOwn: boolean;
+};
+
+export type MapWellInsights = {
+  api10: string;
+  hasProduction: boolean;
+  noProductionReason: string | null;
+  decline: {
+    metrics: MapInsightMetric[];
+    reporting: {
+      label: string | null;
+      tone: string | null;
+      detail: string | null;
+    } | null;
+    rollUp: {
+      cumBoe: number | null;
+      remBoe: number | null;
+      eurBoe: number | null;
+      depletion: number | null;
+      lastBoe: number | null;
+      reserveLifeMonths: number | null;
+    } | null;
+    notes: MapInsightNote[];
+  } | null;
+  cohorts: {
+    available: boolean;
+    peerLabel: string | null;
+    peerTotal: number | null;
+    ownBucket: string | null;
+    ownBucketLabel: string | null;
+    ownDepletion: number | null;
+    ownEurBoe: number | null;
+    rows: MapInsightCohort[];
+    findings: MapInsightNote[];
+  } | null;
+};
+
+/**
+ * GET /api/v1/map/wells/{api}/insights
  *
- * One row per well for the whole state — 465,000 of them — so this is asked
- * for once and kept for the session. The map bins them into cells before
- * drawing: the replay is a cluster view, never one mark per well.
+ * The decline diagnostics, the reserve-integrity comparison and the cohort
+ * EUR table — everything the Insights page used to carry as fixed copy. The
+ * service does the arithmetic and writes the notes, so the page renders what
+ * it is given rather than deriving anything of its own.
  */
-export const getTimeLapseMap = async (): Promise<MapTimeLapse> => {
+export const getWellInsightsMap = async (
+  api: string,
+): Promise<MapWellInsights> => {
   try {
     const response = await fetch(
-      `${process.env.MAP_BASE_URL}/api/v1/map/timelapse/wells`,
+      `${process.env.MAP_BASE_URL}/api/v1/map/wells/${encodeURIComponent(api)}/insights`,
     );
     const data = await response.json();
 
-    if (response.ok && Array.isArray(data?.wells)) {
-      return data as MapTimeLapse;
+    if (response.ok && data?.api10) {
+      return data as MapWellInsights;
     }
 
-    throw new Error("Failed to fetch the time-lapse wells");
+    throw new Error("Failed to fetch insights for this well");
   } catch (error) {
-    throw new Error(String(error) || "Failed to fetch the time-lapse wells");
+    throw new Error(String(error) || "Failed to fetch insights for this well");
   }
 };
