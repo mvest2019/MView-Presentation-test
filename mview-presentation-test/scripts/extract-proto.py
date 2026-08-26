@@ -7,6 +7,11 @@ each of our three marketing pages is one `<section data-route="...">` inside it.
 This script lifts those sections out, along with the CSS they need, so the pages
 can be regenerated instead of hand-maintained when a new revision lands.
 
+The `/feature/<slug>` landing pages the marketing cards open are NOT extracted
+here: they are real composed routes, and their content comes from the sibling
+script extract-feature-content.py. This script's job for them is only the link
+rewrite — see FEATURE_SLUGS.
+
 EACH PAGE NAMES ITS OWN REVISION, because they do not all come from the same one:
 the v44 (1) revision DELETED the owners page — no section, no inbound links, none
 of its classes — so /owners can only come from the earlier v44 until a revision
@@ -45,6 +50,26 @@ PAGES = [
     ("PRICING_MARKUP", "v44 (1).html", "pricing"),
 ]
 
+# The feature landing pages the cards on /, /owners and /professionals open —
+# real composed routes under app/feature/<slug>, NOT injected prototype markup.
+# Their content is extracted by the sibling script extract-feature-content.py,
+# which must keep the same slug list; this list exists here so the card links
+# rewrite as known app routes (see APP_ROUTES below).
+#
+# `map` is deliberately NOT here: the map's landing experience is the
+# already-built /map-explorer page, so the prototype's `#/feature/map` links are
+# aliased to it (see ROUTE_ALIAS) rather than getting a second, competing
+# landing page.
+FEATURE_SLUGS = [
+    # owner features (the home six-card grid + the "also included" strip +
+    # the two the /owners page still links that home dropped)
+    "valuation", "lease-audit", "alerts", "weekly-report", "production",
+    "operators", "dossier", "community", "dashboard", "my-leases",
+    # professional features (the /professionals hero slides + eight-card grid)
+    "pro-map", "pro-intel", "pro-alerts", "pro-team", "pro-hub",
+    "pro-portfolio", "pro-valuation", "pro-adv-alerts", "pro-reports",
+]
+
 # Routes this app actually serves; a prototype link to anything else cannot be
 # rewritten to a real path without inventing a 404, so it is reported instead.
 APP_ROUTES = {
@@ -53,6 +78,9 @@ APP_ROUTES = {
     "privacy", "privacy-policy", "terms", "terms-condition", "map-explorer",
     "oil-and-gas-news", "reset-password",
 }
+# the generated feature landing pages are app routes too, so the cards' links
+# rewrite as known paths instead of being reported off-site
+APP_ROUTES |= {"feature/" + slug for slug in FEATURE_SLUGS}
 # AVAILABILITY TRIM — the one place this script edits content rather than form.
 #
 # The design's pricing page lists everything the product is planned to do. Ryan,
@@ -124,9 +152,15 @@ DROP_TITLE_BLOCKS = {
 RUNTIME_CLASSES = {"hx7-dot"}
 
 # prototype route -> our path, where the names differ
+#
+# `feature/map` is the one feature link that does NOT get a generated landing
+# page: the map already has its own built landing experience at /map-explorer
+# (Ryan/user, 2026-08-26 — "don't change the map landing page, it's already
+# done"), so the card lands there instead of on a prototype extraction.
 ROUTE_ALIAS = {
     "home": "/", "contact": "/contact-us", "privacy": "/privacy-policy",
     "terms": "/terms-condition", "signup": "/register", "blog": "/blogs",
+    "feature/map": "/map-explorer",
 }
 
 _cache = {}

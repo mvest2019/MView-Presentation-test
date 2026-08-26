@@ -8,9 +8,10 @@ import { ProtoRotator } from "./rotator";
  *
  * USED BY `/`, `/owners` AND `/professionals` ONLY, and deliberately not the
  * pattern for anything else. Every other page in this app is composed from
- * `mv-*` utilities and real components; these three carry the prototype's own HTML
- * and CSS because the design was to be taken "as it is". Read `markup.ts` for what
- * that trades away.
+ * `mv-*` utilities and real components — including the `/feature/<slug>` landing
+ * pages, which render extracted CONTENT through their own components rather than
+ * injected markup; these three carry the prototype's own HTML and CSS because the
+ * design was to be taken "as it is". Read `markup.ts` for what that trades away.
  *
  * `dangerouslySetInnerHTML` IS SAFE HERE, and it is worth being precise about why
  * rather than waving at it: the string is a build-time constant compiled into the
