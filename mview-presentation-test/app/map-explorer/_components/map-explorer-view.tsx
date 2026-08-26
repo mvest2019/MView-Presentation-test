@@ -8,7 +8,6 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { createPortal } from "react-dom";
 
 import { AreaSelectionBar } from "./area-selection";
 import { loadArcgisModules } from "./arcgis-loader";
@@ -24,7 +23,6 @@ import {
   type AreaMeasurement,
 } from "./measure-area-panel";
 import { ToolDemo, type DemoTool } from "./tool-demo";
-import { MapFeatureGuide } from "./map-feature-guide";
 import { MapToast } from "./map-toast";
 import { MeasureBar } from "./measure-bar";
 import {
@@ -806,39 +804,6 @@ export function MapExplorerView() {
    * selected — that a page of prose has no use for. The map stays mounted
    * underneath, so closing it returns the exact view that was left.
    */
-  const [guideOpen, setGuideOpen] = useState(false);
-  /*
-   * The page's own <main>, which the guide is rendered into.
-   *
-   * Read once, in the initialiser rather than in an effect: the server has no
-   * document and returns null, and by the client's first render the layout's
-   * markup is already there to find. Nothing is portalled until the guide is
-   * opened, so the two renders agree and hydration has nothing to reconcile.
-   */
-  const [mainEl] = useState<HTMLElement | null>(() =>
-    typeof document === "undefined" ? null : document.querySelector("main"),
-  );
-
-  /*
-   * The map's own box steps aside while the guide is being read.
-   *
-   * `display: none` rather than unmounting: the Esri view stays alive in the
-   * tree and comes back without re-initialising. It is the wrapper the page
-   * sizes to the viewport that has to go — left in place it would put a
-   * screen's worth of map above the guide to scroll past first.
-   */
-  useEffect(() => {
-    const box = rootRef.current?.parentElement;
-    if (!box) return;
-    if (!guideOpen) return;
-
-    const previous = box.style.display;
-    box.style.display = "none";
-    return () => {
-      box.style.display = previous;
-    };
-  }, [guideOpen]);
-
   const [readout, setReadout] = useState({
     scale: HOME_SCALE,
     zoom: 6,
@@ -3281,7 +3246,6 @@ export function MapExplorerView() {
           onToggleFullscreen={toggleFullscreen}
           viewTab={viewTab}
           onViewTabChange={changeViewTab}
-          onOpenGuide={() => setGuideOpen(true)}
           compact={viewTab === "insights"}
           activeTool={activeTool}
           onSelectTool={startTool}
@@ -3375,26 +3339,6 @@ export function MapExplorerView() {
           </div>
         </>
       )}
-
-      {/*
-        The guide is rendered into the page's own <main>, not over the map.
-
-        As an overlay it had to scroll itself, which put a second scrollbar
-        beside the page's — and because the site footer sits below the map, the
-        page always had one. Flowing inside <main> instead means the browser's
-        own scrollbar moves it, and the footer arrives at the end of the read
-        where it belongs.
-
-        The map is hidden rather than unmounted while it does: unmounting would
-        destroy the Esri view and pay for a full re-initialisation on the way
-        back, and everything the reader left behind is waiting when they close.
-      */}
-      {status === "ready" && guideOpen && mainEl
-        ? createPortal(
-            <MapFeatureGuide onBack={() => setGuideOpen(false)} />,
-            mainEl,
-          )
-        : null}
 
       {status === "ready" && viewTab === "table" && (
         <WellsTable

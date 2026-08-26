@@ -134,33 +134,19 @@ const SLIDES = [
 const SLIDE_MS = 3200;
 
 
-export function MapFeatureGuide({ onBack }: { onBack: () => void }) {
-  /*
-   * Esc closes the guide.
-   *
-   * It is the only way back: the page carries no button of its own, and the
-   * toolbar that opened it is underneath. Esc is what closes every other
-   * overlay on the map, so it is the key a reader would already try.
-   */
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onBack();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onBack]);
-
-  /*
-   * Opened at the top, and closed back to it.
-   *
-   * The guide takes over the page's own scroll. Without this, pressing the
-   * button drops you into the middle of a section rather than at the hero —
-   * and closing from the footer would hand back a map scrolled half off the
-   * screen, since the map's box is sized to sit directly under the header.
-   */
+/**
+ * What this map can do — the page `/map-explorer` serves when nobody is
+ * signed in.
+ *
+ * It is the page itself now, not an overlay: there is no map behind it, no
+ * button that opened it and nothing to close it onto. Signing in is what
+ * replaces it, which the page decides on the server from the session cookie.
+ */
+export function MapFeatureGuide() {
+  /* Opened at the top. A visitor arriving from elsewhere on the site may be
+     part way down the previous page, and Next carries that over. */
   useEffect(() => {
     window.scrollTo({ top: 0 });
-    return () => window.scrollTo({ top: 0 });
   }, []);
 
   return (
