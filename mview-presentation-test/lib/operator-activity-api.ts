@@ -49,6 +49,20 @@ export interface WellPermitRecord {
   /** Already formatted (`"Jul 3, 2025"`), or null when the API sent nothing. */
   submittedDate: string | null;
   approvedDate: string | null;
+  /**
+   * The same two dates as `YYYY-MM-DD`, for comparison rather than display.
+   *
+   * THE DISPLAY STRING CANNOT BE COMPARED. "Jul 3, 2025" sorts before "Mar 1, 2019"
+   * alphabetically, so the date filters need something ordered. This shape is also
+   * exactly what `<input type="date">` produces, so the filter compares two strings
+   * and never constructs a Date — no timezone to shift the boundary by a day.
+   *
+   * Null on the same rows the display fields are null on: a permit filed before a
+   * decision has no approved date, and an unparseable date is not silently turned
+   * into one.
+   */
+  submittedOn: string | null;
+  approvedOn: string | null;
   /** `New Permit` or `New Completion`. Not a column, but it keys the row. */
   activityType: string;
 }
@@ -141,6 +155,26 @@ function volumeText(value: unknown): { text: string; unit: string } {
 }
 
 /**
+ * `"07/15/2025"` or `"2025-07-15"` → `"2025-07-15"`, for ordering and comparison.
+ *
+ * Returns null rather than the raw string when it cannot parse one: unlike the display
+ * formatter below, an un-comparable value here has to be excluded from a range rather
+ * than compared as text and silently mis-filtered.
+ */
+export function filingDateKey(value: unknown): string | null {
+  const raw = optional(value);
+  if (raw === null) return null;
+
+  const us = US_DATE.exec(raw);
+  if (us) return `${us[3]}-${us[1].padStart(2, "0")}-${us[2].padStart(2, "0")}`;
+
+  const iso = ISO_DATE.exec(raw);
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`;
+
+  return null;
+}
+
+/**
  * `"07/15/2025"` or `"2025-07-15"` → `"Jul 15, 2025"`.
  *
  * The API sends US-ordered dates on the two filing columns and ISO on
@@ -216,6 +250,8 @@ export async function fetchRecentWellsPermits(
       wellboreProfile: text(record.wellbore_profile),
       submittedDate: formatFilingDate(record.submit_date),
       approvedDate: formatFilingDate(record.approved_date),
+      submittedOn: filingDateKey(record.submit_date),
+      approvedOn: filingDateKey(record.approved_date),
       activityType: text(record.activity_type),
     };
   });

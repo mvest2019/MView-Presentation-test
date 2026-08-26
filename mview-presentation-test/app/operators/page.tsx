@@ -4,7 +4,6 @@ import Link from "next/link";
 import { Breadcrumbs } from "@/app/_components/breadcrumbs";
 import {
   displayLgClass,
-  displaySmClass,
   h3Class,
   inlineLink,
 } from "@/app/_components/typography";
@@ -12,7 +11,6 @@ import {
 import { getOperatorCounties, getOperatorPlayTypes } from "@/lib/operator-api";
 import { getVisitorId } from "@/lib/visitor-id";
 
-import { CountyDirectory } from "./_components/county-directory";
 import { OperatorPage } from "./operator-page";
 
 /**
@@ -233,18 +231,6 @@ export default async function OperatorsRoute() {
             </Link>
           ))}
         </div>
-
-        <section className="mt-[46px]">
-          <h2 className={`${displaySmClass} mt-[7px]`}>
-            Browse operators by county
-          </h2>
-          <p className="mt-[7px] max-w-[660px] text-sm text-mv-muted">
-            Explore the oil &amp; gas companies operating in each Texas county.
-            Filter by letter or search to jump straight to a county — all 254.
-          </p>
-
-          <CountyDirectory counties={counties} />
-        </section>
 
         {/* The design's `.notice.slate` — the page's one conversion prompt. */}
         <aside className="mt-6 flex gap-3 rounded-[14px] border border-[#dfe4e9] bg-mv-line-soft px-[18px] py-4 text-sm leading-[1.55] text-[#33404e]">
