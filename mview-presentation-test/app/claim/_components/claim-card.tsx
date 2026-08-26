@@ -152,7 +152,7 @@ function ClaimDone({ tx, base }: { tx: MergedTx; base: ScoredOwner }) {
       >
         Create your free account &amp; save this record &rarr;
       </Link>
-      <div className="mt-[14px] rounded-[14px] border border-mv-mint-edge bg-white px-4 py-[14px]">
+      <div className="mt-[14px] rounded-[14px] border border-mv-line bg-white px-4 py-[14px]">
         <h5 className="mb-1 text-[13.5px] font-bold">
           Make sure the county has your current address{" "}
           <span className="rounded-full bg-mv-mint px-[10px] py-[3px] text-[11.5px] font-semibold text-mv-green-ink">

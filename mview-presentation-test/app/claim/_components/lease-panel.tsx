@@ -3,7 +3,7 @@
 import type { LeaseAgg } from "@/lib/claim-search/types";
 
 import { fmt } from "../_lib/working-set";
-import { EmptyState, LeaseIcon, refineInput } from "./ui";
+import { EmptyState, LeaseIcon, LeaseListSkeleton, refineInput } from "./ui";
 
 /**
  * Left panel — every lease in the working set, aggregated. Ticking a lease
@@ -13,6 +13,7 @@ import { EmptyState, LeaseIcon, refineInput } from "./ui";
  */
 export function LeasePanel({
   searched,
+  busyLabel,
   leases,
   ownerCount,
   anyOwnerTicked,
@@ -28,6 +29,8 @@ export function LeasePanel({
   onClearTicks,
 }: {
   searched: boolean;
+  /** Set while an API call is in flight — overlays the list with a loader. */
+  busyLabel: string | null;
   leases: LeaseAgg[];
   ownerCount: number;
   anyOwnerTicked: boolean;
@@ -87,12 +90,17 @@ export function LeasePanel({
         </select>
       </div>
       <p className="mb-[6px] text-xs text-mv-muted">
-        {searched
-          ? `${leases.length} lease${leases.length === 1 ? "" : "s"} · ${ownerCount} owner${ownerCount === 1 ? "" : "s"} on the right.`
-          : "Waiting on your first search."}
+        {busyLabel
+          ? busyLabel
+          : searched
+            ? `${leases.length} lease${leases.length === 1 ? "" : "s"} · ${ownerCount} owner${ownerCount === 1 ? "" : "s"} on the right.`
+            : "Waiting on your first search."}
       </p>
-      <div className="min-h-[120px] max-h-[560px] flex-1 overflow-y-auto pr-[2px]">
-        {!searched ? (
+      <div className="relative flex min-h-[120px] flex-1 flex-col">
+        <div className="max-h-[560px] flex-1 overflow-y-auto pr-[2px]">
+        {busyLabel ? (
+          <LeaseListSkeleton label={busyLabel} />
+        ) : !searched ? (
           <EmptyState>Search above to see leases here.</EmptyState>
         ) : leases.length === 0 ? (
           <div className="px-4 py-[26px] text-center text-[13px] text-mv-muted">
@@ -130,6 +138,7 @@ export function LeasePanel({
             </div>
           ))
         )}
+        </div>
       </div>
       <p className="mt-auto pt-[10px] text-[11px] text-mv-muted">
         <strong>Click a lease</strong> for its report · <strong>tick</strong> to keep

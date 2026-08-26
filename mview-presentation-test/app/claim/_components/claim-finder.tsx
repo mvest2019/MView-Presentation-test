@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   fetchClaimMeta,
@@ -22,27 +23,82 @@ import {
   workingSet,
 } from "../_lib/working-set";
 import { ClaimCard, type ClaimState } from "./claim-card";
+import {
+  LeaseDetailsModal,
+  type LeaseDetailRow,
+} from "./lease-details-modal";
 import { LeaseDrawer } from "./lease-drawer";
 import { LeasePanel } from "./lease-panel";
 import { OwnerTable } from "./owner-table";
 import { RecordModal, type ModalState } from "./record-modal";
 import {
-  btnPrimary,
   fieldInput,
   fieldLabel,
   HomeIcon,
+  InlineSpinner,
   LeaseIcon,
   PersonIcon,
   PinIcon,
   SearchIcon,
-  Spinner,
 } from "./ui";
 
 function HeroPill({ children }: { children: React.ReactNode }) {
   return (
-    <span className="whitespace-nowrap rounded-full border border-white/20 bg-white/10 px-[13px] py-[5px] text-xs text-[#d9f4e7]">
+    <span className="whitespace-nowrap rounded-full border border-mv-line bg-white px-[13px] py-[5px] text-xs text-mv-slate">
       {children}
     </span>
+  );
+}
+
+/**
+ * The pre-search state: four cards saying what the finder can do, in place of
+ * two empty panels. The first card carries the live index numbers once the
+ * meta call lands.
+ */
+function IntroFeatures({ meta }: { meta: ClaimMeta | null }) {
+  const items = [
+    {
+      icon: <SearchIcon size={17} stroke={2.2} />,
+      title: meta
+        ? `${meta.totalOwners.toLocaleString("en-US")} records`
+        : "The whole state, indexed",
+      text: `Every county appraisal mineral roll in Texas — ${
+        meta ? meta.counties.length : "195"
+      } counties, searchable in one place.`,
+    },
+    {
+      icon: <PersonIcon size={17} stroke={2.2} />,
+      title: "Forgiving search",
+      text: "Part of a name is enough — typos, word order and punctuation don't matter.",
+    },
+    {
+      icon: <LeaseIcon size={17} stroke={2.2} />,
+      title: "Leases & owners, linked",
+      text: "Tick a lease to see everyone on it; tick records to see just their leases.",
+    },
+    {
+      icon: <HomeIcon size={17} />,
+      title: "Claim it free",
+      text: "Merge records that are all you and claim them in one go — no account needed to search.",
+    },
+  ];
+  return (
+    <div className="grid grid-cols-4 gap-[18px] pb-2 max-[1000px]:grid-cols-2 max-[560px]:grid-cols-1">
+      {items.map((it) => (
+        <div
+          key={it.title}
+          className="rounded-2xl border border-mv-line bg-white px-5 py-[18px] shadow-[0_1px_2px_rgba(11,53,39,.06),0_8px_24px_rgba(11,53,39,.07)]"
+        >
+          <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-[10px] bg-mv-mint text-mv-green-deep">
+            {it.icon}
+          </span>
+          <h3 className="text-[14.5px] font-bold text-mv-ink">{it.title}</h3>
+          <p className="mt-1 text-[12.5px] leading-[1.5] text-mv-muted">
+            {it.text}
+          </p>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -56,7 +112,8 @@ function HeroPill({ children }: { children: React.ReactNode }) {
  * persists after ticking a lease (the v102 fix), and lease membership is
  * exact — fuzzy scoring only ever ranks.
  */
-export function ClaimFinder() {
+export function ClaimFinder({ signedIn }: { signedIn: boolean }) {
+  const router = useRouter();
   const [meta, setMeta] = useState<ClaimMeta | null>(null);
 
   // The form is draft state; a search commits it into `query` so typing in
@@ -78,9 +135,16 @@ export function ClaimFinder() {
   const [selL, setSelL] = useState<Record<string, boolean>>({});
   const [memb, setMemb] = useState<Record<string, ScoredOwner[]>>({});
 
+  // In-flight flags for the two slow lookups — the panels show a loader
+  // overlay (search / lease membership) or a row spinner (same-name) while
+  // the API works, because the dev backend can take seconds.
+  const [leaseLoading, setLeaseLoading] = useState(false);
+  const [pendingOwnerKey, setPendingOwnerKey] = useState<string | null>(null);
+
   const [claim, setClaim] = useState<ClaimState | null>(null);
   const [modal, setModal] = useState<ModalState | null>(null);
   const [drawer, setDrawer] = useState<LeaseAgg | null>(null);
+  const [details, setDetails] = useState<LeaseDetailRow[] | null>(null);
 
   // Address corrections, keyed by record identity — mirrored to localStorage
   // and posted through the API for the data team.
@@ -138,23 +202,24 @@ export function ClaimFinder() {
   }, [owners]);
 
   /* ---------- actions ---------- */
-  async function doSearch(e?: React.FormEvent) {
-    e?.preventDefault();
-    if (searching) return;
+
+  // Monotonic sequence so a slow response never overwrites a newer one —
+  // with live search two requests can easily be in flight at once.
+  const searchSeq = useRef(0);
+
+  async function doSearch() {
+    const seq = ++searchSeq.current;
     const q = {
       name: form.name.trim(),
       lease: form.lease.trim(),
       addr: form.addr.trim(),
       county: form.county,
     };
-    if (!q.name && !q.lease && q.county === "*") {
-      setStatus("Type an owner name, a lease word — or pick a county to browse it.");
-      return;
-    }
     setSearching(true);
-    setStatus("Searching…");
+    setStatus("");
     try {
       const { owners: results } = await fetchSearch(q);
+      if (seq !== searchSeq.current) return; // a newer search superseded this one
       setOwners(results);
       setQuery({ name: q.name, lease: q.lease, county: q.county });
       setSelO({});
@@ -165,13 +230,49 @@ export function ClaimFinder() {
       setCty("*");
       setSearched(true);
       setClaim(null);
-      setStatus("");
     } catch {
-      setStatus("Search failed to load — try again.");
+      if (seq === searchSeq.current)
+        setStatus("Search failed to load — try again.");
     } finally {
-      setSearching(false);
+      if (seq === searchSeq.current) setSearching(false);
     }
   }
+
+  /**
+   * LIVE SEARCH (2026-08-25) — no Search button: results follow the filters.
+   * Typing is debounced 450ms; picking a county fires through the same path.
+   * A name or lease needs two characters before it searches, so a single
+   * keystroke doesn't sweep the statewide index. Clearing every filter
+   * returns the page to its intro state.
+   */
+  useEffect(() => {
+    const name = form.name.trim();
+    const lease = form.lease.trim();
+    const active =
+      name.length >= 2 || lease.length >= 2 || form.county !== "*";
+    if (!active) searchSeq.current++; // cancel anything in flight NOW
+    const t = setTimeout(
+      () => {
+        if (!active) {
+          if (searched || searching || owners.length) {
+            setOwners([]);
+            setSearched(false);
+            setSearching(false);
+            setSelO({});
+            setSelL({});
+            setClaim(null);
+            setStatus("");
+          }
+          return;
+        }
+        void doSearch();
+      },
+      active ? 450 : 0,
+    );
+    return () => clearTimeout(t);
+    // doSearch reads the same `form` this effect keys on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form]);
 
   async function toggleLease(key: string) {
     const turningOn = !selL[key];
@@ -179,6 +280,7 @@ export function ClaimFinder() {
     if (!turningOn || memb[key]) return;
     // First tick of this lease: fetch its full membership (exact despaced
     // name match on the server — never fuzzy).
+    setLeaseLoading(true);
     setStatus("Loading every owner on that lease…");
     try {
       const [county, lease] = key.split("|");
@@ -187,6 +289,8 @@ export function ClaimFinder() {
       setStatus("");
     } catch {
       setStatus("Couldn't load that lease's owners — try again.");
+    } finally {
+      setLeaseLoading(false);
     }
   }
 
@@ -200,8 +304,10 @@ export function ClaimFinder() {
       setSelO((s) => ({ ...s, [key]: false }));
       return;
     }
+    if (pendingOwnerKey) return; // one lookup at a time — no double-click pileup
     const o = ownerByKey(key);
     if (!o) return;
+    setPendingOwnerKey(key);
     try {
       const { items } = await fetchSameName(
         o.county,
@@ -222,6 +328,8 @@ export function ClaimFinder() {
       setModal({ base: o, items: merged });
     } catch {
       /* lookup failed — leave the tick alone */
+    } finally {
+      setPendingOwnerKey(null);
     }
   }
 
@@ -276,7 +384,13 @@ export function ClaimFinder() {
     try {
       sessionStorage.setItem("mvClaimedOwner", JSON.stringify(tx));
     } catch {
-      /* signup flow just won't be pre-filled */
+      /* signup/portal flow just won't be pre-filled */
+    }
+    // A registered visitor needs no sign-up pitch: the claimed record is
+    // stashed above, so send them straight to their portal with it.
+    if (signedIn) {
+      router.push("/portal");
+      return;
     }
     setClaim({ phase: "done", base, tx });
   }
@@ -295,12 +409,42 @@ export function ClaimFinder() {
     finishClaim(picked[0], picked.slice(1));
   }
 
+  /**
+   * "View lease details": one row per lease per ticked record. The lease
+   * number is whatever trailing "(12345)" the county roll baked into the
+   * lease name; the value column carries the API's PER-LEASE appraised value
+   * (`leaseValues`, aligned with the lease list), falling back to the
+   * record's total only for rows the API sent without it.
+   */
+  function viewLeaseDetails() {
+    const rows: LeaseDetailRow[] = [];
+    const seen = new Set<string>();
+    for (const o of U) {
+      if (!selO[okey(o)]) continue;
+      const leases = (o.r[3] as string[]) ?? [];
+      leases.forEach((lease, i) => {
+        const dedup = okey(o) + "|" + lease;
+        if (seen.has(dedup)) return;
+        seen.add(dedup);
+        rows.push({
+          lease,
+          leaseNo: /\((\d+)\)\s*$/.exec(lease)?.[1] ?? "—",
+          owner: o.r[0],
+          county: o.county,
+          value: o.leaseValues?.[i] ?? o.r[2],
+        });
+      });
+    }
+    if (rows.length) setDetails(rows);
+  }
+
   // Escape closes the popup (as cancel) first, then the drawer — as the
   // prototype's document-level handler did.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
       if (modal) closeModal(false, []);
+      else if (details) setDetails(null);
       else setDrawer(null);
     }
     document.addEventListener("keydown", onKey);
@@ -310,39 +454,46 @@ export function ClaimFinder() {
   /* ---------- page ---------- */
   return (
     <div className="bg-mv-bg">
-      {/* hero */}
-      <section className="relative overflow-hidden bg-[linear-gradient(135deg,#1a2622_0%,#25443a_78%)] pb-[86px] pt-[26px] text-white max-[767px]:pb-[78px] max-[767px]:pt-4">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(900px_340px_at_85%_-60px,rgba(84,191,150,.12),transparent_60%),radial-gradient(500px_260px_at_4%_110%,rgba(84,191,150,.07),transparent_65%)]"
-        />
-        <div className="relative z-[1] mx-auto max-w-[1140px] px-7 max-[767px]:px-4">
-          <div className="flex flex-wrap justify-end gap-2">
-            {meta ? (
-              <>
-                <HeroPill>
-                  <b className="font-bold text-white">
-                    {meta.totalOwners.toLocaleString("en-US")}
-                  </b>{" "}
-                  owners
-                </HeroPill>
-                <HeroPill>
-                  <b className="font-bold text-white">{meta.counties.length}</b>{" "}
-                  Texas counties
-                </HeroPill>
-                <HeroPill>Free · no account</HeroPill>
-              </>
-            ) : (
-              <HeroPill>Loading index…</HeroPill>
-            )}
+      {/* hero — NO background of its own (2026-08-25): it sits straight on
+          the page ground, so the copy flips to ink/muted and the pills to
+          bordered white chips. The search card below keeps its hero overlap. */}
+      <section className="pb-[86px] pt-[26px] max-[767px]:pb-[78px] max-[767px]:pt-4">
+        <div className="mx-auto max-w-[1140px] px-7 max-[767px]:px-4">
+          {/* Headline and stat pills share ONE row (2026-08-25): pills on a
+              row of their own left an empty band above the h1. They wrap
+              under the headline on narrow screens. */}
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+            <h1 className="text-[clamp(24px,4.5vw,31px)] font-extrabold leading-[1.15] tracking-[-.02em] text-mv-ink">
+              Find your record —{" "}
+              <em className="not-italic text-mv-green-deep">
+                no account needed
+              </em>
+            </h1>
+            <div className="flex flex-wrap gap-2">
+              {meta ? (
+                <>
+                  <HeroPill>
+                    <b className="font-bold text-mv-ink">
+                      {meta.totalOwners.toLocaleString("en-US")}
+                    </b>{" "}
+                    owners
+                  </HeroPill>
+                  <HeroPill>
+                    <b className="font-bold text-mv-ink">
+                      {meta.counties.length}
+                    </b>{" "}
+                    Texas counties
+                  </HeroPill>
+                  <HeroPill>Free · no account</HeroPill>
+                </>
+              ) : (
+                <HeroPill>Loading index…</HeroPill>
+              )}
+            </div>
           </div>
-          <h1 className="mb-2 mt-[30px] text-[clamp(24px,4.5vw,31px)] font-extrabold leading-[1.15] tracking-[-.02em] max-[767px]:mt-5">
-            Find your record —{" "}
-            <em className="not-italic text-[#7fe0b8]">no account needed</em>
-          </h1>
           {/* No width cap: the sentence fits the 1140px wrap on one line at
               desktop widths; narrower screens still wrap naturally. */}
-          <p className="text-sm font-light text-[#c9e6d9]">
+          <p className="text-sm font-light text-mv-muted">
             Fill in whatever you know — part of a <strong>name</strong>, a{" "}
             <strong>lease</strong>, or just your <strong>county</strong>. You
             claim the owner record: every lease tied to it follows
@@ -352,12 +503,14 @@ export function ClaimFinder() {
       </section>
 
       <div className="mx-auto max-w-[1140px] px-7 max-[767px]:px-4">
-        {/* sticky search card — overlaps the hero; sits under the h-16 header */}
+        {/* sticky search card — overlaps the hero; sits under the h-16 header.
+            NO Search button (2026-08-25): results follow the filters live, so
+            the card is just the four fields plus the running tally. */}
         <form
-          onSubmit={doSearch}
+          onSubmit={(e) => e.preventDefault()}
           className="sticky top-[74px] z-40 -mt-[62px] mb-[18px] rounded-[18px] border border-mv-line bg-white p-[18px] pb-[14px] shadow-[0_4px_10px_rgba(11,53,39,.08),0_18px_44px_rgba(11,53,39,.12)] max-[767px]:p-[14px] max-[767px]:pb-3"
         >
-          <div className="grid grid-cols-[1fr_1.1fr_auto] items-end gap-3 max-[820px]:grid-cols-2">
+          <div className="grid grid-cols-[1fr_1.4fr] items-end gap-3 max-[640px]:grid-cols-1">
             <div>
               <div className={fieldLabel}>
                 <PinIcon />
@@ -388,17 +541,8 @@ export function ClaimFinder() {
                 onChange={(e) => setForm((f) => ({ ...f, addr: e.target.value }))}
               />
             </div>
-            <button
-              type="submit"
-              disabled={searching}
-              aria-busy={searching}
-              className={`${btnPrimary} h-[42px] w-full min-w-[118px] disabled:cursor-default disabled:opacity-70 max-[820px]:col-span-2`}
-            >
-              {searching ? <Spinner /> : <SearchIcon />}
-              {searching ? "Searching…" : "Search"}
-            </button>
           </div>
-          <div className="mt-3 grid grid-cols-[minmax(0,348px)_1fr] gap-[18px] max-[900px]:grid-cols-1 max-[900px]:gap-3">
+          <div className="mt-3 grid grid-cols-[1fr_1.4fr] gap-3 max-[640px]:grid-cols-1">
             <div>
               <div className={fieldLabel}>
                 <LeaseIcon />
@@ -424,25 +568,39 @@ export function ClaimFinder() {
               />
             </div>
           </div>
-          {searched && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              <span className="rounded-full border border-[#e2e7e5] bg-[#f2f4f3] px-3 py-1 text-xs text-mv-slate">
-                <b className="text-mv-green-deep">{W.length}</b> of {U.length}
-                {!anyLeaseTicked && owners.length === 500 ? "+" : ""} owner
-                {U.length === 1 ? "" : "s"}
+          <div className="mt-3 flex min-h-[26px] flex-wrap items-center gap-2">
+            {searching ? (
+              <span className="inline-flex items-center gap-2 rounded-full border border-[#e2e7e5] bg-[#f2f4f3] px-3 py-1 text-xs font-semibold text-mv-slate">
+                <InlineSpinner />
+                Searching the rolls…
               </span>
-              <span className="rounded-full border border-[#e2e7e5] bg-[#f2f4f3] px-3 py-1 text-xs text-mv-slate">
-                <b className="text-mv-green-deep">{L.length}</b> of {totalLeases}{" "}
-                lease{totalLeases === 1 ? "" : "s"}
-              </span>
-            </div>
-          )}
+            ) : searched ? (
+              <>
+                <span className="rounded-full border border-[#e2e7e5] bg-[#f2f4f3] px-3 py-1 text-xs text-mv-slate">
+                  <b className="text-mv-green-deep">{W.length}</b> of {U.length}
+                  {!anyLeaseTicked && owners.length === 500 ? "+" : ""} owner
+                  {U.length === 1 ? "" : "s"}
+                </span>
+                <span className="rounded-full border border-[#e2e7e5] bg-[#f2f4f3] px-3 py-1 text-xs text-mv-slate">
+                  <b className="text-mv-green-deep">{L.length}</b> of{" "}
+                  {totalLeases} lease{totalLeases === 1 ? "" : "s"}
+                </span>
+              </>
+            ) : null}
+            <span className="ml-auto text-[11px] text-mv-muted">
+              Results update as you type
+            </span>
+          </div>
         </form>
 
         <p aria-live="polite" className={status ? "mb-[10px] text-[13px] text-mv-muted" : "sr-only"}>
           {status}
         </p>
-        {searched && (
+        {/* Before the first filter: what this page can do, instead of two
+            empty panels staring back. Any filter swaps this for the results. */}
+        {!searched && !searching && <IntroFeatures meta={meta} />}
+
+        {searched && !searching && (
           <p className="mb-[14px] rounded-[10px] border border-mv-line border-l-4 border-l-mv-green bg-white px-[14px] py-[9px] text-[13px] text-mv-slate">
             {owners.length ? (
               <strong>Your matches</strong>
@@ -462,10 +620,21 @@ export function ClaimFinder() {
           </p>
         )}
 
-        <div className="grid grid-cols-[370px_1fr] items-stretch gap-[18px] pb-2 max-[900px]:grid-cols-1 [&>*]:flex [&>*]:min-w-0">
+        <div
+          className={`grid grid-cols-[370px_1fr] items-stretch gap-[18px] pb-2 max-[900px]:grid-cols-1 [&>*]:flex [&>*]:min-w-0 ${
+            !searched && !searching ? "hidden" : ""
+          }`}
+        >
           <div>
             <LeasePanel
               searched={searched}
+              busyLabel={
+                searching
+                  ? "Searching the rolls…"
+                  : leaseLoading
+                    ? "Loading every owner on that lease…"
+                    : null
+              }
               leases={L}
               ownerCount={W.length}
               anyOwnerTicked={anyOwnerTicked}
@@ -484,6 +653,14 @@ export function ClaimFinder() {
           <div>
             <OwnerTable
               searched={searched}
+              busyLabel={
+                searching
+                  ? "Searching the rolls…"
+                  : leaseLoading
+                    ? "Loading every owner on that lease…"
+                    : null
+              }
+              pendingOwnerKey={pendingOwnerKey}
               W={W}
               universeCount={U.length}
               corr={corr}
@@ -497,6 +674,7 @@ export function ClaimFinder() {
               onClaim={claimOne}
               onClearTicks={() => setSelO({})}
               onClaimSelected={claimSelected}
+              onViewLeaseDetails={viewLeaseDetails}
             />
           </div>
         </div>
@@ -522,6 +700,9 @@ export function ClaimFinder() {
           onSaveCorrection={saveCorrection}
           onClose={closeModal}
         />
+      )}
+      {details && (
+        <LeaseDetailsModal rows={details} onClose={() => setDetails(null)} />
       )}
       <LeaseDrawer lease={drawer} onClose={() => setDrawer(null)} />
     </div>

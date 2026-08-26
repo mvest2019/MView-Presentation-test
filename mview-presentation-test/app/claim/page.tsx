@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { getSessionUser } from "@/lib/session";
+
 import { ClaimFinder } from "./_components/claim-finder";
 
 export const metadata: Metadata = {
@@ -17,6 +19,9 @@ export const metadata: Metadata = {
  * `_components/claim-finder.tsx` for the engine's provenance and the
  * behaviours it preserves.
  */
-export default function ClaimPage() {
-  return <ClaimFinder />;
+export default async function ClaimPage() {
+  // Read on the server, like the header does: a signed-in visitor who claims
+  // a record goes straight to their portal instead of the sign-up pitch.
+  const user = await getSessionUser();
+  return <ClaimFinder signedIn={user !== null} />;
 }

@@ -80,6 +80,88 @@ export function Spinner() {
   );
 }
 
+/**
+ * Skeletons while the API is in flight — the dev backend can take seconds,
+ * and a frozen page reads as broken. Shaped like the content they stand in
+ * for, so nothing jumps when the data lands. Both carry `role="status"` with
+ * a visually hidden label for screen readers.
+ */
+function SkeletonBar({ className }: { className: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`block animate-pulse rounded bg-mv-line-soft ${className}`}
+    />
+  );
+}
+
+/** Left panel while loading: ghost lease cards. */
+export function LeaseListSkeleton({ label }: { label: string }) {
+  return (
+    <div role="status">
+      <span className="sr-only">{label}</span>
+      {[0, 1, 2, 3].map((i) => (
+        <div
+          key={i}
+          className="mt-2 flex items-start gap-[10px] rounded-[11px] border border-mv-line-soft bg-white px-3 py-[12px]"
+        >
+          <SkeletonBar className="mt-[2px] h-4 w-4 flex-none !rounded" />
+          <div className="min-w-0 flex-1">
+            <SkeletonBar className={`h-[12px] ${i % 2 ? "w-3/5" : "w-4/5"}`} />
+            <SkeletonBar className="mt-[8px] h-[9px] w-2/5" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Owner table while loading: ghost rows matching the real column layout. */
+export function OwnerRowsSkeleton({ label }: { label: string }) {
+  return (
+    <>
+      <tr className="sr-only">
+        <td colSpan={6} role="status">
+          {label}
+        </td>
+      </tr>
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <tr key={i} className="odd:bg-white even:bg-[#fafcfb]">
+          <td className="border-b border-[#eef2f0] px-3 py-[13px]">
+            <SkeletonBar className="h-[15px] w-[15px] !rounded" />
+          </td>
+          <td className="border-b border-[#eef2f0] px-3 py-[13px]">
+            <SkeletonBar className={`h-[12px] ${i % 3 ? "w-4/5" : "w-3/5"}`} />
+            <SkeletonBar className="mt-[7px] h-[9px] w-2/5" />
+          </td>
+          <td className="border-b border-[#eef2f0] px-3 py-[13px]">
+            <SkeletonBar className={`h-[11px] ${i % 2 ? "w-5/6" : "w-2/3"}`} />
+          </td>
+          <td className="border-b border-[#eef2f0] px-3 py-[13px]">
+            <SkeletonBar className="ml-auto h-[11px] w-7" />
+          </td>
+          <td className="border-b border-[#eef2f0] px-3 py-[13px]">
+            <SkeletonBar className="ml-auto h-[11px] w-16" />
+          </td>
+          <td className="border-b border-[#eef2f0] px-3 py-[13px]">
+            <SkeletonBar className="h-[26px] w-[58px] !rounded-lg" />
+          </td>
+        </tr>
+      ))}
+    </>
+  );
+}
+
+/** Row-sized spinner — an owner row while its same-name lookup runs. */
+export function InlineSpinner() {
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-block h-[15px] w-[15px] animate-spin rounded-full border-2 border-mv-green-deep/25 border-t-mv-green-deep align-middle"
+    />
+  );
+}
+
 /** The muted magnifier centred above empty-state copy. */
 export function EmptyState({ children }: { children: React.ReactNode }) {
   return (
