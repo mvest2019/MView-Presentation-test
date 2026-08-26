@@ -51,6 +51,9 @@ type MapChromeProps = {
   zoom: number;
   /** True once the map is close enough to draw individual wells. */
   wellsVisible: boolean;
+  /** False past the point where the bubbles come off, so the legend goes
+      with them rather than explaining an empty map. */
+  marksVisible: boolean;
   center: { longitude: number; latitude: number };
   /** Active basemap id, so the gallery can mark its tile. */
   basemap: string;
@@ -110,6 +113,7 @@ export function MapChrome({
   scale,
   zoom,
   wellsVisible,
+  marksVisible,
   center,
   basemap,
   onBasemapChange,
@@ -713,8 +717,9 @@ export function MapChrome({
           filtersOpen ? "left-[276px] hidden lg:flex" : "left-3 flex"
         }`}
       >
-      {/* Always there, but explaining whichever of the two the map is drawing. */}
-      {legendsOpen && (
+      {/* Explains whichever of the two the map is drawing, and steps aside
+          when it is drawing neither. */}
+      {legendsOpen && marksVisible && (
         <LegendsPanel
           mode={wellsVisible ? "wells" : "clusters"}
           defaultOpen={wideScreen}

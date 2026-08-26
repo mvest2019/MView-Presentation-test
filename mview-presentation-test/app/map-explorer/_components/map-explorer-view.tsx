@@ -317,6 +317,17 @@ const TIME_LAPSE_TICK_MS = 420;
 const WELL_ZOOM = 10;
 
 /*
+ * The zoom at which the wells give way again, this level included.
+ *
+ * The band is asymmetric for the same reason the cluster bands are: the wells
+ * arrive at 10, but a step back to 9 is still looking at the same ground, and
+ * swapping a field of wells for bubbles because the readout ticked over reads
+ * as the map losing its place. So the wells hold at 9 and the sub-clusters
+ * come back at 8, which is where they started.
+ */
+const WELL_LEAVE_ZOOM = 8;
+
+/*
  * How far apart matched wells may be before Apply stops trying to frame them.
  *
  * Three degrees is roughly two hundred miles — a county, a field, or one
@@ -348,10 +359,12 @@ const PULSE_FRAMES = 26;
 const PULSE_INTERVAL_MS = 45;
 
 /*
- * Below the first step nothing is requested, but what is already drawn stays:
- * zooming out from 5 to 4 or 3 is still looking at the same wells, just from
- * further away. Only past this point is the view so wide that the bubbles no
- * longer describe anything, and they are dropped.
+ * The zoom at which the bubbles are dropped, this level included.
+ *
+ * Zooming out from 5 to 4 is still looking at the same wells from further
+ * away, so what is drawn stays. By 3 the whole of Texas is a few hundred
+ * pixels across: the bubbles overlap into one green mass that describes
+ * nothing, so at this level and below they come off.
  */
 const CLUSTER_CLEAR_ZOOM = 3;
 
@@ -378,6 +391,32 @@ function zoomLevel(view: { zoom?: number } | null | undefined): number {
 
 function clusterZoomTier(zoom: number): number {
   return CLUSTER_ZOOM_STEPS.filter((step) => zoom >= step).length;
+}
+
+/**
+ * The band to be in, given the zoom and the band already showing.
+ *
+ * The two directions are not the same, on purpose. Going in, the sub-clusters
+ * arrive at 8, as the readout says. Coming back out they stay until 5 — a step
+ * back from 8 to 7 is still looking at the same ground, and reloading the
+ * coarse bubbles for it means a request and a flicker for a move that changed
+ * nothing. So 6 and 7 keep whichever band is already drawn, and only 5 puts
+ * the coarse bubbles back.
+ *
+ * The effect is that zooming out retraces what you saw on the way in rather
+ * than re-deciding at every step.
+ */
+function nextClusterTier(zoom: number, current: number): number {
+  /* 8 and closer: the finer bubbles, whichever way you arrived. */
+  if (zoom >= CLUSTER_ZOOM_STEPS[1]) return 2;
+
+  /* 6 and 7: whatever is already on the map stays on it. */
+  if (zoom > CLUSTER_ZOOM_STEPS[0]) return current >= 2 ? 2 : 1;
+
+  /* 5 exactly: back to the coarse bubbles. */
+  if (zoom >= CLUSTER_ZOOM_STEPS[0]) return 1;
+
+  return 0;
 }
 
 /**
@@ -1956,17 +1995,23 @@ export function MapExplorerView() {
 
           const zoom = zoomLevel(view);
 
-          if (zoom < CLUSTER_CLEAR_ZOOM) {
+          if (zoom <= CLUSTER_CLEAR_ZOOM) {
             clearTimeout(clusterTimer);
             clearClusters();
             clearWells();
             return;
           }
 
-          if (zoom >= WELL_ZOOM) {
-            // Wells replace the bubbles outright; the tier resets so coming
-            // back out counts as a new band and reloads them.
-            if (clusterTierRef.current !== -1) {
+          /*
+           * Wells at 10 on the way in, and they hold through 9 on the way
+           * out. `-1` is the tier that means wells, so it doubles as the
+           * record of which way this band was entered.
+           */
+          const showingWells = clusterTierRef.current === -1;
+
+          if (zoom >= WELL_ZOOM || (showingWells && zoom > WELL_LEAVE_ZOOM)) {
+            // Wells replace the bubbles outright.
+            if (!showingWells) {
               clusterTierRef.current = -1;
               clearClusters();
             }
@@ -1977,7 +2022,7 @@ export function MapExplorerView() {
 
           clearWells();
 
-          const tier = clusterZoomTier(zoom);
+          const tier = nextClusterTier(zoom, clusterTierRef.current);
           if (tier !== clusterTierRef.current) {
             clusterTierRef.current = tier;
             clearTimeout(clusterTimer);
@@ -3220,6 +3265,7 @@ export function MapExplorerView() {
           scale={readout.scale}
           zoom={readout.zoom}
           wellsVisible={readout.zoom >= WELL_ZOOM}
+          marksVisible={readout.zoom > CLUSTER_CLEAR_ZOOM}
           onExportCsv={exportCsv}
           onSelectApi={selectApi}
           onClearApi={clearApi}

@@ -763,3 +763,95 @@ export const getLeaseNearbyMap = async (
     );
   }
 };
+
+/** One row of the decline grid, as the service computes it. */
+export type MapInsightMetric = {
+  key: string;
+  label: string;
+  value: number | null;
+  unit: string | null;
+  /** "oil", "gas", "mix", "history", "totals" — which block the row belongs to. */
+  group: string | null;
+  help?: string | null;
+};
+
+/** A tone-badged note or finding written by the service. */
+export type MapInsightNote = {
+  tone: "ok" | "info" | "warn" | "bad" | string;
+  title: string;
+  body: string;
+};
+
+/** One age cohort, with the medians the comparison charts are drawn from. */
+export type MapInsightCohort = {
+  key: string;
+  label: string;
+  n: number;
+  medianDepletion: number | null;
+  medianEurBoe: number | null;
+  p25EurBoe: number | null;
+  p75EurBoe: number | null;
+  /** True for the cohort this well itself falls in. */
+  isOwn: boolean;
+};
+
+export type MapWellInsights = {
+  api10: string;
+  hasProduction: boolean;
+  noProductionReason: string | null;
+  decline: {
+    metrics: MapInsightMetric[];
+    reporting: {
+      label: string | null;
+      tone: string | null;
+      detail: string | null;
+    } | null;
+    rollUp: {
+      cumBoe: number | null;
+      remBoe: number | null;
+      eurBoe: number | null;
+      depletion: number | null;
+      lastBoe: number | null;
+      reserveLifeMonths: number | null;
+    } | null;
+    notes: MapInsightNote[];
+  } | null;
+  cohorts: {
+    available: boolean;
+    peerLabel: string | null;
+    peerTotal: number | null;
+    ownBucket: string | null;
+    ownBucketLabel: string | null;
+    ownDepletion: number | null;
+    ownEurBoe: number | null;
+    rows: MapInsightCohort[];
+    findings: MapInsightNote[];
+  } | null;
+};
+
+/**
+ * GET /api/v1/map/wells/{api}/insights
+ *
+ * The decline diagnostics, the reserve-integrity comparison and the cohort
+ * EUR table — everything the Insights page used to carry as fixed copy. The
+ * service does the arithmetic and writes the notes, so the page renders what
+ * it is given rather than deriving anything of its own.
+ */
+export const getWellInsightsMap = async (
+  api: string,
+): Promise<MapWellInsights> => {
+  try {
+    const response = await fetch(
+      `${process.env.MAP_BASE_URL}/api/v1/map/wells/${encodeURIComponent(api)}/insights`,
+    );
+    const data = await response.json();
+
+    if (response.ok && data?.api10) {
+      return data as MapWellInsights;
+    }
+
+    throw new Error("Failed to fetch insights for this well");
+  } catch (error) {
+    throw new Error(String(error) || "Failed to fetch insights for this well");
+  }
+};
