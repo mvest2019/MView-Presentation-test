@@ -1012,10 +1012,24 @@ function Hero() {
           })}
         </div>
 
+        {/* Why the buttons are here at all.
+
+            This page is what the map explorer shows before you sign in, and
+            nothing above says so — a reader could take the screenshots for the
+            product and wonder why pressing them does nothing. One line, in
+            plain terms: the account is the way in. */}
+        <p className="mt-7 max-w-[46ch] text-[13px] leading-relaxed text-mv-slate lg:text-[13.5px]">
+          <span className="font-semibold text-mv-ink">
+            The map opens with a free account.
+          </span>{" "}
+          Create one — about a minute — and every well, filter, record and
+          export on this page is yours to use.
+        </p>
+
         {/* The ask, at the top of the page as well as in the band further
             down: someone who is already convinced by the picture beside this
             should not have to read eight sections to find the way in. */}
-        <div className="mt-8 flex flex-wrap items-center gap-3">
+        <div className="mt-5 flex flex-wrap items-center gap-3">
           <Link
             href="/register"
             className="inline-flex items-center gap-2 rounded-xl bg-mv-green-deep px-[20px] py-[12px] text-[13.5px] font-semibold text-white shadow-mv transition-[filter] hover:brightness-105"

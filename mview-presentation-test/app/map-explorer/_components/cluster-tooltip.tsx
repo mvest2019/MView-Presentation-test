@@ -79,7 +79,7 @@ export function ClusterTooltip({
   return (
     <div
       role="tooltip"
-      className={`pointer-events-none absolute z-30 w-[228px] -translate-x-1/2 ${
+      className={`pointer-events-none absolute z-10 w-[228px] -translate-x-1/2 ${
         below ? "" : "-translate-y-full"
       }`}
       style={{ left, top: below ? at.y + bubble + 12 : at.y - 12 }}
