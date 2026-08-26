@@ -64,7 +64,7 @@ function headersFor(
     ["County", null, "left"],
     ["Oil Produced", first?.oilUnit || OIL_UNIT, "right"],
     ["Gas Produced", first?.gasUnit || GAS_UNIT, "right"],
-    ["Total Produced", first?.boeUnit || BOE_UNIT, "right"],
+    ["BOE Produced", first?.boeUnit || BOE_UNIT, "right"],
     ["Share of Operator", null, "right"],
   ] as const;
 }

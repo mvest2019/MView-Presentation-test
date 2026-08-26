@@ -45,6 +45,7 @@ import { DeferredSection } from "@/app/_components/deferred-section";
 import { OperatorLeases } from "./_components/operator-leases";
 import { OperatorWhatChanged } from "./_components/operator-what-changed";
 import { CountyProduction } from "./_components/county-production";
+import { EditableAddress } from "./_components/editable-address";
 import { CountyShading } from "./_components/county-shading";
 import { RecentWellsPermits } from "./_components/recent-wells-permits";
 import { ProductionOverTime } from "./_components/production-over-time";
@@ -507,11 +508,13 @@ export default async function OperatorDetailRoute({
                 {operator.contactNumber ? (
                   <PanelRow label="Contact" value={operator.contactNumber} />
                 ) : null}
+                {/* The one editable row in this panel — see `editable-address.tsx`.
+                    It renders `PanelRow`'s markup until the pencil is pressed, so the
+                    panel reads exactly as it did. */}
                 {operator.headquarters ? (
-                  <PanelRow
-                    label="Address"
-                    value={operator.headquarters}
-                    wrap
+                  <EditableAddress
+                    operatorNumber={operator.operatorNumber}
+                    address={operator.headquarters}
                   />
                 ) : null}
               </Panel>
