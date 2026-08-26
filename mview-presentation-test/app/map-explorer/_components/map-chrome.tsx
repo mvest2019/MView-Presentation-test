@@ -230,6 +230,30 @@ export function MapChrome({
   const basemapRef = useRef<HTMLDivElement>(null);
   const toolsRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
+
+  /*
+   * The Time-lapse hint: whether to show it, and where.
+   *
+   * Measured against the bar rather than nested in it. The bar scrolls
+   * horizontally and `overflow-x` clips on both axes, so a card inside it
+   * either gets cut off or widens the strip and gives it a scrollbar.
+   */
+  const timeLapseButtonRef = useRef<HTMLButtonElement>(null);
+  const [hintAnchor, setHintAnchor] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+
+  const showTimeLapseHint = () => {
+    const toolbar = toolbarRef.current?.getBoundingClientRect();
+    const button = timeLapseButtonRef.current?.getBoundingClientRect();
+    if (!toolbar || !button) return;
+
+    setHintAnchor({
+      top: Math.round(button.bottom - toolbar.top + 8),
+      left: Math.round(button.left + button.width / 2 - toolbar.left),
+    });
+  };
   const shareButtonRef = useRef<HTMLSpanElement>(null);
   const bar = scaleBar(scale);
 
@@ -515,12 +539,18 @@ export function MapChrome({
               — the mock drops it too, and Share falls back to its icon. */}
           <div className="flex flex-wrap items-center justify-end gap-2 lg:contents">
 
+          {/* Always pressable — the view decides whether it can replay. The
+              hint only says why it cannot, and only while the map is showing
+              bubbles rather than wells. */}
           <ToolbarButton
             icon={Clock}
             label="Time-lapse"
             title="Replay the wells by the year they were recompleted"
             expanded={timeLapseOpen}
             onClick={onToggleTimeLapse}
+            buttonRef={timeLapseButtonRef}
+            onHoverStart={wellsVisible ? undefined : showTimeLapseHint}
+            onHoverEnd={() => setHintAnchor(null)}
           />
 
           <Divider />
@@ -638,6 +668,24 @@ export function MapChrome({
           </div>
           </div>
         </div>
+
+        {/* The Time-lapse hint. Sibling of the bar for the same reason the
+            dropdown below is: nested, it would widen the strip and give it a
+            scrollbar. */}
+        {hintAnchor && !wellsVisible && (
+          <div
+            role="tooltip"
+            style={{ top: hintAnchor.top, left: hintAnchor.left }}
+            className="pointer-events-none absolute z-50 w-[248px] -translate-x-1/2 rounded-lg bg-white px-[13px] py-[10px] text-[11.5px] font-medium leading-snug text-mv-slate shadow-mv-lg ring-1 ring-mv-line"
+          >
+            <span
+              aria-hidden="true"
+              className="absolute -top-[5px] left-1/2 h-[9px] w-[9px] -translate-x-1/2 rotate-45 border-l border-t border-mv-line bg-white"
+            />
+            Time-lapse replays individual wells. Zoom in to level 10, where the
+            wells are drawn, then press it.
+          </div>
+        )}
 
         {/* Sibling of the bar, not a child: the bar scrolls horizontally on
             narrow viewports, and `overflow-x` clips on both axes, so a dropdown
@@ -828,6 +876,9 @@ function ToolbarButton({
   expanded,
   title,
   disabled,
+  buttonRef,
+  onHoverStart,
+  onHoverEnd,
 }: {
   icon: typeof MapIcon;
   /** Empty renders icon-only; `title` then carries the accessible name. */
@@ -837,11 +888,21 @@ function ToolbarButton({
   expanded?: boolean;
   title?: string;
   disabled?: boolean;
+  /** Set only where the caller needs to measure the button's position. */
+  buttonRef?: React.RefObject<HTMLButtonElement | null>;
+  onHoverStart?: () => void;
+  onHoverEnd?: () => void;
 }) {
   return (
     <button
       type="button"
+      ref={buttonRef}
       onClick={onClick}
+      onMouseEnter={onHoverStart}
+      onMouseLeave={onHoverEnd}
+      /* Keyboard too: a hint only a mouse can reach is half a hint. */
+      onFocus={onHoverStart}
+      onBlur={onHoverEnd}
       disabled={disabled}
       aria-expanded={expanded}
       aria-label={label || title}

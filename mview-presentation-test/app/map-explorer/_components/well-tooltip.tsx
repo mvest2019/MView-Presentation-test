@@ -41,7 +41,7 @@ export function WellTooltip({ well }: { well: HoveredWell }) {
   return (
     <div
       role="tooltip"
-      className={`pointer-events-none absolute z-30 w-[236px] -translate-x-1/2 ${
+      className={`pointer-events-none absolute z-10 w-[236px] -translate-x-1/2 ${
         below ? "" : "-translate-y-full"
       }`}
       style={{ left, top: below ? well.y + 14 : well.y - 12 }}
