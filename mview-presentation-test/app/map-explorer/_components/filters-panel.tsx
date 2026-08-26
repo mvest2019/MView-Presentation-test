@@ -136,6 +136,16 @@ const SEARCH_SECTIONS: Record<string, string | undefined> = {
  */
 const ID_FACETS = new Set(["operator", "field"]);
 
+/*
+ * Rows a facet may show before it scrolls inside itself.
+ *
+ * Eight is about the tallest a section can be and still leave the ones below
+ * it reachable without scrolling the whole rail. Short lists — the three well
+ * types, say — stay open in full, because a scrollbar on four rows is furniture
+ * around nothing.
+ */
+const LONG_LIST = 8;
+
 const SECTION_FACETS: Record<string, string> = {
   county: "county",
   operator: "operator",
@@ -1216,10 +1226,17 @@ function CheckboxSection({
 
       {/* The long lists scroll inside the section rather than stretching it —
           270 counties would otherwise push every section below them out of
-          reach. A Find… box is what marks a list as one of the long ones. */}
+          reach.
+
+          Measured by how many rows there actually are, not by whether the
+          section has a Find… box. Well type has no search and twenty-five
+          entries, so the old test missed it and that one section pushed
+          everything below it out of reach. */}
       <div
         className={
-          section.searchable ? "mv-thin-scroll max-h-[248px] overflow-y-auto" : ""
+          visible.length > LONG_LIST
+            ? "mv-thin-scroll max-h-[248px] overflow-y-auto"
+            : ""
         }
       >
       {!notice &&
