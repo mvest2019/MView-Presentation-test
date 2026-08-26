@@ -712,6 +712,16 @@ export function FiltersPanel({
   const canApply = hasSelection || dirty;
 
   /*
+   * Whether a filter is currently applied — which is what Clear is for.
+   *
+   * Derived rather than stored: the boxes match what was last applied exactly
+   * when something is ticked and nothing has changed since. Ticking one more
+   * makes it dirty, Apply lights up again and Clear steps aside, because at
+   * that moment the map is not showing what the panel says.
+   */
+  const applied = hasSelection && !dirty;
+
+  /*
    * Clearing the last box clears the map, without waiting for Apply.
    *
    * Apply exists to say "run this filter", and an empty filter is not one —
@@ -1165,6 +1175,30 @@ export function FiltersPanel({
         >
           Apply filters
         </button>
+
+        {/* Only once a filter is on the map. Clearing takes every box off,
+            which the effect above turns into an empty apply — the same path
+            unticking the last box already takes, rather than a second way of
+            doing the same thing. */}
+        {applied && (
+          <button
+            type="button"
+            onClick={() => {
+              setChecked((previous) =>
+                Object.fromEntries(
+                  Object.keys(previous).map((section) => [
+                    section,
+                    new Set<string>(),
+                  ]),
+                ),
+              );
+              setPickedParams({});
+            }}
+            className="mt-2 w-full cursor-pointer rounded-lg border border-mv-red px-3 py-[8px] text-[12.5px] font-semibold text-mv-red hover:bg-mv-red-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-red"
+          >
+            Clear filters
+          </button>
+        )}
       </div>
     </div>
   );
