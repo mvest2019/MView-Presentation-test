@@ -10,12 +10,13 @@ import {
   Flame,
   Mail,
   MapPin,
+  TriangleAlert,
   X,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { type MapLeaseNearby } from "@/lib/map-api";
+import { saveLeaseWatch, type MapLeaseNearby } from "@/lib/map-api";
 
 import { Hint } from "./hint";
 import { useDraggableCard } from "./use-draggable-card";
@@ -211,13 +212,23 @@ export function NearbyPanel({
           </p>
         )}
 
+        {/* Marked as a warning, not set in the same quiet grey as a
+            reading: this is the card saying it cannot answer — the point did
+            not trace to a lease, or the service did not reply — and in the
+            house grey it read as one more line of prose about the ring. */}
         {answer.kind === "problem" && (
-          <p
+          <div
             role="alert"
-            className="mt-[14px] rounded-lg border border-mv-line bg-[#fafbfa] px-3 py-[11px] text-[11px] lg:text-[12.5px] leading-snug text-mv-slate"
+            className="mt-[14px] flex items-start gap-[9px] rounded-lg border border-mv-sand-line bg-mv-sand-tint px-3 py-[11px] text-[11px] lg:text-[12.5px] leading-snug text-mv-sand"
           >
-            {answer.message}
-          </p>
+            <TriangleAlert
+              size={14}
+              strokeWidth={2}
+              className="mt-[1px] shrink-0"
+              aria-hidden="true"
+            />
+            <span className="min-w-0">{answer.message}</span>
+          </div>
         )}
 
         {stats && data && (
@@ -398,17 +409,33 @@ export function NearbyPanel({
                               />
                               {filing.date ?? "—"}
                             </span>
-                            <span className="mt-[5px] block text-[10px] lg:text-[10.5px] tabular-nums text-mv-muted">
-                              {filing.distanceMiles === null
-                                ? "—"
-                                : `${filing.distanceMiles.toFixed(1)} mi`}
-                              {filing.bearing ? ` ${filing.bearing}` : ""}
-                            </span>
+                            {/* Nothing at all where the service has no
+                                distance, rather than an em dash under every
+                                date: a column of lone dashes reads as a
+                                broken row. How many are unplaced is said
+                                once, under the list. */}
+                            {filing.distanceMiles !== null && (
+                              <span className="mt-[5px] block text-[10px] lg:text-[10.5px] tabular-nums text-mv-muted">
+                                {filing.distanceMiles.toFixed(1)} mi
+                                {filing.bearing ? ` ${filing.bearing}` : ""}
+                              </span>
+                            )}
                           </span>
                         </li>
                       );
                     })}
                   </ol>
+
+                  {/* The service counts what it could not place, and says why
+                      in `distanceBasis`: it measures between the subject
+                      lease's wells and the event's well, and answers null
+                      where either has no coordinates. */}
+                  {data.meta.unplacedEvents > 0 && (
+                    <p className="mt-[8px] text-[10px] lg:text-[11px] leading-snug text-mv-muted">
+                      {data.meta.unplacedEvents} of these carry no coordinates
+                      on their record, so no distance is shown for them.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -445,9 +472,11 @@ export function NearbyPanel({
             }`}
           >
             <Download size={14} aria-hidden="true" />
-            {filings.length > 0
-              ? `Download these ${filings.length} filing${filings.length === 1 ? "" : "s"}`
-              : "Nothing new to download"}
+            {filings.length === 0
+              ? "Nothing new to download"
+              : filings.length === 1
+                ? "Download this filing"
+                : `Download these ${filings.length} filings`}
           </button>
         )}
 
@@ -461,7 +490,15 @@ export function NearbyPanel({
           {emailOpen ? "Hide email settings" : "Email me when this changes"}
         </button>
 
-        {emailOpen && <EmailSettings onSaved={() => setEmailOpen(false)} />}
+        {emailOpen && (
+          <EmailSettings
+            /* The lease is what is watched, so a click that never traced to
+               one has nothing to save. */
+            lease={lease?.key ?? null}
+            radiusMiles={radiusMiles}
+            onSaved={() => setEmailOpen(false)}
+          />
+        )}
       </div>
     </div>
   );
@@ -562,14 +599,37 @@ function Stat({
 }
 
 /**
- * Stage three. Nothing is sent anywhere — see the note the panel prints under
- * the form, which is the mock's own wording and still true here.
+ * Stage three: the watch itself, sent to `POST /api/v1/watches`.
+ *
+ * The lease key and the distance come from the card above — they are what is
+ * being watched — and the two switches and the address are what this form is
+ * for.
  */
-function EmailSettings({ onSaved }: { onSaved: () => void }) {
-  const [onPermit, setOnPermit] = useState(true);
+function EmailSettings({
+  lease,
+  radiusMiles,
+  onSaved,
+}: {
+  /** The lease's key, or null while the click has not been traced to one. */
+  lease: string | null;
+  radiusMiles: number;
+  onSaved: () => void;
+}) {
+  /* Neither ticked to begin with. A watch is a standing instruction to write
+     to somebody, and the one it sends should be the one they chose rather than
+     the one that was already chosen for them. Until one is ticked the note
+     under the form says so and Save stays shut. */
+  const [onPermit, setOnPermit] = useState(false);
   const [onProducing, setOnProducing] = useState(false);
   const [email, setEmail] = useState("");
-  const [saved, setSaved] = useState(false);
+  /*
+   * Where the request has got to. Four states rather than a pair of flags:
+   * "sending" and "sent" have to look different, and a refusal has to say
+   * what it was.
+   */
+  const [state, setState] = useState<
+    { kind: "idle" } | { kind: "saving" } | { kind: "saved" } | { kind: "problem"; message: string }
+  >({ kind: "idle" });
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
 
@@ -592,15 +652,44 @@ function EmailSettings({ onSaved }: { onSaved: () => void }) {
     [],
   );
 
+  /* Nothing to send without these, and each is worth saying rather than a
+     button that simply does not respond. */
+  const address = email.trim();
+  const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address);
+  const watchesSomething = onPermit || onProducing;
+  const ready = lease !== null && looksLikeEmail && watchesSomething;
+
   /**
-   * Confirm, then fold the section away. The pause is the point — collapsing
-   * on the same tick would swallow the only acknowledgement the user gets,
-   * leaving them unsure whether the click registered.
+   * Send it, then confirm, then fold the section away. The pause before
+   * closing is the point — collapsing on the same tick would swallow the only
+   * acknowledgement the reader gets, leaving them unsure it registered.
    */
   function save() {
-    setSaved(true);
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-    closeTimer.current = setTimeout(onSaved, 800);
+    if (!ready || state.kind === "saving") return;
+
+    setState({ kind: "saving" });
+
+    saveLeaseWatch({
+      lease: lease,
+      radius: radiusMiles,
+      notifyNewPermit: onPermit,
+      notifyNewCompletion: onProducing,
+      email: address,
+    })
+      .then(() => {
+        setState({ kind: "saved" });
+        if (closeTimer.current) clearTimeout(closeTimer.current);
+        closeTimer.current = setTimeout(onSaved, 1200);
+      })
+      .catch((failure: unknown) => {
+        setState({
+          kind: "problem",
+          message:
+            failure instanceof Error
+              ? failure.message
+              : "Could not save this watch.",
+        });
+      });
   }
 
   return (
@@ -626,7 +715,9 @@ function EmailSettings({ onSaved }: { onSaved: () => void }) {
           value={email}
           onChange={(event) => {
             setEmail(event.target.value);
-            setSaved(false);
+            /* Editing the address makes the last answer stale, whichever it
+               was. */
+            setState({ kind: "idle" });
           }}
           placeholder="you@example.com"
           className="min-w-0 flex-1 rounded-lg border border-mv-line px-3 py-[8px] text-[11px] lg:text-[12.5px] leading-tight text-mv-ink outline-none focus:border-mv-green-deep placeholder:text-mv-muted"
@@ -634,15 +725,40 @@ function EmailSettings({ onSaved }: { onSaved: () => void }) {
         <button
           type="button"
           onClick={save}
-          className="shrink-0 cursor-pointer rounded-lg bg-mv-green-deep px-[14px] py-[9px] text-[11px] lg:text-[12.5px] font-semibold leading-tight text-white hover:brightness-105"
+          disabled={!ready || state.kind === "saving"}
+          className="flex shrink-0 items-center gap-[7px] rounded-lg bg-mv-green-deep px-[14px] py-[9px] text-[11px] lg:text-[12.5px] font-semibold leading-tight text-white enabled:cursor-pointer enabled:hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {saved ? "Saved" : "Save watch"}
+          {state.kind === "saving" && (
+            <span
+              aria-hidden="true"
+              className="h-[12px] w-[12px] shrink-0 animate-spin rounded-full border-2 border-white/40 border-t-white"
+            />
+          )}
+          {state.kind === "saving"
+            ? "Saving…"
+            : state.kind === "saved"
+              ? "Saved"
+              : "Save watch"}
         </button>
       </div>
 
+      {state.kind === "problem" && (
+        <p
+          role="alert"
+          className="mt-[8px] rounded-lg border border-[#f6c9c6] bg-mv-red-bg px-3 py-[8px] text-[10.5px] lg:text-[11.5px] leading-snug text-mv-red"
+        >
+          {state.message}
+        </p>
+      )}
+
       <p className="mt-[10px] text-[10px] lg:text-[11.5px] leading-snug text-mv-muted">
-        Email delivery isn&apos;t connected yet. Saving keeps this watch in the
-        page link, so you can share it or come back to it.
+        {lease === null
+          ? "This point has not been traced to a lease, so there is nothing to watch yet."
+          : !watchesSomething
+            ? "Choose at least one thing to watch for."
+            : `The watch is kept against lease ${lease} at ${radiusMiles} ${
+                radiusMiles === 1 ? "mile" : "miles"
+              }. One email when something is filed inside it.`}
       </p>
     </div>
   );
