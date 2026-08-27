@@ -747,7 +747,23 @@ export function FiltersPanel({
     // A search hit is a filter in its own right: picking one asks the map for
     // those wells, rather than only ticking a box to be applied afterwards.
     if (suggestion.facet && suggestion.param) {
-      onApply?.({ [suggestion.facet]: [suggestion.param] });
+      /*
+       * Added to what is already applied, not instead of it — and that goes
+       * for its own facet too.
+       *
+       * Sent alone, picking an operator threw away the county that was
+       * ticked; sent as the only value of its facet, searching for a second
+       * county threw away the first. Both left the map showing one thing
+       * while the panel's boxes said another. A pick is one more value on one
+       * facet, so it joins the list rather than becoming it.
+       */
+      const already = selectedFilters[suggestion.facet] ?? [];
+      onApply?.({
+        ...selectedFilters,
+        [suggestion.facet]: already.includes(suggestion.param)
+          ? already
+          : [...already, suggestion.param],
+      });
       /* No section row to tick means nothing else will undo this. */
       searchAloneRef.current = !suggestion.sectionId;
     }
@@ -767,9 +783,12 @@ export function FiltersPanel({
       }
 
       setOpenSections((previous) => new Set(previous).add(sectionId));
+      /* Ticked as well as, not instead of: the row the search found is one
+         more county — or operator, or field — beside whatever was ticked
+         before it. */
       setChecked((previous) => ({
         ...previous,
-        [sectionId]: new Set([suggestion.label]),
+        [sectionId]: new Set(previous[sectionId]).add(suggestion.label),
       }));
     }
 
