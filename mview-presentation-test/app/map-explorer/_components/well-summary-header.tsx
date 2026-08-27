@@ -81,46 +81,55 @@ export function WellSummaryHeader({
   const noun = isPermit ? "permit" : "completion";
 
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <h2 className="text-[19px] font-extrabold leading-tight text-mv-ink">
-            Well Summary
-          </h2>
+    /*
+     * A container, like the band below it: this line sits in a panel that is a
+     * share of a split view, so its width has little to do with the window's.
+     * Wide, the title and the actions share a line; narrow, the actions drop
+     * beneath the title rather than being held to the right of it with the
+     * space between them left empty.
+     */
+    <div className="@container">
+      <div className="flex flex-col gap-3 @xl:flex-row @xl:items-center @xl:gap-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <h2 className="text-[19px] font-extrabold leading-tight text-mv-ink">
+              Well Summary
+            </h2>
 
-          {/* Which record this is, said rather than offered: the well's own
-              label decides it, so there is nothing here to pick. */}
-          <span className="rounded-full bg-mv-mint px-[9px] py-[4px] text-[10px] font-extrabold uppercase leading-none tracking-[.08em] text-mv-green-deep">
-            {record}
+            {/* Which record this is, said rather than offered: the well's own
+                label decides it, so there is nothing here to pick. */}
+            <span className="rounded-full bg-mv-mint px-[9px] py-[4px] text-[10px] font-extrabold uppercase leading-none tracking-[.08em] text-mv-green-deep">
+              {record}
+            </span>
+          </div>
+          <p className="mt-[3px] text-[11.5px] text-mv-slate">
+            Comprehensive overview of well performance and reserves
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 @xl:ml-auto @xl:flex-nowrap">
+          <button
+            type="button"
+            onClick={target.download}
+            disabled={!target.ready || target.busy}
+            title={
+              target.busy
+                ? "Composing the pages"
+                : target.ready
+                  ? `Download this ${noun} summary as PDF`
+                  : `Waiting for this well's ${noun}`
+            }
+            className="inline-flex shrink-0 items-center gap-[7px] rounded-lg border border-mv-line bg-white px-[13px] py-[7px] text-[12.5px] font-semibold text-mv-ink enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Download size={14} strokeWidth={2} aria-hidden="true" />
+            {target.busy ? "Preparing…" : "Export PDF"}
+          </button>
+
+          <span className="flex items-center gap-[6px] whitespace-nowrap text-[11px] text-mv-muted">
+            Last updated: {loadedAt ? stamp(loadedAt) : "loading…"}
+            <Clock size={13} strokeWidth={1.75} aria-hidden="true" />
           </span>
         </div>
-        <p className="mt-[3px] text-[11.5px] text-mv-slate">
-          Comprehensive overview of well performance and reserves
-        </p>
-      </div>
-
-      <div className="ml-auto flex items-center gap-3">
-        <button
-          type="button"
-          onClick={target.download}
-          disabled={!target.ready || target.busy}
-          title={
-            target.busy
-              ? "Composing the pages"
-              : target.ready
-                ? `Download this ${noun} summary as PDF`
-                : `Waiting for this well's ${noun}`
-          }
-          className="inline-flex items-center gap-[7px] rounded-lg border border-mv-line bg-white px-[13px] py-[7px] text-[12.5px] font-semibold text-mv-ink enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Download size={14} strokeWidth={2} aria-hidden="true" />
-          {target.busy ? "Preparing…" : "Export PDF"}
-        </button>
-
-        <span className="flex items-center gap-[6px] text-[11px] text-mv-muted">
-          Last updated: {loadedAt ? stamp(loadedAt) : "loading…"}
-          <Clock size={13} strokeWidth={1.75} aria-hidden="true" />
-        </span>
       </div>
     </div>
   );

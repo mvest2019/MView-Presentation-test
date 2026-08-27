@@ -163,30 +163,35 @@ export function PermitSummary({
         {/* ---------------- identity strip ----------------
           The completion record's band, to the pixel: switching records changes
           what is being read, not the furniture around it. */}
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-xl border border-[#cfe8da] bg-gradient-to-r from-[#eaf7ef] via-[#f2fbf5] to-[#e6f5ec] px-4 py-[14px]">
-          <span className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-full border border-[#bfe0cd] bg-white">
-            <Drill
-              size={19}
-              strokeWidth={1.75}
-              className="text-mv-green-deep"
-              aria-hidden="true"
-            />
-          </span>
+        <div className="@container rounded-xl border border-[#cfe8da] bg-gradient-to-r from-[#eaf7ef] via-[#f2fbf5] to-[#e6f5ec] px-4 py-[14px]">
+          <div className="flex items-center gap-4">
+            <span className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-full border border-[#bfe0cd] bg-white">
+              <Drill
+                size={19}
+                strokeWidth={1.75}
+                className="text-mv-green-deep"
+                aria-hidden="true"
+              />
+            </span>
 
-          <Fact
-            label="Well Number"
-            value={fields?.header.wellNumber ?? well.well ?? "—"}
-          />
-          <Fact label="API Number" value={well.api} mono />
-          <Fact
-            label="Filing Purpose"
-            value={fields?.header.filingPurpose ?? "—"}
-          />
-          <Fact
-            label="Status"
-            value={fields?.header.status ?? "—"}
-            tone="green"
-          />
+            {/* The completion band's grid, on the same terms. */}
+            <div className="grid min-w-0 flex-1 grid-cols-2 gap-x-5 gap-y-3 @min-[790px]:grid-cols-4">
+              <Fact
+                label="Well Number"
+                value={fields?.header.wellNumber ?? well.well ?? "—"}
+              />
+              <Fact label="API Number" value={well.api} mono />
+              <Fact
+                label="Filing Purpose"
+                value={fields?.header.filingPurpose ?? "—"}
+              />
+              <Fact
+                label="Status"
+                value={fields?.header.status ?? "—"}
+                tone="green"
+              />
+            </div>
+          </div>
         </div>
 
         <div className="mt-3">
@@ -298,7 +303,7 @@ function Fact({
   tone?: "green";
 }) {
   return (
-    <div className="min-w-0 border-l border-[#cfe8da] pl-4 first-of-type:border-0 first-of-type:pl-0">
+    <div className="min-w-0 @min-[790px]:border-l @min-[790px]:border-[#cfe8da] @min-[790px]:pl-4 @min-[790px]:first-of-type:border-0 @min-[790px]:first-of-type:pl-0">
       <div className="text-[10.5px] leading-tight text-mv-muted">{label}</div>
       <div
         className={`mt-[3px] truncate text-[16px] font-bold leading-tight ${

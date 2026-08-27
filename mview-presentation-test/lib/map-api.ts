@@ -467,6 +467,10 @@ export type MapWellSummary = {
     recordType: string | null;
     lon: number | null;
     lat: number | null;
+    /** `WGS_84 (EPSG:4326)` — which datum the two figures above are in. */
+    coordinateSystem: string | null;
+    /** `Ector County, Texas, USA` — the same point said in words. */
+    location: string | null;
   };
   lease: {
     leaseNumber: string | null;

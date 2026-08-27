@@ -142,13 +142,24 @@ export function wellSummaryFields(summary: MapWellSummary) {
     ] satisfies Row[],
 
     /*
-     * Only the two coordinates: the survey and the block/section are not in
-     * this response, so those rows are gone rather than showing figures from
-     * another well.
+     * The two coordinates, which sit beside the map tile. The survey and the
+     * block/section are not in this response, so those rows are gone rather
+     * than showing figures from another well.
      */
     location: [
       { label: "Latitude", value: latitude(identity.lat) },
       { label: "Longitude", value: longitude(identity.lon) },
+    ] satisfies Row[],
+
+    /*
+     * What the coordinates amount to: the same point in words, and the datum
+     * they are measured in. Both are in the response and neither was being
+     * shown — a pair of decimal degrees with no datum named is a position
+     * nobody can check.
+     */
+    place: [
+      { label: "Location", value: text(identity.location) },
+      { label: "Coordinate system", value: text(identity.coordinateSystem) },
     ] satisfies Row[],
 
     depth: [
