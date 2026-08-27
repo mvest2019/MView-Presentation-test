@@ -148,6 +148,15 @@ export function MapChrome({
       window.matchMedia("(min-width: 1024px)").matches,
   );
   const [toolsOpen, setToolsOpen] = useState(false);
+
+  /*
+   * How many facet values the last Apply carried.
+   *
+   * Kept here because the panel unmounts when it collapses and takes its own
+   * state with it: with the rail shut, this is the only thing on the page that
+   * knows the map is filtered.
+   */
+  const [appliedCount, setAppliedCount] = useState(0);
   /*
    * Filters is open or closed per view, not globally. On the map it is the
    * panel people work from, so it opens with the page; alongside Insights the
@@ -449,7 +458,23 @@ export function MapChrome({
           `z-10` lifts it over the scale card, which shares this corner. */}
       {filtersOpen ? (
         <FiltersPanel
-          onApply={onApplyFilters}
+          /* Applied, and out of the way. On a phone the rail covers most of
+             the map, so leaving it open after Apply hides the very thing that
+             just changed. Wide screens keep it open — there the map is beside
+             the panel, not under it. Read at the tap rather than at mount, so
+             a turned phone is judged as it is now. */
+          onApply={(filters) => {
+            onApplyFilters(filters);
+            setAppliedCount(
+              Object.values(filters).reduce(
+                (total, values) => total + values.length,
+                0,
+              ),
+            );
+            if (!window.matchMedia("(min-width: 1024px)").matches) {
+              setFiltersOpen(false);
+            }
+          }}
           onCollapse={() => setFiltersOpen(false)}
           /*
            * The card's height is measured off the map, not derived from it.
@@ -538,6 +563,39 @@ export function MapChrome({
           {/* Export CSV is the first to go when the map is only half the page
               — the mock drops it too, and Share falls back to its icon. */}
           <div className="flex flex-wrap items-center justify-end gap-2 lg:contents">
+
+          {/* What is filtering the map, and the way off it.
+              Shut, the rail says nothing about the filter it is holding — the
+              map is simply missing wells with no telling why. It rides at the
+              head of this row rather than beside the rail's tab, where it sat
+              over the map itself: the count reopens the panel, the cross
+              clears where it stands, which is the whole reason not to have to
+              reopen it. Only while the rail is shut — open, the panel says all
+              this itself. */}
+          {appliedCount > 0 && !filtersOpen && (
+            <span className="flex shrink-0 items-center gap-[6px] rounded-lg border border-mv-green-deep bg-white px-[9px] py-[6px] shadow-mv lg:shadow-none">
+              <button
+                type="button"
+                onClick={() => setFiltersOpen(true)}
+                className="cursor-pointer text-[11px] lg:text-[12px] font-bold leading-none text-mv-green-deep"
+              >
+                {appliedCount} filter{appliedCount === 1 ? "" : "s"} on
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  onApplyFilters({});
+                  setAppliedCount(0);
+                }}
+                aria-label="Clear the applied filters"
+                title="Clear filters"
+                className="grid h-[18px] w-[18px] shrink-0 cursor-pointer place-items-center rounded-md text-mv-muted hover:bg-mv-red-bg hover:text-mv-red"
+              >
+                <X size={12} strokeWidth={2.5} aria-hidden="true" />
+              </button>
+            </span>
+          )}
 
           {/* Always pressable — the view decides whether it can replay. The
               hint only says why it cannot, and only while the map is showing
@@ -758,7 +816,12 @@ export function MapChrome({
         />
       )}
 
-      <div className="pointer-events-auto w-[214px] overflow-hidden rounded-lg border border-mv-line bg-white/97 shadow-mv lg:w-[252px]">
+      {/* The legend's own widths, to the pixel — the two stack one above the
+          other in the bottom corner, and two boxes of different widths on the
+          same left edge read as a mistake. 168/186/204 is the wider of the
+          pair; the readings inside this one are shorter than that at every
+          size. */}
+      <div className="pointer-events-auto w-[168px] overflow-hidden rounded-lg border border-mv-line bg-white/97 shadow-mv md:w-[186px] lg:w-[204px]">
         <div className="px-[10px] pb-[3px] pt-[5px] text-[11px] font-semibold text-mv-ink lg:px-3 lg:pb-[6px] lg:pt-2 lg:text-[12px]">
           1 : {Math.round(scale).toLocaleString("en-US")}
         </div>
@@ -773,9 +836,12 @@ export function MapChrome({
             {bar.miles} mi · {bar.km} km
           </span>
         </div>
+        {/* Abbreviated at every size. Spelled out it came to 212px, which
+            fitted the old 214px card exactly — one degree further west and it
+            would have been clipped mid-number, which on a coordinate is worse
+            than no coordinate — and it does not fit this one at all. */}
         <div className="border-t border-mv-line px-[10px] py-[4px] text-[10px] text-mv-slate lg:px-3 lg:py-[7px] lg:text-[11px]">
-          Latitude: {center.latitude.toFixed(4)}, Longitude:{" "}
-          {center.longitude.toFixed(4)}
+          Lat {center.latitude.toFixed(4)} · Lon {center.longitude.toFixed(4)}
         </div>
       </div>
       </div>

@@ -1415,29 +1415,18 @@ export function MapExplorerView() {
      * carry no readable date. It returned silently before, so pressing
      * Time-lapse over the statewide view did nothing at all and looked broken.
      *
-     * Only one of the two channels speaks, though. The toolbar button carries
-     * a hover hint for the no-wells case, so saying it again in a toast put
-     * the same sentence on screen twice. Where there is no hover to have seen
-     * it — a touch screen — the toast is the only channel, so it stays.
+     * One channel says so, not two. The bubbles case belongs to the card
+     * under the toolbar button — it opens on hover and on focus, and a tap
+     * focuses, so a phone gets it as well as a mouse. Saying it here too put
+     * the same sentence on screen twice, one over the other.
+     *
+     * Wells drawn but undated is the one the card does not cover, since the
+     * card is only there while the map is showing bubbles. That is the toast.
      */
     const wells = wellsRef.current;
     const years = yearsIn(wells);
     if (years.length === 0) {
-      const noHover =
-        typeof window !== "undefined" &&
-        window.matchMedia?.("(hover: none)").matches;
-
-      if (wells.length === 0) {
-        if (noHover) {
-          setToast(
-            "Time-lapse replays individual wells — zoom in to level 10 first",
-          );
-        }
-      } else {
-        /* The hint never covers this one: the wells are drawn, they simply
-           carry no date. */
-        setToast("No dated wells here to replay");
-      }
+      if (wells.length > 0) setToast("No dated wells here to replay");
       return;
     }
 
