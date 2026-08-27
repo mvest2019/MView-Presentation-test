@@ -1,6 +1,6 @@
 "use client";
 
-import { MapPin } from "lucide-react";
+import { MapPin, TriangleAlert } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -656,6 +656,33 @@ export function MapExplorerView() {
   const [clusterError, setClusterError] = useState<string | null>(null);
   const [wellsLoading, setWellsLoading] = useState(false);
   const [wellError, setWellError] = useState<string | null>(null);
+  /*
+   * A filter ran and matched nothing.
+   *
+   * Not an error — the service answered, and the answer was none — but it has
+   * to stay on screen while it is true. An empty map with nothing said about
+   * it reads as a fault in the page.
+   */
+  const [noMatches, setNoMatches] = useState(false);
+
+  /*
+   * Bumped to put the filters panel back to nothing.
+   *
+   * It is the panel's `key`: changing it builds a new panel, which is the one
+   * move that clears every box, the typed search and the rows a search
+   * picked, in step. Nothing else can reach inside it from here.
+   */
+  const [filterResetAt, setFilterResetAt] = useState(0);
+
+  /** The wait between saying nothing matched and undoing it. */
+  const emptyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (emptyResetRef.current) clearTimeout(emptyResetRef.current);
+    },
+    [],
+  );
   /* Only the newest answer may be drawn, whichever order they arrive in. */
   const clusterRequestRef = useRef(0);
   /* The zoom band the bubbles on screen were loaded for. */
@@ -1619,6 +1646,15 @@ export function MapExplorerView() {
    * map moves to fit them when it can. Clearing every filter hands the map
    * back to the zoom-driven loading it does otherwise.
    */
+  /*
+   * `applyFilters`, for the one place that has to call it from inside itself:
+   * an empty result undoes its own filter, and a callback cannot list itself
+   * as a dependency.
+   */
+  const applyFiltersRef = useRef<
+    ((filters: Record<string, string[]>) => void) | null
+  >(null);
+
   const applyFilters = useCallback(
     (filters: Record<string, string[]>) => {
       const ctors = ctorsRef.current;
@@ -1629,6 +1665,8 @@ export function MapExplorerView() {
       if (Object.keys(filters).length === 0) {
         filteredRef.current = false;
         setToast("Filters cleared");
+        /* Nothing is being filtered, so nothing can be matching nothing. */
+        setNoMatches(false);
         // `clearWells` takes the ring with the wells it marked.
         clearWells();
         clusterTierRef.current = -1;
@@ -1665,6 +1703,7 @@ export function MapExplorerView() {
       // The previous answer is no longer the answer. Leaving it up means a
       // failed request still reads as a successful one.
       setWellError(null);
+      setNoMatches(false);
 
       getMatchedWellsMap(filters)
         .then(({ wells }) => {
@@ -1673,17 +1712,38 @@ export function MapExplorerView() {
           wellsRef.current = wells;
           setWells(wells);
           setWellError(null);
+          setNoMatches(wells.length === 0);
+
+          /*
+           * Nothing matched: say so, then undo it.
+           *
+           * Left applied, the filter has the reader on an empty map that stays
+           * empty whatever they tick next, since every further choice narrows
+           * a set that is already nought. The pause is for reading the notice
+           * — long enough for a sentence, short enough not to feel stuck.
+           */
+          if (wells.length === 0) {
+            if (emptyResetRef.current) clearTimeout(emptyResetRef.current);
+            emptyResetRef.current = setTimeout(() => {
+              setFilterResetAt((count) => count + 1);
+              applyFiltersRef.current?.({});
+            }, 2600);
+          }
 
           /*
            * Said once the matches are in, not when Apply was pressed: until
            * the service has answered there is nothing to confirm, and a
            * request that fails must not have been announced as a success.
            */
-          setToast(
-            wells.length === 0
-              ? "Filters applied — no wells match"
-              : `Filters applied — ${wells.length.toLocaleString("en-US")} well${wells.length === 1 ? "" : "s"}`,
-          );
+          /* Only when there is a number to give. Nothing matching is said by
+             the red notice at the top of the map, which stays as long as it is
+             true — a toast saying the same thing put two messages on screen at
+             once, one over the other. */
+          if (wells.length > 0) {
+            setToast(
+              `Filters applied — ${wells.length.toLocaleString("en-US")} well${wells.length === 1 ? "" : "s"}`,
+            );
+          }
 
           clearClusters();
           layer.removeAll();
@@ -1847,6 +1907,13 @@ export function MapExplorerView() {
     },
     [clearClusters, clearWells, loadClusters, highlightWell],
   );
+
+  /* Kept current so the empty-result reset can reach it without depending on
+     its own identity. Assigned in an effect rather than during render, which
+     is where a ref must not be written. */
+  useEffect(() => {
+    applyFiltersRef.current = applyFilters;
+  }, [applyFilters]);
 
   /**
    * A picked API number, run as a filter of one.
@@ -3240,14 +3307,27 @@ export function MapExplorerView() {
           </div>
         )}
 
-        {/* A failure is a quiet pill instead — nothing is loading, so nothing
-          should be blurred, and the map still shows what it last had. */}
+        {/* A pill instead of a veil — nothing is loading, so nothing should
+          be blurred, and the map still shows what it last had. Marked in red:
+          each of these is the map failing to show something, and in the house
+          grey they read as one more caption. */}
         {status === "ready" &&
           !clustersLoading &&
           !wellsLoading &&
-          (clusterError || wellError) && (
-            <div className="pointer-events-none absolute left-1/2 top-3 z-30 -translate-x-1/2 rounded-full border border-mv-line bg-white/95 px-3 py-[5px] text-[11.5px] font-semibold text-mv-slate shadow-mv">
-              {clusterError ?? wellError}
+          (clusterError || wellError || noMatches) && (
+            <div
+              role="alert"
+              className="pointer-events-none absolute left-1/2 top-3 z-30 flex -translate-x-1/2 items-center gap-[7px] rounded-full border border-[#f6c9c6] bg-mv-red-bg px-[13px] py-[6px] text-[11.5px] font-semibold text-mv-red shadow-mv"
+            >
+              <TriangleAlert
+                size={13}
+                strokeWidth={2.5}
+                aria-hidden="true"
+                className="shrink-0"
+              />
+              {clusterError ??
+                wellError ??
+                "No wells match these filters — try removing one."}
             </div>
           )}
 
@@ -3481,6 +3561,9 @@ export function MapExplorerView() {
             onSelectApi={selectApi}
             onClearApi={clearApi}
             onApplyFilters={applyFilters}
+            /* Changing this rebuilds the filters panel with nothing ticked —
+               see the empty-result reset. */
+            filtersResetAt={filterResetAt}
             timeLapseOpen={timeLapseOpen}
             onToggleTimeLapse={toggleTimeLapse}
             center={readout.center}

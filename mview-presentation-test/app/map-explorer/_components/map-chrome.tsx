@@ -78,6 +78,14 @@ type MapChromeProps = {
   onClearApi: () => void;
   /** Apply, with what the filters panel has ticked. */
   onApplyFilters: (filters: Record<string, string[]>) => void;
+  /**
+   * Rebuilds the filters panel when it changes.
+   *
+   * The panel holds its own selection and is kept mounted so that closing it
+   * does not lose it; a new key is how the view asks for that selection to be
+   * dropped — after a filter that matched nothing and was undone.
+   */
+  filtersResetAt?: number;
   /** The tool waiting for a drag on the map, if any. */
   activeTool: string | null;
   onSelectTool: (
@@ -128,6 +136,7 @@ export function MapChrome({
   onSelectApi,
   onClearApi,
   onApplyFilters,
+  filtersResetAt = 0,
   activeTool,
   onSelectTool,
   onZoomIn,
@@ -464,6 +473,7 @@ export function MapChrome({
           stand, the typed search stands, and the facet lists are fetched once
           rather than on every reopen. */}
       <FiltersPanel
+        key={filtersResetAt}
         /* Applied, and out of the way. On a phone the rail covers most of
            the map, so leaving it open after Apply hides the very thing that
            just changed. Wide screens keep it open — there the map is beside
