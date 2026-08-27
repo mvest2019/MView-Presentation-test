@@ -221,7 +221,7 @@ export function Field({
                    set is crisp at any size, and lucide is already the icon set
                    everywhere else in this app. Colour rides `currentColor`, so
                    the hover and open states are a single `text-*` swap. */
-                className="inline-flex shrink-0 cursor-help items-center justify-center rounded-full bg-transparent p-0 text-mv-muted transition hover:text-mv-green-deep focus-visible:text-mv-green-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep data-[state=delayed-open]:text-mv-green-deep"
+                className="inline-flex shrink-0 items-center justify-center rounded-full bg-transparent p-0 text-mv-muted transition hover:text-mv-green-deep focus-visible:text-mv-green-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep data-[state=delayed-open]:text-mv-green-deep"
               >
                 <Info aria-hidden className="h-[15px] w-[15px]" />
               </TooltipTrigger>
@@ -413,7 +413,7 @@ export function CheckRow({
                 aria-label="About this option"
                 /* Same treatment as `Field`'s hint trigger, so the two read as
                    one control rather than two similar ones. */
-                className="inline-flex shrink-0 translate-y-[2px] cursor-help items-center justify-center rounded-full bg-transparent p-0 text-mv-muted transition hover:text-mv-green-deep focus-visible:text-mv-green-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep data-[state=delayed-open]:text-mv-green-deep"
+                className="inline-flex shrink-0 translate-y-[2px] items-center justify-center rounded-full bg-transparent p-0 text-mv-muted transition hover:text-mv-green-deep focus-visible:text-mv-green-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep data-[state=delayed-open]:text-mv-green-deep"
               >
                 <Info aria-hidden className="h-[15px] w-[15px]" />
               </TooltipTrigger>
