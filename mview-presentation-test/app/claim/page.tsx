@@ -23,5 +23,7 @@ export default async function ClaimPage() {
   // Read on the server, like the header does: a signed-in visitor who claims
   // a record goes straight to their portal instead of the sign-up pitch.
   const user = await getSessionUser();
-  return <ClaimFinder signedIn={user !== null} />;
+  return (
+    <ClaimFinder signedIn={user !== null} memberId={user?.id ?? null} />
+  );
 }

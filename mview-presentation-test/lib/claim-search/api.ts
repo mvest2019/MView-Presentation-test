@@ -121,25 +121,40 @@ export async function fetchSameName(
 
 /**
  * Address correction from the record popup — POST /owners/address-correction.
- * The backend requires an identity: `member_id` when signed in or `visitorId`
- * for anonymous visitors. The claim page runs signed-out by design, so it
- * sends the site's anonymous id (the `guestUserID` cookie `proxy.ts` mints,
- * shared with the news endpoints), minting a local fallback when the cookie
- * has not been set yet. Fire-and-forget, as the prototype's was.
+ *
+ * THE ENDPOINT WANTS EXACTLY ONE IDENTITY (backend contract, 2026-08-25):
+ * `member_id` for a signed-in member, `visitorId` for an anonymous visitor.
+ * Sending the visitor id for a member would file the correction against a
+ * guest rather than the account, so the member id wins whenever there is one.
+ *
+ * `memberId` arrives as a prop from the server component: the session cookie
+ * is httpOnly, so page JavaScript cannot read the id itself.
+ *
+ * Fire-and-forget, as the prototype's was.
  */
-export function postAddressCorrection(body: {
-  owner: string;
-  county: string;
-  oldAddress: string;
-  newAddress: string;
-}): void {
+export function postAddressCorrection(
+  body: {
+    owner: string;
+    county: string;
+    oldAddress: string;
+    newAddress: string;
+  },
+  memberId?: number | null,
+): void {
+  const identity =
+    typeof memberId === "number" ? { member_id: memberId } : { visitorId: visitorId() };
   fetch(`${OWNERS}/address-correction`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...body, visitorId: visitorId() }),
+    body: JSON.stringify({ ...body, ...identity }),
   }).catch(() => {});
 }
 
+/**
+ * The anonymous visitor id: the site's `guestUserID` cookie (minted in
+ * `proxy.ts`, shared with the news endpoints), with a local fallback for a
+ * first-ever visit where that cookie has not been set yet.
+ */
 function visitorId(): string {
   const fromCookie = document.cookie.match(/(?:^|;\s*)guestUserID=([^;]+)/);
   if (fromCookie) return decodeURIComponent(fromCookie[1]);
