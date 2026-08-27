@@ -123,7 +123,14 @@ function IntroFeatures({ meta }: { meta: ClaimMeta | null }) {
  * persists after ticking a lease (the v102 fix), and lease membership is
  * exact — fuzzy scoring only ever ranks.
  */
-export function ClaimFinder({ signedIn }: { signedIn: boolean }) {
+export function ClaimFinder({
+  signedIn,
+  memberId,
+}: {
+  signedIn: boolean;
+  /** The signed-in member's id, or null when anonymous — see `api.ts`. */
+  memberId: number | null;
+}) {
   const router = useRouter();
   const [meta, setMeta] = useState<ClaimMeta | null>(null);
 
@@ -406,7 +413,7 @@ export function ClaimFinder({ signedIn }: { signedIn: boolean }) {
       }
       return next;
     });
-    postAddressCorrection({ owner, county, oldAddress, newAddress });
+    postAddressCorrection({ owner, county, oldAddress, newAddress }, memberId);
   }
 
   function finishClaim(base: ScoredOwner, merged: ScoredOwner[]) {
