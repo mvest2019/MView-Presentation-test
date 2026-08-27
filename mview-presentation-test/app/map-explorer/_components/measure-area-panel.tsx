@@ -2,6 +2,7 @@
 
 import { LandPlot, X } from "lucide-react";
 
+import { Hint } from "./hint";
 import { useDraggableCard } from "./use-draggable-card";
 
 /*
@@ -63,20 +64,56 @@ function measure(value: number): string {
   return value.toFixed(2);
 }
 
-/** The four supporting figures, under the acreage. */
+/*
+ * The four supporting figures, under the acreage.
+ *
+ * `hint` is what the i beside each label says, and each says how its figure is
+ * arrived at rather than what a typical one looks like. An example number in a
+ * tooltip sits inches from the real one and is read as though it were about
+ * it; the method is the part a reader cannot work out for themselves.
+ */
 const STATS: {
   label: string;
   green?: boolean;
+  hint: string;
   read: (r: AreaMeasurement) => string;
 }[] = [
-  { label: "Square miles", read: (r) => measure(r.squareMiles) },
-  { label: "Perimeter", read: (r) => `${measure(r.perimeterMiles)} mi` },
+  {
+    label: "Square miles",
+    hint: "The measured area again, converted to square miles. A section is one square mile, which is the unit leases are described in.",
+    read: (r) => measure(r.squareMiles),
+  },
+  {
+    label: "Perimeter",
+    hint: "The distance from each corner you clicked to the next, added up around the shape and closed back to the first. Measured along the curve of the earth, not as flat lines on the screen.",
+    read: (r) => `${measure(r.perimeterMiles)} mi`,
+  },
   {
     label: "Wells inside",
     green: true,
+    hint: "Each well the map is holding is tested against the shape and counted if any part of its bore falls inside — so a horizontal well counts on the strength of its path, not its surface hole. Where the map is showing count bubbles rather than wells, the bubbles inside are totalled instead.",
     read: (r) => r.wellsInside.toLocaleString("en-US"),
   },
-  { label: "Wells per section", read: (r) => r.wellsPerSection.toFixed(1) },
+  {
+    /* "Wells per section" no longer fits the cell now the i is beside it, and
+       a truncated "WELLS PER SECT..." is worse than the shorter name. */
+    label: "Wells / section",
+    hint: "The wells inside divided by the area in square miles — that is, how many of them there would be to a section at this density.",
+    read: (r) => r.wellsPerSection.toFixed(1),
+  },
+];
+
+/*
+ * Which outer corner each cell of the ruled grid rounds.
+ *
+ * Two columns, four figures: the first two cells hold the top corners and the
+ * last two the bottom. The seams between them stay square.
+ */
+const CORNERS = [
+  "rounded-tl-xl",
+  "rounded-tr-xl",
+  "rounded-bl-xl",
+  "rounded-br-xl",
 ];
 
 export function MeasureAreaPanel({
@@ -91,7 +128,10 @@ export function MeasureAreaPanel({
     <div
       ref={cardRef}
       style={style}
-      className={`pointer-events-auto z-30 w-[336px] overflow-hidden rounded-xl border border-mv-line bg-white shadow-mv-lg ${className}`}
+      /* No `overflow-hidden`: the hint cards hang past the card's edge, and
+          everything inside that needed clipping -- the ruled grid, the drag
+          handle -- clips itself. */
+      className={`pointer-events-auto z-30 w-[336px] rounded-xl border border-mv-line bg-white shadow-mv-lg ${className}`}
     >
       <div {...handleProps}>
         <span
@@ -139,8 +179,9 @@ export function MeasureAreaPanel({
         {/* ---------------- the headline figure ---------------- */}
         <div className="mt-3 flex items-end justify-between gap-3 rounded-xl border border-[#cfe8da] bg-gradient-to-r from-[#eaf7ef] to-[#f4fbf7] px-[14px] py-[11px]">
           <span>
-            <span className="block text-[9.5px] font-extrabold uppercase leading-none tracking-[.09em] text-mv-muted">
+            <span className="flex items-center gap-[5px] text-[9.5px] font-extrabold uppercase leading-none tracking-[.09em] text-mv-muted">
               Acres
+              <Hint text="The area enclosed by the shape you drew, worked out on the globe rather than on the flat screen and converted to acres. An acre is 43,560 square feet." />
             </span>
             <span className="mt-[7px] block text-[26px] font-bold leading-none tabular-nums text-mv-green-deep">
               {result ? compact(result.acres) : "—"}
@@ -159,12 +200,24 @@ export function MeasureAreaPanel({
         {/* ---------------- and how it was arrived at ----------------
             One card ruled into four rather than four loose figures: they are
             readings about one tract, and `gap-px` over a line-coloured ground
-            makes the seams the dividers. */}
-        <div className="mt-[10px] grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-mv-line bg-mv-line">
-          {STATS.map(({ label, green, read }) => (
-            <div key={label} className="bg-white px-[13px] py-[10px]">
-              <div className="truncate text-[9.5px] font-extrabold uppercase leading-none tracking-[.08em] text-mv-muted">
-                {label}
+            makes the seams the dividers.
+
+            No `overflow-hidden`, which is what used to hold the white cells
+            inside the rounded border: it also sliced the hints opening from
+            the bottom row down to a single line. Each corner cell rounds its
+            own outer corner instead, which comes to the same shape and lets
+            the hints out. */}
+        <div className="mt-[10px] grid grid-cols-2 gap-px rounded-xl border border-mv-line bg-mv-line">
+          {STATS.map(({ label, green, hint, read }, index) => (
+            <div
+              key={label}
+              className={`bg-white px-[13px] py-[10px] ${CORNERS[index] ?? ""}`}
+            >
+              <div className="flex items-center gap-[5px] text-[9.5px] font-extrabold uppercase leading-none tracking-[.08em] text-mv-muted">
+                <span className="truncate">{label}</span>
+                {/* Right-hand column opens leftwards, or the card would be
+                    wider than the panel it sits in. */}
+                <Hint text={hint} side={index % 2 === 1 ? "right" : "left"} />
               </div>
               <div
                 className={`mt-[7px] text-[16px] font-bold leading-none tabular-nums ${

@@ -605,6 +605,17 @@ export function WellsTable({
           Well results
         </h2>
 
+        {/* Narrow: the icon at the end of this row, where there is room going
+            spare and the eye already is. The labelled button below takes over
+            at `lg`, beside the view switch. */}
+        <ExportButton
+          compact
+          className="ml-auto lg:hidden"
+          onClick={exportPage}
+          loading={loading}
+          count={rows.length}
+        />
+
         <div className="flex w-full shrink-0 flex-wrap items-center gap-2 lg:ml-auto lg:w-auto lg:flex-nowrap lg:pl-2">
           <div className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-mv-line bg-white p-1 lg:flex-none lg:justify-start">
             <TabButton
@@ -627,23 +638,12 @@ export function WellsTable({
             />
           </div>
 
-          <button
-            type="button"
+          <ExportButton
+            className="hidden lg:inline-flex"
             onClick={exportPage}
-            /* Locked while a page is in flight: the rows on screen are the
-               previous page's, and exporting them under a pager that already
-               says 7 hands over the wrong ten records. */
-            disabled={loading || rows.length === 0}
-            title={
-              loading
-                ? "Loading this page…"
-                : `Export this page — ${rows.length} record${rows.length === 1 ? "" : "s"}`
-            }
-            className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-mv-line px-[14px] py-[8px] text-[12.5px] font-semibold text-mv-slate enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-50 lg:w-auto"
-          >
-            <Download size={14} aria-hidden="true" />
-            Export this page
-          </button>
+            loading={loading}
+            count={rows.length}
+          />
         </div>
       </div>
 
@@ -1247,6 +1247,89 @@ function TableIcon({ size = 15 }: { size?: number }) {
       <rect x="3" y="3" width="18" height="18" rx="2" />
       <path d="M3 9h18M9 9v12" />
     </svg>
+  );
+}
+
+/*
+ * Export, in both of its shapes.
+ *
+ * `compact` is the icon alone, for the heading row on a narrow screen; without
+ * it, the labelled button that sits beside the view switch from `lg` up. One
+ * component rather than two so the two cannot drift apart -- they are the same
+ * control, and the only difference is whether there is room to name it.
+ *
+ * The card on hover replaces the browser's own tooltip, which is late, plain,
+ * and on the icon says nothing a download arrow has not already said. What it
+ * has to add is the scope: Export gives you the rows on this page, not every
+ * row the filters matched.
+ */
+function ExportButton({
+  compact,
+  className = "",
+  onClick,
+  loading,
+  count,
+}: {
+  compact?: boolean;
+  className?: string;
+  onClick: () => void;
+  loading: boolean;
+  count: number;
+}) {
+  /* Locked while a page is in flight: the rows on screen are the previous
+     page's, and exporting them under a pager that already says 7 hands over
+     the wrong ten records. */
+  const disabled = loading || count === 0;
+
+  return (
+    /*
+     * The wrapper takes the hover, not the button: a disabled button stops
+     * firing pointer events in some engines, and "why can I not press this"
+     * is exactly the case the card is there to answer.
+     */
+    <span className={`group relative shrink-0 ${className}`}>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        aria-label="Export this page"
+        className={
+          compact
+            ? "grid h-[32px] w-[32px] cursor-pointer place-items-center rounded-lg border border-mv-line text-mv-slate enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-50"
+            : "inline-flex w-full items-center justify-center gap-2 rounded-lg border border-mv-line px-[14px] py-[8px] text-[12.5px] font-semibold text-mv-slate enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-50 lg:w-auto"
+        }
+      >
+        <Download size={compact ? 15 : 14} aria-hidden="true" />
+        {!compact && "Export this page"}
+      </button>
+
+      {/* Held to the right edge: the icon sits at the end of its row, and a
+          centred card would hang off the side of a phone screen. */}
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute right-0 top-full z-50 mt-[9px] hidden w-[232px] rounded-lg bg-white px-[13px] py-[10px] text-[11.5px] leading-snug text-mv-slate shadow-mv-lg ring-1 ring-mv-line group-hover:block group-focus-within:block"
+      >
+        <span
+          aria-hidden="true"
+          className="absolute -top-[5px] right-[14px] h-[9px] w-[9px] rotate-45 border-l border-t border-mv-line bg-white"
+        />
+        {loading ? (
+          "Loading this page — the rows are still arriving."
+        ) : count === 0 ? (
+          "Nothing to export: no rows matched these filters."
+        ) : (
+          <>
+            <span className="block font-semibold text-mv-ink">
+              Export this page
+            </span>
+            <span className="mt-[3px] block">
+              The {count} row{count === 1 ? "" : "s"} shown here, as a CSV —
+              this page only, not the whole result set.
+            </span>
+          </>
+        )}
+      </span>
+    </span>
   );
 }
 
