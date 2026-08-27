@@ -173,12 +173,18 @@ export function buildMergedTx(base: ScoredOwner, merged: ScoredOwner[]): MergedT
   const addrs: string[] = [];
   const leases: string[] = [];
   const ctyOrder: string[] = [];
+  const names: string[] = [];
+  const seenN: Record<string, 1> = {};
   const seenA: Record<string, 1> = {};
   const seenL: Record<string, 1> = {};
   const seenC: Record<string, 1> = {};
   let props = 0;
   let value = 0;
   for (const o of rows) {
+    if (!seenN[despace(o.r[0])]) {
+      seenN[despace(o.r[0])] = 1;
+      names.push(o.r[0]);
+    }
     const a = ((o.r[4] as string) || "").trim();
     if (a && !seenA[despace(a)]) {
       seenA[despace(a)] = 1;
@@ -200,6 +206,8 @@ export function buildMergedTx(base: ScoredOwner, merged: ScoredOwner[]): MergedT
   }
   return {
     owner: base.r[0],
+    owners: names,
+    records: rows.length,
     county: ctyOrder.join(" · "),
     props,
     value,

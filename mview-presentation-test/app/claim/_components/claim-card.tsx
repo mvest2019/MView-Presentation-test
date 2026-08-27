@@ -134,11 +134,26 @@ function ClaimDone({ tx, base }: { tx: MergedTx; base: ScoredOwner }) {
     "h-[38px] w-full rounded-[9px] border border-mv-line px-[11px] text-[13px] focus-visible:border-mv-green-deep focus-visible:outline-none";
   return (
     <div>
-      <strong>Ready to claim {tx.owner}.</strong>{" "}
+      {/* MULTI-RECORD CLAIMS NAME EVERY RECORD (2026-08-25): the headline used
+          to print only the picked record's name, so claiming two rows read as
+          claiming one. Distinct names only — merging two addresses under one
+          spelling still reads as a single name, with the record count carrying
+          the "two rows" fact. */}
+      <strong>
+        {tx.owners.length > 1
+          ? `Ready to claim ${tx.records} records — ${tx.owners.join(", ")}.`
+          : `Ready to claim ${tx.owner}.`}
+      </strong>{" "}
       <span>
-        {tx.county} Count{tx.county.includes(" · ") ? "ies" : "y"} · {tx.props}{" "}
-        propert{tx.props === 1 ? "y" : "ies"} · {fmt(tx.value)} appraised
-        {tx.merged ? ` · ${tx.addresses.length} addresses merged.` : "."}
+        {tx.county} Count{tx.county.includes(" · ") ? "ies" : "y"} ·{" "}
+        {tx.owners.length === 1 && tx.records > 1
+          ? `${tx.records} records · `
+          : ""}
+        {tx.props} propert{tx.props === 1 ? "y" : "ies"} · {fmt(tx.value)}{" "}
+        appraised
+        {tx.merged
+          ? ` · ${tx.addresses.length} address${tx.addresses.length === 1 ? "" : "es"} merged.`
+          : "."}
       </span>
       <br />
       <span className="text-[11px] text-mv-muted">
