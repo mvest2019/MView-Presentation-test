@@ -78,6 +78,14 @@ type MapChromeProps = {
   onClearApi: () => void;
   /** Apply, with what the filters panel has ticked. */
   onApplyFilters: (filters: Record<string, string[]>) => void;
+  /**
+   * Rebuilds the filters panel when it changes.
+   *
+   * The panel holds its own selection and is kept mounted so that closing it
+   * does not lose it; a new key is how the view asks for that selection to be
+   * dropped — after a filter that matched nothing and was undone.
+   */
+  filtersResetAt?: number;
   /** The tool waiting for a drag on the map, if any. */
   activeTool: string | null;
   onSelectTool: (
@@ -128,6 +136,7 @@ export function MapChrome({
   onSelectApi,
   onClearApi,
   onApplyFilters,
+  filtersResetAt = 0,
   activeTool,
   onSelectTool,
   onZoomIn,
@@ -455,43 +464,61 @@ export function MapChrome({
     <div ref={chromeRef} className="pointer-events-none absolute inset-0 z-20">
       {/* Filters is a standing panel, not a dropdown — it stays open while you
           work the map, so no outside-click dismissal. The chevron closes it.
-          `z-10` lifts it over the scale card, which shares this corner. */}
-      {filtersOpen ? (
-        <FiltersPanel
-          /* Applied, and out of the way. On a phone the rail covers most of
-             the map, so leaving it open after Apply hides the very thing that
-             just changed. Wide screens keep it open — there the map is beside
-             the panel, not under it. Read at the tap rather than at mount, so
-             a turned phone is judged as it is now. */
-          onApply={(filters) => {
-            onApplyFilters(filters);
-            setAppliedCount(
-              Object.values(filters).reduce(
-                (total, values) => total + values.length,
-                0,
-              ),
-            );
-            if (!window.matchMedia("(min-width: 1024px)").matches) {
-              setFiltersOpen(false);
-            }
-          }}
-          onCollapse={() => setFiltersOpen(false)}
-          /*
-           * The card's height is measured off the map, not derived from it.
-           *
-           * Every version of this that let CSS work the height out — a top
-           * edge with a bottom edge, then a percentage, then a stretched grid
-           * cell — could come out short on some machines, leaving the Apply
-           * button stranded mid-card with white beneath it. A number in pixels
-           * cannot: `railHeight` is this layer's own height less the 12px
-           * inset above and the 24px below, remeasured whenever the map
-           * resizes. The `.mv-filters-rail` class holds the position and a
-           * `calc` for the first paint, before the measurement lands.
-           */
-          className="mv-filters-rail pointer-events-auto z-10"
-          style={railHeight === null ? undefined : { height: railHeight }}
-        />
-      ) : (
+          `z-10` lifts it over the scale card, which shares this corner.
+
+          Hidden when closed rather than unmounted. Unmounting took its state
+          with it, so reopening after an Apply showed every box clear while the
+          map was still filtered by what those boxes had said — the toolbar
+          chip saying one thing and the panel another. Kept mounted, the ticks
+          stand, the typed search stands, and the facet lists are fetched once
+          rather than on every reopen. */}
+      <FiltersPanel
+        key={filtersResetAt}
+        /* Applied, and out of the way. On a phone the rail covers most of
+           the map, so leaving it open after Apply hides the very thing that
+           just changed. Wide screens keep it open — there the map is beside
+           the panel, not under it. Read at the tap rather than at mount, so
+           a turned phone is judged as it is now. */
+        onApply={(filters) => {
+          onApplyFilters(filters);
+          setAppliedCount(
+            Object.values(filters).reduce(
+              (total, values) => total + values.length,
+              0,
+            ),
+          );
+          if (!window.matchMedia("(min-width: 1024px)").matches) {
+            setFiltersOpen(false);
+          }
+        }}
+        onCollapse={() => setFiltersOpen(false)}
+        /*
+         * The card's height is measured off the map, not derived from it.
+         *
+         * Every version of this that let CSS work the height out — a top
+         * edge with a bottom edge, then a percentage, then a stretched grid
+         * cell — could come out short on some machines, leaving the Apply
+         * button stranded mid-card with white beneath it. A number in pixels
+         * cannot: `railHeight` is this layer's own height less the 12px
+         * inset above and the 24px below, remeasured whenever the map
+         * resizes. The `.mv-filters-rail` class holds the position and a
+         * `calc` for the first paint, before the measurement lands.
+         */
+        className="mv-filters-rail pointer-events-auto z-10"
+        /*
+         * Closed is `display: none` in the style attribute, not the `hidden`
+         * class. The card's own `.mv-filters-card` rule sets `display: grid`,
+         * and being authored CSS it wins against a utility of the same
+         * specificity — the panel stayed on screen with the toolbar chip
+         * beside it saying it was shut. An inline style outranks both.
+         */
+        style={{
+          ...(railHeight === null ? null : { height: railHeight }),
+          ...(filtersOpen ? null : { display: "none" }),
+        }}
+      />
+
+      {!filtersOpen && (
         <EdgeTab
           side="left"
           label="Filters"
@@ -566,14 +593,17 @@ export function MapChrome({
 
           {/* What is filtering the map, and the way off it.
               Shut, the rail says nothing about the filter it is holding — the
-              map is simply missing wells with no telling why. It rides at the
-              head of this row rather than beside the rail's tab, where it sat
-              over the map itself: the count reopens the panel, the cross
-              clears where it stands, which is the whole reason not to have to
-              reopen it. Only while the rail is shut — open, the panel says all
-              this itself. */}
+              map is simply missing wells with no telling why. The count
+              reopens the panel, the cross clears where it stands, which is the
+              whole reason not to have to reopen it.
+
+              A phone's control, and only a phone's. There the rail shuts
+              itself on Apply and covers the map when it is open, so something
+              has to speak for it. From `lg` up the rail is open beside the map
+              as a matter of course, and it says all this itself — a second
+              copy in the toolbar is one badge too many. */}
           {appliedCount > 0 && !filtersOpen && (
-            <span className="flex shrink-0 items-center gap-[6px] rounded-lg border border-mv-green-deep bg-white px-[9px] py-[6px] shadow-mv lg:shadow-none">
+            <span className="flex shrink-0 items-center gap-[6px] rounded-lg border border-mv-green-deep bg-white px-[9px] py-[6px] shadow-mv lg:hidden">
               <button
                 type="button"
                 onClick={() => setFiltersOpen(true)}
