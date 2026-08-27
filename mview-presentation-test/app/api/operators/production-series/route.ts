@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { getSessionUser } from "@/lib/session";
+
 import { fetchProductionSeries } from "@/lib/operator-production-api";
 import {
   hasProductionSelection,
@@ -22,6 +24,24 @@ import {
  * is already in hand. A brush that re-requested would fire on every drag; this way
  * the range control in the filter bar is the only thing that changes the request.
  */
+/**
+ * THE SIGN-IN GATE LIVES HERE, and it has to. Both upstream endpoints treat the
+ * production VOLUMES as account-only: with `member_id: 0` the info endpoint returns
+ * `total_production_oil/gas/boe` as the literal `"****"` and the series endpoint
+ * returns every `oil`/`gas`/`boe` the same way, while rank, the oil/gas split and
+ * the county and lease counts stay real. Measured against the dev host with an
+ * otherwise identical body. The app had been overriding that with a development
+ * stand-in member id, so the gate was switched off for everyone.
+ *
+ * IT CANNOT MOVE TO THE PAGE. `/features/compare-operator-production` is statically
+ * prerendered; reading a cookie in its server component would opt the whole route
+ * out of static rendering. A route handler is dynamic already, so the session read
+ * costs it nothing new.
+ *
+ * WHAT THE READER STILL GETS is most of the comparison — who ranks where, the
+ * oil/gas mix, counties and leases, the operator cards, the filters. Only the
+ * volumes and the chart are withheld, which is the soft gate the right way round.
+ */
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const filters = productionFiltersFromQuery(
@@ -34,13 +54,18 @@ export async function GET(request: Request) {
   }
 
   try {
-    const series = await fetchProductionSeries(filters);
+    const series = await fetchProductionSeries(filters, (await getSessionUser())?.id ?? 0);
     return NextResponse.json(
       { series },
       {
         headers: {
-          "Cache-Control":
-            "public, max-age=0, s-maxage=600, stale-while-revalidate=3600",
+          /* PRIVATE NOW, and that is not a tuning choice. The body depends on
+             whether the reader has an account, so a shared cache holding one
+             visitor's withheld volumes and serving them to a member — or the
+             reverse — is a correctness bug. The hook still answers repeat
+             applications from memory within a session, which is where most of the
+             benefit was. */
+          "Cache-Control": "private, no-store",
         },
       },
     );

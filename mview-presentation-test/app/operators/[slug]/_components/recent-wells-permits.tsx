@@ -1,5 +1,7 @@
 "use client";
 
+import { Lock } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 
 import { Pager } from "@/app/_components/pager";
@@ -230,6 +232,12 @@ export function RecentWellsPermits({
     setApprovedTo("");
   };
 
+  /* ---- no account ----
+     BEFORE the empty check, and that ordering is the whole point: a locked read
+     returns no rows, so `status` is `empty`, and falling through would delete the
+     section from the page entirely. A reader would never learn it exists. */
+  if (filings.locked) return <LockedFilings />;
+
   /* ---- zero records: the section does not exist ---- */
   if (filings.status === "empty") return null;
 
@@ -442,6 +450,74 @@ export function RecentWellsPermits({
             />
           </div>
         ) : null}
+      </div>
+    </section>
+  );
+}
+
+
+/**
+ * What a signed-out reader sees in place of the filings feed.
+ *
+ * IT KEEPS THE SECTION'S HEADING AND CARD, so the page still says this operator's
+ * permit and completion filings exist and where they sit. A gate that removes the
+ * section instead teaches nobody that there is anything to sign up for.
+ *
+ * NO BLURRED ROWS HERE, unlike the "What changed" panel. That one replaces a fixed
+ * six-row panel whose height is already reserved; this feed's length varies by
+ * operator, so inventing a number of fake rows would be inventing the answer to
+ * "how much am I missing". The card states what the section holds instead.
+ */
+function LockedFilings() {
+  return (
+    <section className="pt-[26px]">
+      <div className="overflow-hidden rounded-2xl border border-mv-line bg-white shadow-mv">
+        <div className="px-[22px] pb-3 pt-5 max-[560px]:px-4">
+          <h2 className={cardTitleClass}>Recent wells &amp; permits</h2>
+          <p className="mt-1 text-[13px] text-mv-muted">
+            Permit and completion filings — part of a free account
+          </p>
+        </div>
+
+        <div className="flex flex-col items-center gap-[14px] border-t border-mv-line-soft px-6 py-[38px] text-center">
+          <span
+            aria-hidden="true"
+            className="grid h-[38px] w-[38px] place-items-center rounded-full bg-mv-mint text-mv-green-deep"
+          >
+            <Lock className="h-4 w-4" strokeWidth={2.3} />
+          </span>
+
+          <div className="max-w-[460px]">
+            <p className="m-0 text-[15px] font-bold leading-snug text-mv-ink">
+              See what this operator has filed lately
+            </p>
+            <p className="m-0 mt-2 text-[13px] leading-relaxed text-mv-muted">
+              Every permit and completion on record — lease, county, wellbore
+              profile, status and the dates each was submitted and approved,
+              filterable. Production history, the lease book and the county
+              breakdown above stay free to read.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-[10px]">
+            <Link
+              href="/register?from=operator-profile"
+              className="inline-flex items-center gap-2 rounded-xl bg-mv-green-deep px-[18px] py-[11px] text-[13.5px] font-semibold text-white !no-underline shadow-mv transition-[filter] hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+            >
+              Register for free
+            </Link>
+            <Link
+              href="/login"
+              className="text-[13px] font-semibold text-mv-green-deep hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+            >
+              Sign in
+            </Link>
+          </div>
+
+          <p className="m-0 text-[11.5px] text-mv-muted">
+            Free account &middot; no card required
+          </p>
+        </div>
       </div>
     </section>
   );

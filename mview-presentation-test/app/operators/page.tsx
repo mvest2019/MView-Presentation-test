@@ -9,8 +9,10 @@ import {
 } from "@/app/_components/typography";
 
 import { getOperatorCounties, getOperatorPlayTypes } from "@/lib/operator-api";
+import { getSessionUser } from "@/lib/session";
 import { getVisitorId } from "@/lib/visitor-id";
 
+import { OperatorRegisterCta } from "./_components/operator-cta";
 import { OperatorPage } from "./operator-page";
 
 /**
@@ -174,10 +176,19 @@ export default async function OperatorsRoute() {
   // call, only the render. If someone later moves the cookie read to the client to
   // win the prerender back, that is a real option, not a bug fix; do not "restore"
   // static by dropping the id from the payload.
-  const [playTypes, counties, visitorId] = await Promise.all([
+  // The session read joins the three that were already here rather than being
+  // awaited after them — the route is dynamic either way (it reads cookies), and
+  // a fourth cookie read adds nothing measurable, but it must not add a fourth
+  // serial await to the render either.
+  //
+  // It is here for ONE reason: to decide whether the registration band renders.
+  // Nothing about the listing depends on it — the row gate is the API's decision,
+  // carried on the response, so a signed-in member simply receives no gated rows.
+  const [playTypes, counties, visitorId, user] = await Promise.all([
     loadPlayTypes(),
     loadCounties(),
     getVisitorId(),
+    getSessionUser(),
   ]);
 
   return (
@@ -209,6 +220,7 @@ export default async function OperatorsRoute() {
           playTypes={playTypes}
           counties={counties}
           visitorId={visitorId}
+          signedIn={!!user}
         />
 
         {/* All three routes are built, each under `/features/` — see the note at
@@ -232,7 +244,17 @@ export default async function OperatorsRoute() {
           ))}
         </div>
 
-        {/* The design's `.notice.slate` — the page's one conversion prompt. */}
+        {/* THE REGISTRATION ASK, for signed-out visitors only. Placed after the
+            feature cards rather than hard against the table: the table already
+            carries its own ask under any gated result, and stacking two
+            registration prompts in a row reads as pressure rather than as an
+            offer. A signed-in member sees neither — there is nothing locked for
+            them to unlock. */}
+        {user ? null : <OperatorRegisterCta />}
+
+        {/* The design's `.notice.slate` — the page's standing prompt into the
+            claim flow. Left as it was: it points at `/claim`, which is a
+            different journey from the band above, not a second copy of it. */}
         <aside className="mt-6 flex gap-3 rounded-[14px] border border-[#dfe4e9] bg-mv-line-soft px-[18px] py-4 text-sm leading-[1.55] text-[#33404e]">
           <span aria-hidden="true">ℹ</span>
           <div>

@@ -62,9 +62,10 @@ const EMPTY_INFO: ProductionInfo = {
     widestFootprint: null,
   },
   totalOperators: 0,
+  locked: false,
 };
 
-const EMPTY_SERIES: ProductionSeries = { years: [], operators: [] };
+const EMPTY_SERIES: ProductionSeries = { years: [], operators: [], locked: false };
 
 /**
  * The shared state machine, parameterised by which endpoint and which cache.

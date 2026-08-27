@@ -90,6 +90,15 @@ export interface CountyProductionRecord {
 export interface ActivityResult<T> {
   rows: T[];
   total: number;
+  /**
+   * True when the reader has no account and the rows were never fetched.
+   *
+   * Only the filings read can return it — see
+   * `app/api/operators/recent-wells-permits/route.ts`. Distinct from an empty
+   * result on purpose: "this operator has filed nothing lately" and "filings need
+   * an account" are different sentences, and the section draws them differently.
+   */
+  locked?: boolean;
 }
 
 /* ---------------------------------------------------------------- parsing */
@@ -210,12 +219,26 @@ function withTimeout(signal?: AbortSignal): AbortSignal {
     : signal;
 }
 
+/**
+ * `/api/v1/...` is upstream; anything else is one of this site's own handlers.
+ *
+ * The two reads here no longer share a host: production-by-county is public and
+ * goes straight to the operator API, while the filings feed passes through
+ * `app/api/operators/recent-wells-permits/` so a server can decide who is asking.
+ * Deriving the host from the path shape keeps that to one rule.
+ */
+function endpointUrl(path: string): string {
+  return path.startsWith("/api/v1/")
+    ? `${publicOperatorApiBaseUrl()}${path}`
+    : path;
+}
+
 async function post(
   path: string,
   body: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<unknown> {
-  const response = await fetch(`${publicOperatorApiBaseUrl()}${path}`, {
+  const response = await fetch(endpointUrl(path), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -232,10 +255,17 @@ export async function fetchRecentWellsPermits(
   signal?: AbortSignal,
 ): Promise<ActivityResult<WellPermitRecord>> {
   const payload = await post(
-    "/api/v1/operators/recent-wells-permits",
+    /* THROUGH THIS SITE'S OWN ORIGIN — see the route handler for why the filings
+       feed is account-only while everything else on the profile is not. */
+    "/api/operators/recent-wells-permits",
     { operator_number: operatorNumber },
     signal,
   );
+
+  // The gate's answer, before anything is parsed: no rows were fetched.
+  if ((payload as { locked?: unknown }).locked === true) {
+    return { rows: [], total: 0, locked: true };
+  }
 
   const raw = (payload as { results?: unknown }).results;
   const list = Array.isArray(raw) ? raw : [];

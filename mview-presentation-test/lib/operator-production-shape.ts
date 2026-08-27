@@ -104,6 +104,18 @@ export interface ProductionInfo {
   leaders: ProductionLeaders;
   /** What the response says it found, which can differ from `operators.length`. */
   totalOperators: number;
+  /**
+   * True when the volumes came back withheld because the reader has no account.
+   *
+   * WHY IT IS A FLAG AND NOT AN ABSENT FIELD. The endpoint sends the literal
+   * `"****"` in place of each volume and everything else on the record intact —
+   * rank, the oil/gas split, county and lease counts. So the comparison still has
+   * real content to draw; it is only the volumes that must not be printed. Parsing
+   * turns `"****"` into 0, which is why this cannot be inferred downstream: a
+   * withheld volume and a genuine zero are indistinguishable by then, and printing
+   * "0.0M bbl" for a withheld figure is the worst of the three outcomes.
+   */
+  locked: boolean;
 }
 
 /** One year of one operator's output, in millions. */
@@ -131,6 +143,8 @@ export interface ProductionSeries {
   /** Ascending, and the union of every year any selected operator reported in. */
   years: number[];
   operators: ProductionSeriesOperator[];
+  /** True when the annual volumes were withheld — see `ProductionInfo.locked`. */
+  locked: boolean;
 }
 
 /**
