@@ -859,3 +859,81 @@ export const getWellInsightsMap = async (
     throw new Error(String(error) || "Failed to fetch insights for this well");
   }
 };
+
+/** A standing watch on one lease: what to watch for, and where to write. */
+export type LeaseWatch = {
+  /** The lease's own key, district first — `7C-19955`. */
+  lease: string;
+  /** 1, 3 or 5 miles: the ring the service holds. */
+  radius: number;
+  notifyNewPermit: boolean;
+  notifyNewCompletion: boolean;
+  email: string;
+};
+
+/**
+ * POST /api/v1/watches
+ *
+ * Asks the service to watch one lease's ring and write to an address when
+ * something is filed inside it. Returns nothing on success — the watch is the
+ * service's to keep, and this page has nothing further to do with it.
+ *
+ * A refusal comes back as a status with a reason in the body where the service
+ * gives one, and that reason is what the reader is shown: "email is required"
+ * is worth reading, "400" is not.
+ */
+export const saveLeaseWatch = async (watch: LeaseWatch): Promise<void> => {
+  let response: Response;
+
+  try {
+    response = await fetch(`${process.env.MAP_BASE_URL}/api/v1/watches`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(watch),
+    });
+  } catch {
+    /* No answer at all — off the network, or the host is down. Said as
+       something a reader can act on rather than as "TypeError". */
+    throw new Error("Could not reach the service. Try again in a moment.");
+  }
+
+  if (response.ok) return;
+
+  /*
+   * This service wraps its refusals as `{ error: { message, details } }`, and
+   * the details are the part worth reading: "Invalid request payload" says
+   * nothing, "radius must be one of 1, 3, 5 miles" says everything. The
+   * flatter shapes and the bare status follow it, for a service that answers
+   * differently.
+   */
+  const said = (await response.json().catch(() => null)) as {
+    message?: unknown;
+    error?: unknown;
+  } | null;
+
+  const wrapped = said?.error as
+    | { message?: unknown; details?: unknown }
+    | undefined;
+
+  const details = Array.isArray(wrapped?.details)
+    ? wrapped.details
+        .map((detail: unknown) =>
+          typeof (detail as { message?: unknown })?.message === "string"
+            ? ((detail as { message: string }).message)
+            : null,
+        )
+        .filter((message): message is string => message !== null)
+    : [];
+
+  const reason = details.length
+    ? details.join(". ")
+    : typeof wrapped?.message === "string"
+      ? wrapped.message
+      : typeof said?.message === "string"
+        ? said.message
+        : typeof said?.error === "string"
+          ? said.error
+          : `The service would not save this watch (${response.status}).`;
+
+  throw new Error(reason);
+};
