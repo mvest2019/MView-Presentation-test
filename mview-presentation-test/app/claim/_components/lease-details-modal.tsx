@@ -41,7 +41,7 @@ export function LeaseDetailsModal({
   const td = "border-b border-mv-line-soft px-[15px] py-[13px] align-middle";
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-mv-ink/50 p-5 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-mv-ink/50 p-5 backdrop-blur-[2px] max-[560px]:p-0"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -50,7 +50,7 @@ export function LeaseDetailsModal({
         role="dialog"
         aria-modal="true"
         aria-label="Lease details for your ticked records"
-        className="flex max-h-[min(84vh,720px)] w-[min(1040px,100%)] flex-col overflow-hidden rounded-mv bg-mv-card shadow-mv-lg"
+        className="flex max-h-[min(84vh,720px)] w-[min(1040px,100%)] flex-col overflow-hidden rounded-mv bg-mv-card shadow-mv-lg max-[560px]:h-full max-[560px]:max-h-none max-[560px]:rounded-none"
       >
         <div className="flex items-start justify-between gap-3 border-b border-mv-line px-[22px] pb-3 pt-[18px]">
           <div>
@@ -73,7 +73,9 @@ export function LeaseDetailsModal({
         <div className="overflow-auto px-[22px] py-[16px]">
           {/* The rounded frame is the table's own, as in the portal: the head
               band fills the top corners and rows sit flush inside it. */}
-          <div className="overflow-hidden rounded-xl border border-mv-line">
+          {/* Phones get the same rows as cards — an 860px six-column grid is
+              unusable at 375px. */}
+          <div className="overflow-hidden rounded-xl border border-mv-line max-[767px]:hidden">
             <table className="w-full min-w-[860px] border-collapse text-[13px]">
               <thead>
                 <tr>
@@ -124,6 +126,38 @@ export function LeaseDetailsModal({
               </tbody>
             </table>
           </div>
+
+          <ul className="hidden space-y-2 max-[767px]:block">
+            {rows.map((r, i) => (
+              <li
+                key={i}
+                className="rounded-xl border border-mv-line bg-white p-3"
+              >
+                <div className="text-[13.5px] font-bold text-mv-ink">
+                  {r.lease}
+                </div>
+                <div className="mt-[1px] text-[11.5px] text-mv-sublabel">
+                  {r.leaseNo === "—" ? "No lease number" : `#${r.leaseNo}`} ·{" "}
+                  {r.county}
+                </div>
+                <div className="mt-[8px] text-[12.5px] font-semibold text-mv-slate">
+                  {r.owner}
+                </div>
+                <div className="mt-[10px] flex flex-wrap items-center justify-between gap-2 border-t border-mv-line-soft pt-[10px]">
+                  <span className="inline-flex whitespace-nowrap rounded-full bg-mv-tint px-[11px] py-[4px] text-[11.5px] font-semibold text-mv-green-ink">
+                    {r.workingInterest ? "Working Interest" : "Royalty Interest"}
+                  </span>
+                  <span className="font-bold tabular-nums text-mv-ink">
+                    {signedIn ? (
+                      fmt(r.value)
+                    ) : (
+                      <LockedValue what="appraised value" width="w-[62px]" />
+                    )}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
           <p className="mt-[12px] text-[11px] text-mv-muted">
             Current operator and the decimal interest value arrive with the full
             Lease Report in your account. Interest type and the appraised value

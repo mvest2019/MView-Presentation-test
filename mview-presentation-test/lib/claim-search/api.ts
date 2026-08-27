@@ -2,6 +2,7 @@ import { despace } from "./scoring";
 import type {
   BackendOwner,
   ClaimMeta,
+  ClaimResult,
   LeaseOwnersResponse,
   SameNameResponse,
   ScoredOwner,
@@ -117,6 +118,33 @@ export async function fetchSameName(
       };
     }),
   };
+}
+
+/**
+ * File a claim — POST /owners/claim.
+ *
+ * MEMBERS ONLY: the endpoint rejects a visitor id (400), so an anonymous
+ * visitor must register first — the page keeps showing them the sign-up card
+ * and stashes the claim for that flow instead of calling this.
+ *
+ * Owner NAMES are the unit of a claim; the backend resolves each name's
+ * leases itself and reports per-owner outcomes, which is why this returns the
+ * body rather than firing and forgetting.
+ */
+export async function postClaim(
+  memberId: number,
+  ownerNames: string[],
+): Promise<ClaimResult> {
+  const res = await fetch(`${OWNERS}/claim`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      member_id: memberId,
+      mineralOwners: ownerNames.map((ownername) => ({ ownername })),
+    }),
+  });
+  if (!res.ok) throw new Error(`claim → ${res.status}`);
+  return res.json();
 }
 
 /**
