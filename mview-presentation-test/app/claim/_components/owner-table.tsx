@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import type { ScoredOwner } from "@/lib/claim-search/types";
 
 import { fmt, type WorkingRow } from "../_lib/working-set";
@@ -62,6 +64,17 @@ export function OwnerTable({
   onClaimSelected: () => void;
   onViewLeaseDetails: () => void;
 }) {
+  /**
+   * PHONES SHOW A PAGE AT A TIME (2026-08-25). Uncapped, 56 result cards made
+   * an 11,800px page — an unreadable scroll. Twenty fills a couple of screens
+   * and "Show more" adds twenty at a time. The desktop table is unaffected:
+   * it has its own scroll box.
+   */
+  const MOBILE_PAGE = 20;
+  const [mobileLimit, setMobileLimit] = useState(MOBILE_PAGE);
+  const mobileRows = W.slice(0, mobileLimit);
+  const mobileHidden = W.length - mobileRows.length;
+
   const anyOwnerTicked = Object.keys(selO).some((k) => selO[k]);
   const selCount = Object.keys(selO).filter((k) => selO[k]).length;
   return (
@@ -100,7 +113,10 @@ export function OwnerTable({
                 : "")}
       </p>
       <div className="relative mt-[2px] flex min-h-[120px] flex-1 flex-col">
-        <div className="max-h-[560px] flex-1 overflow-auto rounded-xl border border-mv-line">
+        {/* PHONES GET CARDS, NOT A GRID (2026-08-25): six columns at 640px
+            minimum meant sideways scrolling to reach Appraised and Claim on a
+            375px screen. The table is unchanged above 768px. */}
+        <div className="max-h-[560px] flex-1 overflow-auto rounded-xl border border-mv-line max-[767px]:hidden">
           <table className="w-full min-w-[640px] border-collapse text-[12.5px]">
           <thead>
             <tr>
@@ -217,6 +233,137 @@ export function OwnerTable({
           </tbody>
           </table>
         </div>
+
+        {/* ---- the same working set as stacked cards, phones only ---- */}
+        <div className="hidden flex-1 max-[767px]:block">
+          {busyLabel ? (
+            <div role="status" className="space-y-2">
+              <span className="sr-only">{busyLabel}</span>
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="rounded-xl border border-mv-line bg-white p-3"
+                >
+                  <span className="block h-[13px] w-3/5 animate-pulse rounded bg-mv-line-soft" />
+                  <span className="mt-[9px] block h-[10px] w-2/5 animate-pulse rounded bg-mv-line-soft" />
+                  <span className="mt-[14px] block h-[11px] w-4/5 animate-pulse rounded bg-mv-line-soft" />
+                </div>
+              ))}
+            </div>
+          ) : !searched || W.length === 0 ? (
+            <div className="rounded-xl border border-mv-line bg-white">
+              {searched ? (
+                <div className="px-4 py-[26px] text-center text-[13px] text-mv-muted">
+                  No owner matches these filters. Clear a filter or loosen the
+                  name.
+                </div>
+              ) : (
+                <EmptyState>
+                  Type a name, a lease word, or pick a county.
+                </EmptyState>
+              )}
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {mobileRows.map((w) => {
+                const r = w.o.r;
+                const shown = corr[w.key] ?? ((r[4] as string) || "");
+                const on = !!selO[w.key];
+                return (
+                  <li
+                    key={w.key}
+                    onClick={() => onTickOwner(w.key)}
+                    className={`cursor-pointer rounded-xl border p-3 transition-colors ${
+                      on
+                        ? "border-mv-green bg-mv-tint"
+                        : "border-mv-line bg-white"
+                    }`}
+                  >
+                    <div className="flex items-start gap-[10px]">
+                      {pendingOwnerKey === w.key ? (
+                        <span className="mt-[3px]">
+                          <InlineSpinner />
+                        </span>
+                      ) : (
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() => onTickOwner(w.key)}
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label={`Select ${r[0]}`}
+                          className="mt-[3px] h-[17px] w-[17px] flex-none cursor-pointer accent-mv-green-deep"
+                        />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[14px] font-bold leading-[1.3] text-mv-ink">
+                          {r[0]}
+                        </div>
+                        <div className="mt-[1px] text-[11.5px] text-mv-muted">
+                          {w.o.county} County · {r[1]} propert
+                          {r[1] === 1 ? "y" : "ies"}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onClaim(w.o);
+                        }}
+                        className="min-h-[34px] flex-none cursor-pointer whitespace-nowrap rounded-lg border border-mv-line-strong bg-white px-3 text-[12px] font-bold text-mv-green-deep hover:border-mv-ink hover:bg-mv-ink hover:text-white"
+                      >
+                        Claim
+                      </button>
+                    </div>
+                    {/* Label the two gated fields explicitly: without the
+                        table's header row a bare value has no name. */}
+                    <dl className="mt-[10px] space-y-[6px] border-t border-mv-line-soft pt-[10px] text-[12px]">
+                      <div className="flex items-start justify-between gap-3">
+                        <dt className="flex-none text-mv-muted">Mailing</dt>
+                        <dd className="min-w-0 text-right text-mv-slate">
+                          {!signedIn ? (
+                            <LockedValue
+                              what="mailing address"
+                              width="w-[110px]"
+                            />
+                          ) : shown ? (
+                            shown
+                          ) : (
+                            "—"
+                          )}
+                        </dd>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <dt className="flex-none text-mv-muted">Appraised</dt>
+                        <dd className="font-bold tabular-nums text-mv-green-deep">
+                          {signedIn ? (
+                            fmt(r[2])
+                          ) : (
+                            <LockedValue
+                              what="appraised value"
+                              width="w-[62px]"
+                            />
+                          )}
+                        </dd>
+                      </div>
+                    </dl>
+                  </li>
+                );
+              })}
+              {mobileHidden > 0 && (
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => setMobileLimit((n) => n + MOBILE_PAGE)}
+                    className="min-h-[44px] w-full cursor-pointer rounded-xl border border-mv-line-strong bg-white text-[13px] font-semibold text-mv-green-deep"
+                  >
+                    Show {Math.min(mobileHidden, MOBILE_PAGE)} more ·{" "}
+                    {mobileHidden} left
+                  </button>
+                </li>
+              )}
+            </ul>
+          )}
+        </div>
       </div>
       {selCount > 0 && (
         /* STICKY (2026-08-25): the bar lives under a table that is often
@@ -237,14 +384,14 @@ export function OwnerTable({
           <button
             type="button"
             onClick={onViewLeaseDetails}
-            className={`${btnMint} ml-auto`}
+            className={`${btnMint} ml-auto max-[560px]:ml-0 max-[560px]:w-full`}
           >
             View Lease Details
           </button>
           <button
             type="button"
             onClick={onClaimSelected}
-            className={btnPrimary}
+            className={`${btnPrimary} max-[560px]:w-full`}
           >
             {selCount === 1
               ? "Claim This Record →"

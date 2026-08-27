@@ -13,6 +13,7 @@
  *   GET /owners/lease-owners?county&lease         → LeaseOwnersResponse
  *   GET /owners/same-name?county&name&address     → SameNameResponse
  *   POST /owners/address-correction               {…, visitorId | member_id}
+ *   POST /owners/claim                            {member_id, mineralOwners[]}
  *
  * The same-origin stand-in handlers and the prebuilt index in `public/owners/`
  * that served the page before this are gone.
@@ -80,6 +81,34 @@ export interface SameNameResponse {
 }
 
 /* ---------- client-side view shapes ---------- */
+
+/**
+ * `POST /owners/claim` — the result of claiming a set of owner names.
+ *
+ * PARTIAL SUCCESS IS NORMAL: the endpoint reports each name separately, so a
+ * claim of three owners can come back with two filed and one rejected (most
+ * often `OWNER_ALREADY_CLAIMED`). The UI has to show both halves rather than
+ * treating the call as pass/fail.
+ */
+export interface ClaimResult {
+  successful_owners: {
+    ownername: string;
+    claimed_leases_count: number;
+    failed_leases_count: number;
+  }[];
+  failed_owners: {
+    ownername: string;
+    error: string;
+    error_code: string;
+    failed_lease_count: number;
+  }[];
+  summary: {
+    total_owners_processed: number;
+    total_successful_owners: number;
+    total_failed_owners: number;
+  };
+  claimedAt: string;
+}
 
 /** One aggregated lease on the left panel, keyed `county|despacedName`. */
 export interface LeaseAgg {
