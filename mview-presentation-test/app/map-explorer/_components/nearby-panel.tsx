@@ -10,6 +10,7 @@ import {
   Flame,
   Mail,
   MapPin,
+  TriangleAlert,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -211,13 +212,23 @@ export function NearbyPanel({
           </p>
         )}
 
+        {/* Marked as a warning, not set in the same quiet grey as a
+            reading: this is the card saying it cannot answer — the point did
+            not trace to a lease, or the service did not reply — and in the
+            house grey it read as one more line of prose about the ring. */}
         {answer.kind === "problem" && (
-          <p
+          <div
             role="alert"
-            className="mt-[14px] rounded-lg border border-mv-line bg-[#fafbfa] px-3 py-[11px] text-[11px] lg:text-[12.5px] leading-snug text-mv-slate"
+            className="mt-[14px] flex items-start gap-[9px] rounded-lg border border-mv-sand-line bg-mv-sand-tint px-3 py-[11px] text-[11px] lg:text-[12.5px] leading-snug text-mv-sand"
           >
-            {answer.message}
-          </p>
+            <TriangleAlert
+              size={14}
+              strokeWidth={2}
+              className="mt-[1px] shrink-0"
+              aria-hidden="true"
+            />
+            <span className="min-w-0">{answer.message}</span>
+          </div>
         )}
 
         {stats && data && (
@@ -398,17 +409,33 @@ export function NearbyPanel({
                               />
                               {filing.date ?? "—"}
                             </span>
-                            <span className="mt-[5px] block text-[10px] lg:text-[10.5px] tabular-nums text-mv-muted">
-                              {filing.distanceMiles === null
-                                ? "—"
-                                : `${filing.distanceMiles.toFixed(1)} mi`}
-                              {filing.bearing ? ` ${filing.bearing}` : ""}
-                            </span>
+                            {/* Nothing at all where the service has no
+                                distance, rather than an em dash under every
+                                date: a column of lone dashes reads as a
+                                broken row. How many are unplaced is said
+                                once, under the list. */}
+                            {filing.distanceMiles !== null && (
+                              <span className="mt-[5px] block text-[10px] lg:text-[10.5px] tabular-nums text-mv-muted">
+                                {filing.distanceMiles.toFixed(1)} mi
+                                {filing.bearing ? ` ${filing.bearing}` : ""}
+                              </span>
+                            )}
                           </span>
                         </li>
                       );
                     })}
                   </ol>
+
+                  {/* The service counts what it could not place, and says why
+                      in `distanceBasis`: it measures between the subject
+                      lease's wells and the event's well, and answers null
+                      where either has no coordinates. */}
+                  {data.meta.unplacedEvents > 0 && (
+                    <p className="mt-[8px] text-[10px] lg:text-[11px] leading-snug text-mv-muted">
+                      {data.meta.unplacedEvents} of these carry no coordinates
+                      on their record, so no distance is shown for them.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -445,9 +472,11 @@ export function NearbyPanel({
             }`}
           >
             <Download size={14} aria-hidden="true" />
-            {filings.length > 0
-              ? `Download these ${filings.length} filing${filings.length === 1 ? "" : "s"}`
-              : "Nothing new to download"}
+            {filings.length === 0
+              ? "Nothing new to download"
+              : filings.length === 1
+                ? "Download this filing"
+                : `Download these ${filings.length} filings`}
           </button>
         )}
 
