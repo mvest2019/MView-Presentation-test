@@ -495,7 +495,11 @@ export function ClaimFinder({
       {/* hero — NO background of its own (2026-08-25): it sits straight on
           the page ground, so the copy flips to ink/muted and the pills to
           bordered white chips. The search card below keeps its hero overlap. */}
-      <section className="pb-[86px] pt-[26px] max-[767px]:pb-[78px] max-[767px]:pt-4">
+      {/* Padding is now just breathing room (2026-08-25). It used to be 86px
+          so the search card could overlap a dark hero band; with the band
+          gone, that padding plus the card's -62px pull was dead space that
+          pushed the filters and both panels down the page. */}
+      <section className="pb-5 pt-5 max-[767px]:pb-4 max-[767px]:pt-4">
         <div className="mx-auto max-w-[1140px] px-7 max-[767px]:px-4">
           {/* Headline and stat pills share ONE row (2026-08-25): pills on a
               row of their own left an empty band above the h1. They wrap
@@ -547,7 +551,7 @@ export function ClaimFinder({
         <form
           onSubmit={(e) => e.preventDefault()}
           onKeyDown={onFormKeyDown}
-          className="sticky top-[74px] z-40 -mt-[62px] mb-[18px] rounded-mv border border-mv-line bg-mv-card p-[18px] pb-[14px] shadow-mv-lg max-[767px]:p-[14px] max-[767px]:pb-3"
+          className="sticky top-[72px] z-40 mb-[18px] rounded-mv border border-mv-line bg-mv-card p-[18px] pb-[14px] shadow-mv-lg max-[767px]:p-[14px] max-[767px]:pb-3"
         >
           <div className="grid grid-cols-[1fr_1.4fr] items-end gap-3 max-[640px]:grid-cols-1">
             <div>
