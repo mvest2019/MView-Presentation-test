@@ -514,6 +514,12 @@ export default async function OperatorDetailRoute({
                 {operator.headquarters ? (
                   <EditableAddress
                     operatorNumber={operator.operatorNumber}
+                    operatorName={operator.name}
+                    /* The correction is filed against the operator's most-active
+                       county, which is the only county this record identifies as
+                       principal. "" when none is on file — the endpoint does not
+                       require it, so a thin record must not block the submission. */
+                    county={operator.topCounties[0] ?? ""}
                     address={operator.headquarters}
                   />
                 ) : null}
