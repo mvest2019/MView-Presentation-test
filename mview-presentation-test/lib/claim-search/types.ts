@@ -47,6 +47,8 @@ export interface ScoredOwner {
   s: number;
   /** Per-lease appraised values (aligned with `r[3]`), when the API sent them. */
   leaseValues?: number[];
+  /** True = working interest, false = royalty interest (the API's flag). */
+  workingInterest?: boolean;
 }
 
 /** `GET /api/claim/meta` — hero stats and the county dropdown. */

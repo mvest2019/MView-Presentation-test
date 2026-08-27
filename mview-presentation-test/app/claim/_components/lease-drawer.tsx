@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { LeaseAgg } from "@/lib/claim-search/types";
 
 import { fmt } from "../_lib/working-set";
-import { btnPrimary } from "./ui";
+import { btnPrimary, LockedInline } from "./ui";
 
 /**
  * The lease-report drawer. Owner count and appraised total are REAL — summed
@@ -16,16 +16,19 @@ import { btnPrimary } from "./ui";
  */
 export function LeaseDrawer({
   lease,
+  signedIn,
   onClose,
 }: {
   lease: LeaseAgg | null;
+  /** Signed-out visitors see the appraised chip as locked. */
+  signedIn: boolean;
   onClose: () => void;
 }) {
   return (
     <>
       {lease && (
         <div
-          className="fixed inset-0 z-[110] bg-[rgba(11,53,39,.5)] backdrop-blur-[2px]"
+          className="fixed inset-0 z-[110] bg-mv-ink/50 backdrop-blur-[2px]"
           onClick={onClose}
         />
       )}
@@ -33,7 +36,7 @@ export function LeaseDrawer({
         role="dialog"
         aria-label="Lease report"
         aria-hidden={!lease}
-        className={`fixed right-0 top-0 z-[111] flex h-full w-[min(500px,94vw)] flex-col bg-white shadow-[-18px_0_50px_rgba(11,53,39,.3)] transition-transform duration-200 ease-out ${lease ? "translate-x-0" : "translate-x-[103%]"}`}
+        className={`fixed right-0 top-0 z-[111] flex h-full w-[min(500px,94vw)] flex-col bg-white shadow-mv-lg transition-transform duration-200 ease-out ${lease ? "translate-x-0" : "translate-x-[103%]"}`}
       >
         <div className="flex items-start justify-between gap-3 border-b border-mv-line px-5 pb-[14px] pt-[18px]">
           <div>
@@ -60,10 +63,14 @@ export function LeaseDrawer({
                 <span className="inline-flex items-center rounded-full bg-mv-mint px-[10px] py-[3px] text-[11.5px] font-extrabold text-mv-green-ink">
                   {lease.cnt} owner{lease.cnt === 1 ? "" : "s"} in your result set
                 </span>
-                <span className="inline-flex items-center rounded-full bg-[#e8ecf3] px-[10px] py-[3px] text-[11.5px] font-semibold text-mv-slate">
-                  {fmt(lease.val)} appraised
+                <span className="inline-flex items-center rounded-full bg-mv-hover px-[10px] py-[3px] text-[11.5px] font-semibold text-mv-slate">
+                  {signedIn ? (
+                    `${fmt(lease.val)} appraised`
+                  ) : (
+                    <LockedInline label="Appraised value locked" />
+                  )}
                 </span>
-                <span className="inline-flex items-center rounded-full bg-[#e8ecf3] px-[10px] py-[3px] text-[11.5px] font-semibold text-mv-slate">
+                <span className="inline-flex items-center rounded-full bg-mv-hover px-[10px] py-[3px] text-[11.5px] font-semibold text-mv-slate">
                   {lease.c} County
                 </span>
               </div>

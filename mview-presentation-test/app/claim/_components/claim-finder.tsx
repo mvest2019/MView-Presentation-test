@@ -37,6 +37,7 @@ import {
   HomeIcon,
   InlineSpinner,
   LeaseIcon,
+  LockIcon,
   PersonIcon,
   PinIcon,
   SearchIcon,
@@ -78,16 +79,26 @@ function IntroFeatures({ meta }: { meta: ClaimMeta | null }) {
     },
     {
       icon: <HomeIcon size={17} />,
+      title: "Same name, many addresses",
+      text: "Rolls keep old addresses beside new ones. Tick every record that is you and claim them as one.",
+    },
+    {
+      icon: <PinIcon />,
+      title: "Lease reports",
+      text: "Open any lease for its owner count and appraised total, straight from the county roll.",
+    },
+    {
+      icon: <LockIcon size={16} />,
       title: "Claim it free",
-      text: "Merge records that are all you and claim them in one go — no account needed to search.",
+      text: "Searching needs no account. A free one unlocks mailing addresses and appraised values.",
     },
   ];
   return (
-    <div className="grid grid-cols-4 gap-[18px] pb-2 max-[1000px]:grid-cols-2 max-[560px]:grid-cols-1">
+    <div className="grid grid-cols-3 gap-[18px] pb-2 max-[900px]:grid-cols-2 max-[560px]:grid-cols-1">
       {items.map((it) => (
         <div
           key={it.title}
-          className="rounded-2xl border border-mv-line bg-white px-5 py-[18px] shadow-[0_1px_2px_rgba(11,53,39,.06),0_8px_24px_rgba(11,53,39,.07)]"
+          className="rounded-mv border border-mv-line bg-mv-card px-5 py-[18px] shadow-mv transition-shadow hover:shadow-mv-lg"
         >
           <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-[10px] bg-mv-mint text-mv-green-deep">
             {it.icon}
@@ -206,6 +217,25 @@ export function ClaimFinder({ signedIn }: { signedIn: boolean }) {
   // Monotonic sequence so a slow response never overwrites a newer one —
   // with live search two requests can easily be in flight at once.
   const searchSeq = useRef(0);
+
+  /** Enter commits the filters immediately rather than waiting out the debounce. */
+  function onFormKeyDown(e: React.KeyboardEvent<HTMLFormElement>) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const el = e.target as HTMLElement;
+    el.blur?.();
+    void doSearch();
+  }
+
+  const anyFilter =
+    form.name.trim() !== "" ||
+    form.lease.trim() !== "" ||
+    form.addr.trim() !== "" ||
+    form.county !== "*";
+
+  function clearFilters() {
+    setForm({ name: "", lease: "", addr: "", county: "*" });
+  }
 
   async function doSearch() {
     const seq = ++searchSeq.current;
@@ -432,6 +462,7 @@ export function ClaimFinder({ signedIn }: { signedIn: boolean }) {
           owner: o.r[0],
           county: o.county,
           value: o.leaseValues?.[i] ?? o.r[2],
+          workingInterest: !!o.workingInterest,
         });
       });
     }
@@ -508,7 +539,8 @@ export function ClaimFinder({ signedIn }: { signedIn: boolean }) {
             the card is just the four fields plus the running tally. */}
         <form
           onSubmit={(e) => e.preventDefault()}
-          className="sticky top-[74px] z-40 -mt-[62px] mb-[18px] rounded-[18px] border border-mv-line bg-white p-[18px] pb-[14px] shadow-[0_4px_10px_rgba(11,53,39,.08),0_18px_44px_rgba(11,53,39,.12)] max-[767px]:p-[14px] max-[767px]:pb-3"
+          onKeyDown={onFormKeyDown}
+          className="sticky top-[74px] z-40 -mt-[62px] mb-[18px] rounded-mv border border-mv-line bg-mv-card p-[18px] pb-[14px] shadow-mv-lg max-[767px]:p-[14px] max-[767px]:pb-3"
         >
           <div className="grid grid-cols-[1fr_1.4fr] items-end gap-3 max-[640px]:grid-cols-1">
             <div>
@@ -570,26 +602,36 @@ export function ClaimFinder({ signedIn }: { signedIn: boolean }) {
           </div>
           <div className="mt-3 flex min-h-[26px] flex-wrap items-center gap-2">
             {searching ? (
-              <span className="inline-flex items-center gap-2 rounded-full border border-[#e2e7e5] bg-[#f2f4f3] px-3 py-1 text-xs font-semibold text-mv-slate">
+              <span className="inline-flex items-center gap-2 rounded-full border border-mv-line bg-mv-hover px-3 py-1 text-xs font-semibold text-mv-slate">
                 <InlineSpinner />
                 Searching the rolls…
               </span>
             ) : searched ? (
               <>
-                <span className="rounded-full border border-[#e2e7e5] bg-[#f2f4f3] px-3 py-1 text-xs text-mv-slate">
+                <span className="rounded-full border border-mv-line bg-mv-hover px-3 py-1 text-xs text-mv-slate">
                   <b className="text-mv-green-deep">{W.length}</b> of {U.length}
                   {!anyLeaseTicked && owners.length === 500 ? "+" : ""} owner
                   {U.length === 1 ? "" : "s"}
                 </span>
-                <span className="rounded-full border border-[#e2e7e5] bg-[#f2f4f3] px-3 py-1 text-xs text-mv-slate">
+                <span className="rounded-full border border-mv-line bg-mv-hover px-3 py-1 text-xs text-mv-slate">
                   <b className="text-mv-green-deep">{L.length}</b> of{" "}
                   {totalLeases} lease{totalLeases === 1 ? "" : "s"}
                 </span>
               </>
             ) : null}
-            <span className="ml-auto text-[11px] text-mv-muted">
-              Results update as you type
-            </span>
+            {anyFilter ? (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="ml-auto cursor-pointer rounded-lg px-2 py-1 text-[12px] font-semibold text-mv-green-deep hover:bg-mv-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+              >
+                Clear filters
+              </button>
+            ) : (
+              <span className="ml-auto text-[11px] text-mv-muted">
+                Results update as you type
+              </span>
+            )}
           </div>
         </form>
 
@@ -628,6 +670,7 @@ export function ClaimFinder({ signedIn }: { signedIn: boolean }) {
           <div>
             <LeasePanel
               searched={searched}
+              signedIn={signedIn}
               busyLabel={
                 searching
                   ? "Searching the rolls…"
@@ -653,6 +696,7 @@ export function ClaimFinder({ signedIn }: { signedIn: boolean }) {
           <div>
             <OwnerTable
               searched={searched}
+              signedIn={signedIn}
               busyLabel={
                 searching
                   ? "Searching the rolls…"
@@ -686,7 +730,7 @@ export function ClaimFinder({ signedIn }: { signedIn: boolean }) {
           />
         )}
 
-        <footer className="mb-[30px] mt-[26px] text-center text-[11.5px] text-[#93a39c]">
+        <footer className="mb-[34px] mt-[26px] border-t border-mv-line pt-[18px] text-center text-[11.5px] text-mv-sublabel">
           Source: county appraisal mineral rolls · latest roll per county.
           Claiming does not change legal ownership.
         </footer>
@@ -702,9 +746,17 @@ export function ClaimFinder({ signedIn }: { signedIn: boolean }) {
         />
       )}
       {details && (
-        <LeaseDetailsModal rows={details} onClose={() => setDetails(null)} />
+        <LeaseDetailsModal
+          rows={details}
+          signedIn={signedIn}
+          onClose={() => setDetails(null)}
+        />
       )}
-      <LeaseDrawer lease={drawer} onClose={() => setDrawer(null)} />
+      <LeaseDrawer
+        lease={drawer}
+        signedIn={signedIn}
+        onClose={() => setDrawer(null)}
+      />
     </div>
   );
 }
