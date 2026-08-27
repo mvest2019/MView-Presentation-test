@@ -3,14 +3,22 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
-import type { MergedTx, ScoredOwner } from "@/lib/claim-search/types";
+import type {
+  ClaimResult,
+  MergedTx,
+  ScoredOwner,
+} from "@/lib/claim-search/types";
 
 import { fmt } from "../_lib/working-set";
 import { btnGhost, btnMint, btnPrimary, btnSm } from "./ui";
 
 export type ClaimState =
   | { phase: "ask"; base: ScoredOwner; others: ScoredOwner[] }
-  | { phase: "done"; base: ScoredOwner; tx: MergedTx };
+  /** Anonymous: the record is ready, sign-up saves it. */
+  | { phase: "done"; base: ScoredOwner; tx: MergedTx }
+  /** Signed-in: the claim was FILED and this is what the API reported. */
+  | { phase: "result"; base: ScoredOwner; tx: MergedTx; result: ClaimResult }
+  | { phase: "error"; base: ScoredOwner; tx: MergedTx };
 
 /**
  * The claim confirmation card: the same-name / different-address merge-ask
@@ -38,6 +46,10 @@ export function ClaimCard({
       <div className="w-full">
         {claim.phase === "ask" ? (
           <MergeAsk base={claim.base} others={claim.others} onMerge={onMerge} />
+        ) : claim.phase === "result" ? (
+          <ClaimFiled result={claim.result} />
+        ) : claim.phase === "error" ? (
+          <ClaimFailed tx={claim.tx} />
         ) : (
           <ClaimDone tx={claim.tx} base={claim.base} />
         )}
@@ -121,6 +133,91 @@ function MergeAsk({
           No, just this one
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * What the claim endpoint actually did, per owner name. Partial success is
+ * normal — an owner already claimed by someone else comes back in
+ * `failed_owners` — so both halves are shown rather than one verdict.
+ */
+function ClaimFiled({ result }: { result: ClaimResult }) {
+  const { successful_owners: ok, failed_owners: bad, summary } = result;
+  const leases = ok.reduce((t, o) => t + o.claimed_leases_count, 0);
+  return (
+    <div>
+      <strong>
+        {ok.length
+          ? `Claimed ${summary.total_successful_owners} of ${summary.total_owners_processed} record${summary.total_owners_processed === 1 ? "" : "s"} — ${leases} lease${leases === 1 ? "" : "s"} now yours.`
+          : "Nothing was claimed."}
+      </strong>
+      {ok.length > 0 && (
+        <ul className="mt-2 space-y-[6px]">
+          {ok.map((o) => (
+            <li
+              key={o.ownername}
+              className="flex flex-wrap items-baseline gap-x-2 rounded-[10px] border border-mv-line bg-white px-[11px] py-[8px] text-[12.5px]"
+            >
+              <span className="font-semibold text-mv-ink">{o.ownername}</span>
+              <span className="text-mv-muted">
+                {o.claimed_leases_count} lease
+                {o.claimed_leases_count === 1 ? "" : "s"} claimed
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {bad.length > 0 && (
+        <>
+          <p className="mt-3 text-[12px] font-semibold text-mv-slate">
+            Not claimed
+          </p>
+          <ul className="mt-1 space-y-[6px]">
+            {bad.map((o) => (
+              <li
+                key={o.ownername}
+                className="rounded-[10px] border border-mv-line bg-mv-bg px-[11px] py-[8px] text-[12.5px]"
+              >
+                <span className="font-semibold text-mv-ink">
+                  {o.ownername}
+                </span>
+                <span className="mt-[1px] block text-[11.5px] text-mv-muted">
+                  {o.error_code === "OWNER_ALREADY_CLAIMED"
+                    ? "Already claimed — contact support if this record is yours."
+                    : o.error}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      <Link
+        href="/portal"
+        className={`${btnPrimary} mt-3 !rounded-xl !px-[26px] !py-[14px] !text-[15px]`}
+      >
+        Go to your portal &rarr;
+      </Link>
+    </div>
+  );
+}
+
+/** The claim call failed outright — the record is still stashed for a retry. */
+function ClaimFailed({ tx }: { tx: MergedTx }) {
+  return (
+    <div>
+      <strong>We couldn&rsquo;t file that claim.</strong>{" "}
+      <span>
+        {tx.owners.join(", ")} — nothing was saved, so nothing is lost. Try
+        again in a moment.
+      </span>
+      <br />
+      <Link
+        href="/portal"
+        className={`${btnGhost} ${btnSm} mt-3`}
+      >
+        Go to your portal &rarr;
+      </Link>
     </div>
   );
 }

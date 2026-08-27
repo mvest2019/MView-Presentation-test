@@ -9,6 +9,7 @@ import {
   fetchSameName,
   fetchSearch,
   postAddressCorrection,
+  postClaim,
 } from "@/lib/claim-search/api";
 import { despace } from "@/lib/claim-search/scoring";
 import type { ClaimMeta, LeaseAgg, ScoredOwner } from "@/lib/claim-search/types";
@@ -159,6 +160,22 @@ export function ClaimFinder({
   const [leaseLoading, setLeaseLoading] = useState(false);
   const [pendingOwnerKey, setPendingOwnerKey] = useState<string | null>(null);
 
+  /**
+   * PHONE-ONLY VIEW STATE (2026-08-25). Stacked, the lease panel came first
+   * and buried the owner records 1100px down the page — but owners are what
+   * people came to find. Phones now show ONE panel at a time behind a tab
+   * pair, owners first. Both panels render together above 768px as before.
+   */
+  const [mobilePanel, setMobilePanel] = useState<"owners" | "leases">("owners");
+  /**
+   * The filter card is ~400px of a 812px screen. Once a search is committed
+   * it collapses to a one-line sticky summary so the results own the screen,
+   * with Edit always a tap away. Expanded before the first search.
+   */
+  const [filtersOpen, setFiltersOpen] = useState(true);
+  /** True while `POST /owners/claim` is in flight — guards a double file. */
+  const [claiming, setClaiming] = useState(false);
+
   const [claim, setClaim] = useState<ClaimState | null>(null);
   const [modal, setModal] = useState<ModalState | null>(null);
   const [drawer, setDrawer] = useState<LeaseAgg | null>(null);
@@ -211,6 +228,17 @@ export function ClaimFinder({
   }, [W, anyOwnerTicked, selO, refL, selL]);
   const totalLeases = useMemo(() => totalLeaseCount(U), [U]);
 
+  /** One line describing the applied filters, for the collapsed phone bar. */
+  const filterSummary =
+    [
+      form.county === "*" ? "All of Texas" : `${form.county} County`,
+      form.name.trim() && `owner “${form.name.trim()}”`,
+      form.lease.trim() && `lease “${form.lease.trim()}”`,
+      form.addr.trim() && form.addr.trim(),
+    ]
+      .filter(Boolean)
+      .join(" · ") || "All of Texas";
+
   const countyOptions = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const o of owners) counts[o.county] = (counts[o.county] ?? 0) + 1;
@@ -224,11 +252,51 @@ export function ClaimFinder({
   // Monotonic sequence so a slow response never overwrites a newer one —
   // with live search two requests can easily be in flight at once.
   const searchSeq = useRef(0);
+  const resultsAnchor = useRef<HTMLDivElement>(null);
+  /** The live-search debounce, so an explicit Enter can cancel it. */
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * PHONES ONLY: bring the results into view once they land (2026-08-25).
+   * The filter card is static and nearly a screen tall at 375px, so a search
+   * used to complete entirely below the fold — it looked like nothing had
+   * happened.
+   *
+   * Skipped while a filter field still has focus: live search fires on every
+   * debounce, and yanking the page away mid-word (taking the keyboard's
+   * anchor with it) would be worse than not scrolling at all. Pressing Enter
+   * blurs the field, so an explicit search always scrolls; so does picking a
+   * county. Desktop never scrolls — the results are already visible there.
+   */
+  function scrollToResultsOnPhone() {
+    if (typeof window === "undefined" || window.innerWidth >= 768) return;
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLElement &&
+      active.closest("form") &&
+      (active.tagName === "INPUT" || active.tagName === "TEXTAREA")
+    )
+      return;
+    // Collapsing first shortens the page, which is why the scroll target is
+    // measured inside the timeout below rather than now.
+    setFiltersOpen(false);
+    // A frame late: the results replace the intro cards, so the anchor's
+    // position is only final after that paint. 72px clears the sticky header.
+    setTimeout(() => {
+      const el = resultsAnchor.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top + window.scrollY - 72;
+      window.scrollTo({ top: Math.max(top, 0), behavior: "smooth" });
+    }, 80);
+  }
 
   /** Enter commits the filters immediately rather than waiting out the debounce. */
   function onFormKeyDown(e: React.KeyboardEvent<HTMLFormElement>) {
     if (e.key !== "Enter") return;
     e.preventDefault();
+    // Cancel the pending debounce: without this, Enter searches AND the
+    // timer fires the same search again a moment later.
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
     const el = e.target as HTMLElement;
     el.blur?.();
     void doSearch();
@@ -267,6 +335,7 @@ export function ClaimFinder({
       setCty("*");
       setSearched(true);
       setClaim(null);
+      scrollToResultsOnPhone();
     } catch {
       if (seq === searchSeq.current)
         setStatus("Search failed to load — try again.");
@@ -290,6 +359,7 @@ export function ClaimFinder({
     if (!active) searchSeq.current++; // cancel anything in flight NOW
     const t = setTimeout(
       () => {
+        debounceTimer.current = null;
         if (!active) {
           if (searched || searching || owners.length) {
             setOwners([]);
@@ -306,6 +376,7 @@ export function ClaimFinder({
       },
       active ? 450 : 0,
     );
+    debounceTimer.current = t;
     return () => clearTimeout(t);
     // doSearch reads the same `form` this effect keys on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -416,34 +487,63 @@ export function ClaimFinder({
     postAddressCorrection({ owner, county, oldAddress, newAddress }, memberId);
   }
 
-  function finishClaim(base: ScoredOwner, merged: ScoredOwner[]) {
+  /**
+   * Commit a claim.
+   *
+   * MEMBERS FILE IT FOR REAL: `POST /owners/claim` takes the owner NAMES and
+   * resolves each one's leases server-side, reporting per-name outcomes. An
+   * all-successful claim goes straight to the portal, where the records now
+   * live; anything rejected (usually `OWNER_ALREADY_CLAIMED`) stops instead
+   * and shows what did and did not land — silently redirecting would hide a
+   * failure the visitor needs to read.
+   *
+   * ANONYMOUS VISITORS CANNOT: the endpoint rejects a visitor id, so they get
+   * the sign-up card and the stashed payload, exactly as before.
+   */
+  async function finishClaim(base: ScoredOwner, merged: ScoredOwner[]) {
+    if (claiming) return;
     const tx = buildMergedTx(base, merged);
     try {
       sessionStorage.setItem("mvClaimedOwner", JSON.stringify(tx));
     } catch {
       /* signup/portal flow just won't be pre-filled */
     }
-    // A registered visitor needs no sign-up pitch: the claimed record is
-    // stashed above, so send them straight to their portal with it.
-    if (signedIn) {
-      router.push("/portal");
+
+    if (!signedIn || memberId === null) {
+      setClaim({ phase: "done", base, tx });
       return;
     }
-    setClaim({ phase: "done", base, tx });
+
+    setClaiming(true);
+    setStatus("Filing your claim…");
+    try {
+      const result = await postClaim(memberId, tx.owners);
+      setStatus("");
+      if (result.failed_owners.length === 0) {
+        router.push("/portal");
+        return;
+      }
+      setClaim({ phase: "result", base, tx, result });
+    } catch {
+      setStatus("");
+      setClaim({ phase: "error", base, tx });
+    } finally {
+      setClaiming(false);
+    }
   }
 
   /** The Claim button: merge-ask first when the name exists elsewhere. */
   function claimOne(o: ScoredOwner) {
     const others = sameNameOthers(o, U);
     if (others.length) setClaim({ phase: "ask", base: o, others });
-    else finishClaim(o, []);
+    else void finishClaim(o, []);
   }
 
   /** Multi-claim: the user ticked the records themselves — no merge-ask. */
   function claimSelected() {
     const picked = U.filter((o) => selO[okey(o)]);
     if (!picked.length) return;
-    finishClaim(picked[0], picked.slice(1));
+    void finishClaim(picked[0], picked.slice(1));
   }
 
   /**
@@ -545,15 +645,35 @@ export function ClaimFinder({
       </section>
 
       <div className="mx-auto max-w-[1140px] px-7 max-[767px]:px-4">
+        {/* Collapsed filters — phones only. Sticky so the summary of what is
+            applied, and the way back to the fields, are always in reach. */}
+        {!filtersOpen && (
+          <div className="sticky top-[72px] z-40 mb-3 hidden items-center gap-2 rounded-mv border border-mv-line bg-mv-card px-3 py-[10px] shadow-mv max-[767px]:flex">
+            <span className="flex-none text-mv-green-deep">
+              <SearchIcon size={15} stroke={2.4} />
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-mv-slate">
+              {filterSummary}
+            </span>
+            <button
+              type="button"
+              onClick={() => setFiltersOpen(true)}
+              className="min-h-[34px] flex-none cursor-pointer rounded-lg border border-mv-line-strong bg-white px-3 text-[12.5px] font-semibold text-mv-green-deep"
+            >
+              Edit
+            </button>
+          </div>
+        )}
+
         {/* sticky search card — overlaps the hero; sits under the h-16 header.
             NO Search button (2026-08-25): results follow the filters live, so
             the card is just the four fields plus the running tally. */}
         <form
           onSubmit={(e) => e.preventDefault()}
           onKeyDown={onFormKeyDown}
-          className="sticky top-[72px] z-40 mb-[18px] rounded-mv border border-mv-line bg-mv-card p-[18px] pb-[14px] shadow-mv-lg max-[767px]:p-[14px] max-[767px]:pb-3"
+          className={`${filtersOpen ? "" : "max-[767px]:hidden"} sticky top-[72px] z-40 mb-[18px] rounded-mv border border-mv-line bg-mv-card p-[18px] pb-[14px] shadow-mv-lg max-[767px]:static max-[767px]:p-[14px] max-[767px]:pb-3`}
         >
-          <div className="grid grid-cols-[1fr_1.4fr] items-end gap-3 max-[640px]:grid-cols-1">
+          <div className="grid grid-cols-[1fr_1.4fr] items-end gap-3 max-[640px]:grid-cols-1 max-[640px]:gap-[10px]">
             <div>
               <div className={fieldLabel}>
                 <PinIcon />
@@ -585,7 +705,7 @@ export function ClaimFinder({
               />
             </div>
           </div>
-          <div className="mt-3 grid grid-cols-[1fr_1.4fr] gap-3 max-[640px]:grid-cols-1">
+          <div className="mt-3 grid grid-cols-[1fr_1.4fr] gap-3 max-[640px]:mt-[10px] max-[640px]:grid-cols-1 max-[640px]:gap-[10px]">
             <div>
               <div className={fieldLabel}>
                 <LeaseIcon />
@@ -630,6 +750,15 @@ export function ClaimFinder({
                 </span>
               </>
             ) : null}
+            {searched && (
+              <button
+                type="button"
+                onClick={() => setFiltersOpen(false)}
+                className="hidden min-h-[32px] cursor-pointer rounded-lg bg-mv-ink px-3 text-[12.5px] font-semibold text-white max-[767px]:inline-flex max-[767px]:items-center"
+              >
+                Done
+              </button>
+            )}
             {anyFilter ? (
               <button
                 type="button"
@@ -649,6 +778,9 @@ export function ClaimFinder({
         <p aria-live="polite" className={status ? "mb-[10px] text-[13px] text-mv-muted" : "sr-only"}>
           {status}
         </p>
+        {/* Scroll target for phones — see `scrollToResultsOnPhone`. */}
+        <div ref={resultsAnchor} aria-hidden="true" />
+
         {/* Before the first filter: what this page can do, instead of two
             empty panels staring back. Any filter swaps this for the results. */}
         {!searched && !searching && <IntroFeatures meta={meta} />}
@@ -673,12 +805,42 @@ export function ClaimFinder({
           </p>
         )}
 
+        {/* Panel switch — phones only; both panels show side by side above
+            768px, so the tabs are pure mobile chrome. The inactive panel is
+            hidden with `!hidden`: the grid sets `[&>*]:flex` on its children,
+            which otherwise wins over a plain `hidden`. */}
+        {(searched || searching) && (
+          <div className="mb-3 hidden gap-2 max-[767px]:flex" role="tablist">
+            {(
+              [
+                ["owners", `Owners (${W.length})`],
+                ["leases", `Leases (${L.length})`],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={mobilePanel === key}
+                onClick={() => setMobilePanel(key)}
+                className={`min-h-[42px] flex-1 cursor-pointer rounded-full border text-[13px] font-semibold transition-colors ${
+                  mobilePanel === key
+                    ? "border-mv-green-deep bg-mv-tint text-mv-green-ink"
+                    : "border-mv-line bg-white text-mv-slate"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div
-          className={`grid grid-cols-[370px_1fr] items-stretch gap-[18px] pb-2 max-[900px]:grid-cols-1 [&>*]:flex [&>*]:min-w-0 ${
+          className={`grid grid-cols-[370px_1fr] items-stretch gap-[18px] pb-2 max-[900px]:grid-cols-1 max-[767px]:gap-3 [&>*]:flex [&>*]:min-w-0 ${
             !searched && !searching ? "hidden" : ""
           }`}
         >
-          <div>
+          <div className={mobilePanel === "leases" ? "" : "max-[767px]:!hidden"}>
             <LeasePanel
               searched={searched}
               signedIn={signedIn}
@@ -704,7 +866,7 @@ export function ClaimFinder({
               onClearTicks={() => setSelL({})}
             />
           </div>
-          <div>
+          <div className={mobilePanel === "owners" ? "" : "max-[767px]:!hidden"}>
             <OwnerTable
               searched={searched}
               signedIn={signedIn}
@@ -737,7 +899,9 @@ export function ClaimFinder({
         {claim && (
           <ClaimCard
             claim={claim}
-            onMerge={(merged) => claim && finishClaim(claim.base, merged)}
+            onMerge={(merged) => {
+              if (claim) void finishClaim(claim.base, merged);
+            }}
           />
         )}
 

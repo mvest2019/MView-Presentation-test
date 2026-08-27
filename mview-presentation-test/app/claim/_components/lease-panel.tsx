@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import type { LeaseAgg } from "@/lib/claim-search/types";
 
 import { fmt } from "../_lib/working-set";
@@ -54,6 +56,14 @@ export function LeasePanel({
   onOpenReport: (lease: LeaseAgg) => void;
   onClearTicks: () => void;
 }) {
+  /**
+   * Phones render a page of leases at a time — see the note in `owner-table`.
+   * Desktop is untouched: rows past the limit are hidden by a phone-only
+   * class, not dropped from the list.
+   */
+  const MOBILE_PAGE = 20;
+  const [mobileLimit, setMobileLimit] = useState(MOBILE_PAGE);
+
   const heading = anyOwnerTicked
     ? "Leases held by ticked owners"
     : searched
@@ -106,7 +116,7 @@ export function LeasePanel({
             : "Waiting on your first search."}
       </p>
       <div className="relative flex min-h-[120px] flex-1 flex-col">
-        <div className="max-h-[560px] flex-1 overflow-y-auto pr-[2px]">
+        <div className="max-h-[560px] flex-1 overflow-y-auto pr-[2px] max-[767px]:max-h-none">
         {busyLabel ? (
           <LeaseListSkeleton label={busyLabel} />
         ) : !searched ? (
@@ -116,10 +126,12 @@ export function LeasePanel({
             No leases in this set — clear a filter to widen it.
           </div>
         ) : (
-          leases.map((l) => (
+          leases.map((l, i) => (
             <div
               key={l.key}
               className={`mt-2 flex items-start gap-[10px] rounded-[11px] border px-3 py-[10px] text-[12.5px] transition-[border-color,background-color,box-shadow] ${
+                i >= mobileLimit ? "max-[767px]:!hidden" : ""
+              } ${
                 selL[l.key]
                   ? "border-mv-green bg-mv-tint"
                   : "border-mv-line bg-white hover:border-mv-mint-line hover:shadow-mv"
@@ -151,6 +163,17 @@ export function LeasePanel({
               </div>
             </div>
           ))
+        )}
+        {/* Phones only: the desktop panel keeps every lease in its scroll box. */}
+        {!busyLabel && searched && leases.length > mobileLimit && (
+          <button
+            type="button"
+            onClick={() => setMobileLimit((n) => n + MOBILE_PAGE)}
+            className="mt-2 hidden min-h-[44px] w-full cursor-pointer rounded-xl border border-mv-line-strong bg-white text-[13px] font-semibold text-mv-green-deep max-[767px]:block"
+          >
+            Show {Math.min(leases.length - mobileLimit, MOBILE_PAGE)} more ·{" "}
+            {leases.length - mobileLimit} left
+          </button>
         )}
         </div>
       </div>
