@@ -133,6 +133,14 @@ interface EsriView {
     event: "pointer-move",
     handler: (event: { x: number; y: number }) => void,
   ): EsriHandle;
+  /* Where the pointer went down — the anchor a drawn box needs, which
+     `DragEvent.origin` does not reliably give. */
+  on(
+    event: "pointer-down",
+    handler: (event: { x: number; y: number }) => void,
+  ): EsriHandle;
+  /* The pointer left the map surface — onto a panel, or off the window. */
+  on(event: "pointer-leave", handler: () => void): EsriHandle;
   toMap(screenPoint: { x: number; y: number }): LonLat | null;
   toScreen(mapPoint: unknown): { x: number; y: number } | null;
   /** What is under a screen point. `include` narrows it to one layer. */
@@ -459,6 +467,41 @@ const TOOL_BLUE: [number, number, number] = [37, 99, 235];
  * gallery's Streets tile — otherwise the picker opens with nothing marked as
  * current, even though Streets is what is on screen.
  */
+/*
+ * Which tools have already shown their worked example, in this browser.
+ *
+ * Per tool, not one flag for all four: knowing how a box is dragged says
+ * nothing about how a tract is closed. Kept in `localStorage` because it is a
+ * convenience, not state anything depends on — a reader who clears their
+ * storage, or arrives on another machine, simply sees the example again.
+ */
+const DEMO_SEEN_KEY = "mv-map-tool-demo-seen";
+
+function demoSeen(tool: DemoTool): boolean {
+  try {
+    const seen = window.localStorage.getItem(DEMO_SEEN_KEY);
+    return seen ? (JSON.parse(seen) as string[]).includes(tool) : false;
+  } catch {
+    /* Private windows and blocked site data throw on read. Showing the
+       example again is the harmless answer. */
+    return false;
+  }
+}
+
+function rememberDemo(tool: DemoTool): void {
+  try {
+    const seen = window.localStorage.getItem(DEMO_SEEN_KEY);
+    const list = seen ? (JSON.parse(seen) as string[]) : [];
+    if (list.includes(tool)) return;
+    window.localStorage.setItem(
+      DEMO_SEEN_KEY,
+      JSON.stringify([...list, tool]),
+    );
+  } catch {
+    /* Nothing to do: the example will simply be shown again next time. */
+  }
+}
+
 const DEFAULT_BASEMAP = "streets";
 
 const SCREENSHOT_FILENAME = "mineral-view-map.png";
@@ -779,6 +822,17 @@ export function MapExplorerView() {
    * broken. Both gestures work now: drag a box, or click two corners.
    */
   const areaStartRef = useRef<LonLat | null>(null);
+
+  /*
+   * Where the pointer actually went down, in view coordinates.
+   *
+   * Not `DragEvent.origin`: that is where Esri decided a drag had started,
+   * which is the first event past its movement threshold. Drag quickly and
+   * that is already well along the path, so a box anchored on it came out
+   * offset from the gesture that drew it — the far corner tracked the pointer
+   * while the near one sat somewhere in the middle.
+   */
+  const pressRef = useRef<{ x: number; y: number } | null>(null);
   const measureLayerRef = useRef<EsriGraphicsLayer | null>(null);
   const nearbyLayerRef = useRef<EsriGraphicsLayer | null>(null);
   const ctorsRef = useRef<{
@@ -839,12 +893,43 @@ export function MapExplorerView() {
         },
         symbol: {
           type: "simple-fill",
-          color: [255, 255, 255, 0.22],
-          outline: { color: TOOL_BLUE, width: 1.5, style: "dash" },
+          /* Enough wash to lift the shape off a dense field without hiding the
+             wells inside it — they are the reason it was drawn. At 22% over a
+             1.5px dash it disappeared into a few thousand well symbols. */
+          color: [255, 255, 255, 0.35],
+          outline: { color: TOOL_BLUE, width: 2.5, style: "dash" },
         },
       }),
     );
   }, []);
+
+  /*
+   * The frame the next `setArea` is waiting on.
+   *
+   * Esri's drag fires faster than the browser paints, and each one used to
+   * re-render the whole view. Coalescing to one update per frame keeps the
+   * card live without asking React to do work that is thrown away.
+   */
+  const areaFrameRef = useRef<number | undefined>(undefined);
+
+  /** The box, drawn now; the card, updated on the next frame. */
+  const trackArea = useCallback(
+    (next: Area | null) => {
+      areaRef.current = next;
+      /* Every event: this is the outline under the pointer, and anything less
+         than every event is what made it lag. */
+      drawArea(next);
+
+      if (areaFrameRef.current !== undefined) {
+        cancelAnimationFrame(areaFrameRef.current);
+      }
+      areaFrameRef.current = requestAnimationFrame(() => {
+        areaFrameRef.current = undefined;
+        setArea(next);
+      });
+    },
+    [drawArea],
+  );
 
   /** Redraws the measured line and its two end dots. */
   const drawMeasurement = useCallback((next: Measurement | null) => {
@@ -958,8 +1043,11 @@ export function MapExplorerView() {
         },
         symbol: {
           type: "simple-fill",
-          color: [255, 255, 255, 0.22],
-          outline: { color: TOOL_BLUE, width: 1.5, style: "dash" },
+          /* Enough wash to lift the shape off a dense field without hiding the
+             wells inside it — they are the reason it was drawn. At 22% over a
+             1.5px dash it disappeared into a few thousand well symbols. */
+          color: [255, 255, 255, 0.35],
+          outline: { color: TOOL_BLUE, width: 2.5, style: "dash" },
         },
       }),
     );
@@ -1322,9 +1410,36 @@ export function MapExplorerView() {
     const layer = wellLayerRef.current;
     if (!layer) return;
 
+    /*
+     * Nothing to replay: the map is showing bubbles, or the wells it has
+     * carry no readable date. It returned silently before, so pressing
+     * Time-lapse over the statewide view did nothing at all and looked broken.
+     *
+     * Only one of the two channels speaks, though. The toolbar button carries
+     * a hover hint for the no-wells case, so saying it again in a toast put
+     * the same sentence on screen twice. Where there is no hover to have seen
+     * it — a touch screen — the toast is the only channel, so it stays.
+     */
     const wells = wellsRef.current;
     const years = yearsIn(wells);
-    if (years.length === 0) return;
+    if (years.length === 0) {
+      const noHover =
+        typeof window !== "undefined" &&
+        window.matchMedia?.("(hover: none)").matches;
+
+      if (wells.length === 0) {
+        if (noHover) {
+          setToast(
+            "Time-lapse replays individual wells — zoom in to level 10 first",
+          );
+        }
+      } else {
+        /* The hint never covers this one: the wells are drawn, they simply
+           carry no date. */
+        setToast("No dated wells here to replay");
+      }
+      return;
+    }
 
     timeLapseAllRef.current = wells;
     timeLapseYearsRef.current = years;
@@ -1765,6 +1880,8 @@ export function MapExplorerView() {
     let view: EsriView | undefined;
     let watcher: EsriHandle | undefined;
     let dragHandle: EsriHandle | undefined;
+    let pressHandle: EsriHandle | undefined;
+    let leaveHandle: EsriHandle | undefined;
     let clickHandle: EsriHandle | undefined;
     let pointerHandle: EsriHandle | undefined;
     let frame = 0;
@@ -2064,6 +2181,25 @@ export function MapExplorerView() {
             bubble: Math.round(diameter),
           };
         };
+
+        pressHandle = view.on("pointer-down", (event) => {
+          pressRef.current = { x: event.x, y: event.y };
+        });
+
+        /*
+         * The pointer left the map, so nothing is hovered any more.
+         *
+         * Without this the last card stayed up: moving onto a panel over the
+         * map fires no further `pointer-move`, so the well under the pointer a
+         * moment ago was still the well the view thought was hovered — and its
+         * card sat there over the panel the reader had just opened.
+         */
+        leaveHandle = view.on("pointer-leave", () => {
+          hoveredWellRef.current = null;
+          setHoveredWell(null);
+          hoveredClusterRef.current = null;
+          setHoveredCluster(null);
+        });
 
         pointerHandle = view.on("pointer-move", (event) => {
           // Mid-box, the pointer is the opposite corner until it is clicked.
@@ -2438,7 +2574,10 @@ export function MapExplorerView() {
           // Without this the drag pans the map underneath the drawing.
           event.stopPropagation();
 
-          const from = view.toMap(event.origin);
+          /* The press, falling back to Esri's own origin if for any reason
+             no pointer-down was seen — a box anchored slightly late is better
+             than no box at all. */
+          const from = view.toMap(pressRef.current ?? event.origin);
           const to = view.toMap({ x: event.x, y: event.y });
           if (!from || !to) return;
 
@@ -2452,9 +2591,7 @@ export function MapExplorerView() {
             setSampleOf(null);
             // A drag supersedes a click-started box.
             areaStartRef.current = null;
-            areaRef.current = next;
-            setArea(next);
-            drawArea(next);
+            trackArea(next);
           } else if (tool === "measure-distance") {
             const ctors = ctorsRef.current;
             if (!ctors) return;
@@ -2530,6 +2667,8 @@ export function MapExplorerView() {
       dragHandle?.remove();
       clickHandle?.remove();
       pointerHandle?.remove();
+      pressHandle?.remove();
+      leaveHandle?.remove();
       areaLayerRef.current = null;
       measureLayerRef.current = null;
       nearbyLayerRef.current = null;
@@ -2545,6 +2684,7 @@ export function MapExplorerView() {
     // All stable, so the view is still built exactly once.
   }, [
     drawArea,
+    trackArea,
     drawMeasurement,
     drawNearby,
     drawTract,
@@ -2620,9 +2760,12 @@ export function MapExplorerView() {
       setWatchAnswer({ kind: "looking" });
 
       /*
-       * The drawing tools open with a worked example rather than an empty map:
-       * each waits for a gesture, and which gesture is not something a panel
-       * can say in a sentence anybody reads.
+       * The worked example, the first time only.
+       *
+       * It answers "which gesture does this one want", which is a question
+       * asked once. Seen already, the tool arms straight away and the map is
+       * ready for the gesture — which is what someone reaching for it a second
+       * time came to do.
        *
        * "What's near my land?" has none. It no longer waits for a gesture —
        * it asks which lease, and the card that asks is the instruction. A
@@ -2634,6 +2777,7 @@ export function MapExplorerView() {
        * say in a sentence anybody reads. The example runs in its own window —
        * see `tool-demo.tsx`.
        */
+      if (!tool || demoSeen(tool)) return;
       setDemoTool(tool);
     },
     [drawArea, drawMeasurement, drawNearby, drawTract],
@@ -3103,6 +3247,11 @@ export function MapExplorerView() {
               ? () => dismissSample("draw-area")
               : clearArea
           }
+          /* Not hand-memoised: the compiler caches this against `wells`,
+             `clusters` and `area`, and a manual `useMemo` only gives it
+             something to disagree with. What made it expensive was being
+             recomputed on every pointer event — which the frame-coalescing
+             above now prevents. */
           count={
             wells.length > 0
               ? wellsInBox(wells, area)
@@ -3181,7 +3330,12 @@ export function MapExplorerView() {
         <ToolDemo
           tool={demoTool}
           wells={wells}
-          onClose={() => setDemoTool(null)}
+          /* Recorded on the way out, whichever way it is closed: "Let me try"
+             and the × both mean the reader is done with the explanation. */
+          onClose={() => {
+            rememberDemo(demoTool);
+            setDemoTool(null);
+          }}
         />
       )}
 
@@ -3229,8 +3383,17 @@ export function MapExplorerView() {
         <MapChrome
           scale={readout.scale}
           zoom={readout.zoom}
-          wellsVisible={readout.zoom >= WELL_ZOOM}
-          marksVisible={readout.zoom > CLUSTER_CLEAR_ZOOM}
+          /*
+           * What is actually drawn, not what the zoom implies.
+           *
+           * Wells reach the map two ways: the extent load past zoom 10, and a
+           * filter, which draws its matches at whatever zoom the fit lands on
+           * — often 9 or wider. Deciding from the zoom alone left the legend
+           * showing count bands over a map of individual wells, and disabled
+           * Time-lapse on a filtered set it could perfectly well replay.
+           */
+          wellsVisible={wells.length > 0}
+          marksVisible={wells.length > 0 || readout.zoom > CLUSTER_CLEAR_ZOOM}
           onExportCsv={exportCsv}
           onSelectApi={selectApi}
           onClearApi={clearApi}

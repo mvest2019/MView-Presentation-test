@@ -136,6 +136,16 @@ const SEARCH_SECTIONS: Record<string, string | undefined> = {
  */
 const ID_FACETS = new Set(["operator", "field"]);
 
+/*
+ * Rows a facet may show before it scrolls inside itself.
+ *
+ * Eight is about the tallest a section can be and still leave the ones below
+ * it reachable without scrolling the whole rail. Short lists — the three well
+ * types, say — stay open in full, because a scrollbar on four rows is furniture
+ * around nothing.
+ */
+const LONG_LIST = 8;
+
 const SECTION_FACETS: Record<string, string> = {
   county: "county",
   operator: "operator",
@@ -702,6 +712,16 @@ export function FiltersPanel({
   const canApply = hasSelection || dirty;
 
   /*
+   * Whether a filter is currently applied — which is what Clear is for.
+   *
+   * Derived rather than stored: the boxes match what was last applied exactly
+   * when something is ticked and nothing has changed since. Ticking one more
+   * makes it dirty, Apply lights up again and Clear steps aside, because at
+   * that moment the map is not showing what the panel says.
+   */
+  const applied = hasSelection && !dirty;
+
+  /*
    * Clearing the last box clears the map, without waiting for Apply.
    *
    * Apply exists to say "run this filter", and an empty filter is not one —
@@ -1155,6 +1175,30 @@ export function FiltersPanel({
         >
           Apply filters
         </button>
+
+        {/* Only once a filter is on the map. Clearing takes every box off,
+            which the effect above turns into an empty apply — the same path
+            unticking the last box already takes, rather than a second way of
+            doing the same thing. */}
+        {applied && (
+          <button
+            type="button"
+            onClick={() => {
+              setChecked((previous) =>
+                Object.fromEntries(
+                  Object.keys(previous).map((section) => [
+                    section,
+                    new Set<string>(),
+                  ]),
+                ),
+              );
+              setPickedParams({});
+            }}
+            className="mt-2 w-full cursor-pointer rounded-lg border border-mv-red px-3 py-[8px] text-[12.5px] font-semibold text-mv-red hover:bg-mv-red-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-red"
+          >
+            Clear filters
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1216,10 +1260,17 @@ function CheckboxSection({
 
       {/* The long lists scroll inside the section rather than stretching it —
           270 counties would otherwise push every section below them out of
-          reach. A Find… box is what marks a list as one of the long ones. */}
+          reach.
+
+          Measured by how many rows there actually are, not by whether the
+          section has a Find… box. Well type has no search and twenty-five
+          entries, so the old test missed it and that one section pushed
+          everything below it out of reach. */}
       <div
         className={
-          section.searchable ? "mv-thin-scroll max-h-[248px] overflow-y-auto" : ""
+          visible.length > LONG_LIST
+            ? "mv-thin-scroll max-h-[248px] overflow-y-auto"
+            : ""
         }
       >
       {!notice &&
