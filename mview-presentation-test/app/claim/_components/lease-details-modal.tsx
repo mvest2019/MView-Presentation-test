@@ -131,8 +131,18 @@ export function LeaseDetailsModal({
           </p>
         </div>
 
-        <div className="border-t border-mv-line px-[22px] py-[13px]">
-          <button type="button" className={btnGhost} onClick={onClose}>
+        {/* Footer reads like a dialog's: the count on the left, ONE clearly
+            drawn dismiss on the right. The bare ghost button at the left edge
+            read as stray text (Ryan, 2026-08-25). */}
+        <div className="flex flex-wrap items-center gap-3 border-t border-mv-line bg-mv-bg px-[22px] py-[14px]">
+          <span className="text-[12px] text-mv-muted">
+            {rows.length} lease{rows.length === 1 ? "" : "s"} listed
+          </span>
+          <button
+            type="button"
+            className={`${btnGhost} ml-auto min-w-[110px] !border-mv-line-strong`}
+            onClick={onClose}
+          >
             Close
           </button>
         </div>
