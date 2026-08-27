@@ -3,7 +3,13 @@
 import type { LeaseAgg } from "@/lib/claim-search/types";
 
 import { fmt } from "../_lib/working-set";
-import { EmptyState, LeaseIcon, LeaseListSkeleton, refineInput } from "./ui";
+import {
+  EmptyState,
+  LeaseIcon,
+  LeaseListSkeleton,
+  LockedInline,
+  refineInput,
+} from "./ui";
 
 /**
  * Left panel — every lease in the working set, aggregated. Ticking a lease
@@ -13,6 +19,7 @@ import { EmptyState, LeaseIcon, LeaseListSkeleton, refineInput } from "./ui";
  */
 export function LeasePanel({
   searched,
+  signedIn,
   busyLabel,
   leases,
   ownerCount,
@@ -29,6 +36,8 @@ export function LeasePanel({
   onClearTicks,
 }: {
   searched: boolean;
+  /** Signed-out visitors see the appraised total as locked. */
+  signedIn: boolean;
   /** Set while an API call is in flight — overlays the list with a loader. */
   busyLabel: string | null;
   leases: LeaseAgg[];
@@ -51,7 +60,7 @@ export function LeasePanel({
       ? "Leases in this result set"
       : "Leases";
   return (
-    <div className="flex w-full flex-col rounded-2xl border border-mv-line bg-white px-[18px] py-4 shadow-[0_1px_2px_rgba(11,53,39,.06),0_8px_24px_rgba(11,53,39,.07)]">
+    <div className="flex w-full flex-col rounded-mv border border-mv-line bg-mv-card px-[18px] py-[18px] shadow-mv">
       <div className="flex items-baseline justify-between gap-3">
         <h4 className="flex items-center gap-[7px] text-[14.5px] font-bold [&_svg]:flex-none [&_svg]:text-mv-green-deep">
           <LeaseIcon size={14} stroke={2.4} />
@@ -79,7 +88,7 @@ export function LeasePanel({
           aria-label="Filter results to one county"
           value={cty}
           onChange={(e) => onCty(e.target.value)}
-          className="h-[38px] w-full rounded-[10px] border-[1.5px] border-[#dce4e0] bg-[#fbfdfc] px-[10px] text-[12.5px] text-mv-ink focus-visible:border-mv-green-deep focus-visible:shadow-[0_0_0_3px_rgba(46,143,109,.14)] focus-visible:outline-none"
+          className="h-[40px] w-full rounded-[10px] border border-mv-line bg-white px-[11px] text-[13px] text-mv-ink focus-visible:border-mv-green-deep focus-visible:shadow-[0_0_0_3px_var(--color-mv-tint)] focus-visible:outline-none"
         >
           <option value="*">All counties in results</option>
           {countyOptions.map(({ county, count }) => (
@@ -112,8 +121,8 @@ export function LeasePanel({
               key={l.key}
               className={`mt-2 flex items-start gap-[10px] rounded-[11px] border px-3 py-[10px] text-[12.5px] transition-[border-color,background-color,box-shadow] ${
                 selL[l.key]
-                  ? "border-[#79ceac] bg-mv-mint"
-                  : "border-mv-line bg-white hover:border-[#9ed8c0] hover:shadow-[0_2px_8px_rgba(46,143,109,.1)]"
+                  ? "border-mv-green bg-mv-tint"
+                  : "border-mv-line bg-white hover:border-mv-mint-line hover:shadow-mv"
               }`}
             >
               <input
@@ -127,12 +136,17 @@ export function LeasePanel({
                 <button
                   type="button"
                   onClick={() => onOpenReport(l)}
-                  className="cursor-pointer whitespace-normal break-words text-left font-semibold text-mv-green-deep underline decoration-[rgba(46,143,109,.35)] underline-offset-[2.5px] hover:text-[#1d6b4e]"
+                  className="cursor-pointer whitespace-normal break-words text-left font-semibold text-mv-green-deep underline decoration-[rgba(46,143,109,.35)] underline-offset-[2.5px] hover:text-mv-green-ink"
                 >
                   {l.n}
                 </button>
                 <div className="mt-[2px] text-[11px] text-mv-muted">
-                  {l.c} · {l.cnt} owner{l.cnt === 1 ? "" : "s"} · {fmt(l.val)}
+                  {l.c} · {l.cnt} owner{l.cnt === 1 ? "" : "s"} ·{" "}
+                  {signedIn ? (
+                    fmt(l.val)
+                  ) : (
+                    <LockedInline label="Appraised value locked" />
+                  )}
                 </div>
               </div>
             </div>

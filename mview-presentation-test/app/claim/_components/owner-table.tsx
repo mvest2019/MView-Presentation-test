@@ -10,7 +10,9 @@ import {
   InlineSpinner,
   OwnerRowsSkeleton,
   PersonIcon,
+  LockedValue,
   refineInput,
+  tableHead,
 } from "./ui";
 
 /**
@@ -20,6 +22,7 @@ import {
  */
 export function OwnerTable({
   searched,
+  signedIn,
   busyLabel,
   pendingOwnerKey,
   W,
@@ -38,6 +41,8 @@ export function OwnerTable({
   onViewLeaseDetails,
 }: {
   searched: boolean;
+  /** Signed-out visitors get the address and value gated behind sign-up. */
+  signedIn: boolean;
   /** Set while an API call is in flight — overlays the table with a loader. */
   busyLabel: string | null;
   /** The owner whose same-name lookup is running — its row shows a spinner. */
@@ -60,7 +65,7 @@ export function OwnerTable({
   const anyOwnerTicked = Object.keys(selO).some((k) => selO[k]);
   const selCount = Object.keys(selO).filter((k) => selO[k]).length;
   return (
-    <div className="flex w-full flex-col rounded-2xl border border-mv-line bg-white px-[18px] py-4 shadow-[0_1px_2px_rgba(11,53,39,.06),0_8px_24px_rgba(11,53,39,.07)]">
+    <div className="flex w-full flex-col rounded-mv border border-mv-line bg-mv-card px-[18px] py-[18px] shadow-mv">
       <div className="flex items-baseline justify-between gap-3">
         <h4 className="flex items-center gap-[7px] text-[14.5px] font-bold [&_svg]:flex-none [&_svg]:text-mv-green-deep">
           <PersonIcon size={14} stroke={2.4} />
@@ -103,9 +108,9 @@ export function OwnerTable({
                 (h, i) => (
                   <th
                     key={i}
-                    className={`sticky top-0 z-[1] border-b border-mv-line bg-[#f7faf8] px-3 py-[9px] text-[10px] font-bold uppercase tracking-[.07em] text-mv-muted ${
-                      i === 3 || i === 4 ? "text-right" : "text-left"
-                    } ${i === 0 ? "w-[26px]" : ""}`}
+                    className={`${tableHead} ${
+                      i === 3 || i === 4 ? "!text-right" : ""
+                    } ${i === 0 ? "w-[38px]" : ""}`}
                   >
                     {h}
                   </th>
@@ -140,9 +145,9 @@ export function OwnerTable({
                   <tr
                     key={w.key}
                     onClick={() => onTickOwner(w.key)}
-                    className={`group cursor-pointer align-top transition-colors ${on ? "bg-mv-mint" : "odd:bg-white even:bg-[#fafcfb] hover:bg-mv-mint/60"}`}
+                    className={`group cursor-pointer align-top transition-colors ${on ? "bg-mv-tint" : "odd:bg-white even:bg-mv-row-hover hover:bg-mv-hover"}`}
                   >
-                    <td className="border-b border-[#eef2f0] px-3 py-[10px]">
+                    <td className="border-b border-mv-line-soft px-[15px] py-[12px]">
                       {pendingOwnerKey === w.key ? (
                         <InlineSpinner />
                       ) : (
@@ -156,21 +161,23 @@ export function OwnerTable({
                         />
                       )}
                     </td>
-                    <td className="border-b border-[#eef2f0] px-3 py-[10px]">
+                    <td className="border-b border-mv-line-soft px-[15px] py-[12px]">
                       <div className="font-extrabold text-mv-ink">{r[0]}</div>
                       <div className="text-[11px] text-mv-muted">
                         {w.o.county} County
                       </div>
                     </td>
                     <td
-                      className="max-w-[230px] border-b border-[#eef2f0] px-3 py-[10px] font-light text-mv-slate"
+                      className="max-w-[230px] border-b border-mv-line-soft px-[15px] py-[12px] font-light text-mv-slate"
                       title={shown}
                     >
-                      {shown ? (
+                      {!signedIn ? (
+                        <LockedValue what="mailing address" width="w-[120px]" />
+                      ) : shown ? (
                         <>
                           ✉ {shown}
                           {corr[w.key] && (
-                            <span className="ml-[6px] rounded-md border border-[#f0dcae] bg-[#fdf3dd] px-[7px] py-[1.5px] align-middle text-[10px] font-bold text-[#8a6116]">
+                            <span className="ml-[6px] rounded-md border border-mv-line bg-mv-hover px-[7px] py-[1.5px] align-middle text-[10px] font-semibold text-mv-slate">
                               updated
                             </span>
                           )}
@@ -179,20 +186,26 @@ export function OwnerTable({
                         <span className="text-[11px] text-mv-muted">—</span>
                       )}
                     </td>
-                    <td className="border-b border-[#eef2f0] px-3 py-[10px] text-right tabular-nums">
+                    <td className="border-b border-mv-line-soft px-[15px] py-[12px] text-right tabular-nums">
                       {r[1]}
                     </td>
-                    <td className="whitespace-nowrap border-b border-[#eef2f0] px-3 py-[10px] text-right font-bold tabular-nums text-mv-green-deep">
-                      {fmt(r[2])}
+                    <td className="whitespace-nowrap border-b border-mv-line-soft px-[15px] py-[12px] text-right font-bold tabular-nums text-mv-green-deep">
+                      {signedIn ? (
+                        fmt(r[2])
+                      ) : (
+                        <span className="inline-flex justify-end">
+                          <LockedValue what="appraised value" width="w-[62px]" />
+                        </span>
+                      )}
                     </td>
-                    <td className="border-b border-[#eef2f0] px-3 py-[10px]">
+                    <td className="border-b border-mv-line-soft px-[15px] py-[12px]">
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           onClaim(w.o);
                         }}
-                        className="cursor-pointer whitespace-nowrap rounded-lg border-[1.5px] border-[#c4d9d0] bg-white px-[13px] py-[6px] text-[11.5px] font-bold text-mv-green-deep transition-colors hover:border-mv-green-deep hover:bg-mv-green-deep hover:text-white"
+                        className="cursor-pointer whitespace-nowrap rounded-lg border-[1.5px] border-mv-line bg-white px-[13px] py-[6px] text-[11.5px] font-bold text-mv-green-deep transition-colors hover:border-mv-green-deep hover:bg-mv-green-deep hover:text-white"
                       >
                         Claim
                       </button>
@@ -212,7 +225,7 @@ export function OwnerTable({
            of the screen while the panel is in view — it floats over the last
            table rows (hence the shadow and solid ground) and settles into its
            natural slot once the visitor scrolls past the panel. */
-        <div className="sticky bottom-3 z-10 mt-[10px] flex flex-wrap items-center gap-[10px] rounded-[11px] border border-mv-line border-l-4 border-l-mv-green-deep bg-white px-3 py-2 shadow-[0_6px_24px_rgba(11,53,39,.18)]">
+        <div className="sticky bottom-3 z-10 mt-[10px] flex flex-wrap items-center gap-[10px] rounded-[11px] border border-mv-line border-l-4 border-l-mv-green-deep bg-white px-3 py-2 shadow-mv-lg">
           <span className="text-[12.5px] font-semibold text-mv-slate">
             {selCount} record{selCount === 1 ? "" : "s"} ticked
             {selCount > 1 && " — claim them together as one owner"}

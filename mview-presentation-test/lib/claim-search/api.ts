@@ -38,6 +38,7 @@ function mapOwner(o: BackendOwner): ScoredOwner {
     county: o.county,
     s: o.score ?? 1,
     leaseValues: o.leaseValues ?? undefined,
+    workingInterest: o.workingInterest,
   };
 }
 

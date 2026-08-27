@@ -60,7 +60,7 @@ export function RecordModal({
     );
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-[rgba(20,30,26,.5)] p-5 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-mv-ink/50 p-5 backdrop-blur-[2px]"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose(false, []);
       }}
@@ -69,7 +69,7 @@ export function RecordModal({
         role="dialog"
         aria-modal="true"
         aria-label="Confirm your record"
-        className="flex max-h-[min(84vh,720px)] w-[min(620px,100%)] flex-col overflow-hidden rounded-2xl bg-white shadow-[0_24px_70px_rgba(15,25,20,.35)]"
+        className="flex max-h-[min(84vh,720px)] w-[min(620px,100%)] flex-col overflow-hidden rounded-mv bg-mv-card shadow-mv-lg"
       >
         <div className="flex items-start justify-between gap-3 border-b border-mv-line px-[22px] pb-3 pt-[18px]">
           <div>
@@ -191,7 +191,7 @@ function ModalRow({
   };
   return (
     <div
-      className={`mb-2 rounded-[11px] border px-3 py-[10px] ${isBase ? "border-[#bcd8cb] bg-mv-mint" : "border-mv-line bg-[#fbfcfb]"}`}
+      className={`mb-2 rounded-[11px] border px-3 py-[10px] ${isBase ? "border-mv-mint-line bg-mv-tint" : "border-mv-line bg-mv-bg"}`}
     >
       <div className="flex items-start gap-[10px]">
         <input
@@ -211,7 +211,7 @@ function ModalRow({
           <div className="text-[13px] font-semibold text-mv-ink">
             {shown || "(no address on the roll)"}
             {corr[item.key] && (
-              <span className="ml-[6px] rounded-md border border-[#f0dcae] bg-[#fdf3dd] px-[7px] py-[1.5px] align-middle text-[10px] font-bold text-[#8a6116]">
+              <span className="ml-[6px] rounded-md border border-mv-line bg-mv-hover px-[7px] py-[1.5px] align-middle text-[10px] font-semibold text-mv-slate">
                 updated by you
               </span>
             )}
@@ -230,7 +230,7 @@ function ModalRow({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") save();
                 }}
-                className="h-[38px] min-w-[220px] flex-1 rounded-[9px] border-[1.5px] border-[#dce4e0] px-[11px] text-[12.5px] focus-visible:border-mv-green-deep focus-visible:shadow-[0_0_0_3px_rgba(46,143,109,.12)] focus-visible:outline-none"
+                className="h-[38px] min-w-[220px] flex-1 rounded-[9px] border border-mv-line px-[11px] text-[12.5px] focus-visible:border-mv-green-deep focus-visible:shadow-[0_0_0_3px_var(--color-mv-tint)] focus-visible:outline-none"
               />
               <button
                 type="button"

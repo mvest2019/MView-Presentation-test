@@ -131,7 +131,7 @@ function ClaimDone({ tx, base }: { tx: MergedTx; base: ScoredOwner }) {
   const [name, setName] = useState(tx.owner);
   const [county, setCounty] = useState(base.county);
   const pfInput =
-    "h-[38px] w-full rounded-[9px] border-[1.5px] border-[#dce4e0] px-[11px] text-[13px] focus-visible:border-mv-green-deep focus-visible:outline-none";
+    "h-[38px] w-full rounded-[9px] border border-mv-line px-[11px] text-[13px] focus-visible:border-mv-green-deep focus-visible:outline-none";
   return (
     <div>
       <strong>Ready to claim {tx.owner}.</strong>{" "}
