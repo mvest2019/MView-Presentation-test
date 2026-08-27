@@ -988,31 +988,51 @@ export function WellsTable({
 
             {rows.length === 0 && (
               <tr>
-                {/* Tall and centred: with no rows the card collapsed to a
-                    strip and the spinner sat under the header with the page
-                    empty beneath it. The height holds the card open so the
-                    table does not jump when the rows arrive. */}
+                {/* Empty, and only there for its height: with no rows the card
+                    collapsed to a strip. What goes in the space is drawn over
+                    the card instead — see below — because this cell is a cell
+                    of a 1,160px table, and centred in it on a phone means
+                    centred 600px off the right-hand edge of the screen. */}
                 <td
                   colSpan={COLUMNS.length + 1}
-                  className="h-[52vh] px-6 text-center align-middle text-[13px] text-mv-muted"
-                >
-                  {loading ? (
-                    <span className="inline-flex items-center gap-[10px] text-[15px] font-semibold text-mv-slate">
-                      <span
-                        aria-hidden="true"
-                        className="h-[22px] w-[22px] animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
-                      />
-                      Loading wells…
-                    </span>
-                  ) : (
-                    (error ?? "No wells match these filters.")
-                  )}
-                </td>
+                  /* 220 on a phone, where the whole summary strip sits above
+                     this card: at 300 the middle of the space — where the
+                     message is — fell just under the fold. */
+                  className="h-[220px] lg:h-[52vh]"
+                />
               </tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {/* What the empty table is doing, said over the card.
+          The card is as wide as the screen; the table inside it is 1,160px and
+          scrolls, so anything centred in the table is centred somewhere off to
+          the right on a narrow viewport. */}
+      {rows.length === 0 && (
+        /* Centred in the empty space itself: the header row above it and the
+           pager below it are outside the box, so "the middle" is the middle of
+           the blank area rather than of the card. The space is 220px on a
+           phone — half of 52vh, under a card that already starts low on a
+           narrow screen, put the message below the fold, which is the same
+           message-nobody-can-see this replaced. */
+        <div className="pointer-events-none absolute inset-x-0 bottom-[64px] top-[46px] grid place-items-center px-6 text-center">
+          {loading ? (
+            <span className="inline-flex items-center gap-[10px] text-[13px] lg:text-[15px] font-semibold text-mv-slate">
+              <span
+                aria-hidden="true"
+                className="h-[22px] w-[22px] shrink-0 animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
+              />
+              Loading wells…
+            </span>
+          ) : (
+            <span className="text-[12.5px] lg:text-[13px] text-mv-muted">
+              {error ?? "No wells match these filters."}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* ---------------- pager ---------------- */}
       <div
