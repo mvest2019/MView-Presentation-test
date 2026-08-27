@@ -94,7 +94,17 @@ export interface LeaseAgg {
 
 /** The claimed-record payload stored for the signup flow to pick up. */
 export interface MergedTx {
+  /** The picked record's name — the claim's headline name. */
   owner: string;
+  /**
+   * EVERY distinct name across the claimed records, in pick order. Ticking
+   * two records that are both you can still mean two spellings on the roll
+   * ("Sturman W Carl" / "Sturman Wanda C"), and the card used to show only
+   * the first, so a two-record claim read as a one-record claim.
+   */
+  owners: string[];
+  /** How many roll records this claim covers (1 + merged). */
+  records: number;
   county: string;
   props: number;
   value: number;
