@@ -3319,7 +3319,10 @@ export function MapExplorerView() {
           (clusterError || wellError || noMatches) && (
             <div
               role="alert"
-              className="pointer-events-none absolute left-1/2 top-3 z-30 flex -translate-x-1/2 items-center gap-[7px] rounded-full border border-[#f6c9c6] bg-mv-red-bg px-[13px] py-[6px] text-[11.5px] font-semibold text-mv-red shadow-mv"
+              /* Where the toast goes, for the same reasons: left of the
+                 toolbar from `lg` up, under it on a phone. The two never
+                 appear at once. */
+              className="pointer-events-none absolute left-1/2 top-[128px] z-30 flex max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-[7px] rounded-full border border-[#f6c9c6] bg-mv-red-bg px-[13px] py-[6px] text-[11.5px] font-semibold text-mv-red shadow-mv lg:left-[288px] lg:top-4 lg:translate-x-0"
             >
               <TriangleAlert
                 size={13}

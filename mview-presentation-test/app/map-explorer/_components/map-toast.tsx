@@ -38,7 +38,12 @@ export function MapToast({
     <div
       role="status"
       aria-live="polite"
-      className="pointer-events-none absolute left-1/2 top-4 z-40 flex -translate-x-1/2 items-center gap-[9px] rounded-full border border-[#bfe3cc] bg-white px-[15px] py-[9px] shadow-mv-lg"
+      /* Top of the map from `lg` up, in the run of space left of the toolbar
+         — the toolbar is held to the right there, so nothing is covered and
+         the line is read where the eye already is. On a phone the toolbar is
+         two rows across the whole width, so the only clear place is under it,
+         centred. */
+      className="pointer-events-none absolute left-1/2 top-[128px] z-40 flex max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-[9px] rounded-full border border-[#bfe3cc] bg-white px-[15px] py-[9px] shadow-mv-lg lg:left-[288px] lg:top-4 lg:translate-x-0"
     >
       <span
         aria-hidden="true"

@@ -506,6 +506,13 @@ export function WellsTable({
     spell(facets) !== spell(appliedFacets) ||
     JSON.stringify(production) !== JSON.stringify(appliedProduction) ||
     (picked?.param ?? "") !== (appliedPicked?.param ?? "");
+  /* What Apply would send, counted: every ticked value, a production range,
+     and whatever the search box is holding. */
+  const draftCount =
+    FACETS.reduce((total, { key }) => total + facets[key].size, 0) +
+    productionCount(production) +
+    (picked ? 1 : 0);
+
   const anyFilter =
     appliedPicked !== null ||
     picked !== null ||
@@ -723,9 +730,17 @@ export function WellsTable({
             disabled={
               loading || !pending || productionProblem(production) !== null
             }
-            className="rounded-lg px-[15px] py-[6px] text-[12.5px] font-bold enabled:cursor-pointer enabled:bg-mv-green-deep enabled:text-white enabled:hover:brightness-105 disabled:cursor-not-allowed disabled:bg-[#e9ecea] disabled:text-mv-muted"
+            /* Ringed while it is the next thing to do. The reader has just
+               come from a dropdown at the other end of the row, and a button
+               that looks the same whether or not it is waiting on them is a
+               button they walk past. */
+            className={`rounded-lg px-[15px] py-[6px] text-[12.5px] font-bold enabled:cursor-pointer enabled:bg-mv-green-deep enabled:text-white enabled:hover:brightness-105 disabled:cursor-not-allowed disabled:bg-[#e9ecea] disabled:text-mv-muted ${
+              pending ? "ring-4 ring-mv-green-deep/25" : ""
+            }`}
           >
-            Apply
+            {pending && draftCount > 0
+              ? `Apply ${draftCount} filter${draftCount === 1 ? "" : "s"}`
+              : "Apply"}
           </button>
         </div>
 
