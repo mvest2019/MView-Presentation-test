@@ -930,9 +930,18 @@ function LockedHeaderMark() {
 /**
  * A numeric cell whose value is withheld from signed-out visitors.
  *
- * Used by the two account-only columns, on rows that are otherwise entirely
- * real. The lock is drawn at the cell rather than only in the header because the
- * header scrolls away and the column keeps going.
+ * THE SAME TREATMENT AS "FIND YOUR RECORD" (requested) — see
+ * `app/claim/_components/ui.tsx`. A redacted bar with a lock and a "Free account"
+ * link under it, so the reader can see there IS a value and what it costs to read
+ * it, rather than a bar that only says something is missing.
+ *
+ * LAID OUT FOR A TABLE, NOT A CARD. The claim page stacks the bar and the link and
+ * can afford the height; this appears in up to thirty numeric cells at once, so the
+ * two sit on one right-aligned line and the row keeps its height.
+ *
+ * EVERY LINK CARRIES ITS OWN `aria-label` naming the field. Thirty links reading
+ * "Free account" would be thirty identical stops in a screen reader's link list;
+ * "Create a free account to see the oil produced" tells it which cell it is in.
  */
 function LockedValue({
   label,
@@ -944,10 +953,16 @@ function LockedValue({
   width?: string;
 }) {
   return (
-    <span className="inline-flex items-center justify-end gap-[6px] text-mv-muted">
-      <span className="sr-only">{label} — locked, create a free account</span>
+    <span className="inline-flex items-center justify-end gap-[7px]">
       <LockedBar width={width} />
-      <Lock aria-hidden="true" className="h-3 w-3 shrink-0" strokeWidth={2.3} />
+      <Link
+        href="/register?from=operators"
+        aria-label={`Create a free account to see the ${label.toLowerCase()}`}
+        className="inline-flex shrink-0 items-center gap-[4px] whitespace-nowrap text-[11.5px] font-semibold text-mv-green-deep no-underline underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+      >
+        <Lock aria-hidden="true" className="h-3 w-3 shrink-0" strokeWidth={2.3} />
+        Free account
+      </Link>
     </span>
   );
 }
