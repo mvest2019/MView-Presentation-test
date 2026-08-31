@@ -727,16 +727,16 @@ export function FiltersPanel({
    * Apply exists to say "run this filter", and an empty filter is not one —
    * unticking everything is a request to stop filtering, and leaving the wells
    * up until a button is pressed makes the panel disagree with the map.
+   *
+   * "Was filtering" means the map, not the boxes. Read off the draft, ticking
+   * a county and then unticking it — a change of mind, never applied — sent an
+   * empty filter to a map that was not filtered, which cleared a filter that
+   * was never there and threw the view back to the state extent.
    */
   const wasFiltering = useRef(false);
 
   useEffect(() => {
-    if (hasSelection) {
-      wasFiltering.current = true;
-      return;
-    }
-
-    if (!wasFiltering.current) return;
+    if (hasSelection || !wasFiltering.current) return;
 
     wasFiltering.current = false;
     setDirty(false);
@@ -758,6 +758,8 @@ export function FiltersPanel({
        * facet, so it joins the list rather than becoming it.
        */
       const already = selectedFilters[suggestion.facet] ?? [];
+      /* A pick applies itself, so the map is filtered from here too. */
+      wasFiltering.current = true;
       onApply?.({
         ...selectedFilters,
         [suggestion.facet]: already.includes(suggestion.param)
@@ -828,6 +830,7 @@ export function FiltersPanel({
     if (searchAloneRef.current) {
       searchAloneRef.current = false;
       setDirty(false);
+      wasFiltering.current = false;
       onApply?.({});
     }
 
@@ -1193,6 +1196,9 @@ export function FiltersPanel({
           disabled={!canApply}
           onClick={() => {
             setDirty(false);
+            /* From here the map is showing this, so unticking the last box
+               has something to undo. */
+            wasFiltering.current = Object.keys(selectedFilters).length > 0;
             onApply?.(selectedFilters);
           }}
           className="w-full rounded-lg px-3 py-[9px] text-[12.5px] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep enabled:cursor-pointer enabled:bg-mv-green-deep enabled:text-white enabled:hover:brightness-105 disabled:cursor-not-allowed disabled:bg-[#eef1ee] disabled:text-mv-muted"

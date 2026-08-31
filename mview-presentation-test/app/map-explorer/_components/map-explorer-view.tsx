@@ -716,6 +716,20 @@ export function MapExplorerView() {
   const [status, setStatus] = useState<Status>("loading");
   const [basemap, setBasemap] = useState(DEFAULT_BASEMAP);
   const [viewTab, setViewTab] = useState<ViewTab>("map");
+
+  /*
+   * Where the map's two notices sit from `lg` up.
+   *
+   * On the Map tab the toolbar is held to the right of a full-width map, so
+   * the top left is clear and the line reads where the eye already is. In
+   * Insights the map is half the page and the toolbar starts near its left
+   * edge — the same spot puts the line straight under it — so there it goes
+   * below the toolbar, centred on the map.
+   */
+  const noticePlacement =
+    viewTab === "map"
+      ? "lg:left-[288px] lg:top-4 lg:translate-x-0"
+      : "lg:top-[76px]";
   const [splitRatio, setSplitRatio] = useState(DEFAULT_SPLIT);
   /*
    * Until the divider is actually moved the ratio is the axis's own default,
@@ -3319,10 +3333,9 @@ export function MapExplorerView() {
           (clusterError || wellError || noMatches) && (
             <div
               role="alert"
-              /* Where the toast goes, for the same reasons: left of the
-                 toolbar from `lg` up, under it on a phone. The two never
-                 appear at once. */
-              className="pointer-events-none absolute left-1/2 top-[128px] z-30 flex max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-[7px] rounded-full border border-[#f6c9c6] bg-mv-red-bg px-[13px] py-[6px] text-[11.5px] font-semibold text-mv-red shadow-mv lg:left-[288px] lg:top-4 lg:translate-x-0"
+              /* Where the toast goes, and for the same reasons. The two
+                 never appear at once. */
+              className={`pointer-events-none absolute left-1/2 top-[128px] z-30 flex max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-[7px] rounded-full border border-[#f6c9c6] bg-mv-red-bg px-[13px] py-[6px] text-[11.5px] font-semibold text-mv-red shadow-mv ${noticePlacement}`}
             >
               <TriangleAlert
                 size={13}
@@ -3371,7 +3384,12 @@ export function MapExplorerView() {
         )}
 
         {status === "ready" && toast && (
-          <MapToast key={toast} message={toast} onDone={() => setToast(null)} />
+          <MapToast
+            key={toast}
+            message={toast}
+            className={noticePlacement}
+            onDone={() => setToast(null)}
+          />
         )}
 
         {status === "ready" && hoveredWell && (
