@@ -1033,6 +1033,11 @@ export function FiltersPanel({
                     onMouseDown={(event) => event.preventDefault()}
                     onMouseEnter={() => setActiveSuggestion(index)}
                     onClick={() => applySuggestion(suggestion)}
+                    /* The row is 200px wide and an operator's name is often
+                       longer, so what is on screen is "MARATHON O…" — which
+                       could be any of several. Hovering gives the whole
+                       name. */
+                    title={`${suggestion.label} · ${suggestion.kind}`}
                     className={`flex w-full cursor-pointer items-center gap-2 px-3 py-[9px] text-left ${
                       index === activeSuggestion ? "bg-[#f2f8f5]" : ""
                     }`}
