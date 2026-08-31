@@ -72,6 +72,14 @@ type MapChromeProps = {
   /** Opens the feature guide over the map. */
   /** Insights halves the map, so the toolbar sheds what will not fit. */
   compact?: boolean;
+  /**
+   * Strip the map to the view switch.
+   *
+   * True only for the summary's map strip on a phone, where the map is a
+   * couple of hundred pixels tall and the chrome would cover it. Nothing is
+   * lost: the Map tab has all of it, full height.
+   */
+  bare?: boolean;
   /** Fired when an API number is chosen from the search box. */
   onSelectApi: (api: string) => void;
   /** Fired when the box is emptied — the picked well comes off the map. */
@@ -133,6 +141,7 @@ export function MapChrome({
   viewTab,
   onViewTabChange,
   compact = false,
+  bare = false,
   onSelectApi,
   onClearApi,
   onApplyFilters,
@@ -472,6 +481,8 @@ export function MapChrome({
           chip saying one thing and the panel another. Kept mounted, the ticks
           stand, the typed search stands, and the facet lists are fetched once
           rather than on every reopen. */}
+      {!bare && (
+        <>
       <FiltersPanel
         key={filtersResetAt}
         /* Applied, and out of the way. On a phone the rail covers most of
@@ -525,10 +536,12 @@ export function MapChrome({
           onClick={() => setFiltersOpen(true)}
         />
       )}
+        </>
+      )}
 
       {/* The panel takes the tab's place rather than sitting beside it, so the
           right edge never shows both. */}
-      <div ref={toolsRef}>
+      <div ref={toolsRef} className={bare ? "hidden" : undefined}>
         {toolsOpen ? (
           <ToolsPanel
             activeId={activeTool ?? undefined}
@@ -589,7 +602,11 @@ export function MapChrome({
 
           {/* Export CSV is the first to go when the map is only half the page
               — the mock drops it too, and Share falls back to its icon. */}
-          <div className="flex flex-wrap items-center justify-end gap-2 lg:contents">
+          <div
+            className={`flex-wrap items-center justify-end gap-2 lg:contents ${
+              bare ? "hidden" : "flex"
+            }`}
+          >
 
           {/* What is filtering the map, and the way off it.
               Shut, the rail says nothing about the filter it is holding — the
@@ -833,7 +850,11 @@ export function MapChrome({
           the base, so `hidden` and `flex` never both apply. */}
       <div
         className={`absolute bottom-6 flex-col items-start gap-2 ${
-          filtersOpen ? "left-[276px] hidden lg:flex" : "left-3 flex"
+          bare
+            ? "hidden"
+            : filtersOpen
+              ? "left-[276px] hidden lg:flex"
+              : "left-3 flex"
         }`}
       >
       {/* Explains whichever of the two the map is drawing, and steps aside
@@ -877,7 +898,11 @@ export function MapChrome({
       </div>
 
       {/* ---------------- navigation stack ---------------- */}
-      <div className="absolute bottom-4 right-4 flex flex-col items-end gap-2">
+      <div
+        className={`absolute bottom-4 right-4 flex-col items-end gap-2 ${
+          bare ? "hidden" : "flex"
+        }`}
+      >
 
         <div ref={basemapRef} className="relative">
           {basemapOpen && (
