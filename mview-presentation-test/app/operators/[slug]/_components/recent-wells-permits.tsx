@@ -117,6 +117,17 @@ function FilterGroup({
   );
 }
 
+/**
+ * True for a filing the regulator has not acted on yet — DEFECT 144.
+ *
+ * `Submitted` is the one status the endpoint pairs with a meaningless
+ * `approved_date`. Matched case-insensitively and trimmed, because status arrives
+ * as free text and a casing change upstream must not quietly re-expose the date.
+ */
+function isAwaitingApproval(status: string): boolean {
+  return status.trim().toLowerCase() === "submitted";
+}
+
 export function RecentWellsPermits({
   operatorNumber,
 }: {
@@ -430,7 +441,27 @@ export function RecentWellsPermits({
                       {titleCase(row.wellboreProfile) || EM_DASH}
                     </td>
                     <td className={CELL}>{row.submittedDate ?? EM_DASH}</td>
-                    <td className={CELL}>{row.approvedDate ?? EM_DASH}</td>
+                    {/*
+                      DEFECT 144 — A PERMIT THAT HAS NOT BEEN APPROVED HAS NO
+                      APPROVAL DATE, whatever the endpoint sends.
+
+                      Measured on EOG's 1,005 filings: 84 carry `status:
+                      "Submitted"` and ALL 84 also carry an `approved_date` — and
+                      it is the submit date repeated, e.g. submitted 08/28/2026,
+                      "approved" 08/28/2026. Printing it says the regulator has
+                      approved something it has not, which is a statement about a
+                      filing rather than a formatting slip.
+
+                      Suppressed on the status rather than by comparing the two
+                      dates: a genuine same-day approval is possible and would be
+                      real, so the thing to key on is whether the permit is
+                      approved at all. Every other status prints whatever it has.
+                    */}
+                    <td className={CELL}>
+                      {isAwaitingApproval(row.status)
+                        ? EM_DASH
+                        : (row.approvedDate ?? EM_DASH)}
+                    </td>
                   </tr>
                 ))
               )}
