@@ -2007,6 +2007,8 @@ export function MapExplorerView() {
             east: mercatorToLongitude(xmax),
             north: mercatorToLatitude(ymax),
           },
+      /* Tier 2 is the finer set — the one the map draws from zoom 8. */
+      clusterTierRef.current >= 2 ? "sub-clusters" : "clusters",
     );
   }, []);
 

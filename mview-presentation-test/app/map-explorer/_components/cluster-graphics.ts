@@ -16,6 +16,8 @@ export type WellCluster = {
   newestYear: number | null;
   /** The county each bubble sits over, for the hover card's title. */
   name: string;
+  /** That county on its own, without the "& 8 more area" around it. */
+  topCounty: string;
   /** The mix inside the cluster: how many of each, and their share. */
   oil: number;
   gas: number;
@@ -135,6 +137,7 @@ export function toWellCluster(cluster: MapCluster): WellCluster {
     count: cluster.count ?? 0,
     newestYear: null,
     name: cluster.name || cluster.topCounty,
+    topCounty: cluster.topCounty,
     oil: cluster.oil ?? 0,
     gas: cluster.gas ?? 0,
     oilGas: cluster.oilGas ?? 0,

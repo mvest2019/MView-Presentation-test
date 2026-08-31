@@ -23,8 +23,10 @@ export type Bounds = {
   north: number;
 };
 
-const CLUSTER_FILENAME = "mineral-view-clusters.csv";
 const WELL_FILENAME = "mineral-view-wells.csv";
+
+/** What the bubbles on screen are, which the file is named and labelled for. */
+export type ClusterTier = "clusters" | "sub-clusters";
 
 function inside(lon: number, lat: number, bounds: Bounds): boolean {
   return (
@@ -104,6 +106,8 @@ export function exportVisible(
   wells: MapWell[],
   /** Null to send everything loaded — which is what a filter asked for. */
   bounds: Bounds | null,
+  /** Which tier the bubbles are, where bubbles are what is being sent. */
+  tier: ClusterTier = "clusters",
 ): number {
   if (wells.length > 0) {
     const visible = bounds
@@ -132,9 +136,22 @@ export function exportVisible(
 
   download(
     [
-      ["name", "longitude", "latitude", "wells", "oil", "gas", "oil_gas"],
+      [
+        "name",
+        "county",
+        "level",
+        "longitude",
+        "latitude",
+        "wells",
+        "oil",
+        "gas",
+        "oil_gas",
+      ],
       ...visible.map((cluster) => [
         cluster.name,
+        cluster.topCounty,
+        /* Singular in the row: each line is one of them. */
+        tier === "sub-clusters" ? "sub-cluster" : "cluster",
         cluster.at[0],
         cluster.at[1],
         cluster.count,
@@ -143,7 +160,7 @@ export function exportVisible(
         cluster.oilGas,
       ]),
     ],
-    CLUSTER_FILENAME,
+    `mineral-view-${tier}.csv`,
   );
   return visible.length;
 }
