@@ -275,13 +275,15 @@ const CIRCLE_STEP_DEGREES = 6;
 const DEFAULT_SPLIT = 0.5;
 
 /*
- * Stacked, the map takes the larger share. An even split reads differently on
- * the two axes: half the width still shows a recognisable stretch of Texas,
- * half the height on a phone shows a band too short to pan around in, while
- * the cards below simply scroll — they lose far less to being shorter than
- * the map does.
+ * Stacked, the summary takes the screen and the map keeps a strip.
+ *
+ * Side by side the two are read together, but on a phone the Summary tab is
+ * opened to read the record — the map above it is there to say which well is
+ * being read, not to be panned around. Just over a quarter is enough for
+ * that and leaves the cards the rest, which are the point of the tab; the
+ * divider still drags if someone wants more map.
  */
-const STACKED_DEFAULT_SPLIT = 0.67;
+const STACKED_DEFAULT_SPLIT = 0.27;
 const MIN_SPLIT = 0.22;
 const MAX_SPLIT = 0.78;
 
@@ -3576,6 +3578,10 @@ export function MapExplorerView() {
             viewTab={viewTab}
             onViewTabChange={changeViewTab}
             compact={viewTab === "insights"}
+            /* Stacked on a phone, the map is a 200px strip above the record.
+               Its controls would cover most of it, and every one of them is a
+               tab away on a map that fills the screen. */
+            bare={stacked && viewTab === "insights"}
             activeTool={activeTool}
             onSelectTool={startTool}
             onZoomIn={zoomIn}
@@ -3665,7 +3671,9 @@ export function MapExplorerView() {
           >
             <span
               aria-hidden="true"
-              className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#c7cbd1] group-hover:bg-mv-green-deep ${
+              /* The bar itself, in ink: at 3px on a pale seam the old grey
+                 was invisible against the map above it. */
+              className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-mv-ink group-hover:bg-mv-green-deep ${
                 stacked ? "h-[3px] w-10" : "h-10 w-[3px]"
               }`}
             />
