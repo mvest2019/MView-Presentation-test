@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, Lock } from "lucide-react";
 
 import { OperatorLogo } from "@/app/_components/operator-logo";
 import type {
@@ -176,6 +176,21 @@ function Cell({ cell }: { cell: MatrixCell }) {
         <span className="text-mv-muted">
           <span aria-hidden="true">—</span>
           <span className="sr-only">No filed data</span>
+        </span>
+      );
+
+    case "locked":
+      /* A bar, not an em dash and not a number. The figure exists and is filed —
+         it is being withheld, which is a different statement from "nothing on
+         file", and the row must not imply the second while meaning the first. */
+      return (
+        <span className="inline-flex items-center justify-end gap-[6px] text-mv-muted">
+          <Lock aria-hidden="true" className="h-3 w-3 shrink-0" strokeWidth={2.2} />
+          <span
+            aria-hidden="true"
+            className="inline-block h-[9px] w-[46px] rounded-full bg-[linear-gradient(90deg,var(--color-mv-line),var(--color-mv-line-soft))] blur-[2.5px]"
+          />
+          <span className="sr-only">Locked — create a free account to see this figure</span>
         </span>
       );
 

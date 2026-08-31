@@ -50,9 +50,6 @@ export type ResourceState<T> =
   | { status: "ready"; data: T }
   | { status: "error" };
 
-const infoCache = new Map<string, ProductionInfo | null>();
-const seriesCache = new Map<string, ProductionSeries | null>();
-
 const EMPTY_INFO: ProductionInfo = {
   operators: [],
   leaders: {
@@ -68,53 +65,70 @@ const EMPTY_INFO: ProductionInfo = {
 const EMPTY_SERIES: ProductionSeries = { years: [], operators: [], locked: false };
 
 /**
- * The shared state machine, parameterised by which endpoint and which cache.
+ * The shared state machine, parameterised by which endpoint it reads.
  *
  * Not exported: the two wrappers below are the API. A generic "fetch some JSON" hook
- * would invite callers that do not want this caching or this idle rule.
+ * would invite callers that do not want this idle rule.
+ *
+ * NO CACHE, BY REQUIREMENT. Each of these used to keep a module-level `Map` keyed by
+ * the filter set and shared for the life of the page, so re-applying a set already
+ * seen was answered without a request. Both are gone. The state below holds ONE
+ * entry, tagged with the key it belongs to, so a change of filters makes it stale at
+ * once and a previous response can never be read back — not even for the same
+ * filters a moment later.
+ *
+ * THE TAG IS ALSO WHAT MAKES A LATE REPLY HARMLESS: `answered` is read only while
+ * `resolved.key` is still the key on screen, so a response that lands after the
+ * filters moved on is ignored by derivation rather than by a second `setState`.
  */
 function useProductionResource<T>(
   filters: ProductionFilters,
   path: string,
-  cache: Map<string, T | null>,
   read: (payload: unknown) => T,
 ): { state: ResourceState<T>; retry: () => void } {
-  // Bumped when a request settles, purely to re-read the cache above.
-  const [, setResolved] = useState(0);
+  const [resolved, setResolved] = useState<{
+    key: string;
+    value: T | null;
+  } | null>(null);
+  /** Bumped by `retry`, so the same key can be requested again. */
+  const [attempt, setAttempt] = useState(0);
 
   const key = hasProductionSelection(filters)
     ? productionFiltersKey(filters)
     : "";
-  const answered = key === "" ? undefined : cache.get(key);
+  const answered =
+    key !== "" && resolved?.key === key ? resolved.value : undefined;
   const query = key === "" ? "" : productionFiltersToQuery(filters);
 
   useEffect(() => {
-    if (key === "" || cache.has(key)) return;
+    if (key === "") return;
 
     const controller = new AbortController();
 
-    fetch(`${path}?${query}`, { signal: controller.signal })
+    fetch(`${path}?${query}`, {
+      signal: controller.signal,
+      /* The response depends on whether the reader is signed in, so a replayed
+         copy is wrong in both directions. The route sends `private, no-store`;
+         this governs what the browser already holds. */
+      cache: "no-store",
+    })
       .then(async (response) => {
         if (!response.ok)
           throw new Error(`Request failed (${response.status})`);
-        cache.set(key, read(await response.json()));
+        setResolved({ key, value: read(await response.json()) });
       })
       .catch(() => {
         // An aborted request was superseded, not failed — the newer filter set owns
-        // the state, and caching a failure here would poison its key.
+        // the state, and recording a failure against this key would misreport it.
         if (controller.signal.aborted) return;
-        cache.set(key, null);
-      })
-      .finally(() => {
-        if (controller.signal.aborted) return;
-        setResolved((count) => count + 1);
+        setResolved({ key, value: null });
       });
 
     return () => controller.abort();
-    // `query` is a pure function of `key`, and `cache`/`path`/`read` are module
-    // constants — `key` alone is the identity of this request.
+    // `query` is a pure function of `key`, and `path`/`read` are module constants —
+    // `key` alone is the identity of this request; `attempt` is `retry` asking again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, attempt]);
 
   const state: ResourceState<T> =
     key === ""
@@ -129,8 +143,9 @@ function useProductionResource<T>(
     state,
     retry: () => {
       if (key === "") return;
-      cache.delete(key);
-      setResolved((count) => count + 1);
+      // Back to loading, then a fresh request for the same key.
+      setResolved(null);
+      setAttempt((count) => count + 1);
     },
   };
 }
@@ -140,7 +155,6 @@ export function useProductionInfo(filters: ProductionFilters) {
   return useProductionResource<ProductionInfo>(
     filters,
     "/api/operators/production-info",
-    infoCache,
     (payload) => (payload as { info?: ProductionInfo }).info ?? EMPTY_INFO,
   );
 }
@@ -150,7 +164,6 @@ export function useProductionSeries(filters: ProductionFilters) {
   return useProductionResource<ProductionSeries>(
     filters,
     "/api/operators/production-series",
-    seriesCache,
     (payload) =>
       (payload as { series?: ProductionSeries }).series ?? EMPTY_SERIES,
   );

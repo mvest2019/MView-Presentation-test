@@ -59,12 +59,19 @@ export async function GET(request: Request) {
       { series },
       {
         headers: {
-          /* PRIVATE NOW, and that is not a tuning choice. The body depends on
-             whether the reader has an account, so a shared cache holding one
-             visitor's withheld volumes and serving them to a member — or the
-             reverse — is a correctness bug. The hook still answers repeat
-             applications from memory within a session, which is where most of the
-             benefit was. */
+          /*
+           * NOT CACHED ANYWHERE, and that is a requirement rather than a tuning
+           * choice. Two reasons hold it in place:
+           *
+           *   · The body depends on whether the reader has an account. Any shared
+           *     copy is wrong in one direction or the other — a signed-out reader
+           *     served a member's volumes, or a member served the locked copy.
+           *   · The figures are the filed record as it stands right now, and a
+           *     stale one is indistinguishable from a current one on screen.
+           *
+           * `no-store` rather than `no-cache`: the second still permits storing the
+           * response and revalidating, which leaves a gated body sitting in a cache.
+           */
           "Cache-Control": "private, no-store",
         },
       },

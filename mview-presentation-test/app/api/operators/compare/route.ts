@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getOperatorComparison } from "@/lib/operator-compare-api";
+import { getSessionUser } from "@/lib/session";
 
 /**
  * `GET /api/operators/compare?names=…&names=…` — the whole comparison in one read.
@@ -37,19 +38,32 @@ export async function GET(request: Request) {
        `trendYearsFrom`. They travel with the operators because every `trend` array is
        indexed by them, so a client that had to guess the years could mislabel a
        column. */
-    const { operators, years } = await getOperatorComparison(names);
+    /* Who is asking can only be answered here — the browser cannot be trusted to
+       say, and the page above is a client component with no access to the cookie. */
+    const gated = !(await getSessionUser());
+    const { operators, years } = await getOperatorComparison(names, gated);
 
     return NextResponse.json(
-      { operators, years },
+      /* `locked` travels with the data so the page never has to infer the gate from
+         a zero. Inferring it is what made a parse bug and a sign-in gate look
+         identical, and the page blanked itself for both. */
+      { operators, years, locked: gated },
       {
         headers: {
-          // Shared caches hold this, the browser does not: `max-age=0` keeps a client
-          // from replaying a payload whose SHAPE has changed under it after a deploy —
-          // which is exactly how a newly added field reads as missing for ten minutes.
-          // `s-maxage` keeps the CDN benefit, and repeat selections in a session are
-          // already answered from memory without a request.
-          "Cache-Control":
-            "public, max-age=0, s-maxage=600, stale-while-revalidate=3600",
+          /*
+           * NOT CACHED ANYWHERE, and that is a requirement rather than a tuning
+           * choice. Two reasons hold it in place:
+           *
+           *   · The body depends on whether the reader has an account. Any shared
+           *     copy is wrong in one direction or the other — a signed-out reader
+           *     served a member's volumes, or a member served the locked copy.
+           *   · The figures are the filed record as it stands right now, and a
+           *     stale one is indistinguishable from a current one on screen.
+           *
+           * `no-store` rather than `no-cache`: the second still permits storing the
+           * response and revalidating, which leaves a gated body sitting in a cache.
+           */
+          "Cache-Control": "private, no-store",
         },
       },
     );

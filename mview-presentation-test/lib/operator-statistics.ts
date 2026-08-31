@@ -301,6 +301,14 @@ export type MatrixCell =
   | { kind: "value"; value: string; unit?: string; strong?: boolean }
   /** No filed data. Rendered as a muted em dash — not as a zero. */
   | { kind: "missing" }
+  /**
+   * Filed, but withheld until the reader has an account.
+   *
+   * DISTINCT FROM `missing`, and the distinction is the point: an em dash says the
+   * regulator has nothing on file, which would be a false statement about an
+   * operator whose figures we simply are not showing yet.
+   */
+  | { kind: "locked" }
   /** The activity pill. */
   | { kind: "status"; active: boolean }
   /** A year-over-year arrow, or "—" when there is no series to compare. */
@@ -332,12 +340,18 @@ function metricRow(
   operators: StatisticsOperator[],
   cell: (operator: StatisticsOperator) => MatrixCell,
   score?: (operator: StatisticsOperator) => number | null,
+  gated = false,
 ): MatrixRow {
   return {
     kind: "metric",
     label,
-    cells: operators.map(cell),
-    bestIndex: score ? bestIndex(operators, score) : -1,
+    /* A gated row's cells are replaced wholesale rather than formatted: the
+       underlying figure is 0 because the endpoint sent `"****"`, and formatting a
+       withheld value is how "0.0M bbl" gets published as a fact. */
+    cells: gated ? operators.map(() => ({ kind: "locked" }) as MatrixCell) : operators.map(cell),
+    /* No winner on a withheld row — highlighting one would leak the ordering the
+       figures were withheld to protect. */
+    bestIndex: gated || !score ? -1 : bestIndex(operators, score),
   };
 }
 
@@ -390,6 +404,13 @@ export function buildCompanyRows(operators: StatisticsOperator[]): MatrixRow[] {
 export function buildProductionRows(
   operators: StatisticsOperator[],
   years: readonly number[],
+  /*
+   * True when the endpoint withheld the volumes. Every row below that reads one is
+   * marked gated; the oil/gas SHARE stays open because `oil_percentage` is sent in
+   * full at `member_id: 0` — it says how an operator's output is split, not how
+   * much of it there is.
+   */
+  locked = false,
 ): MatrixRow[] {
   const latest = years.at(-1);
   const prior = years.at(-2);
@@ -400,41 +421,63 @@ export function buildProductionRows(
       operators,
       (o) => volumeCell(o.oilTotal, "bbl"),
       (o) => o.oilTotal,
+      locked,
     ),
     metricRow(
       "Gas produced",
       operators,
       (o) => volumeCell(o.gasTotal, "Mcf"),
       (o) => o.gasTotal,
+      locked,
     ),
+    /*
+     * GATED TOO, EVEN THOUGH A SHARE REVEALS NO VOLUME.
+     *
+     * `oilPct` is not sent by this endpoint — it is computed here from oilTotal and
+     * gasTotal, both of which are `"****"` without an account. The arithmetic then
+     * returns 0, and the row published "0%" for every operator: not a withheld
+     * figure but a wrong one, and the most believable kind, because 0% is a number a
+     * reader has no reason to doubt.
+     *
+     * (The production comparison keeps its equivalent row open because THERE the
+     * split arrives as its own field, `oil_percentage`, which the endpoint sends in
+     * full. Same-looking row, different provenance, different answer.)
+     */
     metricRow(
       "Oil share of BOE",
       operators,
       (o) => ({ kind: "value", value: `${o.oilPct}%` }),
       (o) => o.oilPct,
+      locked,
     ),
     metricRow(
       `Total BOE (${GAS_TO_OIL}:1)`,
       operators,
       (o) => volumeCell(o.boeTotal, "BOE", true),
       (o) => o.boeTotal,
+      locked,
     ),
     metricRow(
       `BOE — ${latest}`,
       operators,
       (o) => volumeCell(o.boeCurrent),
       (o) => o.boeCurrent,
+      locked,
     ),
     metricRow(
       `BOE — ${prior}`,
       operators,
       (o) => volumeCell(o.boePrevious),
       (o) => o.boePrevious,
+      locked,
     ),
-    metricRow("Year over year", operators, (o) => ({
-      kind: "delta",
-      percent: o.yearOverYear,
-    })),
+    metricRow(
+      "Year over year",
+      operators,
+      (o) => ({ kind: "delta", percent: o.yearOverYear }),
+      undefined,
+      locked,
+    ),
   ];
 }
 
@@ -446,6 +489,9 @@ export function buildProductionRows(
 export function buildTrendRows(
   operators: StatisticsOperator[],
   trendYears: readonly number[],
+  /* Every year of `Historical_Production_Trends` is withheld together — measured:
+     at `member_id: 0` the whole map comes back `"****"`, not just recent years. */
+  locked = false,
 ): MatrixRow[] {
   const years = [...trendYears];
   const latest = years.at(-1);
@@ -461,6 +507,7 @@ export function buildTrendRows(
         operators,
         (o) => volumeCell(o.trend?.[yearIndex] ?? null),
         (o) => o.trend?.[yearIndex] ?? null,
+        locked,
       ),
     );
 }

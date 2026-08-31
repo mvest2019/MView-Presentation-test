@@ -210,7 +210,11 @@ export default async function OperatorsRoute() {
 
         <div className="pt-7">
           <h1 className={displayLgClass}>Operator Directory</h1>
-          <p className="mt-[6px] max-w-[640px] text-[15.5px] text-mv-muted">
+          {/* `max-w-[640px]` wrapped this onto two lines at desktop width for the
+              sake of a measure it did not need — it is one short sentence, not a
+              paragraph. Widened so it sits on one line from about 900px up, and it
+              still wraps naturally below that rather than being forced to fit. */}
+          <p className="mt-[6px] max-w-[820px] text-[15.5px] text-mv-muted">
             Search, filter, and rank Texas oil &amp; gas operators by reported
             production, activity, and coverage.
           </p>

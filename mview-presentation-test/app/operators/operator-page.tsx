@@ -444,13 +444,30 @@ function AppliedTags({
  * gone: it was permanently checked and disabled, so it offered nothing to click.
  * That column is not optional and is simply always rendered.
  */
-const COLUMN_LABELS: { key: keyof OperatorColumns; label: string }[] = [
-  { key: "oil", label: "Oil Produced" },
-  { key: "gas", label: "Gas Produced" },
-  { key: "cty", label: "Counties" },
+/**
+ * The Columns menu.
+ *
+ * `fixed` MARKS A COLUMN THAT IS PART OF THE TABLE RATHER THAN AN OPTION. Oil, Gas,
+ * Counties and Status are what "ranked by reported production" means — turning them
+ * off leaves a directory of names and nothing to rank by, and the page's own heading
+ * then describes something that is no longer on screen. They are listed so the menu
+ * still says what the table holds, and shown ticked and disabled so it is clear they
+ * are on rather than missing.
+ *
+ * The two genuinely optional columns are the ones that default to off: Leases count
+ * and Last production. Those stay toggleable, which is the whole purpose of the menu.
+ */
+const COLUMN_LABELS: {
+  key: keyof OperatorColumns;
+  label: string;
+  fixed?: boolean;
+}[] = [
+  { key: "oil", label: "Oil Produced", fixed: true },
+  { key: "gas", label: "Gas Produced", fixed: true },
+  { key: "cty", label: "Counties", fixed: true },
   { key: "leases", label: "Leases count" },
   { key: "lastProduction", label: "Last production" },
-  { key: "status", label: "Status" },
+  { key: "status", label: "Status", fixed: true },
 ];
 
 function TableControls({
@@ -509,20 +526,35 @@ function TableControls({
             aria-label="Manage columns"
             className="absolute right-0 top-[calc(100%+6px)] z-30 min-w-[220px] rounded-xl border border-mv-line bg-white px-[14px] py-3 shadow-[0_12px_30px_rgba(13,14,23,.14)] max-[480px]:left-0 max-[480px]:right-auto"
           >
-            {COLUMN_LABELS.map(({ key, label }) => (
+            {COLUMN_LABELS.map(({ key, label, fixed }) => (
               <label
                 key={key}
-                className="flex cursor-pointer items-center gap-[9px] py-[6px] text-[13.5px] font-medium"
+                className={`flex items-center gap-[9px] py-[6px] text-[13.5px] font-medium ${
+                  fixed
+                    ? "cursor-default text-mv-muted"
+                    : "cursor-pointer text-mv-ink"
+                }`}
+                /* Named rather than left to the disabled styling alone: a greyed
+                   tick with no explanation reads as a bug. */
+                title={fixed ? `${label} is always shown` : undefined}
               >
                 <input
                   type="checkbox"
                   checked={columns[key]}
+                  disabled={fixed}
                   onChange={(event) =>
                     onColumnsChange({ ...columns, [key]: event.target.checked })
                   }
-                  className="h-4 w-4 cursor-pointer accent-mv-green-deep"
+                  className={`h-4 w-4 accent-mv-green-deep ${
+                    fixed ? "cursor-default opacity-60" : "cursor-pointer"
+                  }`}
                 />
                 {label}
+                {fixed ? (
+                  <span className="ml-auto text-[11.5px] font-normal text-mv-muted">
+                    Always on
+                  </span>
+                ) : null}
               </label>
             ))}
           </div>
