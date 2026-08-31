@@ -133,7 +133,14 @@ export type SelectedWell = {
   record?: string;
 };
 
-export function WellInsightsPanel({ well }: { well: SelectedWell }) {
+export function WellInsightsPanel({
+  well,
+  onClose,
+}: {
+  well: SelectedWell;
+  /** Closes the record and hands the panel back to "Pick a well". */
+  onClose?: () => void;
+}) {
   /*
    * Which filing is on screen — the well's own, not a choice.
    *
@@ -334,6 +341,7 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
       <WellSummaryHeader
         record={record}
         loadedAt={loadedAt}
+        onClose={onClose}
         completionExport={{
           /* Nothing to capture until the record is on the page. */
           ready: fields !== null,
@@ -1111,6 +1119,7 @@ function PlaceRow({
       {copy && (
         <button
           type="button"
+          data-screen-only=""
           onClick={() => {
             void copyText(value).then((done) => {
               if (!done) return;
@@ -1233,6 +1242,7 @@ function Note({
              than running into the word "Read". */
           <button
             type="button"
+            data-screen-only=""
             aria-expanded={false}
             onClick={() => setOpen(true)}
             style={{
@@ -1247,6 +1257,7 @@ function Note({
         {open && (
           <button
             type="button"
+            data-screen-only=""
             aria-expanded={true}
             onClick={() => setOpen(false)}
             className={`mt-[3px] cursor-pointer text-[11px] font-semibold hover:underline ${look.link}`}

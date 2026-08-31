@@ -177,6 +177,14 @@ type Suggestion = {
    */
   facet?: string;
   param?: string;
+  /**
+   * The lease's own number, or numbers, as the service reports them.
+   *
+   * A lease name is not unique — "AVERLY" is two leases in two districts —
+   * and the number is what tells them apart, so it is shown beside the name
+   * rather than left in the payload.
+   */
+  note?: string;
 };
 
 type FiltersPanelProps = {
@@ -186,6 +194,14 @@ type FiltersPanelProps = {
    * what to do with the answer.
    */
   onApply?: (filters: Record<string, string[]>) => void;
+  /**
+   * The filter the page was opened with, from the address.
+   *
+   * Keyed by the API's facet names, values as the API takes them — so an
+   * operator is an id here and a name in the list, which is why this is
+   * applied only once the lists have landed.
+   */
+  opening?: Record<string, string[]>;
   onCollapse?: () => void;
   /**
    * Turns the whole card off while the map is busy.
@@ -208,6 +224,7 @@ type FiltersPanelProps = {
 
 export function FiltersPanel({
   onApply,
+  opening,
   onCollapse,
   disabled,
   className = "",
@@ -513,6 +530,17 @@ export function FiltersPanel({
 
   const [query, setQuery] = useState("");
   /*
+   * Bumped by Clear filters to rebuild the sections.
+   *
+   * Each section's Find… box is its own state, held inside the section, so
+   * nothing out here can empty it. Clearing left "kar" in the county box with
+   * every county unticked — a list filtered to one row, for a filter that had
+   * just been taken off. A new key is the one way to reach it.
+   */
+  const [sectionsResetAt, setSectionsResetAt] = useState(0);
+
+
+  /*
    * What the search API returned for the box at the top of the panel. Only
    * this box goes to the network — the Find… box inside each section still
    * filters the rows already on screen.
@@ -617,6 +645,14 @@ export function FiltersPanel({
                * by name, which `value` already is.
                */
               param: result.id ?? result.value,
+              /* Leases only: an operator's id is an internal number and a
+                 county has none, so neither is worth showing. The service
+                 sends several keys comma-separated where one name covers more
+                 than one lease. */
+              note:
+                result.type === "lease" && result.id
+                  ? result.id.split(",").map((key) => key.trim()).join(", ")
+                  : undefined,
             })),
           );
           setSearchError(null);
@@ -742,6 +778,77 @@ export function FiltersPanel({
     setDirty(false);
     onApply?.({});
   }, [hasSelection, onApply]);
+
+  /*
+   * Ticks the boxes a shared link filtered by, once.
+   *
+   * In a frame rather than in the effect body: this is a setState from an
+   * effect, which the compiler's rule forbids outright and which is fine one
+   * tick later. The guard is a ref so a second list arriving does not tick
+   * everything twice.
+   */
+  const openingApplied = useRef(false);
+
+  useEffect(() => {
+    if (openingApplied.current) return;
+    if (!opening || Object.keys(opening).length === 0) return;
+    /* Nothing to match against yet. */
+    if (sections.every((section) => section.items.length === 0)) return;
+
+    /*
+     * A microtask, not an animation frame.
+     *
+     * The frame was being cancelled by this effect's own cleanup: `sections`
+     * is rebuilt whenever a facet list lands and the map re-renders many
+     * times a second while it loads, so the next render arrived before the
+     * next paint, every time, and the ticks were never applied. A microtask
+     * runs before that can happen — and it is still not the effect body,
+     * which is what the compiler's rule is about.
+     */
+    queueMicrotask(() => {
+      const ticks: Record<string, Set<string>> = {};
+      const params: Record<string, Record<string, string>> = {};
+
+      for (const section of sections) {
+        const facet = SECTION_FACETS[section.id] ?? section.id;
+        const wanted = opening[facet];
+        if (!wanted || wanted.length === 0) continue;
+
+        const chosen = new Set<string>();
+
+        for (const value of wanted) {
+          /* Operators and fields travel as ids; everything else as its own
+             name. Either way what is ticked is the row's name. */
+          const row = ID_FACETS.has(section.id)
+            ? section.items.find((item) => item.id === value)
+            : section.items.find(
+                (item) => item.name.toLowerCase() === value.toLowerCase(),
+              );
+
+          if (!row) continue;
+          chosen.add(row.name);
+          if (row.id) {
+            params[section.id] = { ...params[section.id], [row.name]: row.id };
+          }
+        }
+
+        if (chosen.size > 0) ticks[section.id] = chosen;
+      }
+
+      /* Nothing matched yet — the list this filter names has not arrived.
+         The guard stays down so the next list to land tries again; marking it
+         done here was what left the boxes empty while the map drew the
+         filter. */
+      if (Object.keys(ticks).length === 0) return;
+
+      openingApplied.current = true;
+      setChecked((previous) => ({ ...previous, ...ticks }));
+      setPickedParams((previous) => ({ ...previous, ...params }));
+      /* The map is already showing this, so it is applied, not a draft. */
+      setDirty(false);
+      wasFiltering.current = true;
+    });
+  }, [opening, sections]);
 
   function applySuggestion(suggestion: Suggestion) {
     // A search hit is a filter in its own right: picking one asks the map for
@@ -913,7 +1020,10 @@ export function FiltersPanel({
         miss.
       */
       style={style}
-      className={`mv-filters-card w-[196px] rounded-xl border border-mv-line bg-white shadow-mv-lg md:w-[224px] lg:w-[252px] ${className}`}
+      /* Rounded on the right only: the other three sides are the map's own
+         edges, and a rounded corner against a straight frame reads as a card
+         that has come loose. */
+      className={`mv-filters-card w-[196px] rounded-r-xl border-y-0 border-l-0 border-r border-mv-line bg-white shadow-mv-lg md:w-[224px] lg:w-[252px] ${className}`}
     >
       {/* Sits over the card and takes the clicks, so nothing inside needs a
           `disabled` of its own — there are six facets, two search boxes and a
@@ -1040,13 +1150,21 @@ export function FiltersPanel({
                        longer, so what is on screen is "MARATHON O…" — which
                        could be any of several. Hovering gives the whole
                        name. */
-                    title={`${suggestion.label} · ${suggestion.kind}`}
+                    title={`${suggestion.label}${
+                      suggestion.note ? ` (${suggestion.note})` : ""
+                    } · ${suggestion.kind}`}
                     className={`flex w-full cursor-pointer items-center gap-2 px-3 py-[9px] text-left ${
                       index === activeSuggestion ? "bg-[#f2f8f5]" : ""
                     }`}
                   >
                     <span className="min-w-0 flex-1 truncate text-[12px] lg:text-[13px] text-mv-slate">
                       <Highlighted text={suggestion.label} query={query} />
+                      {suggestion.note && (
+                        <span className="text-mv-muted">
+                          {" "}
+                          ({suggestion.note})
+                        </span>
+                      )}
                     </span>
                     <span className="shrink-0 rounded bg-[#f1f2f4] px-[7px] py-[3px] text-[8.5px] lg:text-[9.5px] font-bold uppercase tracking-[.06em] text-mv-muted">
                       {suggestion.kind}
@@ -1134,7 +1252,9 @@ export function FiltersPanel({
           onToggle={() => setLeasesOpen((open) => !open)}
         >
           <div className="flex justify-end pb-1">
-            <BulkAction onClick={() => setSelectedLease(null)}>None</BulkAction>
+            <BulkAction onClick={() => setSelectedLease(null)}>
+              Clear all
+            </BulkAction>
           </div>
 
           {MY_LEASES.map((lease, index) => (
@@ -1171,7 +1291,7 @@ export function FiltersPanel({
         {/* ---------------- the checkbox sections ---------------- */}
         {sections.map((section) => (
           <CheckboxSection
-            key={section.id}
+            key={`${section.id}-${sectionsResetAt}`}
             section={section}
             notice={notices[section.id]}
             open={openSections.has(section.id)}
@@ -1223,6 +1343,21 @@ export function FiltersPanel({
                 ),
               );
               setPickedParams({});
+              /* The box goes with the boxes. It holds the name of a filter
+                 that is being taken off — left there, the panel reads as
+                 filtered by an operator while the map shows the state. */
+              lastPickRef.current = null;
+              pickedQueryRef.current = null;
+              searchAloneRef.current = false;
+              setQuery("");
+              setSearchHits([]);
+              setSearchError(null);
+              setSearchedFor("");
+              setSuggestionsOpen(false);
+              setSelectedLease(null);
+              /* And the Find… box inside each section, which only a rebuild
+                 can reach. */
+              setSectionsResetAt((count) => count + 1);
             }}
             className="mt-2 w-full cursor-pointer rounded-lg border border-mv-red px-3 py-[8px] text-[12.5px] font-semibold text-mv-red hover:bg-mv-red-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-red"
           >

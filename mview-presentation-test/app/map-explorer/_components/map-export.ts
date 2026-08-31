@@ -134,24 +134,26 @@ export function exportVisible(
     : clusters;
   if (visible.length === 0) return 0;
 
+  /* The tier is named in the first column's heading and in the file's name,
+     so a column repeating it on every row said nothing. What the three
+     figures count is spelled out: "oil" beside "wells" reads as a volume. */
+  const named = tier === "sub-clusters" ? "Sub-Cluster Name" : "Cluster Name";
+
   download(
     [
       [
-        "name",
-        "county",
-        "level",
-        "longitude",
-        "latitude",
-        "wells",
-        "oil",
-        "gas",
-        "oil_gas",
+        named,
+        "County",
+        "Longitude",
+        "Latitude",
+        "Wells",
+        "Oil Wells",
+        "Gas Wells",
+        "Oil/Gas Wells",
       ],
       ...visible.map((cluster) => [
         cluster.name,
         cluster.topCounty,
-        /* Singular in the row: each line is one of them. */
-        tier === "sub-clusters" ? "sub-cluster" : "cluster",
         cluster.at[0],
         cluster.at[1],
         cluster.count,

@@ -88,12 +88,38 @@ export async function downloadSummaryPdf(
   copy
     .querySelectorAll("[data-screen-only]")
     .forEach((control) => control.remove());
+
+  /*
+   * And the notes those buttons opened are written out in full.
+   *
+   * On screen a service note is clamped to two or three lines with Read more
+   * under it. In a document there is nothing to press, so the clamp would cut
+   * the sentence and keep the rest to itself.
+   */
+  copy.querySelectorAll(".line-clamp-2, .line-clamp-3").forEach((note) => {
+    note.classList.remove("line-clamp-2", "line-clamp-3");
+  });
   stage.appendChild(copy);
   document.body.appendChild(stage);
 
   try {
     /* The face has to be there before the picture is taken. */
     await document.fonts?.ready;
+
+    /*
+     * Where a page may end: the foot of every card, and of every row of
+     * cards.
+     *
+     * Measured off the staged copy before it is photographed, in its own
+     * pixels, and turned into canvas pixels below. `:scope > *` is the
+     * stack of sections; one level further in is each card inside a row, so
+     * a row that runs over a page can still break between its cards.
+     */
+    const stageTop = stage.getBoundingClientRect().top;
+    const breaks = [...copy.querySelectorAll(":scope > *, :scope > * > *")]
+      .map((block) => block.getBoundingClientRect().bottom - stageTop)
+      .filter((edge) => edge > 0)
+      .sort((a, b) => a - b);
 
     const canvas = await html2canvas(stage, {
       scale: CAPTURE_SCALE,
@@ -118,25 +144,64 @@ export async function downloadSummaryPdf(
     const pageHeight = PAGE.height - MARGIN * 2;
 
     /*
-     * Long summaries run over several pages, so the image is placed once per
-     * page and shifted up each time — the page's own clipping shows the band
-     * that belongs to it. Slicing the canvas into separate images would land a
-     * cut through the middle of a row of figures; this way the break falls
-     * where the page ends and the next page carries on from exactly there.
+     * One image per page, cut where a card ends.
+     *
+     * The whole picture placed once per page and shifted up by a page each
+     * time was simpler, but it put the break wherever 190mm happened to fall
+     * — through the middle of the production chart, among others. Each page
+     * now takes the last card edge that fits inside it, and the next page
+     * starts from exactly there.
      */
-    const pages = Math.max(1, Math.ceil(sheetHeight / pageHeight));
-    const image = canvas.toDataURL("image/jpeg", 0.95);
+    const perPage = (pageHeight / sheetHeight) * canvas.height;
+    /* Canvas pixels, as the measurements above are in CSS pixels. */
+    const cuts = breaks.map((edge) => edge * CAPTURE_SCALE);
 
-    for (let page = 0; page < pages; page += 1) {
-      if (page > 0) pdf.addPage();
+    let start = 0;
+    let first = true;
+
+    while (start < canvas.height - 1) {
+      const limit = start + perPage;
+
+      /* The last card edge inside this page — but not one so close to the top
+         that the page would hold almost nothing. */
+      const fitted = cuts.filter(
+        (cut) => cut > start + perPage * 0.15 && cut <= limit,
+      );
+      const end = Math.min(
+        fitted.length > 0 ? fitted[fitted.length - 1] : limit,
+        canvas.height,
+      );
+
+      const band = document.createElement("canvas");
+      band.width = canvas.width;
+      band.height = Math.max(1, Math.round(end - start));
+      band
+        .getContext("2d")
+        ?.drawImage(
+          canvas,
+          0,
+          Math.round(start),
+          canvas.width,
+          band.height,
+          0,
+          0,
+          canvas.width,
+          band.height,
+        );
+
+      if (!first) pdf.addPage();
+      first = false;
+
       pdf.addImage(
-        image,
+        band.toDataURL("image/jpeg", 0.95),
         "JPEG",
         MARGIN,
-        MARGIN - page * pageHeight,
+        MARGIN,
         sheetWidth,
-        sheetHeight,
+        (band.height / canvas.width) * sheetWidth,
       );
+
+      start = end;
     }
 
     pdf.save(`${fileName}.pdf`);

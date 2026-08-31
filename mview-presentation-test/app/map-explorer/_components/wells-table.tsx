@@ -177,6 +177,28 @@ const SORT_PARAM: Record<string, string> = {
   type: "wtype",
 };
 
+/*
+ * The words the service uses for "nothing".
+ *
+ * It does not send an absent field: it sends a string. "Null" in the lease and
+ * type columns, "NAN" in county, "Unknown" in operator — all of them printed
+ * as though they were the value, so a well appeared to be operated by Unknown
+ * in the county of NAN.
+ */
+const NOTHING = new Set(["null", "nan", "n/a", "na", "unknown", "-", "--"]);
+
+/** Whether a field the service sent actually holds anything. */
+function missing(value: string | null | undefined): boolean {
+  if (value === null || value === undefined) return true;
+  const text = value.trim();
+  return text === "" || NOTHING.has(text.toLowerCase());
+}
+
+/** The same field, as the table shows it. */
+function shown(value: string | null | undefined): string {
+  return missing(value) ? "N/A" : value!.trim();
+}
+
 const emptyFacets = (): Facets => ({
   operator: new Set(),
   type: new Set(),
@@ -229,6 +251,14 @@ export function WellsTable({
     status: [],
     county: [],
   });
+  /*
+   * Whether those four are still on their way.
+   *
+   * Without it an empty list is ambiguous: it is either a facet whose request
+   * has not landed or one whose search matched nothing, and the menu said the
+   * second about both.
+   */
+  const [facetsLoading, setFacetsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -240,7 +270,9 @@ export function WellsTable({
       getCountyListMap().catch(() => [] as MapFilterItem[]),
     ]).then(([operator, type, status, county]) => {
       // One failing leaves its dropdown empty; the others still work.
-      if (!cancelled) setFacetItems({ operator, type, status, county });
+      if (cancelled) return;
+      setFacetItems({ operator, type, status, county });
+      setFacetsLoading(false);
     });
 
     return () => {
@@ -539,13 +571,15 @@ export function WellsTable({
 
     const lines = [
       ["api", "operator", "lease", "type", "status", "county", "oil", "gas"],
+      /* Empty rather than "N/A": a spreadsheet has its own way of holding
+         nothing, and a column of "N/A" cannot be counted or sorted. */
       ...rows.map((row) => [
         row.api,
-        row.operator,
-        row.lease,
-        row.wtype,
-        row.status,
-        row.county,
+        missing(row.operator) ? "" : row.operator,
+        missing(row.lease) ? "" : row.lease,
+        missing(row.wtype) ? "" : row.wtype,
+        missing(row.status) ? "" : row.status,
+        missing(row.county) ? "" : row.county,
         row.producedOil,
         row.producedGas,
       ]),
@@ -690,6 +724,7 @@ export function WellsTable({
             key={facet.key}
             label={facet.label}
             options={facetItems[facet.key].map((item) => item.value)}
+            loading={facetsLoading}
             searchable={facet.searchable}
             chosen={facets[facet.key]}
             open={openFacet === facet.key}
@@ -849,15 +884,21 @@ export function WellsTable({
       {/* ---------------- table ---------------- */}
       <div className="relative mt-4 overflow-hidden rounded-xl border border-mv-line bg-white">
       {/* Over the dimmed rows, not instead of them: dimming alone reads as a
-          disabled table, and says nothing about how long it will be. */}
+          disabled table, and says nothing about how long it will be.
+
+          Centred on the screen rather than on the card. The card is
+          twenty-five rows tall, so its middle is a long way down the page —
+          the pill was landing near the foot of the window, or past it, while
+          the rows it was explaining were at the top. Fixed, it is where the
+          reader is looking whatever they have scrolled to. */}
       {loading && rows.length > 0 && (
-        <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center">
-          <span className="flex items-center gap-[10px] rounded-full border border-mv-line bg-white px-[16px] py-[9px] shadow-mv-lg">
+        <div className="pointer-events-none fixed inset-0 z-50 grid place-items-center">
+          <span className="flex items-center gap-[12px] rounded-full border border-mv-line bg-white px-[22px] py-[13px] shadow-mv-lg">
             <span
               aria-hidden="true"
-              className="h-[14px] w-[14px] shrink-0 animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
+              className="h-[20px] w-[20px] shrink-0 animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
             />
-            <span className="text-[12.5px] font-semibold leading-none text-mv-slate">
+            <span className="text-[15px] font-semibold leading-none text-mv-slate">
               Loading wells…
             </span>
           </span>
@@ -953,29 +994,39 @@ export function WellsTable({
                   </span>
                 </td>
                 <td className="px-4 py-[14px] text-[13px] text-mv-slate">
-                  {row.operator}
+                  {shown(row.operator)}
                 </td>
-                <td className="px-4 py-[14px] text-[13px] font-bold text-mv-ink">
-                  {row.lease}
+                <td
+                  className={`px-4 py-[14px] text-[13px] ${
+                    missing(row.lease)
+                      ? "text-mv-muted"
+                      : "font-bold text-mv-ink"
+                  }`}
+                >
+                  {shown(row.lease)}
                 </td>
                 <td className="px-4 py-[14px]">
-                  <span className="inline-flex items-center gap-[6px] rounded-full bg-[#eef1ee] px-[10px] py-[3px] text-[12px] font-medium text-mv-slate">
-                    <Dot color={TYPE_DOT[row.wtype] ?? DOT_GREY} />
-                    {row.wtype}
-                  </span>
+                  {missing(row.wtype) ? (
+                    <span className="text-[13px] text-mv-muted">N/A</span>
+                  ) : (
+                    <span className="inline-flex items-center gap-[6px] rounded-full bg-[#eef1ee] px-[10px] py-[3px] text-[12px] font-medium text-mv-slate">
+                      <Dot color={TYPE_DOT[row.wtype] ?? DOT_GREY} />
+                      {row.wtype}
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-[14px] text-[13px] text-mv-slate">
-                  {row.status ? (
+                  {missing(row.status) ? (
+                    <span className="text-mv-muted">N/A</span>
+                  ) : (
                     <span className="inline-flex items-center gap-[6px]">
                       <Dot color={STATUS_DOT[row.status] ?? DOT_GREY} />
                       {row.status}
                     </span>
-                  ) : (
-                    <span className="text-mv-muted">—</span>
                   )}
                 </td>
                 <td className="px-4 py-[14px] text-[13px] text-mv-slate">
-                  {row.county}
+                  {shown(row.county)}
                 </td>
                 <Volume value={row.producedOil} />
                 <Volume value={row.producedGas} />
@@ -1134,6 +1185,7 @@ export function WellsTable({
 function FilterDropdown({
   label,
   options,
+  loading,
   searchable,
   chosen,
   open,
@@ -1143,6 +1195,8 @@ function FilterDropdown({
 }: {
   label: string;
   options: string[];
+  /** True while the list is still being fetched — an empty one means nothing yet. */
+  loading?: boolean;
   searchable?: boolean;
   chosen: Set<string>;
   open: boolean;
@@ -1194,12 +1248,16 @@ function FilterDropdown({
             <span className="text-[10.5px] font-extrabold uppercase tracking-[.1em] text-mv-ink">
               {label}
             </span>
+            {/* "None" named the state it would leave behind; this names the
+                action. Offered only when there is something to clear — the
+                heading beside it already says which list. */}
             <button
               type="button"
+              disabled={chosen.size === 0}
               onClick={() => onChange(new Set())}
-              className="cursor-pointer text-[11.5px] font-bold text-mv-green-deep hover:underline"
+              className="text-[11.5px] font-bold enabled:cursor-pointer enabled:text-mv-green-deep enabled:hover:underline disabled:cursor-not-allowed disabled:text-mv-muted"
             >
-              None
+              Clear all
             </button>
           </div>
 
@@ -1236,9 +1294,23 @@ function FilterDropdown({
               </label>
             ))}
 
-            {visible.length === 0 && (
-              <p className="py-2 text-[12px] text-mv-muted">Nothing matches.</p>
-            )}
+            {visible.length === 0 &&
+              (loading ? (
+                /* An empty list is not an answer until the request has
+                   landed: before that, saying "nothing matches" states that
+                   no county exists. */
+                <p className="flex items-center gap-2 py-2 text-[12px] text-mv-muted">
+                  <span
+                    aria-hidden="true"
+                    className="h-[13px] w-[13px] shrink-0 animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
+                  />
+                  Loading {label.toLowerCase()}…
+                </p>
+              ) : (
+                <p className="py-2 text-[12px] text-mv-muted">
+                  Nothing matches.
+                </p>
+              ))}
           </div>
         </div>
       )}

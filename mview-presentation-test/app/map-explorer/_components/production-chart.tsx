@@ -207,8 +207,12 @@ export function ProductionChart({
             <span className="text-[12px] font-semibold text-mv-ink">
               {monthName(from)} – {monthName(to)}
             </span>
+            {/* Screen only, like the track below: the header's own
+                "Mar 2012 – Feb 2031" is what a printed page needs from this
+                row. */}
             <button
               type="button"
+              data-screen-only=""
               aria-expanded={customOpen}
               onClick={() => setCustomOpen((open) => !open)}
               className={`cursor-pointer rounded-lg border px-[11px] py-[6px] text-[11.5px] font-semibold ${
@@ -223,6 +227,7 @@ export function ProductionChart({
             {window && (
               <button
                 type="button"
+                data-screen-only=""
                 onClick={() => {
                   setWindow(null);
                   setCustomOpen(false);
@@ -487,7 +492,15 @@ export function ProductionChart({
               name than to slide to when it is one of two hundred. Both write
               the same window. One track under two handles — see
               `.mv-range-overlay`. */}
-          <div className="mt-3 flex items-center gap-3 border-t border-mv-line pt-3">
+          {/* Screen only. It is a control — two handles on a track — and a
+              picture of one in a PDF is furniture at best; at worst the
+              handles print over their own labels, which is what the export
+              was showing. The window it sets is already named in the card's
+              header, so the document loses nothing. */}
+          <div
+            data-screen-only=""
+            className="mt-3 flex items-center gap-3 border-t border-mv-line pt-3"
+          >
             <span className="w-[58px] shrink-0 text-[11px] font-semibold text-mv-slate">
               {monthName(from)}
             </span>

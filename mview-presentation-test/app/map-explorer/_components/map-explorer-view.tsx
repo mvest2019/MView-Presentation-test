@@ -61,6 +61,7 @@ import {
 } from "./map-measurements";
 
 import { exportVisible } from "./map-export";
+import { readFilterParams, writeFilterParams } from "./filter-url";
 import { ToolPrompt } from "./tool-prompt";
 import { buildWellGraphics } from "./well-graphics";
 import { TimeLapseBar } from "./time-lapse-bar";
@@ -716,6 +717,16 @@ export function MapExplorerView() {
   const [status, setStatus] = useState<Status>("loading");
   const [basemap, setBasemap] = useState(DEFAULT_BASEMAP);
   const [viewTab, setViewTab] = useState<ViewTab>("map");
+
+  /*
+   * The filter the address arrived with, if any.
+   *
+   * Read once, on the first render: it is the opening state, not something to
+   * re-read as the URL is rewritten by every later Apply.
+   */
+  const [openingFilters] = useState<Record<string, string[]>>(() =>
+    typeof window === "undefined" ? {} : readFilterParams(window.location.search),
+  );
 
   /*
    * Where the map's two notices sit from `lg` up.
@@ -1408,6 +1419,19 @@ export function MapExplorerView() {
       });
   }, []);
 
+  /*
+   * Puts the record away.
+   *
+   * The ring goes with it: it marks the well the panel is showing, and with
+   * no panel it marks nothing. The map itself is left exactly where it is —
+   * closing a record is not a reason to move somebody's view.
+   */
+  const closeSummary = useCallback(() => {
+    clearInterval(pulseTimerRef.current);
+    highlightLayerRef.current?.removeAll();
+    setSelectedWell(null);
+  }, []);
+
   const clearWells = useCallback(() => {
     wellRequestRef.current += 1;
     /* Nothing is held any more, so the next extent is new ground. */
@@ -1677,6 +1701,10 @@ export function MapExplorerView() {
       const layer = wellLayerRef.current;
       const view = viewRef.current;
       if (!ctors || !layer || !view) return;
+
+      /* The address says what the map is showing, so a link to it is a link
+         to this filter rather than to the state. */
+      writeFilterParams(filters);
 
       if (Object.keys(filters).length === 0) {
         filteredRef.current = false;
@@ -2817,17 +2845,35 @@ export function MapExplorerView() {
         if (cancelled) return;
 
         setStatus("ready");
+
         // The opening load. The extent is only real once the view has laid
         // itself out, and the band it lands in is the one to beat.
         // The legend's icons are what the wells are drawn with, so they are
-        // fetched alongside — a failure just means the fallback dot.
-        void getLegendListMap()
+        // fetched first — a failure just means the fallback dot.
+        const icons = getLegendListMap()
           .then((legends) => {
             wellIconsRef.current = new Map(
               legends.map((legend) => [legend.description, legend.iconUrl]),
             );
           })
           .catch(() => {});
+
+        /*
+         * A shared link, applied once the symbols are in hand.
+         *
+         * Applied here rather than on mount because the filter draws wells and
+         * moves the camera, both of which need a view that has laid itself
+         * out — and after the legend because `buildWellGraphics` reads those
+         * icons as it draws. Jumping the queue drew twenty thousand wells as
+         * the fallback dot, which is what a shared link was showing.
+         */
+        if (Object.keys(openingFilters).length > 0) {
+          void icons.then(() => {
+            if (cancelled) return;
+            applyFiltersRef.current?.(openingFilters);
+          });
+          return;
+        }
 
         if (zoomLevel(view) >= WELL_ZOOM) {
           loadWells();
@@ -2875,6 +2921,9 @@ export function MapExplorerView() {
     loadWells,
     clearWells,
     highlightWell,
+    /* Read once at mount and never reassigned, so listing it changes nothing
+       — it is here to satisfy the rule rather than because it can vary. */
+    openingFilters,
   ]);
 
   // Esc backs out of an armed tool — the prompt says so.
@@ -3603,6 +3652,8 @@ export function MapExplorerView() {
             /* Changing this rebuilds the filters panel with nothing ticked —
                see the empty-result reset. */
             filtersResetAt={filterResetAt}
+            /* So the boxes agree with the map a shared link just drew. */
+            openingFilters={openingFilters}
             timeLapseOpen={timeLapseOpen}
             onToggleTimeLapse={toggleTimeLapse}
             center={readout.center}
@@ -3659,7 +3710,11 @@ export function MapExplorerView() {
               /* Keyed by API number: a new well is a new panel, so its own
                  summary request starts from nothing rather than the panel
                  showing the previous well's figures until the answer lands. */
-              <WellInsightsPanel key={selectedWell.api} well={selectedWell} />
+              <WellInsightsPanel
+                key={selectedWell.api}
+                well={selectedWell}
+                onClose={closeSummary}
+              />
             ) : (
               <div className="grid h-full place-items-center bg-mv-bg p-6">
                 <div className="max-w-[280px] text-center">

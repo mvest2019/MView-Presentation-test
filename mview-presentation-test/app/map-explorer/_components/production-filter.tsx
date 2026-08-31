@@ -125,7 +125,9 @@ export function ProductionFilter({
           </div>
 
           <Pair
-            label="Oil (bbl)"
+            /* The unit in capitals, as the column heading and every figure
+               on the page write it: BBL, MCF. */
+            label="Oil (BBL)"
             invalid={badPair(range.oilMin, range.oilMax)}
             min={range.oilMin}
             max={range.oilMax}
@@ -133,7 +135,7 @@ export function ProductionFilter({
             onMax={(oilMax) => onChange({ ...range, oilMax })}
           />
           <Pair
-            label="Gas (mcf)"
+            label="Gas (MCF)"
             invalid={badPair(range.gasMin, range.gasMax)}
             min={range.gasMin}
             max={range.gasMax}

@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock, Download } from "lucide-react";
+import { Clock, Download, X } from "lucide-react";
 
 /*
  * The line above the summary: what this page is, and when it was last read.
@@ -52,6 +52,7 @@ export function WellSummaryHeader({
   loadedAt,
   completionExport,
   permitExport,
+  onClose,
 }: {
   /** Which of the well's two records this is, from the well itself. */
   record: WellRecord;
@@ -71,6 +72,8 @@ export function WellSummaryHeader({
    */
   completionExport: RecordExport;
   permitExport: RecordExport;
+  /** Puts the record away and leaves the map as it is. */
+  onClose?: () => void;
 }) {
   /*
    * One button, whichever record is open — Export is Export. Only the record
@@ -129,6 +132,24 @@ export function WellSummaryHeader({
             Last updated: {loadedAt ? stamp(loadedAt) : "loading…"}
             <Clock size={13} strokeWidth={1.75} aria-hidden="true" />
           </span>
+
+          {/* The way out of a record. Without it the only way to empty this
+              side of the page was to find another well to click. */}
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close this summary"
+              title="Close"
+              /* A button, not a bare glyph: the panel's ground is the same
+                 pale grey as the page, so an unbacked cross read as part of
+                 the timestamp beside it. White on a border, like Export PDF
+                 next to it, and red only on the way out. */
+              className="grid h-[30px] w-[30px] shrink-0 cursor-pointer place-items-center rounded-lg border border-mv-line bg-white text-mv-slate hover:border-mv-red hover:bg-mv-red-bg hover:text-mv-red"
+            >
+              <X size={15} strokeWidth={2.5} aria-hidden="true" />
+            </button>
+          )}
         </div>
       </div>
     </div>

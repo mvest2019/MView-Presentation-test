@@ -94,6 +94,8 @@ type MapChromeProps = {
    * dropped — after a filter that matched nothing and was undone.
    */
   filtersResetAt?: number;
+  /** What the address arrived filtered by, for the panel to tick. */
+  openingFilters?: Record<string, string[]>;
   /** The tool waiting for a drag on the map, if any. */
   activeTool: string | null;
   onSelectTool: (
@@ -116,6 +118,24 @@ export type ViewTab = "map" | "table" | "insights";
  * wells rather than every well whose number happens to start the same way.
  */
 const API_MIN_DIGITS = 6;
+
+/** A Texas API-10: state, county, well. Ten digits, hyphens for reading. */
+const API_MAX_DIGITS = 10;
+
+/**
+ * What a typed API number is allowed to be.
+ *
+ * Digits only, grouped 2-3-5 as they arrive, and no more than ten of them.
+ * Letters and punctuation are dropped rather than shown and then rejected: a
+ * box that accepts "hgf256-!!!" and answers "no wells match that number" has
+ * told the reader nothing about what went wrong.
+ */
+function asApiNumber(typed: string): string {
+  const digits = typed.replace(/\D/g, "").slice(0, API_MAX_DIGITS);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 5) return `${digits.slice(0, 2)}-${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}-${digits.slice(2, 5)}-${digits.slice(5)}`;
+}
 
 const VIEW_TABS: { id: ViewTab; label: string; icon: typeof MapIcon }[] = [
   { id: "map", label: "Map", icon: MapIcon },
@@ -146,6 +166,7 @@ export function MapChrome({
   onClearApi,
   onApplyFilters,
   filtersResetAt = 0,
+  openingFilters,
   activeTool,
   onSelectTool,
   onZoomIn,
@@ -207,7 +228,9 @@ export function MapChrome({
    * fires once as soon as it starts watching, which is where the first
    * measurement comes from — nothing is set from the effect body itself.
    *
-   * The 36 is the 12px inset above the card and the 24px below it.
+   * The rail runs from the map's top edge to just above Esri's attribution
+   * strip — the one thing along the bottom that has to stay legible, since
+   * the terms of use require it and the panel was sitting on top of it.
    */
   const chromeRef = useRef<HTMLDivElement>(null);
   const [railHeight, setRailHeight] = useState<number | null>(null);
@@ -217,7 +240,16 @@ export function MapChrome({
     if (!layer || typeof ResizeObserver === "undefined") return;
 
     const observer = new ResizeObserver(() => {
-      const height = layer.clientHeight - 36;
+      /* Measured rather than assumed: the strip is one line on a wide map and
+         two on a narrow one, and Esri sets its own type size.
+
+         Found on the document rather than through this layer: the chrome is a
+         sibling of the map's own container, not a child of it, so `closest`
+         from here never reaches the view — which is why subtracting nothing
+         left the panel sitting on the credits. */
+      const credit =
+        document.querySelector<HTMLElement>(".esri-attribution");
+      const height = layer.clientHeight - (credit?.offsetHeight ?? 20);
       setRailHeight(height > 0 ? height : null);
     });
 
@@ -485,6 +517,7 @@ export function MapChrome({
         <>
       <FiltersPanel
         key={filtersResetAt}
+        opening={openingFilters}
         /* Applied, and out of the way. On a phone the rail covers most of
            the map, so leaving it open after Apply hides the very thing that
            just changed. Wide screens keep it open — there the map is beside
@@ -723,9 +756,10 @@ export function MapChrome({
                 }
                 value={placeQuery}
                 onChange={(event) => {
-                  setPlaceQuery(event.target.value);
+                  const number = asApiNumber(event.target.value);
+                  setPlaceQuery(number);
                   // Emptying the box undoes what picking a number did.
-                  if (event.target.value.trim() === "") onClearApi();
+                  if (number === "") onClearApi();
                   setPlaceIndex(0);
                   setPlaceOpen(true);
                   anchorPlaceResults();
@@ -738,8 +772,13 @@ export function MapChrome({
                 onBlur={() => {
                   if (!placeQuery.trim()) setSearchOpen(false);
                 }}
-                placeholder="API number (e.g 123-45678)"
-                className="w-full min-w-0 border-0 bg-transparent text-[12.5px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted lg:w-[148px]"
+                /* A number pad on a phone: the field takes digits only. */
+                inputMode="numeric"
+                placeholder="API NO.(e.g.42-123-45678)"
+                /* 190px from `lg` up rather than 148: the placeholder names a
+                   whole API number, which needs about 155px, and a field that
+                   cuts its own example mid-number teaches the wrong shape. */
+                className="w-full min-w-0 border-0 bg-transparent text-[12.5px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted lg:w-[190px]"
               />
               {placeQuery !== "" && (
                 <button
@@ -853,7 +892,7 @@ export function MapChrome({
           bare
             ? "hidden"
             : filtersOpen
-              ? "left-[276px] hidden lg:flex"
+              ? "left-[264px] hidden lg:flex"
               : "left-3 flex"
         }`}
       >

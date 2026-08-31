@@ -391,6 +391,7 @@ function CoordinateRow({ label, value }: { label: string; value: string }) {
       </dd>
       <button
         type="button"
+        data-screen-only=""
         onClick={() => {
           void copyText(value).then((done) => {
             if (!done) return;

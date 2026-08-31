@@ -39,30 +39,54 @@ export function ApiResults({
 }: ApiResultsProps) {
   const empty = tooShort || loading || error || results.length === 0;
 
+  /*
+   * A line of prose takes the field's width; a list takes its own.
+   *
+   * `minWidth` is the field, measured by the caller. Holding the panel to it
+   * while there is nothing to list keeps the message square under the box it
+   * belongs to, rather than in a wider one whose edges line up with nothing.
+   */
+  const box = empty ? { ...style, width: style.minWidth } : style;
+
   return (
     <ul
       id="map-search-results"
       role="listbox"
       aria-label="Wells matching this API number"
           className="mv-thin-scroll pointer-events-auto absolute z-40 max-h-[264px] w-max max-w-[340px] overflow-y-auto overscroll-contain rounded-xl border border-mv-line bg-white py-1 shadow-mv-lg"
-      style={style}
+      style={box}
     >
       {empty ? (
-        <li className="flex items-center gap-2 px-3 py-[10px] text-[12px] text-mv-muted">
-          {loading && (
+        <li className="flex items-start gap-[9px] px-3 py-[10px]">
+          {loading ? (
             <span
               aria-hidden="true"
-              className="h-[12px] w-[12px] shrink-0 animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
+              className="mt-[2px] h-[13px] w-[13px] shrink-0 animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
+            />
+          ) : (
+            <Search
+              size={13}
+              className="mt-[2px] shrink-0 text-mv-muted"
+              aria-hidden="true"
             />
           )}
-          {!loading && (
-            <Search size={13} className="shrink-0" aria-hidden="true" />
-          )}
-          {tooShort
-            ? "Type at least 6 digits"
-            : loading
-              ? "Searching…"
-              : (error ?? "No wells match that number")}
+
+          <span className="min-w-0">
+            <span className="block text-[12px] font-semibold leading-snug text-mv-slate">
+              {tooShort
+                ? "Keep typing"
+                : loading
+                  ? "Searching…"
+                  : (error ?? "No wells match that number")}
+            </span>
+            {/* The shape of the thing being asked for, under the instruction
+                rather than trailing it across two lines. */}
+            {tooShort && (
+              <span className="mt-[3px] block text-[11px] leading-snug text-mv-muted">
+                Six digits or more, like 42-123-45678
+              </span>
+            )}
+          </span>
         </li>
       ) : (
         results.map((well, index) => (
