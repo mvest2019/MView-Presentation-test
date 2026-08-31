@@ -19,6 +19,7 @@ import {
   PAGE_SIZE,
   QUICK_FILTERS,
   QUICK_FILTER_KEYS,
+  SORT_CAPTIONS,
   type OperatorFilters,
   type OperatorResultPage,
   type OperatorRow as OperatorRowData,
@@ -81,12 +82,10 @@ export function OperatorPage({
    * nowhere else here. The table's own locks come from the response, not from
    * this — see the note on the prop there.
    */
-  signedIn,
 }: {
   playTypes: string[];
   counties: string[];
   visitorId: string;
-  signedIn: boolean;
 }) {
   const {
     filters,
@@ -110,7 +109,7 @@ export function OperatorPage({
     clearFilters,
     retry,
     exportCsv,
-  } = useOperatorDirectory({ playTypes, visitorId, signedIn });
+  } = useOperatorDirectory({ playTypes, visitorId });
 
   return (
     <section
@@ -146,7 +145,9 @@ export function OperatorPage({
       <div className="h-px bg-mv-line-soft" />
 
       {/* ---- results zone ---- */}
-      <div className="px-6 pb-[22px] pt-4 max-[767px]:px-4">
+      {/* DEFECT 118 — `pt-4` under the filter zone's own padding left a visible
+          empty band above "Showing …". */}
+      <div className="px-6 pb-[22px] pt-3 max-[767px]:px-4">
         {/* Results summary and controls share one row on desktop and stack on
             mobile. The count appears here only — the pager below carries the
             controls, so the same number is never printed twice. */}
@@ -169,7 +170,11 @@ export function OperatorPage({
                   {Math.min(page.from + pageSize, page.total)} of {page.total}{" "}
                   operator{page.total === 1 ? "" : "s"}
                 </strong>{" "}
-                · ranked by reported production
+                {/* DEFECT 122 — this said "ranked by reported production" whatever
+                    the table was actually ordered by, so it was wrong the moment a
+                    column header was clicked and wrong again once the default
+                    became counties. It now names the live sort. */}
+                · {SORT_CAPTIONS[filters.sortKey]}
               </>
             ) : (
               "0 operators match the current filters"
@@ -321,7 +326,10 @@ function FindBar({
           value={search}
           onChange={(event) => onSearch(event.target.value)}
           placeholder="Search by Operator Name or Operator Number…"
-          className={`w-full rounded-xl border bg-white py-[13px] pl-11 pr-[14px] text-[15px] text-mv-ink outline-none transition-colors placeholder:text-mv-placeholder hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)] ${CONTROL_TINT}`}
+          /* DEFECT 120 — `py-[13px]` at 15px text made this 48px against the
+             selects' 44px, so the filter row sat crooked. `min-h-[44px]` with the
+             selects' own padding and text size puts every control on one line. */
+          className={`min-h-[44px] w-full rounded-xl border bg-white py-2 pl-11 pr-[14px] text-sm text-mv-ink outline-none transition-colors placeholder:text-mv-placeholder hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)] ${CONTROL_TINT}`}
         />
       </div>
 
@@ -394,7 +402,11 @@ function AppliedTags({
   if (filters.length === 0) return null;
 
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-mv-line-soft pt-4">
+    /* DEFECT 116 / 118 — the row was `mt-4 pt-4`, which stacked two full gaps
+       against the filter row above it. Halved, and `gap-x-3` gives the chips a
+       little more room than the tight `gap-2` they shared with the Clear all
+       button. */
+    <div className="mt-[10px] flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-mv-line-soft pt-[10px]">
       <span className="text-[12.5px] font-extrabold uppercase tracking-[.07em] text-mv-muted">
         Applied:
       </span>
@@ -416,9 +428,22 @@ function AppliedTags({
         </span>
       ))}
 
+      {/* DEFECT 116 — a measured step away from the last chip, not a push to the
+          far edge: `ms-auto` sent it 589px right, which is the "unnecessary extra
+          whitespace" the defect warns against. `ms-1` on top of the row's `gap-x-3`
+          reads as a separator between the filters and the action that clears them,
+          and it survives wrapping. The ✕ gains a real gap — it was butted straight
+          against the word. */}
       {canClearAll && (
-        <FilterPill active={false} onClick={onClearAll} className="!py-[7px]">
-          Clear all ✕
+        <FilterPill
+          active={false}
+          onClick={onClearAll}
+          className="!py-[7px] ms-1"
+        >
+          <span className="inline-flex items-center gap-[7px]">
+            Clear all
+            <X aria-hidden="true" className="h-[11px] w-[11px]" strokeWidth={3} />
+          </span>
         </FilterPill>
       )}
     </div>
@@ -699,7 +724,7 @@ function ResultsTable({
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] border-collapse">
           <caption className="sr-only">
-            Texas oil and gas operators, ranked by reported production.
+            Texas oil and gas operators, {SORT_CAPTIONS[sortKey]}.
           </caption>
 
           <thead>

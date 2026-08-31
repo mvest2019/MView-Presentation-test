@@ -208,7 +208,10 @@ export default async function OperatorsRoute() {
           ]}
         />
 
-        <div className="pt-7">
+        {/* DEFECT 118 — `pt-7` under the breadcrumb left an empty band above the
+            heading. `pt-4` keeps the two apart without the gap reading as a
+            missing element. */}
+        <div className="pt-4">
           <h1 className={displayLgClass}>Operator Directory</h1>
           {/* `max-w-[640px]` wrapped this onto two lines at desktop width for the
               sake of a measure it did not need — it is one short sentence, not a
@@ -224,7 +227,6 @@ export default async function OperatorsRoute() {
           playTypes={playTypes}
           counties={counties}
           visitorId={visitorId}
-          signedIn={!!user}
         />
 
         {/* All three routes are built, each under `/features/` — see the note at

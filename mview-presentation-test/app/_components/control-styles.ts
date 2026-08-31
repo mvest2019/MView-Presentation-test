@@ -24,4 +24,10 @@ export const SELECT_CLASS =
 
 /** The caret, placed identically on every control that uses `SELECT_CLASS`. */
 export const CONTROL_CARET =
-  "pointer-events-none absolute right-[13px] top-1/2 h-[7px] w-[11px] -translate-y-1/2 text-mv-muted";
+  /*
+   * DEFECT 124 / 158 — the caret was `h-[7px] w-[11px]`: too small to read as a
+   * control, and non-square, so the chevron was drawn squashed. `h-4 w-4` is the
+   * icon's own aspect and matches the search icon beside it at 18px. The right
+   * offset drops to 12px so the larger glyph keeps the same optical inset.
+   */
+  "pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-mv-muted";
