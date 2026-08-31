@@ -18,15 +18,18 @@ DEFECT · SNAP · OWNER · DEV STATUS · DEV COMMENT · QA STATUS · QA COMMENT`
 
 ## 1. Where the work has got to
 
-**24 of 51 actionable defects are done.** SR 167 is blank in the sheet — no
+**28 of 51 actionable defects are done.** SR 167 is blank in the sheet — no
 description, no screenshot — so 51, not 52.
 
 | Section | Range | Total | Done | Open |
 |---|---|---|---|---|
 | Operator Directory | 116–125 | 10 | 9 | 1 (backend) |
-| Operator Detail | 126–156 | 31 | 15 | 16 |
+| Operator Detail | 126–156 | 31 | 19 | 12 |
 | Compare Operators Performance | 157–165 | 9 | 0 | 9 |
 | Compare Operator Statistics | 166 | 1 | 0 | 1 |
+
+**Remaining, all pages:** `125, 130, 131, 135, 139, 140, 141, 146, 147, 150, 151,
+153, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166`
 
 ### Done
 
@@ -48,9 +51,13 @@ description, no screenshot — so 51, not 52.
 | 132 | "County" repeated on every dropdown option | 3 components |
 | 133 | two unexplained county counts | legend removed; panel relabelled |
 | 134 | `"…could not be reached.:"` — stray colon | `operator-what-changed.tsx` |
+| 136 | **not reproducible** — 0 of 1,005 lease names contain "test"; the data changed upstream | — |
+| 137 | **not a defect on current data** — 7 of 1,005 lack an `api` and correctly show an em dash | — |
 | 138 | tooltip overflowed the chart at the edges | `production-over-time.tsx` |
 | 140 | *(decimals half)* volumes printed 4 dp | `lib/operator-detail.ts` |
+| 142 | **backend-dependent** — see §7 | — |
 | 143 | "Producing counties" is a claim the payload cannot support | `[slug]/page.tsx` |
+| 144 | 84 `Submitted` permits all carried an `approved_date` — the submit date repeated | `recent-wells-permits.tsx` |
 | 145 | directory sorted by oil while calling it "reported production" | both pages |
 | 148 | arrow drawn with no delta | `[slug]/page.tsx` |
 | 149 | logos had no alt | `operator-logo.tsx` |
@@ -60,12 +67,10 @@ description, no screenshot — so 51, not 52.
 
 ### Open
 
-**Operator Detail (16)** — `130` county sort/filters · `131` wells filters (Status,
-Date range, Wellbore profile) · `135` remove range · `136` test lease names
-(`test`, `TestR40`) · `137` missing lease API numbers · `139` remove info ·
-`140` overflow half · `141` capitalise units · `142` missing oil/gas/production date
-on the well drilldown · `144` Submitted permits carry an approved date · `146` oil
-unreadable against gas on one axis · `147` unit convention · `150` values overflow ·
+**Operator Detail (12)** — `130` county sort/filters · `131` wells filters (Status,
+Date range, Wellbore profile) · `135` remove range · `139` remove info ·
+`140` overflow half (decimals done) · `141` capitalise units · `146` oil unreadable
+against gas on one axis · `147` unit convention · `150` values overflow ·
 `151` mobile horizontal scroll · `153` **truncated in the sheet** (`map need to be i`,
 no snap — report, do not guess) · `156` table height grows across pages
 
@@ -79,6 +84,8 @@ covered by the shared `CONTROL_CARET` change from 124; verify before working it.
 ### Commits on the branch
 
 ```
+19f828a  Operator detail: 144 approved date on submitted permits
+07a8d67  OPERATORS.md: rewrite as a handover
 73367a1  Listing: locked cells carry the claim page's "Free account" affordance
 08724a6  Listing: gate the production figures; drop the map legend caption
 dca864b  Operator detail: 126 wheel-jacking, 127 comparison periods, 140 decimals
@@ -285,6 +292,7 @@ Four things the frontend cannot fix. None has a workaround short of fabricating 
 | **125 — county filter offers counties with no data** | `/operators/counties` returns 255 bare names, ignores `?status=`, returns the same 255 with it. Blanco/Armstrong/Delta return 0 under `status: active`, 1 under all statuses. `counties-with-data` and `active-counties` both 404 | `?status=` filtering, or counts alongside names |
 | **143 — "producing counties" cannot be computed** | `/operators/details` answers `counties` as `{"county":"CHEROKEE"}` — names only, no volume on any entry. Relabelled "Counties on record" as the honest reading | per-county volumes on that endpoint |
 | **Presentations library is empty** | `POST /operators/presentations` returns `totalCount: 0, totalPages: 0` for every payload tried, dated ranges included. Previously 190 records over 23 pages. Only host serving the path | records restored |
+| **142 — well oil/gas/production dates blank** | the wells endpoint answers `totalOilProduction: "NO RPT"` on 492 of 500 sampled wells, gas on 491, `production_start_date: "00-0000"` on 487. Only 8 carry figures. The parsers were verified against those eight — "133"→133, "6,587"→6587, "10-2011"→"Oct 2011" — and confirmed end to end on lease 259602 | the values themselves |
 | **161 — `production_info` volumes parse to 0 even signed in** | the unit-suffix change above, plus a magnitude change | frontend fix, but the scaling decision needs confirming |
 
 ---
