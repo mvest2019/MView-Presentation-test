@@ -1,14 +1,7 @@
 "use client";
 
 import { Droplet, Info } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { cardTitleClass } from "@/app/_components/typography";
 import { titleCase } from "@/lib/text-case";
@@ -267,32 +260,26 @@ export function ProductionOverTime({
     );
   };
 
-  const onWheel = useCallback(
-    (event: React.WheelEvent<SVGSVGElement>) => {
-      if (all.length < 4) return;
-      event.preventDefault();
-      setZoom((current) => {
-        const start = current?.start ?? 0;
-        const end = current?.end ?? all.length - 1;
-        const span = end - start + 1;
-        // In narrows, out widens, both anchored on the middle. Three years is the
-        // floor — below that there is no line left to read.
-        const next =
-          event.deltaY < 0
-            ? Math.max(3, span - 2)
-            : Math.min(all.length, span + 2);
-        if (next === span) return current;
-        const centre = Math.round((start + end) / 2);
-        let from = Math.max(0, centre - Math.floor(next / 2));
-        const to = Math.min(all.length - 1, from + next - 1);
-        from = Math.max(0, to - next + 1);
-        return from === 0 && to === all.length - 1
-          ? null
-          : { start: from, end: to };
-      });
-    },
-    [all.length],
-  );
+  /*
+   * DEFECT 126 — THE WHEEL NO LONGER ZOOMS THIS CHART.
+   *
+   * `onWheel` called `preventDefault()` and rewrote the year range on every wheel
+   * tick, so a reader scrolling the page with the pointer anywhere over the plot
+   * did not scroll the page: they narrowed or widened the range, and every value
+   * on the chart changed under them. That is exactly the report — "when scrolling
+   * the page up or down, the Production Over Time chart values change
+   * unexpectedly" — and it is wheel-jacking, which is a defect in its own right:
+   * a page must never mutate its content because someone scrolled past it.
+   *
+   * Removed rather than put behind a modifier key. The chart already has a
+   * deliberate zoom control directly beneath it — the year brush, with handles to
+   * narrow, drag-inside to pan and a Reset — so the wheel was a second, invisible,
+   * accidental way to do the same thing. Dragging to pan is untouched; that one
+   * takes a held button and cannot fire by accident.
+   *
+   * It also removes a non-passive wheel listener from a scroll container, which
+   * is its own small win for scroll performance.
+   */
 
   const onPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
     if (!zoom) return;
@@ -485,7 +472,6 @@ export function ProductionOverTime({
               } ${zoom ? "cursor-grab" : ""}`}
               role="img"
               aria-label={`Annual oil and gas production, ${data[0]?.year} to ${data.at(-1)?.year}, for ${appliedCounty}.`}
-              onWheel={onWheel}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={() => (dragFrom.current = null)}
