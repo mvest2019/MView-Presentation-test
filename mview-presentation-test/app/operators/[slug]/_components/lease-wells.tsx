@@ -200,7 +200,10 @@ export function LeaseWells({
                     className="flex flex-wrap items-center justify-center gap-3 text-center"
                   >
                     <p className="text-sm text-mv-ink-soft">
-                      Wells could not be loaded.
+{/* DEFECT 154 / 155 — the reported reason when there is one, so a
+                          rate limit reads as "wait a moment" rather than as an
+                          outage. The generic line is the fallback. */}
+                      {wells.error || "Wells could not be loaded."}
                     </p>
                     <button
                       type="button"

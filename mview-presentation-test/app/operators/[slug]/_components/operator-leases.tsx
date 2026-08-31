@@ -267,7 +267,8 @@ export function OperatorLeases({
                       className="flex flex-wrap items-center justify-center gap-3 text-center"
                     >
                       <p className="text-sm text-mv-ink-soft">
-                        Leases could not be loaded.
+{/* DEFECT 154 — the reported reason when there is one. */}
+                        {leases.error || "Leases could not be loaded."}
                       </p>
                       <button
                         type="button"

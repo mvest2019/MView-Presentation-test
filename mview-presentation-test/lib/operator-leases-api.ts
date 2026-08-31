@@ -173,7 +173,28 @@ async function post(
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed (${response.status})`);
+    /*
+     * DEFECT 155 — the handler's own sentence, when it sent one.
+     *
+     * This threw `Request failed (429)`, which the table then discarded in favour
+     * of a hardcoded "Wells could not be loaded" — so a rate limit and an outage
+     * were indistinguishable, and the reader's only cue was to press Try again and
+     * earn another 429. The route passes the upstream's wording through; this
+     * carries it to the caller. The bare status remains the fallback for a
+     * response that says nothing useful.
+     */
+    const detail = await response
+      .json()
+      .then((body: { error?: unknown; message?: unknown }) =>
+        typeof body?.error === "string"
+          ? body.error
+          : typeof body?.message === "string"
+            ? body.message
+            : "",
+      )
+      .catch(() => "");
+
+    throw new Error(detail || `Request failed (${response.status})`);
   }
   return response.json();
 }

@@ -111,8 +111,43 @@ export async function POST(request: Request) {
     });
 
     if (!upstream.ok) {
+      /*
+       * DEFECT 155 — a rate limit is not an outage and must not read as one.
+       *
+       * The upstream answers 429 with its own sentence, "Too many requests. Try
+       * again in 20 seconds." Collapsing that into a blanket 502 "wells responded
+       * 429" left the drawer saying "Wells could not be loaded", which invites the
+       * reader to hammer Try again and earn another 429. The status and the
+       * upstream's wording are passed through so the UI can say what actually
+       * happened and how long to wait.
+       *
+       * NOTHING RETRIES ON ITS OWN. The only retry on this path is the reader
+       * pressing the button, which is the behaviour the defect asks for.
+       */
+      const detail = await upstream
+        .json()
+        .then((body: { message?: unknown; error?: unknown }) =>
+          typeof body?.message === "string"
+            ? body.message
+            : typeof body?.error === "string"
+              ? body.error
+              : "",
+        )
+        .catch(() => "");
+
+      if (upstream.status === 429) {
+        return NextResponse.json(
+          {
+            error:
+              detail || "Too many requests. Please wait a moment and try again.",
+            retryAfter: upstream.headers.get("retry-after"),
+          },
+          { status: 429 },
+        );
+      }
+
       return NextResponse.json(
-        { error: `wells responded ${upstream.status}` },
+        { error: detail || `Well records are unavailable just now.` },
         { status: 502 },
       );
     }

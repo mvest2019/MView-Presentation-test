@@ -252,7 +252,7 @@ export async function generateMetadata({
     `${operator.name} operates ${formatCount(operator.leases)} leases across ` +
     `${operator.counties} Texas counties` +
     (operator.rank > 0
-      ? ` and ranks #${operator.rank} statewide by reported production`
+      ? ` and ranks #${operator.rank} statewide by BOE produced`
       : "") +
     `. Production, footprint and county breakdown from Railroad Commission records.`;
   const path = `/operators/${operator.slug}`;
@@ -391,10 +391,25 @@ export default async function OperatorDetailRoute({
                 {operator.status === "active" ? "Active" : "Inactive"}
               </li>
               {[
-                // Omitted rather than shown as "#0" when the API reports no rank.
-                ...(operator.rank > 0 ? [`#${operator.rank} statewide`] : []),
+                /*
+                 * DEFECT 145 — the badge said "#3 statewide" and the directory put
+                 * XTO 5th while calling itself "ranked by reported production".
+                 * Both numbers were right and they measured different things: this
+                 * is `statewide_rank`, which the API computes on BOE (XTO = 3,
+                 * EOG = 2 — matching the directory exactly when it is ordered by
+                 * `Total_Production_BOE`), while the directory was ordered by OIL,
+                 * where XTO really is 5th.
+                 *
+                 * The directory now names whichever sort is live (see the summary
+                 * line there) and this names its own metric, so neither can be read
+                 * as the other. Omitted rather than shown as "#0" when the API
+                 * reports no rank.
+                 */
+                ...(operator.rank > 0
+                  ? [`#${operator.rank} statewide by BOE`]
+                  : []),
                 `${formatCount(operator.leases)} leases`,
-                `${operator.counties} counties`,
+                `${operator.counties} counties on record`,
               ].map((pill) => (
                 <li
                   key={pill}
@@ -472,8 +487,12 @@ export default async function OperatorDetailRoute({
                 hasData
                 caption={
                   operator.countyRows.length > 0
-                    ? `${operator.counties} producing counties · MView records`
-                    : `${operator.counties} producing counties · per-county detail not in this extract`
+                    /* DEFECT 133 / 143 — same figure, same correction. The map's
+                       own legend reports the counties that carry volumes, which is
+                       a different and smaller number; naming both plainly is what
+                       makes the pair readable. */
+                    ? `${operator.counties} counties on record · MView records`
+                    : `${operator.counties} counties on record · per-county detail not in this extract`
                 }
               >
                 <CountyShading operatorNumber={operator.operatorNumber}>
@@ -498,8 +517,20 @@ export default async function OperatorDetailRoute({
                   value={formatCount(operator.leases)}
                   numeric
                 />
+                {/*
+                  DEFECT 143 — this said "Producing counties" and the number cannot
+                  support the word. `/operators/details` answers `counties` as a
+                  bare name list — `{"county": "CHEROKEE"}`, 110 entries for EOG,
+                  with no volume on any of them — so `counties.length` counts the
+                  counties on the operator's RECORD, producing or not. Calling that
+                  "producing" is the defect: it is a claim the payload never made.
+
+                  Relabelled to what the figure is. A true producing count needs
+                  per-county volumes, which this endpoint does not return — see the
+                  report.
+                */}
                 <PanelRow
-                  label="Producing counties"
+                  label="Counties on record"
                   value={String(operator.counties)}
                   numeric
                 />

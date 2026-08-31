@@ -250,9 +250,16 @@ export function CountyShading({
             />
           ))}
           <span>Higher</span>
+          {/*
+            DEFECT 133 — "110" beside "102 counties" with nothing saying why they
+            differ. They measure different things: the panel counts every county on
+            the operator's record, this counts the ones the production map returns a
+            volume for. Said out loud, the pair stops being confusing.
+          */}
           {units === "" ? null : (
             <span className="ml-1">
-              {state.data.counties.length} counties · {units}
+              {state.data.counties.length} counties with reported volumes ·{" "}
+              {units}
             </span>
           )}
         </p>

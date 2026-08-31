@@ -39,6 +39,20 @@ import type { WhatChangedPanel } from "@/lib/operator-what-changed-api";
  * service is unreachable or timed out.
  */
 
+/**
+ * One clean sentence out of whatever the service reported — DEFECT 134.
+ *
+ * Strips trailing separators and whitespace and guarantees a full stop, so a
+ * detail arriving as "The analysis service could not be reached.:" or with a
+ * dangling colon does not reach the page that way. A message that says nothing
+ * falls back to a sentence that does.
+ */
+function tidyDetail(detail: string): string {
+  const trimmed = (detail ?? "").trim().replace(/[\s:;,\-–—]+$/u, "");
+  if (trimmed === "") return "The analysis could not be loaded just now.";
+  return /[.!?]$/u.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
 /** Rows the skeleton draws — the contract is always six. */
 const SKELETON_ROWS = 6;
 
@@ -344,7 +358,24 @@ function WhatChangedPanel({
         role="alert"
         className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-mv-line bg-mv-bg px-[18px] py-4"
       >
-        <p className="m-0 text-[13.5px] text-mv-ink-soft">{loaded.detail}</p>
+        {/*
+          DEFECT 134 — the snap shows "The analysis service could not be reached.:"
+          — the sentence with a stray colon hanging off it, which is what a bare
+          `detail` produces when the source appends a separator it has nothing to
+          follow with. Trimmed to one clean sentence, and paired with a line saying
+          what it means for the rest of the page, so an unreachable analysis service
+          reads as one section being unavailable rather than as a broken profile.
+          The Retry beside it is unchanged and still the only way it is re-fetched.
+        */}
+        <div className="min-w-0">
+          <p className="m-0 text-[13.5px] font-semibold text-mv-ink-soft">
+            {tidyDetail(loaded.detail)}
+          </p>
+          <p className="m-0 mt-[3px] text-[12.5px] text-mv-muted">
+            Everything else on this profile is unaffected — production, leases and
+            the county breakdown all come from a different source.
+          </p>
+        </div>
         <button
           type="button"
           onClick={retry}
