@@ -1982,18 +1982,32 @@ export function MapExplorerView() {
     [applyFilters],
   );
 
-  /** Export CSV: whatever is inside the extent right now, wells or bubbles. */
+  /**
+   * Export CSV.
+   *
+   * Browsing, that means what is inside the extent — the loaded bubbles reach
+   * past the screen after a pan, and a file of things nobody was looking at is
+   * not what the button offers. Filtered, it means the whole set: the reader
+   * asked for those wells and was told how many there were, so the file has to
+   * hold that many.
+   */
   const exportCsv = useCallback(() => {
     const view = viewRef.current;
     if (!view?.extent) return;
 
     const { xmin, ymin, xmax, ymax } = view.extent;
-    exportVisible(clustersRef.current, wellsRef.current, {
-      west: mercatorToLongitude(xmin),
-      south: mercatorToLatitude(ymin),
-      east: mercatorToLongitude(xmax),
-      north: mercatorToLatitude(ymax),
-    });
+    exportVisible(
+      clustersRef.current,
+      wellsRef.current,
+      filteredRef.current
+        ? null
+        : {
+            west: mercatorToLongitude(xmin),
+            south: mercatorToLatitude(ymin),
+            east: mercatorToLongitude(xmax),
+            north: mercatorToLatitude(ymax),
+          },
+    );
   }, []);
 
   /** Re-projects the on-map cards — they are React, so they do not follow. */

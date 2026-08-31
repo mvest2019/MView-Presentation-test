@@ -171,7 +171,12 @@ export function AiSummary({
                 setState({ kind: "loading" });
                 setAttempt((count) => count + 1);
               }}
-              className="inline-flex items-center gap-[7px] rounded-lg border border-mv-line px-[12px] py-[7px] text-[12px] font-semibold text-mv-slate enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-wait disabled:opacity-60"
+              /* Screen only: a button in a PDF is a picture of a button, and
+                 this one asks the model to write the summary again — which is
+                 not something a printed page can offer. `mv-screen-only` is
+                 stripped from the copy the capture is taken from. */
+              data-screen-only=""
+              className="mv-screen-only inline-flex items-center gap-[7px] rounded-lg border border-mv-line px-[12px] py-[7px] text-[12px] font-semibold text-mv-slate enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-wait disabled:opacity-60"
             >
               <RefreshCw
                 size={13}

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Check,
   ClipboardList,
   Copy,
   Crosshair,
@@ -14,6 +15,8 @@ import {
 import { useEffect, useState } from "react";
 
 import { getWellPermitMap, type MapWellPermit } from "@/lib/map-api";
+
+import { copyText } from "./copy-text";
 
 import { AiSummary } from "./ai-summary";
 import { permitFields } from "./permit-fields";
@@ -389,16 +392,27 @@ function CoordinateRow({ label, value }: { label: string; value: string }) {
       <button
         type="button"
         onClick={() => {
-          void navigator.clipboard?.writeText(value).then(
-            () => setCopied(true),
-            () => setCopied(false),
-          );
+          void copyText(value).then((done) => {
+            if (!done) return;
+            setCopied(true);
+            /* Long enough to be seen, short enough that the next copy is not
+               reading the last one's tick. */
+            window.setTimeout(() => setCopied(false), 1600);
+          });
         }}
         aria-label={`Copy the ${label.toLowerCase()} coordinates`}
         title={copied ? "Copied" : "Copy"}
-        className="grid h-[24px] w-[24px] shrink-0 cursor-pointer place-items-center rounded-lg border border-mv-line text-mv-muted hover:border-mv-green-deep hover:text-mv-green-deep"
+        className={`grid h-[24px] w-[24px] shrink-0 cursor-pointer place-items-center rounded-lg border ${
+          copied
+            ? "border-mv-green-deep text-mv-green-deep"
+            : "border-mv-line text-mv-muted hover:border-mv-green-deep hover:text-mv-green-deep"
+        }`}
       >
-        <Copy size={13} strokeWidth={2} aria-hidden="true" />
+        {copied ? (
+          <Check size={13} strokeWidth={2.5} aria-hidden="true" />
+        ) : (
+          <Copy size={13} strokeWidth={2} aria-hidden="true" />
+        )}
       </button>
     </div>
   );

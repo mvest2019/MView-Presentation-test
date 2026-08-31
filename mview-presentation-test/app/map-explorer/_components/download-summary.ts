@@ -77,6 +77,17 @@ export async function downloadSummaryPdf(
   const copy = node.cloneNode(true) as HTMLElement;
   /* The veil's blur and the panel's own scroll offset belong to the screen. */
   copy.classList.remove("blur-[2px]", "select-none", "pointer-events-none");
+
+  /*
+   * Controls do not belong in a document.
+   *
+   * Anything marked `data-screen-only` is a thing to press — Regenerate, so
+   * far — and in a PDF it is a picture of a button that does nothing. Removed
+   * from the copy rather than hidden, so it takes its space with it.
+   */
+  copy
+    .querySelectorAll("[data-screen-only]")
+    .forEach((control) => control.remove());
   stage.appendChild(copy);
   document.body.appendChild(stage);
 

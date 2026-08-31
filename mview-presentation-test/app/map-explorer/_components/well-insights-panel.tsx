@@ -29,6 +29,7 @@ import {
   type MapWellSummary,
 } from "@/lib/map-api";
 
+import { copyText } from "./copy-text";
 import { declineRows, depletionBars, eurBars } from "./well-insights-fields";
 import { WELLBORE } from "./well-insights-data";
 import { PermitSummary } from "./permit-summary";
@@ -1111,10 +1112,11 @@ function PlaceRow({
         <button
           type="button"
           onClick={() => {
-            void navigator.clipboard?.writeText(value).then(
-              () => setCopied(true),
-              () => setCopied(false),
-            );
+            void copyText(value).then((done) => {
+              if (!done) return;
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1600);
+            });
           }}
           aria-label={`Copy the ${label.toLowerCase()}`}
           title={copied ? "Copied" : "Copy"}
