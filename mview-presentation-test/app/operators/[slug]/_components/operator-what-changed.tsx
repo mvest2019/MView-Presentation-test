@@ -139,10 +139,26 @@ function LockedPanel() {
           <p className="m-0 text-[15px] font-bold leading-snug text-mv-ink">
             What changed is part of a free account
           </p>
+          {/*
+            THE LAST SENTENCE USED TO READ "Everything else on this page stays free
+            to read", and gating the profile's lifetime figures made that false — the
+            reader could see it while four locked rows sat above it. OPERATORS.md §4
+            rule 5 is precisely this case: a lock notice that misdescribes the lock is
+            worse than none, and the directory has already been burned by the same
+            sentence once.
+
+            NAMING THE SECTIONS RATHER THAN CLAIMING "EVERYTHING ELSE" is what keeps
+            it true as the gate moves. These three are the ones with no gate at all:
+            `/operators/production-graph`, `/operators/leases` and
+            `/operators/production-by-county` each take no `member_id` and withhold
+            nothing (§4). It is the same construction the "Recent wells & permits"
+            notice already uses, for the same reason.
+          */}
           <p className="m-0 mt-2 text-[13px] leading-relaxed text-mv-muted">
             Six ranked findings for this operator - what moved, by how much, and
             over which months - measured from the filed record and written up in
-            plain English. Everything else on this page stays free to read.
+            plain English. The production history, the lease book and the county
+            breakdown stay free to read.
           </p>
 
           <div className="mt-[18px] flex flex-wrap items-center justify-center gap-[10px]">

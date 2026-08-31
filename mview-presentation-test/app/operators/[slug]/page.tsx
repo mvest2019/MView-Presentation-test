@@ -10,6 +10,7 @@ import {
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { ReactNode } from "react";
 
 import { Breadcrumbs } from "@/app/_components/breadcrumbs";
 import { buttonClass } from "@/app/_components/button";
@@ -42,6 +43,11 @@ import {
 } from "@/lib/operator-related-api";
 
 import { DeferredSection } from "@/app/_components/deferred-section";
+import {
+  GatedFigure,
+  GatedFigures,
+  GatedPill,
+} from "./_components/gated-figures";
 import { OperatorLeases } from "./_components/operator-leases";
 import { OperatorWhatChanged } from "./_components/operator-what-changed";
 import { CountyProduction } from "./_components/county-production";
@@ -312,7 +318,28 @@ export default async function OperatorDetailRoute({
   ]);
 
   return (
-    <div className="pb-4">
+    /*
+     * THE SIGN-IN GATE ON THE FIGURES, and the reason it is a provider rather than
+     * a branch in this component. The directory withholds four fields from a
+     * signed-out reader — oil, gas, counties and leases, masked server-side in
+     * `app/api/operators/search/route.ts` — while this page served all four in
+     * plain HTML to the same reader. The directory's lock was therefore one click
+     * deep: friction, not a gate. OPERATORS.md §4 recorded the hole; this closes it.
+     *
+     * IT CANNOT BE DECIDED HERE. This route is prerendered, so its HTML is one
+     * document served to members and visitors alike — a value rendered into it is a
+     * value everybody gets — and reading a cookie to tell them apart would opt all
+     * thirty prerendered pages out of static rendering (§2). So the seven slots
+     * below render nothing themselves: they read one shared client fetch of
+     * `/api/operators/<number>/figures`, which is dynamic already and where the
+     * session read costs nothing new. Same reasoning, same shape, as the page's two
+     * existing gates.
+     *
+     * BOE IS NOT GATED, deliberately — neither the directory nor the production map
+     * gates it, and gating it here alone would make the pages disagree.
+     */
+    <GatedFigures operatorNumber={operator.operatorNumber}>
+      <div className="pb-4">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
@@ -408,8 +435,6 @@ export default async function OperatorDetailRoute({
                 ...(operator.rank > 0
                   ? [`#${operator.rank} statewide by BOE`]
                   : []),
-                `${formatCount(operator.leases)} leases`,
-                `${operator.counties} counties on record`,
               ].map((pill) => (
                 <li
                   key={pill}
@@ -418,6 +443,23 @@ export default async function OperatorDetailRoute({
                   {pill}
                 </li>
               ))}
+              {/*
+                THESE TWO USED TO BE STRINGS IN THE ARRAY ABOVE, and that is exactly
+                why they had to move: a string here is rendered into the prerendered
+                HTML, which every reader gets. `leases` and `counties` are two of the
+                four the directory locks, so printing them a few hundred pixels above
+                their own locked panel rows would answer the lock on the same screen.
+                They read the shared gate instead — see `gated-figures.tsx`.
+
+                The rank pill stays a plain string: `statewide_rank` is free on the
+                directory too, so there is nothing to withhold.
+              */}
+              <GatedPill field="leases" label="Leases" suffix="leases" />
+              <GatedPill
+                field="counties"
+                label="Counties on record"
+                suffix="counties on record"
+              />
             </ul>
           </div>
         </div>
@@ -512,9 +554,12 @@ export default async function OperatorDetailRoute({
                   numeric
                 />
                 <PanelRow label="Status" value="Operator Active" />
+                {/* Locked for a signed-out reader — `leaseCount` is one of the four
+                    the directory withholds. The row keeps its place either way, so
+                    the panel does not change shape between the two states. */}
                 <PanelRow
                   label="No. of leases"
-                  value={formatCount(operator.leases)}
+                  value={<GatedFigure field="leases" label="Leases count" />}
                   numeric
                 />
                 {/*
@@ -531,7 +576,9 @@ export default async function OperatorDetailRoute({
                 */}
                 <PanelRow
                   label="Counties on record"
-                  value={String(operator.counties)}
+                  value={
+                    <GatedFigure field="counties" label="Counties on record" />
+                  }
                   numeric
                 />
                 {operator.location ? (
@@ -561,31 +608,66 @@ export default async function OperatorDetailRoute({
                 icon={<TrendingUp aria-hidden="true" className="h-4 w-4" />}
                 title="Production metrics"
               >
-                {/* Printed exactly as the API formats them, units included. The
-                    fixture's raw totals are the fallback when the read failed. */}
+                {/*
+                  THE TWO VOLUMES ARE LOCKED for a signed-out reader — the same two
+                  the directory masks server-side. Printed exactly as the API formats
+                  them, units included, once unlocked.
+
+                  THE FIXTURE FALLBACK IS GONE, and its removal is part of the gate
+                  rather than incidental to it. `operator.oilTotal` is a real lifetime
+                  volume for the thirty fixture operators, so rendering it here when
+                  the endpoint sends no string would have handed a visitor the very
+                  figure the lock withholds — from the fixture instead of the API,
+                  which is worse, not better. A record that carries no volume now
+                  reads as an em dash, the same mark the page already uses for a field
+                  the record does not have (defect 137).
+                */}
                 <PanelRow
                   label="Oil Produced"
                   value={
-                    operator.oilProduced ??
-                    `${formatCount(operator.oilTotal)} bbl`
+                    <GatedFigure
+                      field="oilProduced"
+                      label="Oil produced"
+                      width="w-[64px]"
+                    />
                   }
                   numeric
                 />
                 <PanelRow
                   label="Gas Produced"
                   value={
-                    operator.gasProduced ??
-                    `${formatCount(operator.gasTotal)} Mcf`
+                    <GatedFigure
+                      field="gasProduced"
+                      label="Gas produced"
+                      width="w-[64px]"
+                    />
                   }
                   numeric
                 />
-                {/* DERIVED FROM THE THREE VOLUMES ABOVE, not from the fixture.
-                    Omitted when the endpoint sends nothing to divide — a share of
-                    BOE nobody can compute is not 0%. */}
+                {/*
+                  DERIVED FROM THE THREE VOLUMES ABOVE, not from the fixture. Omitted
+                  when the endpoint sends nothing to divide — a share of BOE nobody
+                  can compute is not 0%.
+
+                  LOCKED WITH THE OIL VOLUME, because it is a key to it rather than a
+                  figure of its own: BOE is deliberately NOT gated (the directory and
+                  the production map both leave it open), and a share against an open
+                  BOE recovers the withheld volume exactly — 79% of 2,390,697.170 is
+                  the 1,907,873.826 locked one row above. Leaving it open would have
+                  made the oil lock decorative.
+
+                  WHETHER THE ROW EXISTS IS STILL DECIDED HERE, on the server, and
+                  that is safe: `operator.oilPct === null` says only whether a share
+                  is computable, which is not the figure. Moving the decision into the
+                  client would have meant rendering the row for operators that have
+                  nothing to put in it.
+                */}
                 {operator.oilPct === null ? null : (
                   <PanelRow
                     label="Oil share of BOE"
-                    value={`${operator.oilPct}%`}
+                    value={
+                      <GatedFigure field="oilPct" label="Oil share of BOE" />
+                    }
                     numeric
                   />
                 )}
@@ -722,7 +804,8 @@ export default async function OperatorDetailRoute({
           </div>
         </section>
       </div>
-    </div>
+      </div>
+    </GatedFigures>
   );
 }
 
@@ -875,7 +958,10 @@ function PanelRow({
   wrap = false,
 }: {
   label: string;
-  value: string;
+  /* `ReactNode`, not `string`, since the gated rows pass a `GatedFigure` that
+     resolves to a value, a lock or an em dash depending on who is reading. Every
+     other caller still passes a plain string and is unaffected. */
+  value: ReactNode;
   numeric?: boolean;
   wrap?: boolean;
 }) {
