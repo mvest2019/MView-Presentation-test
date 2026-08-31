@@ -344,6 +344,7 @@ export default async function OperatorDetailRoute({
               <OperatorLogo
                 url={operatorLogoPath(operator.operatorNumber)}
                 monogram={operator.monogram}
+                name={operator.name}
                 size={54}
                 radius={13}
                 monogramClassName="!rounded-[13px]"
@@ -610,10 +611,29 @@ export default async function OperatorDetailRoute({
             and its wells drilldown are both served by the operator API. */}
         <section className="pt-[26px]">
           <DeferredSection minHeight={620} label="Operator leases">
+            {/*
+              DEFECT 152 — the county filter listed all 255 Texas counties from
+              `/operators/counties`, so picking almost any of them answered "No
+              leases match these filters": Pioneer has leases in 79, not 255.
+
+              `operator.activeCounties` is this operator's OWN county list, already
+              on the record `/operators/details` returned for the page — the same
+              array the footprint map shades. So the filter now offers only counties
+              the operator actually reports in, and it costs no extra request.
+            */}
             <OperatorLeases
               operatorNumber={operator.operatorNumber}
               totalLeasesOnRecord={operator.leases}
-              countyOptions={countyOptions}
+              /* Sorted, because the endpoint returns them in its own order —
+                 Terry, Crockett, Jackson … — and a 79-entry picker nobody can scan
+                 alphabetically is barely better than the 255 it replaced. */
+              countyOptions={
+                operator.activeCounties.length > 0
+                  ? [...operator.activeCounties].sort((a, b) =>
+                      a.localeCompare(b),
+                    )
+                  : countyOptions
+              }
             />
           </DeferredSection>
         </section>
@@ -755,15 +775,30 @@ function ConditionTile({ card }: { card: ConditionCard }) {
             </span>
           ) : null}
         </span>
-        <span
-          className={`inline-flex items-center gap-1 text-[12.5px] font-bold ${card.direction === "up" ? "text-mv-green-deep" : "text-mv-muted"}`}
-        >
-          <Arrow aria-hidden="true" className="h-3 w-3" strokeWidth={3} />
-          {card.delta}
-          <span className="rounded-full bg-mv-line-soft px-[7px] py-[1px] text-[12px] font-bold text-mv-muted">
-            {card.window}
+        {/*
+          DEFECT 148 — this span rendered whatever the card carried, so a card with
+          no comparison still drew one: `direction` undefined is not "up", so the
+          ternary picked ArrowDown, and it was printed beside an empty delta and an
+          empty window chip. That is the "1,547 ↓ —" the defect shows — an arrow
+          asserting a fall with nothing behind it.
+
+          Both halves are now required. A card with a real comparison renders the
+          arrow, the delta and the period; a card without one renders nothing here
+          and says what it has to say in its footer instead.
+        */}
+        {card.direction && card.delta ? (
+          <span
+            className={`inline-flex items-center gap-1 text-[12.5px] font-bold ${card.direction === "up" ? "text-mv-green-deep" : "text-mv-muted"}`}
+          >
+            <Arrow aria-hidden="true" className="h-3 w-3" strokeWidth={3} />
+            {card.delta}
+            {card.window ? (
+              <span className="rounded-full bg-mv-line-soft px-[7px] py-[1px] text-[12px] font-bold text-mv-muted">
+                {card.window}
+              </span>
+            ) : null}
           </span>
-        </span>
+        ) : null}
 
         {/* Inside the same wrapping row, so it lands in the space the chip leaves
             rather than on a line of its own. See `footInline`. */}

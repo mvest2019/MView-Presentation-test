@@ -201,9 +201,11 @@ export function OperatorLeases({
               className="min-w-[180px] max-[767px]:min-w-full"
             >
               <option value="">Counties</option>
+              {/* DEFECT 132 — the control is already labelled "Counties"; the word
+                  repeated on every option was noise the snap rings row after row. */}
               {countyOptions.map((name) => (
                 <option key={name} value={name}>
-                  {name} County
+                  {titleCase(name)}
                 </option>
               ))}
             </SelectControl>

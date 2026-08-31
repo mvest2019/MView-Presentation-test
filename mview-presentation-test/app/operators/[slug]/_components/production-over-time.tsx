@@ -141,7 +141,9 @@ export function ProductionOverTime({
    * the empty state — three places that must never disagree about the filter.
    */
   const appliedCounty =
-    county === ALL_COUNTIES ? "All counties" : `${titleCase(county)} County`;
+    /* DEFECT 132 — "Andrews County", "Atascosa County" … on every row of a list
+       whose own label is "All counties". The name alone is the option. */
+    county === ALL_COUNTIES ? "All counties" : titleCase(county);
 
   const graph = useProductionGraph({
     operatorNumber,
@@ -647,9 +649,19 @@ export function ProductionOverTime({
             {/* tooltip, positioned over the crosshair */}
             {hover !== null && data[hover] ? (
               <div
-                className="pointer-events-none absolute z-10 min-w-[190px] rounded-[10px] bg-mv-tooltip px-[14px] py-3 shadow-mv"
+                /*
+                 * DEFECT 138 — the tooltip is pinned to the crosshair and flips
+                 * side at the midpoint, which keeps it clear of the pointer but
+                 * not inside the card: near either edge the flipped box still ran
+                 * past it. `max-w` bounds it to the plot's own width and
+                 * `clamp()` holds its left edge between the two insets, so the
+                 * box stops travelling once it reaches an edge instead of hanging
+                 * over it. The flip is unchanged, so it still never sits under
+                 * the pointer.
+                 */
+                className="pointer-events-none absolute z-10 min-w-[190px] max-w-[min(260px,calc(100%-24px))] rounded-[10px] bg-mv-tooltip px-[14px] py-3 shadow-mv"
                 style={{
-                  left: `${(geometry.x(hover) / VIEW.width) * 100}%`,
+                  left: `clamp(12px, ${(geometry.x(hover) / VIEW.width) * 100}%, calc(100% - 12px))`,
                   top: "52%",
                   transform:
                     geometry.x(hover) > VIEW.width / 2
@@ -671,7 +683,10 @@ export function ProductionOverTime({
                         className="h-[9px] w-[9px] rounded-full"
                         style={{ background: series.colour }}
                       />
-                      {series.label}
+                      {/* DEFECT 129 — the snap rings the gap between the series
+                          name and its figure. A colon is what reads them as one
+                          statement rather than two columns that happen to align. */}
+                      {series.label}:
                     </span>
                     <b className="font-bold tabular-nums text-white">
                       {exact(data[hover][series.key])}
