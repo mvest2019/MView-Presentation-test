@@ -16,14 +16,16 @@ import { monogramOf } from "@/lib/operator-statistics";
  * `/api/operators/presentations/operators` returns only the operators with a deck on
  * file — the thirty that the library actually covers.
  *
- * THE WHOLE LIST ARRIVES IN ONE REQUEST, under two kilobytes, so filtering happens
- * in the browser: no request per keystroke, and the list opens instantly on the
- * second use. That is only affordable because the set is thirty; it is exactly why
- * the directory-wide picker on the compare page has to work the other way round.
+ * THE LIST IS SERVER-SIDE, A PAGE AT A TIME, because 24,744 records is not something
+ * a combobox can hold: it would cost more transfer than the rest of the page and
+ * land as a 24,744-element parse on the main thread. Twenty rows come back per
+ * request. Keystrokes are debounced so a request follows a pause rather than a
+ * letter, and a superseded request is aborted so the slowest reply cannot overwrite
+ * the newest.
  *
- * TYPING MATCHES NAME OR NUMBER. Each entry carries its RRC number, so "chevron" and
- * "217426" both find their operator. Rows show the name alone — a number on every
- * line is chrome a native select does not have.
+ * TYPING MATCHES NAME OR NUMBER — the endpoint's own haystack carries both, so
+ * "chevron" and "217426" each find their operator. Rows show the name alone; a
+ * number on every line is chrome a native select does not have.
  *
  * IT IS THE COMPARE PAGES' PICKER, VISUALLY (requested). Same field - search icon,
  * the chosen operator's logo tile, a clear cross, the same focus ring - and the same
@@ -32,10 +34,17 @@ import { monogramOf } from "@/lib/operator-statistics";
  * are 46px and are aligned to each other, and two pixels of "exactly the same" is not
  * worth the row going crooked.
  *
- * THE OPTIONS STAY DECK-ONLY. The compare picker reads `/api/operators/names`, the
- * whole 24,742-record directory. This deliberately does not: only about thirty
- * operators have a presentation on file, so the directory would offer thousands of
- * choices that return nothing. Same control, same behaviour, a list that can answer.
+ * IT READS `/api/operators/names`, THE SAME ENDPOINT AS THE COMPARE PICKERS
+ * (requested). It used to derive its options from the decks themselves — the
+ * distinct operators found by walking every page of `/operators/presentations` —
+ * which offered only operators that had something to show. That list is empty
+ * whenever the library is, and an empty library then produced an empty filter with
+ * no way to tell the two apart.
+ *
+ * WHAT THAT TRADE COSTS, STATED PLAINLY: the directory holds 24,744 operators and
+ * only a fraction ever publish a deck, so this control can now offer an operator
+ * whose filter returns nothing. The grid's empty state is what carries that, and it
+ * distinguishes "no decks match this filter" from "no decks on file at all".
  *
  * ARIA. The combobox-with-listbox pattern: `role="combobox"` on the input,
  * `aria-expanded`, `aria-controls`, and the highlight published through
@@ -47,28 +56,13 @@ interface PresentationOperator {
   operatorNumber: string | null;
 }
 
-/** Fetched once per page load and shared by every instance. */
-let optionsMemo: PresentationOperator[] | null = null;
-let optionsInFlight: Promise<PresentationOperator[]> | null = null;
+/** A pause this long after the last keystroke sends one request. */
+const DEBOUNCE_MS = 200;
 
-function loadOptions(): Promise<PresentationOperator[]> {
-  if (optionsMemo) return Promise.resolve(optionsMemo);
-  optionsInFlight ??= fetch("/api/operators/presentations/operators")
-    .then((response) => (response.ok ? response.json() : { operators: [] }))
-    .then((payload: { operators?: PresentationOperator[] }) => {
-      optionsMemo = payload.operators ?? [];
-      return optionsMemo;
-    })
-    .catch(() => {
-      // A filter that cannot offer options is a degraded control, not a broken
-      // page — every other part keeps working, and "All operators" still applies.
-      optionsMemo = [];
-      return optionsMemo;
-    })
-    .finally(() => {
-      optionsInFlight = null;
-    });
-  return optionsInFlight;
+/** What one page of `/api/operators/names` answers with. */
+interface NameMatch {
+  name: string;
+  operatorNumber: string | null;
 }
 
 /** How the endpoint spells "no operator filter"; also the first row's label. */
@@ -89,9 +83,16 @@ export function OperatorSelect({
   /** null means "not searching" — the field shows the current selection. */
   const [query, setQuery] = useState<string | null>(null);
   const [highlight, setHighlight] = useState(-1);
-  const [options, setOptions] = useState<PresentationOperator[] | null>(
-    optionsMemo,
-  );
+  /**
+   * The current query's matches, tagged with the query they answer.
+   *
+   * Tagged rather than cleared so a late reply is ignored by derivation: `options`
+   * is read only while the tag still matches what is typed.
+   */
+  const [answered, setAnswered] = useState<{
+    needle: string;
+    rows: PresentationOperator[];
+  } | null>(null);
 
   const baseId = useId();
   const listboxId = `${baseId}-listbox`;
@@ -102,19 +103,54 @@ export function OperatorSelect({
   const listRef = useRef<HTMLUListElement | null>(null);
 
   const needle = (query ?? "").trim().toLowerCase();
+  const options = answered?.needle === needle ? answered.rows : null;
   const loading = open && options === null;
 
-  /** Fetched when the field is first opened, never on page load. */
+  /**
+   * One page of names for what is typed, debounced and abortable.
+   *
+   * GATED ON `open`, so an idle filter costs no request on page load — the same
+   * rule the compare pickers follow. Opening the field with nothing typed asks for
+   * the head of the directory, which is what makes the control browsable as well as
+   * searchable.
+   */
   useEffect(() => {
     if (!open || options !== null) return;
-    let active = true;
-    loadOptions().then((loaded) => {
-      if (active) setOptions(loaded);
-    });
+
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => {
+        fetch(`/api/operators/names?q=${encodeURIComponent(needle)}&offset=0`, {
+          signal: controller.signal,
+        })
+          .then((response) =>
+            response.ok ? response.json() : { matches: [] },
+          )
+          .then((payload: { matches?: NameMatch[] }) => {
+            setAnswered({
+              needle,
+              rows: (payload.matches ?? []).map((match) => ({
+                name: match.name,
+                operatorNumber: match.operatorNumber,
+              })),
+            });
+          })
+          .catch(() => {
+            // A superseded request was aborted, not failed — the newer one owns the
+            // state. Anything else degrades to an empty list: a filter that cannot
+            // offer options is degraded, not broken, and "All operators" still works.
+            if (controller.signal.aborted) return;
+            setAnswered({ needle, rows: [] });
+          });
+      },
+      needle === "" ? 0 : DEBOUNCE_MS,
+    );
+
     return () => {
-      active = false;
+      clearTimeout(timer);
+      controller.abort();
     };
-  }, [open, options]);
+  }, [open, needle, options]);
 
   /** Close when the pointer goes down outside the field. */
   useEffect(() => {
@@ -140,25 +176,20 @@ export function OperatorSelect({
   }
 
   /* "All operators" is always the first row, so clearing the filter never depends on
-     a request having succeeded. Thirty entries filtered on every keystroke is far
-     below the point where memoising would earn its keep — but the list is a new
-     array each render and the effects below read it, so it is memoised anyway. */
-  const rows = useMemo(() => {
-    const matched = (options ?? []).filter(
-      (option) =>
-        needle === "" ||
-        option.name.toLowerCase().includes(needle) ||
-        (option.operatorNumber ?? "").includes(needle),
-    );
-    return [
+     a request having succeeded. No client-side filtering any more — the endpoint
+     matched the query, and re-filtering its answer here would only be able to
+     narrow a set that is already the twenty best matches. */
+  const rows = useMemo(
+    () => [
       { name: "", label: ALL_LABEL, number: null as string | null },
-      ...matched.map((option) => ({
+      ...(options ?? []).map((option) => ({
         name: option.name,
         label: option.name,
         number: option.operatorNumber,
       })),
-    ];
-  }, [options, needle]);
+    ],
+    [options],
+  );
 
   function choose(index: number) {
     const row = rows[index];
@@ -286,6 +317,13 @@ export function OperatorSelect({
           ) : rows.length <= 1 && needle !== "" ? (
             <p className="p-4 text-center text-[13px] text-mv-muted">
               No operators match “{needle}”.
+            </p>
+          ) : rows.length <= 1 ? (
+            /* Nothing typed and the directory answered with nothing — an
+               unreachable endpoint rather than an empty library, now that the
+               options come from the operator directory rather than from the decks. */
+            <p className="p-4 text-center text-[13px] text-mv-muted">
+              Operator names are unavailable just now.
             </p>
           ) : (
             <ul

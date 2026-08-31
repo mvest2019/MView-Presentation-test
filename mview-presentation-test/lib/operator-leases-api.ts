@@ -74,6 +74,14 @@ export interface PagedResult<T> {
   rows: T[];
   /** Rows matching the filters across every page, for the pager. */
   total: number;
+  /**
+   * True when the reader has no account and the rows were never fetched.
+   *
+   * DISTINCT FROM AN EMPTY RESULT, which is why it is not simply `rows: []`. "This
+   * lease has no wells on record" and "these wells need an account" are different
+   * facts, and the drawer draws them differently. Only `/wells` can return it.
+   */
+  locked?: boolean;
 }
 
 /* ---------------------------------------------------------------- parsing */
@@ -138,12 +146,26 @@ function withTimeout(signal?: AbortSignal): AbortSignal {
     : signal;
 }
 
+/**
+ * `/api/v1/...` is upstream; anything else is one of this site's own handlers.
+ *
+ * The two reads here no longer share a host: `/leases` is public and goes straight
+ * to the operator API, while `/wells` is account-only and has to pass through
+ * `app/api/operators/wells/` so a server can decide who is asking. Deriving the
+ * host from the path shape keeps that to one rule rather than a second `post`.
+ */
+function endpointUrl(path: string): string {
+  return path.startsWith("/api/v1/")
+    ? `${publicOperatorApiBaseUrl()}${path}`
+    : path;
+}
+
 async function post(
   path: string,
   body: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<unknown> {
-  const response = await fetch(`${publicOperatorApiBaseUrl()}${path}`, {
+  const response = await fetch(endpointUrl(path), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -247,7 +269,14 @@ export async function fetchLeaseWells(
   signal?: AbortSignal,
 ): Promise<PagedResult<WellRecord>> {
   const payload = await post(
-    "/api/v1/operators/wells",
+    /*
+     * THROUGH THIS SITE'S OWN ORIGIN — see `app/api/operators/wells/route.ts`.
+     * `/wells` is account-only upstream (every field comes back `*****` at
+     * `member_id: 0`), and a browser cannot say who is asking, so the handler pins
+     * the member id from the session cookie. `member_id` is therefore absent from
+     * this body: it is not the client's to send.
+     */
+    "/api/operators/wells",
     {
       operator_number: operatorNumber,
       county,
@@ -255,12 +284,17 @@ export async function fetchLeaseWells(
       well_number: wellNumber,
       status,
       district_code: districtCode,
-      member_id: TEMP_MEMBER_ID,
       page,
       pagesize: LEASE_PAGE_SIZE,
     },
     signal,
   );
+
+  // The gate's answer, before anything is parsed: no rows were fetched, so there is
+  // nothing to map and nothing to count.
+  if ((payload as { locked?: unknown }).locked === true) {
+    return { rows: [], total: 0, locked: true };
+  }
 
   const raw = (payload as { operator_wells?: unknown }).operator_wells;
   const list = Array.isArray(raw) ? raw : [];

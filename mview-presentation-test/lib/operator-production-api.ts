@@ -4,7 +4,6 @@ import { getCasedNameLookup, getOperatorNames } from "./operator-api";
 import {
   operatorLogoPath,
   publicOperatorApiBaseUrl,
-  TEMP_MEMBER_ID,
 } from "./operator-api-types";
 import { monogramOf } from "./operator-statistics";
 import type {
@@ -89,6 +88,7 @@ const EMPTY_INFO: ProductionInfo = {
     widestFootprint: null,
   },
   totalOperators: 0,
+  locked: false,
 };
 
 const ENDPOINTS = {
@@ -108,6 +108,20 @@ function num(raw: unknown): number {
     if (Number.isFinite(parsed)) return parsed;
   }
   return 0;
+}
+
+/**
+ * The sentinel both endpoints substitute for a withheld volume.
+ *
+ * The same four asterisks the operator search uses, and the same meaning: a value
+ * this reader may not have. It has to be caught BEFORE `num`, which turns it into
+ * 0 and makes it indistinguishable from an operator that genuinely produced
+ * nothing.
+ */
+const WITHHELD = "****";
+
+function isWithheld(raw: unknown): boolean {
+  return raw === WITHHELD;
 }
 
 function maybeNum(raw: unknown): number | null {
@@ -193,6 +207,21 @@ function payloadFor(
    * response actually contains, which is why the response has to carry all of them.
    */
   withDuration: boolean,
+  /**
+   * WHO IS ASKING — 0 for a visitor with no account.
+   *
+   * IT IS AN ACCESS GATE ON BOTH ENDPOINTS, measured against the dev host with an
+   * otherwise identical body: at 0 the info endpoint returns
+   * `total_production_oil/gas/boe` as the literal `"****"` and the series endpoint
+   * returns every `oil`/`gas`/`boe` the same way, while rank, the oil/gas split and
+   * the county and lease counts stay real at both values.
+   *
+   * IT USED TO BE `TEMP_MEMBER_ID` — a development stand-in that made every
+   * anonymous visitor look like member 3448 and so switched the gate off. It is a
+   * parameter now because only the route handler in front of this can answer the
+   * question, and it must not be answerable from the browser.
+   */
+  memberId: number,
 ) {
   return {
     search_text: operators,
@@ -209,7 +238,7 @@ function payloadFor(
           },
         }
       : {}),
-    member_id: TEMP_MEMBER_ID,
+    member_id: memberId,
   };
 }
 
@@ -354,6 +383,8 @@ function leaderOf(
  */
 export async function fetchProductionInfo(
   filters: ProductionFilters,
+  /** The signed-in member, or 0. See `payloadFor`. */
+  memberId: number,
 ): Promise<ProductionInfo> {
   const [filed, displayNameFor] = await Promise.all([
     toFiledNames(filters.operators),
@@ -367,13 +398,16 @@ export async function fetchProductionInfo(
        asking for one year returns the same totals as ten. Sending it changes nothing
        there, so it stays rather than being removed on a guess about an endpoint whose
        behaviour this file already documents. */
-    payloadFor(filters, INFO_GROUPING, filed, true),
+    payloadFor(filters, INFO_GROUPING, filed, true, memberId),
   );
   const body = (data ?? {}) as Record<string, unknown>;
   const rows = Array.isArray(body.operators) ? body.operators : [];
 
   const operators: ProductionOperator[] = [];
   const seen = new Set<string>();
+  /* Read off the response rather than derived from `memberId`, so the flag says
+     what actually arrived. */
+  let locked = false;
 
   for (const row of rows) {
     if (row === null || typeof row !== "object") continue;
@@ -401,6 +435,8 @@ export async function fetchProductionInfo(
         },
       ];
     });
+
+    if (isWithheld(record.total_production_boe)) locked = true;
 
     operators.push({
       ...identity,
@@ -455,6 +491,7 @@ export async function fetchProductionInfo(
     operators,
     leaders,
     totalOperators: num(body.total_operators) || operators.length,
+    locked,
   };
 }
 
@@ -468,18 +505,25 @@ export async function fetchProductionInfo(
  */
 export async function fetchProductionSeries(
   filters: ProductionFilters,
+  /** The signed-in member, or 0. See `payloadFor`. */
+  memberId: number,
 ): Promise<ProductionSeries> {
   const [filed, displayNameFor] = await Promise.all([
     toFiledNames(filters.operators),
     getCasedNameLookup(),
   ]);
-  if (filed.length === 0) return { years: [], operators: [] };
+  if (filed.length === 0) return { years: [], operators: [], locked: false };
 
   const data = await post(
     ENDPOINTS.series,
-    payloadFor(filters, SERIES_GROUPING, filed, false),
+    payloadFor(filters, SERIES_GROUPING, filed, false, memberId),
   );
   const entries = Array.isArray(data) ? data : [];
+
+  /* Read off the response rather than derived from `memberId`, so the flag says
+     what actually arrived. If the endpoint ever stops gating, the page stops
+     locking without this file being edited again. */
+  let locked = false;
 
   /** operator key -> identity, and year -> point. */
   const identities = new Map<string, ProductionIdentity>();
@@ -511,6 +555,10 @@ export async function fetchProductionSeries(
         points = new Map<number, ProductionPoint>();
         byOperator.set(key, points);
       }
+      // Caught here, where the raw value is still in hand: one line further on it
+      // has become a 0 and is indistinguishable from a year with no production.
+      if (isWithheld(record.boe)) locked = true;
+
       points.set(year, {
         year,
         oil: num(record.oil) / THOUSANDS_TO_MILLIONS,
@@ -537,5 +585,5 @@ export async function fetchProductionSeries(
     });
   }
 
-  return { years: axis, operators };
+  return { years: axis, operators, locked };
 }

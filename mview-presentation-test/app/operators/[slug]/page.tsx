@@ -514,6 +514,12 @@ export default async function OperatorDetailRoute({
                 {operator.headquarters ? (
                   <EditableAddress
                     operatorNumber={operator.operatorNumber}
+                    operatorName={operator.name}
+                    /* The correction is filed against the operator's most-active
+                       county, which is the only county this record identifies as
+                       principal. "" when none is on file — the endpoint does not
+                       require it, so a thin record must not block the submission. */
+                    county={operator.topCounties[0] ?? ""}
                     address={operator.headquarters}
                   />
                 ) : null}
@@ -650,8 +656,14 @@ export default async function OperatorDetailRoute({
                 and we&apos;re not a broker.
               </p>
             </div>
+            {/* `/signup` DOES NOT EXIST IN THIS APP — it 404s. This button sent
+                every visitor who pressed it to a dead page, which is the worst
+                possible defect for the one conversion control on the profile: the
+                copy is right, the intent is right, and the destination is nothing.
+                The route is `/register`, and `from=operator-profile` is the
+                enumerated in-product source value for this surface. */}
             <Link
-              href="/signup?from=operator"
+              href="/register?from=operator-profile"
               className={buttonClass({ variant: "primary", size: "lg" })}
             >
               Create your free account →

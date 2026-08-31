@@ -27,6 +27,20 @@ import type { ProductionOperator } from "./operator-production-shape";
 export interface ProductionStatRow {
   label: string;
   value: (operator: ProductionOperator) => string;
+  /**
+   * True for a row read from a field the endpoint withholds without an account.
+   *
+   * MEASURED, NOT ASSUMED. Exactly five fields come back as `"****"` at
+   * `member_id: 0` — `total_production_oil`, `total_production_gas`,
+   * `total_production_boe`, `avg_oil_production_per_lease` and
+   * `avg_gas_production_per_lease`. Rank, the oil/gas split, county and lease
+   * counts and the latest production date are all real. These three rows are the
+   * ones built from that first set.
+   *
+   * It is a flag rather than a label match because a row's caption is copy and
+   * will be reworded; which upstream field it reads will not.
+   */
+  gated?: boolean;
 }
 
 const MONTHS = [
@@ -68,10 +82,12 @@ export const PRODUCTION_STAT_ROWS: readonly ProductionStatRow[] = [
   {
     label: "Oil Produced",
     value: (operator) => `${formatMillions(operator.oilTotal)} bbl`,
+    gated: true,
   },
   {
     label: "Gas Produced",
     value: (operator) => `${formatMillions(operator.gasTotal)} Mcf`,
+    gated: true,
   },
   {
     label: "Leases on Record",
@@ -101,5 +117,6 @@ export const PRODUCTION_STAT_ROWS: readonly ProductionStatRow[] = [
     value: (operator) =>
       `${formatCount(Math.round(operator.avgOilPerLease))} bbl · ` +
       `${formatCount(Math.round(operator.avgGasPerLease))} Mcf`,
+    gated: true,
   },
 ];

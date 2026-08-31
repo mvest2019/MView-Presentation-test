@@ -1,7 +1,5 @@
 import "server-only";
 
-import { unstable_cache } from "next/cache";
-
 import { getOperatorNames } from "./operator-api";
 import {
   operatorLogoPath,
@@ -69,11 +67,36 @@ interface CompareRecord {
  */
 const THOUSANDS = 1_000;
 
-/** A number, a numeric string, or `"266,832.048"` — all appear in this response. */
+/**
+ * A number, a numeric string, or a formatted one with its unit attached.
+ *
+ * THE UNIT SUFFIX IS WHY THIS PAGE WENT BLANK. The endpoint used to send
+ * `Oil_Production: 1907873.826` and now sends `"1,907,873.826 (MBBL)"` — the same
+ * quantity with its unit appended. `Number("1907873.826 (MBBL)")` is `NaN`, which
+ * fell through to 0, so every volume on the comparison read zero. `oilPct` cannot
+ * be computed from zeros, so it came back null; `findStatisticsLeaders` returns
+ * null when any leader is missing; and the page renders its empty state when
+ * `leaders` is null. The result was "Nothing to compare yet" on a request that had
+ * succeeded — the API answering correctly, and the page reporting nothing found.
+ *
+ * THE MAGNITUDE HAS NOT MOVED, only the label. `1,907,873.826 (MBBL)` is the same
+ * 1,907,873.826 thousand barrels the bare number was, which is why `THOUSANDS`
+ * below is unchanged. Confirmed against `/operators/details`, which reports the
+ * same quantity for the same operator.
+ *
+ * The unit is dropped rather than read: nothing here varies by it, and a parser
+ * that silently accepted an unexpected unit would be worse than one that ignores a
+ * label it never used.
+ */
 function toNumber(raw: unknown): number {
   if (typeof raw === "number") return Number.isFinite(raw) ? raw : 0;
   if (typeof raw !== "string") return 0;
-  const value = Number(raw.replace(/,/g, "").trim());
+  const value = Number(
+    raw
+      .replace(/\([^)]*\)/g, "")
+      .replace(/,/g, "")
+      .trim(),
+  );
   return Number.isFinite(value) ? value : 0;
 }
 
@@ -200,6 +223,7 @@ export interface OperatorComparison {
 
 async function readComparison(
   names: readonly string[],
+  gated: boolean,
 ): Promise<OperatorComparison> {
   if (names.length === 0) return { operators: [], years: [] };
 
@@ -222,7 +246,18 @@ async function readComparison(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ operators: filed, member_id: TEMP_MEMBER_ID }),
+      /*
+       * `0` IS THE ENDPOINT'S ANONYMOUS VALUE and is what turns its own gate on.
+       * Measured on the dev host for one operator: at `0` the five volume fields
+       * and every year of `Historical_Production_Trends` come back `"****"`, while
+       * `No_of_Leases` (13,183) and `No_of_Producing_Counties` (108) stay real. So
+       * the gate withholds what an operator PRODUCED, never who it is or how much
+       * ground it holds.
+       */
+      body: JSON.stringify({
+        operators: filed,
+        member_id: gated ? 0 : TEMP_MEMBER_ID,
+      }),
       cache: "no-store",
     },
   );
@@ -249,14 +284,29 @@ async function readComparison(
 }
 
 /**
- * THE KEY CARRIES A SHAPE VERSION, and it has to. `unstable_cache` keys on these
- * parts alone, so when `StatisticsOperatorData` gains a field — `logoUrl` did —
- * entries written before the change keep being served, without it, until they
- * expire. That is invisible: no error, just a field that is null everywhere for ten
- * minutes after a deploy. Bump this whenever the returned shape changes.
+ * The comparison, read fresh on every call.
+ *
+ * NOT CACHED, DELIBERATELY. This was wrapped in `unstable_cache` with a ten-minute
+ * revalidate and a hand-maintained shape version in its key. Two things made that a
+ * poor fit here, both observed rather than theorised:
+ *
+ *   · The version key has to be bumped by hand whenever the returned SHAPE changes,
+ *     and when it is forgotten the cache serves entries built by the old code with
+ *     no error of any kind — a parse fix went live and the page kept rendering the
+ *     zeros the previous parser had written, for ten minutes, on a request that
+ *     looked entirely healthy. A cache whose correctness depends on remembering to
+ *     edit a string is a cache that will be wrong again.
+ *   · The answer now depends on WHO IS ASKING. A shared entry serving the wrong
+ *     reader is a gated-data leak in one direction and a paid-for feature withheld
+ *     in the other; keying the reader into the cache is possible, but it is one more
+ *     thing that has to stay correct forever to avoid a leak.
+ *
+ * WHAT IT COSTS: one upstream POST per request instead of one per ten minutes. The
+ * call is a single POST with the operator names, it already runs `cache: "no-store"`
+ * and carries its own timeout, and the page requests it only when two or more
+ * operators are chosen — not on load. `getOperatorNames()` below is still memoised
+ * per server instance and is untouched: it is the 4.3 MB shared directory used to
+ * translate a display name into the filed one, not this comparison's data, and
+ * re-downloading it per request would cost far more than the read it serves.
  */
-export const getOperatorComparison = unstable_cache(
-  readComparison,
-  ["operator-comparison", "v3-live-years"],
-  { revalidate: 600, tags: ["operators"] },
-);
+export const getOperatorComparison = readComparison;
