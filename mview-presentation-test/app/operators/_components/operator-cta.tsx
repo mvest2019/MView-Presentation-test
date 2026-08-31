@@ -45,7 +45,7 @@ export function OperatorRegisterCta() {
         icon={Unlock}
         eyebrow="Free account"
         title="Open the rest of the ranking — free"
-        body="The directory is free to browse and stays that way: search it, filter by county, status or play, page through all 24,744 operators and open any profile without an account. The quick filters are the one place that stops at the top three — a free account opens the full ranking behind them."
+        body="Search the directory, filter by county, status or play, page through all 24,744 operators and open any profile without an account. What a free account adds is the numbers: filed oil and gas volumes, lease and county counts, and the full ranking behind the quick filters."
         primary={{
           href: "/register?from=operators",
           label: "Register for free",
@@ -58,9 +58,10 @@ export function OperatorRegisterCta() {
             note="not just the top three of each page"
           />
           <Row
-            label="Lease and producing-county counts"
-            note="on every filtered operator"
+            label="Filed oil and gas volumes"
+            note="on every operator in the table"
           />
+          <Row label="Lease and county counts" />
           <Row label="A link through to each operator's profile" />
           <Row label="Your own claimed owner record" note="and its activity" />
         </Panel>

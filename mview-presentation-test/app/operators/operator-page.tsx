@@ -722,11 +722,14 @@ function ResultsTable({
   const firstOpenRow = page.rows.find((row) => !row.masked);
   const ctyLocked = !!firstOpenRow && isLockedValue(firstOpenRow.counties);
   const leasesLocked = !!firstOpenRow && isLockedValue(firstOpenRow.leases);
+  const oilLocked = !!firstOpenRow && isLockedValue(firstOpenRow.oil);
+  const gasLocked = !!firstOpenRow && isLockedValue(firstOpenRow.gas);
   const columnLocked: Partial<Record<keyof OperatorColumns, boolean>> = {
     cty: ctyLocked,
     leases: leasesLocked,
   };
-  const anythingLocked = lockedCount > 0 || ctyLocked || leasesLocked;
+  const anythingLocked =
+    lockedCount > 0 || ctyLocked || leasesLocked || oilLocked || gasLocked;
   // `#` + name + the visible optional columns, for the empty row's colspan.
   const columnCount =
     2 +
@@ -931,11 +934,19 @@ function LockedHeaderMark() {
  * real. The lock is drawn at the cell rather than only in the header because the
  * header scrolls away and the column keeps going.
  */
-function LockedValue({ label }: { label: string }) {
+function LockedValue({
+  label,
+  width = "w-[28px]",
+}: {
+  label: string;
+  /** Wider for a volume than for a county count, so the bar reads as the size of
+      the number it stands in for rather than as a uniform smudge. */
+  width?: string;
+}) {
   return (
     <span className="inline-flex items-center justify-end gap-[6px] text-mv-muted">
       <span className="sr-only">{label} — locked, create a free account</span>
-      <LockedBar width="w-[28px]" />
+      <LockedBar width={width} />
       <Lock aria-hidden="true" className="h-3 w-3 shrink-0" strokeWidth={2.3} />
     </span>
   );
@@ -1097,9 +1108,29 @@ const OperatorRow = memo(function OperatorRow({
         </span>
       </td>
 
-      {columns.oil && <td className={numericCell}>{row.oil}</td>}
+      {/* The volumes are gated for a signed-out reader — see the route handler.
+          `isLockedValue` reads the endpoint's own `"****"` sentinel, which is what
+          the server put there, so a lock here means the figure never reached the
+          browser rather than that CSS is hiding it. */}
+      {columns.oil && (
+        <td className={numericCell}>
+          {isLockedValue(row.oil) ? (
+            <LockedValue label="Oil produced" width="w-[64px]" />
+          ) : (
+            row.oil
+          )}
+        </td>
+      )}
 
-      {columns.gas && <td className={numericCell}>{row.gas}</td>}
+      {columns.gas && (
+        <td className={numericCell}>
+          {isLockedValue(row.gas) ? (
+            <LockedValue label="Gas produced" width="w-[64px]" />
+          ) : (
+            row.gas
+          )}
+        </td>
+      )}
 
       {columns.cty && (
         <td className={numericCell}>
@@ -1352,12 +1383,22 @@ function UnlockPrompt({
       ? `${rowCount} more operator${rowCount === 1 ? "" : "s"} on this page ${
           rowCount === 1 ? "is" : "are"
         } locked`
-      : "Two columns are locked";
+      : "The production figures are locked";
 
+  /*
+   * THE COPY HAS TO TRACK WHAT IS ACTUALLY WITHHELD. It read "Two columns are
+   * locked … everything else here is free and stays free" while the volumes were
+   * open. They are gated now, so that sentence became false — and a lock notice
+   * that misdescribes the lock is worse than none: the reader can see the fuzzed
+   * Oil and Gas columns while being told the ranking is free.
+   *
+   * What remains genuinely free is said, and nothing more: search, every filter,
+   * paging the whole directory, and every operator profile.
+   */
   const body =
     rowCount > 0
-      ? "Quick filters show the top three of every page without an account, and lease and county counts stay locked. A free account opens both, with a link through to every operator's profile."
-      : "Lease and producing-county counts need a free account. Everything else here — the ranking, the search, every filter and every operator profile — is free and stays free.";
+      ? "Quick filters show the top three of every page without an account, and the production volumes and counts stay locked. A free account opens all of them, with a link through to every operator's profile."
+      : "Oil, gas, lease and county figures need a free account. Searching, filtering and paging the whole directory — and every operator profile — stay free.";
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 border-t border-mv-line-soft bg-[linear-gradient(180deg,#f7fbf9_0%,#ffffff_100%)] px-[18px] py-5">

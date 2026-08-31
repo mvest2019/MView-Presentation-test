@@ -68,14 +68,15 @@ import { getVisitorId } from "@/lib/visitor-id";
  * showing the value before asking. The directory's own landing state needs to
  * carry it too.
  *
- * WHY THESE TWO AND NOT THE PRODUCTION FIGURES. The page's heading, its meta
- * description and its result summary all promise a directory "ranked by reported
- * production" and free to browse. Locking oil and gas would break the promise
- * the page makes about itself and would be a regression from what a visitor has
- * today. Lease and producing-county counts are the depth behind the ranking
- * rather than the ranking itself — and they are two of the fields the operator
- * API itself withholds on a gated row, so this gate withholds what that one
- * already treats as account-only.
+ * WHAT IS WITHHELD: the two volumes and the two counts. Oil and gas were left
+ * open originally, on the argument that the page promises a directory "ranked by
+ * reported production" and free to browse — locking them was a regression from
+ * what a visitor had. That call was reversed on review: the figures are the
+ * product, and a directory that hands over every operator's lifetime volumes
+ * gives away the thing an account is for.
+ *
+ * All four are fields the operator API ITSELF withholds on a gated row, so this
+ * gate withholds nothing that one treats as free.
  *
  * IT IS A REAL GATE, NOT A BLUR OVER DELIVERED DATA. The values are replaced
  * here, on the server, before the response is serialised — so they are not in
@@ -95,6 +96,8 @@ function withoutGatedColumns(
     ...response,
     result: response.result.map((record) => ({
       ...record,
+      Total_Production_Oil: MASKED,
+      Total_Production_Gas: MASKED,
       countie_count: MASKED,
       leaseCount: MASKED,
     })),
