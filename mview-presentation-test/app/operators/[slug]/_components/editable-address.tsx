@@ -123,9 +123,18 @@ export function EditableAddress({
   }, []);
 
   function open() {
-    // Always reopened on the FILED address, never on a pending submission — the
-    // editor edits the record, and the record has not moved.
-    setDraft(address);
+    /*
+     * THE FIELD OPENS EMPTY, NOT PREFILLED — matching the claim flow's record
+     * correction, which is the pattern this follows.
+     *
+     * Prefilling with the filed address asked the reader to edit a string in place,
+     * which is the slowest way to give a correction and the easiest to get half
+     * right: select-all, retype, or worse, fix one token and leave a stale ZIP
+     * behind. It also read as "change this record", which is not what the control
+     * does. An empty field asks for the address as it should be, which is a thing
+     * someone can paste in one go.
+     */
+    setDraft("");
     setError("");
     setEditing(true);
   }
@@ -133,7 +142,7 @@ export function EditableAddress({
   function cancel() {
     setEditing(false);
     setError("");
-    setDraft(address);
+    setDraft("");
   }
 
   async function commit() {
@@ -145,7 +154,7 @@ export function EditableAddress({
       return;
     }
     if (next === address) {
-      cancel();
+      setError("That is the address already on file.");
       return;
     }
     // A second Enter while the first request is still out would file the same
@@ -192,150 +201,148 @@ export function EditableAddress({
     }
   }
 
-  /* ---- reading ---- */
-  if (!editing) {
-    return (
-      /*
+  /*
+   * ONE ROW, ALWAYS. The filed address is never replaced by the editor.
+   *
+   * It used to swap the whole row for a textarea, so pressing Edit made the
+   * address disappear exactly when someone needed to read it to correct it. The
+   * record now stays where it is and the correction field opens underneath it —
+   * the same shape as the claim flow's record correction, where the address you
+   * picked stays on screen above an empty "Correct mailing address" field.
+   */
+  return (
+    <div className="border-b border-mv-line-soft py-[10px] last:border-b-0">
+      {/*
        * THE CONTROL SITS WITH THE LABEL, NOT THE VALUE. Put beside the address it
        * landed in the middle of a three-line wrap, pushing the text around it and
        * breaking the one line this panel is held together by — every value right-
-       * aligned to the same edge. The left column is empty on this row anyway, so the
-       * control goes there and the address wraps exactly as `PanelRow` renders it.
-       */
-      <div className="border-b border-mv-line-soft py-[10px] last:border-b-0">
-        <div className="flex items-baseline justify-between gap-4">
-          <dt className="flex shrink-0 items-center gap-[7px] text-[12.5px] text-mv-muted">
-            Address
-            {/* The Edit control is not swapped out for the confirmation. It used to
-                be, and the row then had no way back into the editor for six seconds
-                after a submission — the one moment a reader is most likely to spot a
-                typo in what they just sent. The confirmation gets its own line below
-                instead, so the control never moves.
+       * aligned to the same edge. The left column is empty on this row anyway, so
+       * the control goes there and the address wraps as `PanelRow` renders it.
+       */}
+      <div className="flex items-baseline justify-between gap-4">
+        <dt className="flex shrink-0 items-center gap-[7px] text-[12.5px] text-mv-muted">
+          Address
+          {/* Toggles the field below rather than replacing the row, so it reads as
+              "edit address" does on a claim record. Disabled while a request is
+              out, so the same correction cannot be filed twice. */}
+          <button
+            type="button"
+            onClick={editing ? cancel : open}
+            disabled={pending}
+            aria-expanded={editing}
+            aria-controls={inputId}
+            aria-label={editing ? "Cancel address edit" : "Edit address"}
+            title={editing ? "Cancel" : "Edit address"}
+            className="inline-flex cursor-pointer items-center gap-[4px] rounded-md border-0 bg-transparent px-[5px] py-[2px] text-[11.5px] font-semibold text-mv-muted transition-colors hover:bg-mv-hover hover:text-mv-green-deep disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-mv-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+          >
+            {editing ? (
+              <>
+                <X aria-hidden="true" className="h-[11px] w-[11px]" strokeWidth={2.4} />
+                Cancel
+              </>
+            ) : (
+              <>
+                <Pencil
+                  aria-hidden="true"
+                  className="h-[11px] w-[11px]"
+                  strokeWidth={2.2}
+                />
+                Edit
+              </>
+            )}
+          </button>
+        </dt>
+        {/* `address`, always. Not a draft, not a pending submission. */}
+        <dd className="m-0 whitespace-normal text-right text-[13px] font-semibold text-mv-ink">
+          {address}
+        </dd>
+      </div>
 
-                It IS disabled while a request is out, so the same correction cannot
-                be filed twice by an impatient second press. */}
+      {/* ---- the correction field, under the record it corrects ---- */}
+      {editing ? (
+        <div className="mt-[9px]">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              id={inputId}
+              type="text"
+              autoFocus
+              value={draft}
+              placeholder="Correct mailing address — street, city, state, ZIP"
+              aria-label="Correct mailing address"
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                // Escape closes the field; Enter sends it. A single-line input has
+                // no newline to protect, so Enter needs no modifier here.
+                if (event.key === "Escape") cancel();
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void commit();
+                }
+              }}
+              className="h-[38px] min-w-[220px] flex-1 rounded-[9px] border border-mv-line bg-white px-[11px] text-[12.5px] text-mv-ink outline-none transition-[border-color,box-shadow] focus-visible:border-mv-green-deep focus-visible:shadow-[0_0_0_3px_var(--color-mv-tint)]"
+            />
             <button
               type="button"
-              onClick={open}
-              disabled={pending}
-              aria-label="Edit address"
-              title="Edit address"
-              className="inline-flex cursor-pointer items-center gap-[4px] rounded-md border-0 bg-transparent px-[5px] py-[2px] text-[11.5px] font-semibold text-mv-muted transition-colors hover:bg-mv-hover hover:text-mv-green-deep disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-mv-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+              onClick={() => void commit()}
+              className="inline-flex flex-none cursor-pointer items-center gap-1 rounded-[9px] border border-mv-green-deep bg-mv-green-deep px-[14px] py-[9px] text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
             >
-              <Pencil
-                aria-hidden="true"
-                className="h-[11px] w-[11px]"
-                strokeWidth={2.2}
-              />
-              Edit
+              Save address
             </button>
-          </dt>
-          {/* `address`, always. Not a draft, not a pending submission. */}
-          <dd className="m-0 whitespace-normal text-right text-[13px] font-semibold text-mv-ink">
-            {address}
-          </dd>
+          </div>
+
+          {/* Says what the button will do, because "Save address" on its own reads
+              as "change this record" and that is not what happens. */}
+          <p className="mt-[6px] text-[11.5px] leading-snug text-mv-muted">
+            This sends a correction request for review. The address above stays as
+            it is until it is accepted.
+          </p>
+
+          {error ? (
+            <p
+              role="alert"
+              className="mt-[6px] text-[12px] leading-snug text-mv-red"
+            >
+              {error}
+            </p>
+          ) : null}
         </div>
-
-        {/* THE REQUEST REPORTS ITSELF HERE, on its own line, so the address above is
-            never the thing carrying the status. Both states occupy no height when
-            absent, so nothing below shifts as they come and go. */}
-        {pending ? (
-          /* `aria-live="polite"` rather than `role="status"` so this does not compete
-             with the confirmation that replaces it a moment later. */
-          <p
-            aria-live="polite"
-            className="mt-[7px] text-[11.5px] font-semibold leading-snug text-mv-muted"
-          >
-            Sending address edit request…
-          </p>
-        ) : sent ? (
-          /* `role="status"` announces it to a screen reader without taking focus,
-             which matters because focus is wherever the Save button was. `mv-fade` is
-             the site's existing entrance — already held still under
-             `prefers-reduced-motion` — so the line settles rather than flashing. */
-          <p
-            role="status"
-            className="mv-fade mt-[7px] flex items-start gap-[6px] text-[11.5px] font-semibold leading-snug text-mv-green-deep"
-          >
-            <Check
-              aria-hidden="true"
-              className="mt-[2px] h-3 w-3 shrink-0"
-              strokeWidth={2.6}
-            />
-            <span>
-              Address edit request sent successfully.
-              <span className="font-normal text-mv-muted">
-                {" "}
-                The address above will change once the correction is reviewed.
-              </span>
-            </span>
-          </p>
-        ) : null}
-      </div>
-    );
-  }
-
-  /* ---- editing ---- */
-  return (
-    <div className="border-b border-mv-line-soft py-[10px] last:border-b-0">
-      <label
-        htmlFor={inputId}
-        className="block pb-[6px] text-[12.5px] text-mv-muted"
-      >
-        Address
-      </label>
-
-      <textarea
-        id={inputId}
-        rows={3}
-        value={draft}
-        autoFocus
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={(event) => {
-          // Escape cancels; Enter sends. Shift+Enter stays a newline, because an
-          // address is genuinely multi-line.
-          if (event.key === "Escape") cancel();
-          if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            void commit();
-          }
-        }}
-        className="w-full resize-y rounded-[10px] border border-mv-line bg-white px-[11px] py-2 text-[13px] leading-[1.5] text-mv-ink outline-none transition-[border-color,box-shadow] focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.15)] disabled:opacity-60"
-      />
-
-      {/* Says what the button will do, because "Save" on its own reads as "change
-          this record" and that is not what happens. */}
-      <p className="mt-[6px] text-[11.5px] leading-snug text-mv-muted">
-        This sends a correction request for review. The filed address stays as it is
-        until it is accepted.
-      </p>
-
-      {error ? (
-        <p role="alert" className="mt-[6px] text-[12px] leading-snug text-mv-red">
-          {error}
-        </p>
       ) : null}
 
-      <div className="mt-2 flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={cancel}
-          className="inline-flex cursor-pointer items-center gap-1 rounded-[9px] border border-mv-line bg-white px-[11px] py-[6px] text-[12.5px] font-semibold text-mv-slate transition-colors hover:border-mv-line-strong hover:bg-mv-hover disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+      {/* THE REQUEST REPORTS ITSELF HERE, on its own line, so the address above is
+          never the thing carrying the status. Both states occupy no height when
+          absent, so nothing below shifts as they come and go. */}
+      {pending ? (
+        /* `aria-live="polite"` rather than `role="status"` so this does not compete
+           with the confirmation that replaces it a moment later. */
+        <p
+          aria-live="polite"
+          className="mt-[7px] text-[11.5px] font-semibold leading-snug text-mv-muted"
         >
-          <X aria-hidden="true" className="h-3 w-3" strokeWidth={2.4} />
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={() => void commit()}
-          className="inline-flex cursor-pointer items-center gap-1 rounded-[9px] border border-mv-green-deep bg-mv-green-deep px-[11px] py-[6px] text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+          Sending address edit request…
+        </p>
+      ) : sent ? (
+        /* `role="status"` announces it to a screen reader without taking focus,
+           which matters because focus is wherever the Save button was. `mv-fade` is
+           the site's existing entrance — already held still under
+           `prefers-reduced-motion` — so the line settles rather than flashing. */
+        <p
+          role="status"
+          className="mv-fade mt-[7px] flex items-start gap-[6px] text-[11.5px] font-semibold leading-snug text-mv-green-deep"
         >
-          <Check aria-hidden="true" className="h-3 w-3" strokeWidth={2.6} />
-          {/* No "Saving…" state: the editor closes on the click, so that label never
-              had a moment to be read. */}
-          Save
-        </button>
-      </div>
+          <Check
+            aria-hidden="true"
+            className="mt-[2px] h-3 w-3 shrink-0"
+            strokeWidth={2.6}
+          />
+          <span>
+            Address edit request sent successfully.
+            <span className="font-normal text-mv-muted">
+              {" "}
+              The address above will change once the correction is reviewed.
+            </span>
+          </span>
+        </p>
+      ) : null}
     </div>
   );
 }
