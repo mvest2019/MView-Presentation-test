@@ -34,6 +34,8 @@ export type ComparisonState =
   | {
       status: "ready";
       operators: StatisticsOperatorData[];
+      /** True when the response withheld the volumes behind the sign-in gate. */
+      locked: boolean;
       /**
        * The years every `trend` array is indexed by, from the response.
        *
@@ -57,26 +59,45 @@ function keyOf(names: readonly string[]): string {
   return JSON.stringify([...names].sort());
 }
 
-/** What one resolved comparison holds. */
-interface CachedComparison {
+/** What the current comparison holds. */
+interface ResolvedComparison {
   operators: StatisticsOperatorData[];
   years: number[];
+  locked: boolean;
 }
-
-/** key → the comparison, or null for a failure. Shared for the life of the page. */
-const comparisonCache = new Map<string, CachedComparison | null>();
 
 export function useOperatorComparison(selected: readonly string[]): {
   state: ComparisonState;
   retry: () => void;
 } {
-  const [, setResolvedCount] = useState(0);
+  /**
+   * The CURRENT selection's answer, and nothing else.
+   *
+   * NO CACHE, BY REQUIREMENT. This used to be a module-level `Map` keyed by the
+   * selection and shared for the life of the page, so re-picking a set already seen
+   * was answered without a request. That is gone: the state holds one entry, it is
+   * tagged with the key it belongs to, and any change of key makes it stale
+   * immediately — so a previous response can never be read back, not even for the
+   * same operators a moment later.
+   *
+   * IT IS TAGGED RATHER THAN CLEARED because the tag is what makes a late response
+   * harmless: `answered` is only read when `resolved.key` is still the key being
+   * displayed, so a reply that arrives after the selection moved on is ignored by
+   * derivation instead of by a second `setState`.
+   */
+  const [resolved, setResolved] = useState<{
+    key: string;
+    value: ResolvedComparison | null;
+  } | null>(null);
+  /** Bumped by `retry`, so the same key can be requested again. */
+  const [attempt, setAttempt] = useState(0);
 
   const key = selected.length >= MIN_OPERATORS ? keyOf(selected) : "";
-  const answered = key === "" ? undefined : comparisonCache.get(key);
+  const answered =
+    key !== "" && resolved?.key === key ? resolved.value : undefined;
 
   useEffect(() => {
-    if (key === "" || comparisonCache.has(key)) return;
+    if (key === "") return;
 
     const controller = new AbortController();
     const names: string[] = JSON.parse(key);
@@ -84,32 +105,44 @@ export function useOperatorComparison(selected: readonly string[]): {
       .map((name) => `names=${encodeURIComponent(name)}`)
       .join("&");
 
-    fetch(`/api/operators/compare?${query}`, { signal: controller.signal })
+    fetch(`/api/operators/compare?${query}`, {
+      signal: controller.signal,
+      /*
+       * NEVER FROM THE BROWSER'S CACHE. The answer depends on who is asking, so a
+       * replayed copy is wrong in both directions — a signed-out reader served a
+       * member's volumes, or a member served the locked copy. The route also sends
+       * `private, no-store`; this is the half that governs what is already held.
+       */
+      cache: "no-store",
+    })
       .then(async (response) => {
         if (!response.ok)
           throw new Error(`Comparison failed (${response.status})`);
         const payload: {
           operators?: StatisticsOperatorData[];
           years?: number[];
+          locked?: boolean;
         } = await response.json();
-        comparisonCache.set(key, {
-          operators: payload.operators ?? [],
-          years: payload.years ?? [],
+        setResolved({
+          key,
+          value: {
+            operators: payload.operators ?? [],
+            years: payload.years ?? [],
+            /* Absent reads as "not gated" — the safe default is showing what
+               arrived, since a withheld field is visibly withheld anyway. */
+            locked: payload.locked === true,
+          },
         });
       })
       .catch(() => {
         // An aborted request was superseded, not failed — the newer selection owns
-        // the state and caching a failure here would poison its key.
+        // the state, and recording a failure against this key would misreport it.
         if (controller.signal.aborted) return;
-        comparisonCache.set(key, null);
-      })
-      .finally(() => {
-        if (controller.signal.aborted) return;
-        setResolvedCount((count) => count + 1);
+        setResolved({ key, value: null });
       });
 
     return () => controller.abort();
-  }, [key]);
+  }, [key, attempt]);
 
   const state: ComparisonState =
     key === ""
@@ -122,14 +155,16 @@ export function useOperatorComparison(selected: readonly string[]): {
               status: "ready",
               operators: answered.operators,
               years: answered.years,
+              locked: answered.locked,
             };
 
   return {
     state,
     retry: () => {
       if (key === "") return;
-      comparisonCache.delete(key);
-      setResolvedCount((count) => count + 1);
+      // Back to loading, then a fresh request for the same key.
+      setResolved(null);
+      setAttempt((count) => count + 1);
     },
   };
 }

@@ -5,6 +5,7 @@ import { unstable_cache } from "next/cache";
 import {
   operatorLogoPath,
   OPERATOR_ENDPOINTS,
+  type AddressCorrectionRequest,
   type OperatorSearchRequest,
   type OperatorSearchResponse,
 } from "./operator-api-types";
@@ -35,6 +36,23 @@ export * from "./operator-api-types";
 
 /** Long enough for a warm response, short enough not to stall a render. */
 const REQUEST_TIMEOUT_MS = 8000;
+
+/**
+ * The budget for `/operators/names`, which is not a normal read.
+ *
+ * MEASURED, AND THIS IS WHY THE PICKER WAS EMPTY. Every other endpoint here answers
+ * in about a second, which is what the 8s above is sized for. The name list is 4.11
+ * MB in one response and takes 6.1s, 7.2s, 7.2s and 12.0s over four cold calls — so
+ * an 8s abort killed roughly half of them. `getOperatorNames` then threw with no
+ * memo to fall back on, `searchOperatorNames` swallowed it as an empty list, and the
+ * combobox rendered "No operators are available just now" on both comparison pages.
+ *
+ * It is generous on purpose: this fires ONCE per server instance per revalidate
+ * window, never on a render path — the route handler is the only caller and the
+ * memo answers everything after it — so a slow first read costs one dropdown its
+ * opening moment, while a short one costs the page its entire operator list.
+ */
+const NAMES_TIMEOUT_MS = 30000;
 
 /**
  * Play types are reference data and change rarely, so this could sit much
@@ -109,14 +127,20 @@ async function postJson<T>(
   }
 }
 
-async function getJson<T>(path: string): Promise<T> {
+async function getJson<T>(
+  path: string,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
+): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${baseUrl()}${path}`, {
       headers: { Accept: "application/json" },
       // A hung origin must not hold a render open. `AbortSignal.timeout` rejects
       // with a TimeoutError, which the caller turns into a normal failure.
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      //
+      // The budget is per-call because one endpoint here is nothing like the
+      // others: see `NAMES_TIMEOUT_MS`. Everything else keeps the default.
+      signal: AbortSignal.timeout(timeoutMs),
       // Caching is handled by `unstable_cache` around the exported readers, the
       // same division of labour as `blog-api.ts`.
       cache: "no-store",
@@ -318,6 +342,33 @@ export async function fetchOperatorLogo(
 }
 
 /* ==========================================================================
+   POST /api/v1/operators/address-correction
+   ========================================================================== */
+
+/**
+ * File a correction to an operator's filed address.
+ *
+ * IT IS A REQUEST, NOT AN EDIT. The endpoint queues the correction for review; the
+ * P-5 address `/operators/details` reports is unchanged when this resolves. The UI
+ * must therefore say the request was SENT and must not present the new text as the
+ * filed record — see `editable-address.tsx`.
+ *
+ * NOTHING IS CACHED OR REVALIDATED HERE, deliberately. `postJson` is already
+ * `no-store`, and since the upstream record does not move there is no read on this
+ * site whose cache a successful submission would invalidate.
+ *
+ * IT THROWS on a non-2xx or an unreachable host, including the endpoint's own 400
+ * `VALIDATION_ERROR`. The route handler in front turns that into a status and a
+ * message the row can show, so a failed submission is visible rather than silent.
+ */
+export async function submitAddressCorrection(
+  body: AddressCorrectionRequest,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  return postJson<unknown>(OPERATOR_ENDPOINTS.addressCorrection, body, signal);
+}
+
+/* ==========================================================================
    GET /api/v1/operators/names
    ========================================================================== */
 
@@ -394,7 +445,10 @@ let namesInFlight: Promise<OperatorName[]> | null = null;
 
 async function readOperatorNames(): Promise<OperatorName[]> {
   return await (async (): Promise<OperatorName[]> => {
-    const payload = await getJson<unknown>(OPERATOR_ENDPOINTS.names);
+    const payload = await getJson<unknown>(
+      OPERATOR_ENDPOINTS.names,
+      NAMES_TIMEOUT_MS,
+    );
 
     const rows = (payload as { data?: unknown })?.data;
     if (!Array.isArray(rows)) {

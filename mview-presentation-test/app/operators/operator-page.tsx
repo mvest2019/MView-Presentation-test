@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, ChevronUp, Search, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Lock, Search, X } from "lucide-react";
 import Link from "next/link";
 import { memo, useEffect, useId, useRef, useState } from "react";
 
@@ -15,6 +15,7 @@ import {
 } from "@/app/_components/typography";
 import {
   ALL_PLAYS,
+  isLockedValue,
   PAGE_SIZE,
   QUICK_FILTERS,
   QUICK_FILTER_KEYS,
@@ -73,10 +74,19 @@ export function OperatorPage({
   counties,
   /** The `guestUserID` cookie value, read server-side in `page.tsx`. */
   visitorId,
+  /**
+   * Whether a session exists, read server-side in `page.tsx`.
+   *
+   * Passed straight through to `useOperatorDirectory` for the CSV export and used
+   * nowhere else here. The table's own locks come from the response, not from
+   * this — see the note on the prop there.
+   */
+  signedIn,
 }: {
   playTypes: string[];
   counties: string[];
   visitorId: string;
+  signedIn: boolean;
 }) {
   const {
     filters,
@@ -100,7 +110,7 @@ export function OperatorPage({
     clearFilters,
     retry,
     exportCsv,
-  } = useOperatorDirectory({ playTypes, visitorId });
+  } = useOperatorDirectory({ playTypes, visitorId, signedIn });
 
   return (
     <section
@@ -434,13 +444,30 @@ function AppliedTags({
  * gone: it was permanently checked and disabled, so it offered nothing to click.
  * That column is not optional and is simply always rendered.
  */
-const COLUMN_LABELS: { key: keyof OperatorColumns; label: string }[] = [
-  { key: "oil", label: "Oil Produced" },
-  { key: "gas", label: "Gas Produced" },
-  { key: "cty", label: "Counties" },
+/**
+ * The Columns menu.
+ *
+ * `fixed` MARKS A COLUMN THAT IS PART OF THE TABLE RATHER THAN AN OPTION. Oil, Gas,
+ * Counties and Status are what "ranked by reported production" means — turning them
+ * off leaves a directory of names and nothing to rank by, and the page's own heading
+ * then describes something that is no longer on screen. They are listed so the menu
+ * still says what the table holds, and shown ticked and disabled so it is clear they
+ * are on rather than missing.
+ *
+ * The two genuinely optional columns are the ones that default to off: Leases count
+ * and Last production. Those stay toggleable, which is the whole purpose of the menu.
+ */
+const COLUMN_LABELS: {
+  key: keyof OperatorColumns;
+  label: string;
+  fixed?: boolean;
+}[] = [
+  { key: "oil", label: "Oil Produced", fixed: true },
+  { key: "gas", label: "Gas Produced", fixed: true },
+  { key: "cty", label: "Counties", fixed: true },
   { key: "leases", label: "Leases count" },
   { key: "lastProduction", label: "Last production" },
-  { key: "status", label: "Status" },
+  { key: "status", label: "Status", fixed: true },
 ];
 
 function TableControls({
@@ -499,20 +526,35 @@ function TableControls({
             aria-label="Manage columns"
             className="absolute right-0 top-[calc(100%+6px)] z-30 min-w-[220px] rounded-xl border border-mv-line bg-white px-[14px] py-3 shadow-[0_12px_30px_rgba(13,14,23,.14)] max-[480px]:left-0 max-[480px]:right-auto"
           >
-            {COLUMN_LABELS.map(({ key, label }) => (
+            {COLUMN_LABELS.map(({ key, label, fixed }) => (
               <label
                 key={key}
-                className="flex cursor-pointer items-center gap-[9px] py-[6px] text-[13.5px] font-medium"
+                className={`flex items-center gap-[9px] py-[6px] text-[13.5px] font-medium ${
+                  fixed
+                    ? "cursor-default text-mv-muted"
+                    : "cursor-pointer text-mv-ink"
+                }`}
+                /* Named rather than left to the disabled styling alone: a greyed
+                   tick with no explanation reads as a bug. */
+                title={fixed ? `${label} is always shown` : undefined}
               >
                 <input
                   type="checkbox"
                   checked={columns[key]}
+                  disabled={fixed}
                   onChange={(event) =>
                     onColumnsChange({ ...columns, [key]: event.target.checked })
                   }
-                  className="h-4 w-4 cursor-pointer accent-mv-green-deep"
+                  className={`h-4 w-4 accent-mv-green-deep ${
+                    fixed ? "cursor-default opacity-60" : "cursor-pointer"
+                  }`}
                 />
                 {label}
+                {fixed ? (
+                  <span className="ml-auto text-[11.5px] font-normal text-mv-muted">
+                    Always on
+                  </span>
+                ) : null}
               </label>
             ))}
           </div>
@@ -614,6 +656,29 @@ function ResultsTable({
   onRetry: () => void;
 }) {
   const visibleSortable = SORTABLE.filter((col) => columns[col.column]);
+  /* How many rows on THIS page came back gated. Counted from the response rather
+     than assumed to be seven: it is the endpoint's decision, not ours, and a
+     hard-coded number would start lying the day the gate changes. */
+  const lockedCount = page.rows.reduce(
+    (count, row) => count + (row.masked ? 1 : 0),
+    0,
+  );
+
+  /* Whether the two account-only columns came back withheld — read off the
+     response for the same reason, so the header and the cells can never disagree
+     about what arrived.
+
+     MEASURED ON A ROW THAT IS NOT ITSELF GATED. Every field of a gated row is
+     withheld, so asking one of those would report the columns as locked for a
+     signed-in member who happened to be looking at a quick-filtered page. */
+  const firstOpenRow = page.rows.find((row) => !row.masked);
+  const ctyLocked = !!firstOpenRow && isLockedValue(firstOpenRow.counties);
+  const leasesLocked = !!firstOpenRow && isLockedValue(firstOpenRow.leases);
+  const columnLocked: Partial<Record<keyof OperatorColumns, boolean>> = {
+    cty: ctyLocked,
+    leases: leasesLocked,
+  };
+  const anythingLocked = lockedCount > 0 || ctyLocked || leasesLocked;
   // `#` + name + the visible optional columns, for the empty row's colspan.
   const columnCount =
     2 +
@@ -658,15 +723,18 @@ function ResultsTable({
                   aria-sort={ariaSort(col.key)}
                   className={`${TH_CLASS} text-right`}
                 >
-                  <SortButton
-                    // The unit lives here rather than on every row: it never
-                    // varies down the column, so repeating it 10 times only
-                    // crowded the figures.
-                    label={columnLabel(col, page.units)}
-                    active={sortKey === col.key}
-                    dir={sortDir}
-                    onSort={(dir) => onSort(col.key, dir)}
-                  />
+                  <span className="inline-flex items-center gap-[6px]">
+                    <SortButton
+                      // The unit lives here rather than on every row: it never
+                      // varies down the column, so repeating it 10 times only
+                      // crowded the figures.
+                      label={columnLabel(col, page.units)}
+                      active={sortKey === col.key}
+                      dir={sortDir}
+                      onSort={(dir) => onSort(col.key, dir)}
+                    />
+                    {columnLocked[col.column] && <LockedHeaderMark />}
+                  </span>
                 </th>
               ))}
 
@@ -674,7 +742,10 @@ function ResultsTable({
                   `sort.propertyName` was not part of this change. */}
               {columns.leases && (
                 <th scope="col" className={`${TH_CLASS} text-right`}>
-                  Leases count
+                  <span className="inline-flex items-center gap-[6px]">
+                    Leases count
+                    {leasesLocked && <LockedHeaderMark />}
+                  </span>
                 </th>
               )}
 
@@ -727,6 +798,21 @@ function ResultsTable({
                 />
               ))
             )}
+
+            {/* THE ASK SITS WHERE THE FRICTION IS, immediately under the rows it
+                explains, rather than only at the foot of the page where someone
+                who has just hit the gate would have to go looking for it. It is
+                rendered only when this response actually came back gated, so a
+                visitor who never touches a quick filter never sees it — and a
+                signed-in member never can, because the endpoint sends them no
+                gated rows to trigger it. */}
+            {anythingLocked && !isLoading && !hasError && (
+              <tr>
+                <td colSpan={columnCount} className="whitespace-normal bg-white">
+                  <UnlockPrompt rowCount={lockedCount} />
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -750,6 +836,75 @@ function ResultsTable({
 const LOGO_SIZE = 40;
 const LOGO_RADIUS = 9;
 
+/* ==========================================================================
+   The sign-in gate, as the table renders it
+
+   WHAT IS ACTUALLY GATED, AND BY WHOM. Not by this file: the search endpoint
+   returns rows 4-10 as the literal `"****"` when one of the four quick filters
+   is on and `member_id` is 0 — measured, and identical on every page of the
+   result (3 real, 7 gated, `total_count` unchanged). Plain search, county,
+   status, play type and paging never gate, so the directory stays free to browse
+   exactly as the heading above it promises. This is the soft gate: the ranking
+   is shown, the tail of it needs a free account.
+
+   WHY BARS AND NOT `****`. Four asterisks in every cell reads as a rendering
+   fault — the row looks broken rather than withheld, and nothing on screen says
+   an account would fix it. A blurred bar reads as content deliberately held
+   back, which is what it is.
+
+   AND WHY NOT FAKE DATA UNDER THE BLUR. A blurred row of invented operator names
+   and volumes would look more convincing and would be a lie: the API sent no
+   figures for these rows, so there is nothing to blur. The bars claim only that
+   something is there, which is all we know.
+   ========================================================================== */
+
+/**
+ * The lock beside a gated column's header.
+ *
+ * White at 70% rather than the muted grey the cells use — this sits on the dark
+ * table head, where grey-on-dark is close to invisible. `aria-hidden`, because
+ * every cell in the column already carries "locked, create a free account" for a
+ * screen reader; announcing it in the header too would say it eleven times.
+ */
+function LockedHeaderMark() {
+  return (
+    <Lock
+      aria-hidden="true"
+      className="h-[11px] w-[11px] shrink-0 text-white/70"
+      strokeWidth={2.4}
+    />
+  );
+}
+
+/**
+ * A numeric cell whose value is withheld from signed-out visitors.
+ *
+ * Used by the two account-only columns, on rows that are otherwise entirely
+ * real. The lock is drawn at the cell rather than only in the header because the
+ * header scrolls away and the column keeps going.
+ */
+function LockedValue({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center justify-end gap-[6px] text-mv-muted">
+      <span className="sr-only">{label} — locked, create a free account</span>
+      <LockedBar width="w-[28px]" />
+      <Lock aria-hidden="true" className="h-3 w-3 shrink-0" strokeWidth={2.3} />
+    </span>
+  );
+}
+
+/** One withheld value. Decorative — the row's `sr-only` line carries the meaning. */
+function LockedBar({ width }: { width: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-block h-[10px] rounded-full bg-[linear-gradient(90deg,var(--color-mv-line),var(--color-mv-line-soft))] align-middle blur-[2.5px] ${width}`}
+    />
+  );
+}
+
+
+
 const OperatorRow = memo(function OperatorRow({
   row,
   rank,
@@ -762,6 +917,93 @@ const OperatorRow = memo(function OperatorRow({
   const cellClass =
     "whitespace-nowrap border-b border-mv-line-soft bg-white px-[18px] py-4 text-[14.5px] text-mv-ink group-last:border-b-0 group-hover:bg-mv-row-hover";
   const numericCell = `${cellClass} text-right tabular-nums`;
+
+  /* ---- gated row ----
+
+     Its own branch rather than a conditional inside every cell: a locked row
+     shares only the column COUNT with a real one, and threading `row.masked`
+     through eight cells made each of them harder to read than both versions are
+     apart. The rank still shows — it is true, and it is what says the ranking
+     continues past what is visible.
+
+     No hover lift and no `cursor-pointer`: there is nothing to open. */
+  if (row.masked) {
+    return (
+      <tr className="group">
+        <td className={`${cellClass} text-[12.5px] tabular-nums text-mv-muted`}>
+          {rank}
+        </td>
+
+        <td className={cellClass}>
+          <span className="flex items-center gap-3">
+            {/* Exactly the tile's footprint, so a locked row is the same height
+                as a real one and the table does not jolt as the gate engages. */}
+            <span
+              aria-hidden="true"
+              style={{ width: LOGO_SIZE, height: LOGO_SIZE, borderRadius: LOGO_RADIUS }}
+              className="grid shrink-0 place-items-center bg-mv-line-soft text-mv-muted"
+            >
+              <Lock className="h-[15px] w-[15px]" strokeWidth={2.2} />
+            </span>
+
+            <span className="min-w-0">
+              {/* The one place the gate is stated in words. Said once per row for
+                  a screen reader, which gets no benefit at all from the bars. */}
+              <span className="sr-only">
+                Locked — create a free account to see this operator
+              </span>
+              <LockedBar width="w-[132px]" />
+              {/* `mt-[2px]`, matching the real row's number line exactly. The bar
+                  sits in the same 22.475px line box the operator name occupies,
+                  so with the same 2px gap above a 16px second line the two rows
+                  measure identically — 40.5px — and the table does not step where
+                  the gate begins. Measured, not guessed. */}
+              <span className="mt-[2px] block text-xs font-semibold text-mv-muted">
+                Locked
+              </span>
+            </span>
+          </span>
+        </td>
+
+        {columns.oil && (
+          <td className={numericCell}>
+            <LockedBar width="w-[54px]" />
+          </td>
+        )}
+        {columns.gas && (
+          <td className={numericCell}>
+            <LockedBar width="w-[54px]" />
+          </td>
+        )}
+        {columns.cty && (
+          <td className={numericCell}>
+            <LockedBar width="w-[26px]" />
+          </td>
+        )}
+        {columns.leases && (
+          <td className={numericCell}>
+            <LockedBar width="w-[34px]" />
+          </td>
+        )}
+        {/* METADATA COLUMNS GET A DASH, NOT A BAR.
+
+            The endpoint sends `"****"` for every field of a gated row, these two
+            included, so there is no real value to print either way. But a blurred
+            bar is an invitation, and these are not what anyone registers for:
+            Status and Last production are metadata beside the figures — the
+            operator's name, its volumes and its counts — that actually carry the
+            value. Blurring all six made the row a wall of fuzz and spread the ask
+            thin across cells that cannot pay it off.
+
+            A muted dash reads as "nothing here", which is the truth, and leaves
+            the locks concentrated where they mean something. */}
+        {columns.lastProduction && (
+          <td className={`${cellClass} text-mv-muted`}>—</td>
+        )}
+        {columns.status && <td className={`${cellClass} text-mv-muted`}>—</td>}
+      </tr>
+    );
+  }
 
   return (
     <tr className="group transition-colors hover:bg-mv-row-hover">
@@ -784,8 +1026,8 @@ const OperatorRow = memo(function OperatorRow({
           />
 
           <span className="min-w-0">
-            {/* A gated row has no slug, so its name is plain text rather than a
-                link to nowhere. */}
+            {/* A record with no slug is plain text rather than a link to nowhere.
+                (Gated rows never reach here — they return above.) */}
             {/* Ink at rest, brand green on hover — the design system's
                 `.op-id-name a` rule, and the same treatment the operator
                 comparison tools give an operator name. The row is clickable as a
@@ -811,29 +1053,43 @@ const OperatorRow = memo(function OperatorRow({
 
       {columns.gas && <td className={numericCell}>{row.gas}</td>}
 
-      {columns.cty && <td className={numericCell}>{row.counties}</td>}
+      {columns.cty && (
+        <td className={numericCell}>
+          {isLockedValue(row.counties) ? (
+            <LockedValue label="Producing counties" />
+          ) : (
+            row.counties
+          )}
+        </td>
+      )}
 
-      {columns.leases && <td className={numericCell}>{row.leases}</td>}
+      {columns.leases && (
+        <td className={numericCell}>
+          {isLockedValue(row.leases) ? (
+            <LockedValue label="Leases count" />
+          ) : (
+            row.leases
+          )}
+        </td>
+      )}
 
       {columns.lastProduction && (
         <td className={cellClass}>{row.lastProduction}</td>
       )}
 
+      {/* No `row.masked` branch here any more — a gated row returns above, so
+          this cell only ever renders a real status. */}
       {columns.status && (
         <td className={cellClass}>
-          {row.masked ? (
-            <span className="text-mv-muted">{row.status}</span>
-          ) : (
-            <span
-              className={`inline-block whitespace-nowrap rounded-full px-3 py-[5px] text-[12.5px] font-semibold leading-none ${
-                row.status === "active"
-                  ? "bg-mv-tint text-mv-green-deep"
-                  : "bg-mv-line-soft text-mv-muted"
-              }`}
-            >
-              {row.status === "active" ? "Active" : "Inactive"}
-            </span>
-          )}
+          <span
+            className={`inline-block whitespace-nowrap rounded-full px-3 py-[5px] text-[12.5px] font-semibold leading-none ${
+              row.status === "active"
+                ? "bg-mv-tint text-mv-green-deep"
+                : "bg-mv-line-soft text-mv-muted"
+            }`}
+          >
+            {row.status === "active" ? "Active" : "Inactive"}
+          </span>
         </td>
       )}
     </tr>
@@ -1010,6 +1266,94 @@ function SkeletonRows({
 }
 
 /** Shown only after a completed request returned zero records. */
+/**
+ * The unlock ask, shown under a gated page of results.
+ *
+ * WHAT IT PROMISES IS WHAT THE GATE ACTUALLY HOLDS. The endpoint returns the
+ * first three rows of every page and withholds the rest while a quick filter is
+ * on, so that is what the copy says — not "unlock the directory", which is
+ * already free, and not a feature list this page cannot deliver.
+ *
+ * "Free · no card" is on the button's own line because the objection at this
+ * moment is cost, and answering it after the click is too late. There is no
+ * pricing link here: routing free-account intent into a plan decision is the
+ * defect this whole treatment exists to avoid. Pricing is offered once, quietly,
+ * at the foot of the page.
+ *
+ * `from=operators` rides on the link so the registration can later be attributed
+ * to this surface. It is an enumerated value, not an invention.
+ */
+function UnlockPrompt({
+  rowCount,
+}: {
+  /**
+   * Rows withheld by the endpoint's quick-filter gate, 0 when none are.
+   *
+   * IT IS THE ONLY INPUT THIS NEEDS. The prompt renders only when something came
+   * back locked, and the two account-only columns are locked for every signed-out
+   * response — so `rowCount === 0` already means "columns only" and nothing has
+   * to be passed to say so.
+   */
+  rowCount: number;
+}) {
+  /* The headline names whichever gate the visitor has actually met. Rows first
+     when both are in play: seven blanked-out rows is the louder of the two, and
+     the body sentence picks up the columns underneath it either way. */
+  const headline =
+    rowCount > 0
+      ? `${rowCount} more operator${rowCount === 1 ? "" : "s"} on this page ${
+          rowCount === 1 ? "is" : "are"
+        } locked`
+      : "Two columns are locked";
+
+  const body =
+    rowCount > 0
+      ? "Quick filters show the top three of every page without an account, and lease and county counts stay locked. A free account opens both, with a link through to every operator's profile."
+      : "Lease and producing-county counts need a free account. Everything else here — the ranking, the search, every filter and every operator profile — is free and stays free.";
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-4 border-t border-mv-line-soft bg-[linear-gradient(180deg,#f7fbf9_0%,#ffffff_100%)] px-[18px] py-5">
+      <div className="flex min-w-0 items-start gap-3">
+        <span
+          aria-hidden="true"
+          className="mt-[1px] grid h-[26px] w-[26px] shrink-0 place-items-center rounded-full bg-mv-mint text-mv-green-deep"
+        >
+          <Lock className="h-[13px] w-[13px]" strokeWidth={2.4} />
+        </span>
+
+        <div className="min-w-0">
+          <p className="m-0 text-[14px] font-bold leading-snug text-mv-ink">
+            {headline}
+          </p>
+          <p className="m-0 mt-[3px] max-w-[52ch] text-[13px] leading-snug text-mv-muted">
+            {body}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-none flex-col items-start gap-[6px]">
+        <div className="flex flex-wrap items-center gap-[10px]">
+          <Link
+            href="/register?from=operators"
+            className="inline-flex items-center gap-2 rounded-xl bg-mv-green-deep px-[18px] py-[11px] text-[13.5px] font-semibold text-white !no-underline shadow-mv transition-[filter] hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+          >
+            Register for free
+          </Link>
+          <Link
+            href="/login"
+            className="text-[13px] font-semibold text-mv-green-deep hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+          >
+            Sign in
+          </Link>
+        </div>
+        <p className="m-0 text-[11.5px] text-mv-muted">
+          Free account · no card required
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function EmptyState({ onClearFilters }: { onClearFilters: () => void }) {
   return (
     <div className="px-5 py-[34px] text-center">

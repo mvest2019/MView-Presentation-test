@@ -38,6 +38,12 @@ import type {
  * shared by all four slots, so backspacing, retyping, or searching the same
  * operator in a second slot costs nothing.
  *
+ * A FAILED REQUEST IS NOT AN EMPTY DIRECTORY, and keeping those two apart is what
+ * this control got wrong. `/api/operators/names` answers 503 when the upstream list
+ * is unreachable; that is reported in the popup with a retry, and — critically — is
+ * never written into the shared cache, so one slow read cannot leave every slot on
+ * the page permanently empty. See `failedKey`.
+ *
  * ARIA. The combobox-with-listbox pattern: the input carries `role="combobox"`,
  * `aria-expanded` and `aria-controls`, the popup is a real `listbox` of `option`s,
  * and the keyboard highlight is published through `aria-activedescendant` rather
@@ -134,6 +140,22 @@ export function OperatorSlotPicker({
   });
   /** Bumped when a page lands, so the cache is read again. */
   const [, setPageLoaded] = useState(0);
+  /**
+   * The page key whose request FAILED, or null.
+   *
+   * A FAILURE IS NOT AN EMPTY RESULT, and conflating the two is what emptied this
+   * control. The catch here used to write `{ matches: [], total: 0 }` into
+   * `matchCache` "so a failed page is not retried in a loop" — but the cache is
+   * module-scoped and never expires, so one timed-out read left every slot on the
+   * page showing "No operators are available just now" for the rest of the session,
+   * with no way to ask again short of a reload.
+   *
+   * Remembering the failed key instead stops the loop just as effectively — the
+   * effect below refuses to re-request a key it has already failed — while leaving
+   * the cache clean, so a retry, a different query, or another slot asking the same
+   * thing all still work.
+   */
+  const [failedKey, setFailedKey] = useState<string | null>(null);
 
   const baseId = useId();
   const inputId = `${baseId}-input`;
@@ -182,7 +204,12 @@ export function OperatorSlotPicker({
     matches.push(...hit.matches);
   }
 
-  const searching = open && missingOffset !== -1;
+  /** The page this render still needs, as a cache key — null when none is missing. */
+  const pendingKey = missingOffset === -1 ? null : pageKey(needle, missingOffset);
+  /** That page was asked for and the request failed. Retryable, not empty. */
+  const failed = pendingKey !== null && failedKey === pendingKey;
+
+  const searching = open && pendingKey !== null && !failed;
   /**
    * Only the FIRST page may replace the list with a placeholder. Once there are
    * rows, a page in flight is reported by the tail row instead — swapping the whole
@@ -191,6 +218,8 @@ export function OperatorSlotPicker({
    * asked for.
    */
   const loadingFirstPage = searching && matches.length === 0;
+  /** Nothing to show AND a reason for it — the popup says so and offers a retry. */
+  const unavailable = failed && matches.length === 0;
   const hasMore = !exhausted && matches.length < total;
 
   /**
@@ -204,10 +233,11 @@ export function OperatorSlotPicker({
    * keystrokes, and neither produces any.
    */
   useEffect(() => {
-    if (!open || missingOffset === -1) return;
+    if (!open || pendingKey === null || failed) return;
 
     const controller = new AbortController();
     const offset = missingOffset;
+    const key = pendingKey;
 
     const timer = setTimeout(
       () => {
@@ -215,24 +245,32 @@ export function OperatorSlotPicker({
           `/api/operators/names?q=${encodeURIComponent(needle)}&offset=${offset}`,
           { signal: controller.signal },
         )
-          .then((response) =>
-            response.ok ? response.json() : { matches: [], total: 0 },
-          )
+          .then((response) => {
+            // A NON-2xx IS A FAILURE, NOT AN EMPTY LIST. It used to be read as
+            // `{ matches: [] }`, which is how the route's 503 for an unreachable
+            // directory became an indistinguishable "no operators" in the popup.
+            if (!response.ok) {
+              throw new Error(`GET /api/operators/names → ${response.status}`);
+            }
+            return response.json();
+          })
           .then((payload: Partial<OperatorNameResult>) => {
             const found: OperatorNameResult = {
               matches: payload.matches ?? [],
               total: payload.total ?? 0,
             };
-            matchCache.set(pageKey(needle, offset), found);
+            matchCache.set(key, found);
             setPageLoaded((count) => count + 1);
           })
           .catch(() => {
             // An aborted request was superseded, not failed; the newer one owns the
-            // state. Anything else resolves to nothing and shows the empty copy.
+            // state.
             if (controller.signal.aborted) return;
-            // Cache the emptiness too, so a failed page is not retried in a loop.
-            matchCache.set(pageKey(needle, offset), { matches: [], total: 0 });
-            setPageLoaded((count) => count + 1);
+            // Remembered as failed rather than cached as empty: this stops the
+            // effect re-firing in a loop without poisoning `matchCache`, so the
+            // retry below — and any other slot asking for the same page — still
+            // gets a real request.
+            setFailedKey(key);
           });
       },
       needle !== "" && offset === 0 ? DEBOUNCE_MS : 0,
@@ -242,7 +280,12 @@ export function OperatorSlotPicker({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [needle, open, missingOffset]);
+  }, [needle, open, missingOffset, pendingKey, failed]);
+
+  /** Ask again for the page that failed. Clearing the mark is what re-arms it. */
+  function retry() {
+    setFailedKey(null);
+  }
 
   /** Close when the pointer goes down anywhere outside this field. */
   useEffect(() => {
@@ -277,7 +320,9 @@ export function OperatorSlotPicker({
    * list cannot queue a run of duplicate requests.
    */
   function onListScroll(event: React.UIEvent<HTMLUListElement>) {
-    if (searching || !hasMore) return;
+    // `failed` too: the pending page is not going to be re-requested until the tail's
+    // retry clears the mark, so counting further pages up would be pure bookkeeping.
+    if (searching || failed || !hasMore) return;
 
     const list = event.currentTarget;
     if (
@@ -482,7 +527,7 @@ export function OperatorSlotPicker({
                 above the first row. It still appears while a search runs and to report
                 what a search matched — feedback a reader asked for by typing, and the
                 `aria-live` region that announces the result count. */}
-            {loadingFirstPage || needle !== "" ? (
+            {!unavailable && (loadingFirstPage || needle !== "") ? (
               <p
                 aria-live="polite"
                 className="border-b border-mv-line-soft bg-mv-bg px-[13px] py-[9px] text-[12px] font-semibold text-mv-muted"
@@ -504,6 +549,29 @@ export function OperatorSlotPicker({
                   className="inline-block h-3 w-[160px] animate-pulse rounded bg-mv-line-soft align-middle"
                 />
               </p>
+            ) : unavailable ? (
+              /* THE OUTAGE, NAMED AND RETRYABLE. This is the branch the empty copy
+                 below used to absorb: the directory read failed, which is a
+                 different fact from "nothing matched", and the only useful thing to
+                 offer is another attempt. `role="status"` so a screen reader hears
+                 it without the popup stealing focus. */
+              <div
+                role="status"
+                className="px-[13px] py-[11px] text-center text-[13px] text-mv-muted"
+              >
+                The operator list could not be loaded.{" "}
+                <button
+                  type="button"
+                  // `pointerdown` default prevented for the same reason the option
+                  // rows do it — the outside-pointerdown listener would otherwise
+                  // close the popup before the click landed.
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={retry}
+                  className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-mv-green-deep underline hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+                >
+                  Try again
+                </button>
+              </div>
             ) : visible.length === 0 ? (
               <p className="p-4 text-center text-[13px] text-mv-muted">
                 {needle === ""
@@ -562,11 +630,25 @@ export function OperatorSlotPicker({
                     more remain, so reaching it is what asks for the next page and
                     the list never jumps by appearing and disappearing. */}
                 {hasMore ? (
-                  <li
-                    aria-hidden="true"
-                    className="px-[13px] py-[9px] text-[12px] text-mv-muted"
-                  >
-                    <span className="inline-block h-3 w-[140px] animate-pulse rounded bg-mv-line-soft align-middle" />
+                  <li className="px-[13px] py-[9px] text-[12px] text-mv-muted">
+                    {failed ? (
+                      /* The next page failed with rows already on screen. A
+                         skeleton here would pulse forever, since nothing is in
+                         flight to resolve it. */
+                      <button
+                        type="button"
+                        onPointerDown={(event) => event.preventDefault()}
+                        onClick={retry}
+                        className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-mv-green-deep underline hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+                      >
+                        More could not be loaded — try again
+                      </button>
+                    ) : (
+                      <span
+                        aria-hidden="true"
+                        className="inline-block h-3 w-[140px] animate-pulse rounded bg-mv-line-soft align-middle"
+                      />
+                    )}
                   </li>
                 ) : null}
               </ul>

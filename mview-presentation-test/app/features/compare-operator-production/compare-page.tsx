@@ -6,6 +6,7 @@ import {
   Flame,
   Gauge,
   Lightbulb,
+  Lock,
   MapPin,
   X,
 } from "lucide-react";
@@ -20,6 +21,7 @@ import { OperatorLogo } from "@/app/_components/operator-logo";
 import { OperatorMonogram } from "@/app/_components/operator-monogram";
 import { OperatorSlotPicker } from "@/app/_components/operator-slot-picker";
 import { eyebrowClass, sectionTitleClass } from "@/app/_components/typography";
+import { Band, Panel, Row } from "@/app/_components/cta-band";
 import { compareFindings } from "@/lib/operator-compare-findings";
 import { detailSlugForNumber } from "@/lib/operator-detail";
 import { formatCount, formatMillions } from "@/lib/operator-compare";
@@ -458,23 +460,40 @@ export function ComparePage({
                 <IdentityCard
                   key={operator.operatorNumber}
                   operator={operator}
+                  /* Read off the response, not off a session flag the page does not
+                     have — see `ProductionInfo.locked`. */
+                  locked={info?.locked ?? false}
                 />
               ))}
             </div>
           </section>
 
-          {/* ---- generated read ---- */}
-          <section className="pb-[26px]">
-            <GeneratedRead
-              operators={operators}
-              leaders={info?.leaders ?? null}
-            />
-          </section>
+          {/* ---- generated read ----
+              HIDDEN OUTRIGHT FOR A SIGNED-OUT READER, not locked, and this one is
+              not a presentation choice. Every sentence in it is written from the
+              volumes — "leads on oil", "covers the most ground", the growth and
+              per-lease lines — and the volumes are exactly what the endpoint
+              withholds without an account. Rendered anyway it does not degrade, it
+              LIES: the withheld figures parse to zero, so it produced sentences
+              like "leads on oil 0.0M bbl" and stated them as findings.
+
+              A locked panel here would also be the fourth lock on one screen,
+              after the two card figures and the chart. The band below already
+              names this section in what a free account opens, so the reader is
+              told it exists without the page asking four times. */}
+          {info?.locked ? null : (
+            <section className="pb-[26px]">
+              <GeneratedRead
+                operators={operators}
+                leaders={info?.leaders ?? null}
+              />
+            </section>
+          )}
 
           {/* ---- leaderboard ---- */}
           <section className="pb-[26px]">
             <SectionHead title="Who leads on what" />
-            <Leaderboard leaders={info?.leaders ?? null} />
+            <Leaderboard leaders={info?.leaders ?? null} locked={info?.locked ?? false} />
           </section>
 
           {/* ---- production over time ----
@@ -488,6 +507,16 @@ export function ComparePage({
             </DeferredSection>
           </section>
 
+          {/* ---- the ask ----
+              Only when the response actually came back withheld, so a signed-in
+              member never sees it and a page that is not gated does not carry a
+              band about gating. */}
+          {info?.locked ? (
+            <section className="pb-[26px]">
+              <ComparisonLockedCta />
+            </section>
+          ) : null}
+
           {/* ---- oil vs gas mix ---- */}
           <section className="pb-[26px]">
             <SectionHead title="Oil vs gas mix" />
@@ -498,7 +527,7 @@ export function ComparePage({
           <section className="pb-[26px]">
             <SectionHead title="Comparison stats" />
             <div className="overflow-hidden rounded-2xl border border-mv-line bg-white shadow-mv">
-              <StatsTable operators={operators} />
+              <StatsTable operators={operators} locked={info?.locked ?? false} />
             </div>
           </section>
         </>
@@ -770,7 +799,14 @@ function RankPill({ rank }: { rank: number | null }) {
  * they come straight off the record — `cumOil` in barrels, `cumGas` in Mcf — with the
  * unit beside each, because "7.24B" alone is a number a reader has to guess the unit of.
  */
-function IdentityCard({ operator }: { operator: Compared }) {
+function IdentityCard({
+  operator,
+  locked,
+}: {
+  operator: Compared;
+  /** True when the response withheld the volumes — see `ProductionInfo.locked`. */
+  locked: boolean;
+}) {
   return (
     <article className="flex h-full flex-col rounded-[14px] border border-mv-line bg-white p-4 shadow-[0_1px_2px_rgba(24,24,27,.05)]">
       <div className="flex min-w-0 items-center gap-[11px]">
@@ -833,10 +869,16 @@ function IdentityCard({ operator }: { operator: Compared }) {
               Oil produced
             </dt>
             <dd className="m-0 mt-[3px] text-[16px] font-bold leading-none tracking-[-.02em] tabular-nums text-mv-ink">
-              {formatMillions(operator.oilTotal)}{" "}
-              <span className="text-[11px] font-semibold text-mv-muted">
-                bbl
-              </span>
+              {locked ? (
+                <LockedFigure label="Oil produced" />
+              ) : (
+                <>
+                  {formatMillions(operator.oilTotal)}{" "}
+                  <span className="text-[11px] font-semibold text-mv-muted">
+                    bbl
+                  </span>
+                </>
+              )}
             </dd>
           </div>
           <div className="min-w-0">
@@ -844,15 +886,88 @@ function IdentityCard({ operator }: { operator: Compared }) {
               Gas produced
             </dt>
             <dd className="m-0 mt-[3px] text-[16px] font-bold leading-none tracking-[-.02em] tabular-nums text-mv-ink">
-              {formatMillions(operator.gasTotal)}{" "}
-              <span className="text-[11px] font-semibold text-mv-muted">
-                Mcf
-              </span>
+              {locked ? (
+                <LockedFigure label="Gas produced" />
+              ) : (
+                <>
+                  {formatMillions(operator.gasTotal)}{" "}
+                  <span className="text-[11px] font-semibold text-mv-muted">
+                    Mcf
+                  </span>
+                </>
+              )}
             </dd>
           </div>
         </dl>
       </div>
     </article>
+  );
+}
+
+/**
+ * A withheld volume on an operator card.
+ *
+ * WHY NOT JUST HIDE THE ROW. The four figure blocks are what pin the cards to a
+ * common baseline — remove two and every card in the row changes height. This
+ * occupies exactly the space the number did, so the grid is untouched.
+ */
+function LockedFigure({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center gap-[6px]">
+      <span className="sr-only">{label} — locked, create a free account</span>
+      <span
+        aria-hidden="true"
+        className="inline-block h-[11px] w-[46px] rounded-full bg-[linear-gradient(90deg,var(--color-mv-line),var(--color-mv-line-soft))] align-middle blur-[2.5px]"
+      />
+      <Lock
+        aria-hidden="true"
+        className="h-[13px] w-[13px] shrink-0 text-mv-muted"
+        strokeWidth={2.3}
+      />
+    </span>
+  );
+}
+
+/**
+ * The ask, once the comparison has been drawn around it.
+ *
+ * WHAT IS GATED HERE IS THE BACKEND'S CHOICE, not this page's: both production
+ * endpoints return the volumes as `"****"` without a member id, while rank, the
+ * oil/gas split, counties and leases come back real. So the comparison still does
+ * most of its job for a signed-out reader — who ranks where, where they operate,
+ * how their output splits — and the volumes and the chart are what an account
+ * adds. That is the soft gate the right way round, and it is why this band sits
+ * after the cards rather than in front of them.
+ *
+ * THE SAME `Band` the map guide, the operator directory and the operator profile
+ * use, so every ask on the site is one component.
+ */
+function ComparisonLockedCta() {
+  return (
+    <Band
+      tone="deep"
+      icon={Lock}
+      eyebrow="Free account"
+      title="See the volumes behind this comparison"
+      body="Rank, the oil and gas split, counties and lease counts are free and stay free — you are reading them now. A free account adds the filed production volumes for each operator, the year-by-year chart, and the written read of what the comparison is telling you."
+      primary={{
+        href: "/register?from=compare-production",
+        label: "Register for free",
+      }}
+      secondary={{ href: "/login", label: "Sign in" }}
+    >
+      <Panel title="What a free account opens">
+        <Row label="Filed oil and gas volumes" note="per operator, per filter" />
+        <Row label="The year-by-year chart" note="with the brush and the ranges" />
+        {/* The section hidden above, named here — a reader who never sees it should
+            still be told it is part of what an account adds. */}
+        <Row
+          label="What this comparison is telling you"
+          note="the written read of the figures"
+        />
+        <Row label="No card, no obligation" />
+      </Panel>
+    </Band>
   );
 }
 
@@ -1008,7 +1123,22 @@ function GeneratedRead({
  * A TILE WITH NO RECORD IS NOT DRAWN. The response omits a leader it cannot name;
  * rendering a placeholder would imply the answer was "nobody" rather than "unknown".
  */
-function Leaderboard({ leaders }: { leaders: ProductionLeaders | null }) {
+function Leaderboard({
+  leaders,
+  locked,
+}: {
+  leaders: ProductionLeaders | null;
+  /**
+   * True when the volumes were withheld.
+   *
+   * THREE OF THE FOUR TILES READ A WITHHELD FIELD — highest oil, highest gas and
+   * most efficient per lease are all production figures, and all three parsed to
+   * zero, so the board was announcing "HIGHEST OIL PRODUCED 0.0M bbl" as a
+   * finding. Widest footprint counts counties, which the endpoint does not
+   * withhold, so it keeps its real number and stays as it was.
+   */
+  locked: boolean;
+}) {
   if (!leaders) return null;
 
   return (
@@ -1018,6 +1148,7 @@ function Leaderboard({ leaders }: { leaders: ProductionLeaders | null }) {
           Icon={Droplet}
           caption="Highest oil produced"
           value={formatMillions(leaders.highestOil.value)}
+          locked={locked}
           unit="bbl"
           operator={leaders.highestOil}
           note="Filed oil across the selected acreage"
@@ -1028,6 +1159,7 @@ function Leaderboard({ leaders }: { leaders: ProductionLeaders | null }) {
           Icon={Flame}
           caption="Highest gas produced"
           value={formatMillions(leaders.highestGas.value)}
+          locked={locked}
           unit="Mcf"
           operator={leaders.highestGas}
           note="Filed gas across the selected acreage"
@@ -1038,6 +1170,7 @@ function Leaderboard({ leaders }: { leaders: ProductionLeaders | null }) {
           Icon={Gauge}
           caption="Most efficient per lease"
           value={formatCount(Math.round(leaders.mostEfficient.value))}
+          locked={locked}
           unit="MBOE / lease"
           operator={leaders.mostEfficient}
           note={
@@ -1068,6 +1201,7 @@ function LeaderTile({
   unit,
   operator,
   note,
+  locked = false,
 }: {
   Icon: typeof Droplet;
   caption: string;
@@ -1075,6 +1209,8 @@ function LeaderTile({
   unit: string;
   operator: ProductionLeader;
   note: string;
+  /** True for a tile whose figure the endpoint withheld. Defaults to shown. */
+  locked?: boolean;
 }) {
   return (
     <div className="relative rounded-[14px] border border-mv-line bg-white p-[18px] shadow-[0_1px_2px_rgba(24,24,27,.05)] transition-[box-shadow,border-color] hover:border-mv-mint-line hover:shadow-mv">
@@ -1087,9 +1223,21 @@ function LeaderTile({
       <p className="pr-10 text-[12px] font-bold uppercase tracking-[.05em] text-mv-muted">
         {caption}
       </p>
+      {/* The figure, or the lock that stands in for it. WHICH OPERATOR LEADS IS
+          STILL NAMED BELOW — that ranking is real and is not withheld; it is only
+          the size of the lead that needs an account. Withholding the name as well
+          would give the tile nothing to say. */}
       <p className="mb-[9px] mt-[14px] text-[26px] font-bold leading-none tracking-[-.02em] tabular-nums text-mv-ink">
-        {value}{" "}
-        <span className="text-[12px] font-semibold text-mv-muted">{unit}</span>
+        {locked ? (
+          <LockedFigure label={caption} />
+        ) : (
+          <>
+            {value}{" "}
+            <span className="text-[12px] font-semibold text-mv-muted">
+              {unit}
+            </span>
+          </>
+        )}
       </p>
       <p className="flex items-center gap-2 text-[13.5px] font-bold text-mv-ink">
         <OperatorLogo
@@ -1228,7 +1376,14 @@ const TH_BASE =
 const TD_BASE =
   "whitespace-nowrap border-b border-mv-line-soft bg-white px-[15px] py-[13px]";
 
-function StatsTable({ operators }: { operators: Compared[] }) {
+function StatsTable({
+  operators,
+  locked,
+}: {
+  operators: Compared[];
+  /** True when the response withheld the volumes — see `ProductionInfo.locked`. */
+  locked: boolean;
+}) {
   return (
     <div className="relative overflow-x-auto">
       <table className="w-full min-w-[640px] border-separate border-spacing-0 text-[13.5px]">
@@ -1270,7 +1425,14 @@ function StatsTable({ operators }: { operators: Compared[] }) {
                   key={operator.operatorNumber}
                   className={`${TD_BASE} text-right tabular-nums text-mv-ink-soft`}
                 >
-                  {row.value(operator)}
+                  {/* `row.gated` names the rows built from a withheld field —
+                      see `PRODUCTION_STAT_ROWS`. Without this they printed
+                      "0.0M bbl", which is a figure, not a blank. */}
+                  {locked && row.gated ? (
+                    <LockedFigure label={row.label} />
+                  ) : (
+                    row.value(operator)
+                  )}
                 </td>
               ))}
             </tr>

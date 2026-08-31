@@ -36,6 +36,15 @@ export interface ResourceState<T> {
   total: number;
   error: string | null;
   retry: () => void;
+  /**
+   * True when the resource needs an account and was never fetched.
+   *
+   * `status` stays `empty` alongside it, because there genuinely are no rows — but
+   * "no wells on record" and "these need an account" are different things to say,
+   * so the caller checks this before drawing its empty state. Only `/wells`
+   * currently sets it; every other resource leaves it false.
+   */
+  locked: boolean;
 }
 
 interface Resolved<T> {
@@ -97,7 +106,14 @@ export function usePagedResource<T>({
   const retry = useMemo(() => () => setNonce((value) => value + 1), []);
 
   if (!enabled) {
-    return { status: "idle", rows: [], total: 0, error: null, retry };
+    return {
+      status: "idle",
+      rows: [],
+      total: 0,
+      error: null,
+      retry,
+      locked: false,
+    };
   }
 
   if (resolved?.key !== key) {
@@ -107,6 +123,7 @@ export function usePagedResource<T>({
       total: resolved?.data?.total ?? 0,
       error: null,
       retry,
+      locked: false,
     };
   }
 
@@ -117,6 +134,7 @@ export function usePagedResource<T>({
       total: 0,
       error: resolved.error,
       retry,
+      locked: false,
     };
   }
 
@@ -127,5 +145,6 @@ export function usePagedResource<T>({
     total: data.total,
     error: null,
     retry,
+    locked: data.locked === true,
   };
 }

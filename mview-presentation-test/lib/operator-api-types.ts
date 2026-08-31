@@ -118,7 +118,41 @@ export const OPERATOR_ENDPOINTS = {
    * for it to populate anything the user is looking at.
    */
   all: "/api/v1/operators/all",
+  /**
+   * `POST` — a reader's correction to an operator's filed P-5 address.
+   *
+   * THE ONLY WRITE IN THIS API SURFACE, and it is a SUBMISSION rather than an
+   * update: it files a correction request for review, so the address on the detail
+   * page does not change upstream when this returns 200. Probed against the dev
+   * host — `operator_name`, `old_address` and `new_address` are required and a
+   * missing one comes back 400 `VALIDATION_ERROR` naming the field; the identity
+   * (`member_id` / `visitorId`), `operator_number` and `county` are accepted
+   * alongside them.
+   */
+  addressCorrection: "/api/v1/operators/address-correction",
 } as const;
+
+/**
+ * The body `POST /operators/address-correction` takes.
+ *
+ * THE IDENTITY IS THE PART THAT CANNOT BE ASSEMBLED IN THE BROWSER. `member_id`
+ * comes from the `mv_user` cookie, which is `httpOnly` precisely so page
+ * JavaScript cannot read it, and `visitorId` from the `guestUserID` cookie
+ * `proxy.ts` mints. Both are filled in by the route handler at
+ * `app/api/operators/address-correction/`, which is why the client sends only the
+ * four address fields and never these two.
+ */
+export interface AddressCorrectionRequest {
+  operator_number: string;
+  operator_name: string;
+  county: string;
+  old_address: string;
+  new_address: string;
+  /** The signed-in member, or 0 for an anonymous visitor. */
+  member_id: number;
+  /** The anonymous id, which identifies the submitter when `member_id` is 0. */
+  visitorId: string;
+}
 
 /**
  * Where the browser should ask for an operator's logo: our own origin, not the

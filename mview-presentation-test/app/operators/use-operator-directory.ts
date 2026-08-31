@@ -176,6 +176,7 @@ function yieldToBrowser(): Promise<void> {
 export function useOperatorDirectory({
   playTypes,
   visitorId,
+  signedIn,
 }: {
   playTypes: string[];
   /**
@@ -184,6 +185,16 @@ export function useOperatorDirectory({
    * from the cookie, so this value is for visibility, not for trust.
    */
   visitorId: string;
+  /**
+   * Whether a session exists, read server-side in `page.tsx`.
+   *
+   * FOR THE EXPORT ONLY, and not for the table — what the table may show is
+   * decided by the route handler and arrives withheld or not on the response, so
+   * reading a client flag to decide it would be a second source of truth that
+   * could disagree with the first. The export has no such server in its path
+   * (see `exportCsv`), which is exactly why it needs to be told.
+   */
+  signedIn: boolean;
 }) {
   const [filters, setFilters] = useState<OperatorFilters>(DEFAULT_FILTERS);
   const [page, setPage] = useState<OperatorResultPage>(EMPTY_RESULT_PAGE);
@@ -251,18 +262,30 @@ export function useOperatorDirectory({
 
     startTransition(async () => {
       try {
-        const response = await fetch(
-          `${publicOperatorApiBaseUrl()}${OPERATOR_ENDPOINTS.search}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            // The complete contract body, built by the shared builder.
-            body: JSON.stringify(
-              buildOperatorSearchPayload(filters, visitorId),
-            ),
-            signal: controller.signal,
-          },
-        );
+        /*
+         * THROUGH THIS SITE'S OWN ORIGIN, NOT STRAIGHT AT THE OPERATOR API.
+         *
+         * It used to post to `publicOperatorApiBaseUrl()` directly, which left
+         * the sign-in gate entirely in the browser's hands: `member_id` rode in
+         * a body this file builds, so anything that could edit the request could
+         * award itself a member id, and there was no server in the path able to
+         * withhold a field. The same-origin handler at
+         * `app/api/operators/search/` — written for exactly this and until now
+         * unused by the listing — pins `member_id` from the session cookie and
+         * strips the two account-only columns before the response is serialised.
+         *
+         * CANCELLATION SURVIVES THE HOP. The handler passes `request.signal`
+         * straight through to the upstream call, so aborting this fetch still
+         * aborts the operator API request rather than merely ignoring its reply.
+         */
+        const response = await fetch("/api/operators/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // The complete contract body, built by the shared builder. `member_id`
+          // is a placeholder in it — the handler overwrites it.
+          body: JSON.stringify(buildOperatorSearchPayload(filters, visitorId)),
+          signal: controller.signal,
+        });
 
         if (!response.ok) throw new Error(`search responded ${response.status}`);
 
@@ -400,11 +423,29 @@ export function useOperatorDirectory({
       // the visitor can see — except Leases count and Last production, which are
       // always written. Both are opt-in columns that default to off, so gating them
       // meant the export silently dropped two fields the endpoint always returns.
+      /*
+       * THE EXPORT HONOURS THE SIGN-IN GATE, and it has to do so here because
+       * nothing else can. `/operators/all` takes no `member_id` and gates
+       * nothing — it is a public, unfiltered dump — so a signed-out visitor
+       * fetching it receives the lease and county counts the table has just
+       * locked. Writing them into the file would mean the lock is defeated by
+       * the Export button sitting three inches above it, which teaches a reader
+       * that the locks mean nothing.
+       *
+       * The two columns are OMITTED rather than written as "locked": a CSV is
+       * read by spreadsheets and scripts, and a column of the word "locked" in a
+       * numeric field is worse than an absent column. Everything else — the
+       * ranking, the names, the production figures — exports exactly as before,
+       * because none of it is gated.
+       */
+      const withCounts = signedIn;
+
       const header = ["Rank", "Operator Name", "Operator No."];
       if (columns.oil) header.push("Oil Produced");
       if (columns.gas) header.push("Gas Produced");
-      if (columns.cty) header.push("Counties");
-      header.push("Leases count", "Last production");
+      if (columns.cty && withCounts) header.push("Counties");
+      if (withCounts) header.push("Leases count");
+      header.push("Last production");
       if (columns.status) header.push("Status");
 
       const cell = (value: string) => `"${value.replace(/"/g, '""')}"`;
@@ -433,8 +474,9 @@ export function useOperatorDirectory({
             ];
             if (columns.oil) line.push(cell(row.oil));
             if (columns.gas) line.push(cell(row.gas));
-            if (columns.cty) line.push(cell(row.counties));
-            line.push(cell(row.leases), cell(row.lastProduction));
+            if (columns.cty && withCounts) line.push(cell(row.counties));
+            if (withCounts) line.push(cell(row.leases));
+            line.push(cell(row.lastProduction));
             if (columns.status) line.push(cell(row.status));
             lines.push(line.join(","));
           },
@@ -460,7 +502,7 @@ export function useOperatorDirectory({
     } finally {
       exporting.current = false;
     }
-  }, [columns]);
+  }, [columns, signedIn]);
 
   /* --- applied-filter tags ---------------------------------------------- */
 
