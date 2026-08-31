@@ -109,6 +109,7 @@ export function OperatorPage({
     clearFilters,
     retry,
     exportCsv,
+    isExporting,
   } = useOperatorDirectory({ playTypes, visitorId });
 
   return (
@@ -185,6 +186,7 @@ export function OperatorPage({
             columns={columns}
             onColumnsChange={setColumns}
             onExport={exportCsv}
+            isExporting={isExporting}
           />
         </div>
 
@@ -470,43 +472,49 @@ function AppliedTags({
  * That column is not optional and is simply always rendered.
  */
 /**
- * The Columns menu.
+ * The Columns menu — DEFECT 123.
  *
- * `fixed` MARKS A COLUMN THAT IS PART OF THE TABLE RATHER THAN AN OPTION. Oil, Gas,
- * Counties and Status are what "ranked by reported production" means — turning them
- * off leaves a directory of names and nothing to rank by, and the page's own heading
- * then describes something that is no longer on screen. They are listed so the menu
- * still says what the table holds, and shown ticked and disabled so it is clear they
- * are on rather than missing.
+ * EVERY COLUMN IS DESELECTABLE AGAIN, DOWN TO A FLOOR OF TWO. An earlier pass
+ * pinned Oil, Gas, Counties and Status as "always on", which met the floor by
+ * never approaching it — but it also took away the ability to narrow the table at
+ * all, and the defect is explicit that the block belongs AT two: "if exactly 2
+ * columns are selected, the user must not be able to deselect either one".
  *
- * The two genuinely optional columns are the ones that default to off: Leases count
- * and Last production. Those stay toggleable, which is the whole purpose of the menu.
+ * SO THE DISABLING IS DYNAMIC, not a property of particular columns. Any column
+ * may be turned off while three or more are on; at exactly two, the two that
+ * remain lock and the rest stay free to turn back on. That is the rule the defect
+ * describes, and it is enforced again in the hook — see `withColumnFloor` — so a
+ * restored or hand-edited state cannot get under it either.
  */
-const COLUMN_LABELS: {
-  key: keyof OperatorColumns;
-  label: string;
-  fixed?: boolean;
-}[] = [
-  { key: "oil", label: "Oil Produced", fixed: true },
-  { key: "gas", label: "Gas Produced", fixed: true },
-  { key: "cty", label: "Counties", fixed: true },
+const COLUMN_LABELS: { key: keyof OperatorColumns; label: string }[] = [
+  { key: "oil", label: "Oil Produced" },
+  { key: "gas", label: "Gas Produced" },
+  { key: "cty", label: "Counties" },
   { key: "leases", label: "Leases count" },
   { key: "lastProduction", label: "Last production" },
-  { key: "status", label: "Status", fixed: true },
+  { key: "status", label: "Status" },
 ];
+
+/** The floor the Columns menu enforces — DEFECT 123. */
+const MIN_VISIBLE_COLUMNS = 2;
 
 function TableControls({
   columns,
   onColumnsChange,
   onExport,
+  isExporting,
 }: {
   columns: OperatorColumns;
   onColumnsChange: (columns: OperatorColumns) => void;
   onExport: () => void;
+  /** True while the file is being fetched and built — DEFECT 121. */
+  isExporting: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  /** How many are on right now — what decides whether the floor has been reached. */
+  const shownCount = Object.values(columns).filter(Boolean).length;
 
   useEffect(() => {
     if (!open) return;
@@ -551,44 +559,59 @@ function TableControls({
             aria-label="Manage columns"
             className="absolute right-0 top-[calc(100%+6px)] z-30 min-w-[220px] rounded-xl border border-mv-line bg-white px-[14px] py-3 shadow-[0_12px_30px_rgba(13,14,23,.14)] max-[480px]:left-0 max-[480px]:right-auto"
           >
-            {COLUMN_LABELS.map(({ key, label, fixed }) => (
-              <label
-                key={key}
-                className={`flex items-center gap-[9px] py-[6px] text-[13.5px] font-medium ${
-                  fixed
-                    ? "cursor-default text-mv-muted"
-                    : "cursor-pointer text-mv-ink"
-                }`}
-                /* Named rather than left to the disabled styling alone: a greyed
-                   tick with no explanation reads as a bug. */
-                title={fixed ? `${label} is always shown` : undefined}
-              >
-                <input
-                  type="checkbox"
-                  checked={columns[key]}
-                  disabled={fixed}
-                  onChange={(event) =>
-                    onColumnsChange({ ...columns, [key]: event.target.checked })
-                  }
-                  className={`h-4 w-4 accent-mv-green-deep ${
-                    fixed ? "cursor-default opacity-60" : "cursor-pointer"
+            {COLUMN_LABELS.map(({ key, label }) => {
+              /* Locked only when it is one of the last two — see the note above. */
+              const atFloor = shownCount <= MIN_VISIBLE_COLUMNS;
+              const locked = columns[key] && atFloor;
+              return (
+                <label
+                  key={key}
+                  className={`flex items-center gap-[9px] py-[6px] text-[13.5px] font-medium ${
+                    locked
+                      ? "cursor-default text-mv-muted"
+                      : "cursor-pointer text-mv-ink"
                   }`}
-                />
-                {label}
-                {fixed ? (
-                  <span className="ml-auto text-[11.5px] font-normal text-mv-muted">
-                    Always on
-                  </span>
-                ) : null}
-              </label>
-            ))}
+                  /* Named rather than left to the disabled styling alone: a greyed
+                     tick with no explanation reads as a bug. */
+                  title={
+                    locked
+                      ? `At least ${MIN_VISIBLE_COLUMNS} columns must stay visible`
+                      : undefined
+                  }
+                >
+                  <input
+                    type="checkbox"
+                    checked={columns[key]}
+                    disabled={locked}
+                    onChange={(event) =>
+                      onColumnsChange({
+                        ...columns,
+                        [key]: event.target.checked,
+                      })
+                    }
+                    className={`h-4 w-4 accent-mv-green-deep ${
+                      locked ? "cursor-default opacity-60" : "cursor-pointer"
+                    }`}
+                  />
+                  {label}
+                </label>
+              );
+            })}
           </div>
         )}
       </div>
 
-      <Button onClick={onExport} className="max-[767px]:text-sm">
-        Export CSV
-        <span aria-hidden="true">↓</span>
+      {/* DEFECT 121 — the button now says it is working and refuses a second
+          click while it does. The export is a whole result set and a file build,
+          so silence for the duration read as a dead control. */}
+      <Button
+        onClick={onExport}
+        disabled={isExporting}
+        aria-busy={isExporting}
+        className="max-[767px]:text-sm"
+      >
+        {isExporting ? "Exporting…" : "Export CSV"}
+        <span aria-hidden="true">{isExporting ? "" : "↓"}</span>
       </Button>
     </div>
   );

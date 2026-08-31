@@ -421,6 +421,16 @@ export function useOperatorDirectory({
 
   /** In-flight guard, so a second click cannot start a duplicate export. */
   const exporting = useRef(false);
+  /**
+   * The same fact as `exporting`, in state so the button can show it.
+   *
+   * DEFECT 121 — the export is one large request plus a chunked build of the file,
+   * and the button said nothing for the whole of it: same label, still clickable,
+   * no browser download prompt until the end. A reader could not tell whether the
+   * click had registered. The ref stays because it guards the second click
+   * synchronously, before any re-render.
+   */
+  const [isExporting, setIsExporting] = useState(false);
 
   /**
    * Export CSV — DEFECT 121.
@@ -453,6 +463,7 @@ export function useOperatorDirectory({
   const exportCsv = useCallback(async () => {
     if (exporting.current) return;
     exporting.current = true;
+    setIsExporting(true);
 
     try {
       const response = await fetch("/api/operators/search", {
@@ -535,6 +546,7 @@ export function useOperatorDirectory({
       console.error("[operators] CSV export failed", error);
     } finally {
       exporting.current = false;
+      setIsExporting(false);
     }
   }, [columns, filters, visitorId]);
 
@@ -663,6 +675,7 @@ export function useOperatorDirectory({
     toggleSort,
     goToPage,
     setColumns: writeColumns,
+    isExporting,
     clearFilters,
     retry,
     exportCsv,
