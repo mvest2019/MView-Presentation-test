@@ -3,6 +3,7 @@
 import {
   ChartColumn,
   Clock,
+  Compass,
   Download,
   Grid2x2,
   House,
@@ -14,6 +15,7 @@ import {
   Plus,
   Search,
   Share2,
+  SlidersHorizontal,
   Table2,
   X,
 } from "lucide-react";
@@ -25,6 +27,7 @@ import { LegendsPanel } from "./legends-panel";
 import { getWellLookupMap, type MapWellLookup } from "@/lib/map-api";
 
 import { ApiResults } from "./api-results";
+import { shareUrl, type ShareState } from "./filter-url";
 import { ShareMenu } from "./share-menu";
 import { ToolsPanel } from "./tools-panel";
 
@@ -46,7 +49,11 @@ import { ToolsPanel } from "./tools-panel";
 type MapChromeProps = {
   /** Live map scale denominator — the `1 : n` in the readout. */
   scale: number;
-  /** Live zoom level, as Esri counts it. Fractional between LODs. */
+  /**
+   * The zoom level, already rounded and already on the map's own ladder —
+   * not Esri's, which counts differently under a vector basemap than under
+   * imagery.
+   */
   zoom: number;
   /** True once the map is close enough to draw individual wells. */
   wellsVisible: boolean;
@@ -54,6 +61,8 @@ type MapChromeProps = {
       with them rather than explaining an empty map. */
   marksVisible: boolean;
   center: { longitude: number; latitude: number };
+  /** What a shared link should carry — see `shareUrl`. */
+  share: ShareState;
   /** Active basemap id, so the gallery can mark its tile. */
   basemap: string;
   onBasemapChange: (id: string) => void;
@@ -96,6 +105,8 @@ type MapChromeProps = {
   filtersResetAt?: number;
   /** What the address arrived filtered by, for the panel to tick. */
   openingFilters?: Record<string, string[]>;
+  /** The API number it arrived on, so the search box says what the map shows. */
+  openingApi?: string;
   /** The tool waiting for a drag on the map, if any. */
   activeTool: string | null;
   onSelectTool: (
@@ -117,6 +128,12 @@ export type ViewTab = "map" | "table" | "insights";
  * county prefix plus a digit — enough to narrow the answer to one county's
  * wells rather than every well whose number happens to start the same way.
  */
+/** The breathing room between the view switch and the top of the rail. */
+const RAIL_GAP = 8;
+
+/** And between the toolbar and the FILTERS / TOOLS tabs beside it. */
+const EDGE_TAB_GAP = 6;
+
 const API_MIN_DIGITS = 6;
 
 /** A Texas API-10: state, county, well. Ten digits, hyphens for reading. */
@@ -149,6 +166,7 @@ export function MapChrome({
   wellsVisible,
   marksVisible,
   center,
+  share,
   basemap,
   onBasemapChange,
   onSaveImage,
@@ -167,6 +185,7 @@ export function MapChrome({
   onApplyFilters,
   filtersResetAt = 0,
   openingFilters,
+  openingApi,
   activeTool,
   onSelectTool,
   onZoomIn,
@@ -234,6 +253,26 @@ export function MapChrome({
    */
   const chromeRef = useRef<HTMLDivElement>(null);
   const [railHeight, setRailHeight] = useState<number | null>(null);
+  /*
+   * How far down the rail starts.
+   *
+   * Zero on a wide screen, where the toolbar is a pill in the top right and
+   * the rail passes under nothing. Below that the toolbar is two full-width
+   * rows across the top of the map, and a rail from the top edge covered the
+   * view switch — the panel and the tabs on top of one another, with half a
+   * word of "Table" showing beside the panel. Measured rather than assumed:
+   * the toolbar is one row or two depending on what fits.
+   */
+  const [railTop, setRailTop] = useState(0);
+  /*
+   * Where the FILTERS and TOOLS tabs hang, in pixels, or null to leave it to
+   * the stylesheet.
+   *
+   * Only below `lg`, where the toolbar lies across the top of the map in two
+   * rows and a tab pinned at a guessed 104px could end up behind it. Measured
+   * off the toolbar, so it clears whatever the toolbar turned out to be.
+   */
+  const [edgeTop, setEdgeTop] = useState<number | null>(null);
 
   useEffect(() => {
     const layer = chromeRef.current;
@@ -251,9 +290,37 @@ export function MapChrome({
         document.querySelector<HTMLElement>(".esri-attribution");
       const height = layer.clientHeight - (credit?.offsetHeight ?? 20);
       setRailHeight(height > 0 ? height : null);
+
+      /*
+       * Where the rail starts: under the view switch, on the screens where
+       * the switch lies across the map. Measured off the layer the rail is
+       * positioned in, so it is the same coordinate space.
+       */
+      const wide = window.matchMedia("(min-width: 1024px)").matches;
+      const tabs = viewTabsRef.current;
+      setRailTop(
+        wide || !tabs
+          ? 0
+          : Math.max(
+              tabs.getBoundingClientRect().bottom -
+                layer.getBoundingClientRect().top +
+                RAIL_GAP,
+              0,
+            ),
+      );
+
+      const toolbar = toolbarRef.current;
+      setEdgeTop(
+        wide || !toolbar ? null : toolbar.offsetHeight + EDGE_TAB_GAP,
+      );
     });
 
     observer.observe(layer);
+    /* And the switch itself: it is one row of tabs or two as the map
+       narrows, and the rail follows it down. */
+    if (viewTabsRef.current) observer.observe(viewTabsRef.current);
+    /* And the toolbar as a whole, which the edge tabs hang below. */
+    if (toolbarRef.current) observer.observe(toolbarRef.current);
     return () => observer.disconnect();
   }, []);
 
@@ -262,7 +329,9 @@ export function MapChrome({
   const [shareOpen, setShareOpen] = useState(false);
   const [shareAnchor, setShareAnchor] = useState({ top: 60, right: 16 });
 
-  const [placeQuery, setPlaceQuery] = useState("");
+  /* Seeded from the address: a link opened on one well draws that well, and
+     a search box left empty beside it reads as a map filtered by nothing. */
+  const [placeQuery, setPlaceQuery] = useState(openingApi ?? "");
   const [placeOpen, setPlaceOpen] = useState(false);
   const [placeIndex, setPlaceIndex] = useState(0);
   const [placeAnchor, setPlaceAnchor] = useState({ top: 60, left: 0, width: 220 });
@@ -289,6 +358,10 @@ export function MapChrome({
   const basemapRef = useRef<HTMLDivElement>(null);
   const toolsRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
+  /* The view switch on its own. The rail clears this and nothing else — the
+     row of round buttons under it sits to the right of the panel, not
+     behind it. */
+  const viewTabsRef = useRef<HTMLDivElement>(null);
 
   /*
    * The Time-lapse hint: whether to show it, and where.
@@ -557,7 +630,10 @@ export function MapChrome({
          * beside it saying it was shut. An inline style outranks both.
          */
         style={{
-          ...(railHeight === null ? null : { height: railHeight }),
+          top: railTop,
+          ...(railHeight === null
+            ? null
+            : { height: Math.max(railHeight - railTop, 0) }),
           ...(filtersOpen ? null : { display: "none" }),
         }}
       />
@@ -566,6 +642,8 @@ export function MapChrome({
         <EdgeTab
           side="left"
           label="Filters"
+          icon={SlidersHorizontal}
+          top={edgeTop}
           onClick={() => setFiltersOpen(true)}
         />
       )}
@@ -598,6 +676,8 @@ export function MapChrome({
           <EdgeTab
             side="right"
             label="Tools"
+            icon={Compass}
+            top={edgeTop}
             onClick={() => setToolsOpen(true)}
           />
         )}
@@ -606,12 +686,26 @@ export function MapChrome({
       {/* ---------------- top toolbar ---------------- */}
       <div
         ref={toolbarRef}
-        className="absolute inset-x-0 top-0 flex justify-end p-4 max-[919px]:justify-center"
+        /*
+         * The bar keeps out of the rail's way rather than under it.
+         *
+         * From `lg` the toolbar is one pill held to the right, and the rail is
+         * open beside the map as a matter of course. On a 1024px window the
+         * pill is wider than what is left of the map, so its left end — the
+         * Map tab — ran in behind the panel. Padding the row by the rail's
+         * own width leaves the pill the space it actually has; it scrolls
+         * inside itself if that is not enough.
+         */
+        className={`absolute inset-x-0 top-0 flex justify-end p-4 max-[919px]:justify-center ${
+          filtersOpen ? "lg:pl-[268px]" : ""
+        }`}
       >
         <div className="pointer-events-auto relative flex w-full max-w-full flex-col items-stretch gap-2 lg:w-auto lg:flex-row lg:flex-nowrap lg:items-center lg:gap-1 lg:overflow-x-auto lg:rounded-xl lg:border lg:border-mv-line lg:bg-white/97 lg:px-[6px] lg:py-[4px] lg:shadow-mv-lg lg:backdrop-blur-[6px]">
           {/* A segmented control: the grey track groups the three views and
               makes the filled one read as the raised tab. */}
-          <div className="flex w-full shrink-0 items-center gap-1 rounded-xl border border-mv-line bg-white/97 p-1 shadow-mv-lg backdrop-blur-[6px] lg:w-auto lg:justify-start lg:rounded-lg lg:border-0 lg:bg-[#f1f2f4] lg:p-[3px] lg:shadow-none">
+          <div
+            ref={viewTabsRef}
+            className="flex w-full shrink-0 items-center gap-1 rounded-xl border border-mv-line bg-white/97 p-1 shadow-mv-lg backdrop-blur-[6px] lg:w-auto lg:justify-start lg:rounded-lg lg:border-0 lg:bg-[#f1f2f4] lg:p-[3px] lg:shadow-none">
           {VIEW_TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -633,7 +727,7 @@ export function MapChrome({
           ))}
           </div>
 
-          {/* Export CSV is the first to go when the map is only half the page
+          {/* Export is the first to go when the map is only half the page
               — the mock drops it too, and Share falls back to its icon. */}
           <div
             className={`flex-wrap items-center justify-end gap-2 lg:contents ${
@@ -677,6 +771,18 @@ export function MapChrome({
             </span>
           )}
 
+          {/*
+            One bar, not four floating chips.
+            Below `lg` each of these used to carry its own border, background
+            and shadow, so the row read as four loose circles scattered along
+            the edge of the filters panel. Grouped, they read as one control —
+            the same card the view switch above them is — and the group is
+            what sits at the right-hand edge rather than four separate things
+            crowding it. At `lg` the wrapper dissolves and they take their
+            places in the single toolbar pill as before.
+          */}
+          <div className="flex shrink-0 items-center gap-[2px] rounded-xl border border-mv-line bg-white/97 p-[3px] shadow-mv-lg backdrop-blur-[6px] lg:contents">
+
           {/* Always pressable — the view decides whether it can replay. The
               hint only says why it cannot, and only while the map is showing
               bubbles rather than wells. */}
@@ -696,7 +802,7 @@ export function MapChrome({
           {!compact && (
             <ToolbarButton
               icon={Download}
-              label="Export CSV"
+              label="Export Excel"
               onClick={onExportCsv}
             />
           )}
@@ -720,10 +826,12 @@ export function MapChrome({
             onClick={openSearch}
             aria-label="Search by API number"
             aria-expanded={searchOpen}
-            className="grid shrink-0 cursor-pointer place-items-center rounded-xl border border-mv-line bg-white/97 px-[9px] py-[7px] text-mv-slate shadow-mv-lg backdrop-blur-[6px] hover:text-mv-green-deep lg:hidden"
+            className="grid shrink-0 cursor-pointer place-items-center rounded-lg px-[9px] py-[7px] text-mv-slate transition-colors hover:bg-[#f2f8f5] hover:text-mv-green-deep lg:hidden"
           >
             <Search size={15} aria-hidden="true" />
           </button>
+
+          </div>
 
           {/* A full-width row is what pushes the box onto its own line below the
               icons, so the trigger above never shifts — but the box inside it
@@ -734,7 +842,7 @@ export function MapChrome({
           >
             <div
               ref={searchBoxRef}
-              className={`ml-auto mr-8 w-[232px] max-w-full items-center gap-2 rounded-lg border border-mv-line bg-white/97 px-[9px] py-[7px] shadow-mv-lg backdrop-blur-[6px] focus-within:border-mv-green focus-within:ring-1 focus-within:ring-mv-green lg:ml-1 lg:mr-0 lg:flex lg:w-auto lg:shrink-0 lg:bg-white lg:py-[4px] lg:pl-[10px] lg:pr-[6px] lg:shadow-none lg:backdrop-blur-none ${
+              className={`ml-auto w-[232px] max-w-full items-center gap-2 rounded-lg border border-mv-line bg-white/97 px-[9px] py-[7px] shadow-mv-lg backdrop-blur-[6px] focus-within:border-mv-green focus-within:ring-1 focus-within:ring-mv-green lg:ml-1 lg:mr-0 lg:flex lg:w-auto lg:shrink-0 lg:bg-white lg:py-[4px] lg:pl-[10px] lg:pr-[6px] lg:shadow-none lg:backdrop-blur-none ${
                 searchOpen ? "flex" : "hidden lg:flex"
               }`}
             >
@@ -775,10 +883,13 @@ export function MapChrome({
                 /* A number pad on a phone: the field takes digits only. */
                 inputMode="numeric"
                 placeholder="API NO.(e.g.42-123-45678)"
-                /* 190px from `lg` up rather than 148: the placeholder names a
-                   whole API number, which needs about 155px, and a field that
-                   cuts its own example mid-number teaches the wrong shape. */
-                className="w-full min-w-0 border-0 bg-transparent text-[12.5px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted lg:w-[190px]"
+                /* 162px from `lg` up: the placeholder names a whole API
+                   number and measures 158px in this face at this size, so
+                   this is the narrowest the field can be without cutting its
+                   own example mid-number — which would teach the wrong shape.
+                   The 190px it had before was 28px of slack in a bar that has
+                   none to spare. */
+                className="w-full min-w-0 border-0 bg-transparent text-[12.5px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted lg:w-[162px]"
               />
               {placeQuery !== "" && (
                 <button
@@ -862,6 +973,9 @@ export function MapChrome({
 
         {shareOpen && (
           <ShareMenu
+            /* Rendered only after a click, so building this from
+               `window.location` is client-side by construction. */
+            url={shareUrl(share)}
             // Dismiss first: the capture should not have to wait on the menu,
             // and the print dialog must not open behind it.
             onSaveImage={() => {
@@ -1017,7 +1131,7 @@ export function MapChrome({
         {/* The zoom level, under the buttons that change it. Rounded, because
             `snapToZoom` is off and the raw value sits between LODs. */}
         <div className="pointer-events-auto rounded-lg border border-mv-line bg-white/97 px-[9px] py-[5px] text-[11px] font-semibold leading-none text-mv-slate shadow-mv backdrop-blur-[6px] lg:text-[12px]">
-          Zoom {Math.round(zoom)}
+          Zoom {zoom}
         </div>
       </div>
     </div>
@@ -1025,7 +1139,12 @@ export function MapChrome({
 }
 
 function Divider() {
-  return <span aria-hidden="true" className="mx-[2px] hidden h-6 w-px shrink-0 bg-mv-line lg:block" />;
+  return (
+    <span
+      aria-hidden="true"
+      className="mx-[1px] h-5 w-px shrink-0 bg-mv-line lg:mx-[2px] lg:h-6"
+    />
+  );
 }
 
 function ToolbarButton({
@@ -1067,7 +1186,8 @@ function ToolbarButton({
       aria-expanded={expanded}
       aria-label={label || title}
       title={title ?? label}
-      className="inline-flex shrink-0 items-center gap-[6px] rounded-xl border border-mv-line bg-white/97 px-[9px] py-[7px] text-[12.5px] font-semibold leading-tight text-mv-slate shadow-mv-lg backdrop-blur-[6px] transition-colors enabled:cursor-pointer enabled:hover:bg-[#f2f8f5] enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-50 lg:rounded-lg lg:border-0 lg:bg-transparent lg:py-[5px] lg:shadow-none lg:backdrop-blur-none"
+      /* No chrome of its own: it sits inside the bar that has it. */
+      className="inline-flex shrink-0 items-center gap-[6px] rounded-lg bg-transparent px-[9px] py-[7px] text-[12.5px] font-semibold leading-tight text-mv-slate transition-colors enabled:cursor-pointer enabled:hover:bg-[#f2f8f5] enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-50 lg:py-[5px]"
     >
       <Icon size={15} strokeWidth={2} aria-hidden="true" />
       <span className="hidden lg:inline">{label}</span>
@@ -1139,35 +1259,50 @@ function IconButton({
 }
 
 /**
- * The vertical FILTERS / TOOLS tabs clipped to the left and right edges.
+ * The FILTERS and TOOLS tabs clipped to the left and right edges.
  *
- * Below md they start under the toolbar rather than beside it: the toolbar is
- * two rows tall there and the tabs were sitting behind it.
+ * Two shapes, one control. From `lg` up it is the mock's vertical tab, which
+ * belongs on a map with room to spare down the side. On a phone that same tab
+ * is a column of 10px letters an inch tall — hard to read, harder to hit — so
+ * it becomes a horizontal pill with an icon, sized like every other control
+ * on the map and clearing the toolbar rather than guessing at it.
  */
 function EdgeTab({
   side,
   label,
+  icon: Icon,
   onClick,
   disabled,
+  top,
 }: {
   side: "left" | "right";
   label: string;
+  icon: typeof MapIcon;
   onClick?: () => void;
   disabled?: boolean;
+  /** Measured position below the toolbar; null leaves it to the classes. */
+  top?: number | null;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`pointer-events-auto absolute border border-mv-green-deep bg-mv-mint px-[8px] py-[11px] shadow-mv enabled:cursor-pointer enabled:hover:bg-mv-green-deep enabled:hover:text-white disabled:cursor-not-allowed disabled:opacity-50 lg:px-[11px] lg:py-[15px] ${
+      title={label}
+      style={top === null || top === undefined ? undefined : { top }}
+      className={`pointer-events-auto absolute flex items-center gap-[6px] border border-mv-green-deep bg-mv-mint px-[10px] py-[7px] text-mv-green-deep shadow-mv enabled:cursor-pointer enabled:hover:bg-mv-green-deep enabled:hover:text-white disabled:cursor-not-allowed disabled:opacity-50 lg:gap-0 lg:px-[11px] lg:py-[15px] ${
         side === "left"
           ? "left-0 top-[104px] rounded-r-lg border-l-0 lg:top-6"
           : "right-0 top-[104px] rounded-l-lg border-r-0 lg:top-16"
       }`}
     >
-      {/* `vertical-rl` runs top-to-bottom; the flip makes it read upwards. */}
-      <span className="block rotate-180 text-[10.5px] font-extrabold uppercase leading-none tracking-[.1em] [writing-mode:vertical-rl] lg:text-[12px] lg:tracking-[.12em]">
+      {/* The icon carries the meaning on a phone; the desktop tab is the
+          mock's, which is lettering alone. */}
+      <Icon size={14} strokeWidth={2.25} aria-hidden="true" className="lg:hidden" />
+
+      {/* `vertical-rl` runs top-to-bottom; the flip makes it read upwards —
+          and only from `lg`, where the tab is tall rather than wide. */}
+      <span className="block text-[11px] font-extrabold uppercase leading-none tracking-[.08em] lg:rotate-180 lg:text-[12px] lg:tracking-[.12em] lg:[writing-mode:vertical-rl]">
         {label}
       </span>
     </button>

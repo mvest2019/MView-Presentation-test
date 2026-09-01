@@ -18,6 +18,8 @@ export type WellCluster = {
   name: string;
   /** That county on its own, without the "& 8 more area" around it. */
   topCounty: string;
+  /** Every county under the bubble, largest first. Empty where none is named. */
+  counties: string[];
   /** The mix inside the cluster: how many of each, and their share. */
   oil: number;
   gas: number;
@@ -138,6 +140,10 @@ export function toWellCluster(cluster: MapCluster): WellCluster {
     newestYear: null,
     name: cluster.name || cluster.topCounty,
     topCounty: cluster.topCounty,
+    /* The name the bubble shows is one of fifteen at the widest zoom, and the
+       "& 14 more" it is wrapped in does not say which. The export names them
+       all; the map has no room to. */
+    counties: cluster.countyNames ?? [],
     oil: cluster.oil ?? 0,
     gas: cluster.gas ?? 0,
     oilGas: cluster.oilGas ?? 0,

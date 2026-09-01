@@ -133,6 +133,22 @@ export type SelectedWell = {
   record?: string;
 };
 
+/**
+ * What to put in front of the reader when a request fails.
+ *
+ * Never the thrown message on its own: a dropped connection or a gateway that
+ * gave up arrives as "TypeError: Failed to fetch", which tells somebody
+ * looking at an empty record nothing they can do anything about. The service
+ * failing is one thing to say, however it failed.
+ */
+function readable(failure: unknown, fallback: string): string {
+  const message = failure instanceof Error ? failure.message : "";
+  if (!message || /failed to fetch|networkerror|502|timeout/i.test(message)) {
+    return fallback;
+  }
+  return message;
+}
+
 export function WellInsightsPanel({
   well,
   onClose,
@@ -264,9 +280,10 @@ export function WellInsightsPanel({
         if (cancelled) return;
         setSummary(null);
         setError(
-          failure instanceof Error
-            ? failure.message
-            : "Could not load this well's summary.",
+          readable(
+            failure,
+            "Could not load this well — the service did not answer. Try again in a moment.",
+          ),
         );
       });
 
@@ -289,9 +306,7 @@ export function WellInsightsPanel({
         if (cancelled) return;
         setLoaded(null);
         setInsightsError(
-          failure instanceof Error
-            ? failure.message
-            : "Could not load insights for this well.",
+          readable(failure, "Could not load insights for this well."),
         );
       });
 
@@ -315,9 +330,7 @@ export function WellInsightsPanel({
         if (cancelled) return;
         setProduction([]);
         setProductionError(
-          failure instanceof Error
-            ? failure.message
-            : "Could not load production for this well.",
+          readable(failure, "Could not load production for this well."),
         );
       });
 
@@ -607,7 +620,10 @@ export function WellInsightsPanel({
                      them. */
                   historyThrough={summary?.dates?.lastProduction ?? null}
                   loading={production === null && productionError === null}
-                  error={productionError}
+                  /* Silent when the record itself failed: one outage, one
+                     message at the top, rather than the same news repeated
+                     down the page. */
+                  error={error ? null : productionError}
                 />
               </div>
 
@@ -768,7 +784,7 @@ export function WellInsightsPanel({
                     </Note>
                   ))}
 
-                  {insightsError && (
+                  {insightsError && !error && (
                     <Note tone="red" icon={ArrowDown}>
                       {insightsError}
                     </Note>

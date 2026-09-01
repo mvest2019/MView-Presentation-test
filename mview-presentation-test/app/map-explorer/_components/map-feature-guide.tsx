@@ -531,7 +531,7 @@ export function MapFeatureGuide() {
               },
               {
                 icon: Download,
-                title: "Export CSV — what is in view",
+                title: "Export — what is in view",
                 body: "Writes whatever the current extent holds — the wells themselves past zoom 10, or the count bubbles above it. Pan, zoom and export; nothing has to be drawn or filtered first.",
               },
               {
@@ -610,9 +610,9 @@ export function MapFeatureGuide() {
                 },
                 {
                   icon: MapIcon,
-                  title: "What is in view — CSV",
+                  title: "What is in view — Excel",
                   body: "The toolbar's export takes the current extent as it stands: the wells past zoom 10, the counts above it.",
-                  note: "mineral-view-wells.csv",
+                  note: "mineral-view-wells.xlsx",
                 },
                 {
                   icon: ImageIcon,

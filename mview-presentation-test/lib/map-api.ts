@@ -186,6 +186,12 @@ export type MapCluster = {
   oilGas: number;
   name: string;
   topCounty: string;
+  /**
+   * Every county the cluster covers, largest first — the bubble is a square
+   * of the grid, not a county, so at the wider zooms it straddles a dozen of
+   * them. `topCounty` is the first of these.
+   */
+  countyNames?: string[];
   /** Null where the cluster has no producing wells to take shares of. */
   sharePct: { oil: number; gas: number; oilGas: number } | null;
 };

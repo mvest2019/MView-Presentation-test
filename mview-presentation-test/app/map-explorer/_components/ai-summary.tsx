@@ -53,6 +53,29 @@ type State =
     }
   | { kind: "error"; message: string };
 
+/**
+ * The model's failure, said in one line.
+ *
+ * What comes back from the provider is written for whoever wired the key up:
+ * a quota refusal arrives as three sentences, two documentation URLs and a
+ * retry delay to nine decimal places. On a phone that is a wall of red with
+ * links nobody can follow. The cases worth telling apart are named here; the
+ * rest is passed through, trimmed.
+ */
+function readable(message: string): string {
+  if (/quota|rate.?limit|429|exceeded/i.test(message)) {
+    return "The summary service is over its quota for the moment. Try Regenerate in a minute.";
+  }
+  if (/failed to fetch|networkerror|502|503|timeout|timed out/i.test(message)) {
+    return "The summary service did not answer. Try Regenerate in a moment.";
+  }
+
+  /* Whatever else it was, without the links: a URL in a paragraph this narrow
+     wraps to four lines and cannot be clicked anyway. */
+  const plain = message.replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ").trim();
+  return plain.length > 180 ? `${plain.slice(0, 177)}…` : plain;
+}
+
 export function AiSummary({
   api,
   endpoint,
@@ -129,24 +152,32 @@ export function AiSummary({
   const findings = state.kind === "ready" ? (state.summary.findings ?? []) : [];
 
   return (
-    <section className="rounded-xl border border-mv-line bg-mv-bg p-3 lg:p-4">
-      {/* ---------------- what this is ---------------- */}
-      <div className="flex items-center gap-[10px] pb-3">
+    <section className="@container rounded-xl border border-mv-line bg-mv-bg p-3 lg:p-4">
+      {/* ---------------- what this is ----------------
+          The caption sits beside the heading where there is room for it and
+          under it where there is not. Held on one line it squeezed "AI
+          Summary" into two words on two lines with the caption in a column
+          beside it. */}
+      <div className="flex items-start gap-[10px] pb-3 @md:items-center">
         <span
           aria-hidden="true"
           className="grid h-[28px] w-[28px] shrink-0 place-items-center rounded-lg bg-mv-mint text-mv-green-deep"
         >
           <Sparkles size={15} strokeWidth={2} />
         </span>
-        <h2 className="text-[14.5px] font-bold leading-none text-mv-ink">
-          AI Summary
-        </h2>
-        <p className="text-[11.5px] leading-none text-mv-muted">{caption}</p>
+        <div className="min-w-0 flex-1 @md:flex @md:items-center @md:gap-[10px]">
+          <h2 className="whitespace-nowrap text-[14.5px] font-bold leading-none text-mv-ink">
+            AI Summary
+          </h2>
+          <p className="mt-[4px] text-[11.5px] leading-snug text-mv-muted @md:mt-0 @md:leading-none">
+            {caption}
+          </p>
+        </div>
       </div>
 
       <div className="rounded-xl border border-mv-line bg-white">
         {/* ---------------- which well, and when it was read ------------- */}
-        <div className="flex flex-wrap items-start gap-x-4 gap-y-3 border-b border-mv-line px-4 py-[14px]">
+        <div className="flex flex-wrap items-start gap-x-4 gap-y-3 border-b border-mv-line px-4 py-[14px] @md:flex-nowrap">
           <span
             aria-hidden="true"
             className="grid h-[32px] w-[32px] shrink-0 place-items-center rounded-lg bg-mv-mint text-mv-green-deep"
@@ -163,7 +194,9 @@ export function AiSummary({
             </span>
           </span>
 
-          <span className="ml-auto text-right">
+          {/* Narrow, this is a row of its own under the name — held beside it
+              the name had about forty pixels to wrap in. */}
+          <span className="w-full text-right @md:ml-auto @md:w-auto">
             <button
               type="button"
               disabled={loading}
@@ -207,8 +240,13 @@ export function AiSummary({
 
         {state.kind === "error" && (
           <div className="px-4 py-[16px]">
-            <p role="alert" className="text-[12.5px] leading-snug text-mv-red">
-              {state.message}
+            <p
+              role="alert"
+              /* `break-words`: whatever survives the tidy-up may still be one
+                 long token, and a panel this narrow has nowhere to put it. */
+              className="break-words text-[12.5px] leading-snug text-mv-red"
+            >
+              {readable(state.message)}
             </p>
             <p className="mt-[6px] text-[11.5px] leading-snug text-mv-muted">
               The record above is unaffected — it comes from the map service,

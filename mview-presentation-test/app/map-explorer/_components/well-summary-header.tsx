@@ -83,6 +83,32 @@ export function WellSummaryHeader({
   const target = isPermit ? permitExport : completionExport;
   const noun = isPermit ? "permit" : "completion";
 
+  /*
+   * The way out of a record. Without it the only way to empty this side of
+   * the page was to find another well to click.
+   *
+   * Written once and placed twice: narrow, it belongs in the top right beside
+   * the title, where a cross is always looked for. Wide, it belongs at the end
+   * of the actions row after Export and the timestamp. Only one of the two is
+   * ever rendered — the other is `display: none`, so nothing is announced
+   * twice.
+   */
+  const closeButton = onClose ? (
+    <button
+      type="button"
+      onClick={onClose}
+      aria-label="Close this summary"
+      title="Close"
+      /* A button, not a bare glyph: the panel's ground is the same pale grey
+         as the page, so an unbacked cross read as part of the timestamp
+         beside it. White on a border, like Export PDF next to it, and red
+         only on the way out. */
+      className="grid h-[30px] w-[30px] shrink-0 cursor-pointer place-items-center rounded-lg border border-mv-line bg-white text-mv-slate hover:border-mv-red hover:bg-mv-red-bg hover:text-mv-red"
+    >
+      <X size={15} strokeWidth={2.5} aria-hidden="true" />
+    </button>
+  ) : null;
+
   return (
     /*
      * A container, like the band below it: this line sits in a panel that is a
@@ -93,21 +119,25 @@ export function WellSummaryHeader({
      */
     <div className="@container">
       <div className="flex flex-col gap-3 @xl:flex-row @xl:items-center @xl:gap-4">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-            <h2 className="text-[19px] font-extrabold leading-tight text-mv-ink">
-              Well Summary
-            </h2>
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+              <h2 className="text-[19px] font-extrabold leading-tight text-mv-ink">
+                Well Summary
+              </h2>
 
-            {/* Which record this is, said rather than offered: the well's own
+              {/* Which record this is, said rather than offered: the well's own
                 label decides it, so there is nothing here to pick. */}
-            <span className="rounded-full bg-mv-mint px-[9px] py-[4px] text-[10px] font-extrabold uppercase leading-none tracking-[.08em] text-mv-green-deep">
-              {record}
-            </span>
+              <span className="rounded-full bg-mv-mint px-[9px] py-[4px] text-[10px] font-extrabold uppercase leading-none tracking-[.08em] text-mv-green-deep">
+                {record}
+              </span>
+            </div>
+            <p className="mt-[3px] text-[11.5px] text-mv-slate">
+              Comprehensive overview of well performance and reserves
+            </p>
           </div>
-          <p className="mt-[3px] text-[11.5px] text-mv-slate">
-            Comprehensive overview of well performance and reserves
-          </p>
+
+          <span className="@xl:hidden">{closeButton}</span>
         </div>
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 @xl:ml-auto @xl:flex-nowrap">
@@ -133,23 +163,7 @@ export function WellSummaryHeader({
             <Clock size={13} strokeWidth={1.75} aria-hidden="true" />
           </span>
 
-          {/* The way out of a record. Without it the only way to empty this
-              side of the page was to find another well to click. */}
-          {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close this summary"
-              title="Close"
-              /* A button, not a bare glyph: the panel's ground is the same
-                 pale grey as the page, so an unbacked cross read as part of
-                 the timestamp beside it. White on a border, like Export PDF
-                 next to it, and red only on the way out. */
-              className="grid h-[30px] w-[30px] shrink-0 cursor-pointer place-items-center rounded-lg border border-mv-line bg-white text-mv-slate hover:border-mv-red hover:bg-mv-red-bg hover:text-mv-red"
-            >
-              <X size={15} strokeWidth={2.5} aria-hidden="true" />
-            </button>
-          )}
+          <span className="hidden @xl:block">{closeButton}</span>
         </div>
       </div>
     </div>

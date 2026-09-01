@@ -128,12 +128,15 @@ const COLUMNS: {
   /** Columns the server will not order by, so the header is plain text. */
   sortable?: boolean;
 }[] = [
-  { key: "api", label: "API", width: "w-[11%]", sortable: false },
-  { key: "operator", label: "Operator", width: "w-[14%]" },
-  { key: "lease", label: "Lease", width: "w-[16%]" },
-  { key: "type", label: "Type", width: "w-[11%]", sortable: false },
-  { key: "status", label: "Status", width: "w-[13%]", sortable: false },
-  { key: "county", label: "County", width: "w-[11%]" },
+  { key: "api", label: "API", width: "w-[10%]", sortable: false },
+  { key: "operator", label: "Operator", width: "w-[13%]" },
+  { key: "lease", label: "Lease", width: "w-[15%]" },
+  /* The widest of the short columns: its values are phrases — "Injection /
+     Disposal from Oil" — and at the old width every one of them wrapped to
+     three lines, which set the height of the row it was in. */
+  { key: "type", label: "Type", width: "w-[15%]", sortable: false },
+  { key: "status", label: "Status", width: "w-[12%]", sortable: false },
+  { key: "county", label: "County", width: "w-[10%]" },
   {
     key: "oil",
     label: "Producing Oil (bbl)",
@@ -433,9 +436,17 @@ export function WellsTable({
   const firstShown = total ? (safePage - 1) * PER_PAGE + 1 : 0;
   const lastShown = Math.min(safePage * PER_PAGE, total);
 
+  /*
+   * What the table is filtered by — the applied set, never the draft.
+   *
+   * Built from `facets`, a chip appeared the moment a box was ticked, under a
+   * heading reading "Applied", above rows that were still unfiltered and
+   * beside a button offering to apply the very thing the chip said was
+   * already on. Ticking is a draft; this row is what Apply made of it.
+   */
   const chips = [
     ...FACETS.flatMap(({ key, label }) =>
-      [...facets[key]].map((value) => ({ key, label, value })),
+      [...appliedFacets[key]].map((value) => ({ key, label, value })),
     ),
   ];
 
@@ -446,21 +457,23 @@ export function WellsTable({
    * out of this row meant a table narrowed to wells making 1–10 bbl that said
    * only "County ANDREWS" above it. A range needs both ends to be a range, so
    * a half-filled pair shows nothing — the same rule the pill's badge counts by.
+   *
+   * From the applied ranges, for the same reason the chips above are.
    */
   const rangeChips = [
     {
       stream: "oil" as const,
       label: "Producing oil",
       unit: "bbl",
-      min: production.oilMin,
-      max: production.oilMax,
+      min: appliedProduction.oilMin,
+      max: appliedProduction.oilMax,
     },
     {
       stream: "gas" as const,
       label: "Producing gas",
       unit: "mcf",
-      min: production.gasMin,
-      max: production.gasMax,
+      min: appliedProduction.gasMin,
+      max: appliedProduction.gasMax,
     },
   ].filter(({ min, max }) => min.trim() !== "" && max.trim() !== "");
 
@@ -1009,10 +1022,7 @@ export function WellsTable({
                   {missing(row.wtype) ? (
                     <span className="text-[13px] text-mv-muted">N/A</span>
                   ) : (
-                    <span className="inline-flex items-center gap-[6px] rounded-full bg-[#eef1ee] px-[10px] py-[3px] text-[12px] font-medium text-mv-slate">
-                      <Dot color={TYPE_DOT[row.wtype] ?? DOT_GREY} />
-                      {row.wtype}
-                    </span>
+                    <TypePill wtype={row.wtype} />
                   )}
                 </td>
                 <td className="px-4 py-[14px] text-[13px] text-mv-slate">
@@ -1321,12 +1331,70 @@ function FilterDropdown({
 /** Anything the API reports that is not listed here falls back to grey. */
 const DOT_GREY = "#9ca3af";
 
-const TYPE_DOT: Record<string, string> = {
-  Oil: "#3f9d76",
-  Gas: "#d1584f",
-  "Oil or Gas": "#b45309",
-  Injection: "#4a7fbf",
-};
+/*
+ * The families a well type falls into, and how each one reads.
+ *
+ * Matched on the phrase rather than looked up whole: the API sends
+ * "Plugged Oil", "Plugged Oil / Gas", "Injection / Disposal from Oil" and a
+ * dozen more, and a table of exact spellings only ever colours the four it
+ * happens to list — every other row came out grey, which said the map's
+ * colour-coded legend and this column were describing different data.
+ *
+ * Order matters: "Plugged Oil" is plugged before it is oil.
+ */
+const TYPE_LOOKS: { test: RegExp; dot: string; text: string; bg: string }[] = [
+  {
+    test: /plugged|abandon|cancel/i,
+    dot: "#9ca3af",
+    text: "#6b7280",
+    bg: "#f1f2f4",
+  },
+  {
+    test: /inject|disposal|water|brine/i,
+    dot: "#4a7fbf",
+    text: "#3a6395",
+    bg: "#ecf2fa",
+  },
+  { test: /dry/i, dot: "#8b6d4a", text: "#7a5f3f", bg: "#f6f1ea" },
+  {
+    test: /oil\s*(\/|or|&|and)\s*gas/i,
+    dot: "#b45309",
+    text: "#96470a",
+    bg: "#fdf3e4",
+  },
+  { test: /gas/i, dot: "#d1584f", text: "#b34a42", bg: "#fdeceb" },
+  { test: /oil/i, dot: "#3f9d76", text: "#2f7d5d", bg: "#eaf5ef" },
+];
+
+const TYPE_FALLBACK = { dot: DOT_GREY, text: "#6b7280", bg: "#eef1ee" };
+
+/**
+ * One well type, as a pill.
+ *
+ * Kept to a single line — a wrapped pill is a three-line row beside eight
+ * one-line ones — and cut with an ellipsis when the phrase outruns the
+ * column, with the whole of it on hover and in the accessible name.
+ */
+function TypePill({ wtype }: { wtype: string }) {
+  const look = TYPE_LOOKS.find(({ test }) => test.test(wtype)) ?? TYPE_FALLBACK;
+
+  return (
+    <span
+      title={wtype}
+      style={{ backgroundColor: look.bg, color: look.text }}
+      /* A width in pixels, not `max-w-full`: the table lays itself out from
+         its content, so a cell is as wide as what is in it and "full" is
+         whatever the pill already grew to — the ellipsis never came, and one
+         long phrase pushed the column over the ones beside it. */
+      className="inline-flex max-w-[150px] items-center gap-[6px] rounded-full px-[10px] py-[4px] text-[12px] font-medium xl:max-w-[200px]"
+    >
+      <Dot color={look.dot} />
+      {/* `min-w-0`: a flex item will not shrink below its content without it,
+          so the ellipsis never appeared and the pill pushed the column wide. */}
+      <span className="min-w-0 truncate">{wtype}</span>
+    </span>
+  );
+}
 
 const STATUS_DOT: Record<string, string> = {
   Producing: "#3f9d76",
