@@ -1,17 +1,11 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-
+import { PortalDemoStateMenu } from "./portal-demo-state-menu";
 import { PortalIcon } from "./portal-icon";
 import { PortalProfileMenu } from "./portal-profile-menu";
 import { usePortalState } from "./portal-state-provider";
 import { demoDisclosure } from "../_lib/portal-demo-data";
-import {
-  FUNNEL_LABEL,
-  FUNNEL_PLAN,
-  nextFunnelState,
-} from "../_lib/portal-state";
+import { FUNNEL_PLAN } from "../_lib/portal-state";
 
 /**
  * The portal top bar.
@@ -23,7 +17,7 @@ import {
  *   The "Fictional demo" chip — mobile only, where the sidebar foot's
  *     disclosure is off screen. Every screen has to say the account is not real.
  *   A spacer.
- *   The demo state cycler, which walks the five funnel states in funnel order.
+ *   The demo state menu, which picks any of the five funnel states.
  *   The alerts bell with its unread badge.
  *   The plan pill.
  *   The avatar and its account menu.
@@ -47,16 +41,6 @@ export function PortalTopNav({
   onOpenDrawer: () => void;
 }) {
   const { funnelState } = usePortalState();
-  const pathname = usePathname();
-  const params = useSearchParams();
-
-  // The cycler is a LINK to the next state rather than a click handler: the
-  // state is a URL parameter, so walking the funnel stays bookmarkable and the
-  // browser's Back button steps back through the states.
-  const next = nextFunnelState(funnelState);
-  const nextParams = new URLSearchParams(params.toString());
-  nextParams.set("state", next);
-  const cyclerHref = `${pathname}?${nextParams.toString()}`;
 
   return (
     <div className="app-top">
@@ -87,17 +71,10 @@ export function PortalTopNav({
 
       <span className="spacer" />
 
-      {/* v50 · D-012 — the cycler walks five states in FUNNEL order:
-          unclaimed → claimed → trial → lapsed → paid. The label names the
-          state you are IN, not the one you are going to. */}
-      <Link
-        href={cyclerHref}
-        className="btn btn-ghost btn-sm"
-        title="Prototype demo — walk the five owner funnel states"
-        scroll={false}
-      >
-        {FUNNEL_LABEL[funnelState]} ▾
-      </Link>
+      {/* v50 · D-012 — the five states in FUNNEL order: unclaimed → claimed →
+          trial → lapsed → paid. The button names the state you are IN, and the
+          dropdown lets you pick any of them directly. */}
+      <PortalDemoStateMenu />
 
       {/* The Alerts module is not built, so the bell reports the count without
           claiming to open anything. It becomes a Link the moment that page

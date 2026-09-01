@@ -419,7 +419,8 @@
   gap: 2px;
 }
 
-.mv-portal .v41-avmenu a[role="menuitem"] {
+.mv-portal .v41-avmenu a[role="menuitem"],
+.mv-portal .v41-avmenu a[role="menuitemradio"] {
   display: flex;
   align-items: center;
   gap: 9px;
@@ -431,9 +432,76 @@
   text-decoration: none;
 }
 
-.mv-portal .v41-avmenu a[role="menuitem"]:hover {
+.mv-portal .v41-avmenu a[role="menuitem"]:hover,
+.mv-portal .v41-avmenu a[role="menuitemradio"]:hover {
   background: #f0faf5;
   text-decoration: none;
+}
+
+/* ----------------------------------------------------------------------------
+   THE DEMO STATE MENU
+
+   The top bar's demo control was a one-step cycler: one click advanced to the
+   next funnel state, so reaching `lapsed` from `unclaimed` took three. It is a
+   dropdown now (requested) listing all five, each a direct pick.
+
+   It REUSES `.v41-avmenu` for its panel — same border, radius, shadow, padding
+   and hover as the account menu — so only what genuinely differs is declared
+   here: a narrower panel, and two-line rows, because each option carries the
+   plan line that says what the state actually means.
+   ---------------------------------------------------------------------------- */
+.mv-portal .mv-demo-menu {
+  width: 246px;
+  /* DIRECTLY BELOW ITS OWN BUTTON. `.v41-avmenu` uses `top: 44px`, a figure
+     tuned for the 32px avatar; against the shorter `btn-sm` demo button that
+     left a 14px gap floating under it. `100%` is the wrapper's height, which is
+     the button's, so this stays correct if the button's size ever changes. The
+     4px keeps the panel's shadow off the button instead of merging with it. */
+  top: calc(100% + 4px);
+}
+
+/* NO LEADING SEPARATOR. `.v41-avsec` carries `border-top` and `margin-top`
+   because in the account menu it divides the menu items above from the
+   default-view picker below. Here the heading is the panel's FIRST child, so
+   there is nothing above to separate and that border drew a rule across an empty
+   15px strip at the top of the dropdown. */
+.mv-portal .mv-demo-menu .v41-avsec:first-child {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 4px;
+}
+
+.mv-portal .mv-demo-menu a[role="menuitemradio"] {
+  align-items: flex-start;
+  gap: 8px;
+  font-weight: 600;
+}
+
+/* The tick column is always present, on every row, so the labels stay on one
+   left edge instead of shifting by 14px as the selection moves. */
+.mv-portal .mv-demo-tick {
+  flex: none;
+  width: 12px;
+  color: var(--green-deep);
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.mv-portal .mv-demo-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mv-portal .mv-demo-plan {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.mv-portal .mv-demo-menu a[role="menuitemradio"][aria-checked="true"] {
+  background: var(--mint);
 }
 
 .mv-portal .v41-avmenu .mvi {
@@ -538,6 +606,17 @@
    189px of the 248px available, so nothing clips and nothing overflows. Columns
    are then slightly uneven, which is the right trade — an unreadable tab is
    worse than an unequal one. */
+/* THE GAP LIVES HERE, not in section 3's `.v41-avviews` block, because
+   `.mv-portal .view-switch` sets `gap: 2px` at the same specificity — so an
+   override only wins from further down the file. 2px was the design's value for
+   the full-width pill; inside a 280px panel at 11px it read as four labels
+   touching. 7px separates them without the row outgrowing the panel: four short
+   labels come to ~151px of text, plus 8px of padding each and 21px of gaps,
+   against ~242px of usable row. */
+.mv-portal .v41-avviews {
+  gap: 7px;
+}
+
 .mv-portal .v41-avviews button,
 .mv-portal .v41-avviews a {
   flex: 1 1 auto;
@@ -2390,6 +2469,22 @@
   .mv-portal #mvPinBar .pin-note {
     width: 100%;
     white-space: normal;
+  }
+
+  /* THE DEMO MENU FLIPS TO LEFT-ANCHORED once the top bar wraps.
+
+     `.v41-avmenu` is `right: 0`, which is correct for the account menu because
+     the avatar sits at the far right of the bar. The demo button does not: at
+     these widths the bar wraps and the button starts a new row at the left
+     padding, so right-anchoring a 280px panel to a button whose right edge is
+     at 187px put its left edge at -93px — 93px of the menu off the side of the
+     screen, unreachable. Measured at 375px.
+
+     Left-anchored instead, and the panel's width is already capped at
+     `min(280px, 100vw - 24px)` below, so it cannot run off the other edge. */
+  .mv-portal .mv-demo-menu {
+    left: 0;
+    right: auto;
   }
 
   .mv-portal #dashcols {
