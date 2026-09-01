@@ -1,0 +1,44 @@
+{
+ "generated_utc": "2026-07-29T03:01:07+00:00",
+ "source": "U.S. Energy Information Administration",
+ "basis": "End-of-day spot settlements. Not live prices.",
+ "items": [
+  {
+   "label": "WTI",
+   "value": 84.38,
+   "display": "$84.38",
+   "unit": "$/bbl",
+   "as_of": "2026-07-20",
+   "lag_days": 8,
+   "desc": "WTI Cushing spot"
+  },
+  {
+   "label": "NAT GAS",
+   "value": 2.8,
+   "display": "$2.800",
+   "unit": "$/MMBtu",
+   "as_of": "2026-07-20",
+   "lag_days": 8,
+   "desc": "Henry Hub spot"
+  },
+  {
+   "label": "BRENT",
+   "value": 86.99,
+   "display": "$86.99",
+   "unit": "$/bbl",
+   "as_of": "2026-07-20",
+   "lag_days": 8,
+   "desc": "Brent Europe spot"
+  },
+  {
+   "label": "PROPANE",
+   "value": 0.726,
+   "display": "$0.726",
+   "unit": "$/gal",
+   "as_of": "2026-07-20",
+   "lag_days": 8,
+   "desc": "Mont Belvieu propane spot"
+  }
+ ],
+ "omitted": []
+}
