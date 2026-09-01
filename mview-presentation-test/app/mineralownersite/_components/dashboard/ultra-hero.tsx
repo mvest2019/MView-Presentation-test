@@ -1,3 +1,4 @@
+import { formatLakhs } from "../../_lib/format-lakhs";
 import { portfolio } from "../../_lib/portal-demo-data";
 
 /**
@@ -29,7 +30,8 @@ export function UltraHero() {
       <p className="u-kicker">Your minerals</p>
 
       <h2 className="u-headline">
-        Worth about <strong className="cl-lock">{portfolio.estimate}</strong>
+        Worth about{" "}
+        <strong className="cl-lock">{formatLakhs(portfolio.estimate)}</strong>
       </h2>
 
       <p className="u-kicker cl-only" style={{ margin: "-8px 0 14px" }}>

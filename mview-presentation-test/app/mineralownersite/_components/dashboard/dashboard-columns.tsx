@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { PortalIcon } from "../portal-icon";
+import { formatLakhs } from "../../_lib/format-lakhs";
 import {
   leaseSnapshot,
   operatorSignals,
@@ -223,7 +224,9 @@ function EstimateByLeaseCard() {
       </div>
 
       <div className="chart-kpi">
-        <span className="ck-val num cl-lock">{portfolio.estimate}</span>
+        <span className="ck-val num cl-lock">
+          {formatLakhs(portfolio.estimate)}
+        </span>
         <span className="ck-lbl">
           total owner-share MVestimate · all {portfolio.leaseCount} leases ·
           six-year projection
@@ -240,7 +243,7 @@ function EstimateByLeaseCard() {
                   {lease.lease} · {lease.county}
                 </span>
                 <span className="num cl-lock" style={{ fontWeight: 700 }}>
-                  {lease.estimate}
+                  {formatLakhs(lease.estimate)}
                 </span>
               </div>
               <div
@@ -405,8 +408,10 @@ function RawSnapshotCard() {
                 <td>{lease.lease}</td>
                 <td>{lease.county}</td>
                 <td className="right num">{lease.decimal}</td>
-                <td className="right num cl-lock">{lease.estimate}</td>
-                <td className="right num">{lease.gas}</td>
+                <td className="right num cl-lock">
+                  {formatLakhs(lease.estimate)}
+                </td>
+                <td className="right num">{formatLakhs(lease.gas)}</td>
                 <td className="right num">{lease.oil}</td>
                 <td className="right num">{lease.boe}</td>
               </tr>
@@ -458,7 +463,7 @@ function WatchedThisMonthCard() {
                 color: row.highlight ? "var(--green-deep)" : undefined,
               }}
             >
-              {row.value}
+              {formatLakhs(row.value)}
             </strong>
           </div>
         ))}
@@ -548,7 +553,7 @@ function ReferralCard() {
     <div className="card card-pad hide-s" style={{ borderTop: "3px solid var(--green)" }}>
       <div className="between">
         <h4>Invite co-owners — earn renewal credits</h4>
-        <strong className="num">{referral.earned}</strong>
+        <strong className="num">{formatLakhs(referral.earned)}</strong>
       </div>
 
       <p className="tiny muted" style={{ marginTop: 4 }}>

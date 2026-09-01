@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { formatLakhs } from "../../_lib/format-lakhs";
 import { sampleOwner } from "../../_lib/portal-demo-data";
 
 /**
@@ -134,7 +135,7 @@ export function SampleDashboard() {
           {sampleOwner.kpis.map((kpi) => (
             <div className="kpi" style={{ boxShadow: "none" }} key={kpi.label}>
               <div className="k-label">{kpi.label}</div>
-              <div className="k-val num">{kpi.value}</div>
+              <div className="k-val num">{formatLakhs(kpi.value)}</div>
               <div className="k-sub">
                 {kpi.delta ? (
                   <>

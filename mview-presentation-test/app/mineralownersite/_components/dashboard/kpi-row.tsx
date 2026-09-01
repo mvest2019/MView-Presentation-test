@@ -1,3 +1,4 @@
+import { formatLakhs } from "../../_lib/format-lakhs";
 import { dashboardKpis, type DashboardKpi } from "../../_lib/portal-demo-data";
 
 /**
@@ -37,7 +38,7 @@ function KpiCard({ kpi }: { kpi: DashboardKpi }) {
       </div>
 
       <div className={`k-val num${kpi.locked ? " cl-lock" : ""}`}>
-        {kpi.value}
+        {formatLakhs(kpi.value)}
         {kpi.valueSuffix && (
           <span style={{ fontSize: 15, color: "var(--muted)", marginLeft: 6 }}>
             {kpi.valueSuffix}

@@ -1,3 +1,4 @@
+import { formatLakhs } from "../../_lib/format-lakhs";
 import { demoOwner, portfolio } from "../../_lib/portal-demo-data";
 
 /**
@@ -25,7 +26,9 @@ export function PortfolioStrip() {
     <div className="pf-strip" style={{ marginBottom: 12 }}>
       <div className="pf-cell">
         <div className="pf-label">Your value · MVestimate</div>
-        <div className="pf-val big num cl-lock">{portfolio.estimate}</div>
+        <div className="pf-val big num cl-lock">
+          {formatLakhs(portfolio.estimate)}
+        </div>
         <div className="pf-sub">
           six-year owner share · Estimate — not an appraisal
         </div>
@@ -45,7 +48,7 @@ export function PortfolioStrip() {
       <div className="pf-cell">
         <div className="pf-label">Gas posted this week</div>
         <div className="pf-val num">
-          {portfolio.gasThisWeek}{" "}
+          {formatLakhs(portfolio.gasThisWeek)}{" "}
           <span className="pf-val-s">{portfolio.gasUnit}</span>
         </div>
         <div className="pf-sub">
@@ -57,7 +60,9 @@ export function PortfolioStrip() {
           calmer densities do not carry it. */}
       <div className="pf-cell hide-s">
         <div className="pf-label">County appraised (2026)</div>
-        <div className="pf-val num">{portfolio.countyAppraised}</div>
+        <div className="pf-val num">
+          {formatLakhs(portfolio.countyAppraised)}
+        </div>
         <div className="pf-sub">
           the county&apos;s annual tax value, all {portfolio.leaseCount} leases
         </div>

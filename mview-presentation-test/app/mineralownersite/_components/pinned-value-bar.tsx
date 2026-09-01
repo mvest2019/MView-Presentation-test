@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { getSpotPrices } from "../_lib/spot-prices";
+import { formatLakhs } from "../_lib/format-lakhs";
 import { portfolio } from "../_lib/portal-demo-data";
 
 /**
@@ -54,7 +55,9 @@ export async function PinnedValueBar() {
         {/* `.cl-lock` is the opt-in that state 3 blurs. It is on this one figure
             and nothing else in the bar: the spot prices beside it stay sharp,
             because they are public market data, not the owner's. */}
-        <span className="pin-val num cl-lock">{portfolio.estimate}</span>
+        <span className="pin-val num cl-lock">
+          {formatLakhs(portfolio.estimate)}
+        </span>
         <span className="pin-sub hide-s">{portfolio.estimateBasis}</span>
         <span className="pin-sub lp-only">
           portfolio total on hold — Premium
