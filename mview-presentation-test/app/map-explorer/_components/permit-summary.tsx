@@ -203,9 +203,17 @@ export function PermitSummary({
           </div>
         </div>
 
-        <div className="mt-3">
+        {/*
+          At tablet width the six cards below are one two-column flow, not two
+          groups of their own: grouped, the third card of the first group had
+          nothing to pair with and took a row to itself while the group under
+          it started again. The two wrappers become `contents` at that width —
+          they generate no box, so their cards become cells of this grid — and
+          return to being groups where there is room for three across.
+        */}
+        <div className="mt-3 @2xl:grid @2xl:grid-cols-2 @2xl:gap-3 @4xl:block">
           {/* ---------------- three across ---------------- */}
-          <div className="grid gap-3 @4xl:grid-cols-3">
+          <div className="grid gap-3 @2xl:contents @4xl:grid @4xl:grid-cols-3">
             <Card icon={FileText} title="Lease & Well">
               <Rows rows={fields?.leaseWell ?? blank(LEASE_WELL_LABELS)} />
             </Card>
@@ -222,12 +230,15 @@ export function PermitSummary({
             page — an operator name with its number, a field name with its own —
             and the two short cards stack in the other half rather than each
             taking a column of its own and leaving most of it empty. */}
-          <div className="mt-3 grid gap-3 @2xl:grid-cols-2">
+          <div className="mt-3 grid gap-3 @2xl:contents @4xl:mt-3 @4xl:grid @4xl:grid-cols-2">
             <Card icon={UserRound} title="Operator, Field & Area">
               <Rows rows={fields?.operatorField ?? blank(OPERATOR_LABELS)} />
             </Card>
 
-            <div className="flex flex-col gap-3">
+            {/* The two short cards share the operator card's half where there
+                is room for three columns, and take a row of their own — one
+                each — at the width where there are two. */}
+            <div className="flex flex-col gap-3 @2xl:contents @4xl:flex">
               <Card icon={MapPin} title="Location Coordinates">
                 <dl className="mt-[10px]">
                   {(fields?.coordinates ?? blank(COORDINATE_LABELS)).map(
@@ -248,8 +259,12 @@ export function PermitSummary({
             </div>
           </div>
 
-          {/* ---------------- the filing itself, then the read on it ------- */}
-          <div className="mt-3">
+          {/* ---------------- the filing itself, then the read on it -------
+              Full width, both of them: the grid above pairs the six cards,
+              and these two are not cards — one is a table that scrolls and
+              the other a written page, and half a column is not enough for
+              either. */}
+          <div className="mt-3 @2xl:col-span-2">
             <PermitDetailsTable
               columns={fields?.table ?? blank(TABLE_LABELS)}
             />
@@ -257,7 +272,7 @@ export function PermitSummary({
 
           {/* Written from the same filing the cards above draw, by way of
               `/api/permit-summary` — the key stays on the server. */}
-          <div className="mt-3">
+          <div className="mt-3 @2xl:col-span-2">
             <AiSummary
               api={well.api}
               endpoint="/api/permit-summary"
@@ -338,6 +353,10 @@ function Card({
 }) {
   return (
     <div
+      /* A page of the PDF may end at the foot of any card — as on the
+         completion side, where guessing the depth instead cut a card in
+         half. */
+      data-page-block=""
       className={`rounded-xl border border-mv-line bg-white p-4 ${className}`}
     >
       <div className="flex items-center gap-2">

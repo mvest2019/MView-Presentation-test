@@ -527,7 +527,7 @@ export function WellInsightsPanel({
               </div>
 
               {/* ---------------- well · lease · operator ---------------- */}
-              <div className="mt-3 grid gap-3 @4xl:grid-cols-3">
+              <div className="mt-3 grid gap-3 @2xl:grid-cols-2 @4xl:grid-cols-3">
                 <Card icon={Info} title="Well Information">
                   <Rows
                     rows={fields?.wellInformation ?? blank(WELL_INFO_LABELS)}
@@ -544,6 +544,10 @@ export function WellInsightsPanel({
                   icon={Layers}
                   title="Wellbore"
                   badge={fields?.wellboreKind ?? WELLBORE.kind}
+                  /* Two columns is an odd number of cards short: at tablet
+                     width this one is the third of three, so it takes the row
+                     under the other two rather than half of one. */
+                  className="@2xl:col-span-2 @4xl:col-span-1"
                 >
                   {/* Drawn to the record's own profile: a vertical hole is not
                   illustrated with a mile of lateral. */}
@@ -557,7 +561,7 @@ export function WellInsightsPanel({
               </div>
 
               {/* ---------------- activity · location · wellbore ---------------- */}
-              <div className="mt-3 grid gap-3 @4xl:grid-cols-3">
+              <div className="mt-3 grid gap-3 @2xl:grid-cols-2 @4xl:grid-cols-3">
                 <Card
                   icon={FileText}
                   title="Latest Well Activity and Production"
@@ -604,7 +608,13 @@ export function WellInsightsPanel({
                   </div>
                 </Card>
 
-                <div className="flex flex-col gap-3">
+                <div
+                  /* One under the other in the third column where there are
+                     three, and side by side across the row at the width where
+                     there are two — stacked full width they were two short
+                     cards with a page of empty line beside each. */
+                  className="grid gap-3 @2xl:col-span-2 @2xl:grid-cols-2 @4xl:col-span-1 @4xl:grid-cols-1"
+                >
                   <Card icon={Building2} title="Operator Info">
                     <div className="mt-[10px] flex items-baseline justify-between gap-3 text-[12px]">
                       <span className="shrink-0 text-mv-muted">Operator</span>
@@ -813,7 +823,11 @@ export function WellInsightsPanel({
           chart takes the whole width rather than sitting beside an empty box.
         */}
                 <div
-                  className={`grid gap-4 rounded-xl border border-mv-line bg-white p-4 @4xl:col-span-2 @4xl:gap-6 ${
+                  /* The width of the row, at every size the row has more
+                     than one column: it is a chart with a reading beside it,
+                     and half a column left it a stack of bars with a page of
+                     nothing next to them. */
+                  className={`grid gap-4 rounded-xl border border-mv-line bg-white p-4 @2xl:col-span-2 @4xl:gap-6 ${
                     cohortNotes.length > 0 ? "@4xl:grid-cols-2" : ""
                   }`}
                 >
