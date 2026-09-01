@@ -39,6 +39,20 @@ import type { WhatChangedPanel } from "@/lib/operator-what-changed-api";
  * service is unreachable or timed out.
  */
 
+/**
+ * One clean sentence out of whatever the service reported — DEFECT 134.
+ *
+ * Strips trailing separators and whitespace and guarantees a full stop, so a
+ * detail arriving as "The analysis service could not be reached.:" or with a
+ * dangling colon does not reach the page that way. A message that says nothing
+ * falls back to a sentence that does.
+ */
+function tidyDetail(detail: string): string {
+  const trimmed = (detail ?? "").trim().replace(/[\s:;,\-–—]+$/u, "");
+  if (trimmed === "") return "The analysis could not be loaded just now.";
+  return /[.!?]$/u.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
 /** Rows the skeleton draws — the contract is always six. */
 const SKELETON_ROWS = 6;
 
@@ -125,10 +139,29 @@ function LockedPanel() {
           <p className="m-0 text-[15px] font-bold leading-snug text-mv-ink">
             What changed is part of a free account
           </p>
+          {/*
+            THE LAST SENTENCE USED TO READ "Everything else on this page stays free
+            to read", and gating the profile's lifetime figures made that false — the
+            reader could see it while four locked rows sat above it. OPERATORS.md §4
+            rule 5 is precisely this case: a lock notice that misdescribes the lock is
+            worse than none, and the directory has already been burned by the same
+            sentence once.
+
+            IT NAMES ONE SECTION, NOT THREE, and that narrowing is the second
+            correction. An earlier pass listed the production history, the lease book
+            and the county breakdown as free to read — true at the time, false as soon
+            as the two `Produced` columns in the lease and county tables were gated.
+            Production over time is now the only part of this page with no gate on any
+            field: `/operators/production-graph` takes no `member_id` and withholds
+            nothing (§4), so it is the one thing that can be promised in full.
+
+            "READ" AND "BROWSE" ARE NOT THE SAME PROMISE, which is why the other two
+            are described as browsable in their own notices rather than readable here.
+          */}
           <p className="m-0 mt-2 text-[13px] leading-relaxed text-mv-muted">
             Six ranked findings for this operator - what moved, by how much, and
             over which months - measured from the filed record and written up in
-            plain English. Everything else on this page stays free to read.
+            plain English. Production over time stays free to read in full.
           </p>
 
           <div className="mt-[18px] flex flex-wrap items-center justify-center gap-[10px]">
@@ -344,7 +377,24 @@ function WhatChangedPanel({
         role="alert"
         className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-mv-line bg-mv-bg px-[18px] py-4"
       >
-        <p className="m-0 text-[13.5px] text-mv-ink-soft">{loaded.detail}</p>
+        {/*
+          DEFECT 134 — the snap shows "The analysis service could not be reached.:"
+          — the sentence with a stray colon hanging off it, which is what a bare
+          `detail` produces when the source appends a separator it has nothing to
+          follow with. Trimmed to one clean sentence, and paired with a line saying
+          what it means for the rest of the page, so an unreachable analysis service
+          reads as one section being unavailable rather than as a broken profile.
+          The Retry beside it is unchanged and still the only way it is re-fetched.
+        */}
+        <div className="min-w-0">
+          <p className="m-0 text-[13.5px] font-semibold text-mv-ink-soft">
+            {tidyDetail(loaded.detail)}
+          </p>
+          <p className="m-0 mt-[3px] text-[12.5px] text-mv-muted">
+            Everything else on this profile is unaffected — production, leases and
+            the county breakdown all come from a different source.
+          </p>
+        </div>
         <button
           type="button"
           onClick={retry}

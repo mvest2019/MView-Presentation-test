@@ -33,9 +33,16 @@ export const ACTIVITY_PAGE_SIZE = 10;
 
 const REQUEST_TIMEOUT_MS = 20_000;
 
-/** The units the volume columns carry, printed in the headers. */
-export const OIL_UNIT = "bbl";
-export const GAS_UNIT = "Mcf";
+/**
+ * The units the volume columns carry, printed in the headers.
+ *
+ * DEFECT 141 — UPPERCASE. These read "bbl" and "Mcf" while every other unit on the
+ * profile was already capitalised — MBBL, MMCF, MMBBL, BCF, BOE, all of them the
+ * API's own spelling. Two lowercase ones among them read as a different kind of
+ * label rather than as the same kind of unit, which is what the snaps ringed.
+ */
+export const OIL_UNIT = "BBL";
+export const GAS_UNIT = "MCF";
 export const BOE_UNIT = "BOE";
 
 export interface WellPermitRecord {
@@ -44,7 +51,16 @@ export interface WellPermitRecord {
   leaseName: string;
   county: string;
   status: string;
-  /** e.g. Directional, Horizontal. Casing varies upstream; normalised for display. */
+  /**
+   * e.g. Directional, Horizontal — EXACTLY as the endpoint spelled it, trimmed only.
+   *
+   * CASING VARIES UPSTREAM AND IS NOT NORMALISED HERE. This doc used to say it was,
+   * which was wrong and cost a defect: Apache's filings carry `Horizontal` and
+   * `HORIZONTAL` and both `Vertical` and `VERTICAL`. The table has always passed this
+   * through `titleCase` on the way to the cell, so the inconsistency was invisible
+   * until defect 131's filter tried to group by it. Anything grouping or comparing
+   * these values must fold the case itself.
+   */
   wellboreProfile: string;
   /** Already formatted (`"Jul 3, 2025"`), or null when the API sent nothing. */
   submittedDate: string | null;
@@ -91,12 +107,19 @@ export interface ActivityResult<T> {
   rows: T[];
   total: number;
   /**
-   * True when the reader has no account and the rows were never fetched.
+   * True when the reader has no account, so some or all of the answer was withheld.
    *
-   * Only the filings read can return it — see
-   * `app/api/operators/recent-wells-permits/route.ts`. Distinct from an empty
-   * result on purpose: "this operator has filed nothing lately" and "filings need
-   * an account" are different sentences, and the section draws them differently.
+   * TWO READS RETURN IT, and they are gated differently — the flag means "a gate
+   * applied", not "there is nothing here":
+   *
+   *   filings (`/api/operators/recent-wells-permits`)  no rows at all; the upstream
+   *                                                    call is skipped entirely
+   *   county production (`/api/operators/production-by-county`)  every row present,
+   *                                                    with oil and gas masked
+   *
+   * Distinct from an empty result on purpose: "this operator has filed nothing
+   * lately" and "filings need an account" are different sentences, and the sections
+   * draw them differently.
    */
   locked?: boolean;
 }
@@ -301,7 +324,13 @@ export async function fetchCountyProduction(
   signal?: AbortSignal,
 ): Promise<ActivityResult<CountyProductionRecord>> {
   const payload = await post(
-    "/api/v1/operators/production-by-county",
+    /* THROUGH THIS SITE'S OWN ORIGIN, as of the county gate. This used to call
+       `/api/v1/operators/production-by-county` directly — the endpoint sends
+       `access-control-allow-origin: *` and takes no `member_id`, so the browser
+       could. It cannot any more: oil and gas are withheld from a signed-out reader,
+       and a mask applied anywhere but the server leaves the real figures in the
+       reader's network tab. See the route handler. */
+    "/api/operators/production-by-county",
     { operator_no: operatorNumber },
     signal,
   );
@@ -330,5 +359,12 @@ export async function fetchCountyProduction(
   });
 
   // This endpoint sends no `total_count`, so the row count IS the total.
-  return { rows, total: rows.length };
+  /* `locked` rides on the response rather than being inferred from a `"****"` in the
+     rows: the rows still arrive (county and BOE are free), so unlike the filings feed
+     there is no "no rows" signal to read the gate off. §4 rule 2. */
+  return {
+    rows,
+    total: rows.length,
+    locked: (payload as { locked?: unknown }).locked === true,
+  };
 }

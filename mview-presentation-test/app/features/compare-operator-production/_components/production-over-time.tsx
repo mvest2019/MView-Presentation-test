@@ -330,7 +330,9 @@ export function ProductionOverTime({
    */
   scopeLabel?: string;
 }) {
-  const [metric, setMetric] = useState<CompareMetric>("boe");
+  /* DEFECT 162 — BOE was the default AND an option; both are gone. Oil is the
+     opening metric now, which is the first of the two that remain. */
+  const [metric, setMetric] = useState<CompareMetric>("oil");
   const [view, setView] = useState<"chart" | "table">("chart");
   const radioName = useId();
 
@@ -419,9 +421,10 @@ export function ProductionOverTime({
         <legend className="sr-only">Which volume to chart</legend>
         {(
           [
-            { value: "boe", label: "BOE" },
-            { value: "oil", label: "Oil (bbl)" },
-            { value: "gas", label: "Gas (Mcf)" },
+            /* DEFECT 162 removes the BOE option; DEFECT 163 capitalises the two
+               units the snap rings. */
+            { value: "oil", label: "Oil (BBL)" },
+            { value: "gas", label: "Gas (MCF)" },
           ] as const
         ).map((option) => (
           <label
@@ -577,13 +580,14 @@ function ChartView({
 
       {/* WHAT THIS PLOT COVERS, above it. The axis shows years and the legend shows
           operators, but neither says which acreage the figures were filtered to — so a
-          chart read on its own, or screenshotted out of the page, lost that. The scope
-          comes from the applied filters; the range from the brush. */}
+          chart read on its own, or screenshotted out of the page, lost that.
+
+          DEFECT 165 — THE YEAR RANGE THAT SAT BESIDE IT IS GONE. The scope is what
+          this line exists for and it stays; the range was a third copy of something
+          the x-axis under the plot and the brush under that both already show. The
+          snap rings this one and the brush readout together. */}
       <p className="mb-[6px] flex flex-wrap items-baseline gap-x-2 text-[13px]">
         <span className="font-bold text-mv-ink">{scopeLabel}</span>
-        <span className="tabular-nums text-mv-muted">
-          {visibleYears[0]}–{visibleYears.at(-1)}
-        </span>
       </p>
 
       <div
@@ -705,15 +709,17 @@ function ChartView({
 
       {/* ---- year brush ---- */}
       <div className="mt-[18px] border-t border-mv-line-soft pt-[14px]">
-        {/* The preset buttons are gone (requested). The readout stays: it is the
-            only thing that says which window the plot is showing, and the brush
-            below is now the sole way to change it. Double-clicking the strip still
-            restores the full range. */}
-        <p
-          aria-live="polite"
-          className="mb-[11px] text-[12.5px] font-bold text-mv-muted"
-        >
-          {visibleYears[0]} → {visibleYears.at(-1)} · {count} yrs
+        {/* DEFECT 165 — the "1998 → 2026 · 29 yrs" readout is gone too; it is the
+            second of the two the snap rings. The brush's own handles and the year
+            ticks printed along the strip already show the window, and the x-axis
+            above shows it a third time.
+
+            THE `aria-live` REGION IS KEPT, because a screen reader has no handles and
+            no ticks to read: dragging the brush would otherwise change the chart with
+            nothing announced. It is `sr-only` now — the same sentence, addressed only
+            to the readers who had no other copy of it. */}
+        <p aria-live="polite" className="sr-only">
+          Showing {visibleYears[0]} to {visibleYears.at(-1)}, {count} years
         </p>
 
         {/* The handles are draggable and the middle is pannable, neither of which a
@@ -966,6 +972,14 @@ function BrushSpark({
    Table view — the same figures as text
    ========================================================================== */
 
+/**
+ * How many years the table lists before "Load more" — defect 164.
+ *
+ * Six is what the sheet's screenshot shows (2026 down to 2021), expressed as a count
+ * rather than as that year so it holds for any range and any record length.
+ */
+const YEAR_STEP = 6;
+
 function YearTable({
   operators,
   years,
@@ -981,6 +995,34 @@ function YearTable({
   for (let index = range.end; index >= range.start; index -= 1)
     rows.push(index);
 
+  /**
+   * DEFECT 164 — the table printed every year in the brush's range at once, which is
+   * 29 rows on the full record. It opens on the most recent `YEAR_STEP` and reveals
+   * another `YEAR_STEP` per press.
+   *
+   * COUNTED, NOT CUT OFF AT A YEAR. The sheet describes the wanted behaviour as
+   * "values only up to 2021 with a Load More option" and then says it "should be
+   * dynamic, not statically limited" — so 2021 is where the boundary happened to fall
+   * on that screenshot's data, not the rule. A row count reproduces it there (2026
+   * down to 2021 is six) and still behaves when the range is narrowed, when the
+   * record is shorter, or next year.
+   */
+  const [visibleRows, setVisibleRows] = useState(YEAR_STEP);
+
+  /* Back to the first chunk whenever the table is showing something else — a new
+     brush window or a different metric. Compared during render, the same
+     derived-state pattern the rest of this page uses, so the reset paints with the
+     new data rather than one frame after it. */
+  const viewKey = `${range.start}|${range.end}|${metric}`;
+  const [knownViewKey, setKnownViewKey] = useState(viewKey);
+  if (viewKey !== knownViewKey) {
+    setKnownViewKey(viewKey);
+    setVisibleRows(YEAR_STEP);
+  }
+
+  const shown = rows.slice(0, visibleRows);
+  const remaining = rows.length - shown.length;
+
   const totals = operators.map((operator) =>
     valuesFor(operator, metric)
       .slice(range.start, range.end + 1)
@@ -992,7 +1034,8 @@ function YearTable({
       <table className="w-full min-w-[560px] border-separate border-spacing-0 text-[13.5px]">
         <caption className="sr-only">
           Annual {metricNoun(metric)} in millions, {years[range.start]} to{" "}
-          {years[range.end]}
+          {years[range.end]}. Showing the most recent {shown.length} of{" "}
+          {rows.length} years.
         </caption>
         <thead>
           <tr>
@@ -1019,7 +1062,7 @@ function YearTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((yearIndex) => (
+          {shown.map((yearIndex) => (
             <tr key={yearIndex} className="[&:hover>*]:bg-mv-row-hover">
               <th
                 scope="row"
@@ -1057,6 +1100,35 @@ function YearTable({
           </tr>
         </tfoot>
       </table>
+
+      {/*
+        DEFECT 164's control. Rendered only while something is hidden — a permanently
+        present "Load more" that does nothing is worse than none.
+
+        THE CUMULATIVE ROW ABOVE IS UNAFFECTED AND MUST BE: it totals the whole
+        brushed range, not the rows on screen, so revealing more must not appear to
+        change the operator's production. The count beside the button says how many of
+        the range's years are currently listed, so the two cannot be misread as the
+        same number.
+      */}
+      {remaining > 0 ? (
+        <div className="flex flex-wrap items-center justify-center gap-3 py-4">
+          <button
+            type="button"
+            onClick={() =>
+              setVisibleRows((current) =>
+                Math.min(current + YEAR_STEP, rows.length),
+              )
+            }
+            className="min-h-[40px] cursor-pointer rounded-[11px] border border-mv-line bg-white px-4 text-[13px] font-semibold text-mv-slate transition-colors hover:border-mv-line-strong hover:bg-mv-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+          >
+            Load more
+          </button>
+          <p aria-live="polite" className="m-0 text-[12.5px] text-mv-muted">
+            Showing {shown.length} of {rows.length} years
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }

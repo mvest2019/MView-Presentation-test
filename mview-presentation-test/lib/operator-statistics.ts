@@ -297,7 +297,7 @@ export function findStatisticsLeaders(
 export type MatrixCell =
   /** Plain text. */
   | { kind: "text"; value: string }
-  /** A figure with its unit in smaller type — `299.9M bbl`. */
+  /** A figure with its unit in smaller type — `299.9M BBL`. */
   | { kind: "value"; value: string; unit?: string; strong?: boolean }
   /** No filed data. Rendered as a muted em dash — not as a zero. */
   | { kind: "missing" }
@@ -419,14 +419,14 @@ export function buildProductionRows(
     metricRow(
       "Oil produced",
       operators,
-      (o) => volumeCell(o.oilTotal, "bbl"),
+      (o) => volumeCell(o.oilTotal, "BBL"),
       (o) => o.oilTotal,
       locked,
     ),
     metricRow(
       "Gas produced",
       operators,
-      (o) => volumeCell(o.gasTotal, "Mcf"),
+      (o) => volumeCell(o.gasTotal, "MCF"),
       (o) => o.gasTotal,
       locked,
     ),

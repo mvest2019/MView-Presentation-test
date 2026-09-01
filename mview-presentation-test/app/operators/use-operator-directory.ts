@@ -10,16 +10,13 @@ import {
   useTransition,
 } from "react";
 
-import {
-  OPERATOR_ENDPOINTS,
-  publicOperatorApiBaseUrl,
-  type OperatorSearchResponse,
-} from "@/lib/operator-api-types";
+import type { OperatorSearchResponse } from "@/lib/operator-api-types";
 import {
   ALL_PLAYS,
   buildOperatorSearchPayload,
   DEFAULT_FILTERS,
   EMPTY_RESULT_PAGE,
+  isLockedValue,
   PAGE_SIZE,
   QUICK_FILTERS,
   toOperatorRows,
@@ -83,12 +80,45 @@ const STORAGE_KEY = "mv_kyo_cols";
 let storedColumns: OperatorColumns | null = null;
 const columnListeners = new Set<() => void>();
 
+/**
+ * The table must never render fewer than this many optional columns — DEFECT 123.
+ *
+ * Two is the floor the defect names: below it the table stops being a comparison
+ * and becomes a list of names, and at zero it is a header with nothing under it.
+ */
+const MIN_COLUMNS = 2;
+
+/**
+ * A column set with the floor enforced, or the defaults when it cannot be met.
+ *
+ * THE INVARIANT LIVES HERE AND NOT IN THE MENU, deliberately. The Columns popover
+ * already refuses to untick the four columns the table is built on, but that is a
+ * disabled attribute — it governs one path in. This governs every path: a value
+ * restored from `localStorage`, a set written by an older build of the page, or a
+ * future control that edits columns some other way. An invariant enforced only at
+ * the widget that happens to edit it today is one bad write from being violated.
+ */
+function withColumnFloor(columns: OperatorColumns): OperatorColumns {
+  const shown = Object.values(columns).filter(Boolean).length;
+  return shown >= MIN_COLUMNS ? columns : DEFAULT_COLUMNS;
+}
+
 function parseColumns(raw: string | null): OperatorColumns {
   if (!raw) return DEFAULT_COLUMNS;
   try {
     const parsed: unknown = JSON.parse(raw);
     if (parsed && typeof parsed === "object" && "oil" in parsed) {
-      return { ...DEFAULT_COLUMNS, ...(parsed as Partial<OperatorColumns>) };
+      /*
+       * DEFECT 123, the refresh half. This merged the stored value over the
+       * defaults and returned it unchecked, so a set saved with every column off —
+       * which the menu used to allow — came back all-off on the next load and the
+       * table rendered a header with no columns under it. A stored state that
+       * cannot be rendered is not a preference worth honouring.
+       */
+      return withColumnFloor({
+        ...DEFAULT_COLUMNS,
+        ...(parsed as Partial<OperatorColumns>),
+      });
     }
   } catch {
     // Corrupt value — fall through to the defaults.
@@ -123,7 +153,12 @@ function subscribeToColumns(onStoreChange: () => void): () => void {
   };
 }
 
-function writeColumns(next: OperatorColumns): void {
+function writeColumns(incoming: OperatorColumns): void {
+  /* DEFECT 123 — the floor applies on the way in as well as on the way out, so an
+     invalid set can never be persisted in the first place. Without this, a state
+     the page refuses to render could still be written to storage and would have to
+     be repaired on every subsequent load. */
+  const next = withColumnFloor(incoming);
   storedColumns = next;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -157,6 +192,16 @@ const SEARCH_DEBOUNCE_MS = 300;
 const EXPORT_CHUNK = 2000;
 
 /**
+ * How many rows one export asks for.
+ *
+ * The search endpoint honours it: probed at 10, 100, 1000 and 5000 against a query
+ * whose `total_count` is 3,095 — the last returned all 3,095 rows in one response.
+ * 5000 therefore covers every filtered result set the listing can produce while
+ * staying one request rather than 310 pages of ten.
+ */
+const EXPORT_PAGE_SIZE = 5000;
+
+/**
  * Hand control back to the browser so it can paint and handle input.
  *
  * `scheduler.yield()` is the right primitive — it resumes at the front of the task
@@ -176,7 +221,6 @@ function yieldToBrowser(): Promise<void> {
 export function useOperatorDirectory({
   playTypes,
   visitorId,
-  signedIn,
 }: {
   playTypes: string[];
   /**
@@ -185,16 +229,6 @@ export function useOperatorDirectory({
    * from the cookie, so this value is for visibility, not for trust.
    */
   visitorId: string;
-  /**
-   * Whether a session exists, read server-side in `page.tsx`.
-   *
-   * FOR THE EXPORT ONLY, and not for the table — what the table may show is
-   * decided by the route handler and arrives withheld or not on the response, so
-   * reading a client flag to decide it would be a second source of truth that
-   * could disagree with the first. The export has no such server in its path
-   * (see `exportCsv`), which is exactly why it needs to be told.
-   */
-  signedIn: boolean;
 }) {
   const [filters, setFilters] = useState<OperatorFilters>(DEFAULT_FILTERS);
   const [page, setPage] = useState<OperatorResultPage>(EMPTY_RESULT_PAGE);
@@ -387,97 +421,108 @@ export function useOperatorDirectory({
 
   /** In-flight guard, so a second click cannot start a duplicate export. */
   const exporting = useRef(false);
+  /**
+   * The same fact as `exporting`, in state so the button can show it.
+   *
+   * DEFECT 121 — the export is one large request plus a chunked build of the file,
+   * and the button said nothing for the whole of it: same label, still clickable,
+   * no browser download prompt until the end. A reader could not tell whether the
+   * click had registered. The ref stays because it guards the second click
+   * synchronously, before any re-render.
+   */
+  const [isExporting, setIsExporting] = useState(false);
 
   /**
-   * Export CSV.
+   * Export CSV — DEFECT 121.
    *
-   * Reads `GET /api/v1/operators/all` — the whole directory in one response — and
-   * writes it out. Same envelope and same record shape as the search endpoint, so
-   * the rows still go through `toOperatorRows`.
+   * WHAT IT USED TO DO. It read `GET /operators/all`, the whole directory in one
+   * 16 MB response, and wrote every one of the 24,744 records out with a fixed set
+   * of columns. The table beside the button was showing 3,095 operators in 5
+   * columns under the visitor's filters, so the file agreed with the screen on
+   * neither count nor shape — it was a dump of the endpoint, not an export of the
+   * view.
    *
-   * WHAT THE FILE CONTAINS. Every operator the API holds: 24,744 rows, of which
-   * 21,649 are inactive. It is not the filtered view and not the current page, and
-   * it is not sorted the way the table is — the endpoint returns its own order and
-   * the `Rank` column numbers that order. The previous export had the same
-   * "everything, not what is on screen" behaviour, so this only widens the set.
+   * WHAT IT DOES NOW. It re-runs the QUERY THAT IS ON SCREEN — the same filters,
+   * the same search text, the same sort — through the same route handler the table
+   * uses, and writes those rows with the columns the table is currently showing.
+   * `Showing 1–10 of 779` exports 779 rows; turning Leases count on adds the
+   * column and nothing else.
    *
-   * IT IS A 16 MB RESPONSE. Downloading and parsing that is the cost of a complete
-   * export and it only happens on click, but it does block the main thread while
-   * `JSON.parse` runs, so a click is not free. See the note in the report.
+   * ONE REQUEST, NOT 310. The endpoint honours a large `pageSize` — probed:
+   * `pageSize: 5000` returns all 3,095 matching rows in a single response with the
+   * same `total_count` — so the export asks for the whole result set at once rather
+   * than paging it ten at a time. `EXPORT_PAGE_SIZE` is the ceiling it asks for.
+   *
+   * IT GOES THROUGH `/api/operators/search`, WHICH IS WHAT KEEPS THE GATE. That
+   * handler pins `member_id` from the session, so a signed-out visitor's export is
+   * gated exactly as their screen is: under a quick filter the API returns rows
+   * 4-10 as `"****"` and those rows are written out as locked rather than as data.
+   * `/operators/all` took no `member_id` at all, which is how the Export button
+   * used to hand over the very counts the table had just locked.
    */
   const exportCsv = useCallback(async () => {
     if (exporting.current) return;
     exporting.current = true;
+    setIsExporting(true);
 
     try {
-      const response = await fetch(
-        `${publicOperatorApiBaseUrl()}${OPERATOR_ENDPOINTS.all}`,
-        { method: "GET" },
-      );
+      const response = await fetch("/api/operators/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        /* The filters on screen, verbatim — `buildOperatorSearchPayload` is the one
+           payload builder, so the export cannot drift from the table. Only the page
+           size differs: the table wants ten, the file wants all of them. */
+        body: JSON.stringify({
+          ...buildOperatorSearchPayload(filters, visitorId),
+          page: 1,
+          pageSize: EXPORT_PAGE_SIZE,
+        }),
+        cache: "no-store",
+      });
 
       if (!response.ok) throw new Error(`export responded ${response.status}`);
 
       const { result } = (await response.json()) as OperatorSearchResponse;
 
-      // The table's columns, honouring the Columns toggles so the file matches what
-      // the visitor can see — except Leases count and Last production, which are
-      // always written. Both are opt-in columns that default to off, so gating them
-      // meant the export silently dropped two fields the endpoint always returns.
-      /*
-       * THE EXPORT HONOURS THE SIGN-IN GATE, and it has to do so here because
-       * nothing else can. `/operators/all` takes no `member_id` and gates
-       * nothing — it is a public, unfiltered dump — so a signed-out visitor
-       * fetching it receives the lease and county counts the table has just
-       * locked. Writing them into the file would mean the lock is defeated by
-       * the Export button sitting three inches above it, which teaches a reader
-       * that the locks mean nothing.
-       *
-       * The two columns are OMITTED rather than written as "locked": a CSV is
-       * read by spreadsheets and scripts, and a column of the word "locked" in a
-       * numeric field is worse than an absent column. Everything else — the
-       * ranking, the names, the production figures — exports exactly as before,
-       * because none of it is gated.
-       */
-      const withCounts = signedIn;
-
+      /* The visible columns, and only those. Rank, name and number are the row's
+         identity and are always written — a CSV of figures with no operator on it
+         answers nothing. */
       const header = ["Rank", "Operator Name", "Operator No."];
       if (columns.oil) header.push("Oil Produced");
       if (columns.gas) header.push("Gas Produced");
-      if (columns.cty && withCounts) header.push("Counties");
-      if (withCounts) header.push("Leases count");
-      header.push("Last production");
+      if (columns.cty) header.push("Counties");
+      if (columns.leases) header.push("Leases count");
+      if (columns.lastProduction) header.push("Last production");
       if (columns.status) header.push("Status");
 
       const cell = (value: string) => `"${value.replace(/"/g, '""')}"`;
       const lines = [header.join(",")];
 
-      /**
-       * BUILT IN SLICES, YIELDING BETWEEN THEM, and that is not premature.
-       * Measured on this response: mapping and joining 24,744 rows in one pass is
-       * 243ms of unbroken main-thread work, on top of 264ms to decode and parse the
-       * 15 MB body. Half a second in a single task freezes the page — several
-       * seconds of it on a mid-range phone — and delays whatever the visitor tries
-       * to do next, which is what reaches INP. Slicing turns one long task into
-       * short ones, so the page keeps painting and stays responsive while the file
-       * is assembled. The output is byte-for-byte what the single pass produced.
-       *
-       * `toOperatorRows` still does the mapping, one slice at a time, so there is
-       * no second copy of the record-to-row logic.
+      /*
+       * BUILT IN SLICES, YIELDING BETWEEN THEM. The set is far smaller than the old
+       * 24,744-row dump, but a filter that matches every active operator is still
+       * 3,095 rows, and mapping and joining them in one pass is unbroken main-thread
+       * work. Slicing keeps the page painting while the file is assembled.
        */
       for (let start = 0; start < result.length; start += EXPORT_CHUNK) {
         toOperatorRows(result.slice(start, start + EXPORT_CHUNK)).forEach(
           (row, offset) => {
+            /* A gated row carries `"****"` in every field. Written as a word rather
+               than as a masked figure, so a spreadsheet does not read it as data. */
+            const value = (raw: string) =>
+              row.masked || isLockedValue(raw) ? cell("Locked") : cell(raw);
+
             const line = [
               String(start + offset + 1),
-              cell(row.name),
-              cell(row.operatorNumber),
+              row.masked ? cell("Locked") : cell(row.name),
+              row.masked ? cell("Locked") : cell(row.operatorNumber),
             ];
-            if (columns.oil) line.push(cell(row.oil));
-            if (columns.gas) line.push(cell(row.gas));
-            if (columns.cty && withCounts) line.push(cell(row.counties));
-            if (withCounts) line.push(cell(row.leases));
-            line.push(cell(row.lastProduction));
-            if (columns.status) line.push(cell(row.status));
+            if (columns.oil) line.push(value(row.oil));
+            if (columns.gas) line.push(value(row.gas));
+            if (columns.cty) line.push(value(row.counties));
+            if (columns.leases) line.push(value(row.leases));
+            if (columns.lastProduction) line.push(value(row.lastProduction));
+            if (columns.status) line.push(value(row.status));
             lines.push(line.join(","));
           },
         );
@@ -501,8 +546,9 @@ export function useOperatorDirectory({
       console.error("[operators] CSV export failed", error);
     } finally {
       exporting.current = false;
+      setIsExporting(false);
     }
-  }, [columns, signedIn]);
+  }, [columns, filters, visitorId]);
 
   /* --- applied-filter tags ---------------------------------------------- */
 
@@ -629,6 +675,7 @@ export function useOperatorDirectory({
     toggleSort,
     goToPage,
     setColumns: writeColumns,
+    isExporting,
     clearFilters,
     retry,
     exportCsv,

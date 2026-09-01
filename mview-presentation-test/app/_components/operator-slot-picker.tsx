@@ -508,9 +508,16 @@ export function OperatorSlotPicker({
               </button>
             </>
           ) : (
+            /* DEFECT 158 — `h-[7px] w-[11px]`: too small to read as a control, and
+               non-square, so the chevron was drawn squashed. This is the same caret
+               defect 124 fixed on the shared `CONTROL_CARET`, which is why the three
+               selects beside these four fields already looked right and only the
+               operator fields did not — the snap rings all seven, but only these
+               four were still wrong. `h-4 w-4` matches `CONTROL_CARET` exactly, so
+               the row now carries one caret size rather than two. */
             <ChevronDown
               aria-hidden="true"
-              className="pointer-events-none h-[7px] w-[11px] shrink-0 text-mv-muted"
+              className="pointer-events-none h-4 w-4 shrink-0 text-mv-muted"
               strokeWidth={1.8}
             />
           )}
