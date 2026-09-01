@@ -17,6 +17,7 @@ import { buttonClass } from "@/app/_components/button";
 import { ChangeItem } from "@/app/_components/change-item";
 import { DeferredSection } from "@/app/_components/deferred-section";
 import { SelectControl } from "@/app/_components/select-control";
+import { LockedValue } from "@/app/_components/locked-value";
 import { OperatorLogo } from "@/app/_components/operator-logo";
 import { OperatorMonogram } from "@/app/_components/operator-monogram";
 import { OperatorSlotPicker } from "@/app/_components/operator-slot-picker";
@@ -922,21 +923,14 @@ function IdentityCard({
  * common baseline — remove two and every card in the row changes height. This
  * occupies exactly the space the number did, so the grid is untouched.
  */
+/* THE SHARED LOCK TREATMENT (requested). This drew a bar and a padlock with the
+   offer only in `sr-only` text, so a sighted reader was shown that a figure was
+   withheld and never told what it cost — while the operator listing and the profile,
+   gated on the same two fields, put a "Free account" link right beside the bar. All
+   of them render the one component now. `align="start"` because these sit under a
+   label in a card rather than in a right-aligned numeric cell. */
 function LockedFigure({ label }: { label: string }) {
-  return (
-    <span className="inline-flex items-center gap-[6px]">
-      <span className="sr-only">{label} — locked, create a free account</span>
-      <span
-        aria-hidden="true"
-        className="inline-block h-[11px] w-[46px] rounded-full bg-[linear-gradient(90deg,var(--color-mv-line),var(--color-mv-line-soft))] align-middle blur-[2.5px]"
-      />
-      <Lock
-        aria-hidden="true"
-        className="h-[13px] w-[13px] shrink-0 text-mv-muted"
-        strokeWidth={2.3}
-      />
-    </span>
-  );
+  return <LockedValue label={label} from="compare-production" align="start" />;
 }
 
 /**

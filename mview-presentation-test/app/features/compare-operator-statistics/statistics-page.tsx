@@ -1,11 +1,12 @@
 "use client";
 
-import { BarChart3, Check, ChevronRight, Lock, Plus, Unlock } from "lucide-react";
+import { BarChart3, Check, ChevronRight, Plus, Unlock } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { Button, buttonClass } from "@/app/_components/button";
 import { Band, Panel, Row } from "@/app/_components/cta-band";
+import { LockedValue } from "@/app/_components/locked-value";
 import { OperatorLogo } from "@/app/_components/operator-logo";
 import {
   cardTitleClass,
@@ -693,17 +694,16 @@ function IdentityCard({
           both would withhold something freely given and make the card emptier than
           the gate requires. */}
       <p className="mt-3 flex items-baseline justify-between gap-2 border-t border-mv-line-soft pt-3">
+        {/* The shared lock treatment (requested), so this card reads the same as a
+            locked cell on the listing and the profile. The offer used to be in
+            `sr-only` text only. */}
         {locked ? (
-          <span className="inline-flex items-center gap-[6px] text-mv-muted">
-            <Lock aria-hidden="true" className="h-[13px] w-[13px]" strokeWidth={2.2} />
-            <span
-              aria-hidden="true"
-              className="inline-block h-[11px] w-[54px] rounded-full bg-[linear-gradient(90deg,var(--color-mv-line),var(--color-mv-line-soft))] blur-[2.5px]"
-            />
-            <span className="sr-only">
-              Cumulative BOE locked — create a free account to see it
-            </span>
-          </span>
+          <LockedValue
+            label="Cumulative BOE"
+            from="compare-statistics"
+            width="w-[54px]"
+            align="start"
+          />
         ) : (
           <span className="text-[19px] font-bold tracking-[-.02em] tabular-nums text-mv-ink">
             {formatVolume(operator.boeTotal)}
