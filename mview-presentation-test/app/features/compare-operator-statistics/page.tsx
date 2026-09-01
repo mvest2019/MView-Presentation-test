@@ -9,7 +9,7 @@ import { StatisticsPage } from "./statistics-page";
  * Compare Operator Statistics — `/features/compare-operator-statistics`.
  *
  * WHY THIS URL. The same reasoning as its sibling at
- * `/features/compare-operator-production`: `/features/` holds a capability rather
+ * `/features/compare-operator-performance`: `/features/` holds a capability rather
  * than a record, and the page is the same page whichever operators a visitor
  * picks. Keeping the two side by side under one section also means the pair reads
  * as a suite in a sitemap and in search results, instead of one living under

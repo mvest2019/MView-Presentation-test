@@ -17,12 +17,17 @@ import { getSessionUser } from "@/lib/session";
  * them away in full above the ask, and then asking for an account to get them, is
  * the page arguing against itself.
  *
- * WHAT STAYS FREE, AND WHY IT MATTERS. Everything that is the filed historical
- * record — production over time, production by county, the lease book, the
- * footprint map, the company and production panels — is untouched and reachable
- * with no account. What is gated is the forward-looking activity feed: what this
- * operator has filed lately. That is the line worth drawing, because it is the one
- * a reader would recognise as fair.
+ * WHAT STAYS FREE, AND WHY IT MATTERS. This note used to say that everything which
+ * is the filed historical record — production over time, production by county, the
+ * lease book, the footprint map, the company and production panels — was untouched
+ * and reachable with no account, and that only this forward-looking activity feed was
+ * gated. That is no longer the shape of the gate: the volumes in those panels and
+ * tables are withheld, and so is the production chart. What stays free is the
+ * operator's IDENTITY and FOOTPRINT — who it is, its filed address and status, the
+ * counties and leases it appears on, and the map. The figures are the account's.
+ *
+ * This handler's own reason is unchanged: filings are what the profile's closing CTA
+ * has always described as the account's benefit.
  *
  * IT SKIPS THE UPSTREAM CALL ENTIRELY for a signed-out reader, so the gate costs a
  * request rather than adding one, and no withheld rows sit in the network tab

@@ -2,7 +2,8 @@
 
 /* `Info` went with the units footnote defect 139 removed — it was that line's icon
    and had no other caller. */
-import { Droplet } from "lucide-react";
+import { Droplet, Lock } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { cardTitleClass } from "@/app/_components/typography";
@@ -14,7 +15,14 @@ import { YearBrush } from "./year-brush";
 
 /**
  * "Production over time" — reported annual volumes from
- * `POST /api/v1/operators/production-graph`, styled to the approved design.
+ * `POST /api/operators/production-graph`, styled to the approved design.
+ *
+ * IT IS GATED (requested). The read goes through this site's own handler rather than
+ * straight to the operator API, because the upstream endpoint takes no `member_id` and
+ * withholds nothing — a signed-out reader was getting the operator's entire filed
+ * history while every other production figure on the site was withheld from them. The
+ * handler answers `locked` without making any upstream call, and `LockedProduction` at
+ * the foot of this file draws the same panel "Recent wells & permits" draws.
  *
  * THE FILTER IS COUNTY AND YEARS. "All counties" omits the `county` key; picking one
  * sends that one name. The years come from the brush.
@@ -360,6 +368,14 @@ export function ProductionOverTime({
 
   const tinted = (colour: string, amount: string) =>
     `color-mix(in srgb, ${colour} ${amount}, white)`;
+
+  /* ---- no account ----
+     BEFORE every other state, and the ordering is the point: a locked read returns no
+     rows, so falling through would draw the empty state — "no production is reported
+     for this operator" — which is a claim about the operator that the request never
+     made. Same reasoning, and the same position, as the locked branch in
+     `recent-wells-permits.tsx`. */
+  if (graph.status === "locked") return <LockedProduction />;
 
   return (
     <div className="rounded-2xl border border-mv-line bg-white px-[22px] py-5 shadow-mv max-[560px]:px-4">
@@ -855,6 +871,80 @@ export function ProductionOverTime({
         The series are still identified for a screen reader: each `<path>` carries its
         own title, and the tooltip names both series with their units.
       */}
+    </div>
+  );
+}
+
+/**
+ * "Production over time", for a reader with no account.
+ *
+ * WHY THIS SECTION IS GATED AT ALL (requested). It is production data, and production
+ * data is what a free account buys everywhere else on these pages: the directory masks
+ * the lifetime volumes, the profile panels mask oil and gas, the county table and the
+ * lease book mask their two `Produced` columns, and both comparison tools mask theirs.
+ * This chart was the one place the same figures were still served in full — the whole
+ * annual history, every county, to anybody. Gating it is what makes the rest of the
+ * treatment coherent rather than arbitrary.
+ *
+ * IT IS THE SAME PANEL AS "RECENT WELLS & PERMITS", deliberately: same card, same lock
+ * badge, same Register-for-free-and-Sign-in pair, same "no card required" line. A
+ * reader who meets two gates on one page should meet the same gate twice, not two
+ * designs for one idea.
+ *
+ * WHAT IT PROMISES IS WHAT IS ACTUALLY STILL FREE, checked field by field rather than
+ * written as "everything else": who the operator is, its filed address and status, the
+ * Texas footprint map, and the county and lease lists — all still readable with no
+ * account. The volumes inside those lists are not, and this does not say they are.
+ */
+function LockedProduction() {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-mv-line bg-white shadow-mv">
+      <div className="px-[22px] pb-3 pt-5 max-[560px]:px-4">
+        <h2 className={cardTitleClass}>Production over time</h2>
+        <p className="mt-1 text-[13px] text-mv-muted">
+          Reported annual volumes — part of a free account
+        </p>
+      </div>
+
+      <div className="flex flex-col items-center gap-[14px] border-t border-mv-line-soft px-6 py-[38px] text-center">
+        <span
+          aria-hidden="true"
+          className="grid h-[38px] w-[38px] place-items-center rounded-full bg-mv-mint text-mv-green-deep"
+        >
+          <Lock className="h-4 w-4" strokeWidth={2.3} />
+        </span>
+
+        <div className="max-w-[460px]">
+          <p className="m-0 text-[15px] font-bold leading-snug text-mv-ink">
+            See how this operator&apos;s production has moved
+          </p>
+          <p className="m-0 mt-2 text-[13px] leading-relaxed text-mv-muted">
+            Every year of filed oil and gas volumes, for the whole operator or one
+            county at a time, with a range you can narrow. Who this operator is,
+            its filed address and status, the Texas footprint map and the county
+            and lease lists all stay free to browse.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-center gap-[10px]">
+          <Link
+            href="/register?from=operator-profile"
+            className="inline-flex items-center gap-2 rounded-xl bg-mv-green-deep px-[18px] py-[11px] text-[13.5px] font-semibold text-white !no-underline shadow-mv transition-[filter] hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+          >
+            Register for free
+          </Link>
+          <Link
+            href="/login"
+            className="text-[13px] font-semibold text-mv-green-deep hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+          >
+            Sign in
+          </Link>
+        </div>
+
+        <p className="m-0 text-[11.5px] text-mv-muted">
+          Free account &middot; no card required
+        </p>
+      </div>
     </div>
   );
 }

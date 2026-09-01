@@ -83,16 +83,17 @@ export default function MineralOwnerPortalLayout({
         which reads `cookies()`, so every route under it renders dynamically.
 
         The boundary it replaced was actively harmful. Its fallback rendered the
-        SAME `shell` element as its children, so React held both trees — the
+        same `shell` element as its children, so React held BOTH trees — the
         fallback one in a `<div hidden>` — and the whole portal existed twice in
         the DOM: two sidebars, two top bars, two of every id (`#mvPinBar`,
         `#mvFunnelBar`, `#mvStateCard`, `#dashcols`). Duplicate ids are invalid
-        HTML, and it broke the account menu: the click landed on one avatar while
-        the outside-click handler on the other closed the menu again.
+        HTML and they broke the account menu, because the click landed on one
+        avatar while the outside-click handler on the other closed the menu again.
 
-        If this route is ever made static, `next build` fails loudly with
-        "Missing Suspense boundary with useSearchParams" — which is the right way
-        to find out. The fix then is a boundary whose fallback is NOT the shell.
+        If this route is ever made static, `next build` will fail loudly with
+        "Missing Suspense boundary with useSearchParams" — which is the right
+        way to find out. The fix then is a boundary whose fallback is NOT the
+        shell.
       */}
       <PortalStateProvider>{shell}</PortalStateProvider>
 

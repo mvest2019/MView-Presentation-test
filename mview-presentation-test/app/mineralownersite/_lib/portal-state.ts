@@ -163,13 +163,14 @@ export const VIEW_TIER_NAME: Record<ViewTier, string> = {
  * The short label, for a switch too narrow for the full one.
  *
  * The design's own `.vs-abbr` values: only Professional actually shortens, to
- * "Pro". The other three are already short enough and repeat unchanged, which is
- * what the reference does rather than inventing three abbreviations nobody needs.
+ * "Pro". The other three are already short enough and repeat unchanged, which
+ * is what the reference does rather than inventing three abbreviations nobody
+ * needs.
  *
  * "Pro" IS SAFE HERE, and only here. The ban the reference records is on "Pro"
- * as a PLAN name — it once appeared as one, beside a wrong price. As the short
- * form of the Professional *density*, on a control whose whole job is picking a
- * density, it is the design's own wording.
+ * as a PLAN name — it once appeared as one, alongside a wrong price. As the
+ * short form of the Professional *density*, on a control whose whole job is
+ * picking a density, it is the design's own wording.
  */
 export const VIEW_TIER_ABBR: Record<ViewTier, string> = {
   ultra: "Ultra",

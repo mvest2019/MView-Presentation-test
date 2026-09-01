@@ -66,10 +66,10 @@ export function ViewTierSwitch({ onNavigate }: { onNavigate?: () => void }) {
                 "Simple" must never reach the UI — it reads as derogatory about
                 the reader rather than descriptive of the density.
 
-                BOTH LABELS SHIP AND CSS PICKS ONE — the design's own `.vs-full`
-                / `.vs-abbr` pair. `portal.css` takes the short one at phone
-                width and inside the account menu, whose panel is 280px at every
-                viewport: four full labels overflowed it and clipped
+                BOTH LABELS SHIP, and CSS picks: the design's own `.vs-full` /
+                `.vs-abbr` pair. `portal.css` takes the short one at phone width
+                and inside the account menu, whose panel is 280px at every
+                viewport — four full labels overflowed it, clipping
                 "Professional" against the panel edge. */}
             <span className="vs-full">{VIEW_TIER_NAME[tier]}</span>
             <span className="vs-abbr">{VIEW_TIER_ABBR[tier]}</span>
