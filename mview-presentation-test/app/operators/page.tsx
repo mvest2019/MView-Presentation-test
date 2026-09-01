@@ -100,24 +100,24 @@ const FEATURE_CARDS = [
     href: "/features/compare-operator-production",
     icon: "▮▮",
     title: "Compare Operators Performance",
-    body: "Put 2–4 operators side by side on reported production — real figures, ranked within their play.",
-    cta: "Open the comparison →",
+    body: "Compare 2–4 operators side by side using reported production data and their relative position within the selected play.",
+    cta: "Compare Operators →",
   },
   {
     // Built, alongside its sibling under `/features/`.
     href: "/features/compare-operator-statistics",
     icon: "≡",
     title: "Compare Operator Statistics",
-    body: "Company statistics side by side — leases, counties, rank, and production intensity.",
-    cta: "Open the comparison →",
+    body: "Compare operators across key metrics, including leases, counties, production rank, and production intensity.",
+    cta: "Compare Operators →",
   },
   {
     // Built. No "compare" in the slug — this one is a library, not a comparison.
     href: "/features/operator-presentations",
     icon: "▣",
     title: "Operator Presentations",
-    body: "A clean, shareable one-page profile of any operator — built from the public record.",
-    cta: "Build a presentation →",
+    body: "Create a one-page operator profile using information compiled from publicly available records.",
+    cta: "Create a Presentation →",
   },
 ];
 
@@ -218,8 +218,8 @@ export default async function OperatorsRoute() {
               paragraph. Widened so it sits on one line from about 900px up, and it
               still wraps naturally below that rather than being forced to fit. */}
           <p className="mt-[6px] max-w-[820px] text-[15.5px] text-mv-muted">
-            Search, filter, and rank Texas oil &amp; gas operators by reported
-            production, activity, and coverage.
+            Search, filter, and compare Texas oil and gas operators using
+            reported production, operating activity, and county coverage.
           </p>
         </div>
 
