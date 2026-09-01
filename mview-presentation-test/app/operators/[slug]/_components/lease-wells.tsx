@@ -334,10 +334,14 @@ function LockedWells() {
         <p className="m-0 text-[15px] font-bold leading-snug text-mv-ink">
           Well records need a free account
         </p>
+        {/* "Free to browse" was already the right word here and stays — but the
+            lease book's two `Produced` columns are now gated too, so the promise is
+            spelled out rather than left to the reader to scope. §4 rule 5. */}
         <p className="m-0 mt-2 text-[13px] leading-relaxed text-mv-muted">
           API number, well name, status, county, reported oil and gas, and the
           month production started — for every well on this lease. The lease book
-          itself stays free to browse.
+          itself stays free to browse — every lease name, number, county and
+          status.
         </p>
       </div>
 

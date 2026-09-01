@@ -104,8 +104,13 @@ export function GatedFigures({
  *
  * `from=operator-profile` is the profile's enumerated source value (section 9), and
  * the target is `/register` -- never `/pricing`.
+ *
+ * EXPORTED so the "Production by county" table draws its withheld oil and gas cells
+ * with this exact component rather than a third copy of it. That table resolves its
+ * own gate -- its handler masks the volumes in the response, so `locked` arrives with
+ * the rows -- and needs only the treatment from here, not the context.
  */
-function LockedValue({ label, width }: { label: string; width: string }) {
+export function LockedValue({ label, width }: { label: string; width: string }) {
   return (
     <span className="inline-flex items-center justify-end gap-[7px]">
       <LockedBar width={width} />
@@ -204,11 +209,18 @@ export function GatedFigure({
 /**
  * The hero pill variant.
  *
- * THE PILLS SIT DIRECTLY ABOVE THE PANEL that carries the full affordance, so a
- * second "Free account" link here would be the same offer twice within one screen.
- * The pill instead names the field behind a lock -- "Leases", "Counties on record"
- * -- and links to the same place, which keeps it one chip wide and leaves the panel
- * to make the offer.
+ * IT CARRIES THE REDACTED BAR, like every other locked slot on the page (requested).
+ * An earlier pass drew these two as a lock beside the field name -- "Leases",
+ * "Counties on record" -- on the reasoning that the panel a screen below already
+ * makes the offer. That was wrong in the way that matters: a lock with no bar reads
+ * as a section heading rather than as a value being withheld, so the pills looked
+ * like navigation while every other gated slot looked like a redaction. The bar is
+ * what tells a reader there IS a figure here.
+ *
+ * THE NOUN STAYS BESIDE THE BAR -- "____ leases", "____ counties on record" -- for
+ * the reason the panel does not need it: these two pills sit side by side with
+ * nothing else naming them, so a bare bar and a "Free account" link would render two
+ * chips that are indistinguishable from each other.
  */
 export function GatedPill({
   field,
@@ -239,14 +251,16 @@ export function GatedPill({
 
   if (state.figures.locked) {
     return (
-      <li className={pillClass}>
+      <li className={`${pillClass} inline-flex items-center gap-[7px]`}>
+        <LockedBar width="w-[34px]" />
+        {suffix}
         <Link
           href="/register?from=operator-profile"
           aria-label={`Create a free account to see the ${label.toLowerCase()}`}
-          className="inline-flex items-center gap-[5px] text-mv-green-deep no-underline hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+          className="inline-flex shrink-0 items-center gap-[4px] whitespace-nowrap font-semibold text-mv-green-deep no-underline underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
         >
           <Lock aria-hidden="true" className="h-3 w-3 shrink-0" strokeWidth={2.3} />
-          {label}
+          Free account
         </Link>
       </li>
     );

@@ -147,18 +147,21 @@ function LockedPanel() {
             worse than none, and the directory has already been burned by the same
             sentence once.
 
-            NAMING THE SECTIONS RATHER THAN CLAIMING "EVERYTHING ELSE" is what keeps
-            it true as the gate moves. These three are the ones with no gate at all:
-            `/operators/production-graph`, `/operators/leases` and
-            `/operators/production-by-county` each take no `member_id` and withhold
-            nothing (§4). It is the same construction the "Recent wells & permits"
-            notice already uses, for the same reason.
+            IT NAMES ONE SECTION, NOT THREE, and that narrowing is the second
+            correction. An earlier pass listed the production history, the lease book
+            and the county breakdown as free to read — true at the time, false as soon
+            as the two `Produced` columns in the lease and county tables were gated.
+            Production over time is now the only part of this page with no gate on any
+            field: `/operators/production-graph` takes no `member_id` and withholds
+            nothing (§4), so it is the one thing that can be promised in full.
+
+            "READ" AND "BROWSE" ARE NOT THE SAME PROMISE, which is why the other two
+            are described as browsable in their own notices rather than readable here.
           */}
           <p className="m-0 mt-2 text-[13px] leading-relaxed text-mv-muted">
             Six ranked findings for this operator - what moved, by how much, and
             over which months - measured from the filed record and written up in
-            plain English. The production history, the lease book and the county
-            breakdown stay free to read.
+            plain English. Production over time stays free to read in full.
           </p>
 
           <div className="mt-[18px] flex flex-wrap items-center justify-center gap-[10px]">

@@ -522,11 +522,16 @@ function LockedFilings() {
             <p className="m-0 text-[15px] font-bold leading-snug text-mv-ink">
               See what this operator has filed lately
             </p>
+            {/* The last sentence used to say the lease book and the county breakdown
+                "stay free to read". Both still list every row, but their two
+                `Produced` columns are now gated, so "read" overstated it — the
+                accurate word for those two is "browse", and production over time is
+                the only section left with no gate on any field. §4 rule 5. */}
             <p className="m-0 mt-2 text-[13px] leading-relaxed text-mv-muted">
               Every permit and completion on record — lease, county, wellbore
               profile, status and the dates each was submitted and approved,
-              filterable. Production history, the lease book and the county
-              breakdown above stay free to read.
+              filterable. Production over time stays free to read in full, and the
+              lease book and county breakdown stay free to browse.
             </p>
           </div>
 

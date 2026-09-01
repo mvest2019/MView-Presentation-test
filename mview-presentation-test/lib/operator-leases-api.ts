@@ -75,11 +75,17 @@ export interface PagedResult<T> {
   /** Rows matching the filters across every page, for the pager. */
   total: number;
   /**
-   * True when the reader has no account and the rows were never fetched.
+   * True when the reader has no account, so some or all of the answer was withheld.
    *
    * DISTINCT FROM AN EMPTY RESULT, which is why it is not simply `rows: []`. "This
    * lease has no wells on record" and "these wells need an account" are different
-   * facts, and the drawer draws them differently. Only `/wells` can return it.
+   * facts, and the drawer draws them differently.
+   *
+   * TWO READS RETURN IT, gated differently — it means "a gate applied", not "there
+   * is nothing here":
+   *
+   *   `/api/operators/wells`   no rows at all; every field of every row is withheld
+   *   `/api/operators/leases`  every row present, with the two volumes masked
    */
   locked?: boolean;
 }
@@ -222,7 +228,11 @@ export async function fetchOperatorLeases(
   signal?: AbortSignal,
 ): Promise<PagedResult<LeaseRecord>> {
   const payload = await post(
-    "/api/v1/operators/leases",
+    /* THROUGH THIS SITE'S OWN ORIGIN, as of the lease-volume gate. This called the
+       operator API directly until the two `Produced` columns were withheld from
+       signed-out readers — and a mask applied anywhere but the server would leave
+       the real per-lease volumes in the reader's network tab. See the handler. */
+    "/api/operators/leases",
     {
       operator_no: operatorNumber,
       page,
@@ -256,7 +266,14 @@ export async function fetchOperatorLeases(
     };
   });
 
-  return { rows, total: totalOf(payload, rows.length) };
+  /* `locked` rides on the response rather than being read off a null volume: a lease
+     that genuinely reports none is also null, and telling a withheld figure from an
+     absent one by looking at the value is exactly the confusion §4 rule 2 forbids. */
+  return {
+    rows,
+    total: totalOf(payload, rows.length),
+    locked: (payload as { locked?: unknown }).locked === true,
+  };
 }
 
 /**

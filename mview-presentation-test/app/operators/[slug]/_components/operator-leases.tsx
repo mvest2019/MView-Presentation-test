@@ -14,6 +14,7 @@ import {
 } from "@/lib/operator-leases-api";
 import { titleCase } from "@/lib/text-case";
 
+import { LockedValue } from "./gated-figures";
 import { LeaseWells } from "./lease-wells";
 import { TableSkeletonRows } from "./table-skeleton";
 import { usePagedResource } from "./use-paged-resource";
@@ -323,11 +324,23 @@ export function OperatorLeases({
                         {lease.leaseNumber}
                       </td>
                       <td className={td}>{titleCase(lease.county)}</td>
+                      {/* The two gated columns. `leases.locked` is the handler's own
+                          answer riding on the response — the rows are all present and
+                          their name, number, county and status are real, so there is
+                          no absence here to infer the gate from (§4 rule 2). */}
                       <td className={`${td} text-right tabular-nums`}>
-                        {volume(lease.oil)}
+                        {leases.locked ? (
+                          <LockedValue label="Oil produced" width="w-[52px]" />
+                        ) : (
+                          volume(lease.oil)
+                        )}
                       </td>
                       <td className={`${td} text-right tabular-nums`}>
-                        {volume(lease.gas)}
+                        {leases.locked ? (
+                          <LockedValue label="Gas produced" width="w-[52px]" />
+                        ) : (
+                          volume(lease.gas)
+                        )}
                       </td>
                     </tr>
                   );

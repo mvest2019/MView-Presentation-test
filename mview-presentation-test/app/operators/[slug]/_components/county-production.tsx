@@ -14,6 +14,7 @@ import {
 } from "@/lib/operator-activity-api";
 import { titleCase } from "@/lib/text-case";
 
+import { LockedValue } from "./gated-figures";
 import { TableSkeletonRows } from "./table-skeleton";
 import { usePagedResource } from "./use-paged-resource";
 
@@ -181,12 +182,33 @@ export function CountyProduction({
                   >
                     {titleCase(row.county) || EM_DASH}
                   </th>
-                  {/* The endpoint's own figures, printed as sent. */}
+                  {/*
+                    The endpoint's own figures, printed as sent — except oil and gas,
+                    which a signed-out reader does not get. `counties.locked` is the
+                    handler's own answer travelling with the rows, not something
+                    inferred from the cell: the row is still here, and its county, BOE
+                    and share are all real, so there is no absence to read the gate
+                    off (§4 rule 2).
+
+                    THE MASK IS APPLIED UPSTREAM OF THIS COMPONENT, in
+                    `app/api/operators/production-by-county/route.ts`. That matters:
+                    this table used to call the operator API straight from the
+                    browser, and a lock drawn here over a value already delivered
+                    there would be defeated by opening devtools.
+                  */}
                   <td className={`${CELL} text-right tabular-nums`}>
-                    {row.oilText || EM_DASH}
+                    {counties.locked ? (
+                      <LockedValue label="Oil produced" width="w-[52px]" />
+                    ) : (
+                      row.oilText || EM_DASH
+                    )}
                   </td>
                   <td className={`${CELL} text-right tabular-nums`}>
-                    {row.gasText || EM_DASH}
+                    {counties.locked ? (
+                      <LockedValue label="Gas produced" width="w-[52px]" />
+                    ) : (
+                      row.gasText || EM_DASH
+                    )}
                   </td>
                   <td className={`${CELL} text-right tabular-nums`}>
                     {row.boeText || EM_DASH}

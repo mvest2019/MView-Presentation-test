@@ -91,12 +91,19 @@ export interface ActivityResult<T> {
   rows: T[];
   total: number;
   /**
-   * True when the reader has no account and the rows were never fetched.
+   * True when the reader has no account, so some or all of the answer was withheld.
    *
-   * Only the filings read can return it — see
-   * `app/api/operators/recent-wells-permits/route.ts`. Distinct from an empty
-   * result on purpose: "this operator has filed nothing lately" and "filings need
-   * an account" are different sentences, and the section draws them differently.
+   * TWO READS RETURN IT, and they are gated differently — the flag means "a gate
+   * applied", not "there is nothing here":
+   *
+   *   filings (`/api/operators/recent-wells-permits`)  no rows at all; the upstream
+   *                                                    call is skipped entirely
+   *   county production (`/api/operators/production-by-county`)  every row present,
+   *                                                    with oil and gas masked
+   *
+   * Distinct from an empty result on purpose: "this operator has filed nothing
+   * lately" and "filings need an account" are different sentences, and the sections
+   * draw them differently.
    */
   locked?: boolean;
 }
@@ -301,7 +308,13 @@ export async function fetchCountyProduction(
   signal?: AbortSignal,
 ): Promise<ActivityResult<CountyProductionRecord>> {
   const payload = await post(
-    "/api/v1/operators/production-by-county",
+    /* THROUGH THIS SITE'S OWN ORIGIN, as of the county gate. This used to call
+       `/api/v1/operators/production-by-county` directly — the endpoint sends
+       `access-control-allow-origin: *` and takes no `member_id`, so the browser
+       could. It cannot any more: oil and gas are withheld from a signed-out reader,
+       and a mask applied anywhere but the server leaves the real figures in the
+       reader's network tab. See the route handler. */
+    "/api/operators/production-by-county",
     { operator_no: operatorNumber },
     signal,
   );
@@ -330,5 +343,12 @@ export async function fetchCountyProduction(
   });
 
   // This endpoint sends no `total_count`, so the row count IS the total.
-  return { rows, total: rows.length };
+  /* `locked` rides on the response rather than being inferred from a `"****"` in the
+     rows: the rows still arrive (county and BOE are free), so unlike the filings feed
+     there is no "no rows" signal to read the gate off. §4 rule 2. */
+  return {
+    rows,
+    total: rows.length,
+    locked: (payload as { locked?: unknown }).locked === true,
+  };
 }
