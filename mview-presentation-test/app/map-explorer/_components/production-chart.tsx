@@ -193,7 +193,15 @@ export function ProductionChart({
   const years = [...new Set(shown.map((point) => point.year))];
 
   return (
-    <div className="rounded-xl border border-mv-line bg-white p-4">
+    <div
+      /* Its own card, built here rather than by `Card`, so it has to say for
+         itself that a page of the PDF may end at its foot. Without that the
+         only break above it was the row of cards before it, and the chart was
+         cut in half — heading at the bottom of one page, plot at the top of
+         the next. */
+      data-page-block=""
+      className="rounded-xl border border-mv-line bg-white p-4"
+    >
       {/* The title, and every control for this chart on the line with it:
           one place to look, at the top of the card where a reader arrives
           rather than at the bottom where they leave. */}
@@ -342,8 +350,13 @@ export function ProductionChart({
                 onMouseLeave={() => setHovered(null)}
               >
                 <svg
+                  /* As with the wellbore diagram: a namespace and a size of
+                     its own, for the capture that serialises it alone. */
+                  xmlns="http://www.w3.org/2000/svg"
                   viewBox={`0 0 ${W} ${H}`}
                   preserveAspectRatio="none"
+                  width={W}
+                  height={H}
                   className="h-[230px] w-full"
                   role="img"
                   aria-label="Monthly oil and gas production, history and forecast"

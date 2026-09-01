@@ -398,9 +398,20 @@ export function WellInsightsPanel({
             <div
               ref={completionRef}
               aria-busy={loading}
-              className={
+              /*
+               * The sheet is its own container.
+               *
+               * Everything below lays out against this width rather than the
+               * window's. The panel is a share of a split view, so the two
+               * have never been the same — and the PDF made that plain: the
+               * capture stages this markup 1280px wide, but `xl:` still asked
+               * the window, so exporting from a tablet produced a column of
+               * cards down the middle of a wide sheet with the page breaks
+               * falling wherever they liked.
+               */
+              className={`@container ${
                 loading ? "pointer-events-none select-none blur-[2px]" : ""
-              }
+              }`}
             >
               {/* ---------------- identity strip ----------------
           A pale mint band rather than a white card: enough to read as the
@@ -516,7 +527,7 @@ export function WellInsightsPanel({
               </div>
 
               {/* ---------------- well · lease · operator ---------------- */}
-              <div className="mt-3 grid gap-3 xl:grid-cols-3">
+              <div className="mt-3 grid gap-3 @4xl:grid-cols-3">
                 <Card icon={Info} title="Well Information">
                   <Rows
                     rows={fields?.wellInformation ?? blank(WELL_INFO_LABELS)}
@@ -546,7 +557,7 @@ export function WellInsightsPanel({
               </div>
 
               {/* ---------------- activity · location · wellbore ---------------- */}
-              <div className="mt-3 grid gap-3 xl:grid-cols-3">
+              <div className="mt-3 grid gap-3 @4xl:grid-cols-3">
                 <Card
                   icon={FileText}
                   title="Latest Well Activity and Production"
@@ -631,7 +642,7 @@ export function WellInsightsPanel({
           Two across, then the cohort table on its own row: at a third of the
           width its five bars had no room to differ, and the difference between
           them is the whole point of that card. */}
-              <div className="mt-3 grid gap-3 xl:grid-cols-2">
+              <div className="mt-3 grid gap-3 @2xl:grid-cols-2">
                 <Card
                   title="Decline Diagnostics"
                   aside="What the rate curve anchors reveal"
@@ -802,8 +813,8 @@ export function WellInsightsPanel({
           chart takes the whole width rather than sitting beside an empty box.
         */}
                 <div
-                  className={`grid gap-4 rounded-xl border border-mv-line bg-white p-4 xl:col-span-2 xl:gap-6 ${
-                    cohortNotes.length > 0 ? "xl:grid-cols-2" : ""
+                  className={`grid gap-4 rounded-xl border border-mv-line bg-white p-4 @4xl:col-span-2 @4xl:gap-6 ${
+                    cohortNotes.length > 0 ? "@4xl:grid-cols-2" : ""
                   }`}
                 >
                   <div className="min-w-0">
@@ -1049,6 +1060,12 @@ function Card({
 }) {
   return (
     <div
+      /* A page of the PDF may end at the foot of any card. Marked rather than
+         guessed at by depth: the capture used to measure two levels of the
+         panel's own markup, and on a narrow screen the cards sit one level
+         further in — so the production chart offered no edge to break at and
+         the page was cut through the middle of it. */
+      data-page-block=""
       className={`rounded-xl border border-mv-line bg-white p-4 ${className}`}
     >
       <Heading icon={icon} title={title} aside={aside} badge={badge} />

@@ -25,6 +25,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { MapToast } from "./map-toast";
+import { downloadSheet, type SheetColumn } from "./xlsx";
 import { TableSearch, type SearchPick } from "./table-search";
 
 import {
@@ -78,9 +79,8 @@ function withPick(
   };
 }
 
-/** A field needs quoting when it holds a comma, a quote or a line break. */
-const CSV_QUOTE = new RegExp('[",\\n]');
-const CSV_NEWLINE = "\r\n";
+/** What an exported cell says where the record says nothing. */
+const NOTHING_MARK = "-";
 
 /** Rows per page — the `pageSize` the table asks for. */
 const PER_PAGE = 10;
@@ -575,41 +575,41 @@ export function WellsTable({
   function exportPage() {
     if (rows.length === 0) return;
 
-    const cell = (value: string | number | null) => {
-      const text = value === null ? "" : String(value);
-      return CSV_QUOTE.test(text)
-        ? `"${text.replace(/"/g, '""')}"`
-        : text;
-    };
+    /*
+     * The same headings the table shows, in the same order, and each column
+     * told what it holds — so the figures arrive as figures, right-ranged
+     * with separators, and the dash for a well with none lines up under
+     * them instead of ranging left as text does.
+     */
+    const columns: SheetColumn[] = [
+      { head: "API", width: 15 },
+      { head: "Operator", width: 34 },
+      { head: "Lease", width: 30 },
+      { head: "Type", width: 24 },
+      { head: "Status", width: 15 },
+      { head: "County", width: 16 },
+      { head: "Producing Oil (bbl)", width: 19, format: "number" },
+      { head: "Producing Gas (mcf)", width: 19, format: "number" },
+    ];
 
-    const lines = [
-      ["api", "operator", "lease", "type", "status", "county", "oil", "gas"],
-      /* Empty rather than "N/A": a spreadsheet has its own way of holding
-         nothing, and a column of "N/A" cannot be counted or sorted. */
-      ...rows.map((row) => [
+    /* A dash where the record says nothing, the same mark the table shows:
+       an empty cell reads as a column nobody filled in. Sums are unaffected
+       — a spreadsheet skips text when it adds a column up. */
+    downloadSheet(
+      `mineral-view-wells-page-${safePage}.xlsx`,
+      "Wells",
+      columns,
+      rows.map((row) => [
         row.api,
-        missing(row.operator) ? "" : row.operator,
-        missing(row.lease) ? "" : row.lease,
-        missing(row.wtype) ? "" : row.wtype,
-        missing(row.status) ? "" : row.status,
-        missing(row.county) ? "" : row.county,
-        row.producedOil,
-        row.producedGas,
+        missing(row.operator) ? NOTHING_MARK : row.operator,
+        missing(row.lease) ? NOTHING_MARK : row.lease,
+        missing(row.wtype) ? NOTHING_MARK : row.wtype,
+        missing(row.status) ? NOTHING_MARK : row.status,
+        missing(row.county) ? NOTHING_MARK : row.county,
+        row.producedOil ?? NOTHING_MARK,
+        row.producedGas ?? NOTHING_MARK,
       ]),
-    ].map((line) => line.map(cell).join(","));
-
-    const url = URL.createObjectURL(
-      new Blob([lines.join(CSV_NEWLINE)], {
-        type: "text/csv;charset=utf-8",
-      }),
     );
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `mineral-view-wells-page-${safePage}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
   }
 
   function toggleSort(key: SortKey) {

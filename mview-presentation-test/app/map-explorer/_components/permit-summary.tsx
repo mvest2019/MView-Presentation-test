@@ -161,7 +161,13 @@ export function PermitSummary({
       <div
         ref={printRef}
         aria-busy={loading}
-        className={loading ? "pointer-events-none select-none blur-[2px]" : ""}
+        /* Its own container, as on the completion side: this sheet is
+           captured 1280px wide whatever the window is, and a layout that asks
+           the window instead lays a tablet's single column down the middle of
+           it. */
+        className={`@container ${
+          loading ? "pointer-events-none select-none blur-[2px]" : ""
+        }`}
       >
         {/* ---------------- identity strip ----------------
           The completion record's band, to the pixel: switching records changes
@@ -199,7 +205,7 @@ export function PermitSummary({
 
         <div className="mt-3">
           {/* ---------------- three across ---------------- */}
-          <div className="grid gap-3 xl:grid-cols-3">
+          <div className="grid gap-3 @4xl:grid-cols-3">
             <Card icon={FileText} title="Lease & Well">
               <Rows rows={fields?.leaseWell ?? blank(LEASE_WELL_LABELS)} />
             </Card>
@@ -216,7 +222,7 @@ export function PermitSummary({
             page — an operator name with its number, a field name with its own —
             and the two short cards stack in the other half rather than each
             taking a column of its own and leaving most of it empty. */}
-          <div className="mt-3 grid gap-3 xl:grid-cols-2">
+          <div className="mt-3 grid gap-3 @2xl:grid-cols-2">
             <Card icon={UserRound} title="Operator, Field & Area">
               <Rows rows={fields?.operatorField ?? blank(OPERATOR_LABELS)} />
             </Card>

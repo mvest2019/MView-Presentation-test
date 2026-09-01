@@ -116,10 +116,17 @@ export async function downloadSummaryPdf(
      * a row that runs over a page can still break between its cards.
      */
     const stageTop = stage.getBoundingClientRect().top;
-    const breaks = [...copy.querySelectorAll(":scope > *, :scope > * > *")]
-      .map((block) => block.getBoundingClientRect().bottom - stageTop)
-      .filter((edge) => edge > 0)
-      .sort((a, b) => a - b);
+    const blocks = [
+      ...copy.querySelectorAll(":scope > *, :scope > * > *, [data-page-block]"),
+    ];
+    const breaks = [
+      ...new Set(
+        blocks
+          .map((block) => block.getBoundingClientRect().bottom - stageTop)
+          .filter((edge) => edge > 0)
+          .map((edge) => Math.round(edge)),
+      ),
+    ].sort((a, b) => a - b);
 
     const canvas = await html2canvas(stage, {
       scale: CAPTURE_SCALE,

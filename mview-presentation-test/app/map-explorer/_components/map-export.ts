@@ -78,6 +78,18 @@ const filled = (value: string | number | null | undefined) =>
   value !== null && value !== undefined && value !== "";
 
 /**
+ * What a cell says where the record says nothing.
+ *
+ * A dash, as the table and the summary show it: an empty cell reads as a
+ * column nobody filled in, where a dash says the well has no figure. Numbers
+ * still add up — a spreadsheet skips text when it totals a column.
+ */
+const NOTHING_MARK = "-";
+
+const shown = (value: string | number | null | undefined) =>
+  filled(value) ? value : NOTHING_MARK;
+
+/**
  * Downloads whichever of the two the map is drawing. Returns how many rows
  * went out, so the caller can say when there was nothing to export.
  */
@@ -103,7 +115,7 @@ export function exportVisible(
       WELL_FILENAME,
       "Wells",
       columns,
-      visible.map((well) => columns.map((column) => column.read(well))),
+      visible.map((well) => columns.map((column) => shown(column.read(well)))),
     );
     return visible.length;
   }
@@ -138,11 +150,11 @@ export function exportVisible(
     tier === "sub-clusters" ? "Sub-clusters" : "Clusters",
     columns,
     visible.map((cluster) => [
-      cluster.name,
-      cluster.topCounty,
+      shown(cluster.name),
+      shown(cluster.topCounty),
       /* Semicolons, not commas: the list is one value, and a comma inside it
          is the classic way to have a spreadsheet split it into columns. */
-      cluster.counties.join("; "),
+      shown(cluster.counties.join("; ")),
       cluster.at[0],
       cluster.at[1],
       cluster.count,

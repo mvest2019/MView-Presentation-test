@@ -152,7 +152,10 @@ export function AiSummary({
   const findings = state.kind === "ready" ? (state.summary.findings ?? []) : [];
 
   return (
-    <section className="@container rounded-xl border border-mv-line bg-mv-bg p-3 lg:p-4">
+    <section
+      data-page-block=""
+      className="@container rounded-xl border border-mv-line bg-mv-bg p-3 lg:p-4"
+    >
       {/* ---------------- what this is ----------------
           The caption sits beside the heading where there is room for it and
           under it where there is not. Held on one line it squeezed "AI
