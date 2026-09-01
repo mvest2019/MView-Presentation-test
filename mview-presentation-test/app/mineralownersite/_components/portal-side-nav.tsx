@@ -124,14 +124,16 @@ export function PortalSideNav() {
         <span style={{ color: "#9fd7bd" }}>
           {referral.countyProof} are already on Mineral View.
         </span>
-        {/* No href: the Invite module is not built yet. A button into nothing
-            would be worse than a label that says so. */}
+        {/* No href: the Invite module is not built yet, so this is a labelled
+            non-action rather than a button into nothing. The "— soon" suffix is
+            gone with the nav rows' badges (requested); `aria-disabled`, the
+            dimming and the absence of an anchor still say it is inert. */}
         <span
           className="btn btn-mint btn-sm btn-block"
           aria-disabled="true"
           style={{ opacity: 0.6, cursor: "default" }}
         >
-          Invite co-owners — soon
+          Invite co-owners
         </span>
       </div>
 

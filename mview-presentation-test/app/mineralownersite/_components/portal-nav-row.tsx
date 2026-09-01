@@ -14,11 +14,17 @@ import type { PortalNavItem } from "../_lib/portal-nav";
  *
  *   A PLAIN LABEL, when it does not. Not a disabled link, not a link to a 404,
  *   and not a lock icon — a lock would say "your plan does not include this",
- *   which is a lie about a module nobody can reach yet. It says "Soon" and it
- *   carries `aria-disabled`, so a screen reader is told the row is inert rather
- *   than left to discover that a link does nothing. This is the convention
+ *   which is a lie about a module nobody can reach yet. This is the convention
  *   `site-nav.ts` already established for the Explore menu's unbuilt `/data/*`
  *   destinations.
+ *
+ * THE "SOON" BADGE IS GONE (requested). It used to sit at the end of every
+ * unbuilt row, and it read as a column of repeated text down the rail. What
+ * carried the meaning alongside it stays and is what carries it now: the row is
+ * dimmed, it is not an anchor so there is nothing to click, `aria-disabled`
+ * tells a screen reader it is inert rather than leaving someone to discover that
+ * a link does nothing, and the `title` still says the module is not open yet. So
+ * removing the badge cost the visual repetition, not the affordance.
  *
  * Give a row its `href` in `portal-nav.ts` when its page lands and it becomes a
  * link with no change here.
@@ -51,12 +57,6 @@ export function PortalNavRow({
           <PortalIcon name={item.icon} />
         </span>
         {item.label}
-        <span
-          className="tiny"
-          style={{ marginLeft: "auto", color: "#5b6472", fontWeight: 700 }}
-        >
-          Soon
-        </span>
       </span>
     );
   }
