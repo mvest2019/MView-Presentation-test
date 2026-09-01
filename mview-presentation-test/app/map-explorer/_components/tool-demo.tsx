@@ -345,12 +345,23 @@ function Gesture({
    * The tract is clicked out corner by corner, which is the gesture it stands
    * in for — one beat each, then the ring closes.
    */
-  const placed = Math.min(TRACT.length, Math.ceil(eased * (TRACT.length + 1)));
+  /*
+   * Timed on the plain progress rather than the eased curve, and closed on
+   * the fifth beat rather than the last frame.
+   *
+   * The easing is an ease-out, so nine-tenths of it is over in the first
+   * half: read through it, the four corners were all down about a quarter of
+   * the way in and the ring then sat open for some three seconds before
+   * snapping shut at the end. Five beats, evenly spaced — four corners and
+   * the click that closes them — is the gesture this stands in for.
+   */
+  const beats = TRACT.length + 1;
+  const placed = Math.min(TRACT.length, Math.ceil(through * beats));
   const corners = TRACT.slice(0, placed).map(([x, y]) => ({
     x: x * BOX.width,
     y: y * BOX.height,
   }));
-  const closed = eased >= 1;
+  const closed = through >= TRACT.length / beats;
 
   return (
     <g>

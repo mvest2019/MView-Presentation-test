@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import {
   ChevronRight,
+  CirclePlay,
   ZoomIn,
   Crosshair,
   LandPlot,
@@ -82,6 +83,15 @@ type ToolsPanelProps = {
    */
   wellsVisible?: boolean;
   onSelect?: (id: string) => void;
+  /**
+   * Play a tool's worked example again.
+   *
+   * The example runs by itself the first time a tool is armed and not after,
+   * which is right for someone who has learnt the gesture and wrong for
+   * someone who wants reminding. This is that reminder, on demand: it shows
+   * the example and arms nothing.
+   */
+  onShowSample?: (id: string) => void;
   /** The chevron in the header — collapses the panel back to the tab. */
   onCollapse?: () => void;
   /** Positioning; the panel places itself nowhere on its own. */
@@ -93,6 +103,7 @@ export function ToolsPanel({
   activeId,
   wellsVisible = true,
   onSelect,
+  onShowSample,
   onCollapse,
   className = "",
   tools = MAP_TOOLS,
@@ -124,41 +135,61 @@ export function ToolsPanel({
           const gated = Boolean(needsWells) && !wellsVisible;
 
           return (
-          <button
+          /* A row rather than a single button: the example needs a control of
+             its own, and a button inside a button is not markup a browser
+             will accept. The row keeps the border and the hover it always
+             had; the parts inside it carry the clicks. */
+          <div
             key={id}
-            type="button"
-            aria-pressed={id === activeId}
-            aria-disabled={gated}
-            title={
-              gated
-                ? "Zoom in until the wells appear — this tool reads well data"
-                : undefined
-            }
-            onClick={() => {
-              // Over bubbles the click asks for the wells instead of arming.
-              if (gated) {
-                setAsked(true);
-                return;
-              }
-              setAsked(false);
-              onSelect?.(id);
-            }}
-            className={`flex w-full cursor-pointer items-center gap-2 rounded-[10px] border px-[10px] py-[7px] text-left lg:gap-[10px] lg:px-3 lg:py-[10px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep ${
+            className={`flex w-full items-center gap-2 rounded-[10px] border px-[10px] py-[7px] lg:gap-[10px] lg:px-3 lg:py-[10px] transition-colors ${
               id === activeId
                 ? "border-mv-green-deep bg-mv-mint"
                 : "border-mv-line bg-white hover:border-mv-green-deep hover:bg-[#f2f8f5]"
             }`}
           >
-            <Icon
-              size={16}
-              strokeWidth={1.75}
-              className="shrink-0 text-mv-slate"
-              aria-hidden="true"
-            />
-            <span className="flex-1 text-[12px] lg:text-[13px] font-semibold leading-[1.25] text-mv-ink">
-              {label}
-            </span>
+            <button
+              type="button"
+              aria-pressed={id === activeId}
+              aria-disabled={gated}
+              title={
+                gated
+                  ? "Zoom in until the wells appear — this tool reads well data"
+                  : undefined
+              }
+              onClick={() => {
+                // Over bubbles the click asks for the wells instead of arming.
+                if (gated) {
+                  setAsked(true);
+                  return;
+                }
+                setAsked(false);
+                onSelect?.(id);
+              }}
+              className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left lg:gap-[10px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+            >
+              <Icon
+                size={16}
+                strokeWidth={1.75}
+                className="shrink-0 text-mv-slate"
+                aria-hidden="true"
+              />
+              <span className="min-w-0 flex-1 text-[12px] lg:text-[13px] font-semibold leading-[1.25] text-mv-ink">
+                {label}
+              </span>
             </button>
+
+            {onShowSample && (
+              <button
+                type="button"
+                onClick={() => onShowSample(id)}
+                aria-label={`Show an example of ${label}`}
+                title="Show an example"
+                className="grid h-[22px] w-[22px] shrink-0 cursor-pointer place-items-center rounded-md text-mv-muted hover:bg-white hover:text-mv-green-deep focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-mv-green-deep"
+              >
+                <CirclePlay size={15} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+            )}
+          </div>
           );
         })}
       </div>

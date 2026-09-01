@@ -860,6 +860,14 @@ export function MapExplorerView() {
    * the tool on a map with nothing on it.
    */
   const [demoTool, setDemoTool] = useState<DemoTool | null>(null);
+  /*
+   * Whether the example on screen was asked for, rather than offered.
+   *
+   * One asked for is not the automatic first showing and does not count as
+   * it: a reader who presses the play icon before ever reaching for the tool
+   * still gets the example when they do, exactly as they would have.
+   */
+  const demoAskedFor = useRef(false);
   /** The distance being asked about — one of the service's own rings. */
   const [watchRadius, setWatchRadius] = useState<number>(NEARBY_RADII[0]);
   /*
@@ -3438,6 +3446,7 @@ export function MapExplorerView() {
        * see `tool-demo.tsx`.
        */
       if (!tool || demoSeen(tool)) return;
+      demoAskedFor.current = false;
       setDemoTool(tool);
     },
     [drawArea, drawMeasurement, drawNearby, drawTract],
@@ -4018,7 +4027,8 @@ export function MapExplorerView() {
             /* Recorded on the way out, whichever way it is closed: "Let me try"
              and the × both mean the reader is done with the explanation. */
             onClose={() => {
-              rememberDemo(demoTool);
+              if (!demoAskedFor.current) rememberDemo(demoTool);
+              demoAskedFor.current = false;
               setDemoTool(null);
             }}
           />
@@ -4150,6 +4160,13 @@ export function MapExplorerView() {
             bare={stacked && viewTab === "insights"}
             activeTool={activeTool}
             onSelectTool={startTool}
+            /* The example on demand, from the icon beside each tool. It shows
+               the worked example and nothing else — the tool is armed by the
+               row itself, as it always was. */
+            onShowToolSample={(id) => {
+              demoAskedFor.current = true;
+              setDemoTool(id);
+            }}
             onZoomIn={zoomIn}
             onZoomOut={zoomOut}
             onHome={goHome}

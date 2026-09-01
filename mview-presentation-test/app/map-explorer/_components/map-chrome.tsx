@@ -116,6 +116,14 @@ type MapChromeProps = {
       | "whats-near-my-land"
       | "measure-area",
   ) => void;
+  /** Play a tool's worked example, without arming the tool. */
+  onShowToolSample: (
+    id:
+      | "draw-area"
+      | "measure-distance"
+      | "whats-near-my-land"
+      | "measure-area",
+  ) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onHome: () => void;
@@ -192,6 +200,7 @@ export function MapChrome({
   openingApi,
   activeTool,
   onSelectTool,
+  onShowToolSample,
   onZoomIn,
   onZoomOut,
   onHome,
@@ -707,6 +716,16 @@ export function MapChrome({
                 id === "measure-area"
               ) {
                 onSelectTool(id);
+              }
+            }}
+            onShowSample={(id) => {
+              if (
+                id === "draw-area" ||
+                id === "measure-distance" ||
+                id === "whats-near-my-land" ||
+                id === "measure-area"
+              ) {
+                onShowToolSample(id);
               }
             }}
             onCollapse={() => setToolsOpen(false)}
