@@ -1,0 +1,124 @@
+"use client";
+
+import Image from "next/image";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+import { PortalNavRow } from "./portal-nav-row";
+import { PortalSectionList } from "./portal-section-list";
+import { usePortalState } from "./portal-state-provider";
+import { primarySlots } from "../_lib/portal-nav";
+import { demoDisclosure, demoOwner, referral } from "../_lib/portal-demo-data";
+import { FUNNEL_PLAN } from "../_lib/portal-state";
+import { logo } from "@/app/_components/site-nav";
+
+/**
+ * The portal sidebar — the portal's navigation landmark (v38 · P1-13).
+ *
+ * ORDER, TOP TO BOTTOM, and each part is here for a stated reason:
+ *
+ *   1  The wordmark, linking back to the public site's home.
+ *   2  ONE swapping primary slot — Claim Mineral Owner while unclaimed, Run a
+ *      Lease Audit once claimed. Both are in the markup; `portal.css` picks.
+ *   3  Three labelled sections: My Minerals · Services · Community.
+ *   4  A line pointing at the account menu, because Profile, Settings and
+ *      Billing MOVED there (v41 · AUDIT #35) and an owner looking in the old
+ *      place should be told where they went, not find nothing.
+ *   5  The referral CTA — persistent on purpose, hidden while unclaimed.
+ *   6  The demo foot, which signs who the prototype is signed in as. Every
+ *      screen says the account is fictional.
+ *
+ * CLIENT, for one reason only: the active row needs `usePathname`. The markup
+ * is otherwise static, and the Dashboard's own content is server-rendered — the
+ * expensive half of the page is not in here.
+ */
+export function PortalSideNav() {
+  const pathname = usePathname();
+  const { funnelState } = usePortalState();
+
+  return (
+    <aside className="app-side" role="navigation" aria-label="Portal navigation">
+      <Link href="/" aria-label="Mineral View home">
+        <Image
+          src={logo.desktop.src}
+          alt="Mineral View"
+          width={logo.desktop.width}
+          height={logo.desktop.height}
+          /* The sidebar is near-black, and the desktop wordmark is drawn for a
+             LIGHT ground (see the note on `logo` in `site-nav.ts`, which
+             forbids recolouring it). Until the design supplies a dark pairing
+             the wordmark sits on a small white plate rather than being
+             transformed. */
+          className="mb-[18px] ml-[8px] mt-[4px] h-[30px] w-auto rounded-md bg-white px-2 py-1"
+          priority
+        />
+      </Link>
+
+      {/* The two swapping slots. Rendering BOTH and letting the state class
+          choose is what makes the swap free — no JavaScript, and no chance of
+          the wrong one flashing before hydration. */}
+      {primarySlots.map((slot) => (
+        <PortalNavRow
+          key={slot.slotClass}
+          item={slot}
+          active={false}
+          extraClass={slot.slotClass}
+        />
+      ))}
+
+      <PortalSectionList pathname={pathname} />
+
+      {/* v41 · AUDIT #35 — the forwarding note. A `<p>` and not a nav row on
+          purpose: it is a signpost, not a destination. */}
+      <p
+        className="tiny"
+        style={{ margin: "14px 8px 0", color: "#5b6472", lineHeight: 1.45 }}
+      >
+        Profile, Settings &amp; Billing are in your account menu, top right.
+      </p>
+
+      {/* v11 · the persistent referral CTA. `.side-ref` is hidden by
+          `portal.css` while unclaimed — there are no co-owners to invite to a
+          record nobody has claimed yet. */}
+      <div className="side-ref">
+        <strong>Invite co-owners — earn renewal credits</strong>
+        <span>
+          {referral.invited} of {referral.target} co-owners invited
+        </span>
+        <div className="progress" aria-hidden="true">
+          <div
+            className="fill"
+            style={{ width: `${(referral.invited / referral.target) * 100}%` }}
+          />
+        </div>
+        <span style={{ color: "#9fd7bd" }}>
+          {referral.countyProof} are already on Mineral View.
+        </span>
+        {/* No href: the Invite module is not built yet. A button into nothing
+            would be worse than a label that says so. */}
+        <span
+          className="btn btn-mint btn-sm btn-block"
+          aria-disabled="true"
+          style={{ opacity: 0.6, cursor: "default" }}
+        >
+          Invite co-owners — soon
+        </span>
+      </div>
+
+      {/* v12 · clear demo identity. The name goes generic while unclaimed, so
+          the fictional sample owner is the only persona on screen in that
+          state. */}
+      <div className="side-foot">
+        <span>
+          {funnelState === "unclaimed" ? "Your account" : demoOwner.name}
+        </span>
+        {" · "}
+        <span>{FUNNEL_PLAN[funnelState]}</span>
+        <br />
+        <span style={{ color: "#5b6472" }}>{demoDisclosure.sidebarFoot}</span>
+        <br />
+        <Link href="/">← Back to the public site</Link>
+      </div>
+    </aside>
+  );
+}

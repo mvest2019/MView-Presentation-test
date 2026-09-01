@@ -1,0 +1,2388 @@
+/* ============================================================================
+   MINERAL OWNER PORTAL — the portal's own stylesheet.
+
+   EXTRACTED, NOT AUTHORED. Every selector, value and colour below is lifted
+   from the owner design in the reference build
+   (`owner/src/styles/mineral-view-owner-full-site.css`, `mvfunnelstates.css`,
+   `v33css.css`, `v40css.css`, `v41css.css`). If a value looks wrong it is wrong
+   in the design and has to change there first.
+
+   WHY A STYLESHEET AND NOT TAILWIND UTILITIES, when the rest of this app is
+   utility-first: the portal's two gating axes are *inherently* ancestor-driven.
+   One class on the portal root re-renders the whole subtree — `.state-claimed`
+   blurs every `.cl-lock`, `.view-ultra` hides every `.hide-u`. That is a
+   descendant relationship a utility class on the leaf cannot express, and it is
+   the mechanism the reference is built on. Rebuilding it as React conditionals
+   would mean re-rendering the entire dashboard on a density change and would
+   lose the reference's own keys. Same precedent as the map-explorer and filter
+   blocks in `globals.css`.
+
+   EVERYTHING IS SCOPED UNDER `.mv-portal`. The generic names the design uses
+   (`.card`, `.btn`, `.chip`, `.grid`) would otherwise collide with the
+   marketing pages, which is why nothing here is a bare class selector.
+
+   ONE DELIBERATE TRANSLATION FROM THE REFERENCE: the design puts its state and
+   tier classes on `<body>`. Here they sit on the portal root element instead,
+   because `<body>` belongs to the marketing root layout and a nested layout
+   cannot own it without a client-side effect — which would flash the wrong
+   state on first paint. `body.state-claimed .cl-lock` therefore reads
+   `.mv-portal.state-claimed .cl-lock`. The class NAMES are the reference's,
+   unchanged, so the contract is still the contract.
+
+   Unlayered on purpose: Tailwind's preflight lives in `@layer base`, and
+   unlayered rules win over layered ones no matter what order they load in.
+   ============================================================================ */
+
+/* ----------------------------------------------------------------------------
+   1 · THE PORTAL SHELL
+
+   `.app-shell` is the sidebar + main grid. The design's `body.in-app` gate is
+   dropped: this stylesheet only ever loads under the portal layout, so the
+   shell is always "in app" and a second gate would be decoration.
+   ---------------------------------------------------------------------------- */
+.mv-portal {
+  --green: #54bf96;
+  --green-ink: #04231a;
+  --green-deep: #2e8f6d;
+  --ink: #0d0e17;
+  --slate: #1e293b;
+  --mint: #e6fff5;
+  --bg: #f6f7f9;
+  --muted: #6b7280;
+  --line: #e5e7eb;
+  --card: #ffffff;
+  --amber: #b45309;
+  --amber-bg: #fef3c7;
+  --blue: #1d4ed8;
+  --blue-bg: #dbeafe;
+  --gold: #b8892f;
+  --shadow:
+    0 1px 3px rgba(13, 14, 23, 0.07), 0 4px 14px rgba(13, 14, 23, 0.05);
+  --shadow-lg:
+    0 4px 10px rgba(13, 14, 23, 0.08), 0 16px 40px rgba(13, 14, 23, 0.1);
+  --r: 12px;
+}
+
+.mv-portal .app-shell {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.mv-portal .app-side {
+  background: var(--ink);
+  color: #cbd5e1;
+  padding: 18px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.mv-portal .app-side a.nav-item,
+.mv-portal .app-side span.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  color: #cbd5e1;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.mv-portal .app-side a.nav-item:hover {
+  background: #181a26;
+  color: #fff;
+  text-decoration: none;
+}
+
+/* The active state. `.on` is the design's own name for it. */
+.mv-portal .app-side a.nav-item.on {
+  background: #16342a;
+  color: var(--green);
+}
+
+.mv-portal .navsec {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #5b6472;
+  padding: 14px 12px 5px;
+}
+
+.mv-portal .app-side .side-foot {
+  margin-top: auto;
+  padding: 12px;
+  font-size: 11.5px;
+  color: #5b6472;
+  line-height: 1.5;
+}
+
+.mv-portal .app-side .side-foot a {
+  color: #5b6472;
+}
+
+/* Icon box in a nav row — the design sizes the glyph, not the box. */
+.mv-portal .nav-ico {
+  display: inline-flex;
+  flex: none;
+}
+
+.mv-portal .nav-ico .mvi {
+  width: 16px;
+  height: 16px;
+}
+
+.mv-portal .mvi {
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+
+.mv-portal .mvi-inline {
+  width: 15px;
+  height: 15px;
+  vertical-align: -2px;
+  flex: none;
+  display: inline-block;
+}
+
+/* v33 · M36 / v37 · D1 — the top slot of the sidebar swaps with the funnel
+   state: Claim Mineral Owner while unclaimed, Run a Lease Audit once claimed.
+   Both rows are always in the markup; the state decides which one shows. */
+.mv-portal .app-side .v33-claimnav,
+.mv-portal .app-drawer .v33-claimnav {
+  border: 1.5px dashed #b8892f;
+  background: rgba(184, 137, 47, 0.14);
+  color: #f0d9a8;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.mv-portal .app-side .v33-claimnav:hover,
+.mv-portal .app-drawer .v33-claimnav:hover {
+  background: rgba(184, 137, 47, 0.26);
+  color: #f0d9a8;
+}
+
+.mv-portal .app-side .v37-auditnav,
+.mv-portal .app-drawer .v37-auditnav {
+  border: 1.5px solid var(--green);
+  background: rgba(84, 191, 150, 0.14);
+  color: #bfe9d8;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.mv-portal .app-side .v37-auditnav:hover,
+.mv-portal .app-drawer .v37-auditnav:hover {
+  background: rgba(84, 191, 150, 0.26);
+  color: #bfe9d8;
+}
+
+.mv-portal:not(.no-claim) .v33-claimnav {
+  display: none;
+}
+
+.mv-portal.no-claim .v37-auditnav {
+  display: none;
+}
+
+/* v11 · the persistent referral CTA at the foot of the sidebar. Hidden while
+   unclaimed — there are no co-owners to invite to a record nobody has claimed. */
+.mv-portal .side-ref {
+  margin: 14px 10px 4px;
+  background: linear-gradient(165deg, #0b3d2c, #12503a);
+  border: 1px solid #1d6a4e;
+  border-radius: 12px;
+  padding: 12px;
+  color: #d9f4e7;
+  font-size: 11.5px;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.45;
+}
+
+.mv-portal .side-ref strong {
+  color: #fff;
+  font-size: 12px;
+  display: block;
+  margin-bottom: 3px;
+}
+
+.mv-portal .side-ref .progress {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.16);
+  margin: 8px 0 4px;
+}
+
+.mv-portal .side-ref .btn {
+  margin-top: 8px;
+}
+
+.mv-portal.no-claim .side-ref {
+  display: none;
+}
+
+.mv-portal .app-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mv-portal .app-body {
+  padding: 26px;
+  max-width: 1180px;
+  width: 100%;
+  margin: 0 auto;
+  flex: 1;
+}
+
+/* ----------------------------------------------------------------------------
+   2 · THE PORTAL TOP BAR
+   ---------------------------------------------------------------------------- */
+.mv-portal .app-top {
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+  padding: 0 26px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.mv-portal .app-top .pagename {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.mv-portal .app-top .spacer {
+  flex: 1;
+}
+
+.mv-portal .plan-pill {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: var(--mint);
+  color: var(--green-ink);
+  border-radius: 999px;
+  padding: 4px 11px;
+  text-transform: uppercase;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.mv-portal .avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--green);
+  color: var(--green-ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  border: 0;
+  cursor: pointer;
+  flex: none;
+}
+
+.mv-portal .bellbtn {
+  position: relative;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 10px;
+  width: 34px;
+  height: 34px;
+  cursor: default;
+  line-height: 1;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--slate);
+  text-decoration: none;
+}
+
+.mv-portal .bellbtn .bdg {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: var(--green);
+  color: var(--green-ink);
+  font-size: 10px;
+  font-weight: 800;
+  border-radius: 999px;
+  padding: 1px 6px;
+  border: 2px solid #fff;
+}
+
+.mv-portal .unread {
+  background: var(--green);
+  color: var(--green-ink);
+  font-size: 10.5px;
+  font-weight: 800;
+  border-radius: 999px;
+  padding: 1px 8px;
+  align-self: center;
+  flex: none;
+}
+
+/* An unclaimed owner has no alerts, because nothing is being watched yet. */
+.mv-portal.no-claim .unread,
+.mv-portal.no-claim .bellbtn .bdg {
+  display: none;
+}
+
+.mv-portal .mv-demochip {
+  display: none;
+  align-items: center;
+  background: #1e293b;
+  color: #fff;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+
+.mv-portal .app-hamburger {
+  display: none;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  color: var(--slate);
+  align-items: center;
+  justify-content: center;
+}
+
+/* ----------------------------------------------------------------------------
+   3 · THE PROFILE / ACCOUNT MENU  (v41 · AUDIT #35)
+
+   My Profile, Settings, Billing & Plan and Contact Us live here rather than in
+   the sidebar, "where users expect account items".
+   ---------------------------------------------------------------------------- */
+.mv-portal .v41-avwrap {
+  position: relative;
+}
+
+.mv-portal .v41-avmenu {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 44px;
+  z-index: 340;
+  width: 280px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(13, 14, 23, 0.18);
+  padding: 8px;
+  text-align: left;
+}
+
+.mv-portal .v41-avmenu.open {
+  display: block;
+}
+
+.mv-portal .v41-avhead {
+  padding: 8px 10px 10px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mv-portal .v41-avmenu a[role="menuitem"] {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.mv-portal .v41-avmenu a[role="menuitem"]:hover {
+  background: #f0faf5;
+  text-decoration: none;
+}
+
+.mv-portal .v41-avmenu .mvi {
+  width: 15px;
+  height: 15px;
+}
+
+.mv-portal .v41-avsec {
+  padding: 10px 10px 4px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #8a93a3;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  margin-top: 6px;
+}
+
+.mv-portal .v41-avviews {
+  margin: 4px 8px 8px;
+  display: flex;
+}
+
+.mv-portal .v41-avviews button,
+.mv-portal .v41-avviews a {
+  flex: 1;
+  font-size: 11px;
+  padding: 6px 4px;
+}
+
+/* ----------------------------------------------------------------------------
+   4 · THE FOUR-VIEW DENSITY SWITCH
+
+   Names are Ultra · Essentials · Detailed · Professional. The word "Simple"
+   must never reach the UI (v41 · AUDIT #3) even though the class stays
+   `.view-simple` — it reads as derogatory about the reader.
+   ---------------------------------------------------------------------------- */
+.mv-portal .view-switch {
+  display: inline-flex;
+  background: #e8ecf3;
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+}
+
+/* Each tier is a deep link (`?view=pro`), so these are anchors and not buttons.
+   The extra properties are what make an anchor sit in the pill the way the
+   design's button did: centred, undecorated, and in slate rather than the
+   global link green. */
+.mv-portal .view-switch button,
+.mv-portal .view-switch a {
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--slate);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-decoration: none;
+}
+
+.mv-portal .view-switch a:hover {
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.mv-portal .view-switch button.on,
+.mv-portal .view-switch a.on {
+  background: #fff;
+  box-shadow: var(--shadow);
+  color: var(--ink);
+}
+
+/* ----------------------------------------------------------------------------
+   5 · THE PINNED VALUE + SPOT BAR  (v43 · OW-31 + OW-04)
+
+   Sticky under the top bar on every portal route, so the portfolio value does
+   not disappear the moment you leave the dashboard. ONE slim row, <=56px, no
+   card chrome — OW-30: "I don't want to have so much at the top that you bury
+   everything below it."
+   ---------------------------------------------------------------------------- */
+.mv-portal #mvPinBar {
+  position: sticky;
+  top: 58px;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 0 18px;
+  flex-wrap: nowrap;
+  padding: 7px 26px;
+  min-height: 46px;
+  background: linear-gradient(160deg, #0d0e17, #16342a);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.mv-portal #mvPinBar .pin-val-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  flex-wrap: nowrap;
+  flex: none;
+  border-radius: 8px;
+  padding: 2px 8px 2px 0;
+  white-space: nowrap;
+}
+
+.mv-portal #mvPinBar .pin-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #9fb4ab;
+}
+
+.mv-portal #mvPinBar .pin-val {
+  font-size: 26px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--green);
+  line-height: 1.08;
+}
+
+.mv-portal #mvPinBar .pin-sub {
+  font-size: 10.5px;
+  color: #8a94a6;
+}
+
+.mv-portal #mvPinBar .pin-claim {
+  font-size: 12.5px;
+  color: #d7efe3;
+}
+
+.mv-portal #mvPinBar .pin-claim a {
+  color: #7fe3bd;
+  font-weight: 700;
+}
+
+.mv-portal #mvPinBar .pin-spot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 8px;
+  flex-wrap: nowrap;
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.mv-portal #mvPinBar .pin-tk {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  border-radius: 8px;
+  padding: 3px 7px;
+  white-space: nowrap;
+  flex: none;
+}
+
+.mv-portal #mvPinBar .pin-tk .sym {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #9fb4ab;
+}
+
+.mv-portal #mvPinBar .pin-tk .mv-spot-val {
+  font-size: 14px;
+  font-weight: 800;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.mv-portal #mvPinBar .pin-note {
+  font-size: 10px;
+  color: #7a8592;
+  white-space: nowrap;
+  flex: none;
+}
+
+/* The lapsed owner's portfolio total blurs exactly like every other all-ten
+   figure — it is an all-ten number and they have one lease live. */
+.mv-portal.state-lapsed #mvPinBar .pin-val {
+  filter: blur(7px);
+  opacity: 0.5;
+  user-select: none;
+}
+
+.mv-portal.state-lapsed #mvPinBar .pin-sub.hide-s,
+.mv-portal.state-claimed #mvPinBar .pin-sub.hide-s {
+  display: none;
+}
+
+/* The width ladder. Propane and Brent go first, then the estimate disclaimer,
+   because a settlement with no room is better dropped than truncated. */
+@media (max-width: 1340px) {
+  .mv-portal #mvPinBar .pin-sub.hide-s {
+    display: none;
+  }
+}
+
+@media (max-width: 1180px) {
+  .mv-portal #mvPinBar .pin-tk[data-mv-spot="propane"] {
+    display: none;
+  }
+}
+
+@media (max-width: 1020px) {
+  .mv-portal #mvPinBar .pin-tk[data-mv-spot="brent"] {
+    display: none;
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   6 · THE FUNNEL BAR  (v43 states 4A/4B · v50 state 3)
+
+   Shows for claimed, trial and lapsed. Never for unclaimed (the claim rail on
+   the page is that state's message) and never for paid (nothing to say).
+   ---------------------------------------------------------------------------- */
+.mv-portal #mvFunnelBar {
+  display: none;
+}
+
+.mv-portal.state-claimed #mvFunnelBar,
+.mv-portal.state-trial #mvFunnelBar,
+.mv-portal.state-lapsed #mvFunnelBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 11px 16px;
+  margin: 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* Blue for claimed, green for trial, amber for lapsed: blue reads as "here is
+   something new" where mint reads "you already have it". */
+.mv-portal.state-claimed #mvFunnelBar {
+  background: #eef4fb;
+  border-bottom-color: #c9dcf1;
+  color: #1d4267;
+}
+
+.mv-portal.state-trial #mvFunnelBar {
+  background: #eefaf4;
+  border-bottom-color: #bfe6d5;
+  color: #17513c;
+}
+
+.mv-portal.state-lapsed #mvFunnelBar {
+  background: #fdf6e7;
+  border-bottom-color: #ecd9a8;
+  color: #5c4413;
+}
+
+.mv-portal #mvFunnelBar .fb-tag {
+  flex: none;
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.mv-portal.state-claimed #mvFunnelBar .fb-tag {
+  background: #2f6fb0;
+  color: #fff;
+}
+
+.mv-portal.state-trial #mvFunnelBar .fb-tag {
+  background: #2e8f6d;
+  color: #fff;
+}
+
+.mv-portal.state-lapsed #mvFunnelBar .fb-tag {
+  background: #a8791a;
+  color: #fff;
+}
+
+.mv-portal #mvFunnelBar .fb-msg {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.mv-portal #mvFunnelBar .fb-msg b {
+  font-weight: 650;
+}
+
+.mv-portal #mvFunnelBar .fb-act {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.mv-portal #mvFunnelBar .fb-cta {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 15px;
+  border-radius: 8px;
+  background: #2e8f6d;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  text-decoration: none;
+  border: 0;
+  opacity: 0.75;
+}
+
+/* The trial's day pips — spent days go pale. */
+.mv-portal #mvFunnelBar .fb-pips {
+  display: inline-flex;
+  gap: 3px;
+  vertical-align: middle;
+  margin: 0 2px;
+}
+
+.mv-portal #mvFunnelBar .fb-pips i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #2e8f6d;
+  display: block;
+}
+
+.mv-portal #mvFunnelBar .fb-pips i.spent {
+  background: #bfe6d5;
+}
+
+/* ----------------------------------------------------------------------------
+   7 · THE DASHBOARD STATE CARD
+
+   The funnel bar's message repeated on the route its CTA lands on, because the
+   state has to be visible where the link goes. Visible in Ultra too (v50 ·
+   BG-06) — its supporting sentences carry `.hide-u` so it reads at Ultra length
+   rather than dropping five sentences onto a one-number page.
+   ---------------------------------------------------------------------------- */
+.mv-portal #mvStateCard {
+  display: none;
+}
+
+.mv-portal.state-claimed #mvStateCard,
+.mv-portal.state-trial #mvStateCard,
+.mv-portal.state-lapsed #mvStateCard {
+  display: block;
+  border: 1px solid var(--line);
+  border-left: 4px solid currentColor;
+  border-radius: var(--r);
+  background: #fff;
+  padding: 14px 18px;
+  margin: 0 0 14px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.mv-portal.state-claimed #mvStateCard {
+  color: #1d4267;
+  border-left-color: #2f6fb0;
+}
+
+.mv-portal.state-trial #mvStateCard {
+  color: #17513c;
+  border-left-color: #2e8f6d;
+}
+
+.mv-portal.state-lapsed #mvStateCard {
+  color: #5c4413;
+  border-left-color: #a8791a;
+}
+
+.mv-portal #mvStateCard h4 {
+  font-size: 16px;
+  font-weight: 800;
+  margin: 0 0 5px;
+  line-height: 1.3;
+  color: inherit;
+}
+
+/* ----------------------------------------------------------------------------
+   8 · GATE 1 — THE FIVE FUNNEL STATES
+
+   Keys: unclaimed | claimed | trial | lapsed | paid.
+   Root classes: no-claim | state-claimed | state-trial | state-lapsed |
+   state-paid. `unclaimed` keeps the design's original `.no-claim` name rather
+   than gaining a `state-` prefix, because the whole `.nc-*` helper family is
+   named off it and renaming one without the other twelve is how a gate breaks.
+
+   HELPERS, per state: `-only` shows in that state, `-hide` hides in it.
+   ---------------------------------------------------------------------------- */
+.mv-portal .nc-only {
+  display: none !important;
+}
+
+.mv-portal.no-claim .nc-only {
+  display: block !important;
+}
+
+/* v26 · S3 — an inline `nc-only` span stays inline instead of becoming a block
+   in the middle of a sentence. */
+.mv-portal.no-claim span.nc-only.nc-inline {
+  display: inline !important;
+}
+
+.mv-portal.no-claim .nc-hide {
+  display: none !important;
+}
+
+/* A route with an `.nc-swap` panel shows ONLY that panel while unclaimed —
+   the sample dashboard replaces the real one rather than stacking under it. */
+.mv-portal.no-claim .mv-dash-routes > :not(.nc-only) {
+  display: none !important;
+}
+
+.mv-portal .tr-only,
+.mv-portal .lp-only,
+.mv-portal .cl-only {
+  display: none;
+}
+
+.mv-portal.state-trial .tr-only {
+  display: revert;
+}
+
+.mv-portal.state-lapsed .lp-only {
+  display: revert;
+}
+
+.mv-portal.state-claimed .cl-only {
+  display: revert;
+}
+
+.mv-portal.state-claimed .chip.cl-only,
+.mv-portal.state-trial .fb-cta.tr-only,
+.mv-portal.state-lapsed .fb-cta.lp-only,
+.mv-portal.state-claimed .fb-cta.cl-only {
+  display: inline-flex;
+}
+
+.mv-portal.state-trial .tr-hide,
+.mv-portal.state-lapsed .lp-hide,
+.mv-portal.state-claimed .cl-hide {
+  display: none !important;
+}
+
+/* --- state 3 (claimed) · the ONE thing withheld -----------------------------
+   D-012. The owner keeps every lease, well, status and all the surrounding
+   activity — they claimed it, it is theirs, and showing it is the payoff for
+   claiming. The one thing held back is the MVestimate MONEY figure, because
+   that is what Premium sells and it is the reason to start the trial.
+
+   Elements opt IN with `.cl-lock`, so every locked value is a deliberate
+   choice rather than a selector that quietly catches the next number someone
+   adds to the page. */
+.mv-portal.state-claimed .cl-lock {
+  filter: blur(6px);
+  opacity: 0.55;
+  user-select: none;
+}
+
+/* ...except inside the two surfaces whose whole job is to explain the gate. */
+.mv-portal.state-claimed #mvFunnelBar .cl-lock,
+.mv-portal.state-claimed #mvStateCard .cl-lock {
+  filter: none;
+  opacity: 1;
+}
+
+.mv-portal.state-claimed .app-main .kpi:has(.cl-lock) {
+  position: relative;
+  padding-bottom: 30px;
+}
+
+.mv-portal.state-claimed .app-main .kpi:has(.cl-lock)::after {
+  content: "What it's worth unlocks with your free 7-day trial";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 6px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #2f6fb0;
+}
+
+/* --- state 4B (lapsed) · one lease stays live -------------------------------
+   Ryan's rule. Everything that carries an all-ten number blurs. Leaving the
+   portfolio total sharp is what made the lapsed state read as "same as paid"
+   in an earlier pass, so the totals are included deliberately. */
+.mv-portal.state-lapsed .app-main .kpi .k-val,
+.mv-portal.state-lapsed .app-main .pf-val,
+.mv-portal.state-lapsed .app-main .ck-val,
+.mv-portal.state-lapsed .app-main .u-headline strong {
+  filter: blur(6px);
+  opacity: 0.5;
+  user-select: none;
+}
+
+.mv-portal.state-lapsed #mvFunnelBar .k-val,
+.mv-portal.state-lapsed #mvFunnelBar .pf-val,
+.mv-portal.state-lapsed #mvStateCard .k-val {
+  filter: none;
+  opacity: 1;
+}
+
+.mv-portal.state-lapsed .app-main .kpi {
+  position: relative;
+  padding-bottom: 30px;
+}
+
+.mv-portal.state-lapsed .app-main .kpi::after {
+  content: "Portfolio totals cover all 10 leases — Premium";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 6px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #a8791a;
+}
+
+/* The lapsed lease-picker affordances. Their host is the My Leases module, so
+   they carry no markup here yet — the rules are kept because they are the
+   contract that module will render into, and splitting a gate across two files
+   is how gates drift. */
+.mv-portal .lp-lockbtn {
+  display: inline-block;
+  margin-left: 9px;
+  background: none;
+  border: 0;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 12px;
+  color: #8a6414;
+  cursor: pointer;
+  text-decoration: underline;
+  min-height: 36px;
+}
+
+.mv-portal:not(.state-lapsed) .lp-lockbtn {
+  display: none;
+}
+
+.mv-portal .lp-activetag {
+  display: inline-block;
+  margin-left: 7px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #2e8f6d;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
+/* ----------------------------------------------------------------------------
+   9 · GATE 2 — THE FOUR VIEW TIERS  (RV-03, the canonical engine)
+
+   Keys: ultra | simple | detailed | pro. Internal only, never rendered.
+   Root classes: view-ultra (+view-simple) | view-simple | view-detailed |
+   view-pro. Ultra ALSO carries view-simple so Ultra can only ever go further
+   than Essentials, never sideways.
+
+   Density only — never plan gating. The two axes are orthogonal: which tier
+   you read at says nothing about what you are allowed to see.
+   ---------------------------------------------------------------------------- */
+.mv-portal:not(.view-simple) .tier-s {
+  display: none !important;
+}
+
+.mv-portal:not(.view-pro) .tier-p {
+  display: none !important;
+}
+
+.mv-portal:not(.view-detailed) .tier-d {
+  display: none !important;
+}
+
+.mv-portal.view-simple .hide-s {
+  display: none !important;
+}
+
+.mv-portal:not(.view-ultra) .tier-u {
+  display: none !important;
+}
+
+.mv-portal.view-ultra .hide-u {
+  display: none !important;
+}
+
+/* Ultra REPLACES the page: one headline, one status, one button. Everything
+   that is not the Ultra hero goes, except the state card, which is exempted so
+   a trial or lapsed owner is not left on an unexplained blurred number.
+
+   `#mvStateCard` cannot simply be given `.tier-u` — that class is hidden in
+   the other three views, and the card has to show in all four. */
+.mv-portal.view-ultra:not(.no-claim)
+  .mv-dash-routes
+  > :not(.tier-u):not(#mvStateCard) {
+  display: none !important;
+}
+
+/* Ultra replaces the Essentials hero rather than stacking on top of it. */
+.mv-portal.view-ultra .tier-s {
+  display: none !important;
+}
+
+/* The unclaimed sample dashboard has no Ultra variant — it is a guided tour of
+   what the portal becomes, which is the opposite of a one-number page. */
+.mv-portal.no-claim .tier-u:not(.nc-keep) {
+  display: none !important;
+}
+
+.mv-portal .ultra-hero {
+  max-width: 640px;
+  margin: 8vh auto 0;
+  text-align: center;
+  padding: 56px 28px 48px;
+  background: #fff;
+  border-radius: 22px;
+  box-shadow:
+    0 1px 2px rgba(13, 14, 23, 0.05), 0 12px 40px rgba(13, 14, 23, 0.06);
+}
+
+.mv-portal .ultra-hero .u-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--green);
+  margin: 0 auto 22px;
+  box-shadow: 0 0 0 7px rgba(84, 191, 150, 0.18);
+}
+
+.mv-portal .ultra-hero .u-kicker {
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8a93a3;
+  margin-bottom: 14px;
+}
+
+.mv-portal .ultra-hero .u-headline {
+  font-size: 42px;
+  line-height: 1.12;
+  margin: 0 0 18px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.mv-portal .ultra-hero .u-headline strong {
+  color: var(--green-deep);
+}
+
+.mv-portal .ultra-hero .u-status {
+  font-size: 19px;
+  color: #3f4756;
+  margin: 0 0 30px;
+  line-height: 1.5;
+}
+
+.mv-portal .ultra-hero .u-note {
+  font-size: 14px;
+  color: #8a93a3;
+  margin-top: 26px;
+  line-height: 1.55;
+}
+
+@media (max-width: 520px) {
+  .mv-portal .ultra-hero {
+    margin-top: 3vh;
+    padding: 40px 20px 36px;
+  }
+
+  .mv-portal .ultra-hero .u-headline {
+    font-size: 32px;
+  }
+
+  .mv-portal .ultra-hero .u-status {
+    font-size: 17px;
+  }
+}
+
+/* Professional gets more room; Essentials gets less, so a short page does not
+   sprawl across a wide monitor. */
+.mv-portal.view-pro .app-body {
+  max-width: 1340px;
+}
+
+.mv-portal.view-simple .app-body {
+  max-width: 920px;
+}
+
+/* Essentials is single-column: the two-column dashboard body is a Detailed and
+   Professional layout. */
+.mv-portal.view-simple #dashcols,
+.mv-portal.view-simple .app-body .g4 {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+/* ----------------------------------------------------------------------------
+   10 · PAGE PRIMITIVES
+
+   The design's own building blocks. Scoped, so `.card` here cannot reach a
+   marketing page.
+   ---------------------------------------------------------------------------- */
+.mv-portal .small {
+  font-size: 13px;
+}
+
+.mv-portal .tiny {
+  font-size: 12px;
+}
+
+.mv-portal .muted {
+  color: var(--muted);
+}
+
+.mv-portal .num {
+  font-variant-numeric: tabular-nums;
+}
+
+.mv-portal .right {
+  text-align: right;
+}
+
+.mv-portal .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 10px;
+  padding: 10px 18px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none !important;
+  transition:
+    filter 0.15s,
+    background 0.15s;
+  line-height: 1.2;
+}
+
+.mv-portal .btn-primary {
+  background: var(--green);
+  color: var(--green-ink) !important;
+}
+
+.mv-portal .btn-primary:hover {
+  filter: brightness(1.05);
+}
+
+.mv-portal .btn-ghost {
+  background: #fff;
+  color: var(--slate) !important;
+  border-color: var(--line);
+}
+
+.mv-portal .btn-ghost:hover {
+  background: var(--bg);
+}
+
+.mv-portal .btn-mint {
+  background: var(--mint);
+  color: var(--green-ink) !important;
+  border-color: #bfe9d8;
+}
+
+.mv-portal .btn-lg {
+  padding: 14px 26px;
+  font-size: 16px;
+  border-radius: 12px;
+}
+
+.mv-portal .btn-sm {
+  padding: 6px 12px;
+  font-size: 13px;
+  border-radius: 8px;
+}
+
+.mv-portal .btn-block {
+  width: 100%;
+}
+
+.mv-portal .linklike {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--green-deep);
+  cursor: pointer;
+  text-decoration: underline;
+  display: inline;
+}
+
+.mv-portal .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 3px 10px;
+  line-height: 1.3;
+}
+
+.mv-portal .chip-est {
+  background: var(--amber-bg);
+  color: var(--amber);
+}
+
+.mv-portal .chip-mint {
+  background: var(--mint);
+  color: var(--green-ink);
+}
+
+.mv-portal .chip-slate {
+  background: #e8ecf3;
+  color: var(--slate);
+}
+
+.mv-portal .chip-blue {
+  background: var(--blue-bg);
+  color: var(--blue);
+}
+
+.mv-portal .card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+}
+
+.mv-portal .card-pad {
+  padding: 22px;
+}
+
+.mv-portal .grid {
+  display: grid;
+  gap: 18px;
+}
+
+.mv-portal .g4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.mv-portal .flex {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mv-portal .between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mv-portal .stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mv-portal h4 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.mv-portal .tablewrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: #fff;
+}
+
+.mv-portal table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+
+.mv-portal th,
+.mv-portal td {
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+
+.mv-portal th {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.mv-portal tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.mv-portal .kpi {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
+}
+
+.mv-portal .kpi .k-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.mv-portal .kpi .k-val {
+  font-size: 26px;
+  font-weight: 700;
+  margin: 4px 0 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mv-portal .kpi .k-sub {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.mv-portal .delta-up {
+  color: var(--green-deep);
+  font-weight: 700;
+}
+
+.mv-portal .spark {
+  display: block;
+  margin-top: 6px;
+}
+
+.mv-portal .freshness {
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+.mv-portal .chartbox {
+  position: relative;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 16px 18px 8px;
+  box-shadow: var(--shadow);
+}
+
+.mv-portal .chart-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 10px 0 4px;
+}
+
+.mv-portal .chart-kpi .ck-val {
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--green-ink);
+  line-height: 1.1;
+}
+
+.mv-portal .chart-kpi .ck-lbl {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.mv-portal .setrow {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid #f0f1f4;
+  flex-wrap: wrap;
+}
+
+.mv-portal .setrow:last-child {
+  border-bottom: 0;
+}
+
+.mv-portal .opscore {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px;
+}
+
+.mv-portal .opscore:last-of-type {
+  border-bottom: 0;
+}
+
+.mv-portal .opscore .os-band {
+  font-weight: 800;
+  font-size: 11px;
+  border-radius: 999px;
+  padding: 3px 10px;
+  flex: none;
+}
+
+.mv-portal .os-good {
+  background: var(--mint);
+  color: var(--green-ink);
+}
+
+.mv-portal .os-watch {
+  background: #fdf3dd;
+  color: #8a6320;
+}
+
+.mv-portal .os-none {
+  background: #eef0f3;
+  color: var(--slate);
+}
+
+.mv-portal .progress {
+  height: 12px;
+  background: #e8ecf3;
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.mv-portal .progress .fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--green-deep), var(--green));
+  border-radius: 999px;
+}
+
+.mv-portal .timeline {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.mv-portal .timeline li {
+  position: relative;
+  padding: 0 0 18px 26px;
+  border-left: 2px solid var(--line);
+  margin-left: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mv-portal .timeline li:last-child {
+  padding-bottom: 2px;
+}
+
+.mv-portal .timeline li::before {
+  content: "";
+  position: absolute;
+  left: -7px;
+  top: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--green);
+  border: 2.5px solid #fff;
+  box-shadow: 0 0 0 1.5px var(--green);
+}
+
+.mv-portal .timeline li.quiet::before {
+  background: #cbd5e1;
+  box-shadow: 0 0 0 1.5px #cbd5e1;
+}
+
+.mv-portal .timeline li .sub {
+  display: block;
+  margin-top: 2px;
+}
+
+.mv-portal .owner-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border: 1.5px solid var(--green);
+  border-radius: 999px;
+  padding: 5px 8px 5px 13px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--green-ink);
+  flex-wrap: wrap;
+}
+
+.mv-portal .owner-chip .sw-btn {
+  font-size: 10.5px;
+  font-weight: 700;
+  background: var(--mint);
+  border: 0;
+  border-radius: 999px;
+  padding: 3px 9px;
+  color: var(--green-ink);
+}
+
+.mv-portal .simple-hero {
+  border-left: 4px solid var(--green);
+  background: linear-gradient(160deg, #ffffff, #f0fbf7);
+}
+
+.mv-portal .ctx-hint {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--green-deep);
+  background: #e7f4ee;
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin-top: 4px;
+  white-space: nowrap;
+}
+
+.mv-portal .gloss {
+  border-bottom: 1.5px dotted var(--green-deep);
+  cursor: help;
+}
+
+.mv-portal .devsources summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* ----------------------------------------------------------------------------
+   11 · THE DARK PORTFOLIO STRIP  (v37 · C2+C6)
+
+   The numbers that CHANGE, at the very top of the dashboard. Rarely-changing
+   facts sit lower down the page.
+   ---------------------------------------------------------------------------- */
+.mv-portal .pf-strip {
+  display: flex;
+  gap: 0;
+  flex-wrap: wrap;
+  background: linear-gradient(160deg, #0d0e17, #16342a);
+  border-radius: var(--r);
+  color: #fff;
+  box-shadow: var(--shadow-lg);
+  margin-bottom: 16px;
+}
+
+.mv-portal .pf-strip .pf-cell {
+  flex: 1;
+  min-width: 150px;
+  padding: 15px 20px 13px;
+  border-right: 1px solid rgba(255, 255, 255, 0.09);
+  display: flex;
+  flex-direction: column;
+}
+
+.mv-portal .pf-strip .pf-cell:last-child {
+  border-right: 0;
+}
+
+.mv-portal .pf-strip .pf-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #9fb4ab;
+  min-height: 45px;
+}
+
+.mv-portal .pf-strip .pf-val {
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  min-height: 30px;
+  margin-top: 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  white-space: nowrap;
+  flex-wrap: wrap;
+}
+
+.mv-portal .pf-strip .pf-val.big {
+  color: var(--green);
+}
+
+.mv-portal .pf-strip .pf-val .pf-val-s {
+  font-size: 14px;
+  color: #9fb4ab;
+  font-weight: 600;
+}
+
+.mv-portal .pf-strip .pf-sub {
+  font-size: 11px;
+  color: #8a94a6;
+  margin-top: 6px;
+  line-height: 1.45;
+}
+
+/* ----------------------------------------------------------------------------
+   12 · THE ALERT SURFACES
+
+   `.mv-alsum` is the dashboard rollup (v43 · OW-33): one count, the split by
+   kind, and the single item that asks something of you — every part of it a
+   door into the alerts inbox. `.al-strip` is the six-card deep-linked strip
+   below it, Detailed and Professional only.
+   ---------------------------------------------------------------------------- */
+.mv-portal .mv-alsum {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--green);
+  border-radius: 12px;
+  background: #fff;
+  padding: 12px 16px;
+  margin: 0 0 12px;
+}
+
+.mv-portal .mv-alsum .as-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mv-portal .mv-alsum .as-kicker {
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--green-deep);
+}
+
+.mv-portal .mv-alsum .as-line {
+  display: block;
+  font-size: 13.5px;
+  line-height: 1.4;
+  margin-top: 3px;
+}
+
+.mv-portal .mv-alsum .as-count {
+  font-size: 25px;
+  font-weight: 800;
+  color: var(--green-ink);
+  vertical-align: -2px;
+  margin-right: 3px;
+}
+
+.mv-portal .as-cats {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 10px 0 0;
+}
+
+.mv-portal .as-cat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  border: 1px solid #cdeadd;
+  background: #f4fdf9;
+  color: var(--green-deep);
+  border-radius: 999px;
+  padding: 4px 11px;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.mv-portal .as-cat b {
+  font-size: 13px;
+  color: var(--green-ink);
+}
+
+.mv-portal .as-cat.as-act {
+  border-color: var(--green);
+  background: var(--mint);
+}
+
+.mv-portal .mv-alsum .as-top {
+  margin: 11px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mv-portal .mv-alsum .as-act-tag {
+  display: inline-block;
+  background: var(--green);
+  color: var(--green-ink);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-right: 7px;
+  vertical-align: 1px;
+}
+
+.mv-portal .al-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(205px, 1fr));
+  gap: 10px;
+  margin: 10px 0 2px;
+}
+
+.mv-portal .al-mini {
+  display: block;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--green);
+  border-radius: 10px;
+  padding: 9px 12px;
+  box-shadow: var(--shadow);
+  text-decoration: none;
+  color: var(--ink);
+  font-size: 12.5px;
+  min-width: 0;
+}
+
+.mv-portal .al-mini .al-k {
+  font-weight: 700;
+  font-size: 12.5px;
+  display: block;
+}
+
+.mv-portal .al-mini .al-s {
+  color: var(--slate);
+  font-size: 11.5px;
+  display: block;
+  margin-top: 2px;
+}
+
+.mv-portal .al-mini.gold {
+  border-left-color: var(--gold);
+}
+
+/* ----------------------------------------------------------------------------
+   13 · THE PINNED CLAIM BOX + SAMPLE CHROME  (v43 · OW-02/03/05)
+
+   GREEN on purpose. Ryan: "claim-your-record is orange, activity is green, and
+   they read as unrelated." The box speaks the same green as the activity
+   language, and states the colour rule out loud inside itself so the
+   relationship is legible rather than inferred.
+   ---------------------------------------------------------------------------- */
+.mv-portal .mv-claimrail {
+  border: 2px solid var(--green);
+  border-left: 7px solid var(--green);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f2fdf8, #ffffff);
+  padding: 13px 16px;
+  margin: 0 0 14px;
+  box-shadow: 0 3px 14px rgba(4, 35, 26, 0.09);
+}
+
+.mv-portal .mv-claimrail .cr-top {
+  display: flex;
+  gap: 13px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.mv-portal .mv-claimrail .cr-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 4px rgba(84, 191, 150, 0.24);
+  margin-top: 8px;
+}
+
+.mv-portal .mv-claimrail .cr-txt {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.mv-portal .mv-claimrail .cr-kicker {
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--green-deep);
+}
+
+.mv-portal .mv-claimrail .cr-head {
+  display: block;
+  font-size: 17.5px;
+  font-weight: 800;
+  color: var(--green-ink);
+  line-height: 1.25;
+  margin-top: 1px;
+}
+
+.mv-portal .mv-claimrail .cr-sub {
+  display: block;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #2e6b52;
+  margin-top: 4px;
+}
+
+.mv-portal .mv-claimrail .cr-act {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: flex-start;
+}
+
+.mv-portal .mv-claimrail .cr-note {
+  font-size: 11px;
+  color: #5b7268;
+}
+
+.mv-portal .mv-claimrail .cr-key {
+  display: flex;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin: 11px 0 0;
+  padding-top: 9px;
+  border-top: 1px solid #cdeadd;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #2e6b52;
+}
+
+.mv-portal .mv-claimrail .cr-key b {
+  font-weight: 800;
+  color: var(--green-ink);
+}
+
+.mv-portal .mv-claimrail .cr-key-end {
+  font-weight: 700;
+  color: var(--green-deep);
+}
+
+.mv-portal .mv-claimrail .cr-sw {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  margin-right: 5px;
+}
+
+.mv-portal .mv-claimrail .cr-sw-green {
+  background: var(--green);
+}
+
+.mv-portal .mv-claimrail .cr-sw-amber {
+  background: #d9a441;
+}
+
+/* The phone ladder — OW-30: the box may not eat the screen. At 375px the full
+   box measured 405px of an 812px phone; one trailing clause drops and the
+   colour key tightens, so the claim, the promise and the green/amber rule all
+   survive, because those are the box. */
+@media (max-width: 640px) {
+  .mv-portal .mv-claimrail {
+    padding: 12px 13px;
+  }
+
+  .mv-portal .mv-claimrail .cr-head {
+    font-size: 16px;
+  }
+
+  .mv-portal .mv-claimrail .cr-sub {
+    font-size: 12.5px;
+    margin-top: 3px;
+  }
+
+  .mv-portal .mv-claimrail .cr-sub-more {
+    display: none;
+  }
+
+  .mv-portal .mv-claimrail .cr-act {
+    width: 100%;
+    gap: 4px;
+  }
+
+  .mv-portal .mv-claimrail .cr-act .btn {
+    width: 100%;
+    justify-content: center;
+    min-height: 46px;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+
+  .mv-portal .mv-claimrail .cr-key {
+    gap: 3px 10px;
+    margin-top: 9px;
+    padding-top: 8px;
+    font-size: 11px;
+  }
+
+  .mv-portal .mv-claimrail .cr-key-end {
+    flex: 1 1 100%;
+  }
+}
+
+/* Amber dashed SAMPLE chrome — never confusable with the owner's real data.
+   Claiming turns the amber into their green. */
+.mv-portal .smp-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: #fdf6e7;
+  border: 2px dashed #d9a441;
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin: 0 0 14px;
+}
+
+.mv-portal .smp-badge .smp-tag {
+  flex: none;
+  background: #d9a441;
+  color: #3d2c07;
+  font-weight: 800;
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.mv-portal .smp-badge p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #7a5410;
+  flex: 1;
+  min-width: 220px;
+}
+
+.mv-portal .smp-wrap {
+  position: relative;
+  border: 2px dashed #d9a441;
+  border-radius: 14px;
+  padding: 16px;
+  background: linear-gradient(180deg, #fffdf7, #ffffff);
+  margin: 0 0 14px;
+}
+
+.mv-portal .smp-wrap::after {
+  content: "SAMPLE";
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: #d9a441;
+  color: #3d2c07;
+  font-weight: 800;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 2px 9px;
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.mv-portal .smp-chip {
+  display: inline-block;
+  background: #d9a441;
+  color: #3d2c07;
+  font-weight: 800;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  vertical-align: 1px;
+}
+
+.mv-portal .smp-cta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 4px;
+}
+
+/* The second-chance claim block at the foot of a sample panel wears the same
+   green, so a claim CTA never appears in two different colours on one page. */
+.mv-portal .smp-cta.cr-foot {
+  border: 2px solid var(--green);
+  border-radius: 12px;
+  background: #f2fdf8;
+  padding: 12px 14px;
+  margin-top: 12px;
+}
+
+.mv-portal .smp-cta.cr-foot .cr-foot-txt {
+  flex: 1 1 260px;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #2e6b52;
+}
+
+/* ----------------------------------------------------------------------------
+   14 · MOBILE — the drawer, the tab bar, and the width ladder
+
+   Below 1024px the sidebar becomes a drawer behind the hamburger and a
+   five-slot bottom tab bar appears. `.app-body` gains bottom padding so the
+   tab bar never covers a CTA.
+   ---------------------------------------------------------------------------- */
+.mv-portal .app-drawer {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  background: rgba(13, 14, 23, 0.55);
+}
+
+.mv-portal .app-drawer.open {
+  display: block;
+}
+
+.mv-portal .app-drawer .panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 82%;
+  max-width: 320px;
+  height: 100%;
+  background: var(--ink);
+  padding: 46px 14px 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mv-portal .app-drawer .panel a.nav-item,
+.mv-portal .app-drawer .panel span.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  color: #cbd5e1;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.mv-portal .app-drawer .panel a.nav-item:hover {
+  background: #181a26;
+  color: #fff;
+  text-decoration: none;
+}
+
+.mv-portal .app-drawer .panel a.nav-item.on {
+  background: #16342a;
+  color: var(--green);
+}
+
+/* v33 · J31 — an explicit Close on the mobile menu, not just the backdrop. */
+.mv-portal .v33-drawer-x {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: none;
+  border: 0;
+  color: #9fc9b8;
+  cursor: pointer;
+  padding: 8px;
+  line-height: 1;
+  display: flex;
+}
+
+.mv-portal .mv-drawer-demo {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-top: 1px solid #22262f;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #5b6472;
+}
+
+.mv-portal .tabbar {
+  display: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 80;
+  background: #fff;
+  border-top: 1px solid var(--line);
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+  grid-template-columns: repeat(5, 1fr);
+}
+
+.mv-portal .tabbar a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 4px 2px;
+}
+
+.mv-portal .tabbar a:hover {
+  text-decoration: none;
+}
+
+.mv-portal .tabbar .t-ico {
+  display: flex;
+}
+
+.mv-portal .tabbar .t-ico .mvi {
+  width: 19px;
+  height: 19px;
+}
+
+.mv-portal .tabbar a.on {
+  color: var(--green-deep);
+}
+
+@media (max-width: 1024px) {
+  .mv-portal .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .mv-portal .app-side {
+    display: none;
+  }
+
+  .mv-portal .app-hamburger {
+    display: flex;
+  }
+
+  .mv-portal .tabbar {
+    display: grid;
+  }
+
+  /* v26 · S2 — bottom safe area: the tab bar never covers content or a CTA. */
+  .mv-portal .app-body {
+    padding: 18px 14px 180px;
+  }
+
+  .mv-portal .app-top {
+    padding: 0 14px;
+  }
+
+  .mv-portal #mvPinBar {
+    padding: 5px 14px;
+  }
+}
+
+@media (max-width: 900px) {
+  .mv-portal .app-top {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 58px;
+    padding: 8px 14px;
+    row-gap: 6px;
+  }
+
+  .mv-portal .mv-demochip {
+    display: inline-flex;
+  }
+
+  /* Two sticky bands stacked would eat the screen at phone width, so the pinned
+     bar goes static and the top bar is the only sticky layer. */
+  .mv-portal #mvPinBar {
+    position: static;
+    gap: 0 10px;
+    min-height: 0;
+  }
+
+  .mv-portal #mvPinBar .pin-val {
+    font-size: 22px;
+  }
+
+  /* The value is the only number in the bar, so the label is redundant. */
+  .mv-portal #mvPinBar .pin-label {
+    display: none;
+  }
+
+  .mv-portal #mvPinBar .pin-spot {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .mv-portal #mvPinBar .pin-spot::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mv-portal #mvPinBar .pin-tk {
+    padding: 1px 5px;
+    gap: 5px;
+  }
+
+  /* Nothing is hidden by width once the strip scrolls. */
+  .mv-portal #mvPinBar .pin-tk[data-mv-spot="propane"],
+  .mv-portal #mvPinBar .pin-tk[data-mv-spot="brent"] {
+    display: inline-flex;
+  }
+
+  .mv-portal.no-claim #mvPinBar {
+    flex-wrap: wrap;
+    padding: 7px 14px;
+  }
+
+  .mv-portal #mvPinBar .pin-claim {
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .mv-portal.no-claim #mvPinBar .pin-spot {
+    flex: none;
+    width: 100%;
+  }
+
+  .mv-portal #dashcols {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .mv-portal .app-body .g4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* v38 · P1-03 — 44px minimum targets. The old 10.5px/25px tier buttons were
+   below any comfortable target for an older owner, who is much of this
+   audience. */
+@media (max-width: 767px) {
+  .mv-portal .app-top {
+    height: auto;
+    min-height: 56px;
+    padding: 6px 10px;
+    gap: 8px;
+    row-gap: 6px;
+  }
+
+  .mv-portal .app-top .pagename {
+    font-size: 14.5px;
+  }
+
+  /* The plan lives in the account menu and on Billing & Plan at this width. */
+  .mv-portal .app-top .plan-pill {
+    display: none;
+  }
+
+  .mv-portal .app-hamburger,
+  .mv-portal .bellbtn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .mv-portal .app-top .avatar {
+    width: 40px;
+    height: 40px;
+  }
+
+  .mv-portal .view-switch {
+    padding: 3px;
+  }
+
+  .mv-portal .view-switch button,
+  .mv-portal .view-switch a {
+    min-height: 44px;
+    font-size: 14px;
+    padding: 6px 2px;
+  }
+
+  .mv-portal .app-body {
+    padding: 14px 14px calc(88px + env(safe-area-inset-bottom));
+  }
+
+  .mv-portal .app-body .g4 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mv-portal .card-pad {
+    padding: 16px;
+  }
+
+  .mv-portal .app-body .between,
+  .mv-portal .app-body .flex {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .mv-portal .app-body .btn {
+    white-space: normal;
+  }
+
+  .mv-portal .v41-avmenu {
+    width: min(280px, calc(100vw - 24px));
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   15 · PRINT
+
+   The chrome goes; the body takes the whole page. An owner printing their
+   dashboard wants the numbers, not the navigation.
+   ---------------------------------------------------------------------------- */
+@media print {
+  .mv-portal .app-side,
+  .mv-portal .app-top,
+  .mv-portal #mvPinBar,
+  .mv-portal .tabbar,
+  .mv-portal .app-drawer,
+  .mv-portal .side-ref {
+    display: none !important;
+  }
+
+  .mv-portal .app-shell {
+    display: block;
+  }
+
+  .mv-portal .app-body {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   16 · REDUCED MOTION
+   ---------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .mv-portal .btn {
+    transition: none;
+  }
+}
