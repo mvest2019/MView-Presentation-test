@@ -25,6 +25,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { MapToast } from "./map-toast";
+import { usePanelPlacement } from "./panel-placement";
 import { downloadSheet, type SheetColumn } from "./xlsx";
 import { TableSearch, type SearchPick } from "./table-search";
 
@@ -78,6 +79,9 @@ function withPick(
       : [...existing, pick.param],
   };
 }
+
+/** How wide a facet dropdown's panel is, for keeping it on the page. */
+const PANEL_WIDTH = 238;
 
 /** What an exported cell says where the record says nothing. */
 const NOTHING_MARK = "-";
@@ -1217,6 +1221,9 @@ function FilterDropdown({
 }) {
   const [find, setFind] = useState("");
 
+  /* Slid back where the button is too near the right edge for it. */
+  const { shift, place } = usePanelPlacement(PANEL_WIDTH);
+
   const visible = useMemo(() => {
     const needle = find.trim().toLowerCase();
     if (!needle) return options;
@@ -1253,7 +1260,11 @@ function FilterDropdown({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-2 w-[238px] rounded-xl border border-mv-line bg-white p-3 shadow-mv-lg">
+        <div
+          ref={place}
+          style={{ marginLeft: shift }}
+          className="absolute left-0 top-full z-50 mt-2 w-[238px] rounded-xl border border-mv-line bg-white p-3 shadow-mv-lg"
+        >
           <div className="mb-2 flex items-center justify-between gap-2">
             <span className="text-[10.5px] font-extrabold uppercase tracking-[.1em] text-mv-ink">
               {label}
