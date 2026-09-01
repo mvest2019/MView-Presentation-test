@@ -100,24 +100,24 @@ const FEATURE_CARDS = [
     href: "/features/compare-operator-production",
     icon: "▮▮",
     title: "Compare Operators Performance",
-    body: "Put 2–4 operators side by side on reported production — real figures, ranked within their play.",
-    cta: "Open the comparison →",
+    body: "Compare 2–4 operators side by side using reported production data and their relative position within the selected play.",
+    cta: "Compare Operators →",
   },
   {
     // Built, alongside its sibling under `/features/`.
     href: "/features/compare-operator-statistics",
     icon: "≡",
     title: "Compare Operator Statistics",
-    body: "Company statistics side by side — leases, counties, rank, and production intensity.",
-    cta: "Open the comparison →",
+    body: "Compare operators across key metrics, including leases, counties, production rank, and production intensity.",
+    cta: "Compare Operators →",
   },
   {
     // Built. No "compare" in the slug — this one is a library, not a comparison.
     href: "/features/operator-presentations",
     icon: "▣",
     title: "Operator Presentations",
-    body: "A clean, shareable one-page profile of any operator — built from the public record.",
-    cta: "Build a presentation →",
+    body: "Create a one-page operator profile using information compiled from publicly available records.",
+    cta: "Create a Presentation →",
   },
 ];
 
@@ -208,15 +208,24 @@ export default async function OperatorsRoute() {
           ]}
         />
 
-        <div className="pt-7">
+        {/* DEFECT 118 — `pt-7` under the breadcrumb left an empty band above the
+            heading. `pt-4` keeps the two apart without the gap reading as a
+            missing element. */}
+        <div className="pt-4">
           <h1 className={displayLgClass}>Operator Directory</h1>
           {/* `max-w-[640px]` wrapped this onto two lines at desktop width for the
               sake of a measure it did not need — it is one short sentence, not a
-              paragraph. Widened so it sits on one line from about 900px up, and it
-              still wraps naturally below that rather than being forced to fit. */}
-          <p className="mt-[6px] max-w-[820px] text-[15.5px] text-mv-muted">
-            Search, filter, and rank Texas oil &amp; gas operators by reported
-            production, activity, and coverage.
+              paragraph. Widened so it sits on one line, and it still wraps naturally
+              on a narrow screen rather than being forced to fit.
+
+              960px, NOT 820px, because the sentence changed. The new copy measures
+              929px on one line at 15.5px, so the old cap broke it after "and" — a
+              wrap the container was imposing, not the viewport. The content column is
+              1200px less 44px of padding, so 960 sits inside it with room to spare and
+              the line still gives way below roughly 975px of viewport. */}
+          <p className="mt-[6px] max-w-[960px] text-[15.5px] text-mv-muted">
+            Search, filter, and compare Texas oil and gas operators using
+            reported production, operating activity, and county coverage.
           </p>
         </div>
 
@@ -224,7 +233,6 @@ export default async function OperatorsRoute() {
           playTypes={playTypes}
           counties={counties}
           visitorId={visitorId}
-          signedIn={!!user}
         />
 
         {/* All three routes are built, each under `/features/` — see the note at

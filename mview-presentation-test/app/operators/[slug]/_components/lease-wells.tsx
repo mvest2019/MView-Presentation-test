@@ -151,8 +151,9 @@ export function LeaseWells({
                   ["Well name", null, "left"],
                   ["Status", null, "left"],
                   ["County", null, "left"],
-                  ["Oil Produced", "bbl", "right"],
-                  ["Gas Produced", "Mcf", "right"],
+                  /* DEFECT 141 — uppercase; the second snap rings these two. */
+                  ["Oil Produced", "BBL", "right"],
+                  ["Gas Produced", "MCF", "right"],
                   ["Production start", null, "left"],
                 ] as const
               ).map(([label, unit, align]) => (
@@ -200,7 +201,10 @@ export function LeaseWells({
                     className="flex flex-wrap items-center justify-center gap-3 text-center"
                   >
                     <p className="text-sm text-mv-ink-soft">
-                      Wells could not be loaded.
+{/* DEFECT 154 / 155 — the reported reason when there is one, so a
+                          rate limit reads as "wait a moment" rather than as an
+                          outage. The generic line is the fallback. */}
+                      {wells.error || "Wells could not be loaded."}
                     </p>
                     <button
                       type="button"
@@ -331,10 +335,14 @@ function LockedWells() {
         <p className="m-0 text-[15px] font-bold leading-snug text-mv-ink">
           Well records need a free account
         </p>
+        {/* "Free to browse" was already the right word here and stays — but the
+            lease book's two `Produced` columns are now gated too, so the promise is
+            spelled out rather than left to the reader to scope. §4 rule 5. */}
         <p className="m-0 mt-2 text-[13px] leading-relaxed text-mv-muted">
           API number, well name, status, county, reported oil and gas, and the
           month production started — for every well on this lease. The lease book
-          itself stays free to browse.
+          itself stays free to browse — every lease name, number, county and
+          status.
         </p>
       </div>
 

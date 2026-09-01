@@ -41,10 +41,16 @@ import type {
  *    barrels and `county_count` from 2 to 23.
  *  · `district_code` and `playtype` are honoured but nearly redundant once a
  *    county filter is set: dropping both moved the total by 0.004%.
- *  · UNITS DIFFER BETWEEN THE TWO. The info endpoint answers in raw barrels and
- *    Mcf; the series endpoint answers in thousands. Summed over the full record
- *    the series comes to exactly 1/1000th of the info total. Both are converted to
- *    millions here, once, so nothing downstream has to know which came from where.
+ *  · UNITS. THIS CHANGED, and the old note is kept here because the change is the
+ *    whole of defect 161. It USED to read: the info endpoint answers raw barrels and
+ *    Mcf, the series answers thousands, and the series sums to 1/1000th of the info
+ *    total. Re-measured for EOG (253162): the info endpoint now answers unit-suffixed
+ *    STRINGS — `"1,476,959.213 (MBBL)"` — and its totals are EXACTLY the sum of the
+ *    series' annual values, ratio 1.0000 for oil and for gas. Same scale, not a
+ *    thousandth. The info endpoint's volumes are therefore read through
+ *    `volumeInMillions`, which takes the magnitude from the unit the response
+ *    declares; the series still sends bare numbers in thousands and is unchanged.
+ *    Both end up in millions, so nothing downstream knows which came from where.
  *  · `dataType` ONLY RECOGNISES `"county"`. Every other value — `operator`,
  *    `district`, `playtype`, or anything unknown — falls through to grouping by
  *    operator and reports `type: "operator"`. The chart draws a line per operator,
@@ -58,11 +64,85 @@ import type {
 /** How long this app waits on one upstream read. */
 const REQUEST_TIMEOUT_MS = 45_000;
 
-/** Raw barrels/Mcf to millions. */
+/** Raw barrels/Mcf to millions. The fallback when a volume declares no unit. */
 const RAW_TO_MILLIONS = 1_000_000;
 
 /** The series endpoint's thousands to millions. */
 const THOUSANDS_TO_MILLIONS = 1_000;
+
+/**
+ * How many of a declared unit make one million of the unit this page prints —
+ * DEFECT 161, "in result show oil produced and gas produced values 0".
+ *
+ * WHAT WAS ACTUALLY WRONG. The info endpoint used to answer bare numbers in raw
+ * barrels and Mcf. It now answers unit-suffixed strings:
+ * `"1,476,959.213 (MBBL)"`. `num()` strips commas and calls `Number()`, and
+ * `Number("1,476,959.213 (MBBL)")` is `NaN`, which falls through to 0 — so every
+ * volume on the page read "0.0M", for a signed-in member as much as a visitor. The
+ * cards, the two leader tiles and every `top_producing_counties` figure were all the
+ * same failure.
+ *
+ * THE MAGNITUDE MOVED AT THE SAME TIME, which is the part that would have been missed
+ * by only stripping the suffix. Measured against the dev host for EOG (253162): the
+ * info endpoint reports `1,476,959.213 (MBBL)` and the SERIES endpoint's 29 annual
+ * `oil` values sum to `1476959.213` — exactly equal, ratio 1.0000, gas likewise. The
+ * two used to differ by a factor of a thousand (this file's own note recorded the info
+ * endpoint as raw barrels and the series as thousands). So `RAW_TO_MILLIONS` on these
+ * fields is now a thousandfold overstatement, and fixing only the parse would have
+ * turned "0.0M" into a number that is confidently wrong — the worse of the two
+ * failures, because nothing on screen would look broken.
+ *
+ * SO THE UNIT IS READ, NOT ASSUMED. OPERATORS.md §6 warns that the magnitude changed
+ * on one of these endpoints and not the other, and that a fix for one must not be
+ * copied to the other. Reading the unit the response declares is the version of that
+ * warning that cannot go stale: if the endpoint rescales again, this follows it.
+ *
+ * Oil and BOE are printed in millions of barrels, gas in millions of Mcf, which is
+ * what the M suffix on this page has always meant.
+ */
+const MILLIONS_PER_UNIT: Readonly<Record<string, number>> = {
+  // Oil and BOE, printed as millions of barrels.
+  BBL: 1_000_000,
+  MBBL: 1_000,
+  MMBBL: 1,
+  // Gas, printed as millions of Mcf. Mcf is a thousand cubic feet, MMcf a million
+  // and Bcf a billion — so a Bcf IS a million Mcf, and needs no scaling at all.
+  MCF: 1_000_000,
+  MMCF: 1_000,
+  BCF: 1,
+};
+
+/**
+ * `"1,476,959.213 (MBBL)"` → 1476.959213 (millions of barrels).
+ *
+ * A bare number, or one whose unit this does not recognise, keeps the endpoint's
+ * historical contract of raw barrels and Mcf rather than being dropped — an
+ * unrecognised unit is a reason to log, not a reason to blank the page.
+ */
+function volumeInMillions(raw: unknown): number {
+  /* The number and the unit are split HERE rather than by widening `num()`. `num()`
+     is shared with the series endpoint, which sends bare numbers and needs no unit
+     handling — and OPERATORS.md §6's standing warning is precisely that a change
+     made for one of these two endpoints must not be applied to the other. */
+  if (typeof raw === "number") {
+    return Number.isFinite(raw) ? raw / RAW_TO_MILLIONS : 0;
+  }
+  if (typeof raw !== "string") return 0;
+
+  const match = /^\s*([^()]*?)\s*(?:\(([^)]*)\))?\s*$/.exec(raw);
+  const value = num(match?.[1] ?? raw);
+  if (value === 0) return 0;
+
+  const unit = (match?.[2] ?? "").trim().toUpperCase();
+  if (unit === "") return value / RAW_TO_MILLIONS;
+
+  const divisor = MILLIONS_PER_UNIT[unit];
+  if (divisor === undefined) {
+    console.error("[compare-production] unrecognised volume unit", { raw });
+    return value / RAW_TO_MILLIONS;
+  }
+  return value / divisor;
+}
 
 /**
  * What the chart asks to be grouped by.
@@ -358,7 +438,12 @@ function leaderOf(
   raw: unknown,
   valueKeys: readonly string[],
   displayNameFor: (filed: string, operatorNumber?: string | null) => string,
-  scale: number,
+  /**
+   * How to read the value. `volume` runs it through the unit-aware conversion
+   * (defect 161); `scale` divides a plain number, for the tiles whose figure is
+   * already the size it should print at.
+   */
+  how: { volume: true } | { scale: number },
 ): ProductionLeader | null {
   if (raw === null || typeof raw !== "object") return null;
   const record = raw as Record<string, unknown>;
@@ -370,7 +455,7 @@ function leaderOf(
 
   return {
     ...identity,
-    value: num(record[key]) / scale,
+    value: "volume" in how ? volumeInMillions(record[key]) : num(record[key]) / how.scale,
     leaseCount: maybeNum(record.lease_count),
   };
 }
@@ -431,7 +516,7 @@ export async function fetchProductionInfo(
       return [
         {
           county,
-          boe: num((entry as Record<string, unknown>).boe) / RAW_TO_MILLIONS,
+          boe: volumeInMillions((entry as Record<string, unknown>).boe),
         },
       ];
     });
@@ -440,9 +525,9 @@ export async function fetchProductionInfo(
 
     operators.push({
       ...identity,
-      oilTotal: num(record.total_production_oil) / RAW_TO_MILLIONS,
-      gasTotal: num(record.total_production_gas) / RAW_TO_MILLIONS,
-      boeTotal: num(record.total_production_boe) / RAW_TO_MILLIONS,
+      oilTotal: volumeInMillions(record.total_production_oil),
+      gasTotal: volumeInMillions(record.total_production_gas),
+      boeTotal: volumeInMillions(record.total_production_boe),
       oilPercent: num(record.oil_percentage),
       gasPercent: num(record.gas_percentage),
       countyCount: num(record.county_count),
@@ -460,30 +545,39 @@ export async function fetchProductionInfo(
 
   const raw = (body.leaders ?? {}) as Record<string, unknown>;
   const leaders: ProductionLeaders = {
+    /* `volume: true` — these two carry the same unit-suffixed strings the cards do
+       (`"1,476,959.213 (MBBL)"`), so they were reading 0 for exactly the same reason.
+       See `volumeInMillions`. */
     highestOil: leaderOf(
       raw.highest_oil_production,
       ["production"],
       displayNameFor,
-      RAW_TO_MILLIONS,
+      { volume: true },
     ),
     highestGas: leaderOf(
       raw.highest_gas_production,
       ["production"],
       displayNameFor,
-      RAW_TO_MILLIONS,
+      { volume: true },
     ),
-    // Already per-lease MBOE, and already small. Not a volume to scale.
+    /* Already a per-lease figure, and already small. Not a volume to scale.
+
+       `boe_per_lease` IS THE KEY THE ENDPOINT ACTUALLY SENDS — measured. Only
+       `mboe_per_lease` was listed, `leaderOf` returns null when it finds none of its
+       candidates, and so this tile rendered as absent on every comparison rather than
+       as a wrong number. Found while fixing 161, which is the same response. Both
+       spellings are accepted so an endpoint that goes back to the other keeps working. */
     mostEfficient: leaderOf(
       raw.most_efficient_per_lease,
-      ["mboe_per_lease"],
+      ["mboe_per_lease", "boe_per_lease"],
       displayNameFor,
-      1,
+      { scale: 1 },
     ),
     widestFootprint: leaderOf(
       raw.widest_footprint,
       ["county_count"],
       displayNameFor,
-      1,
+      { scale: 1 },
     ),
   };
 

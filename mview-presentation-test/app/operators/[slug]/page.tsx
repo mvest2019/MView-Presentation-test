@@ -10,6 +10,7 @@ import {
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { ReactNode } from "react";
 
 import { Breadcrumbs } from "@/app/_components/breadcrumbs";
 import { buttonClass } from "@/app/_components/button";
@@ -42,6 +43,11 @@ import {
 } from "@/lib/operator-related-api";
 
 import { DeferredSection } from "@/app/_components/deferred-section";
+import {
+  GatedFigure,
+  GatedFigures,
+  GatedPill,
+} from "./_components/gated-figures";
 import { OperatorLeases } from "./_components/operator-leases";
 import { OperatorWhatChanged } from "./_components/operator-what-changed";
 import { CountyProduction } from "./_components/county-production";
@@ -252,7 +258,7 @@ export async function generateMetadata({
     `${operator.name} operates ${formatCount(operator.leases)} leases across ` +
     `${operator.counties} Texas counties` +
     (operator.rank > 0
-      ? ` and ranks #${operator.rank} statewide by reported production`
+      ? ` and ranks #${operator.rank} statewide by BOE produced`
       : "") +
     `. Production, footprint and county breakdown from Railroad Commission records.`;
   const path = `/operators/${operator.slug}`;
@@ -312,7 +318,28 @@ export default async function OperatorDetailRoute({
   ]);
 
   return (
-    <div className="pb-4">
+    /*
+     * THE SIGN-IN GATE ON THE FIGURES, and the reason it is a provider rather than
+     * a branch in this component. The directory withholds four fields from a
+     * signed-out reader — oil, gas, counties and leases, masked server-side in
+     * `app/api/operators/search/route.ts` — while this page served all four in
+     * plain HTML to the same reader. The directory's lock was therefore one click
+     * deep: friction, not a gate. OPERATORS.md §4 recorded the hole; this closes it.
+     *
+     * IT CANNOT BE DECIDED HERE. This route is prerendered, so its HTML is one
+     * document served to members and visitors alike — a value rendered into it is a
+     * value everybody gets — and reading a cookie to tell them apart would opt all
+     * thirty prerendered pages out of static rendering (§2). So the seven slots
+     * below render nothing themselves: they read one shared client fetch of
+     * `/api/operators/<number>/figures`, which is dynamic already and where the
+     * session read costs nothing new. Same reasoning, same shape, as the page's two
+     * existing gates.
+     *
+     * BOE IS NOT GATED, deliberately — neither the directory nor the production map
+     * gates it, and gating it here alone would make the pages disagree.
+     */
+    <GatedFigures operatorNumber={operator.operatorNumber}>
+      <div className="pb-4">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
@@ -344,6 +371,7 @@ export default async function OperatorDetailRoute({
               <OperatorLogo
                 url={operatorLogoPath(operator.operatorNumber)}
                 monogram={operator.monogram}
+                name={operator.name}
                 size={54}
                 radius={13}
                 monogramClassName="!rounded-[13px]"
@@ -390,10 +418,23 @@ export default async function OperatorDetailRoute({
                 {operator.status === "active" ? "Active" : "Inactive"}
               </li>
               {[
-                // Omitted rather than shown as "#0" when the API reports no rank.
-                ...(operator.rank > 0 ? [`#${operator.rank} statewide`] : []),
-                `${formatCount(operator.leases)} leases`,
-                `${operator.counties} counties`,
+                /*
+                 * DEFECT 145 — the badge said "#3 statewide" and the directory put
+                 * XTO 5th while calling itself "ranked by reported production".
+                 * Both numbers were right and they measured different things: this
+                 * is `statewide_rank`, which the API computes on BOE (XTO = 3,
+                 * EOG = 2 — matching the directory exactly when it is ordered by
+                 * `Total_Production_BOE`), while the directory was ordered by OIL,
+                 * where XTO really is 5th.
+                 *
+                 * The directory now names whichever sort is live (see the summary
+                 * line there) and this names its own metric, so neither can be read
+                 * as the other. Omitted rather than shown as "#0" when the API
+                 * reports no rank.
+                 */
+                ...(operator.rank > 0
+                  ? [`#${operator.rank} statewide by BOE`]
+                  : []),
               ].map((pill) => (
                 <li
                   key={pill}
@@ -402,6 +443,23 @@ export default async function OperatorDetailRoute({
                   {pill}
                 </li>
               ))}
+              {/*
+                THESE TWO USED TO BE STRINGS IN THE ARRAY ABOVE, and that is exactly
+                why they had to move: a string here is rendered into the prerendered
+                HTML, which every reader gets. `leases` and `counties` are two of the
+                four the directory locks, so printing them a few hundred pixels above
+                their own locked panel rows would answer the lock on the same screen.
+                They read the shared gate instead — see `gated-figures.tsx`.
+
+                The rank pill stays a plain string: `statewide_rank` is free on the
+                directory too, so there is nothing to withhold.
+              */}
+              <GatedPill field="leases" label="Leases" suffix="leases" />
+              <GatedPill
+                field="counties"
+                label="Counties on record"
+                suffix="counties on record"
+              />
             </ul>
           </div>
         </div>
@@ -421,7 +479,23 @@ export default async function OperatorDetailRoute({
                   : `Recent-activity indicators · ${OPERATOR_ILLUSTRATIVE_NOTE}`
               }
             />
-            <div className="grid grid-cols-4 gap-[14px] max-[940px]:grid-cols-2 max-[520px]:grid-cols-1">
+            {/*
+              DEFECT 151 — ON A PHONE THIS SCROLLS SIDEWAYS RATHER THAN STACKING.
+              `max-[520px]:grid-cols-1` put the four tiles one under another, which is
+              the snap: four full-width cards costing roughly a screen and a half of
+              vertical space before "What changed" is even reachable, on the section
+              whose whole job is to be scannable at a glance.
+
+              A scroll container instead. The tiles keep their real width, four of them
+              read as one row of related figures rather than four unrelated blocks, and
+              the section costs one card's height instead of four.
+
+              `snap-x`/`snap-start` so a swipe settles on a tile rather than between
+              two — a free-scrolling row of cards that stops halfway is the usual way
+              this pattern goes wrong. It stays a GRID at every width above 520px, so
+              nothing changes on tablet or desktop.
+            */}
+            <div className="grid grid-cols-4 gap-[14px] max-[940px]:grid-cols-2 max-[520px]:flex max-[520px]:snap-x max-[520px]:snap-mandatory max-[520px]:overflow-x-auto max-[520px]:pb-3">
               {operator.conditionCards.map((card) => (
                 <ConditionTile key={card.label} card={card} />
               ))}
@@ -471,8 +545,12 @@ export default async function OperatorDetailRoute({
                 hasData
                 caption={
                   operator.countyRows.length > 0
-                    ? `${operator.counties} producing counties · MView records`
-                    : `${operator.counties} producing counties · per-county detail not in this extract`
+                    /* DEFECT 133 / 143 — same figure, same correction. The map's
+                       own legend reports the counties that carry volumes, which is
+                       a different and smaller number; naming both plainly is what
+                       makes the pair readable. */
+                    ? `${operator.counties} counties on record · MView records`
+                    : `${operator.counties} counties on record · per-county detail not in this extract`
                 }
               >
                 <CountyShading operatorNumber={operator.operatorNumber}>
@@ -492,14 +570,31 @@ export default async function OperatorDetailRoute({
                   numeric
                 />
                 <PanelRow label="Status" value="Operator Active" />
+                {/* Locked for a signed-out reader — `leaseCount` is one of the four
+                    the directory withholds. The row keeps its place either way, so
+                    the panel does not change shape between the two states. */}
                 <PanelRow
                   label="No. of leases"
-                  value={formatCount(operator.leases)}
+                  value={<GatedFigure field="leases" label="Leases count" />}
                   numeric
                 />
+                {/*
+                  DEFECT 143 — this said "Producing counties" and the number cannot
+                  support the word. `/operators/details` answers `counties` as a
+                  bare name list — `{"county": "CHEROKEE"}`, 110 entries for EOG,
+                  with no volume on any of them — so `counties.length` counts the
+                  counties on the operator's RECORD, producing or not. Calling that
+                  "producing" is the defect: it is a claim the payload never made.
+
+                  Relabelled to what the figure is. A true producing count needs
+                  per-county volumes, which this endpoint does not return — see the
+                  report.
+                */}
                 <PanelRow
-                  label="Producing counties"
-                  value={String(operator.counties)}
+                  label="Counties on record"
+                  value={
+                    <GatedFigure field="counties" label="Counties on record" />
+                  }
                   numeric
                 />
                 {operator.location ? (
@@ -529,31 +624,66 @@ export default async function OperatorDetailRoute({
                 icon={<TrendingUp aria-hidden="true" className="h-4 w-4" />}
                 title="Production metrics"
               >
-                {/* Printed exactly as the API formats them, units included. The
-                    fixture's raw totals are the fallback when the read failed. */}
+                {/*
+                  THE TWO VOLUMES ARE LOCKED for a signed-out reader — the same two
+                  the directory masks server-side. Printed exactly as the API formats
+                  them, units included, once unlocked.
+
+                  THE FIXTURE FALLBACK IS GONE, and its removal is part of the gate
+                  rather than incidental to it. `operator.oilTotal` is a real lifetime
+                  volume for the thirty fixture operators, so rendering it here when
+                  the endpoint sends no string would have handed a visitor the very
+                  figure the lock withholds — from the fixture instead of the API,
+                  which is worse, not better. A record that carries no volume now
+                  reads as an em dash, the same mark the page already uses for a field
+                  the record does not have (defect 137).
+                */}
                 <PanelRow
                   label="Oil Produced"
                   value={
-                    operator.oilProduced ??
-                    `${formatCount(operator.oilTotal)} bbl`
+                    <GatedFigure
+                      field="oilProduced"
+                      label="Oil produced"
+                      width="w-[64px]"
+                    />
                   }
                   numeric
                 />
                 <PanelRow
                   label="Gas Produced"
                   value={
-                    operator.gasProduced ??
-                    `${formatCount(operator.gasTotal)} Mcf`
+                    <GatedFigure
+                      field="gasProduced"
+                      label="Gas produced"
+                      width="w-[64px]"
+                    />
                   }
                   numeric
                 />
-                {/* DERIVED FROM THE THREE VOLUMES ABOVE, not from the fixture.
-                    Omitted when the endpoint sends nothing to divide — a share of
-                    BOE nobody can compute is not 0%. */}
+                {/*
+                  DERIVED FROM THE THREE VOLUMES ABOVE, not from the fixture. Omitted
+                  when the endpoint sends nothing to divide — a share of BOE nobody
+                  can compute is not 0%.
+
+                  LOCKED WITH THE OIL VOLUME, because it is a key to it rather than a
+                  figure of its own: BOE is deliberately NOT gated (the directory and
+                  the production map both leave it open), and a share against an open
+                  BOE recovers the withheld volume exactly — 79% of 2,390,697.170 is
+                  the 1,907,873.826 locked one row above. Leaving it open would have
+                  made the oil lock decorative.
+
+                  WHETHER THE ROW EXISTS IS STILL DECIDED HERE, on the server, and
+                  that is safe: `operator.oilPct === null` says only whether a share
+                  is computable, which is not the figure. Moving the decision into the
+                  client would have meant rendering the row for operators that have
+                  nothing to put in it.
+                */}
                 {operator.oilPct === null ? null : (
                   <PanelRow
                     label="Oil share of BOE"
-                    value={`${operator.oilPct}%`}
+                    value={
+                      <GatedFigure field="oilPct" label="Oil share of BOE" />
+                    }
                     numeric
                   />
                 )}
@@ -610,10 +740,29 @@ export default async function OperatorDetailRoute({
             and its wells drilldown are both served by the operator API. */}
         <section className="pt-[26px]">
           <DeferredSection minHeight={620} label="Operator leases">
+            {/*
+              DEFECT 152 — the county filter listed all 255 Texas counties from
+              `/operators/counties`, so picking almost any of them answered "No
+              leases match these filters": Pioneer has leases in 79, not 255.
+
+              `operator.activeCounties` is this operator's OWN county list, already
+              on the record `/operators/details` returned for the page — the same
+              array the footprint map shades. So the filter now offers only counties
+              the operator actually reports in, and it costs no extra request.
+            */}
             <OperatorLeases
               operatorNumber={operator.operatorNumber}
               totalLeasesOnRecord={operator.leases}
-              countyOptions={countyOptions}
+              /* Sorted, because the endpoint returns them in its own order —
+                 Terry, Crockett, Jackson … — and a 79-entry picker nobody can scan
+                 alphabetically is barely better than the 255 it replaced. */
+              countyOptions={
+                operator.activeCounties.length > 0
+                  ? [...operator.activeCounties].sort((a, b) =>
+                      a.localeCompare(b),
+                    )
+                  : countyOptions
+              }
             />
           </DeferredSection>
         </section>
@@ -671,7 +820,8 @@ export default async function OperatorDetailRoute({
           </div>
         </section>
       </div>
-    </div>
+      </div>
+    </GatedFigures>
   );
 }
 
@@ -736,9 +886,28 @@ function ConditionTile({ card }: { card: ConditionCard }) {
   const Arrow = card.direction === "up" ? ArrowUp : ArrowDown;
 
   return (
-    <div className="rounded-[14px] border border-mv-line bg-white px-[18px] py-4 shadow-[0_1px_2px_rgba(24,24,27,.05)]">
+    /*
+      DEFECT 140, THE OVERFLOW HALF. The snap shows "5,687.6544699999995" breaking out
+      of this tile and printing over the row beneath it. That string was float drift —
+      `latest_monthly_boe.boe` summed in binary — and it is gone: the figure is snapped
+      to the three decimals the response actually carries, which is the half already
+      fixed in `lib/operator-detail.ts`.
+
+      THE TILE WAS STILL THE OTHER HALF OF IT. A flex item defaults to
+      `min-width: auto`, so the value below could not shrink below its own text and any
+      long enough figure pushed the tile open rather than being contained by it — the
+      decimals fix removed the string that exposed that, not the reason it escaped.
+      `overflow-hidden` here with `min-w-0` on the value makes the tile structurally
+      incapable of it, whatever the endpoint sends next.
+    */
+    /* The three `max-[520px]` classes are the tile's half of defect 151: inside the
+       scroll row it must not shrink to fit, and it needs a width of its own plus a
+       snap point. Above 520px it is a grid cell and none of them apply. */
+    <div className="overflow-hidden rounded-[14px] border border-mv-line bg-white px-[18px] py-4 shadow-[0_1px_2px_rgba(24,24,27,.05)] max-[520px]:w-[78%] max-[520px]:shrink-0 max-[520px]:snap-start">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-[12px] font-semibold text-mv-muted">{card.label}</p>
+        <p className="min-w-0 text-[12px] font-semibold text-mv-muted">
+          {card.label}
+        </p>
         <span
           aria-hidden="true"
           className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-lg bg-mv-tint text-mv-green-deep"
@@ -747,7 +916,10 @@ function ConditionTile({ card }: { card: ConditionCard }) {
         </span>
       </div>
       <p className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="text-[25px] font-bold tracking-[-.02em] tabular-nums text-mv-ink">
+        {/* `min-w-0` so this may shrink inside the flex row, and `anywhere` so a
+            figure with no space in it wraps within the tile rather than running out
+            of it — a long number has no break opportunity of its own. */}
+        <span className="min-w-0 text-[25px] font-bold tracking-[-.02em] tabular-nums text-mv-ink [overflow-wrap:anywhere]">
           {card.value}
           {card.unit ? (
             <span className="ml-1 text-[12px] font-semibold text-mv-muted">
@@ -755,15 +927,30 @@ function ConditionTile({ card }: { card: ConditionCard }) {
             </span>
           ) : null}
         </span>
-        <span
-          className={`inline-flex items-center gap-1 text-[12.5px] font-bold ${card.direction === "up" ? "text-mv-green-deep" : "text-mv-muted"}`}
-        >
-          <Arrow aria-hidden="true" className="h-3 w-3" strokeWidth={3} />
-          {card.delta}
-          <span className="rounded-full bg-mv-line-soft px-[7px] py-[1px] text-[12px] font-bold text-mv-muted">
-            {card.window}
+        {/*
+          DEFECT 148 — this span rendered whatever the card carried, so a card with
+          no comparison still drew one: `direction` undefined is not "up", so the
+          ternary picked ArrowDown, and it was printed beside an empty delta and an
+          empty window chip. That is the "1,547 ↓ —" the defect shows — an arrow
+          asserting a fall with nothing behind it.
+
+          Both halves are now required. A card with a real comparison renders the
+          arrow, the delta and the period; a card without one renders nothing here
+          and says what it has to say in its footer instead.
+        */}
+        {card.direction && card.delta ? (
+          <span
+            className={`inline-flex items-center gap-1 text-[12.5px] font-bold ${card.direction === "up" ? "text-mv-green-deep" : "text-mv-muted"}`}
+          >
+            <Arrow aria-hidden="true" className="h-3 w-3" strokeWidth={3} />
+            {card.delta}
+            {card.window ? (
+              <span className="rounded-full bg-mv-line-soft px-[7px] py-[1px] text-[12px] font-bold text-mv-muted">
+                {card.window}
+              </span>
+            ) : null}
           </span>
-        </span>
+        ) : null}
 
         {/* Inside the same wrapping row, so it lands in the space the chip leaves
             rather than on a line of its own. See `footInline`. */}
@@ -809,7 +996,10 @@ function PanelRow({
   wrap = false,
 }: {
   label: string;
-  value: string;
+  /* `ReactNode`, not `string`, since the gated rows pass a `GatedFigure` that
+     resolves to a value, a lock or an em dash depending on who is reading. Every
+     other caller still passes a plain string and is unaffected. */
+  value: ReactNode;
   numeric?: boolean;
   wrap?: boolean;
 }) {

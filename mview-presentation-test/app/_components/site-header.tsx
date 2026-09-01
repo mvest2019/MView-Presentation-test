@@ -348,10 +348,45 @@ export function SiteHeader({ user }: { user: SessionUser | null }) {
               hiding this link would have left no route to sign-up on a phone at
               all. See the drawer below.
             */}
+            {/*
+              DASHBOARD — the route into the Mineral Owner Portal.
+
+              It sits in the actions cluster rather than in `barNav`, because
+              `barNav` is the marketing destinations and this is not one: it is
+              the door out of the marketing site and into the signed-in product,
+              which is the same class of thing as Sign in and the portal link
+              below.
+
+              SHOWN IN BOTH AUTH STATES, which is a deliberate departure from the
+              design. The prototype's header only offers its dashboard CTA to a
+              signed-in owner (`data-auth="in"`). This was asked for as a plain
+              addition to the top navigation with no auth condition attached, and
+              the reference screenshot supplied with the request is the SIGNED-OUT
+              bar — so hiding it there would have satisfied neither. It is the
+              quiet link treatment, not a CTA, so it does not compete with "Find
+              your record" or "Free account" for a visitor who has not signed up.
+
+              Worth revisiting once the portal is behind a real auth boundary: at
+              that point a signed-out visitor clicking this should meet a sign-in
+              page, and the honest thing may be to hide it again. The portal's own
+              layout notes the same gap.
+            */}
+            <Link
+              href="/mineralownersite"
+              aria-current={isCurrent("/mineralownersite") ? "page" : undefined}
+              className="whitespace-nowrap text-sm font-semibold text-mv-slate no-underline hover:text-mv-green-deep hover:no-underline max-[1139px]:hidden"
+            >
+              Dashboard
+            </Link>
+
             {user ? (
               <>
                 <Link
-                  href="/portal"
+                  /* WAS `/portal`, WHICH DOES NOT EXIST — this link 404'd for
+                     every signed-in visitor. The portal it was reaching for is
+                     now built, so it points at the real route. Same button, same
+                     place, same words. */
+                  href="/mineralownersite"
                   className={`${ctaPrimary} whitespace-nowrap max-[1139px]:hidden`}
                 >
                   Go to your portal →
@@ -475,6 +510,15 @@ export function SiteHeader({ user }: { user: SessionUser | null }) {
             ),
           )}
 
+          {/* The bar's Dashboard link hides at 1139px along with everything else
+              in the actions cluster, so the sheet has to carry it or there is no
+              route into the portal on a phone or an iPad — the same reasoning
+              that moved "Free account" down here. */}
+          <SheetDivider />
+          <SheetLink href="/mineralownersite" onNavigate={closeDrawer}>
+            Dashboard
+          </SheetLink>
+
           {user ? (
             <>
               {/* WHO IS SIGNED IN. The bar's account menu — the only other
@@ -483,7 +527,8 @@ export function SiteHeader({ user }: { user: SessionUser | null }) {
                   is the identity's only home. Same block the menu's header
                   shows: name over email, with the mark the menu trigger uses. */}
               <DrawerIdentity user={user} />
-              <SheetLink href="/portal" onNavigate={closeDrawer}>
+              {/* Same fix as the bar: `/portal` did not exist. */}
+              <SheetLink href="/mineralownersite" onNavigate={closeDrawer}>
                 Go to your portal →
               </SheetLink>
               {/* The account menu in the bar is hidden below 767px, so without

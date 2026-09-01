@@ -20,8 +20,12 @@ import {
 export const QUICK_FILTERS = {
   activeInLast90Days: "Active in last 90 days",
   topProducers: "Top 10 producers",
-  moreThan5Counties: "Active in >5 counties",
-  moreThan10Counties: "Active in >10 counties",
+  /* DEFECT 116 — the snap rings ">5" and ">10": the operator was set hard against
+     its number, which reads as one token rather than as "more than five". A space
+     after the ">" is the whole fix; the wording is otherwise unchanged, and the
+     keys still match the API's payload properties. */
+  moreThan5Counties: "Active in > 5 counties",
+  moreThan10Counties: "Active in > 10 counties",
 } as const;
 
 /** Keys match the API's payload properties exactly, so no lookup table is needed. */
@@ -74,9 +78,26 @@ export const DEFAULT_FILTERS: OperatorFilters = {
   },
   status: "active",
   county: "",
-  sortKey: "oil",
+  /*
+   * DEFECT 122 — the listing opened ordered by oil produced, so the Counties
+   * column read 79, 110, 24, 22, 108 …, which is what the defect rings. It now
+   * opens on the widest footprint first.
+   *
+   * `countie_count` IS A REAL SORT UPSTREAM, not a silently ignored one. Probed
+   * against `status: active`: `desc` returns 123, 114, 110, 108, 95, 79, 75, 75 and
+   * `asc` returns 1, 1, 1 …, while a deliberately bogus field name returns the
+   * endpoint's own unordered default — so this ordering is the API's, not ours.
+   */
+  sortKey: "cty",
   sortDir: "desc",
   page: 1,
+};
+
+/** What each sort is called where the listing describes its own order. */
+export const SORT_CAPTIONS: Record<OperatorSortKey, string> = {
+  oil: "ranked by oil produced",
+  gas: "ranked by gas produced",
+  cty: "ranked by producing counties",
 };
 
 /**

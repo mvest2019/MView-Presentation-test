@@ -17,6 +17,7 @@ import { buttonClass } from "@/app/_components/button";
 import { ChangeItem } from "@/app/_components/change-item";
 import { DeferredSection } from "@/app/_components/deferred-section";
 import { SelectControl } from "@/app/_components/select-control";
+import { LockedValue } from "@/app/_components/locked-value";
 import { OperatorLogo } from "@/app/_components/operator-logo";
 import { OperatorMonogram } from "@/app/_components/operator-monogram";
 import { OperatorSlotPicker } from "@/app/_components/operator-slot-picker";
@@ -27,7 +28,7 @@ import { detailSlugForNumber } from "@/lib/operator-detail";
 import { formatCount, formatMillions } from "@/lib/operator-compare";
 import { shortName } from "@/lib/operator-statistics";
 import {
-  hasProductionSelection,
+  canCompareProduction,
   productionFiltersKey,
 } from "@/lib/operator-production-filters";
 import type {
@@ -139,7 +140,13 @@ export function ComparePage({
 
   const draftKey = productionFiltersKey(draft);
   const appliedKey = productionFiltersKey(applied);
-  const chosen = hasProductionSelection(draft);
+  /* DEFECT 159 — the button's rule is 'is this a comparison', not 'is there
+     anything to ask about'. See `canCompareProduction`. */
+  const chosen = canCompareProduction(draft);
+  /** How many slots hold an operator, for the hint that says how far off it is. */
+  const selectedCount = draft.operators.filter(
+    (name) => (name ?? "").trim() !== "",
+  ).length;
   const dirty = draftKey !== appliedKey;
 
   /**
@@ -249,9 +256,14 @@ export function ComparePage({
    * "nothing has changed" needs no instruction, and the applied row directly below
    * already says what is in force.
    */
-  const applyBlockedReason = !chosen
-    ? "Choose at least one operator to compare."
-    : "";
+  const applyBlockedReason = chosen
+    ? ""
+    : /* The message has to say what is actually required, and how far off the reader
+         is. "Choose at least one operator" was both the wrong number and unhelpful
+         once one was already picked — it read as though nothing had been done. */
+      selectedCount === 0
+      ? "Choose two operators to compare."
+      : "Choose one more operator — a comparison needs at least two.";
 
   /** How many scoping filters are in force — drives which empty state is right. */
   const scopeCount =
@@ -875,7 +887,7 @@ function IdentityCard({
                 <>
                   {formatMillions(operator.oilTotal)}{" "}
                   <span className="text-[11px] font-semibold text-mv-muted">
-                    bbl
+                    BBL
                   </span>
                 </>
               )}
@@ -892,7 +904,7 @@ function IdentityCard({
                 <>
                   {formatMillions(operator.gasTotal)}{" "}
                   <span className="text-[11px] font-semibold text-mv-muted">
-                    Mcf
+                    MCF
                   </span>
                 </>
               )}
@@ -911,21 +923,14 @@ function IdentityCard({
  * common baseline — remove two and every card in the row changes height. This
  * occupies exactly the space the number did, so the grid is untouched.
  */
+/* THE SHARED LOCK TREATMENT (requested). This drew a bar and a padlock with the
+   offer only in `sr-only` text, so a sighted reader was shown that a figure was
+   withheld and never told what it cost — while the operator listing and the profile,
+   gated on the same two fields, put a "Free account" link right beside the bar. All
+   of them render the one component now. `align="start"` because these sit under a
+   label in a card rather than in a right-aligned numeric cell. */
 function LockedFigure({ label }: { label: string }) {
-  return (
-    <span className="inline-flex items-center gap-[6px]">
-      <span className="sr-only">{label} — locked, create a free account</span>
-      <span
-        aria-hidden="true"
-        className="inline-block h-[11px] w-[46px] rounded-full bg-[linear-gradient(90deg,var(--color-mv-line),var(--color-mv-line-soft))] align-middle blur-[2.5px]"
-      />
-      <Lock
-        aria-hidden="true"
-        className="h-[13px] w-[13px] shrink-0 text-mv-muted"
-        strokeWidth={2.3}
-      />
-    </span>
-  );
+  return <LockedValue label={label} from="compare-production" align="start" />;
 }
 
 /**
@@ -1149,7 +1154,7 @@ function Leaderboard({
           caption="Highest oil produced"
           value={formatMillions(leaders.highestOil.value)}
           locked={locked}
-          unit="bbl"
+          unit="BBL"
           operator={leaders.highestOil}
           note="Filed oil across the selected acreage"
         />
@@ -1160,7 +1165,7 @@ function Leaderboard({
           caption="Highest gas produced"
           value={formatMillions(leaders.highestGas.value)}
           locked={locked}
-          unit="Mcf"
+          unit="MCF"
           operator={leaders.highestGas}
           note="Filed gas across the selected acreage"
         />

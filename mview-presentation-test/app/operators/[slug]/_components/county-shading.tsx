@@ -189,10 +189,6 @@ export function CountyShading({
     });
   }, [shades]);
 
-  const units =
-    state.status === "ready"
-      ? [state.data.oilUnit, state.data.gasUnit].filter(Boolean).join(" · ")
-      : "";
 
   return (
     <>
@@ -250,11 +246,6 @@ export function CountyShading({
             />
           ))}
           <span>Higher</span>
-          {units === "" ? null : (
-            <span className="ml-1">
-              {state.data.counties.length} counties · {units}
-            </span>
-          )}
         </p>
       ) : null}
     </>
