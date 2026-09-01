@@ -50,7 +50,7 @@ async function loadFilterOptions(): Promise<ProductionFilterOptions> {
 }
 
 /**
- * Compare Operator Production — `/features/compare-operator-production`.
+ * Compare Operator Production — `/features/compare-operator-performance`.
  *
  * WHY THIS URL. `/features/` is the section of the site that holds a capability
  * rather than a record: the thing being described is the tool, and it stays the
@@ -86,7 +86,7 @@ const PAGE_TITLE = `Compare Operators Performance — Texas oil & gas operators 
 
 const PAGE_DESCRIPTION = `Put two to four Texas operators side by side on filed annual production, ${YEAR_RANGE}. Real Railroad Commission figures — cumulative volumes, oil vs gas mix, growth and production per lease. Free to use.`;
 
-const PATH = "/features/compare-operator-production";
+const PATH = "/features/compare-operator-performance";
 
 export const metadata: Metadata = {
   title: PAGE_TITLE,

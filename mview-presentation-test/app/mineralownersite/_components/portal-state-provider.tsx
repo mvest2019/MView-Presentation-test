@@ -172,14 +172,15 @@ export function PortalStateProvider({ children }: { children: ReactNode }) {
 }
 
 /**
- * The root element and the context, together.
+ * The root element and the context, given a state and a density.
  *
- * KEEPING THEM IN ONE COMPONENT is the fix for a real bug, not tidiness. An
- * earlier Suspense fallback rendered the portal shell inside a bare `<div>` with
- * no provider above it, so the first render of `PortalSideNav` called
- * `usePortalState`, found no context and threw — a 500 on the initial request,
- * and the page only looked fine because the other branch took over once Suspense
- * resolved. There is one way in now, and it cannot be assembled wrongly.
+ * KEEP THE CONTEXT AND THE CLASSES TOGETHER, in one component, so a caller
+ * cannot render the wrapper without the provider above it. That combination is
+ * exactly what broke once: an earlier Suspense fallback rendered the portal
+ * shell inside a bare `<div>` with no provider, so the first render of
+ * `PortalSideNav` called `usePortalState`, found no context and threw — a 500 on
+ * the initial request, and the page only looked fine because the other branch
+ * took over when Suspense resolved. There is one way in now.
  */
 function PortalRoot({
   funnelState,

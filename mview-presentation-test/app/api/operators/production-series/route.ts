@@ -33,7 +33,7 @@ import {
  * otherwise identical body. The app had been overriding that with a development
  * stand-in member id, so the gate was switched off for everyone.
  *
- * IT CANNOT MOVE TO THE PAGE. `/features/compare-operator-production` is statically
+ * IT CANNOT MOVE TO THE PAGE. `/features/compare-operator-performance` is statically
  * prerendered; reading a cookie in its server component would opt the whole route
  * out of static rendering. A route handler is dynamic already, so the session read
  * costs it nothing new.

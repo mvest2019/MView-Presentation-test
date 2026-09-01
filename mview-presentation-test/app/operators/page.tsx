@@ -97,7 +97,7 @@ const FEATURE_CARDS = [
   {
     // Built. `/features/` because the destination is a tool, not one operator's
     // record — see the note at the top of that route.
-    href: "/features/compare-operator-production",
+    href: "/features/compare-operator-performance",
     icon: "▮▮",
     title: "Compare Operators Performance",
     body: "Compare 2–4 operators side by side using reported production data and their relative position within the selected play.",

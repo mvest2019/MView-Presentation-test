@@ -195,9 +195,9 @@
    showed "Claim Mineral Owner" above "Run a Lease Audit".
 
    The reference gets away without it: its `body:not(.no-claim) .v33-claimnav`
-   TIES the row rule at (0,2,1) and wins on file order, because the two live in
-   separate stylesheets. Scoping everything under `.mv-portal` in one file adds a
-   class to both sides and breaks that tie. */
+   ties the row rule at (0,2,1) and wins on file order, because the two live in
+   separate stylesheets. Scoping everything under `.mv-portal` in one file adds
+   a class to both sides and breaks that tie. */
 .mv-portal:not(.no-claim) .v33-claimnav {
   display: none !important;
 }
@@ -2538,6 +2538,16 @@
     font-size: 14px;
     padding: 6px 2px;
     min-width: 0;
+  }
+
+  /* The design's own phone-width swap: four full labels do not fit a 375px row
+     at the 14px this breakpoint raises them to. */
+  .mv-portal .view-switch .vs-full {
+    display: none;
+  }
+
+  .mv-portal .view-switch .vs-abbr {
+    display: inline;
   }
 
   /* The design's own phone-width swap: four full labels do not fit a 375px row

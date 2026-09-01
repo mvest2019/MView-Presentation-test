@@ -73,6 +73,37 @@ export function LockedValue({
 }
 
 /**
+ * The offer alone, without a bar.
+ *
+ * FOR A GROUP OF WITHHELD FIGURES THAT SHARE ONE CTA. Two `LockedValue`s side by side
+ * in a narrow two-column cell do not fit: the link is `whitespace-nowrap`, so it
+ * cannot shrink, and the pair overflows its card and reads as the same offer twice on
+ * one line. Where several figures are withheld together, they get bars and this gets
+ * rendered once beneath them.
+ *
+ * `label` still names what is being unlocked, so the accessible name is specific even
+ * though one link now covers more than one figure.
+ */
+export function LockedLink({
+  label,
+  from,
+}: {
+  label: string;
+  from: LockedFrom;
+}) {
+  return (
+    <Link
+      href={`/register?from=${from}`}
+      aria-label={`Create a free account to see the ${label.toLowerCase()}`}
+      className="inline-flex items-center gap-[4px] whitespace-nowrap text-[11.5px] font-semibold text-mv-green-deep no-underline underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+    >
+      <Lock aria-hidden="true" className="h-3 w-3 shrink-0" strokeWidth={2.3} />
+      Free account
+    </Link>
+  );
+}
+
+/**
  * The redacted bar alone, for the places that carry the offer elsewhere.
  *
  * Decorative: whatever sits beside it must carry the meaning for a screen reader.

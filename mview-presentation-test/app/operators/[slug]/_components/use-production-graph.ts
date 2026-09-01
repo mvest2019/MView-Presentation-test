@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { publicOperatorApiBaseUrl } from "@/lib/operator-api-types";
 import {
   fetchProductionGraph,
   type ProductionSeries,
@@ -37,7 +36,20 @@ import {
  * effect costs.
  */
 
-export type GraphStatus = "loading" | "success" | "empty" | "error";
+/**
+ * `locked` is a state of its own, not a flavour of `empty`.
+ *
+ * An operator with nothing filed also returns no rows. Drawing "no production is
+ * reported for this operator" at a reader who simply has no account would be a claim
+ * about the operator that the request never made — so the chart branches on this
+ * before it branches on emptiness.
+ */
+export type GraphStatus =
+  | "loading"
+  | "success"
+  | "empty"
+  | "error"
+  | "locked";
 
 export interface YearRange {
   start: number;
@@ -70,7 +82,7 @@ interface Resolved {
 function useKeyedSeries(
   key: string,
   enabled: boolean,
-  build: () => Parameters<typeof fetchProductionGraph>[1],
+  build: () => Parameters<typeof fetchProductionGraph>[0],
 ): Resolved | null {
   const [resolved, setResolved] = useState<Resolved | null>(null);
   const buildRef = useRef(build);
@@ -84,11 +96,7 @@ function useKeyedSeries(
     const controller = new AbortController();
     let active = true;
 
-    fetchProductionGraph(
-      publicOperatorApiBaseUrl(),
-      buildRef.current(),
-      controller.signal,
-    )
+    fetchProductionGraph(buildRef.current(), controller.signal)
       .then((data) => {
         if (active) setResolved({ key, data, error: null });
       })
@@ -169,6 +177,13 @@ export function useProductionGraph({
       error: null,
       retry,
     };
+  }
+
+  /* Before the emptiness check, and that ordering is the point: a locked read returns
+     no rows, so falling through would draw "no production is reported for this
+     operator" — a statement about the operator, from a request that was never made. */
+  if (active.data?.locked === true) {
+    return { status: "locked", range: null, full: null, error: null, retry };
   }
 
   const rows = active.data?.rows ?? [];

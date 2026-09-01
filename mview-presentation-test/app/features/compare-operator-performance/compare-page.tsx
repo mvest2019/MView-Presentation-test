@@ -17,7 +17,11 @@ import { buttonClass } from "@/app/_components/button";
 import { ChangeItem } from "@/app/_components/change-item";
 import { DeferredSection } from "@/app/_components/deferred-section";
 import { SelectControl } from "@/app/_components/select-control";
-import { LockedValue } from "@/app/_components/locked-value";
+import {
+  LockedBar,
+  LockedLink,
+  LockedValue,
+} from "@/app/_components/locked-value";
 import { OperatorLogo } from "@/app/_components/operator-logo";
 import { OperatorMonogram } from "@/app/_components/operator-monogram";
 import { OperatorSlotPicker } from "@/app/_components/operator-slot-picker";
@@ -875,6 +879,18 @@ function IdentityCard({
           every card to the same height, so the four figure blocks then sit on one
           line regardless of how much the blocks above them differ. */}
       <div className="mt-auto border-t border-mv-line-soft pt-3">
+        {/*
+          ONE OFFER FOR THE PAIR WHEN BOTH ARE WITHHELD.
+
+          Each figure used to carry its own bar AND its own "Free account" link. In a
+          two-column cell this narrow — four operators across — the link is
+          `whitespace-nowrap` and so cannot shrink, and the two ran into each other and
+          out of the card: the same offer twice on one line, overflowing the box.
+
+          Locked, the two labels keep their places and their bars, and the link is
+          rendered once underneath, spanning both columns. Nothing about WHAT is
+          withheld changed, only how often the ask is made.
+        */}
         <dl className="m-0 grid grid-cols-2 gap-x-3">
           <div className="min-w-0">
             <dt className="text-[11px] font-bold uppercase tracking-[.05em] text-mv-muted">
@@ -882,7 +898,7 @@ function IdentityCard({
             </dt>
             <dd className="m-0 mt-[3px] text-[16px] font-bold leading-none tracking-[-.02em] tabular-nums text-mv-ink">
               {locked ? (
-                <LockedFigure label="Oil produced" />
+                <LockedBar width="w-[52px]" />
               ) : (
                 <>
                   {formatMillions(operator.oilTotal)}{" "}
@@ -899,7 +915,7 @@ function IdentityCard({
             </dt>
             <dd className="m-0 mt-[3px] text-[16px] font-bold leading-none tracking-[-.02em] tabular-nums text-mv-ink">
               {locked ? (
-                <LockedFigure label="Gas produced" />
+                <LockedBar width="w-[52px]" />
               ) : (
                 <>
                   {formatMillions(operator.gasTotal)}{" "}
@@ -911,6 +927,15 @@ function IdentityCard({
             </dd>
           </div>
         </dl>
+
+        {locked ? (
+          <p className="m-0 mt-[7px]">
+            <LockedLink
+              label="oil and gas produced"
+              from="compare-production"
+            />
+          </p>
+        ) : null}
       </div>
     </article>
   );
@@ -922,13 +947,18 @@ function IdentityCard({
  * WHY NOT JUST HIDE THE ROW. The four figure blocks are what pin the cards to a
  * common baseline — remove two and every card in the row changes height. This
  * occupies exactly the space the number did, so the grid is untouched.
+ *
+ * IT DELEGATES TO THE SHARED TREATMENT. It used to draw a bar and a padlock with the
+ * offer only in `sr-only` text, so a sighted reader was told a figure was withheld but
+ * never what it cost — while the operator listing and the profile, gated on the same
+ * fields, showed a "Free account" link right there. Every page renders the identical
+ * component now. `align="start"` because these sit under a label rather than in a
+ * right-aligned numeric cell.
+ *
+ * STILL USED BY THE LEADERBOARD TILES AND THE STATS TABLE, which are wide enough for a
+ * bar and a link on one line. The operator CARDS are not — see the note at their figure
+ * grid, where the pair shares a single `LockedLink` instead.
  */
-/* THE SHARED LOCK TREATMENT (requested). This drew a bar and a padlock with the
-   offer only in `sr-only` text, so a sighted reader was shown that a figure was
-   withheld and never told what it cost — while the operator listing and the profile,
-   gated on the same two fields, put a "Free account" link right beside the bar. All
-   of them render the one component now. `align="start"` because these sit under a
-   label in a card rather than in a right-aligned numeric cell. */
 function LockedFigure({ label }: { label: string }) {
   return <LockedValue label={label} from="compare-production" align="start" />;
 }
