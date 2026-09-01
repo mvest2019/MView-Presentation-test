@@ -131,6 +131,10 @@ export type ViewTab = "map" | "table" | "insights";
 /** The breathing room between the view switch and the top of the rail. */
 const RAIL_GAP = 8;
 
+/** Roughly how tall the share menu is, for deciding which side to open on. */
+const SHARE_MENU_HEIGHT = 176;
+const SHARE_MENU_GAP = 8;
+
 /** And between the toolbar and the FILTERS / TOOLS tabs beside it. */
 const EDGE_TAB_GAP = 6;
 
@@ -394,18 +398,38 @@ export function MapChrome({
    * rather than hard-coded because the button's position moves with the
    * toolbar — the bar is right-aligned above 919px and centred below it.
    */
+  /*
+   * Where the share menu opens, in the window rather than in the map.
+   *
+   * Placed against the map it was cut off by it: on a phone's Insights tab
+   * the map is a 200px strip above the record, and a menu hanging under the
+   * toolbar runs straight out of the bottom of it — the reader saw the link
+   * and Save image, and nothing of Print map. Fixed to the window it is only
+   * ever bounded by the screen, and where the strip leaves no room below the
+   * button it opens above it instead.
+   */
   const toggleShare = () => {
     if (shareOpen) {
       setShareOpen(false);
       return;
     }
 
-    const toolbar = toolbarRef.current?.getBoundingClientRect();
     const button = shareButtonRef.current?.getBoundingClientRect();
-    if (toolbar && button) {
+    if (button) {
+      const below = window.innerHeight - button.bottom;
       setShareAnchor({
-        top: Math.round(button.bottom - toolbar.top + 8),
-        right: Math.round(toolbar.right - button.right),
+        top:
+          below >= SHARE_MENU_HEIGHT + SHARE_MENU_GAP * 2
+            ? Math.round(button.bottom + SHARE_MENU_GAP)
+            : Math.round(
+                Math.max(
+                  SHARE_MENU_GAP,
+                  button.top - SHARE_MENU_GAP - SHARE_MENU_HEIGHT,
+                ),
+              ),
+        right: Math.round(
+          Math.max(SHARE_MENU_GAP, window.innerWidth - button.right),
+        ),
       });
     }
     setShareOpen(true);
@@ -728,12 +752,14 @@ export function MapChrome({
           </div>
 
           {/* Export is the first to go when the map is only half the page
-              — the mock drops it too, and Share falls back to its icon. */}
-          <div
-            className={`flex-wrap items-center justify-end gap-2 lg:contents ${
-              bare ? "hidden" : "flex"
-            }`}
-          >
+              — the mock drops it too, and Share falls back to its icon.
+
+              Kept on the phone's summary strip, unlike the rest of the map's
+              furniture: Time-lapse, Export, Share and the API search are
+              about the record being read, not about the strip of map above
+              it, and stripping them left a reader on Insights with no way to
+              share or export what they were looking at. */}
+          <div className="flex flex-wrap items-center justify-end gap-2 lg:contents">
 
           {/* What is filtering the map, and the way off it.
               Shut, the rail says nothing about the filter it is holding — the
@@ -799,15 +825,18 @@ export function MapChrome({
 
           <Divider />
 
-          {!compact && (
-            <ToolbarButton
-              icon={Download}
-              label="Export Excel"
-              onClick={onExportCsv}
-            />
-          )}
+          {/* Its icon alone where the bar is short of room — Insights halves
+              the map, and on a phone's summary strip there is less again. It
+              used to be dropped outright there, which left the reader looking
+              at a record with no way to take it away. */}
+          <ToolbarButton
+            icon={Download}
+            label={compact ? "" : "Export Excel"}
+            title="Export Excel"
+            onClick={onExportCsv}
+          />
 
-          {!compact && <Divider />}
+          <Divider />
 
           <span ref={shareButtonRef} className="shrink-0">
             <ToolbarButton
@@ -986,7 +1015,7 @@ export function MapChrome({
               setShareOpen(false);
               onPrint();
             }}
-            className="pointer-events-auto absolute"
+            className="pointer-events-auto fixed z-50"
             style={{ top: shareAnchor.top, right: shareAnchor.right }}
           />
         )}
