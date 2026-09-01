@@ -18,21 +18,21 @@ DEFECT · SNAP · OWNER · DEV STATUS · DEV COMMENT · QA STATUS · QA COMMENT`
 
 ## 1. Where the work has got to
 
-**38 of 51 actionable defects are done.** SR 167 is blank in the sheet — no
+**47 of 51 actionable defects are done.** SR 167 is blank in the sheet — no
 description, no screenshot — so 51, not 52.
 
 | Section | Range | Total | Done | Open |
 |---|---|---|---|---|
 | Operator Directory | 116–125 | 10 | 9 | 1 (backend) |
 | Operator Detail | 126–156 | 31 | 29 | 2 (one partial, one unactionable) |
-| Compare Operators Performance | 157–165 | 9 | 0 | 9 |
-| Compare Operator Statistics | 166 | 1 | 0 | 1 |
+| Compare Operators Performance | 157–165 | 9 | 8 | 1 (platform) |
+| Compare Operator Statistics | 166 | 1 | 1 | 0 |
 
-**Remaining, all pages:** `125, 147 (partial), 153 (unactionable), 157, 158, 159,
-160, 161, 162, 163, 164, 165, 166`
+**Remaining, all pages:** `125` (backend) · `147` (partial) · `153` (unactionable) ·
+`160` (platform)
 
-**The operator detail page is finished** apart from those two. All nine remaining
-Compare Performance defects and the one Compare Statistics defect are untouched.
+Every defect in the sheet has now been worked. The four left open are open for a
+reason recorded below, not because they were not reached.
 
 ### Done
 
@@ -77,6 +77,15 @@ Compare Performance defects and the one Compare Statistics defect are untouched.
 | 150 | fixed-width end pill, text clipped at the viewBox | `production-over-time.tsx` |
 | 151 | four condition tiles stacked on mobile | `[slug]/page.tsx` |
 | 156 | the **pager** grew across pages, not the table | `app/_components/pager.tsx` |
+| 157 | lede wrapped — `max-w-[600px]` narrower than its sentence | `compare-operator-production/page.tsx` |
+| 158 | **not** covered by 124: the four operator fields kept the old caret | `operator-slot-picker.tsx` |
+| 159 | Apply enabled at one operator | `operator-production-filters.ts`, `compare-page.tsx` |
+| 161 | unit-suffixed strings parsed to `NaN`→0, **and** the magnitude moved | `operator-production-api.ts` |
+| 162 | BOE removed from the metric switch and from `CompareMetric` | `production-over-time.tsx`, `operator-compare.ts` |
+| 163 | units capitalised across the page | 4 files |
+| 164 | the year table printed all 29 years at once | `production-over-time.tsx` |
+| 165 | two more copies of the year range | `production-over-time.tsx` |
+| 166 | **not reproducible** — see below | — |
 
 ### Open
 
@@ -95,10 +104,31 @@ Compare Performance defects and the one Compare Statistics defect are untouched.
   no QA comment, no cell comment — verified against the workbook directly. Needs the
   original wording from QA before anything can be built. Do not guess.
 
-**Compare Performance (9)** — `157`–`165`. `158` (dropdown icon) may already be
-covered by the shared `CONTROL_CARET` change from 124; verify before working it.
+**Compare Performance (1)**
 
-**Compare Statistics (1)** — `166` Try an Example shows no data.
+- `160` **platform-constrained.** "Dropdown goes out of the page and need to decrease
+  the height of the dropdown", ringing the County filter. That control is a native
+  `<select>`, and `select-control.tsx`'s own note already records the trade: *"THE
+  POPUP IS THE OPERATING SYSTEM'S… it cannot be styled, and a long list runs the
+  height of the viewport."* A page cannot give a native popup a `max-height`. The two
+  real fixes are (a) replace `SelectControl` with a custom listbox — but it is shared
+  with the operator listing and the detail page, so that is a three-page change and
+  loses the platform picker on mobile, or (b) shorten the list, which needs the same
+  `/operators/counties` filtering that **125 is blocked on** (255 bare names, `?status=`
+  ignored — §7). Not attempted rather than half-fixed. The page's other dropdown, the
+  operator combobox, is already custom and already caps its panel at `max-h-[280px]`.
+
+**Compare Statistics (0)**
+
+- `166` **not reproducible.** "Try an example" was exercised on the current build in
+  both states. Signed in it seeds Pioneer, EOG, XTO and Diamondback and renders
+  2.39B / 2.12B / 1.71B / 1.21B cumulative BOE, combined 7.43B, 40,506 leases, widest
+  footprint EOG at 110 counties, plus the category-leaders block. Signed out it seeds
+  the same four, keeps every county count real, and draws "Cumulative BOE locked —
+  create a free account to see it" instead of a blank. Every section renders in both.
+  This is the symptom §6 records as already fixed: one derived value (`findStatisticsLeaders`
+  returning null) used to blank every block on the page. Guarding the section rather
+  than the page is what fixed it.
 
 **Blocked (1)** — `125`, see §7.
 
@@ -310,9 +340,16 @@ silently declined to store it.
 
 **The magnitude did not change on `/operators/compare`** — same thousands figure, so
 the existing `× 1000` scaling stands. **It did change on
-`compare-operators-production_info`**, which now sends pre-scaled millions
-(`"714.982 (MMBBL)"`) where it sent raw barrels. Different fixes; do not copy one to
-the other. *(This is why defect 161's values read 0, and it is still open.)*
+`compare-operators-production_info`.** Different fixes; do not copy one to the other.
+
+⚠️ **This note used to say that endpoint sends "pre-scaled millions
+(`"714.982 (MMBBL)"`)". Re-measured 2026-09-01 and that is not what its TOTALS carry:
+`total_production_oil` comes back as `"1,476,959.213 (MBBL)"` — thousands, not
+millions. MMBBL appears only inside `top_producing_counties[].boe`, which is probably
+where the original reading came from.** The safe conclusion is that this endpoint's
+unit is not a constant worth writing down at all: `volumeInMillions` in
+`operator-production-api.ts` reads whichever unit the response declares and converts
+from that, so the next rescale needs no code change. Defect 161 is fixed.
 
 **Sort fields fail silently.** An unrecognised `sort.propertyName` does not error — it
 falls back to the default ordering. Probe against a deliberately bogus field name to
@@ -344,7 +381,8 @@ Four things the frontend cannot fix. None has a workaround short of fabricating 
 | **143 — "producing counties" cannot be computed** | `/operators/details` answers `counties` as `{"county":"CHEROKEE"}` — names only, no volume on any entry. Relabelled "Counties on record" as the honest reading | per-county volumes on that endpoint |
 | **Presentations library is empty** | `POST /operators/presentations` returns `totalCount: 0, totalPages: 0` for every payload tried, dated ranges included. Previously 190 records over 23 pages. Only host serving the path | records restored |
 | **142 — well oil/gas/production dates blank** | the wells endpoint answers `totalOilProduction: "NO RPT"` on 492 of 500 sampled wells, gas on 491, `production_start_date: "00-0000"` on 487. Only 8 carry figures. The parsers were verified against those eight — "133"→133, "6,587"→6587, "10-2011"→"Oct 2011" — and confirmed end to end on lease 259602 | the values themselves |
-| **161 — `production_info` volumes parse to 0 even signed in** | the unit-suffix change above, plus a magnitude change | frontend fix, but the scaling decision needs confirming |
+| ~~**161**~~ | **Fixed.** The scaling question is settled by measurement, not judgement: the info endpoint's totals now EQUAL the sum of the series (EOG oil `1,476,959.213 (MBBL)` against a series sum of `1476959.213`, ratio 1.0000). The unit is read from the response rather than assumed — see `volumeInMillions` | — |
+| **160 — a native `<select>` popup cannot be given a max-height** | `select-control.tsx` documents the trade; the County list is the 255 bare names from `/operators/counties`, which is the same list 125 is blocked on | either a custom listbox across three pages, or `?status=` filtering on `/operators/counties` |
 
 ---
 
