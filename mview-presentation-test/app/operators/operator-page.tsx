@@ -704,32 +704,25 @@ function ResultsTable({
   onRetry: () => void;
 }) {
   const visibleSortable = SORTABLE.filter((col) => columns[col.column]);
-  /* How many rows on THIS page came back gated. Counted from the response rather
-     than assumed to be seven: it is the endpoint's decision, not ours, and a
-     hard-coded number would start lying the day the gate changes. */
-  const lockedCount = page.rows.reduce(
-    (count, row) => count + (row.masked ? 1 : 0),
-    0,
-  );
 
   /* Whether the two account-only columns came back withheld — read off the
-     response for the same reason, so the header and the cells can never disagree
-     about what arrived.
+     response, so the header and the cells can never disagree about what arrived.
 
      MEASURED ON A ROW THAT IS NOT ITSELF GATED. Every field of a gated row is
      withheld, so asking one of those would report the columns as locked for a
-     signed-in member who happened to be looking at a quick-filtered page. */
+     signed-in member who happened to be looking at a quick-filtered page.
+
+     ONLY THE TWO COUNT COLUMNS ARE DERIVED HERE NOW. `lockedCount`, `oilLocked`,
+     `gasLocked` and `anythingLocked` existed solely to decide whether to draw the
+     unlock band at the foot of the table; the band is gone (requested), so the flags
+     went with it rather than being left computed and unread. */
   const firstOpenRow = page.rows.find((row) => !row.masked);
   const ctyLocked = !!firstOpenRow && isLockedValue(firstOpenRow.counties);
   const leasesLocked = !!firstOpenRow && isLockedValue(firstOpenRow.leases);
-  const oilLocked = !!firstOpenRow && isLockedValue(firstOpenRow.oil);
-  const gasLocked = !!firstOpenRow && isLockedValue(firstOpenRow.gas);
   const columnLocked: Partial<Record<keyof OperatorColumns, boolean>> = {
     cty: ctyLocked,
     leases: leasesLocked,
   };
-  const anythingLocked =
-    lockedCount > 0 || ctyLocked || leasesLocked || oilLocked || gasLocked;
   // `#` + name + the visible optional columns, for the empty row's colspan.
   const columnCount =
     2 +
@@ -850,20 +843,17 @@ function ResultsTable({
               ))
             )}
 
-            {/* THE ASK SITS WHERE THE FRICTION IS, immediately under the rows it
-                explains, rather than only at the foot of the page where someone
-                who has just hit the gate would have to go looking for it. It is
-                rendered only when this response actually came back gated, so a
-                visitor who never touches a quick filter never sees it — and a
-                signed-in member never can, because the endpoint sends them no
-                gated rows to trigger it. */}
-            {anythingLocked && !isLoading && !hasError && (
-              <tr>
-                <td colSpan={columnCount} className="whitespace-normal bg-white">
-                  <UnlockPrompt rowCount={lockedCount} />
-                </td>
-              </tr>
-            )}
+            {/* THE UNLOCK BAND THAT STOOD HERE IS GONE (requested).
+
+                It was a full-width row reading "The production figures are locked",
+                with a Register for free button and a Sign in link. Nothing replaces
+                it: every withheld cell already carries its own redacted bar and its
+                own "Free account" link, so the offer is made at each figure the
+                reader actually reaches for rather than once, in prose, at the foot of
+                the table. The page's closing CTA band still makes the ask in full.
+
+                Nothing about WHAT is gated changed — the locks, the header marks and
+                the gated rows are untouched. */}
           </tbody>
         </table>
       </div>
@@ -1360,104 +1350,6 @@ function SkeletonRows({
 }
 
 /** Shown only after a completed request returned zero records. */
-/**
- * The unlock ask, shown under a gated page of results.
- *
- * WHAT IT PROMISES IS WHAT THE GATE ACTUALLY HOLDS. The endpoint returns the
- * first three rows of every page and withholds the rest while a quick filter is
- * on, so that is what the copy says — not "unlock the directory", which is
- * already free, and not a feature list this page cannot deliver.
- *
- * "Free · no card" is on the button's own line because the objection at this
- * moment is cost, and answering it after the click is too late. There is no
- * pricing link here: routing free-account intent into a plan decision is the
- * defect this whole treatment exists to avoid. Pricing is offered once, quietly,
- * at the foot of the page.
- *
- * `from=operators` rides on the link so the registration can later be attributed
- * to this surface. It is an enumerated value, not an invention.
- */
-function UnlockPrompt({
-  rowCount,
-}: {
-  /**
-   * Rows withheld by the endpoint's quick-filter gate, 0 when none are.
-   *
-   * IT IS THE ONLY INPUT THIS NEEDS. The prompt renders only when something came
-   * back locked, and the two account-only columns are locked for every signed-out
-   * response — so `rowCount === 0` already means "columns only" and nothing has
-   * to be passed to say so.
-   */
-  rowCount: number;
-}) {
-  /* The headline names whichever gate the visitor has actually met. Rows first
-     when both are in play: seven blanked-out rows is the louder of the two, and
-     the body sentence picks up the columns underneath it either way. */
-  const headline =
-    rowCount > 0
-      ? `${rowCount} more operator${rowCount === 1 ? "" : "s"} on this page ${
-          rowCount === 1 ? "is" : "are"
-        } locked`
-      : "The production figures are locked";
-
-  /*
-   * THE COPY HAS TO TRACK WHAT IS ACTUALLY WITHHELD. It read "Two columns are
-   * locked … everything else here is free and stays free" while the volumes were
-   * open. They are gated now, so that sentence became false — and a lock notice
-   * that misdescribes the lock is worse than none: the reader can see the fuzzed
-   * Oil and Gas columns while being told the ranking is free.
-   *
-   * What remains genuinely free is said, and nothing more: search, every filter,
-   * paging the whole directory, and every operator profile.
-   */
-  const body =
-    rowCount > 0
-      ? "Quick filters show the top three of every page without an account, and the production volumes and counts stay locked. A free account opens all of them, with a link through to every operator's profile."
-      : "Oil, gas, lease and county figures need a free account. Searching, filtering and paging the whole directory — and every operator profile — stay free.";
-
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-4 border-t border-mv-line-soft bg-[linear-gradient(180deg,#f7fbf9_0%,#ffffff_100%)] px-[18px] py-5">
-      <div className="flex min-w-0 items-start gap-3">
-        <span
-          aria-hidden="true"
-          className="mt-[1px] grid h-[26px] w-[26px] shrink-0 place-items-center rounded-full bg-mv-mint text-mv-green-deep"
-        >
-          <Lock className="h-[13px] w-[13px]" strokeWidth={2.4} />
-        </span>
-
-        <div className="min-w-0">
-          <p className="m-0 text-[14px] font-bold leading-snug text-mv-ink">
-            {headline}
-          </p>
-          <p className="m-0 mt-[3px] max-w-[52ch] text-[13px] leading-snug text-mv-muted">
-            {body}
-          </p>
-        </div>
-      </div>
-
-      <div className="flex flex-none flex-col items-start gap-[6px]">
-        <div className="flex flex-wrap items-center gap-[10px]">
-          <Link
-            href="/register?from=operators"
-            className="inline-flex items-center gap-2 rounded-xl bg-mv-green-deep px-[18px] py-[11px] text-[13.5px] font-semibold text-white !no-underline shadow-mv transition-[filter] hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
-          >
-            Register for free
-          </Link>
-          <Link
-            href="/login"
-            className="text-[13px] font-semibold text-mv-green-deep hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
-          >
-            Sign in
-          </Link>
-        </div>
-        <p className="m-0 text-[11.5px] text-mv-muted">
-          Free account · no card required
-        </p>
-      </div>
-    </div>
-  );
-}
-
 function EmptyState({ onClearFilters }: { onClearFilters: () => void }) {
   return (
     <div className="px-5 py-[34px] text-center">
