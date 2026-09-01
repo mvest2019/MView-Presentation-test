@@ -9,10 +9,11 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   getCountyListMap,
+  nextOffset,
   getFieldListMap,
   getMapSearch,
   getOperatorListMap,
@@ -91,6 +92,13 @@ type FilterSection = {
  * below; the static rows that stood in for them while there was no endpoint
  * are gone.
  */
+/** How many operators arrive at a time, and how long typing settles first. */
+const OPERATOR_PAGE = 50;
+const OPERATOR_FIND_WAIT = 260;
+
+/** How close to the end of a paged list counts as having reached it. */
+const NEAR_END = 48;
+
 export const FILTER_SECTIONS: FilterSection[] = [
   { id: "county", label: "County", searchable: true, defaultOpen: true, items: [] },
   { id: "operator", label: "Operator", searchable: true, items: [] },
@@ -504,29 +512,127 @@ export function FiltersPanel({
     };
   }, []);
 
+  /*
+   * The operators, a page at a time.
+   *
+   * There are twenty-two thousand of them. Asked for in one request it was a
+   * couple of megabytes and a couple of thousand rows drawn into a panel that
+   * shows eight — so the list arrives fifty at a time, with Show more under
+   * it, and the Find box asks the service rather than sifting the fifty in
+   * hand.
+   */
+  const [operatorsTotal, setOperatorsTotal] = useState(0);
+  const [operatorFind, setOperatorFind] = useState("");
+  const [operatorsMore, setOperatorsMore] = useState(false);
+  /*
+   * Set when a page comes back with nothing new in it.
+   *
+   * The end of the list, or a service that will not go further — either way
+   * asking again returns the same rows, and a list at the bottom of its
+   * scroll would ask on every frame.
+   */
+  const operatorsDone = useRef(false);
+  /* Only the newest search may fill the list — a slow one for "ex" must not
+     land on top of the answer for "exxon". */
+  const operatorRequest = useRef(0);
+
   useEffect(() => {
     let cancelled = false;
+    const request = ++operatorRequest.current;
+    const find = operatorFind.trim();
 
-    getOperatorListMap()
-      .then((list) => {
-        if (cancelled) return;
-        setOperators(list);
-        setOperatorsError(null);
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        setOperatorsError(
-          error instanceof Error ? error.message : "Could not load operators.",
-        );
-      })
-      .finally(() => {
-        if (!cancelled) setOperatorsLoading(false);
-      });
+    /* A beat before asking, so a name being typed is one request and not
+       one per letter. Nothing typed asks at once — that is the opening
+       list. */
+    const wait = setTimeout(
+      () => {
+        setOperatorsLoading(true);
+        operatorsDone.current = false;
+
+        getOperatorListMap({
+          limit: OPERATOR_PAGE,
+          offset: 0,
+          q: find || undefined,
+        })
+          .then((page) => {
+            if (cancelled || request !== operatorRequest.current) return;
+            setOperators(page.items);
+            setOperatorsTotal(page.total);
+            setOperatorsError(null);
+          })
+          .catch((error: unknown) => {
+            if (cancelled || request !== operatorRequest.current) return;
+            setOperatorsError(
+              error instanceof Error
+                ? error.message
+                : "Could not load operators.",
+            );
+          })
+          .finally(() => {
+            if (!cancelled && request === operatorRequest.current) {
+              setOperatorsLoading(false);
+            }
+          });
+      },
+      find ? OPERATOR_FIND_WAIT : 0,
+    );
 
     return () => {
       cancelled = true;
+      clearTimeout(wait);
     };
-  }, []);
+  }, [operatorFind]);
+
+  /*
+   * The next page, appended — asked for when the reader reaches the end of
+   * the list rather than by pressing anything.
+   */
+  const loadMoreOperators = useCallback(() => {
+    if (operatorsMore || operatorsDone.current) return;
+    /* Everything there is, already in hand. */
+    if (operatorsTotal > 0 && operators.length >= operatorsTotal) return;
+
+    const request = operatorRequest.current;
+    setOperatorsMore(true);
+
+    getOperatorListMap({
+      limit: OPERATOR_PAGE,
+      offset: nextOffset(operators.length),
+      q: operatorFind.trim() || undefined,
+    })
+      .then((page) => {
+        /* A search that landed while this was out has replaced the list; its
+           next page is not this one. */
+        if (request !== operatorRequest.current) return;
+        setOperators((current) => {
+          /*
+           * Only what is not already listed.
+           *
+           * Two operators can share a name — the Commission's register has
+           * several "EXXON CORP." under different numbers — and a service
+           * that reads `offset` as a row rather than a page hands back a
+           * page that overlaps the last one. Either way the list must not
+           * hold the same row twice: React keys off it, and a repeated key
+           * is a row that can be dropped or duplicated on the next redraw.
+           */
+          const seen = new Set(current.map((item) => item.id ?? item.value));
+          const fresh = page.items.filter(
+            (item) => !seen.has(item.id ?? item.value),
+          );
+          /* Nothing new means there is no more to be had; stop asking. */
+          if (fresh.length === 0) {
+            operatorsDone.current = true;
+            return current;
+          }
+          return [...current, ...fresh];
+        });
+        setOperatorsTotal(page.total);
+      })
+      .catch(() => {
+        /* The list on screen stands, and the next scroll asks again. */
+      })
+      .finally(() => setOperatorsMore(false));
+  }, [operators.length, operatorsTotal, operatorsMore, operatorFind]);
 
   const [query, setQuery] = useState("");
   /*
@@ -1298,6 +1404,15 @@ export function FiltersPanel({
             onToggle={() => toggleSection(section.id)}
             checked={checked[section.id]}
             onToggleItem={(name) => toggleItem(section.id, name)}
+            /* Operators are the one paged facet — see the loader above. */
+            {...(section.id === "operator"
+              ? {
+                  onFind: setOperatorFind,
+                  total: operatorsTotal,
+                  onMore: loadMoreOperators,
+                  loadingMore: operatorsMore,
+                }
+              : null)}
           />
         ))}
 
@@ -1376,6 +1491,10 @@ function CheckboxSection({
   checked,
   onToggleItem,
   notice,
+  onFind,
+  total,
+  onMore,
+  loadingMore,
 }: {
   section: FilterSection;
   open: boolean;
@@ -1384,16 +1503,33 @@ function CheckboxSection({
   onToggleItem: (name: string) => void;
   /** Shown in place of the list — "loading", or why there is nothing. */
   notice?: string | null;
+  /**
+   * Where the Find box goes for a section whose list is paged.
+   *
+   * Given one, the box asks the service instead of sifting what is in hand —
+   * which is the only way to find the twenty-thousandth operator when fifty
+   * are loaded. Without it the box filters locally, as every other section
+   * still does.
+   */
+  onFind?: (query: string) => void;
+  /** How many rows there are in all, where that is more than are loaded. */
+  total?: number;
+  /** Fetches the next page. */
+  onMore?: () => void;
+  loadingMore?: boolean;
 }) {
   const [query, setQuery] = useState("");
 
   const visible = useMemo(() => {
+    /* A paged list is filtered by the service; what arrived is the answer. */
+    if (onFind) return section.items;
+
     const needle = query.trim().toLowerCase();
     if (!needle) return section.items;
     return section.items.filter((item) =>
       item.name.toLowerCase().includes(needle),
     );
-  }, [query, section.items]);
+  }, [onFind, query, section.items]);
 
   return (
     <SectionShell
@@ -1412,7 +1548,10 @@ function CheckboxSection({
             id={`${section.id}-find`}
             type="search"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              onFind?.(event.target.value);
+            }}
             placeholder="Find…"
             className="min-w-0 flex-1 border-0 bg-transparent text-[11.5px] lg:text-[12.5px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted"
           />
@@ -1432,6 +1571,25 @@ function CheckboxSection({
           entries, so the old test missed it and that one section pushed
           everything below it out of reach. */}
       <div
+        /*
+         * The next page is asked for by reading, not by pressing: when the
+         * last rows come into view the following fifty are already on their
+         * way. `NEAR_END` is the run left below the fold that counts as
+         * having reached it.
+         */
+        onScroll={
+          onMore
+            ? (event) => {
+                const box = event.currentTarget;
+                if (
+                  box.scrollTop + box.clientHeight >=
+                  box.scrollHeight - NEAR_END
+                ) {
+                  onMore();
+                }
+              }
+            : undefined
+        }
         className={
           visible.length > LONG_LIST
             ? "mv-thin-scroll max-h-[248px] overflow-y-auto"
@@ -1441,7 +1599,9 @@ function CheckboxSection({
       {!notice &&
         visible.map((item) => (
         <label
-          key={item.name}
+          /* The number where the register gives one: two operators can share
+             a name, and a name alone is then the same key twice. */
+          key={item.id ?? item.name}
           className="flex cursor-pointer items-center gap-2 py-[5px]"
         >
           {/*
@@ -1481,6 +1641,25 @@ function CheckboxSection({
         ))}
 
       </div>
+
+      {/* Where the list has got to. Worth saying even though nothing has to
+          be pressed: fifty rows that stop with no word about it read as a
+          list of fifty. */}
+      {!notice && onMore && total !== undefined && total > 0 && (
+        <p className="flex items-center gap-[6px] pt-[6px] text-[11.5px] text-mv-muted lg:text-[12px]">
+          {loadingMore && (
+            <span
+              aria-hidden="true"
+              className="h-[11px] w-[11px] shrink-0 animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
+            />
+          )}
+          {section.items.length.toLocaleString("en-US")} of{" "}
+          {total.toLocaleString("en-US")}
+          {section.items.length < total && !loadingMore
+            ? " · scroll for more"
+            : ""}
+        </p>
+      )}
 
       {!notice && visible.length === 0 && (
         <p className="py-2 text-[11px] lg:text-[12px] text-mv-muted">Nothing matches.</p>

@@ -22,7 +22,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { MapToast } from "./map-toast";
 import { usePanelPlacement } from "./panel-placement";
@@ -39,6 +39,7 @@ import {
 
 import {
   getCountyListMap,
+  nextOffset,
   getOperatorListMap,
   getTableMap,
   getWellStatusListMap,
@@ -82,6 +83,9 @@ function withPick(
 
 /** How wide a facet dropdown's panel is, for keeping it on the page. */
 const PANEL_WIDTH = 238;
+
+/** How close to the end of a paged list counts as having reached it. */
+const PANEL_NEAR_END = 40;
 
 /** What an exported cell says where the record says nothing. */
 const NOTHING_MARK = "-";
@@ -259,6 +263,46 @@ export function WellsTable({
     county: [],
   });
   /*
+   * The operator facet alone is paged — there are tens of thousands of them,
+   * where the other three are lists a dropdown can hold. Its next page is
+   * asked for when the reader reaches the end of what is loaded.
+   */
+  const [operatorTotal, setOperatorTotal] = useState(0);
+  const [operatorMore, setOperatorMore] = useState(false);
+  const operatorDone = useRef(false);
+
+  const loadMoreOperators = useCallback(() => {
+    if (operatorMore || operatorDone.current) return;
+
+    const loaded = facetItems.operator.length;
+    if (loaded === 0) return;
+    if (operatorTotal > 0 && loaded >= operatorTotal) return;
+
+    setOperatorMore(true);
+    getOperatorListMap({ offset: nextOffset(loaded) })
+      .then((page) => {
+        setOperatorTotal(page.total);
+        setFacetItems((current) => {
+          const seen = new Set(
+            current.operator.map((item) => item.id ?? item.value),
+          );
+          const fresh = page.items.filter(
+            (item) => !seen.has(item.id ?? item.value),
+          );
+          /* Nothing new means there is no more to be had. */
+          if (fresh.length === 0) {
+            operatorDone.current = true;
+            return current;
+          }
+          return { ...current, operator: [...current.operator, ...fresh] };
+        });
+      })
+      .catch(() => {
+        /* What is loaded stands, and the next scroll asks again. */
+      })
+      .finally(() => setOperatorMore(false));
+  }, [facetItems.operator, operatorMore, operatorTotal]);
+  /*
    * Whether those four are still on their way.
    *
    * Without it an empty list is ambiguous: it is either a facet whose request
@@ -271,7 +315,15 @@ export function WellsTable({
     let cancelled = false;
 
     void Promise.all([
-      getOperatorListMap().catch(() => [] as MapFilterItem[]),
+      /* The operator facet is paged. The size of a page is the service's to
+         say — see `OPERATOR_PAGE_SIZE` — and the rest arrive as the reader
+         scrolls the dropdown. */
+      getOperatorListMap()
+        .then((page) => {
+          setOperatorTotal(page.total);
+          return page.items;
+        })
+        .catch(() => [] as MapFilterItem[]),
       getWellTypeListMap().catch(() => [] as MapFilterItem[]),
       getWellStatusListMap().catch(() => [] as MapFilterItem[]),
       getCountyListMap().catch(() => [] as MapFilterItem[]),
@@ -751,6 +803,14 @@ export function WellsTable({
               if (next) setProductionOpen(false);
             }}
             onChange={(next) => updateFacet(facet.key, next)}
+            /* Only the operators run to tens of thousands. */
+            {...(facet.key === "operator"
+              ? {
+                  onScrollEnd: loadMoreOperators,
+                  loadingMore: operatorMore,
+                  total: operatorTotal,
+                }
+              : null)}
           />
         ))}
 
@@ -1206,6 +1266,9 @@ function FilterDropdown({
   disabled,
   onOpenChange,
   onChange,
+  onScrollEnd,
+  loadingMore,
+  total,
 }: {
   label: string;
   options: string[];
@@ -1218,6 +1281,11 @@ function FilterDropdown({
   disabled?: boolean;
   onOpenChange: (open: boolean) => void;
   onChange: (next: Set<string>) => void;
+  /** For a paged facet: fetch the next page when the list is scrolled to it. */
+  onScrollEnd?: () => void;
+  loadingMore?: boolean;
+  /** How many rows there are in all, where more than are loaded. */
+  total?: number;
 }) {
   const [find, setFind] = useState("");
 
@@ -1296,7 +1364,25 @@ function FilterDropdown({
             </div>
           )}
 
-          <div className="max-h-[232px] overflow-y-auto">
+          <div
+            /* A paged facet fetches its next page as the last rows come into
+               view — see the operator list, which runs to tens of thousands
+               and arrives a page at a time. */
+            onScroll={
+              onScrollEnd
+                ? (event) => {
+                    const box = event.currentTarget;
+                    if (
+                      box.scrollTop + box.clientHeight >=
+                      box.scrollHeight - PANEL_NEAR_END
+                    ) {
+                      onScrollEnd();
+                    }
+                  }
+                : undefined
+            }
+            className="max-h-[232px] overflow-y-auto"
+          >
             {visible.map((option) => (
               <label
                 key={option}
@@ -1333,6 +1419,22 @@ function FilterDropdown({
                 </p>
               ))}
           </div>
+
+          {/* Where a paged list has got to. Without it a dropdown that stops
+              at fifty reads as a facet with fifty values. */}
+          {onScrollEnd && total !== undefined && total > options.length && (
+            <p className="flex items-center gap-[6px] pt-[6px] text-[11.5px] text-mv-muted">
+              {loadingMore && (
+                <span
+                  aria-hidden="true"
+                  className="h-[11px] w-[11px] shrink-0 animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
+                />
+              )}
+              {options.length.toLocaleString("en-US")} of{" "}
+              {total.toLocaleString("en-US")}
+              {loadingMore ? "" : " · scroll for more"}
+            </p>
+          )}
         </div>
       )}
     </div>
