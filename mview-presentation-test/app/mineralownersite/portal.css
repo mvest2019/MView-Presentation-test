@@ -529,11 +529,18 @@
    its own panel and clipped "Professional" against the edge.
 
    Short labels here regardless of window size — the same swap the design makes
-   at phone width, applied to the box that is actually narrow. */
+   at phone width, applied to the box that is actually narrow.
+
+   `flex: 1 1 auto`, NOT the design's `flex: 1`. `flex: 1` sets the basis to 0,
+   so all four tabs get an equal quarter of the row (~47px) and "Essentials"
+   clips inside its own button at 11px. `auto` bases each tab on its label and
+   shares the leftover space evenly instead: the four short labels come to about
+   189px of the 248px available, so nothing clips and nothing overflows. Columns
+   are then slightly uneven, which is the right trade — an unreadable tab is
+   worse than an unequal one. */
 .mv-portal .v41-avviews button,
 .mv-portal .v41-avviews a {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 auto;
   font-size: 11px;
   padding: 6px 4px;
 }
@@ -664,6 +671,20 @@
 .mv-portal.state-lapsed #mvPinBar .pin-sub.hide-s,
 .mv-portal.state-claimed #mvPinBar .pin-sub.hide-s {
   display: none;
+}
+
+/* THE STAMP'S TWO HALVES, and only one of them may ever be dropped.
+
+   The DATE (`.pin-note-date`) is never allowed to go: the series runs about
+   eight days behind, and that lag is the thing a reader must not be misled
+   about. The BASIS sentence ("End-of-day exchange settlements. Not live
+   prices.") is the half that folds away when there is no room and survives as
+   the `title`, which the design's spec permits — it is the reference's own
+   1400px rule, and without it the stamp wrapped to two lines on a phone. */
+@media (max-width: 1400px) {
+  .mv-portal #mvPinBar .pin-note-basis {
+    display: none;
+  }
 }
 
 /* The width ladder. Propane and Brent go first, then the estimate disclaimer,
@@ -2322,6 +2343,53 @@
   .mv-portal.no-claim #mvPinBar .pin-spot {
     flex: none;
     width: 100%;
+  }
+}
+
+/* ONE ROW PER THING BELOW 640px, and this fixes a measured defect rather than
+   polishing one.
+
+   The bar is `nowrap` with `justify-content: flex-end` on the spot strip, and
+   the strip's tiles neither shrink nor wrap. At 375px the value takes the row
+   and all four prices were laid out at NEGATIVE x — off the left edge, and not
+   scrollable either, because the strip's `scrollWidth` equalled its
+   `clientWidth`. Measured: WTI at x=-452, propane ending at x=-3, with only the
+   settlement stamp on screen. Every price was invisible and unreachable on a
+   phone.
+
+   Wrapping gives the strip its own full-width line, left-aligned, so WTI reads
+   first and the stamp sits with the values it qualifies — which is the rule the
+   stamp exists for. The reference already does exactly this for its unclaimed
+   state at mobile (`flex-wrap: wrap` + `.pin-spot { flex: none; width: 100% }`);
+   this applies the same treatment in every state, because the overflow has
+   nothing to do with which state the account is in. */
+@media (max-width: 640px) {
+  .mv-portal #mvPinBar {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .mv-portal #mvPinBar .pin-spot {
+    flex: none;
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+    /* WRAP RATHER THAN SCROLL, and the settlement stamp takes its own line.
+       Scrolling put the prices on screen but left the stamp one swipe away, and
+       the design's rule for that stamp is absolute: it carries the settlement
+       date and the "not live prices" basis, so "the values must never appear
+       without the label that qualifies them". A qualifier a reader has to find
+       is not qualifying anything. Two lines of prices plus the stamp costs about
+       40px more than the scrolling version — worth it for a strip that would
+       otherwise state four prices with no basis on screen. */
+    flex-wrap: wrap;
+    overflow: visible;
+    row-gap: 2px;
+  }
+
+  .mv-portal #mvPinBar .pin-note {
+    width: 100%;
+    white-space: normal;
   }
 
   .mv-portal #dashcols {
