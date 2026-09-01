@@ -1524,7 +1524,12 @@ function TabButton({
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`inline-flex cursor-pointer items-center gap-[6px] rounded-lg px-3 py-[6px] text-[13px] font-semibold ${
+      /* An equal share of the row until `lg`, where the switch sits in a
+         line with Back to map and the export button and takes only the width
+         its words need. Below that the row is the switch's own, and three
+         content-width buttons floating in the middle of it read as three
+         loose chips rather than one control. */
+      className={`inline-flex flex-1 cursor-pointer items-center justify-center gap-[6px] rounded-lg px-3 py-[6px] text-[13px] font-semibold lg:flex-none ${
         active
           ? "bg-mv-green-deep text-white"
           : "text-mv-slate hover:bg-[#f2f8f5] hover:text-mv-green-deep"
