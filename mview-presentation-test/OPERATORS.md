@@ -18,18 +18,21 @@ DEFECT · SNAP · OWNER · DEV STATUS · DEV COMMENT · QA STATUS · QA COMMENT`
 
 ## 1. Where the work has got to
 
-**28 of 51 actionable defects are done.** SR 167 is blank in the sheet — no
+**38 of 51 actionable defects are done.** SR 167 is blank in the sheet — no
 description, no screenshot — so 51, not 52.
 
 | Section | Range | Total | Done | Open |
 |---|---|---|---|---|
 | Operator Directory | 116–125 | 10 | 9 | 1 (backend) |
-| Operator Detail | 126–156 | 31 | 19 | 12 |
+| Operator Detail | 126–156 | 31 | 29 | 2 (one partial, one unactionable) |
 | Compare Operators Performance | 157–165 | 9 | 0 | 9 |
 | Compare Operator Statistics | 166 | 1 | 0 | 1 |
 
-**Remaining, all pages:** `125, 130, 131, 135, 139, 140, 141, 146, 147, 150, 151,
-153, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166`
+**Remaining, all pages:** `125, 147 (partial), 153 (unactionable), 157, 158, 159,
+160, 161, 162, 163, 164, 165, 166`
+
+**The operator detail page is finished** apart from those two. All nine remaining
+Compare Performance defects and the one Compare Statistics defect are untouched.
 
 ### Done
 
@@ -64,15 +67,33 @@ description, no screenshot — so 51, not 52.
 | 152 | lease county filter listed all 255 counties | `[slug]/page.tsx` |
 | 154 | already had message + retry; now prints the real reason | `operator-leases.tsx` |
 | 155 | 429 collapsed into a generic 502 | `api/operators/wells/route.ts` |
+| 130 | county table had no sort and no filter | `county-production.tsx` |
+| 131 | wellbore profile filter missing (status and dates were already there) | `recent-wells-permits.tsx` |
+| 135 | a fourth copy of the year range, beside the county | `production-over-time.tsx` |
+| 139 | legend chips and units footnote, both already said elsewhere | `production-over-time.tsx` |
+| 140 | *(overflow half)* the tile could not contain a long value | `[slug]/page.tsx` |
+| 141 | `bbl`/`Mcf` were the only lowercase units on the page | `operator-activity-api.ts` + 2 tables |
+| 146 | one y-axis for two units — oil flat on the baseline | `production-over-time.tsx` |
+| 150 | fixed-width end pill, text clipped at the viewBox | `production-over-time.tsx` |
+| 151 | four condition tiles stacked on mobile | `[slug]/page.tsx` |
+| 156 | the **pager** grew across pages, not the table | `app/_components/pager.tsx` |
 
 ### Open
 
-**Operator Detail (12)** — `130` county sort/filters · `131` wells filters (Status,
-Date range, Wellbore profile) · `135` remove range · `139` remove info ·
-`140` overflow half (decimals done) · `141` capitalise units · `146` oil unreadable
-against gas on one axis · `147` unit convention · `150` values overflow ·
-`151` mobile horizontal scroll · `153` **truncated in the sheet** (`map need to be i`,
-no snap — report, do not guess) · `156` table height grows across pages
+**Operator Detail (2)**
+
+- `147` **partially done.** The chart's silent unit switch is fixed: each axis now
+  carries its own unit read from the response, so picking a county no longer rescales
+  both axes by a thousand with nothing on screen saying so — measured, All counties
+  answers MBBL/MMCF and a single county answers MMBBL/BCF. What remains is the
+  page-wide spread the snap tabulates: Production metrics MBBL/MMCF, Production by
+  county MMBBL/BCF, Operator leases BBL/MCF. Each is the unit its own endpoint
+  declares, so collapsing them to one convention means converting figures rather than
+  relabelling them — a product decision, not a bug fix, and it is not taken here.
+- `153` **unactionable as written.** The DEFECT cell is the literal 16 characters
+  `map need to be i` (sheet row 158; `SR No.` is `=1+A157`). No snap, no dev comment,
+  no QA comment, no cell comment — verified against the workbook directly. Needs the
+  original wording from QA before anything can be built. Do not guess.
 
 **Compare Performance (9)** — `157`–`165`. `158` (dropdown icon) may already be
 covered by the shared `CONTROL_CARET` change from 124; verify before working it.
@@ -84,6 +105,12 @@ covered by the shared `CONTROL_CARET` change from 124; verify before working it.
 ### Commits on the branch
 
 ```
+a2a1e04  Operator detail: 130 sort and filter on production by county
+aaef52c  Operator detail: 131 wellbore profile filter, 156 pager height
+b29d648  Operator detail: 135, 139, 140, 141, 146, 150, 151
+9ccf077  Operator profile: gate the produced volumes in both tables
+521c2ac  Operator profile: gate the figures the directory already locks
+ef6b2fd  OPERATORS.md: 28 of 51 done; 136, 137, 142, 144 recorded
 19f828a  Operator detail: 144 approved date on submitted permits
 07a8d67  OPERATORS.md: rewrite as a handover
 73367a1  Listing: locked cells carry the claim page's "Free account" affordance
@@ -130,6 +157,9 @@ httpOnly).
 | `/api/operators/production-series` | `POST /compare-operators-production` | pins `member_id`; **not cached** |
 | `/api/operators/wells` | `POST /operators/wells` | pins `member_id`; passes 429 through |
 | `/api/operators/recent-wells-permits` | `POST /operators/recent-wells-permits` | gate is ours |
+| `/api/operators/production-by-county` | `POST /operators/production-by-county` | **gate is ours** — masks oil and gas, keeps the `(UNIT)` |
+| `/api/operators/leases` | `POST /operators/leases` | **gate is ours** — masks the two volumes |
+| `/api/operators/[number]/figures` | `POST /operators/details` | **gate is ours** — the profile's five withheld figures |
 | `/api/operators/[number]/what-changed` | the Python analysis service | gate is ours |
 | `/api/operators/[number]/logo` | `GET /operators/<no>/logo` | re-serves bytes same-origin |
 | `/api/operators/address-correction` | `POST /operators/address-correction` | attaches `member_id` + `visitorId` |
@@ -216,11 +246,32 @@ stacked — thirty stacked cells would double every row — and each link carrie
 `aria-label` naming the field, because thirty links reading "Free account" would be
 thirty identical stops in a screen reader's link list.
 
-⚠️ **One hole is open.** The directory locks oil, gas, leases and counties, but the
-**profile serves all four in plain HTML** to the same signed-out reader. The lock is
-one click deep, so it is friction rather than a gate. Closing it means either
-unlocking on the directory or gating the profile panel and losing its static
-prerender. Not yet decided.
+✅ **That hole is closed.** The directory locked oil, gas, leases and counties while
+the profile served all four in plain HTML to the same reader — friction, not a gate.
+The profile now withholds the same four plus `Oil share of BOE`, and both tables below
+withhold their per-county and per-lease volumes.
+
+**The profile is still static.** The figures are not rendered into the prerendered
+HTML at all; seven slots read one shared client fetch of
+`/api/operators/<number>/figures`, which is dynamic and can read the session. One small
+same-origin request per page view, and for a signed-out reader the handler returns
+before making any upstream call.
+
+`Oil share of BOE` is gated **because it is a key, not a figure**: BOE stays open
+(the directory and the map both leave it open), and a share against an open BOE
+recovers the withheld oil volume exactly.
+
+Both tables needed a forwarder before they could be gated at all — they fetched the
+operator API **straight from the browser**, so a mask applied anywhere but the server
+would have left the real figures in the reader's network tab.
+
+⚠️ **Four leaks of the two COUNTS remain, by decision.** The counties and leases
+figures are still served in plain HTML by: the page's `<meta name="description">`, the
+footprint map's caption, the "Producing leases" condition card's `of N on record`
+footer (`producing_leases.total_leases` is byte-identical to `leaseCount`), and the
+`totalLeasesOnRecord` prop in the lease table's subtitle. The volumes have no such
+leak. Raised and left as-is on request; closing them is a copy decision on four
+strings.
 
 Also unresolved: the directory's `<h1>` lede and meta description still say "Search,
 filter, and rank … by reported production", which reads oddly now that the production
