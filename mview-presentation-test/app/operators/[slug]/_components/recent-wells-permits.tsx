@@ -70,6 +70,8 @@ function statusTone(status: string): string {
 
 /** The empty option's value — "" would collide with a genuinely blank status. */
 const ANY_STATUS = "__any__";
+/** The same for the wellbore profile, which the API can also report blank. */
+const ANY_PROFILE = "__any_profile__";
 
 /**
  * A date input, labelled and sized for the filter row.
@@ -139,6 +141,9 @@ export function RecentWellsPermits({
   const [submittedTo, setSubmittedTo] = useState("");
   const [approvedFrom, setApprovedFrom] = useState("");
   const [approvedTo, setApprovedTo] = useState("");
+  /* DEFECT 131 — the sheet asks for status, date range AND wellbore profile. The
+     first two were already here; this is the third. */
+  const [profile, setProfile] = useState(ANY_PROFILE);
 
   const load = useCallback(
     (signal: AbortSignal) => fetchRecentWellsPermits(operatorNumber, signal),
@@ -165,6 +170,32 @@ export function RecentWellsPermits({
   }, [filings.rows]);
 
   /**
+   * The wellbore profiles this operator actually filed.
+   *
+   * READ OFF THE ROWS for the same reason the statuses are: an operator with only
+   * horizontal wells must not be offered options that can only return nothing.
+   *
+   * KEYED ON THE DISPLAYED FORM, WHICH IS NOT COSMETIC HERE. The endpoint's casing is
+   * inconsistent — Apache's 732 filings carry BOTH `Horizontal` and `HORIZONTAL`, and
+   * both `Vertical` and `VERTICAL`. The column has always hidden that behind
+   * `titleCase`, so listing the raw values gave a dropdown with "Horizontal" twice,
+   * and matching on them would have filtered to whichever casing was picked and
+   * silently dropped the rest. `titleCase` is applied here and in the comparison, so
+   * one option means one thing and it means what the cell shows.
+   *
+   * (The `WellPermitRecord.wellboreProfile` doc claimed the value was "normalised for
+   * display" at the API layer. It is not — `text()` only trims. Corrected there.)
+   */
+  const profiles = useMemo(() => {
+    const seen = new Set<string>();
+    for (const row of filings.rows) {
+      const shown = titleCase(row.wellboreProfile);
+      if (shown !== "") seen.add(shown);
+    }
+    return [...seen].sort((a, b) => a.localeCompare(b));
+  }, [filings.rows]);
+
+  /**
    * The filters, applied here rather than upstream.
    *
    * NO REQUEST, BY DESIGN. `/recent-wells-permits` takes an operator number and
@@ -180,6 +211,7 @@ export function RecentWellsPermits({
   const matching = useMemo(() => {
     const anyFilter =
       status !== ANY_STATUS ||
+      profile !== ANY_PROFILE ||
       submittedFrom !== "" ||
       submittedTo !== "" ||
       approvedFrom !== "" ||
@@ -195,12 +227,15 @@ export function RecentWellsPermits({
     return filings.rows.filter(
       (row) =>
         (status === ANY_STATUS || row.status === status) &&
+        (profile === ANY_PROFILE ||
+          titleCase(row.wellboreProfile) === profile) &&
         inRange(row.submittedOn, submittedFrom, submittedTo) &&
         inRange(row.approvedOn, approvedFrom, approvedTo),
     );
   }, [
     filings.rows,
     status,
+    profile,
     submittedFrom,
     submittedTo,
     approvedFrom,
@@ -214,7 +249,7 @@ export function RecentWellsPermits({
    * the year brush uses — so the new first page is what paints, with no flash of an
    * out-of-range page and no `set-state-in-effect` violation.
    */
-  const filterKey = `${status}|${submittedFrom}|${submittedTo}|${approvedFrom}|${approvedTo}`;
+  const filterKey = `${status}|${profile}|${submittedFrom}|${submittedTo}|${approvedFrom}|${approvedTo}`;
   const [knownFilterKey, setKnownFilterKey] = useState(filterKey);
   if (filterKey !== knownFilterKey) {
     setKnownFilterKey(filterKey);
@@ -237,6 +272,7 @@ export function RecentWellsPermits({
 
   const clearFilters = () => {
     setStatus(ANY_STATUS);
+    setProfile(ANY_PROFILE);
     setSubmittedFrom("");
     setSubmittedTo("");
     setApprovedFrom("");
@@ -273,7 +309,11 @@ export function RecentWellsPermits({
             stacking below 720px. */}
         {filings.rows.length > 0 ? (
           <div className="border-t border-mv-line-soft px-[22px] py-[14px] max-[560px]:px-4">
-            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_auto] items-end gap-x-[14px] gap-y-3 max-[900px]:grid-cols-2 max-[560px]:grid-cols-1">
+            {/* Four groups now that the wellbore profile has one (defect 131), so the
+                two date pairs — which need roughly twice the width of a select — get
+                their own row on anything narrower than 1180px rather than being
+                squeezed to four across. */}
+            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_auto] items-end gap-x-[14px] gap-y-3 max-[1180px]:grid-cols-2 max-[560px]:grid-cols-1">
               <FilterGroup label="Status">
                 <SelectControl
                   label="Filter by status"
@@ -288,6 +328,26 @@ export function RecentWellsPermits({
                   ))}
                 </SelectControl>
               </FilterGroup>
+
+              {/* DEFECT 131's third filter. Rendered only where the operator has more
+                  than one profile on record — a lone "Horizontal" option filters
+                  nothing and just widens the row. */}
+              {profiles.length > 1 ? (
+                <FilterGroup label="Wellbore profile">
+                  <SelectControl
+                    label="Filter by wellbore profile"
+                    value={profile}
+                    onChange={setProfile}
+                  >
+                    <option value={ANY_PROFILE}>All profiles</option>
+                    {profiles.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </SelectControl>
+                </FilterGroup>
+              ) : null}
 
               <FilterGroup label="Submitted date">
                 <div className="flex items-center gap-2">
@@ -327,7 +387,7 @@ export function RecentWellsPermits({
 
               {/* Only once something is in force — a permanently greyed control is
                   noise on a section that opens unfiltered. */}
-              {filterKey === `${ANY_STATUS}||||` ? null : (
+              {filterKey === `${ANY_STATUS}|${ANY_PROFILE}||||` ? null : (
                 <button
                   type="button"
                   onClick={clearFilters}

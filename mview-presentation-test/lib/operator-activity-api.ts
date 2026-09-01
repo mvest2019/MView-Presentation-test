@@ -51,7 +51,16 @@ export interface WellPermitRecord {
   leaseName: string;
   county: string;
   status: string;
-  /** e.g. Directional, Horizontal. Casing varies upstream; normalised for display. */
+  /**
+   * e.g. Directional, Horizontal — EXACTLY as the endpoint spelled it, trimmed only.
+   *
+   * CASING VARIES UPSTREAM AND IS NOT NORMALISED HERE. This doc used to say it was,
+   * which was wrong and cost a defect: Apache's filings carry `Horizontal` and
+   * `HORIZONTAL` and both `Vertical` and `VERTICAL`. The table has always passed this
+   * through `titleCase` on the way to the cell, so the inconsistency was invisible
+   * until defect 131's filter tried to group by it. Anything grouping or comparing
+   * these values must fold the case itself.
+   */
   wellboreProfile: string;
   /** Already formatted (`"Jul 3, 2025"`), or null when the API sent nothing. */
   submittedDate: string | null;
