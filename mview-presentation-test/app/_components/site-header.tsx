@@ -93,6 +93,10 @@ const panelItem =
    toolbar and this header stop each carrying their own copy. */
 const ctaMint = buttonClass({ variant: "mint", size: "lg" });
 const ctaPrimary = buttonClass({ variant: "primary", size: "lg" });
+/* The neutral header button — Dashboard. Same `lg` geometry as the two above so
+   the three line up; the `outline` variant keeps it off the funnel's two fills.
+   See the note at its call site. */
+const ctaOutline = buttonClass({ variant: "outline", size: "lg" });
 
 export function SiteHeader({ user }: { user: SessionUser | null }) {
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
@@ -156,6 +160,28 @@ export function SiteHeader({ user }: { user: SessionUser | null }) {
 
   const closeMenu = () => setOpenMenu(null);
   const closeDrawer = () => setDrawerOpen(false);
+
+  /*
+   * THE PORTAL SUPPLIES ITS OWN CHROME, so this bar must not appear there.
+   * `/mineralownersite/*` has a top bar, a sidebar and a bottom tab bar of its
+   * own; stacking the marketing header above them gave the page two navigation
+   * systems and two logos.
+   *
+   * AFTER THE HOOKS, NOT BEFORE. Returning early above `useState`/`useEffect`
+   * would make those calls conditional, which breaks the rules of hooks — the
+   * component still has to run its hooks on a portal route, it just renders
+   * nothing.
+   *
+   * A ROUTE GROUP would be the more idiomatic Next answer — a `(marketing)`
+   * group owning the header, with the portal outside it. That means moving every
+   * marketing route on disk, so it is deliberately not done here: this is one
+   * predicate against the same `pathname` the bar already reads for its active
+   * state, and it costs nothing at runtime.
+   */
+  const inPortal =
+    pathname === "/mineralownersite" ||
+    pathname.startsWith("/mineralownersite/");
+  if (inPortal) return null;
 
   return (
     <>
@@ -370,11 +396,21 @@ export function SiteHeader({ user }: { user: SessionUser | null }) {
               that point a signed-out visitor clicking this should meet a sign-in
               page, and the honest thing may be to hide it again. The portal's own
               layout notes the same gap.
+
+              A BUTTON NOW (requested), on the shared `outline` variant at `lg` —
+              the size the other two header CTAs use, so all three sit on one
+              baseline with the same radius and padding. `outline` specifically,
+              and not a filled variant: the bar already has one primary green
+              ("Find your record") and one mint ("Free account"), which are the
+              two funnel steps. A third fill would put three competing CTAs in a
+              64px row. The neutral white-on-line button reads as a control
+              rather than a link while leaving the funnel's hierarchy intact, and
+              every colour in it is already in the design system.
             */}
             <Link
               href="/mineralownersite"
               aria-current={isCurrent("/mineralownersite") ? "page" : undefined}
-              className="whitespace-nowrap text-sm font-semibold text-mv-slate no-underline hover:text-mv-green-deep hover:no-underline max-[1139px]:hidden"
+              className={`${ctaOutline} whitespace-nowrap max-[1139px]:hidden`}
             >
               Dashboard
             </Link>
