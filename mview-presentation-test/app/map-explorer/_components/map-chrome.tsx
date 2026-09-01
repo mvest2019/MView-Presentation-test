@@ -345,7 +345,15 @@ export function MapChrome({
      costs more than a narrow toolbar can spare. Above lg it is always open. */
   const [searchOpen, setSearchOpen] = useState(false);
 
+  /*
+   * One at a time.
+   *
+   * The two live at the same end of the toolbar and open into the same
+   * corner of the map, so both at once is a menu over a field the reader was
+   * typing into. Opening either puts the other away.
+   */
   const openSearch = () => {
+    setShareOpen(false);
     setSearchOpen(true);
     // After the input is laid out, or the typeahead anchors to a 32px box.
     setTimeout(() => {
@@ -413,6 +421,14 @@ export function MapChrome({
       setShareOpen(false);
       return;
     }
+
+    /* The field and its results, which the menu would otherwise cover. Only
+       below `lg`, where the field collapses to its magnifier — above that it
+       is part of the bar and belongs open. */
+    if (!window.matchMedia("(min-width: 1024px)").matches) {
+      setSearchOpen(false);
+    }
+    setPlaceOpen(false);
 
     const button = shareButtonRef.current?.getBoundingClientRect();
     if (button) {
@@ -898,10 +914,17 @@ export function MapChrome({
                   // Emptying the box undoes what picking a number did.
                   if (number === "") onClearApi();
                   setPlaceIndex(0);
+                  /* The results and the share menu open into the same corner.
+                     Typing is the field's turn. */
+                  setShareOpen(false);
                   setPlaceOpen(true);
                   anchorPlaceResults();
                 }}
                 onFocus={() => {
+                  /* From `lg` up the field is always there, so it is focus
+                     rather than a magnifier that says the reader has come
+                     back to it — and the menu gets out of the way. */
+                  setShareOpen(false);
                   setPlaceOpen(true);
                   anchorPlaceResults();
                 }}
