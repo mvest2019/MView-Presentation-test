@@ -41,9 +41,17 @@ import { usePagedResource } from "./use-paged-resource";
  * NOTHING IS SORTABLE, on request. Plain headers, the API's own order.
  *
  * UNITS SIT IN THE HEADER, not on every row. A column of numbers each trailing its own
- * "bbl" is harder to scan and harder to compare down, and the unit is a property of the
- * column rather than of any one figure. `normal-case` keeps "Mcf" spelled correctly
- * under the header row's uppercasing — "MCF" is not the unit.
+ * "BBL" is harder to scan and harder to compare down, and the unit is a property of the
+ * column rather than of any one figure.
+ *
+ * THEY ARE UPPERCASE ON REQUEST (defect 141), which reverses a deliberate earlier
+ * choice recorded here: `normal-case` was put on the unit span specifically to keep
+ * "Mcf" out of the header row's uppercasing, on the argument that "MCF" is not how the
+ * unit is written — Mcf is a thousand cubic feet, and the case carries that. QA asked
+ * for capitals across the page and the sheet rings these two headers, so capitals is
+ * what this ships. The `normal-case` class stays: it now means the span renders the
+ * literal it is given rather than being re-cased by the row, which is what keeps this
+ * one decision in one place if it is ever reversed again.
  *
  * THE WELLS ARE A SIBLING, NOT A CHILD. `LeaseWells` renders as its own card below this
  * one, keyed by lease number so picking a different lease remounts it clean. This
@@ -231,8 +239,10 @@ export function OperatorLeases({
                     ["Lease Name", null, "left"],
                     ["Lease Number", null, "left"],
                     ["County", null, "left"],
-                    ["Oil Produced", "bbl", "right"],
-                    ["Gas Produced", "Mcf", "right"],
+                    /* DEFECT 141 — uppercase, matching every other unit on the
+                       page. The snap rings these two headers. */
+                    ["Oil Produced", "BBL", "right"],
+                    ["Gas Produced", "MCF", "right"],
                   ] as const
                 ).map(([label, unit, align]) => (
                   <th

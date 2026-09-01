@@ -151,8 +151,9 @@ export function LeaseWells({
                   ["Well name", null, "left"],
                   ["Status", null, "left"],
                   ["County", null, "left"],
-                  ["Oil Produced", "bbl", "right"],
-                  ["Gas Produced", "Mcf", "right"],
+                  /* DEFECT 141 — uppercase; the second snap rings these two. */
+                  ["Oil Produced", "BBL", "right"],
+                  ["Gas Produced", "MCF", "right"],
                   ["Production start", null, "left"],
                 ] as const
               ).map(([label, unit, align]) => (

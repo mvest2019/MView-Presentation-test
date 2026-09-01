@@ -33,9 +33,16 @@ export const ACTIVITY_PAGE_SIZE = 10;
 
 const REQUEST_TIMEOUT_MS = 20_000;
 
-/** The units the volume columns carry, printed in the headers. */
-export const OIL_UNIT = "bbl";
-export const GAS_UNIT = "Mcf";
+/**
+ * The units the volume columns carry, printed in the headers.
+ *
+ * DEFECT 141 — UPPERCASE. These read "bbl" and "Mcf" while every other unit on the
+ * profile was already capitalised — MBBL, MMCF, MMBBL, BCF, BOE, all of them the
+ * API's own spelling. Two lowercase ones among them read as a different kind of
+ * label rather than as the same kind of unit, which is what the snaps ringed.
+ */
+export const OIL_UNIT = "BBL";
+export const GAS_UNIT = "MCF";
 export const BOE_UNIT = "BOE";
 
 export interface WellPermitRecord {

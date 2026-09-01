@@ -479,7 +479,23 @@ export default async function OperatorDetailRoute({
                   : `Recent-activity indicators · ${OPERATOR_ILLUSTRATIVE_NOTE}`
               }
             />
-            <div className="grid grid-cols-4 gap-[14px] max-[940px]:grid-cols-2 max-[520px]:grid-cols-1">
+            {/*
+              DEFECT 151 — ON A PHONE THIS SCROLLS SIDEWAYS RATHER THAN STACKING.
+              `max-[520px]:grid-cols-1` put the four tiles one under another, which is
+              the snap: four full-width cards costing roughly a screen and a half of
+              vertical space before "What changed" is even reachable, on the section
+              whose whole job is to be scannable at a glance.
+
+              A scroll container instead. The tiles keep their real width, four of them
+              read as one row of related figures rather than four unrelated blocks, and
+              the section costs one card's height instead of four.
+
+              `snap-x`/`snap-start` so a swipe settles on a tile rather than between
+              two — a free-scrolling row of cards that stops halfway is the usual way
+              this pattern goes wrong. It stays a GRID at every width above 520px, so
+              nothing changes on tablet or desktop.
+            */}
+            <div className="grid grid-cols-4 gap-[14px] max-[940px]:grid-cols-2 max-[520px]:flex max-[520px]:snap-x max-[520px]:snap-mandatory max-[520px]:overflow-x-auto max-[520px]:pb-3">
               {operator.conditionCards.map((card) => (
                 <ConditionTile key={card.label} card={card} />
               ))}
@@ -870,9 +886,28 @@ function ConditionTile({ card }: { card: ConditionCard }) {
   const Arrow = card.direction === "up" ? ArrowUp : ArrowDown;
 
   return (
-    <div className="rounded-[14px] border border-mv-line bg-white px-[18px] py-4 shadow-[0_1px_2px_rgba(24,24,27,.05)]">
+    /*
+      DEFECT 140, THE OVERFLOW HALF. The snap shows "5,687.6544699999995" breaking out
+      of this tile and printing over the row beneath it. That string was float drift —
+      `latest_monthly_boe.boe` summed in binary — and it is gone: the figure is snapped
+      to the three decimals the response actually carries, which is the half already
+      fixed in `lib/operator-detail.ts`.
+
+      THE TILE WAS STILL THE OTHER HALF OF IT. A flex item defaults to
+      `min-width: auto`, so the value below could not shrink below its own text and any
+      long enough figure pushed the tile open rather than being contained by it — the
+      decimals fix removed the string that exposed that, not the reason it escaped.
+      `overflow-hidden` here with `min-w-0` on the value makes the tile structurally
+      incapable of it, whatever the endpoint sends next.
+    */
+    /* The three `max-[520px]` classes are the tile's half of defect 151: inside the
+       scroll row it must not shrink to fit, and it needs a width of its own plus a
+       snap point. Above 520px it is a grid cell and none of them apply. */
+    <div className="overflow-hidden rounded-[14px] border border-mv-line bg-white px-[18px] py-4 shadow-[0_1px_2px_rgba(24,24,27,.05)] max-[520px]:w-[78%] max-[520px]:shrink-0 max-[520px]:snap-start">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-[12px] font-semibold text-mv-muted">{card.label}</p>
+        <p className="min-w-0 text-[12px] font-semibold text-mv-muted">
+          {card.label}
+        </p>
         <span
           aria-hidden="true"
           className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-lg bg-mv-tint text-mv-green-deep"
@@ -881,7 +916,10 @@ function ConditionTile({ card }: { card: ConditionCard }) {
         </span>
       </div>
       <p className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="text-[25px] font-bold tracking-[-.02em] tabular-nums text-mv-ink">
+        {/* `min-w-0` so this may shrink inside the flex row, and `anywhere` so a
+            figure with no space in it wraps within the tile rather than running out
+            of it — a long number has no break opportunity of its own. */}
+        <span className="min-w-0 text-[25px] font-bold tracking-[-.02em] tabular-nums text-mv-ink [overflow-wrap:anywhere]">
           {card.value}
           {card.unit ? (
             <span className="ml-1 text-[12px] font-semibold text-mv-muted">
