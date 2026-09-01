@@ -21,9 +21,16 @@ const LINGER_MS = 2600;
 
 export function MapToast({
   message,
+  className = "",
   onDone,
 }: {
   message: string;
+  /**
+   * Where it sits. Passed in because it depends on the tab: the toolbar is at
+   * the far right of a full-width map and near the left edge of a half-width
+   * one, so "clear of the toolbar" is a different place in each.
+   */
+  className?: string;
   /** Cleared by the toast itself once its time is up. */
   onDone: () => void;
 }) {
@@ -38,7 +45,10 @@ export function MapToast({
     <div
       role="status"
       aria-live="polite"
-      className="pointer-events-none absolute left-1/2 top-4 z-40 flex -translate-x-1/2 items-center gap-[9px] rounded-full border border-[#bfe3cc] bg-white px-[15px] py-[9px] shadow-mv-lg"
+      /* On a phone the toolbar is two rows across the whole width, so the
+         only clear place is under it, centred. What happens from `lg` up is
+         the caller's to say. */
+      className={`pointer-events-none absolute left-1/2 top-[128px] z-40 flex max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-[9px] rounded-full border border-[#bfe3cc] bg-white px-[15px] py-[9px] shadow-mv-lg ${className}`}
     >
       <span
         aria-hidden="true"

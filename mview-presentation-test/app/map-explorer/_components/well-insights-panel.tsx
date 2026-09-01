@@ -29,6 +29,7 @@ import {
   type MapWellSummary,
 } from "@/lib/map-api";
 
+import { copyText } from "./copy-text";
 import { declineRows, depletionBars, eurBars } from "./well-insights-fields";
 import { WELLBORE } from "./well-insights-data";
 import { PermitSummary } from "./permit-summary";
@@ -132,7 +133,30 @@ export type SelectedWell = {
   record?: string;
 };
 
-export function WellInsightsPanel({ well }: { well: SelectedWell }) {
+/**
+ * What to put in front of the reader when a request fails.
+ *
+ * Never the thrown message on its own: a dropped connection or a gateway that
+ * gave up arrives as "TypeError: Failed to fetch", which tells somebody
+ * looking at an empty record nothing they can do anything about. The service
+ * failing is one thing to say, however it failed.
+ */
+function readable(failure: unknown, fallback: string): string {
+  const message = failure instanceof Error ? failure.message : "";
+  if (!message || /failed to fetch|networkerror|502|timeout/i.test(message)) {
+    return fallback;
+  }
+  return message;
+}
+
+export function WellInsightsPanel({
+  well,
+  onClose,
+}: {
+  well: SelectedWell;
+  /** Closes the record and hands the panel back to "Pick a well". */
+  onClose?: () => void;
+}) {
   /*
    * Which filing is on screen — the well's own, not a choice.
    *
@@ -256,9 +280,10 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
         if (cancelled) return;
         setSummary(null);
         setError(
-          failure instanceof Error
-            ? failure.message
-            : "Could not load this well's summary.",
+          readable(
+            failure,
+            "Could not load this well — the service did not answer. Try again in a moment.",
+          ),
         );
       });
 
@@ -281,9 +306,7 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
         if (cancelled) return;
         setLoaded(null);
         setInsightsError(
-          failure instanceof Error
-            ? failure.message
-            : "Could not load insights for this well.",
+          readable(failure, "Could not load insights for this well."),
         );
       });
 
@@ -307,9 +330,7 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
         if (cancelled) return;
         setProduction([]);
         setProductionError(
-          failure instanceof Error
-            ? failure.message
-            : "Could not load production for this well.",
+          readable(failure, "Could not load production for this well."),
         );
       });
 
@@ -333,6 +354,7 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
       <WellSummaryHeader
         record={record}
         loadedAt={loadedAt}
+        onClose={onClose}
         completionExport={{
           /* Nothing to capture until the record is on the page. */
           ready: fields !== null,
@@ -376,9 +398,20 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
             <div
               ref={completionRef}
               aria-busy={loading}
-              className={
+              /*
+               * The sheet is its own container.
+               *
+               * Everything below lays out against this width rather than the
+               * window's. The panel is a share of a split view, so the two
+               * have never been the same — and the PDF made that plain: the
+               * capture stages this markup 1280px wide, but `xl:` still asked
+               * the window, so exporting from a tablet produced a column of
+               * cards down the middle of a wide sheet with the page breaks
+               * falling wherever they liked.
+               */
+              className={`@container ${
                 loading ? "pointer-events-none select-none blur-[2px]" : ""
-              }
+              }`}
             >
               {/* ---------------- identity strip ----------------
           A pale mint band rather than a white card: enough to read as the
@@ -494,7 +527,7 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
               </div>
 
               {/* ---------------- well · lease · operator ---------------- */}
-              <div className="mt-3 grid gap-3 xl:grid-cols-3">
+              <div className="mt-3 grid gap-3 @2xl:grid-cols-2 @4xl:grid-cols-3">
                 <Card icon={Info} title="Well Information">
                   <Rows
                     rows={fields?.wellInformation ?? blank(WELL_INFO_LABELS)}
@@ -511,6 +544,10 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
                   icon={Layers}
                   title="Wellbore"
                   badge={fields?.wellboreKind ?? WELLBORE.kind}
+                  /* Two columns is an odd number of cards short: at tablet
+                     width this one is the third of three, so it takes the row
+                     under the other two rather than half of one. */
+                  className="@2xl:col-span-2 @4xl:col-span-1"
                 >
                   {/* Drawn to the record's own profile: a vertical hole is not
                   illustrated with a mile of lateral. */}
@@ -524,7 +561,7 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
               </div>
 
               {/* ---------------- activity · location · wellbore ---------------- */}
-              <div className="mt-3 grid gap-3 xl:grid-cols-3">
+              <div className="mt-3 grid gap-3 @2xl:grid-cols-2 @4xl:grid-cols-3">
                 <Card
                   icon={FileText}
                   title="Latest Well Activity and Production"
@@ -571,7 +608,13 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
                   </div>
                 </Card>
 
-                <div className="flex flex-col gap-3">
+                <div
+                  /* One under the other in the third column where there are
+                     three, and side by side across the row at the width where
+                     there are two — stacked full width they were two short
+                     cards with a page of empty line beside each. */
+                  className="grid gap-3 @2xl:col-span-2 @2xl:grid-cols-2 @4xl:col-span-1 @4xl:grid-cols-1"
+                >
                   <Card icon={Building2} title="Operator Info">
                     <div className="mt-[10px] flex items-baseline justify-between gap-3 text-[12px]">
                       <span className="shrink-0 text-mv-muted">Operator</span>
@@ -598,7 +641,10 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
                      them. */
                   historyThrough={summary?.dates?.lastProduction ?? null}
                   loading={production === null && productionError === null}
-                  error={productionError}
+                  /* Silent when the record itself failed: one outage, one
+                     message at the top, rather than the same news repeated
+                     down the page. */
+                  error={error ? null : productionError}
                 />
               </div>
 
@@ -606,7 +652,7 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
           Two across, then the cohort table on its own row: at a third of the
           width its five bars had no room to differ, and the difference between
           them is the whole point of that card. */}
-              <div className="mt-3 grid gap-3 xl:grid-cols-2">
+              <div className="mt-3 grid gap-3 @2xl:grid-cols-2">
                 <Card
                   title="Decline Diagnostics"
                   aside="What the rate curve anchors reveal"
@@ -759,7 +805,7 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
                     </Note>
                   ))}
 
-                  {insightsError && (
+                  {insightsError && !error && (
                     <Note tone="red" icon={ArrowDown}>
                       {insightsError}
                     </Note>
@@ -777,8 +823,12 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
           chart takes the whole width rather than sitting beside an empty box.
         */}
                 <div
-                  className={`grid gap-4 rounded-xl border border-mv-line bg-white p-4 xl:col-span-2 xl:gap-6 ${
-                    cohortNotes.length > 0 ? "xl:grid-cols-2" : ""
+                  /* The width of the row, at every size the row has more
+                     than one column: it is a chart with a reading beside it,
+                     and half a column left it a stack of bars with a page of
+                     nothing next to them. */
+                  className={`grid gap-4 rounded-xl border border-mv-line bg-white p-4 @2xl:col-span-2 @4xl:gap-6 ${
+                    cohortNotes.length > 0 ? "@4xl:grid-cols-2" : ""
                   }`}
                 >
                   <div className="min-w-0">
@@ -1024,6 +1074,12 @@ function Card({
 }) {
   return (
     <div
+      /* A page of the PDF may end at the foot of any card. Marked rather than
+         guessed at by depth: the capture used to measure two levels of the
+         panel's own markup, and on a narrow screen the cards sit one level
+         further in — so the production chart offered no edge to break at and
+         the page was cut through the middle of it. */
+      data-page-block=""
       className={`rounded-xl border border-mv-line bg-white p-4 ${className}`}
     >
       <Heading icon={icon} title={title} aside={aside} badge={badge} />
@@ -1110,11 +1166,13 @@ function PlaceRow({
       {copy && (
         <button
           type="button"
+          data-screen-only=""
           onClick={() => {
-            void navigator.clipboard?.writeText(value).then(
-              () => setCopied(true),
-              () => setCopied(false),
-            );
+            void copyText(value).then((done) => {
+              if (!done) return;
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1600);
+            });
           }}
           aria-label={`Copy the ${label.toLowerCase()}`}
           title={copied ? "Copied" : "Copy"}
@@ -1231,6 +1289,7 @@ function Note({
              than running into the word "Read". */
           <button
             type="button"
+            data-screen-only=""
             aria-expanded={false}
             onClick={() => setOpen(true)}
             style={{
@@ -1245,6 +1304,7 @@ function Note({
         {open && (
           <button
             type="button"
+            data-screen-only=""
             aria-expanded={true}
             onClick={() => setOpen(false)}
             className={`mt-[3px] cursor-pointer text-[11px] font-semibold hover:underline ${look.link}`}

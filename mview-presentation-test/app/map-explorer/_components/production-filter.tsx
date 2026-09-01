@@ -2,6 +2,11 @@
 
 import { ChevronDown } from "lucide-react";
 
+import { usePanelPlacement } from "./panel-placement";
+
+/** How wide this filter's panel is, for keeping it on the page. */
+const PANEL_WIDTH = 268;
+
 /*
  * The production range pill: oil and gas, each with a minimum and a maximum.
  *
@@ -81,6 +86,10 @@ export function ProductionFilter({
   onOpenChange,
   onChange,
 }: ProductionFilterProps) {
+  /* Slid back where the pill is too near the right edge for it — this one
+     sits last in the row, so on a phone it is the one that hangs off. */
+  const { shift, place } = usePanelPlacement(PANEL_WIDTH);
+
   const count = productionCount(range);
   const problem = productionProblem(range);
   const badPair = (min: string, max: string) =>
@@ -110,7 +119,11 @@ export function ProductionFilter({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-2 w-[268px] rounded-xl border border-mv-line bg-white p-3 shadow-mv-lg">
+        <div
+          ref={place}
+          style={{ marginLeft: shift }}
+          className="absolute left-0 top-full z-50 mt-2 w-[268px] rounded-xl border border-mv-line bg-white p-3 shadow-mv-lg"
+        >
           <div className="mb-2 flex items-center justify-between gap-2">
             <span className="text-[10.5px] font-extrabold uppercase tracking-[.1em] text-mv-ink">
               Production range
@@ -125,7 +138,9 @@ export function ProductionFilter({
           </div>
 
           <Pair
-            label="Oil (bbl)"
+            /* The unit in capitals, as the column heading and every figure
+               on the page write it: BBL, MCF. */
+            label="Oil (BBL)"
             invalid={badPair(range.oilMin, range.oilMax)}
             min={range.oilMin}
             max={range.oilMax}
@@ -133,7 +148,7 @@ export function ProductionFilter({
             onMax={(oilMax) => onChange({ ...range, oilMax })}
           />
           <Pair
-            label="Gas (mcf)"
+            label="Gas (MCF)"
             invalid={badPair(range.gasMin, range.gasMax)}
             min={range.gasMin}
             max={range.gasMax}

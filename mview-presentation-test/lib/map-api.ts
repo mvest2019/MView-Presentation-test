@@ -30,16 +30,64 @@ export const getCountyListMap = async (): Promise<MapFilterItem[]> => {
   }
 };
 
-/** GET /api/v1/map/filters/operator -> { facet, items: [{ value, count }] } */
-export const getOperatorListMap = async (): Promise<MapFilterItem[]> => {
+/** A page of a facet: the rows asked for, and how many there are in all. */
+export type MapFilterPage = { items: MapFilterItem[]; total: number };
+
+/** How many operators a page holds. */
+export const OPERATOR_PAGE_SIZE = 50;
+
+/**
+ * The `offset` that asks for the rows after the ones already in hand.
+ *
+ * A row count, matching the service. One function so the whole app asks the
+ * same way, and one place to change it if the service starts counting pages.
+ */
+export const nextOffset = (loaded: number): number => loaded;
+
+/**
+ * GET /api/v1/map/filters/operator?limit=&offset=&q=
+ *
+ * Paged, unlike the other facets: there are 22,609 operators, and the whole
+ * list is a couple of megabytes to send and a couple of thousand rows to draw
+ * for a panel that shows eight at a time. `q` searches the whole set on the
+ * server, so a name outside the page in hand can still be found.
+ *
+ * `offset` is a row, not a page — the service was asked and answered:
+ * `limit=50&offset=1` returns rows 2 to 51, sharing 49 of its 50 rows with
+ * `offset=0`. So the second fifty is `offset=50`, the third `offset=100`.
+ * Should the service ever count pages instead, `nextOffset` below is the one
+ * line to change.
+ *
+ * Both parameters go on every request, the first included.
+ */
+export const getOperatorListMap = async (page?: {
+  limit?: number;
+  /** The first row wanted, counting from 0. */
+  offset?: number;
+  q?: string;
+}): Promise<MapFilterPage> => {
   try {
+    const query = new URLSearchParams();
+    query.set("limit", String(page?.limit ?? OPERATOR_PAGE_SIZE));
+    query.set("offset", String(page?.offset ?? 0));
+    if (page?.q) query.set("q", page.q);
+
+    const search = query.toString();
     const response = await fetch(
-      `${process.env.MAP_BASE_URL}/api/v1/map/filters/operator`,
+      `${process.env.MAP_BASE_URL}/api/v1/map/filters/operator${
+        search ? `?${search}` : ""
+      }`,
     );
     const data = await response.json();
 
     if (response.ok && Array.isArray(data?.items)) {
-      return data.items as MapFilterItem[];
+      return {
+        items: data.items as MapFilterItem[],
+        /* Older builds of the service send no total; the list is then however
+           much of it arrived. */
+        total:
+          typeof data.total === "number" ? data.total : data.items.length,
+      };
     } else {
       throw new Error("Failed to fetch operator list");
     }
@@ -186,6 +234,12 @@ export type MapCluster = {
   oilGas: number;
   name: string;
   topCounty: string;
+  /**
+   * Every county the cluster covers, largest first — the bubble is a square
+   * of the grid, not a county, so at the wider zooms it straddles a dozen of
+   * them. `topCounty` is the first of these.
+   */
+  countyNames?: string[];
   /** Null where the cluster has no producing wells to take shares of. */
   sharePct: { oil: number; gas: number; oilGas: number } | null;
 };
