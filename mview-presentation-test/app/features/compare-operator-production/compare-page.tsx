@@ -27,7 +27,7 @@ import { detailSlugForNumber } from "@/lib/operator-detail";
 import { formatCount, formatMillions } from "@/lib/operator-compare";
 import { shortName } from "@/lib/operator-statistics";
 import {
-  hasProductionSelection,
+  canCompareProduction,
   productionFiltersKey,
 } from "@/lib/operator-production-filters";
 import type {
@@ -139,7 +139,13 @@ export function ComparePage({
 
   const draftKey = productionFiltersKey(draft);
   const appliedKey = productionFiltersKey(applied);
-  const chosen = hasProductionSelection(draft);
+  /* DEFECT 159 — the button's rule is 'is this a comparison', not 'is there
+     anything to ask about'. See `canCompareProduction`. */
+  const chosen = canCompareProduction(draft);
+  /** How many slots hold an operator, for the hint that says how far off it is. */
+  const selectedCount = draft.operators.filter(
+    (name) => (name ?? "").trim() !== "",
+  ).length;
   const dirty = draftKey !== appliedKey;
 
   /**
@@ -249,9 +255,14 @@ export function ComparePage({
    * "nothing has changed" needs no instruction, and the applied row directly below
    * already says what is in force.
    */
-  const applyBlockedReason = !chosen
-    ? "Choose at least one operator to compare."
-    : "";
+  const applyBlockedReason = chosen
+    ? ""
+    : /* The message has to say what is actually required, and how far off the reader
+         is. "Choose at least one operator" was both the wrong number and unhelpful
+         once one was already picked — it read as though nothing had been done. */
+      selectedCount === 0
+      ? "Choose two operators to compare."
+      : "Choose one more operator — a comparison needs at least two.";
 
   /** How many scoping filters are in force — drives which empty state is right. */
   const scopeCount =
@@ -875,7 +886,7 @@ function IdentityCard({
                 <>
                   {formatMillions(operator.oilTotal)}{" "}
                   <span className="text-[11px] font-semibold text-mv-muted">
-                    bbl
+                    BBL
                   </span>
                 </>
               )}
@@ -892,7 +903,7 @@ function IdentityCard({
                 <>
                   {formatMillions(operator.gasTotal)}{" "}
                   <span className="text-[11px] font-semibold text-mv-muted">
-                    Mcf
+                    MCF
                   </span>
                 </>
               )}
@@ -1149,7 +1160,7 @@ function Leaderboard({
           caption="Highest oil produced"
           value={formatMillions(leaders.highestOil.value)}
           locked={locked}
-          unit="bbl"
+          unit="BBL"
           operator={leaders.highestOil}
           note="Filed oil across the selected acreage"
         />
@@ -1160,7 +1171,7 @@ function Leaderboard({
           caption="Highest gas produced"
           value={formatMillions(leaders.highestGas.value)}
           locked={locked}
-          unit="Mcf"
+          unit="MCF"
           operator={leaders.highestGas}
           note="Filed gas across the selected acreage"
         />

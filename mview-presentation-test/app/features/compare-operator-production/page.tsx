@@ -168,7 +168,13 @@ export default async function CompareOperatorProductionRoute() {
           <h1 className={`${displayXsClass} mb-[6px] mt-2 text-mv-ink`}>
             Compare Operators Performance
           </h1>
-          <p className="max-w-[600px] text-[14.5px] text-mv-muted">
+          {/* DEFECT 157 — this wrapped to two lines. `max-w-[600px]` was narrower
+              than the sentence needs at 14.5px, so the break was the container's
+              doing rather than the viewport's. `820px` is the width the operator
+              directory's own lede uses (defect 117, the same defect on that page), so
+              the two ledes now break at the same point instead of each having their
+              own. Still a max-width, so it wraps as it should on a narrow screen. */}
+          <p className="max-w-[820px] text-[14.5px] text-mv-muted">
             Put two to four Texas operators side by side on filed annual
             production — real RRC figures, {YEAR_RANGE}.
           </p>

@@ -152,3 +152,25 @@ export function productionFiltersKey(filters: ProductionFilters): string {
 export function hasProductionSelection(filters: ProductionFilters): boolean {
   return clean(filters.operators).length > 0;
 }
+
+/** The fewest operators that make a comparison — see `canCompareProduction`. */
+export const MIN_COMPARE_OPERATORS = 2;
+
+/**
+ * Is this a COMPARISON, as opposed to merely something to ask about?
+ *
+ * DEFECT 159 — "after selecting one operator apply button get enable, after at least
+ * 2 operators selection need to enable the apply button". The page is called Compare
+ * Operators Performance and its own lede says "Put two to four Texas operators side
+ * by side"; one operator produces a chart with a single line and a "who leads" block
+ * whose four tiles all name the same company.
+ *
+ * DELIBERATELY SEPARATE FROM `hasProductionSelection`, which the two route handlers
+ * use to decide whether there is anything worth an upstream round trip. That question
+ * still has the same answer at one operator, and widening it would turn a handler's
+ * cheap guard into a product rule enforced in two places. This one is the button's
+ * rule and belongs to the page.
+ */
+export function canCompareProduction(filters: ProductionFilters): boolean {
+  return clean(filters.operators).length >= MIN_COMPARE_OPERATORS;
+}

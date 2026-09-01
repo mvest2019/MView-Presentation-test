@@ -30,7 +30,16 @@ import { COMPARE_SLOT_COUNT, SLOT_COLORS } from "./operator-slot-colors";
 export { COMPARE_YEARS };
 
 /** Which volume the chart, the legend and the year table are showing. */
-export type CompareMetric = "boe" | "oil" | "gas";
+/**
+ * What the production chart plots.
+ *
+ * DEFECT 162 — "from chart need to remove BOE". `"boe"` is gone from the union, not
+ * merely from the radio group, so the compiler is what guarantees the chart cannot be
+ * put back into a BOE state by a stray default or a restored option. This type is used
+ * by that chart and nothing else, so narrowing it costs nothing elsewhere; the BOE
+ * FIGURES are untouched and still drive the cards and the leader tiles.
+ */
+export type CompareMetric = "oil" | "gas";
 
 /** The empty value for the two optional slots — the design's "— none —". */
 export const NO_OPERATOR = "";
@@ -196,16 +205,15 @@ export function seriesFor(
 
 /** The y-axis title for the current metric. */
 export function axisLabel(metric: CompareMetric): string {
-  return metric === "oil"
-    ? "Oil (M bbl / yr)"
-    : metric === "gas"
-      ? "Gas (M Mcf / yr)"
-      : "BOE (M / yr)";
+  // DEFECT 163 — units capitalised across this page.
+  return metric === "oil" ? "Oil (M BBL / yr)" : "Gas (M MCF / yr)";
 }
 
 /** What a cell of the current metric is counting. */
 export function metricNoun(metric: CompareMetric): string {
-  return metric === "oil" ? "barrels" : metric === "gas" ? "Mcf" : "BOE";
+  // "barrels" is a word rather than a unit symbol, so it is not upper-cased; "MCF"
+  // is the symbol and is (defect 163).
+  return metric === "oil" ? "barrels" : "MCF";
 }
 
 /* --------------------------------------------------------------------------
@@ -426,11 +434,11 @@ export const COMPARE_STAT_ROWS: readonly StatRow[] = [
   },
   {
     label: "Oil Produced",
-    value: (operator) => `${formatMillions(operator.cumOil)} bbl`,
+    value: (operator) => `${formatMillions(operator.cumOil)} BBL`,
   },
   {
     label: "Gas Produced",
-    value: (operator) => `${formatMillions(operator.cumGas)} Mcf`,
+    value: (operator) => `${formatMillions(operator.cumGas)} MCF`,
   },
   {
     label: "Leases on Record",
