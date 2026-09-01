@@ -10,7 +10,32 @@ import { usePortalState } from "./portal-state-provider";
 import { primarySlots } from "../_lib/portal-nav";
 import { demoDisclosure, demoOwner, referral } from "../_lib/portal-demo-data";
 import { FUNNEL_PLAN } from "../_lib/portal-state";
-import { logo } from "@/app/_components/site-nav";
+
+/**
+ * THE SIDEBAR WORDMARK, exactly as the reference build has it.
+ *
+ * `owner/src/shell/chunk-004.html`:
+ *   <img src="https://res.cloudinary.com/mview/image/upload/f_auto/icons/mineralview-logo.png"
+ *        style="height:30px;width:auto;display:block;margin:4px 8px 18px" />
+ *
+ * NOTE WHICH ASSET, because there are two and the difference is the whole point.
+ * This is the UNTRANSFORMED `icons/mineralview-logo.png` — `f_auto` and nothing
+ * else. The marketing header points at the same file through
+ * `e_replace_color:0f1b16:48:ffffff`, which swaps its white for near-black so it
+ * can sit on the white bar. The sidebar is `--ink` (#0d0e17), so it wants the
+ * original, and that is why the reference asks for no transform here.
+ *
+ * It is declared locally rather than added to `site-nav.ts`: that module
+ * describes the marketing header and footer assets, and the portal is meant to
+ * stay isolated from it. 577x132 is the file's real intrinsic size, read off the
+ * PNG header — `next/image` needs it for the aspect ratio, and the rendered size
+ * comes from the height below.
+ */
+const SIDEBAR_LOGO = {
+  src: "https://res.cloudinary.com/mview/image/upload/f_auto/icons/mineralview-logo.png",
+  width: 577,
+  height: 132,
+} as const;
 
 /**
  * The portal sidebar — the portal's navigation landmark (v38 · P1-13).
@@ -40,16 +65,21 @@ export function PortalSideNav() {
     <aside className="app-side" role="navigation" aria-label="Portal navigation">
       <Link href="/" aria-label="Mineral View home">
         <Image
-          src={logo.desktop.src}
+          src={SIDEBAR_LOGO.src}
           alt="Mineral View"
-          width={logo.desktop.width}
-          height={logo.desktop.height}
-          /* The sidebar is near-black, and the desktop wordmark is drawn for a
-             LIGHT ground (see the note on `logo` in `site-nav.ts`, which
-             forbids recolouring it). Until the design supplies a dark pairing
-             the wordmark sits on a small white plate rather than being
-             transformed. */
-          className="mb-[18px] ml-[8px] mt-[4px] h-[30px] w-auto rounded-md bg-white px-2 py-1"
+          width={SIDEBAR_LOGO.width}
+          height={SIDEBAR_LOGO.height}
+          /* The reference's four properties and nothing else:
+                height:30px · width:auto · display:block · margin:4px 8px 18px
+             No plate, no radius, no padding — the earlier white tile existed
+             only because this component was pointing at the light-ground
+             marketing asset, and with the correct asset the design's own
+             treatment is the bare wordmark on the dark rail. */
+          /* One arbitrary value mirroring the reference's shorthand verbatim —
+             `4px 8px 18px` is top 4, sides 8, bottom 18. Written as three
+             separate utilities before, which silently dropped the right margin
+             to 0. */
+          className="m-[4px_8px_18px] block h-[30px] w-auto"
           priority
         />
       </Link>
