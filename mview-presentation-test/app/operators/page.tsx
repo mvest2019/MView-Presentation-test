@@ -215,9 +215,15 @@ export default async function OperatorsRoute() {
           <h1 className={displayLgClass}>Operator Directory</h1>
           {/* `max-w-[640px]` wrapped this onto two lines at desktop width for the
               sake of a measure it did not need — it is one short sentence, not a
-              paragraph. Widened so it sits on one line from about 900px up, and it
-              still wraps naturally below that rather than being forced to fit. */}
-          <p className="mt-[6px] max-w-[820px] text-[15.5px] text-mv-muted">
+              paragraph. Widened so it sits on one line, and it still wraps naturally
+              on a narrow screen rather than being forced to fit.
+
+              960px, NOT 820px, because the sentence changed. The new copy measures
+              929px on one line at 15.5px, so the old cap broke it after "and" — a
+              wrap the container was imposing, not the viewport. The content column is
+              1200px less 44px of padding, so 960 sits inside it with room to spare and
+              the line still gives way below roughly 975px of viewport. */}
+          <p className="mt-[6px] max-w-[960px] text-[15.5px] text-mv-muted">
             Search, filter, and compare Texas oil and gas operators using
             reported production, operating activity, and county coverage.
           </p>
