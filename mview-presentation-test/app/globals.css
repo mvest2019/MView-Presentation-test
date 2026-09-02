@@ -148,6 +148,31 @@
   --color-mv-portal-hero-tint: #f0fbf7;
   --color-mv-portal-gold: #b8892f;
 
+  /* The Alerts inbox's own surfaces, from the reference's `.al-*` family
+     (`owner/src/styles/mineral-view-owner-full-site.css` and `v40css.css`).
+
+     They are here for the same reason as the seven above — they are literals the
+     marketing design has no equivalent for — and they are grouped separately
+     because they belong to ONE route. The two severity tags in particular are
+     deliberately not the existing `mv-amber-bg`/`mv-red-bg` pair: V40-AL-SEV
+     picked these six values to stay legible for colour-blind readers while the
+     tag ALSO carries its meaning as text ("Action recommended", "Important"), so
+     approximating them with a nearby token would discard the one thing they were
+     measured for. */
+  --color-mv-portal-alert-tint: #f7fdfb; /* unread row wash          */
+  --color-mv-portal-alert-gold-bg: #fdf3dd; /* money / record icon box  */
+  --color-mv-portal-alert-gold-ink: #8a6320;
+  --color-mv-portal-alert-blue-bg: #e5eefc; /* model-indicator icon box */
+  --color-mv-portal-sev-act-bg: #fdf0d3; /* "Action recommended"     */
+  --color-mv-portal-sev-act-ink: #7a5615;
+  --color-mv-portal-sev-act-line: #ecd9a4;
+  --color-mv-portal-sev-imp-bg: #fbe3df; /* "Important"              */
+  --color-mv-portal-sev-imp-ink: #8f3527;
+  --color-mv-portal-sev-imp-line: #f0c6bf;
+  --color-mv-portal-ledger-line: #cdeadd; /* watch-ledger foot rule   */
+  --color-mv-portal-ledger-ink: #2e6b52;
+  --color-mv-portal-expand-bg: #f2fbf7; /* the row's "expand" pill  */
+
   /* Status */
   --color-mv-amber: #b45309;
   --color-mv-down: #c0392b;

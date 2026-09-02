@@ -28,6 +28,13 @@
  * table each group came from is named on it, so the wiring has a target.
  */
 
+import {
+  actionRecommended,
+  alertCounts,
+} from "../alerts/_lib/alert-counts";
+import { alertFilters } from "../alerts/_lib/alert-filters";
+import { alertRecords } from "../alerts/_lib/alert-records";
+
 /* ============================================================================
    THE SIGNED-IN OWNER  (the claimed / trial / lapsed / paid states)
 
@@ -174,6 +181,19 @@ export const dashboardKpis: DashboardKpi[] = [
    by kind, and the single item that asks something of you.
 
    SOURCE · PG.notification_history + PG.member_session (last visit Jul 01).
+
+   ── EVERY FIGURE HERE IS NOW DERIVED FROM THE ALERTS MODULE ──
+
+   It used to be nine typed literals — `total: 9`, `needsYou: 1`, and a
+   four-entry category table. The Alerts route's own note explains why that could
+   not stay: "the dashboard summary box now quotes these same counts, so the two
+   surfaces have to agree" (v43 · OW-33), and the reference then had to add
+   JavaScript to keep a THIRD copy of them honest inside that page (v50 · BG-03).
+
+   The alerts are data now — `alerts/_lib/alert-records.tsx` — so this rollup
+   counts them instead of restating them, and the dashboard, the inbox, the
+   filter row, the watch ledger and the sidebar badge all move together. Adding a
+   tenth alert is one entry in one array.
    ============================================================================ */
 
 export interface AlertCategory {
@@ -190,16 +210,27 @@ export const alertSummary: {
   context: number;
   categories: AlertCategory[];
 } = {
-  total: 9,
-  needsYou: 1,
-  important: 2,
-  context: 6,
-  categories: [
-    { count: 3, label: "Money", key: "money", actionable: true },
-    { count: 4, label: "Activity", key: "activity", actionable: false },
-    { count: 1, label: "Community", key: "community", actionable: false },
-    { count: 1, label: "Models & forecasts", key: "model", actionable: false },
-  ],
+  total: alertCounts.total,
+  needsYou: alertCounts.action,
+  /* The three severities the rollup splits by: one asks, some are marked
+     Important, and the rest are context. `context` is the remainder rather than
+     a count of its own, so the three always sum to the total. */
+  important: alertRecords.filter((alert) => alert.severity === "important")
+    .length,
+  context: alertRecords.filter((alert) => !alert.severity).length,
+  categories: alertFilters
+    .filter((filter) => filter.value !== "all")
+    .map((filter) => ({
+      count: filter.count,
+      label: filter.label,
+      key: filter.value,
+      /* "Actionable" marks the ONE bucket holding the alert that asks something
+         of the reader, so the chip can carry the emphasis. Derived, because
+         which bucket that is depends on which alert it is. */
+      actionable: alertRecords.some(
+        (alert) => alert.category === filter.value && actionRecommended(alert),
+      ),
+    })),
 };
 
 /* ============================================================================

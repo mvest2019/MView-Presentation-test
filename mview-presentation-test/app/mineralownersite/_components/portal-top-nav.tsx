@@ -1,5 +1,8 @@
 "use client";
 
+import Link from "next/link";
+
+import { alertCounts } from "../alerts/_lib/alert-counts";
 import { PortalDemoStateMenu } from "./portal-demo-state-menu";
 import { PortalIcon } from "./portal-icon";
 import { PortalProfileMenu } from "./portal-profile-menu";
@@ -76,19 +79,23 @@ export function PortalTopNav({
           dropdown lets you pick any of them directly. */}
       <PortalDemoStateMenu />
 
-      {/* The Alerts module is not built, so the bell reports the count without
-          claiming to open anything. It becomes a Link the moment that page
-          lands. `aria-disabled` so the count is still announced but the control
-          is not offered as actionable. */}
-      <span
+      {/* THE BELL IS A LINK NOW that the Alerts module exists — it was an inert
+          span reporting a count it could not open.
+
+          The count is `alertCounts.unread`, the same derived figure the sidebar
+          row uses, and it replaced a literal `6` written here and again in
+          `portal-nav.ts` while the inbox itself carried seven unread rows. Three
+          copies of one number is how a badge starts lying; see the note on the
+          Alerts row in `portal-nav.ts`. */}
+      <Link
+        href="/mineralownersite/alerts"
         className="bellbtn"
-        aria-disabled="true"
-        aria-label="Alerts — 6 unread. Not open yet."
-        title="Alerts — 6 unread · this part of your portal is not open yet"
+        aria-label={`Alerts — ${alertCounts.unread} unread`}
+        title={`Alerts — ${alertCounts.unread} unread`}
       >
         <PortalIcon name="bell" />
-        <span className="bdg">6</span>
-      </span>
+        <span className="bdg">{alertCounts.unread}</span>
+      </Link>
 
       {/* v36 · #67 — a quiet link to Billing & Plan, not a second CTA. Unbuilt,
           so it states the plan and goes nowhere for now. */}
