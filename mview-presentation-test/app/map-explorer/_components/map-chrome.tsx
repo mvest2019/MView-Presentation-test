@@ -647,6 +647,15 @@ export function MapChrome({
            a turned phone is judged as it is now. */
         onApply={(filters) => {
           onApplyFilters(filters);
+          /*
+           * The API number goes with the filter it was.
+           *
+           * A number in the box is itself a filter of one, and applying a
+           * county replaces it — so leaving the number on screen said the map
+           * was showing one well when it was showing thirteen thousand.
+           */
+          setPlaceQuery("");
+          setPlaceOpen(false);
           setAppliedCount(
             Object.values(filters).reduce(
               (total, values) => total + values.length,

@@ -964,23 +964,34 @@ export function WellsTable({
       {/* Over the dimmed rows, not instead of them: dimming alone reads as a
           disabled table, and says nothing about how long it will be.
 
-          Centred on the screen rather than on the card. The card is
-          twenty-five rows tall, so its middle is a long way down the page —
-          the pill was landing near the foot of the window, or past it, while
-          the rows it was explaining were at the top. Fixed, it is where the
-          reader is looking whatever they have scrolled to. */}
+          Held over the rows and nowhere else. Fixed to the window it was
+          centred on the screen, which on a short window is exactly where the
+          column headings are — so the pill sat across them, reading as a
+          thing dropped on the table rather than the table's own state. This
+          starts below the headings and, being `sticky`, follows the scroll
+          within the rows: always in view, never off the card. */}
       {loading && rows.length > 0 && (
-        <div className="pointer-events-none fixed inset-0 z-50 grid place-items-center">
-          <span className="flex items-center gap-[12px] rounded-full border border-mv-line bg-white px-[22px] py-[13px] shadow-mv-lg">
-            <span
-              aria-hidden="true"
-              className="h-[20px] w-[20px] shrink-0 animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
-            />
-            <span className="text-[15px] font-semibold leading-none text-mv-slate">
-              Loading wells…
+        <>
+          {/* The rows go quiet — over the rows only, so the headings stay
+              legible and the reader can see which columns they are waiting
+              on. */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 top-[46px] z-30 bg-white/55" />
+
+          {/* And the pill sits in the middle of the window, wherever the
+              reader has scrolled to: the card is twenty-five rows tall, so
+              its own middle is often nowhere near the screen. */}
+          <div className="pointer-events-none fixed inset-0 z-40 grid place-items-center">
+            <span className="flex items-center gap-[12px] rounded-full border border-mv-line bg-white px-[22px] py-[13px] shadow-mv-lg">
+              <span
+                aria-hidden="true"
+                className="h-[20px] w-[20px] shrink-0 animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
+              />
+              <span className="text-[15px] font-semibold leading-none text-mv-slate">
+                Loading wells…
+              </span>
             </span>
-          </span>
-        </div>
+          </div>
+        </>
       )}
 
       <div className="mv-thin-scroll overflow-x-auto">

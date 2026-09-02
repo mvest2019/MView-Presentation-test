@@ -2027,6 +2027,10 @@ export function MapExplorerView() {
         setToast("Filters cleared");
         /* Nothing is being filtered, so nothing can be matching nothing. */
         setNoMatches(false);
+        /* And the record goes with the wells it was one of. Left open, the
+           reader had a summary of a well that is no longer drawn, beside a
+           map that had gone back to the whole state. */
+        closeSummary();
         // `clearWells` takes the ring with the wells it marked.
         clearWells();
         clusterTierRef.current = -1;
@@ -2272,7 +2276,7 @@ export function MapExplorerView() {
           if (request === wellRequestRef.current) setWellsLoading(false);
         });
     },
-    [clearClusters, clearWells, loadClusters, highlightWell],
+    [clearClusters, clearWells, closeSummary, loadClusters, highlightWell],
   );
 
   /* Kept current so the empty-result reset can reach it without depending on
