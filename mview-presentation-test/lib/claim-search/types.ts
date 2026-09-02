@@ -26,8 +26,17 @@ export interface BackendOwner {
   leaseCount: number;
   appraisedValue: number;
   leases: string[] | null;
-  /** Per-lease appraised values, aligned with `leases` by index. */
+  /**
+   * PER-LEASE ARRAYS, ALL INDEX-ALIGNED WITH `leases` (backend, 2026-08-27).
+   * `leaseNumbers`, `operators` and `interestValues` arrived together and are
+   * what the Lease Details table binds to; before them those columns could
+   * only show "—".
+   */
   leaseValues: number[] | null;
+  leaseNumbers: string[] | null;
+  operators: string[] | null;
+  /** Decimal interest, e.g. 0.007753 — NOT a percentage. */
+  interestValues: number[] | null;
   address: string | null;
   workingInterest: boolean;
   score: number | null;
@@ -48,6 +57,10 @@ export interface ScoredOwner {
   s: number;
   /** Per-lease appraised values (aligned with `r[3]`), when the API sent them. */
   leaseValues?: number[];
+  /** Per-lease numbers, operators and decimal interests, same alignment. */
+  leaseNumbers?: string[];
+  operators?: string[];
+  interestValues?: number[];
   /** True = working interest, false = royalty interest (the API's flag). */
   workingInterest?: boolean;
 }
@@ -77,7 +90,22 @@ export interface LeaseOwnersResponse {
  * "Is this you?" popup. `key` is `county|despacedName|despacedAddress`.
  */
 export interface SameNameResponse {
-  items: { r: OwnerRow; county: string; key: string }[];
+  /**
+   * CARRIES THE PER-LEASE ARRAYS TOO (2026-08-27). A record ticked through
+   * the popup ends up in the working set, so if these were dropped here its
+   * Lease Details row lost its lease number, operator and interest — the
+   * bug that showed "—" for every record confirmed that way.
+   */
+  items: {
+    r: OwnerRow;
+    county: string;
+    key: string;
+    leaseValues?: number[];
+    leaseNumbers?: string[];
+    operators?: string[];
+    interestValues?: number[];
+    workingInterest?: boolean;
+  }[];
 }
 
 /* ---------- client-side view shapes ---------- */

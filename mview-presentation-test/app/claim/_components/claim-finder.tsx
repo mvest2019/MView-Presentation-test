@@ -431,7 +431,7 @@ export function ClaimFinder({
         const k = okey(x);
         if (k === okey(o)) continue;
         if (!merged.some((it) => it.key === k))
-          merged.push({ r: x.r, county: x.county, key: k });
+          merged.push({ ...x, key: k });
       }
       setModal({ base: o, items: merged });
     } catch {
@@ -453,7 +453,18 @@ export function ClaimFinder({
         for (const it of modal.items) {
           if (!checked.has(it.key)) continue;
           if (!next.some((x) => okey(x) === it.key))
-            next.push({ r: it.r, county: it.county, s: 1 });
+            next.push({
+              r: it.r,
+              county: it.county,
+              s: 1,
+              // Without these the record's Lease Details row loses its lease
+              // number, operator and interest.
+              leaseValues: it.leaseValues,
+              leaseNumbers: it.leaseNumbers,
+              operators: it.operators,
+              interestValues: it.interestValues,
+              workingInterest: it.workingInterest,
+            });
         }
         return next;
       });
@@ -547,11 +558,14 @@ export function ClaimFinder({
   }
 
   /**
-   * "View lease details": one row per lease per ticked record. The lease
-   * number is whatever trailing "(12345)" the county roll baked into the
-   * lease name; the value column carries the API's PER-LEASE appraised value
-   * (`leaseValues`, aligned with the lease list), falling back to the
-   * record's total only for rows the API sent without it.
+   * "View lease details": one row per lease per ticked record.
+   *
+   * EVERY COLUMN IS THE API'S OWN VALUE (2026-08-27): `leaseNumbers`,
+   * `operators`, `interestValues` and `leaseValues` are all index-aligned
+   * with the lease list, so each row reads its own index. The old
+   * "(12345)"-out-of-the-lease-name parse is gone — the roll's real lease
+   * number is served now. Appraised value still falls back to the record
+   * total for a row the API sent without a per-lease figure.
    */
   function viewLeaseDetails() {
     const rows: LeaseDetailRow[] = [];
@@ -565,9 +579,11 @@ export function ClaimFinder({
         seen.add(dedup);
         rows.push({
           lease,
-          leaseNo: /\((\d+)\)\s*$/.exec(lease)?.[1] ?? "—",
+          leaseNo: o.leaseNumbers?.[i]?.trim() || "",
           owner: o.r[0],
           county: o.county,
+          operator: o.operators?.[i]?.trim() || "",
+          interest: o.interestValues?.[i],
           value: o.leaseValues?.[i] ?? o.r[2],
           workingInterest: !!o.workingInterest,
         });
