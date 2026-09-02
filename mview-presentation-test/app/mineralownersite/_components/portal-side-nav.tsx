@@ -104,7 +104,7 @@ export function PortalSideNav() {
         className="tiny"
         style={{ margin: "14px 8px 0", color: "#5b6472", lineHeight: 1.45 }}
       >
-        Profile, Settings &amp; Billing are in your account menu, top right.
+        Profile, Settings &amp; Billing moved to your account menu ↗
       </p>
 
       {/* v11 · the persistent referral CTA. `.side-ref` is hidden by

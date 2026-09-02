@@ -137,7 +137,15 @@ export const navSections: PortalNavSection[] = [
       // The badge is the reference's own count for the demo record: 9 alerts
       // since the last visit, 6 of them unread.
       { label: "Alerts", icon: "bell", navKey: "app-alerts", badge: 6 },
-      { label: "My Leases", icon: "leases", navKey: "app-leases" },
+      // The module itself is not built. The row is a real link anyway, to a
+      // placeholder page that says so — a dimmed, unclickable row left an owner
+      // unable to tell "not open yet" from "my click did nothing".
+      {
+        label: "My Leases",
+        icon: "leases",
+        href: "/mineralownersite/leases",
+        navKey: "app-leases",
+      },
       { label: "Map", icon: "map", navKey: "app-map" },
       { label: "Activities", icon: "activity", navKey: "app-activities" },
       { label: "Weekly Report", icon: "mail", navKey: "app-briefing" },
@@ -196,7 +204,12 @@ export const accountMenu: PortalNavItem[] = [
 
 export const tabBar: PortalNavItem[] = [
   { label: "Home", icon: "home", href: "/mineralownersite", navKey: "app" },
-  { label: "Leases", icon: "leases", navKey: "app-leases" },
+  {
+    label: "Leases",
+    icon: "leases",
+    href: "/mineralownersite/leases",
+    navKey: "app-leases",
+  },
   { label: "Map", icon: "map", navKey: "app-map" },
   { label: "Activity", icon: "activity", navKey: "app-activities" },
   { label: "Profile", icon: "user", navKey: "app-dossier" },

@@ -105,7 +105,7 @@ export default function MineralOwnerDashboard() {
         {/* v33 · M38 — the owner chip names WHICH record fills every page. The
             switcher needs the other claimed records to switch between, so it is
             labelled and inert until that module lands. */}
-        <div className="flex" style={{ flexWrap: "wrap" }}>
+        <div className="mv-row" style={{ flexWrap: "wrap" }}>
           <span className="owner-chip">
             Owner: {demoOwner.record}
             <span
