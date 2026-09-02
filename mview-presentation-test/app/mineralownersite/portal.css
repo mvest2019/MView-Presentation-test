@@ -1281,12 +1281,43 @@
   opacity: 1;
 }
 
-.mv-portal.state-claimed .app-main .kpi:has(.cl-lock) {
+/* ----------------------------------------------------------------------------
+   THE TAILWIND PRIMITIVES' HOOKS INTO THESE SAME GATES.
+
+   `app/mineralownersite/_components/ui/*` builds the portal's surfaces from
+   Tailwind utilities instead of the `.kpi` / `.pf-val` / `.k-val` /
+   `.u-headline` classes below, so none of the state rules in this section could
+   see them. Measured on My Leases before these selectors were added: in
+   `state-lapsed` NOTHING on the page blurred and neither caption appeared,
+   while the prototype blurs nine figures and prints one.
+
+   The fix is data attributes, not the classes. Adding `.kpi` to a Tailwind card
+   would drag in that class's own border, radius, padding and shadow and fight
+   the utilities already on it; an attribute carries the gate contract and no
+   styling. Two of them:
+
+     [data-mv-kpi]               a stat tile — the host for the two captions.
+     [data-mv-portfolio-figure]  a figure covering ALL TEN leases. Blurs when
+                                 the account is lapsed, per Ryan's rule.
+     [data-mv-headline]          an Ultra headline, whose <strong> is the figure.
+
+   THEY EXTEND THE EXISTING SELECTOR LISTS rather than forming a parallel block,
+   which matters most for the two `content:` strings: a second copy of
+   "Portfolio totals cover all 10 leases — Premium" is a second thing to keep in
+   step, and this file already records that splitting a gate across two places is
+   how gates drift.
+
+   `.cl-lock` needs none of this — it is already an opt-in class and the Tailwind
+   components apply it directly.
+   ---------------------------------------------------------------------------- */
+.mv-portal.state-claimed .app-main .kpi:has(.cl-lock),
+.mv-portal.state-claimed .app-main [data-mv-kpi]:has(.cl-lock) {
   position: relative;
   padding-bottom: 30px;
 }
 
-.mv-portal.state-claimed .app-main .kpi:has(.cl-lock)::after {
+.mv-portal.state-claimed .app-main .kpi:has(.cl-lock)::after,
+.mv-portal.state-claimed .app-main [data-mv-kpi]:has(.cl-lock)::after {
   content: "What it's worth unlocks with your free 7-day trial";
   position: absolute;
   left: 0;
@@ -1306,7 +1337,9 @@
 .mv-portal.state-lapsed .app-main .kpi .k-val,
 .mv-portal.state-lapsed .app-main .pf-val,
 .mv-portal.state-lapsed .app-main .ck-val,
-.mv-portal.state-lapsed .app-main .u-headline strong {
+.mv-portal.state-lapsed .app-main .u-headline strong,
+.mv-portal.state-lapsed .app-main [data-mv-portfolio-figure],
+.mv-portal.state-lapsed .app-main [data-mv-headline] strong {
   filter: blur(6px);
   opacity: 0.5;
   user-select: none;
@@ -1319,12 +1352,14 @@
   opacity: 1;
 }
 
-.mv-portal.state-lapsed .app-main .kpi {
+.mv-portal.state-lapsed .app-main .kpi,
+.mv-portal.state-lapsed .app-main [data-mv-kpi] {
   position: relative;
   padding-bottom: 30px;
 }
 
-.mv-portal.state-lapsed .app-main .kpi::after {
+.mv-portal.state-lapsed .app-main .kpi::after,
+.mv-portal.state-lapsed .app-main [data-mv-kpi]::after {
   content: "Portfolio totals cover all 10 leases — Premium";
   position: absolute;
   left: 0;
@@ -1335,6 +1370,62 @@
   font-weight: 600;
   letter-spacing: 0.03em;
   color: #a8791a;
+}
+
+/* ----------------------------------------------------------------------------
+   THE LAPSED LEASE PICKER — one lease stays live, the other nine go on hold.
+
+   This is the whole design of the lapsed state, not a decoration on it. A trial
+   that ends does not take the owner's record away: ONE lease keeps its real
+   figures, they choose which, and they may re-choose every seven days. So the
+   table gains three things when `state-lapsed` is set, all rendered by
+   `lease-list-panel.tsx`:
+
+     tr.lp-active    the live lease. Cream row, a LIVE tag, figures SHARP.
+     tr.lp-locked    the other nine. Figures blurred — except the first cell,
+                     which stays perfectly legible on purpose: the lease is
+                     still theirs and its NAME is never withheld, only its
+                     value. That exception is the difference between "on hold"
+                     and "taken away".
+     tr.lp-totalrow  not a lease, but an all-ten figure, so it blurs.
+
+   `blur(2.4px)` here rather than the 6px used elsewhere: these are table cells
+   at 13px, and 6px turns them into grey smears with no shape left to show that
+   a number is being withheld rather than missing.
+
+   THE RULES WERE ALREADY HALF-PRESENT. `.lp-lockbtn` and `.lp-activetag` had
+   styles and no markup, with a note saying the My Leases module would render
+   into them. It does now — and the row-level rules below, which that note did
+   not include, had to come with it.
+   ---------------------------------------------------------------------------- */
+.mv-portal.state-lapsed tr.lp-locked > td {
+  opacity: 0.42;
+  filter: blur(2.4px);
+  user-select: none;
+}
+
+/* The identity column is exempt. See above: the name is not the product. */
+.mv-portal.state-lapsed tr.lp-locked > td:first-child {
+  opacity: 1;
+  filter: none;
+  user-select: auto;
+}
+
+.mv-portal.state-lapsed tr.lp-active > td {
+  background: #fffaf0;
+}
+
+/* Belt and braces against the column-scoped `cl-lock` rules above: the live
+   lease's figures are sharp in the lapsed state, whatever else marked them. */
+.mv-portal.state-lapsed tr.lp-active td {
+  filter: none;
+  opacity: 1;
+}
+
+.mv-portal.state-lapsed tr.lp-totalrow td:not(:first-child) {
+  filter: blur(2.4px);
+  opacity: 0.42;
+  user-select: none;
 }
 
 /* The lapsed lease-picker affordances. Their host is the My Leases module, so
@@ -1412,9 +1503,12 @@
    a trial or lapsed owner is not left on an unexplained blurred number.
 
    `#mvStateCard` cannot simply be given `.tier-u` — that class is hidden in
-   the other three views, and the card has to show in all four. */
+   the other three views, and the card has to show in all four.
+
+   `:not(.mv-report-routes)` — A LEASE REPORT DOES NOT REPLACE ITS PAGE. See the
+   next block for why, and for what it keeps instead. */
 .mv-portal.view-ultra:not(.no-claim)
-  .mv-dash-routes
+  .mv-dash-routes:not(.mv-report-routes)
   > :not(.tier-u):not(#mvStateCard) {
   display: none !important;
 }
@@ -1441,6 +1535,28 @@
 .mv-portal.view-ultra:not(.no-claim) .app-body > .ppf-why,
 .mv-portal.view-ultra:not(.no-claim) .app-body > .ppf,
 .mv-portal.view-ultra:not(.no-claim) .app-body > .mv-action-footer {
+/* ----------------------------------------------------------------------------
+   ULTRA ON A LEASE REPORT — three things stay, the body collapses.
+
+   The list pages replace themselves wholesale at Ultra: "all 10 leases are
+   watched" and nothing else. A REPORT cannot do that, and the design scopes a
+   separate rule to the three lease-report routes to say so:
+
+     body.view-ultra:not(.no-claim) section[data-route="app-lease-smith"]
+       > *:not(.tier-u):not(.v41-valbar):not(.v41-u-keep):not(.rpt-crumb)
+
+   Four exemptions, and each earns its place. A reader who has asked for the
+   calmest possible view of ONE LEASE still needs to know WHICH lease
+   (`.rpt-crumb`, the title card) and WHAT IT IS WORTH (the owner value card) —
+   strip those and the remaining sentence is about an unnamed lease and refers to
+   "the number above" when there is no number above it.
+
+   So Ultra here is not a replacement, it is a collapse: identity, money, and one
+   card in place of the body.
+   ---------------------------------------------------------------------------- */
+.mv-portal.view-ultra:not(.no-claim)
+  .mv-report-routes
+  > :not(.tier-u):not(.mv-u-keep):not(#mvStateCard) {
   display: none !important;
 }
 
@@ -1688,7 +1804,31 @@
   padding: 22px;
 }
 
-.mv-portal .grid {
+/* ----------------------------------------------------------------------------
+   RENAMED OFF TAILWIND'S NAMES — `.grid` and `.flex` USED TO LIVE HERE.
+
+   Tailwind generates utilities called `.flex` and `.grid`. This file loads into
+   the same document, and `.mv-portal .flex` (0,2,0) outranks Tailwind's `.flex`
+   (0,1,0) — so every Tailwind-built flex container anywhere under the portal
+   root silently inherited this file's `align-items:center` and its `gap`.
+
+   Measured, not theorised: the lease report's owner card rendered with its
+   label and its $8,700 CENTRED, because `align-items:center` on a `flex-col`
+   centres horizontally and no Tailwind class was competing for that property.
+   Every `gap-*` under the portal lost to these rules as well, and the
+   narrow-width block near the end of this file forced `flex-wrap:wrap` and
+   `align-items:flex-start` onto all of them below 900px — a defect that only
+   appeared on small screens.
+
+   So the two design-system utilities are `mv-` prefixed, like every other token
+   in this project. This file may keep its own class vocabulary, but not words
+   Tailwind has already claimed.
+
+   THE GATES ARE UNAFFECTED and stay shared on purpose — `tier-*`, `hide-*`,
+   `nc-*`, `cl-lock`, `state-*`, `mv-dash-routes`. Tailwind generates none of
+   those names, so there is nothing for them to collide with.
+   ---------------------------------------------------------------------------- */
+.mv-portal .mv-grid {
   display: grid;
   gap: 18px;
 }
@@ -1697,7 +1837,7 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.mv-portal .flex {
+.mv-portal .mv-row {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -3016,7 +3156,7 @@
   }
 
   .mv-portal .app-body .between,
-  .mv-portal .app-body .flex {
+  .mv-portal .app-body .mv-row {
     flex-wrap: wrap;
     align-items: flex-start;
   }

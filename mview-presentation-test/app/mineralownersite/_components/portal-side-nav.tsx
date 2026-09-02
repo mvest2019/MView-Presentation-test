@@ -101,6 +101,15 @@ export function PortalSideNav() {
 
       <PortalSectionList pathname={pathname} />
 
+      {/* v41 · AUDIT #35 — the forwarding note. A `<p>` and not a nav row on
+          purpose: it is a signpost, not a destination. */}
+      <p
+        className="tiny"
+        style={{ margin: "14px 8px 0", color: "#5b6472", lineHeight: 1.45 }}
+      >
+        Profile, Settings &amp; Billing moved to your account menu ↗
+      </p>
+
       {/* v11 · the persistent referral CTA. `.side-ref` is hidden by
           `portal.css` while unclaimed — there are no co-owners to invite to a
           record nobody has claimed yet. */}

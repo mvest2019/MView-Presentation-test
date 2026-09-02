@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { MobilePreview } from "./mobile-preview";
 import { PortalIcon } from "./portal-icon";
 import { ViewTierSwitch } from "./view-tier-switch";
 import { usePortalState } from "./portal-state-provider";
@@ -44,6 +46,9 @@ export function PortalProfileMenu() {
   const { funnelState } = usePortalState();
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
+  /* Inside the mobile preview's own iframe, hide the control that opened it —
+     otherwise the preview offers a preview of the preview. See `MobilePreview`. */
+  const inPreview = useSearchParams().get("preview") === "1";
 
   const unclaimed = funnelState === "unclaimed";
   const name = unclaimed ? "Your account" : demoOwner.name;
@@ -135,6 +140,12 @@ export function PortalProfileMenu() {
           </span>
         </div>
         <ViewTierSwitch onNavigate={() => setOpen(false)} />
+
+        {!inPreview && (
+          <div className="v41-avsec border-t border-mv-line">
+            <MobilePreview onOpen={() => setOpen(false)} />
+          </div>
+        )}
       </div>
     </div>
   );

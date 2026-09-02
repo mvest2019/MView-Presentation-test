@@ -4,11 +4,14 @@ import {
   Bell,
   CirclePlus,
   CreditCard,
+  DollarSign,
   FileText,
+  Flag,
   House,
   Lock,
   Mail,
   MapPin,
+  MessageSquare,
   Settings,
   ShieldCheck,
   TrendingUp,
@@ -73,6 +76,15 @@ const ICONS: Record<PortalIconName, LucideIcon> = {
   trend: TrendingUp,
   // mvi-lock — Feather `lock`
   lock: Lock,
+  /* The three the Alerts inbox adds. Each one's sprite `<symbol>` in the
+     reference is the Feather path named beside it, checked path-by-path against
+     the sprite in `owner/src/shell/` rather than picked by name. */
+  // mvi-flag — Feather `flag`
+  flag: Flag,
+  // mvi-price — Feather `dollar-sign`
+  price: DollarSign,
+  // mvi-chat — Feather `message-square`
+  chat: MessageSquare,
 };
 
 /**

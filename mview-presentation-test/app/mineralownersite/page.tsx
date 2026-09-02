@@ -106,14 +106,12 @@ export default function MineralOwnerDashboard() {
           </p>
         </div>
 
-        {/* v33 · M38 — the owner chip names WHICH record fills every page.
-            The switcher's popover needs the account's other claimed records to
-            switch between, so the control is inert here — but it wears the
-            reference's own label and ▾, because the caret is what tells a
-            reader this is a switcher at all. */}
-        <div className="flex" style={{ flexWrap: "wrap" }}>
-          <span className="owner-chip" style={{ position: "relative" }}>
-            Owner: {demoOwner.recordDisplay}{" "}
+        {/* v33 · M38 — the owner chip names WHICH record fills every page. The
+            switcher needs the other claimed records to switch between, so it is
+            labelled and inert until that module lands. */}
+        <div className="mv-row" style={{ flexWrap: "wrap" }}>
+          <span className="owner-chip">
+            Owner: {demoOwner.record}
             <span
               className="sw-btn"
               aria-disabled="true"

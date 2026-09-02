@@ -29,7 +29,7 @@ import {
 export function DashboardColumns() {
   return (
     <div
-      className="grid"
+      className="mv-grid"
       style={{ gridTemplateColumns: "1.35fr 1fr", gap: 18 }}
       id="dashcols"
     >
@@ -182,7 +182,7 @@ function LeaseAuditCard() {
         check stubs and we do the math.
       </p>
 
-      <div className="flex" style={{ flexWrap: "wrap" }}>
+      <div className="mv-row" style={{ flexWrap: "wrap" }}>
         <span
           className="btn btn-primary btn-sm"
           aria-disabled="true"

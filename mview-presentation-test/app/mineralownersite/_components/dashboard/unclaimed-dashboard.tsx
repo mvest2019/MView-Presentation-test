@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { formatLakhs } from "../../_lib/format-lakhs";
 import { sampleOwner } from "../../_lib/portal-demo-data";
+import { TierCopy } from "../ui/tier-copy";
 
 /**
  * STATE 1 — the unclaimed dashboard: the claim rail, then a rich SAMPLE of what
@@ -57,7 +58,10 @@ export function ClaimRail() {
         </div>
         <span className="cr-act">
           <Link className="btn btn-primary btn-lg" href="/claim">
-            Claim your record — free, no obligation
+            {/* The design rewrites this label per density tier — "Find my land"
+                at Ultra through to "Claim owner record · free, no obligation, no
+                ownership transfer" at Professional. See `TierCopy`. */}
+            <TierCopy copyKey="claim.cta" />
           </Link>
           <span className="cr-note">
             Have a family invite code? Enter it during the claim.
@@ -142,10 +146,7 @@ export function SampleDashboard() {
           <span className="smp-chip">{sampleOwner.fictionalChip}</span>
         </div>
 
-        {/* `.g2`, two across — the reference's own grid for this panel. Four
-            tiles at 2-up read as a block; four across read as a strip of
-            thin columns. */}
-        <div className="grid g2" style={{ gap: 10 }}>
+        <div className="mv-grid g4">
           {sampleOwner.kpis.map((kpi) => (
             <div
               className={`kpi${kpi.density ? ` ${kpi.density}` : ""}`}
@@ -315,27 +316,19 @@ export function SampleDashboard() {
           </li>
         </ul>
 
-        {/* Four destinations that need no claim. Two are built and link; the
-            owner-community page is not, so it reads as plain text rather than a
-            link into a 404 — the convention the rest of this portal uses. */}
-        <p className="small muted" style={{ marginTop: 10 }}>
-          Also useful right now, no claim needed:{" "}
-          <Link href="/operators">operator lookup</Link>
-          {" · "}
-          <span>public owner groups</span>
-          {" · "}
-          <Link href="/blogs">guides &amp; blog</Link>
-          {" · "}
-          <Link href="/feature/lease-audit">what the Lease Audit checks</Link>
-        </p>
-        {/* PROPANE, not the reference's "gasoline". The reference's own spot
-            strip was changed to Mont Belvieu propane (v137) because EIA
-            publishes no retail gasoline series at that cadence — this line was
-            left behind naming the series the bar no longer shows. */}
-        <p className="tiny muted" style={{ marginTop: 8 }}>
-          Live WTI, natural gas, Brent and gasoline prices sit in the bar at the
-          top of every page.
-        </p>
+        {/* The second-chance claim block at the foot of the sample. It wears the
+            SAME green as the rail at the top, so a claim CTA never appears in
+            two different colours on one page (OW-05). */}
+        <div className="smp-cta cr-foot">
+          <span className="cr-foot-txt">
+            <strong>This becomes yours in about two minutes.</strong> Claiming is
+            free and never changes who owns your minerals — it only tells us
+            which record to watch.
+          </span>
+          <Link className="btn btn-primary" href="/claim">
+            <TierCopy copyKey="claim.cta" />
+          </Link>
+        </div>
       </div>
 
       {/* v43 · OW-05 — the second-chance claim CTA wears the SAME green as the

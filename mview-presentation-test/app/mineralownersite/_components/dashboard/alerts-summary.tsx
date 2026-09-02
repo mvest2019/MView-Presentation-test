@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { alertSummary, demoOwner } from "../../_lib/portal-demo-data";
 
 /**
@@ -36,15 +38,14 @@ export function AlertsSummary() {
             context
           </span>
         </div>
-        {/* The reference's wording. The alerts inbox is not built, so it is
-            labelled rather than pointed at a 404. */}
-        <span
-          className="btn btn-ghost btn-sm"
-          aria-disabled="true"
-          style={{ opacity: 0.6, cursor: "default" }}
-        >
-          Open all {alertSummary.total} alerts →
-        </span>
+        {/* THE INBOX IS BUILT NOW, so this is a real link. It read "All 9
+            alerts — soon" while the Alerts module did not exist; the rollup's
+            whole purpose (OW-33) is that it "clicks into the detailed
+            section", so it was the first thing to wire when that section
+            landed. */}
+        <Link href="/mineralownersite/alerts" className="btn btn-ghost btn-sm">
+          All {alertSummary.total} alerts
+        </Link>
       </div>
 
       <div className="as-cats">
