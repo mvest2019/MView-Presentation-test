@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { formatLakhs } from "../../_lib/format-lakhs";
 import { sampleOwner } from "../../_lib/portal-demo-data";
+import { TierCopy } from "../ui/tier-copy";
 
 /**
  * STATE 1 — the unclaimed dashboard: the claim rail, then a rich SAMPLE of what
@@ -57,7 +58,10 @@ export function ClaimRail() {
         </div>
         <span className="cr-act">
           <Link className="btn btn-primary btn-lg" href="/claim">
-            Claim your record — free, no obligation
+            {/* The design rewrites this label per density tier — "Find my land"
+                at Ultra through to "Claim owner record · free, no obligation, no
+                ownership transfer" at Professional. See `TierCopy`. */}
+            <TierCopy copyKey="claim.cta" />
           </Link>
           <span className="cr-note">
             Have a family invite code? Enter it during the claim.
@@ -131,7 +135,7 @@ export function SampleDashboard() {
           {sampleOwner.counties} · 4 leases found automatically at claim
         </p>
 
-        <div className="grid g4">
+        <div className="mv-grid g4">
           {sampleOwner.kpis.map((kpi) => (
             <div className="kpi" style={{ boxShadow: "none" }} key={kpi.label}>
               <div className="k-label">{kpi.label}</div>
@@ -185,7 +189,7 @@ export function SampleDashboard() {
             which record to watch.
           </span>
           <Link className="btn btn-primary" href="/claim">
-            Claim your record — free
+            <TierCopy copyKey="claim.cta" />
           </Link>
         </div>
       </div>
