@@ -24,6 +24,7 @@ import {
 import { leaseRecords } from "../../_lib/lease-records";
 import { leaseReportPath } from "../../_lib/lease-routes";
 import type { LeaseReportRecord } from "../_lib/lease-report-types";
+import { NewWellProbabilityTile } from "./new-well-probability-tile";
 
 /**
  * THE TILES BELOW THE CHART — everything else this lease has to say.
@@ -54,6 +55,7 @@ export function LeaseBottomTiles({ report }: { report: LeaseReportRecord }) {
       {lease.name === "Smith Gas Unit" && <SisterUnitsTile report={report} />}
       <OwnerGroupTile report={report} />
       <AuditTile report={report} />
+      <NewWellProbabilityTile report={report} />
       <SpacingTile report={report} />
       <OperatorTile report={report} />
       <WorkbookTile />
@@ -77,11 +79,14 @@ export function LeaseBottomTiles({ report }: { report: LeaseReportRecord }) {
 function Tile({
   children,
   accent = false,
+  pendingData = false,
   gate,
   span = false,
 }: {
   children: React.ReactNode;
   accent?: boolean;
+  /** `.dbhook` — see `Card`. Three of these tiles are waiting on a feed. */
+  pendingData?: boolean;
   gate?: string;
   /**
    * Break out of the column flow and take the full width.
@@ -98,7 +103,12 @@ function Tile({
     <div
       className={`mb-[18px] break-inside-avoid ${span ? "[column-span:all]" : ""} ${gate ?? ""}`.trim()}
     >
-      <Card className={accent ? "border-mv-green" : undefined}>{children}</Card>
+      <Card
+        pendingData={pendingData}
+        className={accent ? "border-mv-green" : undefined}
+      >
+        {children}
+      </Card>
     </div>
   );
 }
@@ -402,7 +412,7 @@ function AuditTile({ report }: { report: LeaseReportRecord }) {
 
 function SpacingTile({ report }: { report: LeaseReportRecord }) {
   return (
-    <Tile gate={gates("hideInEssentials")}>
+    <Tile pendingData gate={gates("hideInEssentials")}>
       <CardHeader
         title={
           <h4 className="text-[15px] font-bold">
@@ -444,7 +454,7 @@ function SpacingTile({ report }: { report: LeaseReportRecord }) {
 
 function OperatorTile({ report }: { report: LeaseReportRecord }) {
   return (
-    <Tile gate={gates("hideInEssentials")}>
+    <Tile pendingData gate={gates("hideInEssentials")}>
       <CardHeader
         title={
           <h4 className="text-[15px] font-bold">
@@ -471,13 +481,18 @@ function OperatorTile({ report }: { report: LeaseReportRecord }) {
         />
       )}
       {/*
-        ⚠ THE DESIGN SAYS "Pays close to expected" HERE. That is an audit
-        FINDING, and no audit has been run on this record — the audit tile two
-        cards up is still offering to run the first one. Asserting a payment
-        verdict the product has not reached is the one thing this section must
-        not do, so the row states the actual position instead.
+        "Pays close to expected" is the design's own value, restored on request.
+        Worth knowing what it asserts: this is an AUDIT FINDING, and the audit
+        tile two cards up is still offering to run the first audit on this
+        record — so the product has not actually reached this verdict. It reads
+        as a result and is a placeholder. When the audit service wires, this row
+        should come from the audit, and until then it is the one figure on this
+        tile that is not "not available yet".
       */}
-      <StatRow label="Payment signal (from your audit)" value="No audit run yet" />
+      <StatRow
+        label="Payment signal (from your audit)"
+        value="Pays close to expected"
+      />
       <StatRow
         label={`Rank vs ${report.lease.county} Co. / ${report.reservoir.shortName} operators`}
         value="Not available yet"

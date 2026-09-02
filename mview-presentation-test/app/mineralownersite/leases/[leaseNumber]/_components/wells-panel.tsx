@@ -12,6 +12,9 @@ import {
 import { leaseRecords } from "../../_lib/lease-records";
 import type { LeaseReportRecord } from "../_lib/lease-report-types";
 import { WhatChangedCard } from "./what-changed-card";
+import { WellAllocationPanel } from "./well-allocation-panel";
+import { WellSurveyPanel } from "./well-survey-panel";
+import { smithWellSurvey } from "../_lib/well-survey-record";
 
 /**
  * THE WELLS REPORT — the wellbores that do this unit's work.
@@ -108,7 +111,7 @@ export function WellsPanel({ report }: { report: LeaseReportRecord }) {
         </div>
         <Badge tone={report.depth === "full" ? "mint" : "slate"} size="sm">
           {report.depth === "full"
-            ? "Real well record — WellGeoData"
+            ? "Real well record — Mineral View well records"
             : "Record fields only — no captured history"}
         </Badge>
       </div>
@@ -248,113 +251,23 @@ export function WellsPanel({ report }: { report: LeaseReportRecord }) {
           </div>
 
           {/*
-            "THE SHAPE OF THE WELL" — and why there is no line on the map.
-
-            This card exists to distinguish two things a reader would otherwise
-            conflate: a well whose path we have not drawn because it was never
-            surveyed, and a well whose path we do not know. Texas only requires a
-            directional survey where a well DEVIATES, so a vertical well of this
-            age usually has nothing on file — a gap in the public record, not in
-            our data. And the rule the card commits to is the important half: we
-            do not draw a line we have not measured.
-
-            It renders only where `surveyOnFile` is set. Undefined means we have
-            not established either way, which is not the same as saying no survey
-            exists.
+            THE SURVEY AND ALLOCATION PANELS — both four-tier, both about how far
+            their own figures can be trusted. They render only where the record
+            establishes the facts they turn on: `surveyOnFile` decides whether
+            there is a filed path to speak about at all, and `allocation` is the
+            engine's per-well split document. See each panel for its tiers.
           */}
           {well.surveyOnFile === false && (
-            <div className="mb-3.5 rounded-mv border border-mv-line border-l-4 border-l-mv-portal-gold bg-mv-card p-[22px] shadow-mv">
-              <CardHeader
-                title={
-                  <h4 className="text-[15px] font-bold">The shape of the well</h4>
-                }
-                action={
-                  <Badge tone="estimate" size="xs">
-                    No survey on file for this well
-                  </Badge>
-                }
-              />
-              <p className="mt-2 text-[13.5px]">
-                <span aria-hidden="true" className="mr-1">
-                  ⚠
-                </span>
-                <strong>
-                  No directional survey on file for Well {well.name}.
-                </strong>{" "}
-                This well was completed in <strong>{well.completedYear}</strong>{" "}
-                and drilled straight down. Texas only requires a directional
-                survey where a well deviates, so for a vertical well of this age
-                there is usually nothing filed —{" "}
-                <strong>
-                  this is a gap in the public record, not a gap in our data
-                </strong>
-                , and we do not draw a line we have not measured.
-              </p>
-              <p className="mt-2 text-[11px] text-mv-muted">
-                Where a survey does exist we plot the filed stations and say how
-                far the survey lands from the Railroad Commission&rsquo;s own
-                bottom-hole coordinate. A well we cannot verify is labelled, never
-                straightened into a plausible-looking path.
-              </p>
-            </div>
+            <WellSurveyPanel well={well} survey={smithWellSurvey} />
           )}
 
-          {/*
-            "THIS WELL'S SHARE" — the allocation, or the reason there isn't one.
-
-            On a multi-well lease the engine divides the lease's posted volumes
-            between wellbores, and that division is an estimate. On a ONE-well
-            lease it is not: the well's volumes ARE the lease's volumes, exactly.
-            Saying so is worth a card, because "nothing estimated in between" is a
-            stronger statement about this lease's figures than anything else on
-            the tab.
-          */}
           {report.allocation && (
-            <div className="mb-3.5 rounded-mv border border-mv-line bg-mv-card p-[22px] shadow-mv">
-              <CardHeader
-                title={
-                  <h4 className="text-[15px] font-bold">This well&rsquo;s share</h4>
-                }
-                action={
-                  <Badge tone="slate" size="xs">
-                    {single
-                      ? `${report.wells.length} well · nothing to allocate`
-                      : `${report.wells.length} wells · split shown`}
-                  </Badge>
-                }
-              />
-              <div className="mt-2 rounded-[9px] border border-mv-mint-line bg-mv-mint px-3.5 py-3">
-                <h3 className="mb-1 text-[17px] font-bold">
-                  {single
-                    ? "One well, so there is nothing to divide"
-                    : "How this lease's volumes divide between its wells"}
-                </h3>
-                <p className="text-[13.5px]">
-                  When a lease has several wells we have to work out how much of
-                  its production came from each one. This unit has a single well,
-                  so that question does not arise —{" "}
-                  <strong>
-                    Well {well.name}&rsquo;s volumes are the lease&rsquo;s volumes
-                  </strong>
-                  , exactly, with nothing estimated in between.
-                </p>
-                <p className="mt-2 text-[11px] text-mv-muted">
-                  On a lease with more wells you would see each well&rsquo;s share
-                  here, and how confident we are in it.
-                </p>
-              </div>
-              <p className="mt-2 text-[10px] text-mv-muted">
-                Source: decline-curve records.Well_allocation, read pre-computed
-                at build time.{" "}
-                <strong>
-                  Split last computed {report.allocation.splitComputed}
-                </strong>
-                , against a lease curve re-solved{" "}
-                <strong>{report.allocation.curveResolved}</strong> — a split is
-                only as current as the forecast under it, so both dates are
-                stated.
-              </p>
-            </div>
+            <WellAllocationPanel
+              well={well}
+              leaseNumber={lease.number}
+              allocation={report.allocation}
+              wellCount={report.wells.length}
+            />
           )}
 
         </div>

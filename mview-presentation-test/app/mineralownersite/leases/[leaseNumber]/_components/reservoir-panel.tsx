@@ -218,7 +218,11 @@ export function ReservoirPanel({ report }: { report: LeaseReportRecord }) {
         is most of what a reader wants from this panel. An empty bordered box
         would have answered neither question.
       */}
-      <div className="mb-4 overflow-hidden rounded-mv border border-mv-line bg-mv-card shadow-mv">
+      {/* `.dbhook` — the extent outline is not read from the database yet, and
+          the design marks that on the surface rather than in a footnote. See
+          `Card`'s `pendingData`; this card hand-rolls its shell because the map
+          is full-bleed under a padded header. */}
+      <div className="mb-4 overflow-hidden rounded-mv border-[1.5px] border-dashed border-mv-pending bg-[linear-gradient(180deg,var(--color-mv-pending-top),var(--color-mv-pending-bottom))] shadow-mv">
         <div className="p-[22px] pb-0">
           <CardHeader
             title={
