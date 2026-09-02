@@ -520,14 +520,15 @@ export function WellsTable({
     {
       stream: "oil" as const,
       label: "Producing oil",
-      unit: "bbl",
+      /* As the column heading and the record write it. */
+      unit: "BBL",
       min: appliedProduction.oilMin,
       max: appliedProduction.oilMax,
     },
     {
       stream: "gas" as const,
       label: "Producing gas",
-      unit: "mcf",
+      unit: "MCF",
       min: appliedProduction.gasMin,
       max: appliedProduction.gasMax,
     },

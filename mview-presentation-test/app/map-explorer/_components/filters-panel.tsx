@@ -754,10 +754,16 @@ export function FiltersPanel({
               /* Leases only: an operator's id is an internal number and a
                  county has none, so neither is worth showing. The service
                  sends several keys comma-separated where one name covers more
-                 than one lease. */
+                 than one lease, each as district-and-number — the district is
+                 dropped here, leaving the lease numbers that tell the two
+                 apart. */
               note:
                 result.type === "lease" && result.id
-                  ? result.id.split(",").map((key) => key.trim()).join(", ")
+                  ? result.id
+                      .split(",")
+                      .map((key) => key.trim().replace(/^\d{2}-/, ""))
+                      .filter(Boolean)
+                      .join(", ")
                   : undefined,
             })),
           );
