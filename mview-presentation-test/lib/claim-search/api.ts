@@ -39,6 +39,9 @@ function mapOwner(o: BackendOwner): ScoredOwner {
     county: o.county,
     s: o.score ?? 1,
     leaseValues: o.leaseValues ?? undefined,
+    leaseNumbers: o.leaseNumbers ?? undefined,
+    operators: o.operators ?? undefined,
+    interestValues: o.interestValues ?? undefined,
     workingInterest: o.workingInterest,
   };
 }
@@ -112,8 +115,7 @@ export async function fetchSameName(
     items: (data.records ?? []).map((rec) => {
       const o = mapOwner(rec);
       return {
-        r: o.r,
-        county: o.county,
+        ...o,
         key: `${o.county}|${despace(rec.name)}|${despace(rec.address ?? "")}`,
       };
     }),

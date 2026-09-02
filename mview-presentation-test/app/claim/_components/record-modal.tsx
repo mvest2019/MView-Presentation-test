@@ -11,6 +11,12 @@ export interface ModalItem {
   r: OwnerRow;
   county: string;
   key: string;
+  /** The API's per-lease arrays, carried so a confirmed record keeps them. */
+  leaseValues?: number[];
+  leaseNumbers?: string[];
+  operators?: string[];
+  interestValues?: number[];
+  workingInterest?: boolean;
 }
 
 export interface ModalState {
