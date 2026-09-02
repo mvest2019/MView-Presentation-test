@@ -5,10 +5,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowDown,
   Building2,
+  Check,
+  Copy,
   FileText,
   Flame,
+  Globe,
   Info,
   Layers,
+  LocateFixed,
+  Map,
   MapPin,
   Ruler,
   ScrollText,
@@ -24,14 +29,9 @@ import {
   type MapWellSummary,
 } from "@/lib/map-api";
 
-import {
-  declineRows,
-  depletionBars,
-  eurBars,
-} from "./well-insights-fields";
-import {
-  WELLBORE,
-} from "./well-insights-data";
+import { copyText } from "./copy-text";
+import { declineRows, depletionBars, eurBars } from "./well-insights-fields";
+import { WELLBORE } from "./well-insights-data";
 import { PermitSummary } from "./permit-summary";
 import { AiSummary } from "./ai-summary";
 import { downloadSummaryPdf } from "./download-summary";
@@ -78,7 +78,6 @@ const ACTIVITY_LABELS = [
   "Completion Date",
   "Last Production",
 ];
-const LOCATION_LABELS = ["Latitude", "Longitude"];
 const DEPTH_LABELS = [
   "Start Depth",
   "True Vertical",
@@ -134,7 +133,30 @@ export type SelectedWell = {
   record?: string;
 };
 
-export function WellInsightsPanel({ well }: { well: SelectedWell }) {
+/**
+ * What to put in front of the reader when a request fails.
+ *
+ * Never the thrown message on its own: a dropped connection or a gateway that
+ * gave up arrives as "TypeError: Failed to fetch", which tells somebody
+ * looking at an empty record nothing they can do anything about. The service
+ * failing is one thing to say, however it failed.
+ */
+function readable(failure: unknown, fallback: string): string {
+  const message = failure instanceof Error ? failure.message : "";
+  if (!message || /failed to fetch|networkerror|502|timeout/i.test(message)) {
+    return fallback;
+  }
+  return message;
+}
+
+export function WellInsightsPanel({
+  well,
+  onClose,
+}: {
+  well: SelectedWell;
+  /** Closes the record and hands the panel back to "Pick a well". */
+  onClose?: () => void;
+}) {
   /*
    * Which filing is on screen — the well's own, not a choice.
    *
@@ -258,9 +280,10 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
         if (cancelled) return;
         setSummary(null);
         setError(
-          failure instanceof Error
-            ? failure.message
-            : "Could not load this well's summary.",
+          readable(
+            failure,
+            "Could not load this well — the service did not answer. Try again in a moment.",
+          ),
         );
       });
 
@@ -283,9 +306,7 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
         if (cancelled) return;
         setLoaded(null);
         setInsightsError(
-          failure instanceof Error
-            ? failure.message
-            : "Could not load insights for this well.",
+          readable(failure, "Could not load insights for this well."),
         );
       });
 
@@ -309,9 +330,7 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
         if (cancelled) return;
         setProduction([]);
         setProductionError(
-          failure instanceof Error
-            ? failure.message
-            : "Could not load production for this well.",
+          readable(failure, "Could not load production for this well."),
         );
       });
 
@@ -335,6 +354,7 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
       <WellSummaryHeader
         record={record}
         loadedAt={loadedAt}
+        onClose={onClose}
         completionExport={{
           /* Nothing to capture until the record is on the page. */
           ready: fields !== null,
@@ -378,56 +398,89 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
             <div
               ref={completionRef}
               aria-busy={loading}
-              className={
+              /*
+               * The sheet is its own container.
+               *
+               * Everything below lays out against this width rather than the
+               * window's. The panel is a share of a split view, so the two
+               * have never been the same — and the PDF made that plain: the
+               * capture stages this markup 1280px wide, but `xl:` still asked
+               * the window, so exporting from a tablet produced a column of
+               * cards down the middle of a wide sheet with the page breaks
+               * falling wherever they liked.
+               */
+              className={`@container ${
                 loading ? "pointer-events-none select-none blur-[2px]" : ""
-              }
+              }`}
             >
               {/* ---------------- identity strip ----------------
           A pale mint band rather than a white card: enough to read as the
           header the rest of the page hangs off, without going dark on a light
-          layout. */}
-              <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-4 rounded-xl border border-[#cfe8da] bg-gradient-to-r from-[#eaf7ef] via-[#f2fbf5] to-[#e6f5ec] px-4 py-[14px]">
-                <span className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-full border border-[#bfe0cd] bg-white">
-                  <Flame
-                    size={19}
-                    strokeWidth={1.75}
-                    className="text-mv-green-deep"
-                    aria-hidden="true"
-                  />
-                </span>
+          layout.
 
-                {/* The record's own identity, with what the map knew standing in
-                until it arrives. */}
-                <HeaderFact
-                  label="Well Number"
-                  value={fields?.header.wellNumber ?? well.well ?? "—"}
-                />
-                <HeaderFact label="API Number" value={well.api} mono />
-                <HeaderFact
-                  label="County"
-                  value={titleCase(fields?.header.county ?? well.county)}
-                />
-                <HeaderFact
-                  label="Well Status"
-                  value={fields?.header.status ?? well.status ?? "—"}
-                  tone="green"
-                />
+          A container, so the facts answer to the band's own width. This panel
+          is a share of a split view -- the same window holds it at half the
+          width with the table open -- and it used to be a wrapping flex row,
+          which drops the chip onto a line of its own and leaves the rest of
+          that line empty rather than narrowing the four facts. */}
+              <div className="@container mt-3 rounded-xl border border-[#cfe8da] bg-gradient-to-r from-[#eaf7ef] via-[#f2fbf5] to-[#e6f5ec] px-4 py-[14px]">
+                <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:gap-5">
+                  <div className="flex min-w-0 flex-1 items-center gap-4">
+                    <span className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-full border border-[#bfe0cd] bg-white">
+                      <Flame
+                        size={19}
+                        strokeWidth={1.75}
+                        className="text-mv-green-deep"
+                        aria-hidden="true"
+                      />
+                    </span>
 
-                <div className="ml-auto flex items-center gap-[10px] rounded-lg border border-[#cfe8da] bg-white px-[14px] py-[8px]">
-                  <TrendingUp
-                    size={18}
-                    strokeWidth={1.75}
-                    className="text-mv-green-deep"
-                    aria-hidden="true"
-                  />
-                  <span>
-                    <span className="block text-[10.5px] leading-tight text-mv-muted">
-                      Performance
+                    {/* The record's own identity, with what the map knew
+                    standing in until it arrives. Four across where four fit,
+                    two by two where they do not: a grid rather than a row, so
+                    the narrow case is still columns that line up.
+
+                    790px is measured, not a guess: four values of the widest
+                    kind this band holds -- a full API number, "No Production" --
+                    with their rules, the icon and the chip, need a little under
+                    that much. Narrower, they would be truncated rather than
+                    laid out, so they take two rows instead. The figure is the
+                    band's content box, which is what a container query
+                    measures: the padding either side is not part of it. */}
+                    <div className="grid min-w-0 flex-1 grid-cols-2 gap-x-5 gap-y-3 @min-[790px]:grid-cols-4">
+                      <HeaderFact
+                        label="Well Number"
+                        value={fields?.header.wellNumber ?? well.well ?? "—"}
+                      />
+                      <HeaderFact label="API Number" value={well.api} mono />
+                      <HeaderFact
+                        label="County"
+                        value={titleCase(fields?.header.county ?? well.county)}
+                      />
+                      <HeaderFact
+                        label="Well Status"
+                        value={fields?.header.status ?? well.status ?? "—"}
+                        tone="green"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-[10px] rounded-lg border border-[#cfe8da] bg-white px-[14px] py-[8px]">
+                    <TrendingUp
+                      size={18}
+                      strokeWidth={1.75}
+                      className="text-mv-green-deep"
+                      aria-hidden="true"
+                    />
+                    <span>
+                      <span className="block text-[10.5px] leading-tight text-mv-muted">
+                        Performance
+                      </span>
+                      <span className="block text-[14px] font-bold leading-tight text-mv-green-deep">
+                        {fields?.header.performance ?? "—"}
+                      </span>
                     </span>
-                    <span className="block text-[14px] font-bold leading-tight text-mv-green-deep">
-                      {fields?.header.performance ?? "—"}
-                    </span>
-                  </span>
+                  </div>
                 </div>
               </div>
 
@@ -435,13 +488,26 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
           One card, ruled into six, rather than six cards: they are one row of
           readings about one well, and separate cards said they were separate
           things. `gap-px` over a line-coloured ground is the rule — each cell
-          keeps its white fill and the 1px seams read as dividers, including
-          where the grid wraps. */}
-              <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-mv-line bg-mv-line md:grid-cols-3 xl:grid-cols-6">
+          keeps its white fill and the 1px seams read as dividers.
+
+          A row that scrolls, not a grid that reflows. The column count used to
+          come from the window — `xl:grid-cols-6` at a 1280px viewport, whether
+          this panel was 900 wide or 600 — and at the narrow end that left each
+          figure about a hundred pixels, which is "Last Month …" six times
+          over. The floor is 140px: "Next Month Est Gas", the longest label
+          here, measures 106 and the padding either side is 28. A floor rather
+          than a width, so a figure longer than the label takes the room it
+          needs instead of overrunning the seam, and `grow` so that where there
+          is room the six share it and nothing scrolls at all.
+
+          `overflow-y-hidden` on purpose: a lone `overflow-x-auto` makes the
+          other axis `auto` too, and a stray pixel of height would put a second
+          bar down the side of the strip. */}
+              <div className="mv-thin-scroll mt-3 flex gap-px overflow-x-auto overflow-y-hidden rounded-xl border border-mv-line bg-mv-line">
                 {(fields?.metrics ?? WELL_METRICS_LOADING).map((metric) => (
                   <div
                     key={metric.label}
-                    className="bg-white px-[14px] py-[12px]"
+                    className="min-w-[140px] shrink-0 grow bg-white px-[14px] py-[12px]"
                   >
                     <span className="block truncate text-[11px] leading-tight text-mv-slate">
                       {metric.label}
@@ -461,7 +527,7 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
               </div>
 
               {/* ---------------- well · lease · operator ---------------- */}
-              <div className="mt-3 grid gap-3 xl:grid-cols-3">
+              <div className="mt-3 grid gap-3 @2xl:grid-cols-2 @4xl:grid-cols-3">
                 <Card icon={Info} title="Well Information">
                   <Rows
                     rows={fields?.wellInformation ?? blank(WELL_INFO_LABELS)}
@@ -478,6 +544,10 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
                   icon={Layers}
                   title="Wellbore"
                   badge={fields?.wellboreKind ?? WELLBORE.kind}
+                  /* Two columns is an odd number of cards short: at tablet
+                     width this one is the third of three, so it takes the row
+                     under the other two rather than half of one. */
+                  className="@2xl:col-span-2 @4xl:col-span-1"
                 >
                   {/* Drawn to the record's own profile: a vertical hole is not
                   illustrated with a mile of lateral. */}
@@ -491,7 +561,7 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
               </div>
 
               {/* ---------------- activity · location · wellbore ---------------- */}
-              <div className="mt-3 grid gap-3 xl:grid-cols-3">
+              <div className="mt-3 grid gap-3 @2xl:grid-cols-2 @4xl:grid-cols-3">
                 <Card
                   icon={FileText}
                   title="Latest Well Activity and Production"
@@ -501,20 +571,50 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
                   <Rows rows={fields?.activity ?? blank(ACTIVITY_LABELS)} />
                 </Card>
 
-                <Card icon={MapPin} title="Location">
-                  {/* The tile and the coordinates side by side: a pinned map says
-              "where" faster than four numbers do. */}
-                  <div className="mt-3 flex items-stretch gap-4">
-                    <LocationMark />
-                    <Rows
-                      rows={fields?.location ?? blank(LOCATION_LABELS)}
-                      airy
-                      className="mt-0 min-w-0 flex-1 self-center"
-                    />
+                <Card
+                  icon={MapPin}
+                  title="Location"
+                  aside="Well latitude & longitude"
+                >
+                  {/* The readings alone. The tile was a drawing rather than a
+                      map of anywhere — the streets were the same on every well
+                      — and the chip over it named what the four rows below
+                      already say. */}
+                  <div className="min-w-0">
+                    <dl className="mt-2">
+                      <PlaceRow
+                        icon={Globe}
+                        label="Latitude"
+                        value={locationRow(fields?.location, "Latitude")}
+                        copy
+                      />
+                      <PlaceRow
+                        icon={Globe}
+                        label="Longitude"
+                        value={locationRow(fields?.location, "Longitude")}
+                        copy
+                      />
+                      <PlaceRow
+                        icon={LocateFixed}
+                        label="Coordinate system"
+                        value={locationRow(fields?.place, "Coordinate system")}
+                      />
+                      <PlaceRow
+                        icon={Map}
+                        label="Location"
+                        value={locationRow(fields?.place, "Location")}
+                      />
+                    </dl>
                   </div>
                 </Card>
 
-                <div className="flex flex-col gap-3">
+                <div
+                  /* One under the other in the third column where there are
+                     three, and side by side across the row at the width where
+                     there are two — stacked full width they were two short
+                     cards with a page of empty line beside each. */
+                  className="grid gap-3 @2xl:col-span-2 @2xl:grid-cols-2 @4xl:col-span-1 @4xl:grid-cols-1"
+                >
                   <Card icon={Building2} title="Operator Info">
                     <div className="mt-[10px] flex items-baseline justify-between gap-3 text-[12px]">
                       <span className="shrink-0 text-mv-muted">Operator</span>
@@ -541,7 +641,10 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
                      them. */
                   historyThrough={summary?.dates?.lastProduction ?? null}
                   loading={production === null && productionError === null}
-                  error={productionError}
+                  /* Silent when the record itself failed: one outage, one
+                     message at the top, rather than the same news repeated
+                     down the page. */
+                  error={error ? null : productionError}
                 />
               </div>
 
@@ -549,19 +652,26 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
           Two across, then the cohort table on its own row: at a third of the
           width its five bars had no room to differ, and the difference between
           them is the whole point of that card. */}
-              <div className="mt-3 grid gap-3 xl:grid-cols-2">
+              <div className="mt-3 grid gap-3 @2xl:grid-cols-2">
                 <Card
                   title="Decline Diagnostics"
                   aside="What the rate curve anchors reveal"
                   className="flex flex-col"
                 >
-                  {/* Two columns of seven, not one of fourteen: on one column this card
-              ran to twice the height of the one beside it, and the pair read as
-              a long list with a chart stranded at the top right.
+                  {/* One column, and it scrolls.
 
-              `auto-rows-fr` lets the rows share whatever height the taller card
-              sets, so the two finish level. */}
-                  <dl className="mt-2 grid flex-1 auto-rows-fr gap-x-6 sm:grid-cols-2">
+              Two columns were bought with the labels: at half the width every
+              one of the fourteen was cut to "Last Month ...", which is the
+              same four words over and over with the word that tells them
+              apart dropped. Down one column they are readable in full.
+
+              The height that cost is taken back by scrolling. `flex-1` with
+              `min-h-0` lets the list take whatever the row gives it beside the
+              chart and no more -- without `min-h-0` a flex child refuses to
+              shrink below its content and would push the card taller instead
+              of scrolling. The cap is for the stacked case, where there is no
+              chart alongside to set a height. */}
+                  <dl className="mv-thin-scroll mt-2 max-h-[300px] min-h-0 flex-1 overflow-y-auto pr-[6px]">
                     {(insights
                       ? declineRows(insights)
                       : DECLINE_LABELS.map(DECLINE_LOADING)
@@ -619,30 +729,53 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
                 >
                   {/* The chart takes the slack and the note sits on the floor of the
               card, rather than both bunching at the top with a gap below. */}
-                  <div className="mt-4 flex min-h-[168px] flex-1 items-end gap-3">
+                  {/* `items-stretch`, so each column is as tall as the box and
+                      the bars can be drawn as a share of it. */}
+                  <div className="mt-4 flex min-h-[168px] flex-1 gap-3">
                     {depletionBars(insights).map((bar, index) => (
                       <div
                         key={bar.label}
                         className="flex flex-1 flex-col items-center"
                       >
-                        <span
-                          className={`mb-[6px] text-[11px] font-bold tabular-nums ${
-                            bar.isOwn ? "text-mv-green-deep" : "text-mv-ink"
-                          }`}
-                        >
-                          {bar.display}
-                        </span>
-                        <div
-                          /* Against the tallest bar rather than a fixed axis:
-                             these are medians whose range changes with the
-                             county, and a fixed ceiling flattened most of
-                             them into five near-identical columns. */
-                          className="w-full rounded-t-md"
-                          style={{
-                            height: `${Math.max(24, bar.share * 120)}px`,
-                            background: BAR_COLOURS[index % BAR_COLOURS.length],
-                          }}
-                        />
+                        {/* The plot: the bar rises from the floor of this box
+                            and its figure rides on top. Both are placed
+                            against the box rather than laid out in order,
+                            which is what lets a percentage height mean
+                            anything. */}
+                        <div className="relative w-full flex-1">
+                          <span
+                            style={{
+                              bottom: `calc(${Math.max(12, bar.share * 84)}% + 5px)`,
+                            }}
+                            className={`absolute inset-x-0 text-center text-[11px] font-bold leading-none tabular-nums ${
+                              bar.isOwn ? "text-mv-green-deep" : "text-mv-ink"
+                            }`}
+                          >
+                            {bar.display}
+                          </span>
+
+                          <div
+                            /* Against the tallest bar rather than a fixed
+                               axis: these are medians whose range changes
+                               with the county, and a fixed ceiling flattened
+                               most of them into five near-identical columns.
+
+                               A share of the box, not a pixel height: the
+                               card is as tall as the list beside it, which is
+                               taller than any ceiling worth hard-coding, and
+                               bars that ignored that sat in the bottom third
+                               of an otherwise empty card. 84% leaves the
+                               figure above the tallest one somewhere to
+                               go. */
+                            className="absolute inset-x-0 bottom-0 rounded-t-md"
+                            style={{
+                              height: `${Math.max(12, bar.share * 84)}%`,
+                              background:
+                                BAR_COLOURS[index % BAR_COLOURS.length],
+                            }}
+                          />
+                        </div>
+
                         <span
                           className={`mt-[6px] text-[9.5px] ${
                             bar.isOwn
@@ -672,7 +805,7 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
                     </Note>
                   ))}
 
-                  {insightsError && (
+                  {insightsError && !error && (
                     <Note tone="red" icon={ArrowDown}>
                       {insightsError}
                     </Note>
@@ -690,8 +823,12 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
           chart takes the whole width rather than sitting beside an empty box.
         */}
                 <div
-                  className={`grid gap-4 rounded-xl border border-mv-line bg-white p-4 xl:col-span-2 xl:gap-6 ${
-                    cohortNotes.length > 0 ? "xl:grid-cols-2" : ""
+                  /* The width of the row, at every size the row has more
+                     than one column: it is a chart with a reading beside it,
+                     and half a column left it a stack of bars with a page of
+                     nothing next to them. */
+                  className={`grid gap-4 rounded-xl border border-mv-line bg-white p-4 @2xl:col-span-2 @4xl:gap-6 ${
+                    cohortNotes.length > 0 ? "@4xl:grid-cols-2" : ""
                   }`}
                 >
                   <div className="min-w-0">
@@ -745,6 +882,9 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
                           tone={finding.tone === "warn" ? "red" : "blue"}
                           icon={finding.tone === "warn" ? ArrowDown : Info}
                           flush
+                          /* Half the card's width, so two lines came to a
+                             clause and a Read more. */
+                          lines={3}
                         >
                           <span className="font-semibold">
                             {finding.title}.
@@ -825,10 +965,31 @@ export function WellInsightsPanel({ well }: { well: SelectedWell }) {
  */
 const BAR_COLOURS = ["#c9e6d5", "#aedcc0", "#8fd0a8", "#6cc48d", "#4cbe74"];
 
+/*
+ * `fade` is the card's own fill, repeated as a value rather than a class: the
+ * Read more link is laid over the end of a clamped line and needs the tint
+ * behind it as a gradient stop, which is not something a background class can
+ * be asked for.
+ */
 const TONES = {
-  green: { card: "border-[#bfe3cc] bg-[#f2faf5]", dot: "bg-mv-green-deep" },
-  red: { card: "border-[#f6c9c6] bg-[#fdf3f2]", dot: "bg-mv-red" },
-  blue: { card: "border-[#c7d7f2] bg-[#f3f7fd]", dot: "bg-mv-blue" },
+  green: {
+    card: "border-[#bfe3cc] bg-[#f2faf5]",
+    dot: "bg-mv-green-deep",
+    fade: "#f2faf5",
+    link: "text-mv-green-deep",
+  },
+  red: {
+    card: "border-[#f6c9c6] bg-[#fdf3f2]",
+    dot: "bg-mv-red",
+    fade: "#fdf3f2",
+    link: "text-mv-red",
+  },
+  blue: {
+    card: "border-[#c7d7f2] bg-[#f3f7fd]",
+    dot: "bg-mv-blue",
+    fade: "#f3f7fd",
+    link: "text-mv-blue",
+  },
 };
 
 function HeaderFact({
@@ -843,7 +1004,7 @@ function HeaderFact({
   tone?: "green";
 }) {
   return (
-    <div className="min-w-0 border-l border-[#cfe8da] pl-4 first-of-type:border-0 first-of-type:pl-0">
+    <div className="min-w-0 @min-[790px]:border-l @min-[790px]:border-[#cfe8da] @min-[790px]:pl-4 @min-[790px]:first-of-type:border-0 @min-[790px]:first-of-type:pl-0">
       <div className="text-[10.5px] leading-tight text-mv-muted">{label}</div>
       <div
         className={`mt-[3px] truncate text-[16px] font-bold leading-tight ${
@@ -913,6 +1074,12 @@ function Card({
 }) {
   return (
     <div
+      /* A page of the PDF may end at the foot of any card. Marked rather than
+         guessed at by depth: the capture used to measure two levels of the
+         panel's own markup, and on a narrow screen the cards sit one level
+         further in — so the production chart offered no edge to break at and
+         the page was cut through the middle of it. */
+      data-page-block=""
       className={`rounded-xl border border-mv-line bg-white p-4 ${className}`}
     >
       <Heading icon={icon} title={title} aside={aside} badge={badge} />
@@ -948,7 +1115,12 @@ function Rows({
           }`}
         >
           <dt className="shrink-0 text-mv-muted">{row.label}</dt>
-          <dd className="truncate text-right font-semibold text-mv-ink">
+          {/* `title` for the ones that do not fit: these are records, and a
+              value cut to "GOLDSMIT…" is not one. */}
+          <dd
+            title={row.value}
+            className="truncate text-right font-semibold text-mv-ink"
+          >
             {row.value}
           </dd>
         </div>
@@ -957,67 +1129,79 @@ function Rows({
   );
 }
 
-/**
- * A map tile with the well pinned on it.
- *
- * Not a real map — the coordinates are static and one tile request per card is
- * not worth the trouble. Faint streets on a pale ground are enough to read as
- * "somewhere", and the pin is what the eye is meant to land on.
- */
-function LocationMark() {
+/** One reading about the point: its mark, its name, its value. */
+function PlaceRow({
+  icon: Icon,
+  label,
+  value,
+  copy,
+}: {
+  icon: typeof Info;
+  label: string;
+  value: string;
+  /** The two coordinates carry it; the two names below them do not. */
+  copy?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+
   return (
-    <div className="relative min-h-[126px] w-[104px] shrink-0 self-stretch overflow-hidden rounded-xl border border-mv-line bg-[#eef3f0]">
-      <svg
-        viewBox="0 0 104 130"
-        preserveAspectRatio="xMidYMid slice"
-        className="absolute inset-0 h-full w-full"
+    <div className="flex items-center gap-3 border-b border-mv-line-soft py-[9px] last:border-b-0">
+      <span
         aria-hidden="true"
+        className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg bg-mv-mint text-mv-green-deep"
       >
-        {/* Blocks first, then the roads over them, as a street map draws. */}
-        <g fill="#e7eee9">
-          <rect x="6" y="8" width="26" height="20" rx="3" />
-          <rect x="52" y="16" width="30" height="16" rx="3" />
-          <rect x="14" y="52" width="22" height="26" rx="3" />
-          <rect x="62" y="58" width="28" height="22" rx="3" />
-          <rect x="10" y="98" width="34" height="18" rx="3" />
-        </g>
-
-        <g fill="none" stroke="#dfe8e2" strokeLinecap="round">
-          <path d="M-8 40 L112 28" strokeWidth="7" />
-          <path d="M-8 92 L112 84" strokeWidth="7" />
-          <path d="M40 -8 L32 138" strokeWidth="7" />
-          <path d="M84 -8 L94 138" strokeWidth="6" />
-          <path d="M-8 66 L112 60" strokeWidth="3" />
-          <path d="M14 -8 L8 138" strokeWidth="3" />
-        </g>
-
-        {/* A watercourse, for something that is not a straight line. */}
-        <path
-          d="M-8 122 C 24 108, 46 132, 70 114 S 96 100, 112 106"
-          fill="none"
-          stroke="#dce9ef"
-          strokeWidth="6"
-          strokeLinecap="round"
-        />
-      </svg>
-
-      {/* The pin, centred: a green disc with the marker cut out of it. */}
-      <span className="absolute left-1/2 top-1/2 grid h-[38px] w-[38px] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-[3px] border-white bg-mv-green-deep shadow-mv">
-        <MapPin
-          size={18}
-          strokeWidth={2}
-          className="text-white"
-          aria-hidden="true"
-        />
+        <Icon size={14} strokeWidth={2} />
       </span>
+
+      <span className="min-w-0 flex-1">
+        <dt className="text-[10.5px] leading-none text-mv-muted">{label}</dt>
+        <dd
+          title={value}
+          className="mt-[5px] truncate text-[12.5px] font-bold leading-none text-mv-ink"
+        >
+          {value}
+        </dd>
+      </span>
+
+      {copy && (
+        <button
+          type="button"
+          data-screen-only=""
+          onClick={() => {
+            void copyText(value).then((done) => {
+              if (!done) return;
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1600);
+            });
+          }}
+          aria-label={`Copy the ${label.toLowerCase()}`}
+          title={copied ? "Copied" : "Copy"}
+          className="grid h-[26px] w-[26px] shrink-0 cursor-pointer place-items-center rounded-lg border border-mv-line text-mv-muted hover:border-mv-green-deep hover:text-mv-green-deep"
+        >
+          {copied ? (
+            <Check size={13} strokeWidth={2.5} aria-hidden="true" />
+          ) : (
+            <Copy size={13} strokeWidth={2} aria-hidden="true" />
+          )}
+        </button>
+      )}
     </div>
   );
+}
+
+/** The value the fields builder put under one label, or an em dash. */
+function locationRow(
+  rows: { label: string; value: string }[] | undefined,
+  label: string,
+): string {
+  return rows?.find((row) => row.label === label)?.value ?? "—";
 }
 
 function Note({
   tone,
   icon: Icon,
   flush,
+  lines = 2,
   children,
 }: {
   tone: "red" | "blue";
@@ -1025,9 +1209,48 @@ function Note({
   icon?: typeof Info;
   /** Drop the top margin, for notes a parent already spaces. */
   flush?: boolean;
+  /**
+   * How much shows before Read more.
+   *
+   * Two lines across the width of a card is a sentence and a half. In a half
+   * width column it is a clause, so the notes beside the cohort bars ask for
+   * three. Written out rather than built from the number: the class has to be
+   * there in full for the stylesheet to hold it.
+   */
+  lines?: 2 | 3;
   children: React.ReactNode;
 }) {
   const look = tone === "red" ? TONES.red : TONES.blue;
+
+  const [open, setOpen] = useState(false);
+  const [long, setLong] = useState(false);
+  const textRef = useRef<HTMLParagraphElement>(null);
+
+  /*
+   * Whether there is a third line to open.
+   *
+   * Measured, not guessed: a Read more on a note that already fits opens
+   * nothing, and there is no telling from the text how many lines it will
+   * take at whatever width this panel happens to be. A ResizeObserver rather
+   * than a one-off read because that width changes -- the panel is a share of
+   * a split view -- and because it reports on its own schedule rather than
+   * during the effect, which is where React's compiler wants no setState.
+   *
+   * `children` is in the deps so a different note in the same slot is
+   * re-measured; opened, there is nothing to measure, since the clamp that
+   * would overflow has been taken off.
+   */
+  useEffect(() => {
+    const node = textRef.current;
+    if (!node || open) return;
+
+    const observer = new ResizeObserver(() => {
+      setLong(node.scrollHeight > node.clientHeight + 1);
+    });
+    observer.observe(node);
+
+    return () => observer.disconnect();
+  }, [open, children]);
 
   return (
     <div
@@ -1048,7 +1271,48 @@ function Note({
           className={`mt-[3px] h-[8px] w-[8px] shrink-0 rounded-full ${look.dot}`}
         />
       )}
-      <p className="text-[11px] leading-[1.55] text-mv-slate">{children}</p>
+      <div className="relative min-w-0 flex-1">
+        <p
+          ref={textRef}
+          className={`text-[11px] leading-[1.55] text-mv-slate ${
+            open ? "" : lines === 3 ? "line-clamp-3" : "line-clamp-2"
+          }`}
+        >
+          {children}
+        </p>
+
+        {long && !open && (
+          /* On the second line, not under the block: the note is two lines
+             tall either way, and a link on a third line would cost the height
+             the clamp was there to save. The gradient is what lets it sit
+             there -- the clipped words fade into the card's own tint rather
+             than running into the word "Read". */
+          <button
+            type="button"
+            data-screen-only=""
+            aria-expanded={false}
+            onClick={() => setOpen(true)}
+            style={{
+              backgroundImage: `linear-gradient(to right, transparent, ${look.fade} 22px)`,
+            }}
+            className={`absolute bottom-0 right-0 cursor-pointer pl-[30px] text-[11px] font-semibold leading-[1.55] hover:underline ${look.link}`}
+          >
+            Read more
+          </button>
+        )}
+
+        {open && (
+          <button
+            type="button"
+            data-screen-only=""
+            aria-expanded={true}
+            onClick={() => setOpen(false)}
+            className={`mt-[3px] cursor-pointer text-[11px] font-semibold hover:underline ${look.link}`}
+          >
+            Show less
+          </button>
+        )}
+      </div>
     </div>
   );
 }

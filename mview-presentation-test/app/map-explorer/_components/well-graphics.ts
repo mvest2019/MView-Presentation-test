@@ -96,6 +96,29 @@ function borePath(well: MapWell): [number, number][] | null {
   return moves ? path : null;
 }
 
+/**
+ * Where a well is marked on the map.
+ *
+ * The bottom of the bore where there is one, the single location where there
+ * is not — the same point `buildWellGraphics` draws the symbol at. Anything
+ * pointing at a well has to use this: on a two-mile lateral the surface hole
+ * is nowhere near the icon somebody clicked.
+ */
+export function wellMarkPoint(well: MapWell): [number, number] {
+  const path = borePath(well);
+  return path ? path[path.length - 1] : [well.lon, well.lat];
+}
+
+/**
+ * Where the well was drilled from — the top of the bore, or its only location
+ * where there is no bore. Where the small collar symbol goes; the well's own
+ * status symbol, and the ring that marks it, sit at the other end.
+ */
+export function wellSurfacePoint(well: MapWell): [number, number] {
+  const path = borePath(well);
+  return path ? path[0] : [well.lon, well.lat];
+}
+
 export function buildWellGraphics(
   Graphic: GraphicCtor,
   wells: MapWell[],
@@ -120,9 +143,7 @@ export function buildWellGraphics(
     const path = borePath(well);
     // The well's own symbol goes at the bottom hole when there is a bore, and
     // at its only location when there is not.
-    const [markLon, markLat] = path
-      ? path[path.length - 1]
-      : [well.lon, well.lat];
+    const [markLon, markLat] = wellMarkPoint(well);
     const attributes = {
       ...identity,
       // Where the symbol was actually drawn: the ring on a clicked well and
@@ -156,7 +177,7 @@ export function buildWellGraphics(
         }),
       );
 
-      const [surfaceLon, surfaceLat] = path[0];
+      const [surfaceLon, surfaceLat] = wellSurfacePoint(well);
       const profileUrl = well.profile
         ? iconByDescription.get(well.profile)
         : undefined;

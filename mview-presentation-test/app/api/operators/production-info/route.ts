@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { getSessionUser } from "@/lib/session";
+
 import { fetchProductionInfo } from "@/lib/operator-production-api";
 import {
   hasProductionSelection,
@@ -23,6 +25,24 @@ import {
  * operator list, so the page's prompt is the correct answer and a round trip would
  * only confirm it.
  */
+/**
+ * THE SIGN-IN GATE LIVES HERE, and it has to. Both upstream endpoints treat the
+ * production VOLUMES as account-only: with `member_id: 0` the info endpoint returns
+ * `total_production_oil/gas/boe` as the literal `"****"` and the series endpoint
+ * returns every `oil`/`gas`/`boe` the same way, while rank, the oil/gas split and
+ * the county and lease counts stay real. Measured against the dev host with an
+ * otherwise identical body. The app had been overriding that with a development
+ * stand-in member id, so the gate was switched off for everyone.
+ *
+ * IT CANNOT MOVE TO THE PAGE. `/features/compare-operator-performance` is statically
+ * prerendered; reading a cookie in its server component would opt the whole route
+ * out of static rendering. A route handler is dynamic already, so the session read
+ * costs it nothing new.
+ *
+ * WHAT THE READER STILL GETS is most of the comparison — who ranks where, the
+ * oil/gas mix, counties and leases, the operator cards, the filters. Only the
+ * volumes and the chart are withheld, which is the soft gate the right way round.
+ */
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const filters = productionFiltersFromQuery(
@@ -37,17 +57,25 @@ export async function GET(request: Request) {
   }
 
   try {
-    const info = await fetchProductionInfo(filters);
+    const info = await fetchProductionInfo(filters, (await getSessionUser())?.id ?? 0);
     return NextResponse.json(
       { info },
       {
         headers: {
-          // Shared caches hold this; the browser does not. `max-age=0` stops a client
-          // replaying a payload whose SHAPE changed under it after a deploy — which is
-          // exactly how a newly added field reads as missing for ten minutes. Repeat
-          // applications within a session are already answered from memory by the hook.
-          "Cache-Control":
-            "public, max-age=0, s-maxage=600, stale-while-revalidate=3600",
+          /*
+           * NOT CACHED ANYWHERE, and that is a requirement rather than a tuning
+           * choice. Two reasons hold it in place:
+           *
+           *   · The body depends on whether the reader has an account. Any shared
+           *     copy is wrong in one direction or the other — a signed-out reader
+           *     served a member's volumes, or a member served the locked copy.
+           *   · The figures are the filed record as it stands right now, and a
+           *     stale one is indistinguishable from a current one on screen.
+           *
+           * `no-store` rather than `no-cache`: the second still permits storing the
+           * response and revalidating, which leaves a gated body sitting in a cache.
+           */
+          "Cache-Control": "private, no-store",
         },
       },
     );

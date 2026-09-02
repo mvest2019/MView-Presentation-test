@@ -1,14 +1,10 @@
 "use client";
 
-import { Droplet, Info } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+/* `Info` went with the units footnote defect 139 removed — it was that line's icon
+   and had no other caller. */
+import { Droplet, Lock } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { cardTitleClass } from "@/app/_components/typography";
 import { titleCase } from "@/lib/text-case";
@@ -19,7 +15,14 @@ import { YearBrush } from "./year-brush";
 
 /**
  * "Production over time" — reported annual volumes from
- * `POST /api/v1/operators/production-graph`, styled to the approved design.
+ * `POST /api/operators/production-graph`, styled to the approved design.
+ *
+ * IT IS GATED (requested). The read goes through this site's own handler rather than
+ * straight to the operator API, because the upstream endpoint takes no `member_id` and
+ * withholds nothing — a signed-out reader was getting the operator's entire filed
+ * history while every other production figure on the site was withheld from them. The
+ * handler answers `locked` without making any upstream call, and `LockedProduction` at
+ * the foot of this file draws the same panel "Recent wells & permits" draws.
  *
  * THE FILTER IS COUNTY AND YEARS. "All counties" omits the `county` key; picking one
  * sends that one name. The years come from the brush.
@@ -53,10 +56,13 @@ import { YearBrush } from "./year-brush";
  * and end pills now print the number the API sent, and the unit beside it is the one
  * the API named.
  *
- * THE AXIS CARRIES NO UNIT, because it cannot honestly carry one: oil and gas share a
- * y-axis and arrive in DIFFERENT units. The old "MM" suffix papered over that. Units
- * now sit where they belong to a single series — the summary cards, the tooltip rows,
- * the subtitle and the footnote.
+ * EACH AXIS CARRIES ITS OWN UNIT, and can only do so because each series now has its
+ * own axis (defect 146). While oil and gas shared one y-axis it could carry no unit
+ * honestly — they arrive in DIFFERENT units — and the "MM" suffix that used to sit
+ * there papered over exactly that. The caption above each axis is read from the
+ * response, so it follows the endpoint when a county selection rescales it from
+ * MBBL/MMCF to MMBBL/BCF (defect 147). Units also stay where they belong to a single
+ * series: the summary cards, the tooltip rows and the subtitle.
  *
  * THE PLOT IS ALWAYS AN AREA. The line/area toggle is gone on request, so the fill is
  * unconditional rather than a mode nothing can switch. The subtitle and the footnote
@@ -71,7 +77,24 @@ import { YearBrush } from "./year-brush";
  */
 
 const VIEW = { width: 1040, height: 400 } as const;
-const INSET = { top: 22, right: 96, bottom: 46, left: 96 } as const;
+/* The right gutter holds two things since defect 146 gave gas its own axis: the gas
+   tick labels at the far right, and the end pills inside them. `AXIS_RIGHT` is the
+   slice reserved for the labels; the rest is the pills'. */
+const INSET = { top: 22, right: 190, bottom: 46, left: 96 } as const;
+const AXIS_RIGHT = 62;
+/** Right edge the end pills may not cross, so they never reach the tick labels. */
+const PILL_LIMIT = VIEW.width - AXIS_RIGHT - 8;
+
+/**
+ * How wide one character of an end pill's label is, and the padding either side.
+ *
+ * The labels are digits, commas and a full stop at `fontSize 14, fontWeight 700`,
+ * which advance at very close to the same width — so one number covers every
+ * character that can appear. See defect 150 at the pill itself for why the width has
+ * to be computed rather than fixed.
+ */
+const PILL_CHAR = 8.4;
+const PILL_PAD = 11;
 
 /** The design's two plotted series. BOE is deliberately absent. */
 const SERIES = [
@@ -141,7 +164,9 @@ export function ProductionOverTime({
    * the empty state — three places that must never disagree about the filter.
    */
   const appliedCounty =
-    county === ALL_COUNTIES ? "All counties" : `${titleCase(county)} County`;
+    /* DEFECT 132 — "Andrews County", "Atascosa County" … on every row of a list
+       whose own label is "All counties". The name alone is the option. */
+    county === ALL_COUNTIES ? "All counties" : titleCase(county);
 
   const graph = useProductionGraph({
     operatorNumber,
@@ -185,20 +210,47 @@ export function ProductionOverTime({
     return () => clearTimeout(timer);
   }, [zoom, all]);
 
+  /**
+   * DEFECT 146 — ONE SCALE PER SERIES, not one for both.
+   *
+   * Oil and gas shared a single y-axis taken from `Math.max(oil, gas)`, and they are
+   * not the same quantity in the same unit: gas arrives in MMCF and oil in MBBL, so
+   * the axis was always the gas axis. Measured on the snap — with All counties
+   * selected the peak was 818,878 gas against 21,573.905 oil, so oil drew at 2.6% of
+   * the plot height and lay flat on the baseline for all 25 years. The chart's whole
+   * job is showing how production moved, and for oil it could not be done.
+   *
+   * Each series now has its own peak and its own `y`, so each fills the plot and its
+   * shape is readable. The five gridlines are shared — both scales put zero on the
+   * baseline and their own peak at the top row — which is what keeps one set of
+   * horizontal rules honest for two axes: a row means "a quarter of THIS series'
+   * maximum", the same statement on both sides.
+   *
+   * THE TRADE, STATED: heights are no longer comparable BETWEEN the two series, only
+   * within one. That is the correct trade — MBBL against MMCF was never a comparison
+   * a reader could make from height anyway, it just looked like one. The axes are
+   * labelled in their series' own colour and unit so which line belongs to which
+   * scale is never a guess.
+   */
   const geometry = useMemo(() => {
     const innerWidth = VIEW.width - INSET.left - INSET.right;
     const innerHeight = VIEW.height - INSET.top - INSET.bottom;
-    const peak = data.reduce((top, p) => Math.max(top, p.oil, p.gas), 0) || 1;
-    // Four gridlines above zero, on a round-ish step, so the top label is readable.
-    const step = peak / 4;
+    const peakOf = (key: SeriesKey) =>
+      data.reduce((top, p) => Math.max(top, p[key]), 0) || 1;
+    const peaks: Record<SeriesKey, number> = {
+      oil: peakOf("oil"),
+      gas: peakOf("gas"),
+    };
     const last = data.length - 1 || 1;
     return {
       innerWidth,
       innerHeight,
-      max: peak,
-      step,
+      peaks,
+      // Four gridlines above zero, so the top label is a round-ish readable figure.
+      step: (key: SeriesKey) => peaks[key] / 4,
       x: (i: number) => INSET.left + (innerWidth * i) / last,
-      y: (v: number) => INSET.top + innerHeight * (1 - v / peak),
+      y: (key: SeriesKey, v: number) =>
+        INSET.top + innerHeight * (1 - v / peaks[key]),
     };
   }, [data]);
 
@@ -246,7 +298,7 @@ export function ProductionOverTime({
     data
       .map(
         (p, i) =>
-          `${i === 0 ? "M" : "L"}${geometry.x(i).toFixed(1)} ${geometry.y(p[key]).toFixed(1)}`,
+          `${i === 0 ? "M" : "L"}${geometry.x(i).toFixed(1)} ${geometry.y(key, p[key]).toFixed(1)}`,
       )
       .join(" ");
 
@@ -265,32 +317,26 @@ export function ProductionOverTime({
     );
   };
 
-  const onWheel = useCallback(
-    (event: React.WheelEvent<SVGSVGElement>) => {
-      if (all.length < 4) return;
-      event.preventDefault();
-      setZoom((current) => {
-        const start = current?.start ?? 0;
-        const end = current?.end ?? all.length - 1;
-        const span = end - start + 1;
-        // In narrows, out widens, both anchored on the middle. Three years is the
-        // floor — below that there is no line left to read.
-        const next =
-          event.deltaY < 0
-            ? Math.max(3, span - 2)
-            : Math.min(all.length, span + 2);
-        if (next === span) return current;
-        const centre = Math.round((start + end) / 2);
-        let from = Math.max(0, centre - Math.floor(next / 2));
-        const to = Math.min(all.length - 1, from + next - 1);
-        from = Math.max(0, to - next + 1);
-        return from === 0 && to === all.length - 1
-          ? null
-          : { start: from, end: to };
-      });
-    },
-    [all.length],
-  );
+  /*
+   * DEFECT 126 — THE WHEEL NO LONGER ZOOMS THIS CHART.
+   *
+   * `onWheel` called `preventDefault()` and rewrote the year range on every wheel
+   * tick, so a reader scrolling the page with the pointer anywhere over the plot
+   * did not scroll the page: they narrowed or widened the range, and every value
+   * on the chart changed under them. That is exactly the report — "when scrolling
+   * the page up or down, the Production Over Time chart values change
+   * unexpectedly" — and it is wheel-jacking, which is a defect in its own right:
+   * a page must never mutate its content because someone scrolled past it.
+   *
+   * Removed rather than put behind a modifier key. The chart already has a
+   * deliberate zoom control directly beneath it — the year brush, with handles to
+   * narrow, drag-inside to pan and a Reset — so the wheel was a second, invisible,
+   * accidental way to do the same thing. Dragging to pan is untouched; that one
+   * takes a held button and cannot fire by accident.
+   *
+   * It also removes a non-passive wheel listener from a scroll container, which
+   * is its own small win for scroll performance.
+   */
 
   const onPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
     if (!zoom) return;
@@ -322,6 +368,14 @@ export function ProductionOverTime({
 
   const tinted = (colour: string, amount: string) =>
     `color-mix(in srgb, ${colour} ${amount}, white)`;
+
+  /* ---- no account ----
+     BEFORE every other state, and the ordering is the point: a locked read returns no
+     rows, so falling through would draw the empty state — "no production is reported
+     for this operator" — which is a claim about the operator that the request never
+     made. Same reasoning, and the same position, as the locked branch in
+     `recent-wells-permits.tsx`. */
+  if (graph.status === "locked") return <LockedProduction />;
 
   return (
     <div className="rounded-2xl border border-mv-line bg-white px-[22px] py-5 shadow-mv max-[560px]:px-4">
@@ -428,14 +482,19 @@ export function ProductionOverTime({
         aria-live="polite"
         className="mt-4 truncate text-[13px] font-bold text-mv-ink"
       >
+        {/*
+          DEFECT 135 — the applied year range used to print here, beside the county.
+          It said the same thing as three other places on the same card: the x-axis is
+          labelled with those years, the brush under it shows the window it selected,
+          and the brush's own chip repeats it as "1999–2025 · Reset". A fourth copy
+          that cannot be acted on is noise, and it was the one the snap ringed.
+
+          THE COUNTY STAYS, and so does `aria-live`. This line is the confirmation
+          that a filter change landed — the dropdown that drives it sits at the far
+          corner of the card — and the years are still spoken in the SVG's own
+          `aria-label` below, so nothing is lost to a screen reader.
+        */}
         {appliedCounty}
-        {data.length > 0 ? (
-          <span className="ml-2 font-medium text-mv-muted">
-            {data[0]?.year === data.at(-1)?.year
-              ? data[0]?.year
-              : `${data[0]?.year}–${data.at(-1)?.year}`}
-          </span>
-        ) : null}
       </p>
 
       {/* ---- chart ---- */}
@@ -483,7 +542,6 @@ export function ProductionOverTime({
               } ${zoom ? "cursor-grab" : ""}`}
               role="img"
               aria-label={`Annual oil and gas production, ${data[0]?.year} to ${data.at(-1)?.year}, for ${appliedCounty}.`}
-              onWheel={onWheel}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={() => (dragFrom.current = null)}
@@ -527,8 +585,23 @@ export function ProductionOverTime({
                   only where the step is large enough for whole numbers to separate the
                   lines; a small-volume operator keeps the decimals it needs. */}
               {Array.from({ length: 5 }, (_, i) => {
-                const value = geometry.step * i;
-                const y = geometry.y(value);
+                /* One row of rules, two tick labels. Both scales put zero on the
+                   baseline and their own peak on the top row, so row `i` is "a
+                   quarter of this series' maximum" on either side — the same
+                   statement, which is what lets one set of rules serve two axes.
+                   The y is taken from the oil scale purely because the two agree on
+                   it by construction. */
+                const y = geometry.y("oil", geometry.step("oil") * i);
+                const tick = (key: SeriesKey) => {
+                  const step = geometry.step(key);
+                  if (i === 0) return "0";
+                  const value = step * i;
+                  // Rounded only where the step is large enough for whole numbers to
+                  // separate the lines; a small-volume operator keeps its decimals.
+                  return step >= 100
+                    ? Math.round(value).toLocaleString("en-US")
+                    : exact(value);
+                };
                 return (
                   <g key={i}>
                     <line
@@ -539,22 +612,60 @@ export function ProductionOverTime({
                       stroke="var(--color-mv-line)"
                       strokeDasharray={i === 0 ? undefined : "5 5"}
                     />
+                    {/* Each axis is drawn in its own series' colour. With two scales
+                        on one plot, "which line does this number belong to" has to be
+                        answerable without counting — colour answers it at a glance,
+                        and the axis captions above name the unit outright. */}
                     <text
                       x={INSET.left - 12}
                       y={(y + 4).toFixed(1)}
                       textAnchor="end"
                       fontSize="13"
-                      fill="var(--color-mv-placeholder)"
+                      fill={SERIES[0].colour}
                     >
-                      {i === 0
-                        ? "0"
-                        : geometry.step >= 100
-                          ? Math.round(value).toLocaleString("en-US")
-                          : exact(value)}
+                      {tick("oil")}
+                    </text>
+                    <text
+                      x={VIEW.width - AXIS_RIGHT + 4}
+                      y={(y + 4).toFixed(1)}
+                      textAnchor="start"
+                      fontSize="13"
+                      fill={SERIES[1].colour}
+                    >
+                      {tick("gas")}
                     </text>
                   </g>
                 );
               })}
+
+              {/*
+                THE AXIS CAPTIONS, and defect 147's "explicit indicator" in the one
+                place the page's units actually change under the reader: this chart
+                answers MBBL/MMCF for All counties and MMBBL/BCF for a single county,
+                so selecting a county silently rescaled both axes by a thousand. The
+                unit now sits on the axis it scales and is read from the response, so
+                it changes with it.
+              */}
+              <text
+                x={INSET.left - 12}
+                y={INSET.top - 8}
+                textAnchor="end"
+                fontSize="12"
+                fontWeight="700"
+                fill={SERIES[0].colour}
+              >
+                {unitFor("oil") ? `Oil · ${unitFor("oil")}` : "Oil"}
+              </text>
+              <text
+                x={VIEW.width - AXIS_RIGHT + 4}
+                y={INSET.top - 8}
+                textAnchor="start"
+                fontSize="12"
+                fontWeight="700"
+                fill={SERIES[1].colour}
+              >
+                {unitFor("gas") ? `Gas · ${unitFor("gas")}` : "Gas"}
+              </text>
 
               {/* year labels — see `yearLabels`; the last year always shows */}
               {data.map((p, i) =>
@@ -603,7 +714,7 @@ export function ProductionOverTime({
                     <circle
                       key={p.year}
                       cx={geometry.x(i).toFixed(1)}
-                      cy={geometry.y(p[series.key]).toFixed(1)}
+                      cy={geometry.y(series.key, p[series.key]).toFixed(1)}
                       r={hover === i ? 6 : 3.2}
                       fill={hover === i ? "#fff" : series.colour}
                       stroke={series.colour}
@@ -611,31 +722,62 @@ export function ProductionOverTime({
                     />
                   ))}
 
-                  {/* the end pill */}
+                  {/*
+                    The end pill.
+
+                    DEFECT 150 — this was a FIXED 82px rect with its text centred
+                    inside it, so the pill fitted the number only by luck. `exact()`
+                    prints the API's own figure in full, thousands separators and up
+                    to three decimals included, and "1,444,012.261" is thirteen
+                    characters — roughly 104px at this weight and size. The text
+                    overflowed the rect symmetrically and ran past `VIEW.width`,
+                    where the SVG viewport clips it: the last year's value, which is
+                    the single number a reader comes to this chart for, was cut off
+                    at the card's edge.
+
+                    THE PILL IS NOW SIZED TO ITS TEXT and pinned so its right edge
+                    can never leave the viewBox. `PILL_CHAR` is a measured advance
+                    width for these digits at 14px/700 rather than a guess — SVG has
+                    no intrinsic sizing to lean on here, and a `<foreignObject>` for
+                    two labels would cost more than it returns.
+
+                    IT PREFERS THE RESERVED GUTTER and only encroaches on the plot
+                    when the number genuinely does not fit in it, which is the right
+                    trade: a pill overlapping a few pixels of empty right-hand plot
+                    is legible, and a clipped one is not.
+                  */}
                   {(() => {
                     const lastPoint = data.at(-1);
                     if (!lastPoint) return null;
-                    const y = geometry.y(lastPoint[series.key]);
-                    const x = VIEW.width - INSET.right + 12;
+                    const label = exact(lastPoint[series.key]);
+                    const y = geometry.y(series.key, lastPoint[series.key]);
+                    const width = Math.max(
+                      56,
+                      label.length * PILL_CHAR + PILL_PAD * 2,
+                    );
+                    const x = Math.min(
+                      VIEW.width - INSET.right + 10,
+                      PILL_LIMIT - width,
+                    );
                     return (
                       <g>
                         <rect
                           x={x}
                           y={y - 15}
-                          width="82"
+                          width={width}
                           height="30"
                           rx="15"
                           fill={series.colour}
                         />
                         <text
-                          x={x + 41}
+                          x={x + width / 2}
                           y={y + 5}
                           textAnchor="middle"
                           fontSize="14"
                           fontWeight="700"
                           fill="#fff"
                         >
-                          {exact(lastPoint[series.key])}
+                          {label}
                         </text>
                       </g>
                     );
@@ -647,9 +789,19 @@ export function ProductionOverTime({
             {/* tooltip, positioned over the crosshair */}
             {hover !== null && data[hover] ? (
               <div
-                className="pointer-events-none absolute z-10 min-w-[190px] rounded-[10px] bg-mv-tooltip px-[14px] py-3 shadow-mv"
+                /*
+                 * DEFECT 138 — the tooltip is pinned to the crosshair and flips
+                 * side at the midpoint, which keeps it clear of the pointer but
+                 * not inside the card: near either edge the flipped box still ran
+                 * past it. `max-w` bounds it to the plot's own width and
+                 * `clamp()` holds its left edge between the two insets, so the
+                 * box stops travelling once it reaches an edge instead of hanging
+                 * over it. The flip is unchanged, so it still never sits under
+                 * the pointer.
+                 */
+                className="pointer-events-none absolute z-10 min-w-[190px] max-w-[min(260px,calc(100%-24px))] rounded-[10px] bg-mv-tooltip px-[14px] py-3 shadow-mv"
                 style={{
-                  left: `${(geometry.x(hover) / VIEW.width) * 100}%`,
+                  left: `clamp(12px, ${(geometry.x(hover) / VIEW.width) * 100}%, calc(100% - 12px))`,
                   top: "52%",
                   transform:
                     geometry.x(hover) > VIEW.width / 2
@@ -671,7 +823,10 @@ export function ProductionOverTime({
                         className="h-[9px] w-[9px] rounded-full"
                         style={{ background: series.colour }}
                       />
-                      {series.label}
+                      {/* DEFECT 129 — the snap rings the gap between the series
+                          name and its figure. A colon is what reads them as one
+                          statement rather than two columns that happen to align. */}
+                      {series.label}:
                     </span>
                     <b className="font-bold tabular-nums text-white">
                       {exact(data[hover][series.key])}
@@ -700,37 +855,96 @@ export function ProductionOverTime({
         />
       ) : null}
 
-      {/* ---- legend chips ---- */}
-      <div className="mt-3 flex flex-wrap gap-[10px]">
-        {SERIES.map((series) => (
-          <span
-            key={series.key}
-            className="inline-flex items-center gap-2 rounded-full border px-[14px] py-[7px] text-[13px] font-semibold text-mv-ink-soft"
-            style={{
-              background: tinted(series.colour, "6%"),
-              borderColor: tinted(series.colour, "24%"),
-            }}
-          >
-            <span
-              aria-hidden="true"
-              className="h-[9px] w-[9px] rounded-full"
-              style={{ background: series.colour }}
-            />
-            {series.label}
-          </span>
-        ))}
+      {/*
+        DEFECT 139 — the legend chips and the units footnote both stood here, and the
+        snap ringed both. Neither carried anything the card was not already saying:
+
+          the chips     named and coloured two series that the two KPI panels at the
+                        top of the card already name, in the same two colours, with
+                        their totals. They were plain spans, not toggles, so nothing
+                        was interactive and nothing is lost.
+          the footnote  read "Volumes as reported · oil in MBBL · gas in MMCF" while
+                        the subtitle directly above the panels already reads
+                        "· oil (MBBL), gas (MMCF)" from the same `unitFor`, and each
+                        KPI panel prints its own unit beside its figure.
+
+        The series are still identified for a screen reader: each `<path>` carries its
+        own title, and the tooltip names both series with their units.
+      */}
+    </div>
+  );
+}
+
+/**
+ * "Production over time", for a reader with no account.
+ *
+ * WHY THIS SECTION IS GATED AT ALL (requested). It is production data, and production
+ * data is what a free account buys everywhere else on these pages: the directory masks
+ * the lifetime volumes, the profile panels mask oil and gas, the county table and the
+ * lease book mask their two `Produced` columns, and both comparison tools mask theirs.
+ * This chart was the one place the same figures were still served in full — the whole
+ * annual history, every county, to anybody. Gating it is what makes the rest of the
+ * treatment coherent rather than arbitrary.
+ *
+ * IT IS THE SAME PANEL AS "RECENT WELLS & PERMITS", deliberately: same card, same lock
+ * badge, same Register-for-free-and-Sign-in pair, same "no card required" line. A
+ * reader who meets two gates on one page should meet the same gate twice, not two
+ * designs for one idea.
+ *
+ * WHAT IT PROMISES IS WHAT IS ACTUALLY STILL FREE, checked field by field rather than
+ * written as "everything else": who the operator is, its filed address and status, the
+ * Texas footprint map, and the county and lease lists — all still readable with no
+ * account. The volumes inside those lists are not, and this does not say they are.
+ */
+function LockedProduction() {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-mv-line bg-white shadow-mv">
+      <div className="px-[22px] pb-3 pt-5 max-[560px]:px-4">
+        <h2 className={cardTitleClass}>Production over time</h2>
+        <p className="mt-1 text-[13px] text-mv-muted">
+          Reported annual volumes — part of a free account
+        </p>
       </div>
 
-      <p className="mt-3 flex items-center gap-[7px] text-[12.5px] text-mv-muted">
-        <Info
+      <div className="flex flex-col items-center gap-[14px] border-t border-mv-line-soft px-6 py-[38px] text-center">
+        <span
           aria-hidden="true"
-          className="h-[14px] w-[14px] shrink-0"
-          strokeWidth={1.9}
-        />
-        {unitFor("oil") && unitFor("gas")
-          ? `Volumes as reported · oil in ${unitFor("oil")} · gas in ${unitFor("gas")}`
-          : "Volumes exactly as reported by the source."}
-      </p>
+          className="grid h-[38px] w-[38px] place-items-center rounded-full bg-mv-mint text-mv-green-deep"
+        >
+          <Lock className="h-4 w-4" strokeWidth={2.3} />
+        </span>
+
+        <div className="max-w-[460px]">
+          <p className="m-0 text-[15px] font-bold leading-snug text-mv-ink">
+            See how this operator&apos;s production has moved
+          </p>
+          <p className="m-0 mt-2 text-[13px] leading-relaxed text-mv-muted">
+            Every year of filed oil and gas volumes, for the whole operator or one
+            county at a time, with a range you can narrow. Who this operator is,
+            its filed address and status, the Texas footprint map and the county
+            and lease lists all stay free to browse.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-center gap-[10px]">
+          <Link
+            href="/register?from=operator-profile"
+            className="inline-flex items-center gap-2 rounded-xl bg-mv-green-deep px-[18px] py-[11px] text-[13.5px] font-semibold text-white !no-underline shadow-mv transition-[filter] hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+          >
+            Register for free
+          </Link>
+          <Link
+            href="/login"
+            className="text-[13px] font-semibold text-mv-green-deep hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+          >
+            Sign in
+          </Link>
+        </div>
+
+        <p className="m-0 text-[11.5px] text-mv-muted">
+          Free account &middot; no card required
+        </p>
+      </div>
     </div>
   );
 }

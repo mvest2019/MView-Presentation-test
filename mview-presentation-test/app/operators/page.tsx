@@ -9,8 +9,10 @@ import {
 } from "@/app/_components/typography";
 
 import { getOperatorCounties, getOperatorPlayTypes } from "@/lib/operator-api";
+import { getSessionUser } from "@/lib/session";
 import { getVisitorId } from "@/lib/visitor-id";
 
+import { OperatorRegisterCta } from "./_components/operator-cta";
 import { OperatorPage } from "./operator-page";
 
 /**
@@ -95,27 +97,27 @@ const FEATURE_CARDS = [
   {
     // Built. `/features/` because the destination is a tool, not one operator's
     // record — see the note at the top of that route.
-    href: "/features/compare-operator-production",
+    href: "/features/compare-operator-performance",
     icon: "▮▮",
     title: "Compare Operators Performance",
-    body: "Put 2–4 operators side by side on reported production — real figures, ranked within their play.",
-    cta: "Open the comparison →",
+    body: "Compare 2–4 operators side by side using reported production data and their relative position within the selected play.",
+    cta: "Compare Operators →",
   },
   {
     // Built, alongside its sibling under `/features/`.
     href: "/features/compare-operator-statistics",
     icon: "≡",
     title: "Compare Operator Statistics",
-    body: "Company statistics side by side — leases, counties, rank, and production intensity.",
-    cta: "Open the comparison →",
+    body: "Compare operators across key metrics, including leases, counties, production rank, and production intensity.",
+    cta: "Compare Operators →",
   },
   {
     // Built. No "compare" in the slug — this one is a library, not a comparison.
     href: "/features/operator-presentations",
     icon: "▣",
     title: "Operator Presentations",
-    body: "A clean, shareable one-page profile of any operator — built from the public record.",
-    cta: "Build a presentation →",
+    body: "Create a one-page operator profile using information compiled from publicly available records.",
+    cta: "Create a Presentation →",
   },
 ];
 
@@ -174,10 +176,19 @@ export default async function OperatorsRoute() {
   // call, only the render. If someone later moves the cookie read to the client to
   // win the prerender back, that is a real option, not a bug fix; do not "restore"
   // static by dropping the id from the payload.
-  const [playTypes, counties, visitorId] = await Promise.all([
+  // The session read joins the three that were already here rather than being
+  // awaited after them — the route is dynamic either way (it reads cookies), and
+  // a fourth cookie read adds nothing measurable, but it must not add a fourth
+  // serial await to the render either.
+  //
+  // It is here for ONE reason: to decide whether the registration band renders.
+  // Nothing about the listing depends on it — the row gate is the API's decision,
+  // carried on the response, so a signed-in member simply receives no gated rows.
+  const [playTypes, counties, visitorId, user] = await Promise.all([
     loadPlayTypes(),
     loadCounties(),
     getVisitorId(),
+    getSessionUser(),
   ]);
 
   return (
@@ -197,11 +208,24 @@ export default async function OperatorsRoute() {
           ]}
         />
 
-        <div className="pt-7">
+        {/* DEFECT 118 — `pt-7` under the breadcrumb left an empty band above the
+            heading. `pt-4` keeps the two apart without the gap reading as a
+            missing element. */}
+        <div className="pt-4">
           <h1 className={displayLgClass}>Operator Directory</h1>
-          <p className="mt-[6px] max-w-[640px] text-[15.5px] text-mv-muted">
-            Search, filter, and rank Texas oil &amp; gas operators by reported
-            production, activity, and coverage.
+          {/* `max-w-[640px]` wrapped this onto two lines at desktop width for the
+              sake of a measure it did not need — it is one short sentence, not a
+              paragraph. Widened so it sits on one line, and it still wraps naturally
+              on a narrow screen rather than being forced to fit.
+
+              960px, NOT 820px, because the sentence changed. The new copy measures
+              929px on one line at 15.5px, so the old cap broke it after "and" — a
+              wrap the container was imposing, not the viewport. The content column is
+              1200px less 44px of padding, so 960 sits inside it with room to spare and
+              the line still gives way below roughly 975px of viewport. */}
+          <p className="mt-[6px] max-w-[960px] text-[15.5px] text-mv-muted">
+            Search, filter, and compare Texas oil and gas operators using
+            reported production, operating activity, and county coverage.
           </p>
         </div>
 
@@ -232,7 +256,17 @@ export default async function OperatorsRoute() {
           ))}
         </div>
 
-        {/* The design's `.notice.slate` — the page's one conversion prompt. */}
+        {/* THE REGISTRATION ASK, for signed-out visitors only. Placed after the
+            feature cards rather than hard against the table: the table already
+            carries its own ask under any gated result, and stacking two
+            registration prompts in a row reads as pressure rather than as an
+            offer. A signed-in member sees neither — there is nothing locked for
+            them to unlock. */}
+        {user ? null : <OperatorRegisterCta />}
+
+        {/* The design's `.notice.slate` — the page's standing prompt into the
+            claim flow. Left as it was: it points at `/claim`, which is a
+            different journey from the band above, not a second copy of it. */}
         <aside className="mt-6 flex gap-3 rounded-[14px] border border-[#dfe4e9] bg-mv-line-soft px-[18px] py-4 text-sm leading-[1.55] text-[#33404e]">
           <span aria-hidden="true">ℹ</span>
           <div>

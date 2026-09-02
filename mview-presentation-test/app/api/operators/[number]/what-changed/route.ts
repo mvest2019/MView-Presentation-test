@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { fetchWhatChanged } from "@/lib/operator-what-changed-api";
+import { getSessionUser } from "@/lib/session";
 
 /**
  * `GET /api/operators/<number>/what-changed`
@@ -14,6 +15,19 @@ import { fetchWhatChanged } from "@/lib/operator-what-changed-api";
  * same operator inside the revalidate window is served without waking the Python
  * service, without touching MongoDB, and without another model call. That matters more
  * here than on the other endpoints: this one is the expensive path.
+ *
+ * IT IS ALSO WHERE THE SIGN-IN GATE LIVES, and it has to be here rather than on the
+ * page. `/operators/[slug]` is statically prerendered for the best-known operators
+ * (`generateStaticParams`), and reading a cookie in that server component would opt
+ * the whole route out of static rendering — trading a prerendered page for a
+ * per-request render on every visit, which is a far worse deal than anything the gate
+ * buys. This handler is dynamic already, so the session read costs it nothing new and
+ * the page above it stays static.
+ *
+ * THE GATE RETURNS BEFORE ANY WORK IS DONE, which makes it a performance WIN rather
+ * than a cost. For a signed-out reader this endpoint no longer wakes the Python
+ * service, no longer reads MongoDB and no longer makes a model call — the single most
+ * expensive path on the site, skipped for the majority of visitors.
  *
  * FAILURES COME BACK AS 200 WITH A REASON. The panel has four distinct sad paths —
  * service unreachable, Mongo down, operator has no window, model unavailable — and the
@@ -35,6 +49,23 @@ export async function GET(
     return NextResponse.json(
       { state: "error", detail: "operator number must be digits" },
       { status: 400 },
+    );
+  }
+
+  /*
+   * The gate, before the expensive path. `locked` is a fifth state alongside the four
+   * the panel already draws, not an HTTP error: it is a normal, expected answer for a
+   * visitor with no account, and collapsing it into `response.ok === false` would put
+   * it in the same bucket as a service outage.
+   *
+   * `no-store` because the answer depends on who is asking — a shared cache holding
+   * one reader's `locked` and serving it to a member, or the reverse, is the classic
+   * way a gate like this breaks.
+   */
+  if (!(await getSessionUser())) {
+    return NextResponse.json(
+      { state: "locked" },
+      { headers: { "Cache-Control": "no-store" } },
     );
   }
 

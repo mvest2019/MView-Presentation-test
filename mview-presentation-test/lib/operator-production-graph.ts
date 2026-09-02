@@ -67,6 +67,16 @@ export interface ProductionYear {
 }
 
 export interface ProductionSeries {
+  /**
+   * True when the reader has no account, so the series was never fetched.
+   *
+   * DISTINCT FROM AN EMPTY `rows`, which is why it is a field of its own: an operator
+   * with nothing filed also returns no rows, and "nothing on record" and "needs an
+   * account" are different sentences the chart draws differently. It travels on the
+   * response rather than being inferred (§4 rule 2). See
+   * `app/api/operators/production-graph/route.ts`.
+   */
+  locked: boolean;
   rows: ProductionYear[];
   /** Oil across every year returned, in `oilUnit`. */
   totalOil: number;
@@ -133,6 +143,7 @@ export function toSeries(response: ProductionGraphResponse): ProductionSeries {
 
   rows.sort((a, b) => a.year - b.year);
   return {
+    locked: false,
     rows,
     totalOil: apiTotal(response.total_oil) ?? summedOil,
     totalGas: apiTotal(response.total_gas) ?? summedGas,
@@ -141,26 +152,47 @@ export function toSeries(response: ProductionGraphResponse): ProductionSeries {
   };
 }
 
+/** An empty series, for the gated answer. No rows were fetched to put in it. */
+const LOCKED_SERIES: ProductionSeries = {
+  locked: true,
+  rows: [],
+  totalOil: 0,
+  totalGas: 0,
+  oilUnit: "",
+  gasUnit: "",
+};
+
+/**
+ * THROUGH THIS SITE'S OWN ORIGIN, as of the chart gate.
+ *
+ * This used to take the upstream base URL and call
+ * `/api/v1/operators/production-graph` straight from the browser — that endpoint takes
+ * no `member_id` and withholds nothing, so a signed-out reader received the operator's
+ * whole filed history. It goes through `/api/operators/production-graph` now, which
+ * checks the reader before making any upstream call. The `baseUrl` parameter went with
+ * the change: a same-origin path needs no host, and leaving one would have implied the
+ * caller still gets to choose where this reads from.
+ */
 export async function fetchProductionGraph(
-  baseUrl: string,
   request: ProductionGraphRequest,
   signal?: AbortSignal,
 ): Promise<ProductionSeries> {
-  const response = await fetch(
-    `${baseUrl.replace(/\/+$/, "")}/api/v1/operators/production-graph`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request),
-      signal,
-    },
-  );
+  const response = await fetch("/api/operators/production-graph", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+    signal,
+  });
 
   if (!response.ok) {
     throw new Error(`Production data unavailable (${response.status})`);
   }
 
   const payload: unknown = await response.json();
+
+  // The gate's answer, before anything is parsed: no series was fetched.
+  if ((payload as { locked?: unknown })?.locked === true) return LOCKED_SERIES;
+
   if (!isResponse(payload)) {
     throw new Error("Production data came back in an unexpected shape");
   }

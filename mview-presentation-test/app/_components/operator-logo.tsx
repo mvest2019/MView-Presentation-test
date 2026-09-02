@@ -43,8 +43,15 @@ import { OperatorMonogram } from "./operator-monogram";
  * `object-contain` stays: it costs nothing on the square logos and stops a non-square
  * one from being stretched.
  *
- * `alt=""` because the operator's name is always right beside it as real text;
- * announcing the logo too would just repeat it.
+ * ALT TEXT — DEFECT 149. `alt=""` was the original call, on the grounds that the
+ * operator's name always sits beside the tile as real text. That holds where it
+ * does; it does not hold everywhere the tile is used, and the defect is that the
+ * logo carries nothing either way.
+ *
+ * So `name` is optional and the caller decides: pass it where the logo stands on
+ * its own and the alt becomes "<operator> logo"; omit it where the name is already
+ * adjacent and the image stays `alt=""`, which is the correct markup for a
+ * genuinely decorative image and better than repeating the name to a screen reader.
  */
 export function OperatorLogo({
   url,
@@ -53,11 +60,20 @@ export function OperatorLogo({
   radius,
   monogramClassName = "",
   loading = "lazy",
+  name,
 }: {
   /** `operatorLogoPath(...)`, or null when there is nothing to try. */
   url: string | null;
   /** Two initials, for the fallback tile. */
   monogram: string;
+  /**
+   * The operator this logo belongs to — DEFECT 149.
+   *
+   * Supplied where the tile is not already beside the operator's name; the alt
+   * then reads "<operator> logo". Left out where it is, so the name is announced
+   * once rather than twice.
+   */
+  name?: string;
   /** Edge length in pixels. */
   size: number;
   /**
@@ -95,7 +111,7 @@ export function OperatorLogo({
           note above this component about `next/image` and the 404 path. */}
       <img
         src={url}
-        alt=""
+        alt={name ? `${name} logo` : ""}
         loading={loading}
         decoding="async"
         onError={() => setFailed(true)}

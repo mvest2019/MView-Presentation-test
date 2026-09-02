@@ -1,6 +1,6 @@
 "use client";
 
-import { MapPin } from "lucide-react";
+import { MapPin, TriangleAlert } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -13,15 +13,9 @@ import { AreaSelectionBar } from "./area-selection";
 import { loadArcgisModules } from "./arcgis-loader";
 import { ClusterTooltip } from "./cluster-tooltip";
 import { SampleBanner } from "./sample-banner";
-import {
-  WellInsightsPanel,
-  type SelectedWell,
-} from "./well-insights-panel";
+import { WellInsightsPanel, type SelectedWell } from "./well-insights-panel";
 import { MapChrome, type ViewTab } from "./map-chrome";
-import {
-  MeasureAreaPanel,
-  type AreaMeasurement,
-} from "./measure-area-panel";
+import { MeasureAreaPanel, type AreaMeasurement } from "./measure-area-panel";
 import { ToolDemo, type DemoTool } from "./tool-demo";
 import { MapToast } from "./map-toast";
 import { MeasureBar } from "./measure-bar";
@@ -67,8 +61,14 @@ import {
 } from "./map-measurements";
 
 import { exportVisible } from "./map-export";
+import {
+  readFilterParams,
+  readToolParams,
+  readViewParams,
+  type LinkTools,
+} from "./filter-url";
 import { ToolPrompt } from "./tool-prompt";
-import { buildWellGraphics } from "./well-graphics";
+import { buildWellGraphics, wellMarkPoint } from "./well-graphics";
 import { TimeLapseBar } from "./time-lapse-bar";
 import {
   datedCount,
@@ -110,7 +110,6 @@ type EsriDragEvent = {
 
 interface EsriView {
   scale: number;
-  zoom: number;
   /** Viewport size in pixels; 0 until the view has a laid-out container. */
   width: number;
   height: number;
@@ -150,7 +149,9 @@ interface EsriView {
   ): Promise<{
     results: { graphic?: { attributes?: Record<string, unknown> } }[];
   }>;
-  goTo(target: unknown): Promise<unknown>;
+  /* `options` carries `{ animate: false }` where a move must not be
+     interruptible — see the filter fit. */
+  goTo(target: unknown, options?: { animate?: boolean }): Promise<unknown>;
   /** Captures the map surface only — the React chrome is not in the canvas. */
   takeScreenshot(options?: {
     format?: "png" | "jpg";
@@ -180,13 +181,11 @@ type MapViewCtor = new (props: {
   map: EsriMap;
   center: [number, number];
   scale: number;
-  constraints?: { minZoom?: number; maxZoom?: number; snapToZoom?: boolean };
+  constraints?: { minScale?: number; maxScale?: number; snapToZoom?: boolean };
   ui?: { components: string[] };
 }) => EsriView;
 
-type GraphicsLayerCtor = new (props?: {
-  id?: string;
-}) => EsriGraphicsLayer;
+type GraphicsLayerCtor = new (props?: { id?: string }) => EsriGraphicsLayer;
 
 interface EsriExtent {
   union(other: EsriExtent): EsriExtent;
@@ -216,6 +215,23 @@ const HOME_CENTER: [number, number] = [-100.0199, 31.2534];
 const HOME_SCALE = 7_262_011;
 
 /*
+ * The scale of level zero, which every level in this file is measured from.
+ *
+ * The view is set by scale, and `view.zoom` translates that into a level
+ * using whichever tiling scheme the basemap on screen happens to use. Esri's
+ * vector basemaps are cut into 512px tiles and its imagery into 256px ones,
+ * so the same view read as zoom 5 on Streets and Dark and zoom 6 on
+ * Satellite, Hybrid, Topo and Terrain — and every band this file switches on
+ * moved with it, so the wells appeared a level earlier on imagery than on the
+ * map. Reading the level from the scale ourselves makes it one number,
+ * whatever is underneath.
+ *
+ * 295,828,763.795777 is the vector scheme's level zero, which is what the
+ * default basemap has always reported.
+ */
+const LEVEL_ZERO_SCALE = 295_828_763.795777;
+
+/*
  * The mock's scale was drawn for a desktop canvas. On a phone the viewport is
  * a third of the width, so the same scale opens on the middle of Texas with
  * the coast and the panhandle both off-screen — the shape people orient by is
@@ -230,7 +246,8 @@ const HOME_SCALE_PHONE = 13_500_000;
 function homeScale(): number {
   if (typeof window === "undefined") return HOME_SCALE;
   if (window.matchMedia("(max-width: 767px)").matches) return HOME_SCALE_PHONE;
-  if (window.matchMedia("(max-width: 1023px)").matches) return HOME_SCALE_TABLET;
+  if (window.matchMedia("(max-width: 1023px)").matches)
+    return HOME_SCALE_TABLET;
   return HOME_SCALE;
 }
 
@@ -268,7 +285,6 @@ type ActiveTool =
  * Esri modules, and those are held in a ref.
  */
 
-
 /** Vertices around a watch circle. 6° steps read as smooth at any zoom. */
 const CIRCLE_STEP_DEGREES = 6;
 
@@ -281,13 +297,15 @@ const CIRCLE_STEP_DEGREES = 6;
 const DEFAULT_SPLIT = 0.5;
 
 /*
- * Stacked, the map takes the larger share. An even split reads differently on
- * the two axes: half the width still shows a recognisable stretch of Texas,
- * half the height on a phone shows a band too short to pan around in, while
- * the cards below simply scroll — they lose far less to being shorter than
- * the map does.
+ * Stacked, the summary takes the screen and the map keeps a strip.
+ *
+ * Side by side the two are read together, but on a phone the Summary tab is
+ * opened to read the record — the map above it is there to say which well is
+ * being read, not to be panned around. Just over a quarter is enough for
+ * that and leaves the cards the rest, which are the point of the tab; the
+ * divider still drags if someone wants more map.
  */
-const STACKED_DEFAULT_SPLIT = 0.67;
+const STACKED_DEFAULT_SPLIT = 0.27;
 const MIN_SPLIT = 0.22;
 const MAX_SPLIT = 0.78;
 
@@ -305,7 +323,6 @@ const SPLIT_KEY_STEP = 0.02;
  * do not, and reaching 8 loads again for whatever is now on screen.
  */
 const CLUSTER_ZOOM_STEPS = [5, 8];
-
 
 /*
  * How long one year of the replay holds.
@@ -334,25 +351,54 @@ const WELL_ZOOM = 10;
 const WELL_LEAVE_ZOOM = 8;
 
 /*
- * How far apart matched wells may be before Apply stops trying to frame them.
+ * The spread, in degrees, that separates a local filter from a scattered one.
  *
  * Three degrees is roughly two hundred miles — a county, a field, or one
- * operator's patch fits inside that; wells in the Permian and the Eagle Ford
- * at once do not.
+ * operator's patch fits inside that; three counties picked from opposite ends
+ * of the state do not. Both are framed; this only decides how far out the map
+ * is allowed to go to do it.
  */
 const FILTER_FIT_MAX_DEGREES = 3;
 
 /** Below this the extent is a point, and this stands in for it. */
 const FILTER_FIT_MIN_DEGREES = 0.05;
 
-/** Metres in a degree, near enough for choosing a scale. */
+/** Metres in a degree of latitude, near enough for choosing a scale. */
 const DEGREE_METRES = 111_320;
+
+/**
+ * What the filters rail covers, in pixels: its 252px card and the 12px inset.
+ *
+ * The map runs the full width of the page and the rail floats over its left
+ * edge, so the part of it anyone can see is this much narrower. A frame that
+ * ignores it puts the western end of a wide selection under the panel — which
+ * is exactly what "it only zoomed to one county" looks like.
+ */
+const FILTERS_RAIL_WIDTH = 264;
 
 /** One well, framed: close enough to read the lease lines around it. */
 const SINGLE_WELL_SCALE = 9_000;
 
-/** The furthest out Apply may leave the map — about zoom 8. */
+/**
+ * Where the map is put when more than one county is asked for.
+ *
+ * Zoom 5 is the level the state is read at — the one the map opens on — so
+ * every county in the selection is on screen whether they are neighbours or
+ * at opposite ends of Texas, and the reader is somewhere they recognise
+ * rather than at whatever scale an extent happened to work out to.
+ */
+const MULTI_COUNTY_ZOOM = 5;
+
+/** The furthest out Apply may leave a local filter — about zoom 8. */
 const FILTER_FIT_MAX_SCALE = 1_100_000;
+
+/**
+ * And the furthest out a scattered one may go: the state, near enough.
+ *
+ * Wider than this is ocean and Mexico. A filter whose wells genuinely span
+ * Texas has to be shown at the size of Texas.
+ */
+const FILTER_FIT_WIDE_SCALE = 13_500_000;
 
 /*
  * The highlight ring. It sits just outside a 10px well icon and breathes out
@@ -384,19 +430,35 @@ const CLUSTER_CLEAR_ZOOM = 3;
 /**
  * The zoom level as the reader sees it.
  *
- * `view.zoom` is fractional between levels, and the readout under the zoom
+ * The level is fractional between steps, and the readout under the zoom
  * buttons rounds it. Every band this file switches on — where the bubbles
  * split, where the wells appear — has to round the same way, or the map
- * disagrees with the number it is showing: at `view.zoom` 9.6 the readout said
+ * disagrees with the number it is showing: at level 9.6 the readout said
  * Zoom 10 while `9.6 >= 10` was false, so no wells were drawn until the next
  * step, and the wells looked as though they began at 11.
  */
-function zoomLevel(view: { zoom?: number } | null | undefined): number {
-  return Math.round(view?.zoom ?? 0);
+function zoomLevel(view: { scale?: number } | null | undefined): number {
+  const scale = view?.scale;
+  if (!scale || scale <= 0) return 0;
+  return Math.round(Math.log2(LEVEL_ZERO_SCALE / scale));
+}
+
+/** The scale a level draws at — the inverse of `zoomLevel`. */
+function scaleForZoom(zoom: number): number {
+  return LEVEL_ZERO_SCALE / 2 ** zoom;
 }
 
 function clusterZoomTier(zoom: number): number {
-  return CLUSTER_ZOOM_STEPS.filter((step) => zoom >= step).length;
+  const tier = CLUSTER_ZOOM_STEPS.filter((step) => zoom >= step).length;
+  /*
+   * Below the first step there is still a band: the bubbles are meant to be
+   * on the map down to `CLUSTER_CLEAR_ZOOM`, and only below that do they stop
+   * describing anything. Without this floor, zoom 4 was in no band at all —
+   * so nothing loaded, and a phone, which opens further out than a desktop,
+   * sat on "Loading clusters…" for ever with no request behind it.
+   */
+  if (tier === 0 && zoom > CLUSTER_CLEAR_ZOOM) return 1;
+  return tier;
 }
 
 /**
@@ -419,8 +481,9 @@ function nextClusterTier(zoom: number, current: number): number {
   /* 6 and 7: whatever is already on the map stays on it. */
   if (zoom > CLUSTER_ZOOM_STEPS[0]) return current >= 2 ? 2 : 1;
 
-  /* 5 exactly: back to the coarse bubbles. */
-  if (zoom >= CLUSTER_ZOOM_STEPS[0]) return 1;
+  /* 5 exactly: back to the coarse bubbles. And 4, which is the same bubbles
+     from further away — they only come off below that. */
+  if (zoom > CLUSTER_CLEAR_ZOOM) return 1;
 
   return 0;
 }
@@ -448,7 +511,6 @@ type ScreenPoint = { x: number; y: number };
 
 /** A bubble on screen: where its top edge is, and how wide it is. */
 type BubbleAnchor = ScreenPoint & { bubble: number };
-
 
 /**
  * The dashed blue every tool draws in.
@@ -493,10 +555,7 @@ function rememberDemo(tool: DemoTool): void {
     const seen = window.localStorage.getItem(DEMO_SEEN_KEY);
     const list = seen ? (JSON.parse(seen) as string[]) : [];
     if (list.includes(tool)) return;
-    window.localStorage.setItem(
-      DEMO_SEEN_KEY,
-      JSON.stringify([...list, tool]),
-    );
+    window.localStorage.setItem(DEMO_SEEN_KEY, JSON.stringify([...list, tool]));
   } catch {
     /* Nothing to do: the example will simply be shown again next time. */
   }
@@ -525,7 +584,10 @@ function trimmedBox(wells: MapWell[]) {
 
   const at = (values: number[], fraction: number) =>
     values[
-      Math.min(values.length - 1, Math.max(0, Math.round(fraction * (values.length - 1))))
+      Math.min(
+        values.length - 1,
+        Math.max(0, Math.round(fraction * (values.length - 1))),
+      )
     ];
 
   const lons = wells.map((well) => well.lon).sort((a, b) => a - b);
@@ -579,7 +641,6 @@ function ignoreInterrupted(error: unknown): void {
   }
 }
 
-
 /** The rectangle two opposite corners describe, whichever way round they are. */
 function boxBetween(a: LonLat, b: LonLat): Area {
   return {
@@ -632,10 +693,42 @@ export function MapExplorerView() {
    * well zoom that is these and not the bubbles.
    */
   const [wells, setWells] = useState<MapWell[]>([]);
+  /*
+   * Starts raised, to cover the gap between the map being ready and the
+   * opening cluster load answering. Every path that opens some other way has
+   * to lower it — see the two that do.
+   */
   const [clustersLoading, setClustersLoading] = useState(true);
   const [clusterError, setClusterError] = useState<string | null>(null);
   const [wellsLoading, setWellsLoading] = useState(false);
   const [wellError, setWellError] = useState<string | null>(null);
+  /*
+   * A filter ran and matched nothing.
+   *
+   * Not an error — the service answered, and the answer was none — but it has
+   * to stay on screen while it is true. An empty map with nothing said about
+   * it reads as a fault in the page.
+   */
+  const [noMatches, setNoMatches] = useState(false);
+
+  /*
+   * Bumped to put the filters panel back to nothing.
+   *
+   * It is the panel's `key`: changing it builds a new panel, which is the one
+   * move that clears every box, the typed search and the rows a search
+   * picked, in step. Nothing else can reach inside it from here.
+   */
+  const [filterResetAt, setFilterResetAt] = useState(0);
+
+  /** The wait between saying nothing matched and undoing it. */
+  const emptyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (emptyResetRef.current) clearTimeout(emptyResetRef.current);
+    },
+    [],
+  );
   /* Only the newest answer may be drawn, whichever order they arrive in. */
   const clusterRequestRef = useRef(0);
   /* The zoom band the bubbles on screen were loaded for. */
@@ -665,8 +758,57 @@ export function MapExplorerView() {
   );
 
   const [status, setStatus] = useState<Status>("loading");
-  const [basemap, setBasemap] = useState(DEFAULT_BASEMAP);
   const [viewTab, setViewTab] = useState<ViewTab>("map");
+
+  /*
+   * The filter the address arrived with, if any.
+   *
+   * Read once, on the first render: it is the opening state, not something to
+   * re-read as the URL is rewritten by every later Apply.
+   */
+  const [openingFilters] = useState<Record<string, string[]>>(() =>
+    typeof window === "undefined" ? {} : readFilterParams(window.location.search),
+  );
+
+  /** Whatever a tool drew, from a link that was shared with one on it. */
+  const [openingTools] = useState(() =>
+    typeof window === "undefined" ? {} : readToolParams(window.location.search),
+  );
+
+  /** The tab, the record and the camera the address arrived with. */
+  const [openingView] = useState(() =>
+    typeof window === "undefined" ? {} : readViewParams(window.location.search),
+  );
+
+  /* Whatever the link named, or the default. Read once, like the rest of the
+     opening state. */
+  const [basemap, setBasemap] = useState(
+    () => openingView.basemap ?? DEFAULT_BASEMAP,
+  );
+
+  /*
+   * The filter currently drawn, kept for the Share menu.
+   *
+   * The panel has its own copy of what is ticked, but a link has to be built
+   * from what the map is actually showing — which is what was last applied,
+   * not what somebody has since ticked without applying.
+   */
+  const [shareFilters, setShareFilters] =
+    useState<Record<string, string[]>>(openingFilters);
+
+  /*
+   * Where the map's two notices sit from `lg` up.
+   *
+   * On the Map tab the toolbar is held to the right of a full-width map, so
+   * the top left is clear and the line reads where the eye already is. In
+   * Insights the map is half the page and the toolbar starts near its left
+   * edge — the same spot puts the line straight under it — so there it goes
+   * below the toolbar, centred on the map.
+   */
+  const noticePlacement =
+    viewTab === "map"
+      ? "lg:left-[288px] lg:top-4 lg:translate-x-0"
+      : "lg:top-[76px]";
   const [splitRatio, setSplitRatio] = useState(DEFAULT_SPLIT);
   /*
    * Until the divider is actually moved the ratio is the axis's own default,
@@ -689,6 +831,13 @@ export function MapExplorerView() {
   const [measurement, setMeasurement] = useState<Measurement | null>(null);
   const [measureAnchor, setMeasureAnchor] = useState<ScreenPoint | null>(null);
   const [tractResult, setTractResult] = useState<AreaMeasurement | null>(null);
+  /*
+   * The tract's corners, mirrored out of the ref.
+   *
+   * The ref is what the click handler builds up; this is what a share link is
+   * written from, which has to be readable during render.
+   */
+  const [tract, setTract] = useState<LonLat[]>([]);
   const tractRef = useRef<LonLat[]>([]);
   const tractLayerRef = useRef<EsriGraphicsLayer | null>(null);
 
@@ -711,6 +860,14 @@ export function MapExplorerView() {
    * the tool on a map with nothing on it.
    */
   const [demoTool, setDemoTool] = useState<DemoTool | null>(null);
+  /*
+   * Whether the example on screen was asked for, rather than offered.
+   *
+   * One asked for is not the automatic first showing and does not count as
+   * it: a reader who presses the play icon before ever reaching for the tool
+   * still gets the example when they do, exactly as they would have.
+   */
+  const demoAskedFor = useRef(false);
   /** The distance being asked about — one of the service's own rings. */
   const [watchRadius, setWatchRadius] = useState<number>(NEARBY_RADII[0]);
   /*
@@ -741,9 +898,12 @@ export function MapExplorerView() {
    * tall the bubble is — the card needs the height to flip below it when there
    * is no room above.
    */
-  const [hoveredCluster, setHoveredCluster] = useState<
-    { index: number; x: number; y: number; bubble: number } | null
-  >(null);
+  const [hoveredCluster, setHoveredCluster] = useState<{
+    index: number;
+    x: number;
+    y: number;
+    bubble: number;
+  } | null>(null);
   const hoveredClusterRef = useRef<{
     index: number;
     x: number;
@@ -858,11 +1018,30 @@ export function MapExplorerView() {
    * selected — that a page of prose has no use for. The map stays mounted
    * underneath, so closing it returns the exact view that was left.
    */
-  const [readout, setReadout] = useState({
-    scale: HOME_SCALE,
-    zoom: 6,
-    center: { longitude: HOME_CENTER[0], latitude: HOME_CENTER[1] },
-  });
+  /*
+   * The scale bar and the coordinates under it.
+   *
+   * Seeded from the address when a link arrives with a camera: opening
+   * somewhere is not a movement, so nothing would otherwise tell this what
+   * the map is showing, and the reading would sit on the home view while the
+   * map sat over Midland.
+   */
+  const [readout, setReadout] = useState(() =>
+    openingView.at
+      ? {
+          scale: scaleForZoom(openingView.at.zoom),
+          zoom: openingView.at.zoom,
+          center: {
+            longitude: openingView.at.lon,
+            latitude: openingView.at.lat,
+          },
+        }
+      : {
+          scale: homeScale(),
+          zoom: zoomLevel({ scale: homeScale() }),
+          center: { longitude: HOME_CENTER[0], latitude: HOME_CENTER[1] },
+        },
+  );
 
   /**
    * Redraws the dashed rectangle. Declared above the effect that installs the
@@ -1011,6 +1190,70 @@ export function MapExplorerView() {
   }, []);
 
   /** Redraws the watch circle and the dot at its centre. */
+  /*
+   * Which lease the reader's click landed on, and the card that says so.
+   *
+   * Its own function rather than a passage inside the click handler: a shared
+   * link that arrives with a watch circle on it has to ask the same question
+   * about the same point, and a lookup that only a click can reach cannot be
+   * asked twice.
+   */
+  const askAboutLeaseAt = useCallback((at: LonLat) => {
+    const candidates = nearestWellsTo(at, wellsRef.current, LEASE_TRIES);
+    const leaseRequest = ++leaseRequestRef.current;
+
+    /* The card says something in every branch below, including the ones that
+       fail — a click that answers with nothing reads as a broken tool. */
+    setLeaseNearbyOpen(true);
+    setWatchLease(null);
+    setWatchAnswer({ kind: "looking" });
+
+    if (candidates.length === 0) {
+      setWatchAnswer({
+        kind: "problem",
+        message:
+          "No well is loaded near that point, so there is no lease to ask about. Zoom in until the wells are drawn, then click your land again.",
+      });
+      return;
+    }
+
+    /*
+     * Outward from the click until a record names its lease.
+     *
+     * A well's record does not always carry a lease number, and without one
+     * there is no key to ask the service about. Rather than give up on the
+     * nearest well, the next few are tried in order — one at a time, stopping
+     * at the first that answers, so the usual case is still a single request.
+     */
+    void (async () => {
+      for (const well of candidates) {
+        let summary;
+        try {
+          summary = await getWellSummaryMap(well.api);
+        } catch {
+          continue;
+        }
+        if (leaseRequest !== leaseRequestRef.current) return;
+
+        const district = summary.lease?.district ?? summary.identity?.district;
+        const number = summary.lease?.leaseNumber;
+        if (!district || !number) continue;
+
+        setWatchLease({
+          key: `${district}-${number}`,
+          name: summary.lease?.leaseName ?? well.lease,
+        });
+        return;
+      }
+
+      if (leaseRequest !== leaseRequestRef.current) return;
+      setWatchAnswer({
+        kind: "problem",
+        message: `None of the ${candidates.length} wells nearest that point names a lease number on its record, so the service cannot be asked about a lease there. Try clicking closer to a well.`,
+      });
+    })();
+  }, []);
+
   const drawNearby = useCallback((next: Nearby | null) => {
     const layer = nearbyLayerRef.current;
     const ctors = ctorsRef.current;
@@ -1067,7 +1310,6 @@ export function MapExplorerView() {
         },
       }),
     );
-
   }, []);
 
   /**
@@ -1082,86 +1324,86 @@ export function MapExplorerView() {
    */
   const drawTract = useCallback(
     (points: LonLat[], closed: boolean, hint?: LonLat | null) => {
-    const layer = tractLayerRef.current;
-    const ctors = ctorsRef.current;
-    if (!layer || !ctors) return;
+      const layer = tractLayerRef.current;
+      const ctors = ctorsRef.current;
+      if (!layer || !ctors) return;
 
-    layer.removeAll();
-    if (points.length === 0) return;
+      layer.removeAll();
+      if (points.length === 0) return;
 
-    const ring = points.map((p) => [p.longitude, p.latitude]);
+      const ring = points.map((p) => [p.longitude, p.latitude]);
 
-    if (!closed && hint) {
-      const last = points[points.length - 1];
-      layer.add(
-        new ctors.Graphic({
-          geometry: {
-            type: "polyline",
-            paths: [
-              [
-                [last.longitude, last.latitude],
-                [hint.longitude, hint.latitude],
+      if (!closed && hint) {
+        const last = points[points.length - 1];
+        layer.add(
+          new ctors.Graphic({
+            geometry: {
+              type: "polyline",
+              paths: [
+                [
+                  [last.longitude, last.latitude],
+                  [hint.longitude, hint.latitude],
+                ],
               ],
-            ],
-            spatialReference: { wkid: 4326 },
-          },
-          symbol: {
-            type: "simple-line",
-            color: TOOL_BLUE,
-            width: 1.5,
-            style: "dash",
-          },
-        }),
-      );
-    }
+              spatialReference: { wkid: 4326 },
+            },
+            symbol: {
+              type: "simple-line",
+              color: TOOL_BLUE,
+              width: 1.5,
+              style: "dash",
+            },
+          }),
+        );
+      }
 
-    if (closed && points.length >= 3) {
-      layer.add(
-        new ctors.Graphic({
-          geometry: {
-            type: "polygon",
-            rings: [[...ring, ring[0]]],
-            spatialReference: { wkid: 4326 },
-          },
-          symbol: {
-            type: "simple-fill",
-            color: [255, 255, 255, 0.22],
-            outline: { color: TOOL_BLUE, width: 2 },
-          },
-        }),
-      );
-    } else if (points.length >= 2) {
-      layer.add(
-        new ctors.Graphic({
-          geometry: {
-            type: "polyline",
-            paths: [ring],
-            spatialReference: { wkid: 4326 },
-          },
-          symbol: { type: "simple-line", color: TOOL_BLUE, width: 2 },
-        }),
-      );
-    }
+      if (closed && points.length >= 3) {
+        layer.add(
+          new ctors.Graphic({
+            geometry: {
+              type: "polygon",
+              rings: [[...ring, ring[0]]],
+              spatialReference: { wkid: 4326 },
+            },
+            symbol: {
+              type: "simple-fill",
+              color: [255, 255, 255, 0.22],
+              outline: { color: TOOL_BLUE, width: 2 },
+            },
+          }),
+        );
+      } else if (points.length >= 2) {
+        layer.add(
+          new ctors.Graphic({
+            geometry: {
+              type: "polyline",
+              paths: [ring],
+              spatialReference: { wkid: 4326 },
+            },
+            symbol: { type: "simple-line", color: TOOL_BLUE, width: 2 },
+          }),
+        );
+      }
 
-    for (const point of points) {
-      layer.add(
-        new ctors.Graphic({
-          geometry: {
-            type: "point",
-            longitude: point.longitude,
-            latitude: point.latitude,
-          },
-          symbol: {
-            type: "simple-marker",
-            size: 9,
-            color: [255, 255, 255],
-            outline: { color: TOOL_BLUE, width: 2 },
-          },
-        }),
-      );
-    }
-  },
-  [],
+      for (const point of points) {
+        layer.add(
+          new ctors.Graphic({
+            geometry: {
+              type: "point",
+              longitude: point.longitude,
+              latitude: point.latitude,
+            },
+            symbol: {
+              type: "simple-marker",
+              size: 9,
+              color: [255, 255, 255],
+              outline: { color: TOOL_BLUE, width: 2 },
+            },
+          }),
+        );
+      }
+    },
+    [],
   );
 
   /*
@@ -1220,9 +1462,29 @@ export function MapExplorerView() {
     const layer = clusterLayerRef.current;
     if (!view?.extent || !ctors || !layer) return;
 
+    /*
+     * A filter owns the map until it is cleared.
+     *
+     * The zoom watcher schedules a load 400ms after the camera settles, and a
+     * filter applied inside that window — which is exactly what a shared link
+     * does — drew its wells and then had bubbles land on top of them. The
+     * watcher checks this flag before scheduling; by the time the timer
+     * fires, the answer may have changed.
+     */
+    if (filteredRef.current) {
+      setClustersLoading(false);
+      return;
+    }
+
     // Too far out to be worth asking — but what is drawn stays drawn.
     // Clearing is the zoom watcher's job, and only much further out.
-    if (clusterZoomTier(zoomLevel(view)) === 0) return;
+    if (clusterZoomTier(zoomLevel(view)) === 0) {
+      /* Nothing is loading, so nothing should say it is: the flag is raised
+         from the first render to cover the opening load, and returning here
+         without lowering it left the veil up with no request behind it. */
+      setClustersLoading(false);
+      return;
+    }
 
     const { xmin, ymin, xmax, ymax } = view.extent;
     const request = ++clusterRequestRef.current;
@@ -1239,6 +1501,8 @@ export function MapExplorerView() {
       .then((list) => {
         // A slower earlier request must not overwrite a newer answer.
         if (request !== clusterRequestRef.current) return;
+        // Nor may one that was already in flight when a filter took the map.
+        if (filteredRef.current) return;
 
         const next = list.map(toWellCluster);
         clustersRef.current = next;
@@ -1259,7 +1523,7 @@ export function MapExplorerView() {
          * one clears the other.
          */
         clearInterval(pulseTimerRef.current);
-      clearInterval(sampleTimerRef.current);
+        clearInterval(sampleTimerRef.current);
         highlightLayerRef.current?.removeAll();
       })
       .catch((error: unknown) => {
@@ -1279,7 +1543,48 @@ export function MapExplorerView() {
    * Unlike the bubbles this does follow a pan: at this zoom the extent is a
    * few miles across, so panning genuinely leaves the loaded set behind.
    */
+  /*
+   * A well the page opened on, waiting for its wells to arrive.
+   *
+   * A shared link names a well by number, and a number is not a position:
+   * the ring cannot be drawn until the wells for the extent are in hand and
+   * one of them turns out to be it. Cleared once rung, so a later load does
+   * not ring it again over whatever the reader has since clicked.
+   */
+  const ringOnArrivalRef = useRef<string | null>(null);
+
+  /*
+   * A watch circle from a link, waiting for wells to ask about.
+   *
+   * The lease behind "What's near my land?" is found from the wells the map
+   * holds, and a link is replayed the moment the view is ready — before any
+   * well has loaded. Asked then, the answer was always "no well is loaded
+   * near that point", which is true of an empty map and useless to the
+   * reader. Held here until there is something to look through.
+   */
+  const leaseOnArrivalRef = useRef<LonLat | null>(null);
+
+  /*
+   * A replay from a link, waiting for wells to replay.
+   *
+   * Time-lapse groups the wells the map is already holding, so like the watch
+   * circle it cannot be restored until they arrive: opened on an empty map it
+   * finds no dated wells and puts itself away again.
+   */
+  const timeLapseOnArrivalRef = useRef<number | "open" | null>(null);
+
   const loadWells = useCallback(() => {
+    /*
+     * A filter owns the map, here as much as in `loadClusters`.
+     *
+     * The zoom watcher schedules this 400ms after the camera settles. A link
+     * that arrives on one well applies its filter inside that window — the
+     * legend has to be fetched first — so the filter drew its single well and
+     * this landed on top of it with every well in the extent. The ring stayed
+     * where the filter put it, around nothing.
+     */
+    if (filteredRef.current) return;
+
     const view = viewRef.current;
     const ctors = ctorsRef.current;
     const layer = wellLayerRef.current;
@@ -1322,6 +1627,8 @@ export function MapExplorerView() {
     getWellListMap(box)
       .then((list: MapWell[]) => {
         if (request !== wellRequestRef.current) return;
+        // Nor may an answer that was already in flight when a filter took over.
+        if (filteredRef.current) return;
 
         wellsBoxRef.current = box;
         wellsRef.current = list;
@@ -1341,6 +1648,19 @@ export function MapExplorerView() {
       .finally(() => {
         if (request === wellRequestRef.current) setWellsLoading(false);
       });
+  }, []);
+
+  /*
+   * Puts the record away.
+   *
+   * The ring goes with it: it marks the well the panel is showing, and with
+   * no panel it marks nothing. The map itself is left exactly where it is —
+   * closing a record is not a reason to move somebody's view.
+   */
+  const closeSummary = useCallback(() => {
+    clearInterval(pulseTimerRef.current);
+    highlightLayerRef.current?.removeAll();
+    setSelectedWell(null);
   }, []);
 
   const clearWells = useCallback(() => {
@@ -1415,29 +1735,18 @@ export function MapExplorerView() {
      * carry no readable date. It returned silently before, so pressing
      * Time-lapse over the statewide view did nothing at all and looked broken.
      *
-     * Only one of the two channels speaks, though. The toolbar button carries
-     * a hover hint for the no-wells case, so saying it again in a toast put
-     * the same sentence on screen twice. Where there is no hover to have seen
-     * it — a touch screen — the toast is the only channel, so it stays.
+     * One channel says so, not two. The bubbles case belongs to the card
+     * under the toolbar button — it opens on hover and on focus, and a tap
+     * focuses, so a phone gets it as well as a mouse. Saying it here too put
+     * the same sentence on screen twice, one over the other.
+     *
+     * Wells drawn but undated is the one the card does not cover, since the
+     * card is only there while the map is showing bubbles. That is the toast.
      */
     const wells = wellsRef.current;
     const years = yearsIn(wells);
     if (years.length === 0) {
-      const noHover =
-        typeof window !== "undefined" &&
-        window.matchMedia?.("(hover: none)").matches;
-
-      if (wells.length === 0) {
-        if (noHover) {
-          setToast(
-            "Time-lapse replays individual wells — zoom in to level 10 first",
-          );
-        }
-      } else {
-        /* The hint never covers this one: the wells are drawn, they simply
-           carry no date. */
-        setToast("No dated wells here to replay");
-      }
+      if (wells.length > 0) setToast("No dated wells here to replay");
       return;
     }
 
@@ -1585,6 +1894,91 @@ export function MapExplorerView() {
     pulseTimerRef.current = setInterval(draw, PULSE_INTERVAL_MS);
   }, []);
 
+  /*
+   * Rings the well a shared link named, once its wells have arrived.
+   *
+   * Here rather than inside the loader: the ring is declared below that, and
+   * a loader reaching up to it is an order that only holds by accident. The
+   * ref is cleared on the way through, so this fires once and never paints
+   * over a well the reader has since clicked.
+   */
+  /*
+   * The tract's figures, once the wells are in.
+   *
+   * A link arrives with corners and no counts: the wells for that ground had
+   * not loaded when the shape was drawn, so the acreage was all this could
+   * say. Measured again here, against whatever the map now holds.
+   */
+  useEffect(() => {
+    if (tract.length < 3) return;
+    setTractResult(measureTract(clustersRef.current, wellsRef.current, tract));
+  }, [tract, wells, clusters]);
+
+  /*
+   * And the replay a link arrived on, once there are wells to replay.
+   *
+   * Opened, then held on the shared year rather than left running: a link to
+   * 1998 is a link to what the map looked like in 1998, and a replay that
+   * carries on past it a second later is not that.
+   */
+  useEffect(() => {
+    const waiting = timeLapseOnArrivalRef.current;
+    if (waiting === null || wells.length === 0) return;
+
+    timeLapseOnArrivalRef.current = null;
+    openTimeLapse();
+
+    if (waiting === "open") return;
+
+    const years = timeLapseYearsRef.current;
+    const step = years.findIndex((entry) => entry.year === waiting);
+    if (step < 0) return;
+
+    seekTimeLapse(step);
+    setTimeLapsePlaying(false);
+  }, [wells, openTimeLapse, seekTimeLapse]);
+
+  /* And the lease under a link's watch circle, once there are wells to
+     look through. */
+  useEffect(() => {
+    const at = leaseOnArrivalRef.current;
+    if (!at || wells.length === 0) return;
+
+    leaseOnArrivalRef.current = null;
+    askAboutLeaseAt(at);
+  }, [wells, askAboutLeaseAt]);
+
+  useEffect(() => {
+    const waiting = ringOnArrivalRef.current;
+    if (!waiting || wells.length === 0) return;
+
+    const found = wells.find((well) => well.api === waiting);
+    if (!found) return;
+
+    ringOnArrivalRef.current = null;
+    const [markLon, markLat] = wellMarkPoint(found);
+    highlightWell(markLon, markLat);
+  }, [wells, highlightWell]);
+
+  /**
+   * Brings a well under the reader's eye.
+   *
+   * Centred and, where the view is wider than a single well deserves, taken
+   * in to the same scale a search for one lands at. Never outward: a click on
+   * a well already filling the screen should not pull the map back.
+   */
+  const focusWell = useCallback((longitude: number, latitude: number) => {
+    const view = viewRef.current;
+    if (!view) return;
+
+    view
+      .goTo({
+        center: [longitude, latitude],
+        scale: Math.min(view.scale, SINGLE_WELL_SCALE),
+      })
+      .catch(ignoreInterrupted);
+  }, []);
+
   /** Drops the bubbles — the view is too wide for them to mean anything. */
   const clearClusters = useCallback(() => {
     if (clustersRef.current.length === 0) return;
@@ -1608,6 +2002,15 @@ export function MapExplorerView() {
    * map moves to fit them when it can. Clearing every filter hands the map
    * back to the zoom-driven loading it does otherwise.
    */
+  /*
+   * `applyFilters`, for the one place that has to call it from inside itself:
+   * an empty result undoes its own filter, and a callback cannot list itself
+   * as a dependency.
+   */
+  const applyFiltersRef = useRef<
+    ((filters: Record<string, string[]>) => void) | null
+  >(null);
+
   const applyFilters = useCallback(
     (filters: Record<string, string[]>) => {
       const ctors = ctorsRef.current;
@@ -1615,9 +2018,15 @@ export function MapExplorerView() {
       const view = viewRef.current;
       if (!ctors || !layer || !view) return;
 
+      /* Remembered for the Share menu. The address is left alone: a link is
+         made when somebody asks for one, not on every Apply. */
+      setShareFilters(filters);
+
       if (Object.keys(filters).length === 0) {
         filteredRef.current = false;
         setToast("Filters cleared");
+        /* Nothing is being filtered, so nothing can be matching nothing. */
+        setNoMatches(false);
         // `clearWells` takes the ring with the wells it marked.
         clearWells();
         clusterTierRef.current = -1;
@@ -1654,6 +2063,7 @@ export function MapExplorerView() {
       // The previous answer is no longer the answer. Leaving it up means a
       // failed request still reads as a successful one.
       setWellError(null);
+      setNoMatches(false);
 
       getMatchedWellsMap(filters)
         .then(({ wells }) => {
@@ -1662,17 +2072,38 @@ export function MapExplorerView() {
           wellsRef.current = wells;
           setWells(wells);
           setWellError(null);
+          setNoMatches(wells.length === 0);
+
+          /*
+           * Nothing matched: say so, then undo it.
+           *
+           * Left applied, the filter has the reader on an empty map that stays
+           * empty whatever they tick next, since every further choice narrows
+           * a set that is already nought. The pause is for reading the notice
+           * — long enough for a sentence, short enough not to feel stuck.
+           */
+          if (wells.length === 0) {
+            if (emptyResetRef.current) clearTimeout(emptyResetRef.current);
+            emptyResetRef.current = setTimeout(() => {
+              setFilterResetAt((count) => count + 1);
+              applyFiltersRef.current?.({});
+            }, 2600);
+          }
 
           /*
            * Said once the matches are in, not when Apply was pressed: until
            * the service has answered there is nothing to confirm, and a
            * request that fails must not have been announced as a success.
            */
-          setToast(
-            wells.length === 0
-              ? "Filters applied — no wells match"
-              : `Filters applied — ${wells.length.toLocaleString("en-US")} well${wells.length === 1 ? "" : "s"}`,
-          );
+          /* Only when there is a number to give. Nothing matching is said by
+             the red notice at the top of the map, which stays as long as it is
+             true — a toast saying the same thing put two messages on screen at
+             once, one over the other. */
+          if (wells.length > 0) {
+            setToast(
+              `Filters applied — ${wells.length.toLocaleString("en-US")} well${wells.length === 1 ? "" : "s"}`,
+            );
+          }
 
           clearClusters();
           layer.removeAll();
@@ -1688,20 +2119,57 @@ export function MapExplorerView() {
            */
           if (wells.length === 1) {
             const only = wells[0];
-            highlightWell(only.lon, only.lat);
+            /* The drawn symbol, which on a lateral is a bore's length from
+               the surface hole the row's coordinates name. */
+            const [markLon, markLat] = wellMarkPoint(only);
+            highlightWell(markLon, markLat);
+            /* The same point the ring is on. Centred on `only.lon` — the
+               surface hole the row's coordinates name — a two-mile lateral
+               put its ringed symbol somewhere off screen at 1:9,000, which
+               is a map of a well with the well missing. */
             view
-              .goTo({ center: [only.lon, only.lat], scale: SINGLE_WELL_SCALE })
+              .goTo({ center: [markLon, markLat], scale: SINGLE_WELL_SCALE })
               .catch(ignoreInterrupted);
             return;
           }
 
           /*
-           * Zoom only when the matches describe one place.
+           * More than one county: out to the state, centred on the matches.
            *
-           * A county, or one operator working a single field, fits inside a
-           * degree or two. Operators on opposite sides of Texas span the
-           * state, and fitting that is the statewide view with extra steps —
-           * worse, it throws away wherever the map was.
+           * Two counties can be neighbours or four hundred miles apart, and
+           * fitting the box for both cases is arithmetic that keeps finding
+           * new ways to leave one of them off the edge. Zoom 5 has neither
+           * problem — it is the level the whole state is read at.
+           */
+          const countiesAsked = filters.county?.length ?? 0;
+
+          if (countiesAsked > 1) {
+            const spot = trimmedBox(wells);
+
+            view
+              .goTo(
+                {
+                  center: spot
+                    ? [
+                        (spot.west + spot.east) / 2,
+                        (spot.south + spot.north) / 2,
+                      ]
+                    : HOME_CENTER,
+                  scale: scaleForZoom(MULTI_COUNTY_ZOOM),
+                },
+                { animate: false },
+              )
+              .catch(ignoreInterrupted);
+            return;
+          }
+
+          /*
+           * Frame what matched — all of it.
+           *
+           * Three counties chosen from opposite ends of the state are three
+           * counties the reader asked to see, and leaving the map where it
+           * stood showed two of them with the third off the edge. So the box
+           * around every match is what the view goes to.
            *
            * The box is trimmed rather than the outright min and max: a handful
            * of bad coordinates would otherwise define the frame.
@@ -1711,31 +2179,74 @@ export function MapExplorerView() {
           if (box) {
             const spread = Math.max(box.east - box.west, box.north - box.south);
 
-            if (spread <= FILTER_FIT_MAX_DEGREES) {
-              // Centre and scale, not an extent: a plain object is not a
-              // Geometry and `goTo` will not autocast one.
-              const degrees = Math.max(spread, FILTER_FIT_MIN_DEGREES);
-              const span = Math.max(
-                Math.min(view.width, view.height) * 0.8,
-                200,
-              );
-              const metresPerPixel = (degrees * DEGREE_METRES) / span;
+            /*
+             * Fitted per axis, into the part of the map that is not under the
+             * rail. Both sides matter: a box four degrees wide and one deep
+             * is not framed by treating it as four degrees square, and a
+             * degree of longitude at this latitude is only five sixths of a
+             * degree of latitude.
+             */
+            const midLat = (box.south + box.north) / 2;
+            const lonMetres =
+              DEGREE_METRES * Math.cos((midLat * Math.PI) / 180);
 
-              view
-                .goTo({
-                  center: [
-                    (box.west + box.east) / 2,
-                    (box.south + box.north) / 2,
-                  ],
-                  // Never further out than this: a filter that lands on the
-                  // statewide view has not shown anybody anything.
+            const wide = Math.max(box.east - box.west, FILTER_FIT_MIN_DEGREES);
+            const deep = Math.max(
+              box.north - box.south,
+              FILTER_FIT_MIN_DEGREES,
+            );
+
+            /* The rail is open beside the map from `lg` up; below that Apply
+               has just shut it, so the whole width is there to be used. */
+            const covered =
+              view.width >= 1024
+                ? Math.min(FILTERS_RAIL_WIDTH, view.width / 3)
+                : 0;
+            const usableWidth = Math.max(view.width - covered, 240);
+
+            const metresPerPixel = Math.max(
+              (wide * lonMetres) / (usableWidth * 0.86),
+              (deep * DEGREE_METRES) / (Math.max(view.height, 200) * 0.86),
+            );
+
+            /* Half the covered strip, in degrees: the box's middle has to land
+               in the middle of what is visible, not of the surface. */
+            const nudge = ((covered / 2) * metresPerPixel) / lonMetres;
+
+            // Centre and scale, not an extent: a plain object is not a
+            // Geometry and `goTo` will not autocast one.
+            view
+              .goTo(
+                {
+                  center: [(box.west + box.east) / 2 - nudge, midLat],
+                  /*
+                   * How far out this is allowed to leave the map depends on
+                   * what matched. A county's worth of wells landing on the
+                   * statewide view has shown nobody anything, so that case is
+                   * held to zoom 8 or nearer; a selection that really does
+                   * cross Texas is allowed the size of Texas.
+                   */
                   scale: Math.min(
                     (metresPerPixel * 96) / 0.0254,
-                    FILTER_FIT_MAX_SCALE,
+                    spread <= FILTER_FIT_MAX_DEGREES
+                      ? FILTER_FIT_MAX_SCALE
+                      : FILTER_FIT_WIDE_SCALE,
                   ),
-                })
-                .catch(ignoreInterrupted);
-            }
+                },
+                /*
+                 * Straight there, no flight.
+                 *
+                 * An animated `goTo` is a camera the map can be argued out
+                 * of: anything else that moves the view while it is flying
+                 * cancels it, `ignoreInterrupted` swallows the rejection, and
+                 * the frame silently never happens — the map sits wherever it
+                 * was, which on a scattered filter looks exactly like framing
+                 * one county and dropping the rest. Set outright, it cannot
+                 * be interrupted.
+                 */
+                { animate: false },
+              )
+              .catch(ignoreInterrupted);
           }
         })
         .catch((error: unknown) => {
@@ -1750,7 +2261,7 @@ export function MapExplorerView() {
              * hit is a 502. Say what to do about it.
              */
             error instanceof Error &&
-            /502|timeout|Failed to fetch/i.test(error.message)
+              /502|timeout|Failed to fetch/i.test(error.message)
               ? "The filter took too long to run. Try again — the result is cached once it completes."
               : error instanceof Error
                 ? error.message
@@ -1763,6 +2274,13 @@ export function MapExplorerView() {
     },
     [clearClusters, clearWells, loadClusters, highlightWell],
   );
+
+  /* Kept current so the empty-result reset can reach it without depending on
+     its own identity. Assigned in an effect rather than during render, which
+     is where a ref must not be written. */
+  useEffect(() => {
+    applyFiltersRef.current = applyFilters;
+  }, [applyFilters]);
 
   /**
    * A picked API number, run as a filter of one.
@@ -1798,6 +2316,8 @@ export function MapExplorerView() {
       applyFilters({ api: [row.api] });
       // The row already carries everything the summary's header needs, so it
       // is filled straight from the table rather than waiting on the fetch.
+      setWellError(null);
+      setClusterError(null);
       setSelectedWell({
         api: row.api,
         lease: row.lease,
@@ -1815,20 +2335,35 @@ export function MapExplorerView() {
     [applyFilters],
   );
 
-  /** Export CSV: whatever is inside the extent right now, wells or bubbles. */
+  /**
+   * Export — the map's own rows, as a spreadsheet.
+   *
+   * Browsing, that means what is inside the extent — the loaded bubbles reach
+   * past the screen after a pan, and a file of things nobody was looking at is
+   * not what the button offers. Filtered, it means the whole set: the reader
+   * asked for those wells and was told how many there were, so the file has to
+   * hold that many.
+   */
   const exportCsv = useCallback(() => {
     const view = viewRef.current;
     if (!view?.extent) return;
 
     const { xmin, ymin, xmax, ymax } = view.extent;
-    exportVisible(clustersRef.current, wellsRef.current, {
-      west: mercatorToLongitude(xmin),
-      south: mercatorToLatitude(ymin),
-      east: mercatorToLongitude(xmax),
-      north: mercatorToLatitude(ymax),
-    });
+    exportVisible(
+      clustersRef.current,
+      wellsRef.current,
+      filteredRef.current
+        ? null
+        : {
+            west: mercatorToLongitude(xmin),
+            south: mercatorToLatitude(ymin),
+            east: mercatorToLongitude(xmax),
+            north: mercatorToLatitude(ymax),
+          },
+      /* Tier 2 is the finer set — the one the map draws from zoom 8. */
+      clusterTierRef.current >= 2 ? "sub-clusters" : "clusters",
+    );
   }, []);
-
 
   /** Re-projects the on-map cards — they are React, so they do not follow. */
   const anchorBars = useCallback(() => {
@@ -1851,10 +2386,7 @@ export function MapExplorerView() {
     const currentArea = areaRef.current;
     setAreaAnchor(
       currentArea
-        ? project(
-            (currentArea.west + currentArea.east) / 2,
-            currentArea.north,
-          )
+        ? project((currentArea.west + currentArea.east) / 2, currentArea.north)
         : null,
     );
 
@@ -1872,6 +2404,90 @@ export function MapExplorerView() {
     // The watch card is not projected — it holds the bottom of the map
     // whatever the circle does.
   }, []);
+
+  /*
+   * Redraws what a tool drew, from a link that carried it.
+   *
+   * The geometry travels; the arithmetic does not. A distance is measured
+   * again from its two ends and a tract is measured again against the wells
+   * on screen, so the reader gets figures worked out from their own map
+   * rather than numbers copied out of somebody else's address bar.
+   *
+   * The tract's own count waits for the wells — see the effect that watches
+   * them — because at this point the map has drawn nothing to count.
+   */
+  const replayTools = useCallback(
+    (tools: LinkTools) => {
+      const ctors = ctorsRef.current;
+      if (!ctors) return;
+
+      if (tools.area) {
+        areaRef.current = tools.area;
+        setArea(tools.area);
+        drawArea(tools.area);
+      }
+
+      if (tools.line) {
+        const [from, to] = tools.line;
+        const ends = [from, to].map(
+          (point) =>
+            new ctors.Point({
+              longitude: point.longitude,
+              latitude: point.latitude,
+              spatialReference: { wkid: 4326 },
+            }),
+        );
+        const next: Measurement = {
+          from,
+          to,
+          meters: ctors.geodesic.geodesicDistance(ends[0], ends[1], "meters")
+            .distance,
+        };
+        measurementRef.current = next;
+        setMeasurement(next);
+        drawMeasurement(next);
+      }
+
+      if (tools.tract && tools.tract.length >= 3) {
+        tractRef.current = tools.tract;
+        setTract(tools.tract);
+        drawTract(tools.tract, true);
+      }
+
+      if (tools.near) {
+        const next: Nearby = {
+          at: tools.near.at,
+          radiusMiles: tools.near.radiusMiles,
+        };
+        nearbyRef.current = next;
+        setNearby(next);
+        setWatchRadius(next.radiusMiles);
+        drawNearby(next);
+
+        /* The card opens saying it is looking; the question itself waits for
+           the wells — see `leaseOnArrivalRef`. Below the well zoom none will
+           come, so there it is asked at once and says so. */
+        if (zoomLevel(viewRef.current) >= WELL_ZOOM) {
+          leaseOnArrivalRef.current = next.at;
+          setLeaseNearbyOpen(true);
+          setWatchLease(null);
+          setWatchAnswer({ kind: "looking" });
+        } else {
+          askAboutLeaseAt(next.at);
+        }
+      }
+
+      anchorBars();
+    },
+    [
+      anchorBars,
+      askAboutLeaseAt,
+      drawArea,
+      drawMeasurement,
+      drawNearby,
+      drawTract,
+    ],
+  );
 
   useEffect(() => {
     // StrictMode mounts the effect twice in dev; `cancelled` stops the first
@@ -2013,7 +2629,12 @@ export function MapExplorerView() {
         // Held so the basemap picker can swap `map.basemap` later. The cluster
         // layer is a sibling of the basemap, so it survives the swap.
         const map = new EsriMap({
-          basemap: DEFAULT_BASEMAP,
+          /* The link's own basemap, not the state that mirrors it: this
+             effect builds the view once, and a later change is assigned
+             straight onto the map by `changeBasemap` rather than rebuilding
+             it — so listing the state here would rebuild the map on every
+             swap. */
+          basemap: openingView.basemap ?? DEFAULT_BASEMAP,
           // Districts first, counties over them, then the bubbles and every
           // tool layer on top — boundaries are context, not content.
           layers: [
@@ -2033,10 +2654,21 @@ export function MapExplorerView() {
         view = new MapView({
           container: containerRef.current,
           map,
-          center: HOME_CENTER,
-          scale: homeScale(),
+          /* A shared link opens where it was sent from. Set here rather than
+             moved to afterwards: a `goTo` on a view that is still settling
+             into its own opening extent is overruled by it, which is why the
+             link's camera was being ignored. */
+          center: openingView.at
+            ? [openingView.at.lon, openingView.at.lat]
+            : HOME_CENTER,
+          scale: openingView.at
+            ? scaleForZoom(openingView.at.zoom)
+            : homeScale(),
           // Below zoom 3 the world repeats and the terrain turns to mush.
-          constraints: { minZoom: 3, snapToZoom: false },
+          /* A scale, not a level: `minZoom` is read against the basemap's own
+             tiling scheme, so it meant two different limits on imagery and on
+             the vector maps. */
+          constraints: { minScale: scaleForZoom(3), snapToZoom: false },
           // Attribution only — every other control is React chrome on top.
           ui: { components: ["attribution"] },
         });
@@ -2270,7 +2902,9 @@ export function MapExplorerView() {
           }
 
           // A tool takes precedence — no hover cards mid-draw.
-          const index = activeToolRef.current ? -1 : clusterAt(event.x, event.y);
+          const index = activeToolRef.current
+            ? -1
+            : clusterAt(event.x, event.y);
           const top = index === -1 ? null : screenTopOf(index);
           const next = top
             ? { index, x: top.x, y: top.y, bubble: top.bubble }
@@ -2307,9 +2941,17 @@ export function MapExplorerView() {
 
             const hovered = hoveredWellRef.current;
             if (hovered) {
-              // The well's own position, not the cursor's — a click a few
-              // pixels off centre should still ring the well.
+              /* The well's own symbol, not the cursor — a click a few pixels
+                 off centre should still ring the symbol that was clicked, and
+                 on a lateral that symbol is at the bottom of the bore. */
               highlightWell(hovered.lon, hovered.lat);
+              focusWell(hovered.lon, hovered.lat);
+              /* Whatever the map was complaining about belonged to the last
+                 thing asked of it. Opening a record is a new question, and
+                 the record answers for itself — two red messages side by
+                 side, about different requests, read as one failure twice. */
+              setWellError(null);
+              setClusterError(null);
               setSelectedWell({
                 api: hovered.api,
                 lease: hovered.lease,
@@ -2335,6 +2977,9 @@ export function MapExplorerView() {
                 if (!attributes) return;
 
                 highlightWell(Number(attributes.lon), Number(attributes.lat));
+                focusWell(Number(attributes.lon), Number(attributes.lat));
+                setWellError(null);
+                setClusterError(null);
                 setSelectedWell({
                   api: String(attributes.api ?? ""),
                   lease: String(attributes.lease ?? ""),
@@ -2381,10 +3026,11 @@ export function MapExplorerView() {
               view
                 .goTo({
                   center: cluster.at,
-                  zoom:
+                  scale: scaleForZoom(
                     zoomLevel(view) >= CLUSTER_ZOOM_STEPS[1]
                       ? WELL_ZOOM
                       : CLUSTER_ZOOM_STEPS[1],
+                  ),
                 })
                 .catch(ignoreInterrupted);
             }
@@ -2447,11 +3093,7 @@ export function MapExplorerView() {
                 if (dx * dx + dy * dy <= 144) {
                   drawTract(points, true);
                   setTractResult(
-                    measureTract(
-                      clustersRef.current,
-                      wellsRef.current,
-                      points,
-                    ),
+                    measureTract(clustersRef.current, wellsRef.current, points),
                   );
                   activeToolRef.current = null;
                   setActiveTool(null);
@@ -2462,6 +3104,7 @@ export function MapExplorerView() {
 
             const grown = [...points, next];
             tractRef.current = grown;
+            setTract(grown);
             drawTract(grown, false);
             return;
           }
@@ -2498,61 +3141,7 @@ export function MapExplorerView() {
            * where it landed: the nearest well, then that well's summary, which
            * is where the district and the lease number come from.
            */
-          const candidates = nearestWellsTo(at, wellsRef.current, LEASE_TRIES);
-          const leaseRequest = ++leaseRequestRef.current;
-
-          /* The card says something in every branch below, including the ones
-             that fail — a click that answers with nothing reads as a broken
-             tool. */
-          setLeaseNearbyOpen(true);
-          setWatchLease(null);
-          setWatchAnswer({ kind: "looking" });
-
-          if (candidates.length === 0) {
-            setWatchAnswer({
-              kind: "problem",
-              message:
-                "No well is loaded near that point, so there is no lease to ask about. Zoom in until the wells are drawn, then click your land again.",
-            });
-          } else {
-            /*
-             * Outward from the click until a record names its lease.
-             *
-             * A well's record does not always carry a lease number, and
-             * without one there is no key to ask the service about. Rather
-             * than give up on the nearest well, the next few are tried in
-             * order — one at a time, stopping at the first that answers, so
-             * the usual case is still a single request.
-             */
-            void (async () => {
-              for (const well of candidates) {
-                let summary;
-                try {
-                  summary = await getWellSummaryMap(well.api);
-                } catch {
-                  continue;
-                }
-                if (leaseRequest !== leaseRequestRef.current) return;
-
-                const district =
-                  summary.lease?.district ?? summary.identity?.district;
-                const number = summary.lease?.leaseNumber;
-                if (!district || !number) continue;
-
-                setWatchLease({
-                  key: `${district}-${number}`,
-                  name: summary.lease?.leaseName ?? well.lease,
-                });
-                return;
-              }
-
-              if (leaseRequest !== leaseRequestRef.current) return;
-              setWatchAnswer({
-                kind: "problem",
-                message: `None of the ${candidates.length} wells nearest that point names a lease number on its record, so the service cannot be asked about a lease there. Try clicking closer to a well.`,
-              });
-            })();
-          }
+          askAboutLeaseAt(at);
 
           activeToolRef.current = null;
           setActiveTool(null);
@@ -2613,8 +3202,11 @@ export function MapExplorerView() {
             const next: Measurement = {
               from: { longitude: from.longitude, latitude: from.latitude },
               to: { longitude: to.longitude, latitude: to.latitude },
-              meters: ctors.geodesic.geodesicDistance(ends[0], ends[1], "meters")
-                .distance,
+              meters: ctors.geodesic.geodesicDistance(
+                ends[0],
+                ends[1],
+                "meters",
+              ).distance,
             };
             measurementRef.current = next;
             setMeasurement(next);
@@ -2637,11 +3229,12 @@ export function MapExplorerView() {
         if (cancelled) return;
 
         setStatus("ready");
+
         // The opening load. The extent is only real once the view has laid
         // itself out, and the band it lands in is the one to beat.
         // The legend's icons are what the wells are drawn with, so they are
-        // fetched alongside — a failure just means the fallback dot.
-        void getLegendListMap()
+        // fetched first — a failure just means the fallback dot.
+        const icons = getLegendListMap()
           .then((legends) => {
             wellIconsRef.current = new Map(
               legends.map((legend) => [legend.description, legend.iconUrl]),
@@ -2649,7 +3242,72 @@ export function MapExplorerView() {
           })
           .catch(() => {});
 
+        /*
+         * A shared link, applied once the symbols are in hand.
+         *
+         * Applied here rather than on mount because the filter draws wells and
+         * moves the camera, both of which need a view that has laid itself
+         * out — and after the legend because `buildWellGraphics` reads those
+         * icons as it draws. Jumping the queue drew twenty thousand wells as
+         * the fallback dot, which is what a shared link was showing.
+         */
+        /* A replay waits for the wells it is a replay of. */
+        if (openingView.replay !== undefined) {
+          timeLapseOnArrivalRef.current = openingView.replay;
+        }
+
+        /* Whatever a tool drew, back on the map. Before the filter below,
+           which returns early: a link can carry both. */
+        if (Object.keys(openingTools).length > 0) replayTools(openingTools);
+
+        /* The tab and the record the link was sent from. The record needs
+           nothing but its number — the panel fetches the rest — and the tab
+           has to be set whether or not a filter came with it. */
+        if (openingView.tab) setViewTab(openingView.tab);
+        if (openingView.api) {
+          /* Rung as soon as the wells for this extent land — see
+             `ringOnArrivalRef`. */
+          ringOnArrivalRef.current = openingView.api;
+          setSelectedWell({
+            api: openingView.api,
+            lease: "",
+            well: "",
+            operator: "",
+            status: "",
+            wtype: "",
+            county: "",
+            record: "",
+          });
+        }
+
+        /*
+         * Neither of the next two opens on bubbles, so the flag that covers
+         * the opening cluster load has to come down by hand — it is raised
+         * from the first render, and a load that never runs never lowers it.
+         * Left up, a shared link sat behind a veil reading "Loading
+         * sub-clusters…" that nothing was ever going to clear.
+         */
+        /*
+         * The well the link is about, drawn the way the sender had it: a
+         * number in the search box is a filter of one, so the link reproduces
+         * that rather than dropping the reader into an extent full of wells
+         * with no telling which was meant.
+         */
+        const opening = openingView.api
+          ? { ...openingFilters, api: [openingView.api] }
+          : openingFilters;
+
+        if (Object.keys(opening).length > 0) {
+          setClustersLoading(false);
+          void icons.then(() => {
+            if (cancelled) return;
+            applyFiltersRef.current?.(opening);
+          });
+          return;
+        }
+
         if (zoomLevel(view) >= WELL_ZOOM) {
+          setClustersLoading(false);
           loadWells();
         } else {
           clusterTierRef.current = clusterZoomTier(zoomLevel(view));
@@ -2683,6 +3341,7 @@ export function MapExplorerView() {
     };
     // All stable, so the view is still built exactly once.
   }, [
+    askAboutLeaseAt,
     drawArea,
     trackArea,
     drawMeasurement,
@@ -2695,6 +3354,14 @@ export function MapExplorerView() {
     loadWells,
     clearWells,
     highlightWell,
+    focusWell,
+    replayTools,
+    openingTools,
+    /* Read once at mount and never reassigned, so listing them changes
+       nothing — they are here to satisfy the rule rather than because they
+       can vary. */
+    openingFilters,
+    openingView,
   ]);
 
   // Esc backs out of an armed tool — the prompt says so.
@@ -2749,6 +3416,7 @@ export function MapExplorerView() {
       drawNearby(null);
 
       tractRef.current = [];
+      setTract([]);
       setTractResult(null);
       drawTract([], false);
 
@@ -2778,6 +3446,7 @@ export function MapExplorerView() {
        * see `tool-demo.tsx`.
        */
       if (!tool || demoSeen(tool)) return;
+      demoAskedFor.current = false;
       setDemoTool(tool);
     },
     [drawArea, drawMeasurement, drawNearby, drawTract],
@@ -2821,6 +3490,7 @@ export function MapExplorerView() {
     }
 
     setViewTab(tab);
+    /* So a link sent from the table opens on the table. */
   }, []);
 
   /*
@@ -3004,6 +3674,8 @@ export function MapExplorerView() {
         clearNearby();
       } else if (tool === "measure-area") {
         tractRef.current = [];
+        setTract([]);
+      setTract([]);
         setTractResult(null);
         drawTract([], false);
       }
@@ -3127,9 +3799,9 @@ export function MapExplorerView() {
               : { width: `${split * 100}%` }
         }
       >
-      <div ref={containerRef} className="h-full w-full" />
+        <div ref={containerRef} className="h-full w-full" />
 
-      {/*
+        {/*
         While a request is out, the map goes behind a blur and stops taking
         input. Half-drawn bubbles are worse than none: mid-load the map is
         showing the last extent's answer, and letting someone pan or click that
@@ -3139,167 +3811,189 @@ export function MapExplorerView() {
         container — the filter would create a containing block and every
         absolutely-positioned overlay inside would reposition against it.
       */}
-      {status === "ready" && (clustersLoading || wellsLoading) && (
-        <div className="absolute inset-0 z-40 grid place-items-center bg-white/35 backdrop-blur-[3px]">
-          <div className="flex items-center gap-[13px] rounded-full border border-mv-line bg-white px-[22px] py-[13px] shadow-mv-lg">
-            <span
-              aria-hidden="true"
-              className="h-[20px] w-[20px] shrink-0 animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
-            />
-            <span className="text-[15px] font-semibold leading-none text-mv-slate">
-              {/* The second cluster band is a finer aggregation of the first,
+        {status === "ready" && (clustersLoading || wellsLoading) && (
+          <div className="absolute inset-0 z-40 grid place-items-center bg-white/35 backdrop-blur-[3px]">
+            <div className="flex items-center gap-[13px] rounded-full border border-mv-line bg-white px-[22px] py-[13px] shadow-mv-lg">
+              <span
+                aria-hidden="true"
+                className="h-[20px] w-[20px] shrink-0 animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
+              />
+              <span className="text-[15px] font-semibold leading-none text-mv-slate">
+                {/* The second cluster band is a finer aggregation of the first,
                   so it is named for what it is. */}
-              {clustersLoading
-                ? readout.zoom >= CLUSTER_ZOOM_STEPS[1]
-                  ? "Loading sub-clusters…"
-                  : "Loading clusters…"
-                : "Loading wells…"}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* A failure is a quiet pill instead — nothing is loading, so nothing
-          should be blurred, and the map still shows what it last had. */}
-      {status === "ready" &&
-        !clustersLoading &&
-        !wellsLoading &&
-        (clusterError || wellError) && (
-          <div className="pointer-events-none absolute left-1/2 top-3 z-30 -translate-x-1/2 rounded-full border border-mv-line bg-white/95 px-3 py-[5px] text-[11.5px] font-semibold text-mv-slate shadow-mv">
-            {clusterError ?? wellError}
+                {clustersLoading
+                  ? readout.zoom >= CLUSTER_ZOOM_STEPS[1]
+                    ? "Loading sub-clusters…"
+                    : "Loading clusters…"
+                  : "Loading wells…"}
+              </span>
+            </div>
           </div>
         )}
 
-      {status === "ready" && timeLapseOpen && (
-        <TimeLapseBar
-          playing={timeLapsePlaying}
-          year={
-            timeLapseStep >= 0
-              ? (timeLapseYears[timeLapseStep]?.year ?? null)
-              : null
-          }
-          firstYear={timeLapseYears[0]?.year ?? null}
-          lastYear={timeLapseYears[timeLapseYears.length - 1]?.year ?? null}
-          step={timeLapseStep}
-          steps={timeLapseYears.length}
-          plotted={wellsUpTo(timeLapseYears, timeLapseStep).length}
-          total={datedCount(timeLapseYears)}
-          undated={timeLapseUndated}
-          onSeek={(step) => {
-            /* Taking the handle stops the replay: it would otherwise keep
-               stepping forward under the drag and fight it. */
-            setTimeLapsePlaying(false);
-            seekTimeLapse(step);
-          }}
-          onTogglePlay={() => {
-            const years = timeLapseYearsRef.current;
-            if (years.length > 0 && timeLapseStep >= years.length - 1) {
-              seekTimeLapse(-1);
-              setTimeLapsePlaying(true);
-              return;
-            }
-            setTimeLapsePlaying((playing) => !playing);
-          }}
-          onClose={closeTimeLapse}
-        />
-      )}
+        {/* A pill instead of a veil — nothing is loading, so nothing should
+          be blurred, and the map still shows what it last had. Marked in red:
+          each of these is the map failing to show something, and in the house
+          grey they read as one more caption. */}
+        {status === "ready" &&
+          !clustersLoading &&
+          !wellsLoading &&
+          (clusterError || wellError || noMatches) && (
+            <div
+              role="alert"
+              /* Where the toast goes, and for the same reasons. The two
+                 never appear at once. */
+              className={`pointer-events-none absolute left-1/2 top-[128px] z-30 flex max-w-[calc(100%-24px)] -translate-x-1/2 items-center gap-[7px] rounded-full border border-[#f6c9c6] bg-mv-red-bg px-[13px] py-[6px] text-[11.5px] font-semibold text-mv-red shadow-mv ${noticePlacement}`}
+            >
+              <TriangleAlert
+                size={13}
+                strokeWidth={2.5}
+                aria-hidden="true"
+                className="shrink-0"
+              />
+              {clusterError ??
+                wellError ??
+                "No wells match these filters — try removing one."}
+            </div>
+          )}
 
-      {status === "ready" && toast && (
-        <MapToast
-          key={toast}
-          message={toast}
-          onDone={() => setToast(null)}
-        />
-      )}
-
-      {status === "ready" && hoveredWell && <WellTooltip well={hoveredWell} />}
-
-      {status === "ready" && hoveredCluster && clusters[hoveredCluster.index] && (
-        <ClusterTooltip
-          cluster={clusters[hoveredCluster.index]}
-          /* The first level opens the area; the second zooms to the wells.
-             Past the well band the bubbles are gone, so neither applies. */
-          action={
-            readout.zoom < CLUSTER_ZOOM_STEPS[1]
-              ? "area"
-              : readout.zoom < WELL_ZOOM
-                ? "wells"
+        {status === "ready" && timeLapseOpen && (
+          <TimeLapseBar
+            playing={timeLapsePlaying}
+            year={
+              timeLapseStep >= 0
+                ? (timeLapseYears[timeLapseStep]?.year ?? null)
                 : null
-          }
-          at={{ x: hoveredCluster.x, y: hoveredCluster.y }}
-          bubble={hoveredCluster.bubble}
-        />
-      )}
+            }
+            firstYear={timeLapseYears[0]?.year ?? null}
+            lastYear={timeLapseYears[timeLapseYears.length - 1]?.year ?? null}
+            step={timeLapseStep}
+            steps={timeLapseYears.length}
+            plotted={wellsUpTo(timeLapseYears, timeLapseStep).length}
+            total={datedCount(timeLapseYears)}
+            undated={timeLapseUndated}
+            onSeek={(step) => {
+              /* Taking the handle stops the replay: it would otherwise keep
+               stepping forward under the drag and fight it. */
+              setTimeLapsePlaying(false);
+              seekTimeLapse(step);
+            }}
+            onTogglePlay={() => {
+              const years = timeLapseYearsRef.current;
+              if (years.length > 0 && timeLapseStep >= years.length - 1) {
+                seekTimeLapse(-1);
+                setTimeLapsePlaying(true);
+                return;
+              }
+              setTimeLapsePlaying((playing) => !playing);
+            }}
+            onClose={closeTimeLapse}
+          />
+        )}
 
-      {/* Whichever tool is demonstrating itself, said once, across the top. */}
-      {status === "ready" && sampleOf && (
-        <SampleBanner
-          tool={sampleOf}
-          onDismiss={() => dismissSample(sampleOf)}
-        />
-      )}
+        {status === "ready" && toast && (
+          <MapToast
+            key={toast}
+            message={toast}
+            className={noticePlacement}
+            onDone={() => setToast(null)}
+          />
+        )}
 
-      {status === "ready" && area && areaAnchor && (
-        <AreaSelectionBar
-          sample={sampleOf === "draw-area"}
-          onClear={
-            sampleOf === "draw-area"
-              ? () => dismissSample("draw-area")
-              : clearArea
-          }
-          /* Not hand-memoised: the compiler caches this against `wells`,
+        {status === "ready" && hoveredWell && (
+          <WellTooltip well={hoveredWell} />
+        )}
+
+        {status === "ready" &&
+          hoveredCluster &&
+          clusters[hoveredCluster.index] && (
+            <ClusterTooltip
+              cluster={clusters[hoveredCluster.index]}
+              /* The first level opens the area; the second zooms to the wells.
+             Past the well band the bubbles are gone, so neither applies. */
+              action={
+                readout.zoom < CLUSTER_ZOOM_STEPS[1]
+                  ? "area"
+                  : readout.zoom < WELL_ZOOM
+                    ? "wells"
+                    : null
+              }
+              at={{ x: hoveredCluster.x, y: hoveredCluster.y }}
+              bubble={hoveredCluster.bubble}
+            />
+          )}
+
+        {/* Whichever tool is demonstrating itself, said once, across the top. */}
+        {status === "ready" && sampleOf && (
+          <SampleBanner
+            tool={sampleOf}
+            onDismiss={() => dismissSample(sampleOf)}
+          />
+        )}
+
+        {status === "ready" && area && areaAnchor && (
+          <AreaSelectionBar
+            sample={sampleOf === "draw-area"}
+            onClear={
+              sampleOf === "draw-area"
+                ? () => dismissSample("draw-area")
+                : clearArea
+            }
+            /* Not hand-memoised: the compiler caches this against `wells`,
              `clusters` and `area`, and a manual `useMemo` only gives it
              something to disagree with. What made it expensive was being
              recomputed on every pointer event — which the frame-coalescing
              above now prevents. */
-          count={
-            wells.length > 0
-              ? wellsInBox(wells, area)
-              : wellsInArea(clusters, area)
-          }
-          /* Exact where the wells themselves are on the map; from the bubbles
+            count={
+              wells.length > 0
+                ? wellsInBox(wells, area)
+                : wellsInArea(clusters, area)
+            }
+            /* Exact where the wells themselves are on the map; from the bubbles
              otherwise, which the card says out loud. */
-          exact={wells.length > 0}
-          size={boxArea(area)}
-          at={areaAnchor}
-          onExport={exportArea}
-        />
-      )}
+            exact={wells.length > 0}
+            size={boxArea(area)}
+            at={areaAnchor}
+            onExport={exportArea}
+          />
+        )}
 
-      {status === "ready" && measurement && measureAnchor && (
-        <MeasureBar
-          meters={measurement.meters}
-          sample={sampleOf === "measure-distance"}
-          at={measureAnchor}
-          onClear={
-            sampleOf === "measure-distance"
-              ? () => dismissSample("measure-distance")
-              : clearMeasurement
-          }
-        />
-      )}
+        {status === "ready" && measurement && measureAnchor && (
+          <MeasureBar
+            meters={measurement.meters}
+            sample={sampleOf === "measure-distance"}
+            at={measureAnchor}
+            onClear={
+              sampleOf === "measure-distance"
+                ? () => dismissSample("measure-distance")
+                : clearMeasurement
+            }
+          />
+        )}
 
-      {status === "ready" && !demoTool && activeTool === "draw-area" && (
-        <ToolPrompt
-          title="Click two opposite corners on the map, or drag a box across it."
-          hint="Esc to cancel"
-        />
-      )}
+        {status === "ready" && !demoTool && activeTool === "draw-area" && (
+          <ToolPrompt
+            title="Click two opposite corners on the map, or drag a box across it."
+            hint="Esc to cancel"
+          />
+        )}
 
-      {status === "ready" && !demoTool && activeTool === "measure-distance" && (
-        <ToolPrompt
-          title="Drag from one point to another to measure the distance."
-          hint="Esc to cancel"
-        />
-      )}
+        {status === "ready" &&
+          !demoTool &&
+          activeTool === "measure-distance" && (
+            <ToolPrompt
+              title="Drag from one point to another to measure the distance."
+              hint="Esc to cancel"
+            />
+          )}
 
-      {/*
+        {/*
           Armed, this tool asks which lease — that is what the service holds
           rings for, and a lease is what "my land" means. The prompt underneath
           keeps the other way in: clicking the map still draws the circle and
           the quick local estimate.
       */}
-      {/*
+        {/*
           Armed, this tool asks which lease — a lease is what "my land" means,
           and it is what the service holds rings for.
 
@@ -3309,13 +4003,13 @@ export function MapExplorerView() {
           still draws the circle and its local estimate; naming the lease is
           what asks the service.
       */}
-      {/*
+        {/*
           The lease card stays up until it is closed, whatever the map does
           around it. Clicking the map is the other way of asking — it draws the
           circle and its local estimate — and doing that must not discard an
           answer the service has already given.
       */}
-      {/*
+        {/*
           Only once a click has found a lease. There is nothing to show before
           that — the question is asked by clicking your land, and the prompt
           below says so.
@@ -3323,108 +4017,171 @@ export function MapExplorerView() {
           Keyed by the lease, so a new click opens the card on the new lease
           rather than leaving the last answer on screen while the next loads.
       */}
-      {/* Shown once when a tool is picked; closing it leaves that tool armed
+        {/* Shown once when a tool is picked; closing it leaves that tool armed
           on an empty map. The wells it plots are the ones the map has loaded,
           so the field in the picture is the reader's own. */}
-      {status === "ready" && demoTool && (
-        <ToolDemo
-          tool={demoTool}
-          wells={wells}
-          /* Recorded on the way out, whichever way it is closed: "Let me try"
+        {status === "ready" && demoTool && (
+          <ToolDemo
+            tool={demoTool}
+            wells={wells}
+            /* Recorded on the way out, whichever way it is closed: "Let me try"
              and the × both mean the reader is done with the explanation. */
-          onClose={() => {
-            rememberDemo(demoTool);
-            setDemoTool(null);
-          }}
-        />
-      )}
-
-      {status === "ready" &&
-        !demoTool &&
-        activeTool === "whats-near-my-land" &&
-        !leaseNearbyOpen && <NearbyPrompt />}
-
-      {status === "ready" &&
-        !demoTool &&
-        (activeTool === "measure-area" || tractResult) && (
-          <MeasureAreaPanel
-            className="absolute bottom-6 left-1/2"
-            result={tractResult}
-            sample={sampleOf === "measure-area"}
             onClose={() => {
-              if (sampleOf === "measure-area") {
-                dismissSample("measure-area");
-                return;
-              }
-              tractRef.current = [];
-              setTractResult(null);
-              drawTract([], false);
-              startTool(null);
+              if (!demoAskedFor.current) rememberDemo(demoTool);
+              demoAskedFor.current = false;
+              setDemoTool(null);
             }}
           />
         )}
 
-      {/* One card for this tool: the circle on the map, and what the service
-          says about the lease under it. */}
-      {status === "ready" && leaseNearbyOpen && nearby && (
-        <NearbyPanel
-          className="absolute bottom-6 left-1/2"
-          coordinates={nearby.at}
-          radiusMiles={watchRadius}
-          lease={watchLease}
-          answer={watchAnswer}
-          onRadiusChange={changeWatchRadius}
-          onDownload={downloadNearby}
-          onClose={clearNearby}
-        />
-      )}
+        {status === "ready" &&
+          !demoTool &&
+          activeTool === "whats-near-my-land" &&
+          !leaseNearbyOpen && <NearbyPrompt />}
 
-      {status === "ready" ? (
-        <MapChrome
-          scale={readout.scale}
-          zoom={readout.zoom}
-          /*
-           * What is actually drawn, not what the zoom implies.
-           *
-           * Wells reach the map two ways: the extent load past zoom 10, and a
-           * filter, which draws its matches at whatever zoom the fit lands on
-           * — often 9 or wider. Deciding from the zoom alone left the legend
-           * showing count bands over a map of individual wells, and disabled
-           * Time-lapse on a filtered set it could perfectly well replay.
-           */
-          wellsVisible={wells.length > 0}
-          marksVisible={wells.length > 0 || readout.zoom > CLUSTER_CLEAR_ZOOM}
-          onExportCsv={exportCsv}
-          onSelectApi={selectApi}
-          onClearApi={clearApi}
-          onApplyFilters={applyFilters}
-          timeLapseOpen={timeLapseOpen}
-          onToggleTimeLapse={toggleTimeLapse}
-          center={readout.center}
-          basemap={basemap}
-          onBasemapChange={changeBasemap}
-          onSaveImage={saveImage}
-          onPrint={printMap}
-          isFullscreen={isFullscreen}
-          onToggleFullscreen={toggleFullscreen}
-          viewTab={viewTab}
-          onViewTabChange={changeViewTab}
-          compact={viewTab === "insights"}
-          activeTool={activeTool}
-          onSelectTool={startTool}
-          onZoomIn={zoomIn}
-          onZoomOut={zoomOut}
-          onHome={goHome}
-        />
-      ) : (
-        <div
-          role="status"
-          aria-live="polite"
-          className="absolute inset-0 grid place-items-center bg-[#efe7d8] text-sm text-mv-slate"
-        >
-          {status === "loading" ? "Loading map…" : "The map could not be loaded."}
-        </div>
-      )}
+        {status === "ready" &&
+          !demoTool &&
+          (activeTool === "measure-area" || tractResult) && (
+            <MeasureAreaPanel
+              className="absolute bottom-6 left-1/2"
+              result={tractResult}
+              sample={sampleOf === "measure-area"}
+              onClose={() => {
+                if (sampleOf === "measure-area") {
+                  dismissSample("measure-area");
+                  return;
+                }
+                tractRef.current = [];
+                setTract([]);
+        setTract([]);
+      setTract([]);
+                setTractResult(null);
+                drawTract([], false);
+                startTool(null);
+              }}
+            />
+          )}
+
+        {/* One card for this tool: the circle on the map, and what the service
+          says about the lease under it. */}
+        {status === "ready" && leaseNearbyOpen && nearby && (
+          <NearbyPanel
+            className="absolute bottom-6 left-1/2"
+            coordinates={nearby.at}
+            radiusMiles={watchRadius}
+            lease={watchLease}
+            answer={watchAnswer}
+            onRadiusChange={changeWatchRadius}
+            onDownload={downloadNearby}
+            onClose={clearNearby}
+          />
+        )}
+
+        {status === "ready" ? (
+          <MapChrome
+            scale={readout.scale}
+            zoom={readout.zoom}
+            /*
+             * What is actually drawn, not what the zoom implies.
+             *
+             * Wells reach the map two ways: the extent load past zoom 10, and a
+             * filter, which draws its matches at whatever zoom the fit lands on
+             * — often 9 or wider. Deciding from the zoom alone left the legend
+             * showing count bands over a map of individual wells, and disabled
+             * Time-lapse on a filtered set it could perfectly well replay.
+             */
+            wellsVisible={wells.length > 0}
+            marksVisible={wells.length > 0 || readout.zoom > CLUSTER_CLEAR_ZOOM}
+            onExportCsv={exportCsv}
+            onSelectApi={selectApi}
+            onClearApi={clearApi}
+            onApplyFilters={applyFilters}
+            /* Changing this rebuilds the filters panel with nothing ticked —
+               see the empty-result reset. */
+            filtersResetAt={filterResetAt}
+            /* So the boxes agree with the map a shared link just drew. */
+            openingFilters={openingFilters}
+            openingApi={openingView.api}
+            timeLapseOpen={timeLapseOpen}
+            onToggleTimeLapse={toggleTimeLapse}
+            center={readout.center}
+            /* Everything the Share menu puts in a link, since none of it is
+               in the address any more. */
+            share={{
+              filters: shareFilters,
+              tab: viewTab,
+              basemap,
+              /* Only while the bar is up. The year is what the reader is
+                 looking at; the step it happens to be is this page's own
+                 counting and means nothing on someone else's map. */
+              ...(timeLapseOpen
+                ? {
+                    timeLapse: {
+                      year:
+                        timeLapseStep >= 0
+                          ? (timeLapseYears[timeLapseStep]?.year ?? null)
+                          : null,
+                    },
+                  }
+                : null),
+              /* Either way the reader arrived at one well: by clicking it, or
+                 by typing its number into the box, which filters the map to
+                 that well alone. The link says which well; it does not have
+                 to say how it was reached. */
+              api: selectedWell?.api ?? shareFilters.api?.[0] ?? null,
+              camera: {
+                lon: readout.center.longitude,
+                lat: readout.center.latitude,
+                zoom: readout.zoom,
+              },
+              /* Whatever is drawn on the map right now. One at a time — the
+                 tools replace each other — so at most one of these is set. */
+              tools: {
+                ...(area ? { area } : null),
+                ...(measurement
+                  ? { line: [measurement.from, measurement.to] as [LonLat, LonLat] }
+                  : null),
+                ...(tract.length >= 3 ? { tract } : null),
+                ...(nearby ? { near: nearby } : null),
+              },
+            }}
+            basemap={basemap}
+            onBasemapChange={changeBasemap}
+            onSaveImage={saveImage}
+            onPrint={printMap}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={toggleFullscreen}
+            viewTab={viewTab}
+            onViewTabChange={changeViewTab}
+            compact={viewTab === "insights"}
+            /* Stacked on a phone, the map is a 200px strip above the record.
+               Its controls would cover most of it, and every one of them is a
+               tab away on a map that fills the screen. */
+            bare={stacked && viewTab === "insights"}
+            activeTool={activeTool}
+            onSelectTool={startTool}
+            /* The example on demand, from the icon beside each tool. It shows
+               the worked example and nothing else — the tool is armed by the
+               row itself, as it always was. */
+            onShowToolSample={(id) => {
+              demoAskedFor.current = true;
+              setDemoTool(id);
+            }}
+            onZoomIn={zoomIn}
+            onZoomOut={zoomOut}
+            onHome={goHome}
+          />
+        ) : (
+          <div
+            role="status"
+            aria-live="polite"
+            className="absolute inset-0 grid place-items-center bg-[#efe7d8] text-sm text-mv-slate"
+          >
+            {status === "loading"
+              ? "Loading map…"
+              : "The map could not be loaded."}
+          </div>
+        )}
       </div>
 
       {status === "ready" && viewTab === "insights" && (
@@ -3448,7 +4205,11 @@ export function MapExplorerView() {
               /* Keyed by API number: a new well is a new panel, so its own
                  summary request starts from nothing rather than the panel
                  showing the previous well's figures until the answer lands. */
-              <WellInsightsPanel key={selectedWell.api} well={selectedWell} />
+              <WellInsightsPanel
+                key={selectedWell.api}
+                well={selectedWell}
+                onClose={closeSummary}
+              />
             ) : (
               <div className="grid h-full place-items-center bg-mv-bg p-6">
                 <div className="max-w-[280px] text-center">
@@ -3491,11 +4252,15 @@ export function MapExplorerView() {
                 ? "inset-x-0 -mt-[3px] h-[7px] cursor-row-resize"
                 : "inset-y-0 -ml-[3px] w-[7px] cursor-col-resize"
             }`}
-            style={stacked ? { top: `${split * 100}%` } : { left: `${split * 100}%` }}
+            style={
+              stacked ? { top: `${split * 100}%` } : { left: `${split * 100}%` }
+            }
           >
             <span
               aria-hidden="true"
-              className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#c7cbd1] group-hover:bg-mv-green-deep ${
+              /* The bar itself, in ink: at 3px on a pale seam the old grey
+                 was invisible against the map above it. */
+              className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-mv-ink group-hover:bg-mv-green-deep ${
                 stacked ? "h-[3px] w-10" : "h-10 w-[3px]"
               }`}
             />

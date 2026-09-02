@@ -144,9 +144,25 @@ const nextConfig: NextConfig = {
    *
    * `permanent: true` is a 308, which also tells search engines the page moved
    * rather than that it is temporarily elsewhere.
+   *
+   * THE PRODUCTION COMPARISON MOVED THE SAME WAY, from
+   * `/features/compare-operator-production` to
+   * `/features/compare-operator-performance` (requested), so the path now matches
+   * the page's own heading, "Compare Operators Performance". Every in-app link was
+   * updated with it; this entry is for the links that are not in the app — the
+   * preview URLs already shared for review, and the defect sheet's own STEPS_TO_INPUT,
+   * which name the old path. Without it a renamed route silently 404s every one of
+   * them, which is the opposite of preserving navigation.
    */
   redirects() {
-    return [{ source: "/contact", destination: "/contact-us", permanent: true }];
+    return [
+      { source: "/contact", destination: "/contact-us", permanent: true },
+      {
+        source: "/features/compare-operator-production",
+        destination: "/features/compare-operator-performance",
+        permanent: true,
+      },
+    ];
   },
 };
 

@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 
 import {
   isAbortError,
+  MASKED,
   searchOperators,
-  TEMP_MEMBER_ID,
   type OperatorSearchRequest,
+  type OperatorSearchResponse,
 } from "@/lib/operator-api";
+import { getSessionUser } from "@/lib/session";
 import { getVisitorId } from "@/lib/visitor-id";
 
 /**
@@ -30,10 +32,77 @@ import { getVisitorId } from "@/lib/visitor-id";
  * TWO FIELDS ARE PINNED SERVER-SIDE, deliberately. `member_id` is the flag that
  * gates rows 4-10 behind sign-in, and `visitorId` identifies the visitor — a
  * client that could set either could unmask gated rows or spoof another
- * visitor's id. They are re-asserted here from the cookie and from the build's
- * own constant, so the body the client sends is complete but not authoritative
- * for those two.
+ * visitor's id. Both are re-asserted here from cookies, so the body the client
+ * sends is complete but not authoritative for those two.
+ *
+ * `member_id` NOW CARRIES THE REAL ANSWER. It used to be pinned to
+ * `TEMP_MEMBER_ID` (3448), a development stand-in that treated every anonymous
+ * visitor as a signed-in member — which silently disabled the API's own sign-in
+ * gate. The line this file already anticipated ("when real auth arrives, this
+ * becomes the session's member id") is now written: the signed-in member's id,
+ * or `0` for a visitor with no session, which is the value the endpoint reads as
+ * anonymous.
+ *
+ * WHAT THAT GATES, EXACTLY — measured against the dev host, both at
+ * `total_count: 2,748`: with one of the four quick filters on, `member_id: 0`
+ * returns rows 1–3 intact and rows 4–10 as `"****"`; `member_id: 3448` returns
+ * all ten. Plain search, county, status, play type and paging never mask at
+ * either value. So the directory stays free to browse, exactly as the page's own
+ * heading promises, and only the quick filters ask for an account. This is the
+ * soft gate — partial value shown, the rest behind a free account — and the
+ * cheapest place to implement it is the place the API already implements it.
+ *
+ * The `mv_user` cookie is not an authorisation boundary (see `lib/session.ts`),
+ * and it does not need to be for this: the endpoint decides what a member id may
+ * see, and the worst a forged cookie buys is a listing that is public record
+ * anyway.
  */
+
+/**
+ * The two columns a signed-out visitor does not get.
+ *
+ * WHY THERE IS A SECOND GATE AT ALL. The endpoint's own gate (above) only
+ * engages behind a quick filter, so a visitor who never touches one sees nothing
+ * locked, is never told an account would give them more, and never meets the
+ * unlock ask. That is the soft gate failing to do the one job it exists for:
+ * showing the value before asking. The directory's own landing state needs to
+ * carry it too.
+ *
+ * WHAT IS WITHHELD: the two volumes and the two counts. Oil and gas were left
+ * open originally, on the argument that the page promises a directory "ranked by
+ * reported production" and free to browse — locking them was a regression from
+ * what a visitor had. That call was reversed on review: the figures are the
+ * product, and a directory that hands over every operator's lifetime volumes
+ * gives away the thing an account is for.
+ *
+ * All four are fields the operator API ITSELF withholds on a gated row, so this
+ * gate withholds nothing that one treats as free.
+ *
+ * IT IS A REAL GATE, NOT A BLUR OVER DELIVERED DATA. The values are replaced
+ * here, on the server, before the response is serialised — so they are not in
+ * the network tab, not in the DOM, and not recoverable by removing a CSS class.
+ * Anything else would be theatre, and a soft gate that a right-click defeats
+ * teaches visitors the locks mean nothing.
+ *
+ * `MASKED` is the endpoint's own sentinel, deliberately: the row mapper already
+ * renders it, `OperatorSearchRecord` already types these two fields as
+ * `number | typeof MASKED`, and the table already knows what it means. Inventing
+ * a second "withheld" marker would mean two of everything for one idea.
+ */
+function withoutGatedColumns(
+  response: OperatorSearchResponse,
+): OperatorSearchResponse {
+  return {
+    ...response,
+    result: response.result.map((record) => ({
+      ...record,
+      Total_Production_Oil: MASKED,
+      Total_Production_Gas: MASKED,
+      countie_count: MASKED,
+      leaseCount: MASKED,
+    })),
+  };
+}
 
 /** Shape check on the body before it is forwarded. */
 function isSearchRequest(value: unknown): value is OperatorSearchRequest {
@@ -73,19 +142,22 @@ export async function POST(request: Request) {
     );
   }
 
+  // Independent reads, so they overlap rather than queue.
+  const [user, visitorId] = await Promise.all([getSessionUser(), getVisitorId()]);
+
   const payload: OperatorSearchRequest = {
     ...body,
-    // Pinned — see the note above. `TEMP_MEMBER_ID` is the development stand-in;
-    // pinning it here rather than trusting the body means that when real auth
-    // arrives, this line becomes "the session's member id" and a client still
-    // cannot nominate its own.
-    member_id: TEMP_MEMBER_ID,
-    visitorId: await getVisitorId(),
+    // Pinned — see the note above. `0` is the endpoint's anonymous value and is
+    // what turns its row gate on; a client cannot nominate its own id.
+    member_id: user?.id ?? 0,
+    visitorId,
   };
 
   try {
     const result = await searchOperators(payload, request.signal);
-    return NextResponse.json(result);
+    // A member sees everything the endpoint sent; a visitor sees it without the
+    // two account-only columns.
+    return NextResponse.json(user ? result : withoutGatedColumns(result));
   } catch (error) {
     // The client went away or superseded this request. Nothing to report, and no
     // response will be read — 499 is the conventional code for a closed request.

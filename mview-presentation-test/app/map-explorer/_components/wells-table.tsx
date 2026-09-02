@@ -22,9 +22,11 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { MapToast } from "./map-toast";
+import { usePanelPlacement } from "./panel-placement";
+import { downloadSheet, type SheetColumn } from "./xlsx";
 import { TableSearch, type SearchPick } from "./table-search";
 
 import {
@@ -37,6 +39,7 @@ import {
 
 import {
   getCountyListMap,
+  nextOffset,
   getOperatorListMap,
   getTableMap,
   getWellStatusListMap,
@@ -78,9 +81,14 @@ function withPick(
   };
 }
 
-/** A field needs quoting when it holds a comma, a quote or a line break. */
-const CSV_QUOTE = new RegExp('[",\\n]');
-const CSV_NEWLINE = "\r\n";
+/** How wide a facet dropdown's panel is, for keeping it on the page. */
+const PANEL_WIDTH = 238;
+
+/** How close to the end of a paged list counts as having reached it. */
+const PANEL_NEAR_END = 40;
+
+/** What an exported cell says where the record says nothing. */
+const NOTHING_MARK = "-";
 
 /** Rows per page — the `pageSize` the table asks for. */
 const PER_PAGE = 10;
@@ -128,12 +136,15 @@ const COLUMNS: {
   /** Columns the server will not order by, so the header is plain text. */
   sortable?: boolean;
 }[] = [
-  { key: "api", label: "API", width: "w-[11%]", sortable: false },
-  { key: "operator", label: "Operator", width: "w-[14%]" },
-  { key: "lease", label: "Lease", width: "w-[16%]" },
-  { key: "type", label: "Type", width: "w-[11%]", sortable: false },
-  { key: "status", label: "Status", width: "w-[13%]", sortable: false },
-  { key: "county", label: "County", width: "w-[11%]" },
+  { key: "api", label: "API", width: "w-[10%]", sortable: false },
+  { key: "operator", label: "Operator", width: "w-[13%]" },
+  { key: "lease", label: "Lease", width: "w-[15%]" },
+  /* The widest of the short columns: its values are phrases — "Injection /
+     Disposal from Oil" — and at the old width every one of them wrapped to
+     three lines, which set the height of the row it was in. */
+  { key: "type", label: "Type", width: "w-[15%]", sortable: false },
+  { key: "status", label: "Status", width: "w-[12%]", sortable: false },
+  { key: "county", label: "County", width: "w-[10%]" },
   {
     key: "oil",
     label: "Producing Oil (bbl)",
@@ -176,6 +187,28 @@ const SORT_PARAM: Record<string, string> = {
   gas: "producedGas",
   type: "wtype",
 };
+
+/*
+ * The words the service uses for "nothing".
+ *
+ * It does not send an absent field: it sends a string. "Null" in the lease and
+ * type columns, "NAN" in county, "Unknown" in operator — all of them printed
+ * as though they were the value, so a well appeared to be operated by Unknown
+ * in the county of NAN.
+ */
+const NOTHING = new Set(["null", "nan", "n/a", "na", "unknown", "-", "--"]);
+
+/** Whether a field the service sent actually holds anything. */
+function missing(value: string | null | undefined): boolean {
+  if (value === null || value === undefined) return true;
+  const text = value.trim();
+  return text === "" || NOTHING.has(text.toLowerCase());
+}
+
+/** The same field, as the table shows it. */
+function shown(value: string | null | undefined): string {
+  return missing(value) ? "N/A" : value!.trim();
+}
 
 const emptyFacets = (): Facets => ({
   operator: new Set(),
@@ -229,18 +262,76 @@ export function WellsTable({
     status: [],
     county: [],
   });
+  /*
+   * The operator facet alone is paged — there are tens of thousands of them,
+   * where the other three are lists a dropdown can hold. Its next page is
+   * asked for when the reader reaches the end of what is loaded.
+   */
+  const [operatorTotal, setOperatorTotal] = useState(0);
+  const [operatorMore, setOperatorMore] = useState(false);
+  const operatorDone = useRef(false);
+
+  const loadMoreOperators = useCallback(() => {
+    if (operatorMore || operatorDone.current) return;
+
+    const loaded = facetItems.operator.length;
+    if (loaded === 0) return;
+    if (operatorTotal > 0 && loaded >= operatorTotal) return;
+
+    setOperatorMore(true);
+    getOperatorListMap({ offset: nextOffset(loaded) })
+      .then((page) => {
+        setOperatorTotal(page.total);
+        setFacetItems((current) => {
+          const seen = new Set(
+            current.operator.map((item) => item.id ?? item.value),
+          );
+          const fresh = page.items.filter(
+            (item) => !seen.has(item.id ?? item.value),
+          );
+          /* Nothing new means there is no more to be had. */
+          if (fresh.length === 0) {
+            operatorDone.current = true;
+            return current;
+          }
+          return { ...current, operator: [...current.operator, ...fresh] };
+        });
+      })
+      .catch(() => {
+        /* What is loaded stands, and the next scroll asks again. */
+      })
+      .finally(() => setOperatorMore(false));
+  }, [facetItems.operator, operatorMore, operatorTotal]);
+  /*
+   * Whether those four are still on their way.
+   *
+   * Without it an empty list is ambiguous: it is either a facet whose request
+   * has not landed or one whose search matched nothing, and the menu said the
+   * second about both.
+   */
+  const [facetsLoading, setFacetsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
 
     void Promise.all([
-      getOperatorListMap().catch(() => [] as MapFilterItem[]),
+      /* The operator facet is paged. The size of a page is the service's to
+         say — see `OPERATOR_PAGE_SIZE` — and the rest arrive as the reader
+         scrolls the dropdown. */
+      getOperatorListMap()
+        .then((page) => {
+          setOperatorTotal(page.total);
+          return page.items;
+        })
+        .catch(() => [] as MapFilterItem[]),
       getWellTypeListMap().catch(() => [] as MapFilterItem[]),
       getWellStatusListMap().catch(() => [] as MapFilterItem[]),
       getCountyListMap().catch(() => [] as MapFilterItem[]),
     ]).then(([operator, type, status, county]) => {
       // One failing leaves its dropdown empty; the others still work.
-      if (!cancelled) setFacetItems({ operator, type, status, county });
+      if (cancelled) return;
+      setFacetItems({ operator, type, status, county });
+      setFacetsLoading(false);
     });
 
     return () => {
@@ -401,9 +492,17 @@ export function WellsTable({
   const firstShown = total ? (safePage - 1) * PER_PAGE + 1 : 0;
   const lastShown = Math.min(safePage * PER_PAGE, total);
 
+  /*
+   * What the table is filtered by — the applied set, never the draft.
+   *
+   * Built from `facets`, a chip appeared the moment a box was ticked, under a
+   * heading reading "Applied", above rows that were still unfiltered and
+   * beside a button offering to apply the very thing the chip said was
+   * already on. Ticking is a draft; this row is what Apply made of it.
+   */
   const chips = [
     ...FACETS.flatMap(({ key, label }) =>
-      [...facets[key]].map((value) => ({ key, label, value })),
+      [...appliedFacets[key]].map((value) => ({ key, label, value })),
     ),
   ];
 
@@ -414,21 +513,23 @@ export function WellsTable({
    * out of this row meant a table narrowed to wells making 1–10 bbl that said
    * only "County ANDREWS" above it. A range needs both ends to be a range, so
    * a half-filled pair shows nothing — the same rule the pill's badge counts by.
+   *
+   * From the applied ranges, for the same reason the chips above are.
    */
   const rangeChips = [
     {
       stream: "oil" as const,
       label: "Producing oil",
       unit: "bbl",
-      min: production.oilMin,
-      max: production.oilMax,
+      min: appliedProduction.oilMin,
+      max: appliedProduction.oilMax,
     },
     {
       stream: "gas" as const,
       label: "Producing gas",
       unit: "mcf",
-      min: production.gasMin,
-      max: production.gasMax,
+      min: appliedProduction.gasMin,
+      max: appliedProduction.gasMax,
     },
   ].filter(({ min, max }) => min.trim() !== "" && max.trim() !== "");
 
@@ -506,6 +607,13 @@ export function WellsTable({
     spell(facets) !== spell(appliedFacets) ||
     JSON.stringify(production) !== JSON.stringify(appliedProduction) ||
     (picked?.param ?? "") !== (appliedPicked?.param ?? "");
+  /* What Apply would send, counted: every ticked value, a production range,
+     and whatever the search box is holding. */
+  const draftCount =
+    FACETS.reduce((total, { key }) => total + facets[key].size, 0) +
+    productionCount(production) +
+    (picked ? 1 : 0);
+
   const anyFilter =
     appliedPicked !== null ||
     picked !== null ||
@@ -523,39 +631,41 @@ export function WellsTable({
   function exportPage() {
     if (rows.length === 0) return;
 
-    const cell = (value: string | number | null) => {
-      const text = value === null ? "" : String(value);
-      return CSV_QUOTE.test(text)
-        ? `"${text.replace(/"/g, '""')}"`
-        : text;
-    };
+    /*
+     * The same headings the table shows, in the same order, and each column
+     * told what it holds — so the figures arrive as figures, right-ranged
+     * with separators, and the dash for a well with none lines up under
+     * them instead of ranging left as text does.
+     */
+    const columns: SheetColumn[] = [
+      { head: "API", width: 15 },
+      { head: "Operator", width: 34 },
+      { head: "Lease", width: 30 },
+      { head: "Type", width: 24 },
+      { head: "Status", width: 15 },
+      { head: "County", width: 16 },
+      { head: "Producing Oil (bbl)", width: 19, format: "number" },
+      { head: "Producing Gas (mcf)", width: 19, format: "number" },
+    ];
 
-    const lines = [
-      ["api", "operator", "lease", "type", "status", "county", "oil", "gas"],
-      ...rows.map((row) => [
+    /* A dash where the record says nothing, the same mark the table shows:
+       an empty cell reads as a column nobody filled in. Sums are unaffected
+       — a spreadsheet skips text when it adds a column up. */
+    downloadSheet(
+      `mineral-view-wells-page-${safePage}.xlsx`,
+      "Wells",
+      columns,
+      rows.map((row) => [
         row.api,
-        row.operator,
-        row.lease,
-        row.wtype,
-        row.status,
-        row.county,
-        row.producedOil,
-        row.producedGas,
+        missing(row.operator) ? NOTHING_MARK : row.operator,
+        missing(row.lease) ? NOTHING_MARK : row.lease,
+        missing(row.wtype) ? NOTHING_MARK : row.wtype,
+        missing(row.status) ? NOTHING_MARK : row.status,
+        missing(row.county) ? NOTHING_MARK : row.county,
+        row.producedOil ?? NOTHING_MARK,
+        row.producedGas ?? NOTHING_MARK,
       ]),
-    ].map((line) => line.map(cell).join(","));
-
-    const url = URL.createObjectURL(
-      new Blob([lines.join(CSV_NEWLINE)], {
-        type: "text/csv;charset=utf-8",
-      }),
     );
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `mineral-view-wells-page-${safePage}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
   }
 
   function toggleSort(key: SortKey) {
@@ -605,6 +715,17 @@ export function WellsTable({
           Well results
         </h2>
 
+        {/* Narrow: the icon at the end of this row, where there is room going
+            spare and the eye already is. The labelled button below takes over
+            at `lg`, beside the view switch. */}
+        <ExportButton
+          compact
+          className="ml-auto lg:hidden"
+          onClick={exportPage}
+          loading={loading}
+          count={rows.length}
+        />
+
         <div className="flex w-full shrink-0 flex-wrap items-center gap-2 lg:ml-auto lg:w-auto lg:flex-nowrap lg:pl-2">
           <div className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-mv-line bg-white p-1 lg:flex-none lg:justify-start">
             <TabButton
@@ -627,23 +748,12 @@ export function WellsTable({
             />
           </div>
 
-          <button
-            type="button"
+          <ExportButton
+            className="hidden lg:inline-flex"
             onClick={exportPage}
-            /* Locked while a page is in flight: the rows on screen are the
-               previous page's, and exporting them under a pager that already
-               says 7 hands over the wrong ten records. */
-            disabled={loading || rows.length === 0}
-            title={
-              loading
-                ? "Loading this page…"
-                : `Export this page — ${rows.length} record${rows.length === 1 ? "" : "s"}`
-            }
-            className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-mv-line px-[14px] py-[8px] text-[12.5px] font-semibold text-mv-slate enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-50 lg:w-auto"
-          >
-            <Download size={14} aria-hidden="true" />
-            Export this page
-          </button>
+            loading={loading}
+            count={rows.length}
+          />
         </div>
       </div>
 
@@ -683,6 +793,7 @@ export function WellsTable({
             key={facet.key}
             label={facet.label}
             options={facetItems[facet.key].map((item) => item.value)}
+            loading={facetsLoading}
             searchable={facet.searchable}
             chosen={facets[facet.key]}
             open={openFacet === facet.key}
@@ -692,6 +803,14 @@ export function WellsTable({
               if (next) setProductionOpen(false);
             }}
             onChange={(next) => updateFacet(facet.key, next)}
+            /* Only the operators run to tens of thousands. */
+            {...(facet.key === "operator"
+              ? {
+                  onScrollEnd: loadMoreOperators,
+                  loadingMore: operatorMore,
+                  total: operatorTotal,
+                }
+              : null)}
           />
         ))}
 
@@ -723,9 +842,17 @@ export function WellsTable({
             disabled={
               loading || !pending || productionProblem(production) !== null
             }
-            className="rounded-lg px-[15px] py-[6px] text-[12.5px] font-bold enabled:cursor-pointer enabled:bg-mv-green-deep enabled:text-white enabled:hover:brightness-105 disabled:cursor-not-allowed disabled:bg-[#e9ecea] disabled:text-mv-muted"
+            /* Ringed while it is the next thing to do. The reader has just
+               come from a dropdown at the other end of the row, and a button
+               that looks the same whether or not it is waiting on them is a
+               button they walk past. */
+            className={`rounded-lg px-[15px] py-[6px] text-[12.5px] font-bold enabled:cursor-pointer enabled:bg-mv-green-deep enabled:text-white enabled:hover:brightness-105 disabled:cursor-not-allowed disabled:bg-[#e9ecea] disabled:text-mv-muted ${
+              pending ? "ring-4 ring-mv-green-deep/25" : ""
+            }`}
           >
-            Apply
+            {pending && draftCount > 0
+              ? `Apply ${draftCount} filter${draftCount === 1 ? "" : "s"}`
+              : "Apply"}
           </button>
         </div>
 
@@ -834,15 +961,21 @@ export function WellsTable({
       {/* ---------------- table ---------------- */}
       <div className="relative mt-4 overflow-hidden rounded-xl border border-mv-line bg-white">
       {/* Over the dimmed rows, not instead of them: dimming alone reads as a
-          disabled table, and says nothing about how long it will be. */}
+          disabled table, and says nothing about how long it will be.
+
+          Centred on the screen rather than on the card. The card is
+          twenty-five rows tall, so its middle is a long way down the page —
+          the pill was landing near the foot of the window, or past it, while
+          the rows it was explaining were at the top. Fixed, it is where the
+          reader is looking whatever they have scrolled to. */}
       {loading && rows.length > 0 && (
-        <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center">
-          <span className="flex items-center gap-[10px] rounded-full border border-mv-line bg-white px-[16px] py-[9px] shadow-mv-lg">
+        <div className="pointer-events-none fixed inset-0 z-50 grid place-items-center">
+          <span className="flex items-center gap-[12px] rounded-full border border-mv-line bg-white px-[22px] py-[13px] shadow-mv-lg">
             <span
               aria-hidden="true"
-              className="h-[14px] w-[14px] shrink-0 animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
+              className="h-[20px] w-[20px] shrink-0 animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
             />
-            <span className="text-[12.5px] font-semibold leading-none text-mv-slate">
+            <span className="text-[15px] font-semibold leading-none text-mv-slate">
               Loading wells…
             </span>
           </span>
@@ -938,29 +1071,36 @@ export function WellsTable({
                   </span>
                 </td>
                 <td className="px-4 py-[14px] text-[13px] text-mv-slate">
-                  {row.operator}
+                  {shown(row.operator)}
                 </td>
-                <td className="px-4 py-[14px] text-[13px] font-bold text-mv-ink">
-                  {row.lease}
+                <td
+                  className={`px-4 py-[14px] text-[13px] ${
+                    missing(row.lease)
+                      ? "text-mv-muted"
+                      : "font-bold text-mv-ink"
+                  }`}
+                >
+                  {shown(row.lease)}
                 </td>
                 <td className="px-4 py-[14px]">
-                  <span className="inline-flex items-center gap-[6px] rounded-full bg-[#eef1ee] px-[10px] py-[3px] text-[12px] font-medium text-mv-slate">
-                    <Dot color={TYPE_DOT[row.wtype] ?? DOT_GREY} />
-                    {row.wtype}
-                  </span>
+                  {missing(row.wtype) ? (
+                    <span className="text-[13px] text-mv-muted">N/A</span>
+                  ) : (
+                    <TypePill wtype={row.wtype} />
+                  )}
                 </td>
                 <td className="px-4 py-[14px] text-[13px] text-mv-slate">
-                  {row.status ? (
+                  {missing(row.status) ? (
+                    <span className="text-mv-muted">N/A</span>
+                  ) : (
                     <span className="inline-flex items-center gap-[6px]">
                       <Dot color={STATUS_DOT[row.status] ?? DOT_GREY} />
                       {row.status}
                     </span>
-                  ) : (
-                    <span className="text-mv-muted">—</span>
                   )}
                 </td>
                 <td className="px-4 py-[14px] text-[13px] text-mv-slate">
-                  {row.county}
+                  {shown(row.county)}
                 </td>
                 <Volume value={row.producedOil} />
                 <Volume value={row.producedGas} />
@@ -988,31 +1128,51 @@ export function WellsTable({
 
             {rows.length === 0 && (
               <tr>
-                {/* Tall and centred: with no rows the card collapsed to a
-                    strip and the spinner sat under the header with the page
-                    empty beneath it. The height holds the card open so the
-                    table does not jump when the rows arrive. */}
+                {/* Empty, and only there for its height: with no rows the card
+                    collapsed to a strip. What goes in the space is drawn over
+                    the card instead — see below — because this cell is a cell
+                    of a 1,160px table, and centred in it on a phone means
+                    centred 600px off the right-hand edge of the screen. */}
                 <td
                   colSpan={COLUMNS.length + 1}
-                  className="h-[52vh] px-6 text-center align-middle text-[13px] text-mv-muted"
-                >
-                  {loading ? (
-                    <span className="inline-flex items-center gap-[10px] text-[15px] font-semibold text-mv-slate">
-                      <span
-                        aria-hidden="true"
-                        className="h-[22px] w-[22px] animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
-                      />
-                      Loading wells…
-                    </span>
-                  ) : (
-                    (error ?? "No wells match these filters.")
-                  )}
-                </td>
+                  /* 220 on a phone, where the whole summary strip sits above
+                     this card: at 300 the middle of the space — where the
+                     message is — fell just under the fold. */
+                  className="h-[220px] lg:h-[52vh]"
+                />
               </tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {/* What the empty table is doing, said over the card.
+          The card is as wide as the screen; the table inside it is 1,160px and
+          scrolls, so anything centred in the table is centred somewhere off to
+          the right on a narrow viewport. */}
+      {rows.length === 0 && (
+        /* Centred in the empty space itself: the header row above it and the
+           pager below it are outside the box, so "the middle" is the middle of
+           the blank area rather than of the card. The space is 220px on a
+           phone — half of 52vh, under a card that already starts low on a
+           narrow screen, put the message below the fold, which is the same
+           message-nobody-can-see this replaced. */
+        <div className="pointer-events-none absolute inset-x-0 bottom-[64px] top-[46px] grid place-items-center px-6 text-center">
+          {loading ? (
+            <span className="inline-flex items-center gap-[10px] text-[13px] lg:text-[15px] font-semibold text-mv-slate">
+              <span
+                aria-hidden="true"
+                className="h-[22px] w-[22px] shrink-0 animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
+              />
+              Loading wells…
+            </span>
+          ) : (
+            <span className="text-[12.5px] lg:text-[13px] text-mv-muted">
+              {error ?? "No wells match these filters."}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* ---------------- pager ---------------- */}
       <div
@@ -1099,15 +1259,21 @@ export function WellsTable({
 function FilterDropdown({
   label,
   options,
+  loading,
   searchable,
   chosen,
   open,
   disabled,
   onOpenChange,
   onChange,
+  onScrollEnd,
+  loadingMore,
+  total,
 }: {
   label: string;
   options: string[];
+  /** True while the list is still being fetched — an empty one means nothing yet. */
+  loading?: boolean;
   searchable?: boolean;
   chosen: Set<string>;
   open: boolean;
@@ -1115,8 +1281,16 @@ function FilterDropdown({
   disabled?: boolean;
   onOpenChange: (open: boolean) => void;
   onChange: (next: Set<string>) => void;
+  /** For a paged facet: fetch the next page when the list is scrolled to it. */
+  onScrollEnd?: () => void;
+  loadingMore?: boolean;
+  /** How many rows there are in all, where more than are loaded. */
+  total?: number;
 }) {
   const [find, setFind] = useState("");
+
+  /* Slid back where the button is too near the right edge for it. */
+  const { shift, place } = usePanelPlacement(PANEL_WIDTH);
 
   const visible = useMemo(() => {
     const needle = find.trim().toLowerCase();
@@ -1154,17 +1328,25 @@ function FilterDropdown({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-2 w-[238px] rounded-xl border border-mv-line bg-white p-3 shadow-mv-lg">
+        <div
+          ref={place}
+          style={{ marginLeft: shift }}
+          className="absolute left-0 top-full z-50 mt-2 w-[238px] rounded-xl border border-mv-line bg-white p-3 shadow-mv-lg"
+        >
           <div className="mb-2 flex items-center justify-between gap-2">
             <span className="text-[10.5px] font-extrabold uppercase tracking-[.1em] text-mv-ink">
               {label}
             </span>
+            {/* "None" named the state it would leave behind; this names the
+                action. Offered only when there is something to clear — the
+                heading beside it already says which list. */}
             <button
               type="button"
+              disabled={chosen.size === 0}
               onClick={() => onChange(new Set())}
-              className="cursor-pointer text-[11.5px] font-bold text-mv-green-deep hover:underline"
+              className="text-[11.5px] font-bold enabled:cursor-pointer enabled:text-mv-green-deep enabled:hover:underline disabled:cursor-not-allowed disabled:text-mv-muted"
             >
-              None
+              Clear all
             </button>
           </div>
 
@@ -1182,7 +1364,25 @@ function FilterDropdown({
             </div>
           )}
 
-          <div className="max-h-[232px] overflow-y-auto">
+          <div
+            /* A paged facet fetches its next page as the last rows come into
+               view — see the operator list, which runs to tens of thousands
+               and arrives a page at a time. */
+            onScroll={
+              onScrollEnd
+                ? (event) => {
+                    const box = event.currentTarget;
+                    if (
+                      box.scrollTop + box.clientHeight >=
+                      box.scrollHeight - PANEL_NEAR_END
+                    ) {
+                      onScrollEnd();
+                    }
+                  }
+                : undefined
+            }
+            className="max-h-[232px] overflow-y-auto"
+          >
             {visible.map((option) => (
               <label
                 key={option}
@@ -1201,10 +1401,40 @@ function FilterDropdown({
               </label>
             ))}
 
-            {visible.length === 0 && (
-              <p className="py-2 text-[12px] text-mv-muted">Nothing matches.</p>
-            )}
+            {visible.length === 0 &&
+              (loading ? (
+                /* An empty list is not an answer until the request has
+                   landed: before that, saying "nothing matches" states that
+                   no county exists. */
+                <p className="flex items-center gap-2 py-2 text-[12px] text-mv-muted">
+                  <span
+                    aria-hidden="true"
+                    className="h-[13px] w-[13px] shrink-0 animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
+                  />
+                  Loading {label.toLowerCase()}…
+                </p>
+              ) : (
+                <p className="py-2 text-[12px] text-mv-muted">
+                  Nothing matches.
+                </p>
+              ))}
           </div>
+
+          {/* Where a paged list has got to. Without it a dropdown that stops
+              at fifty reads as a facet with fifty values. */}
+          {onScrollEnd && total !== undefined && total > options.length && (
+            <p className="flex items-center gap-[6px] pt-[6px] text-[11.5px] text-mv-muted">
+              {loadingMore && (
+                <span
+                  aria-hidden="true"
+                  className="h-[11px] w-[11px] shrink-0 animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
+                />
+              )}
+              {options.length.toLocaleString("en-US")} of{" "}
+              {total.toLocaleString("en-US")}
+              {loadingMore ? "" : " · scroll for more"}
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -1214,12 +1444,70 @@ function FilterDropdown({
 /** Anything the API reports that is not listed here falls back to grey. */
 const DOT_GREY = "#9ca3af";
 
-const TYPE_DOT: Record<string, string> = {
-  Oil: "#3f9d76",
-  Gas: "#d1584f",
-  "Oil or Gas": "#b45309",
-  Injection: "#4a7fbf",
-};
+/*
+ * The families a well type falls into, and how each one reads.
+ *
+ * Matched on the phrase rather than looked up whole: the API sends
+ * "Plugged Oil", "Plugged Oil / Gas", "Injection / Disposal from Oil" and a
+ * dozen more, and a table of exact spellings only ever colours the four it
+ * happens to list — every other row came out grey, which said the map's
+ * colour-coded legend and this column were describing different data.
+ *
+ * Order matters: "Plugged Oil" is plugged before it is oil.
+ */
+const TYPE_LOOKS: { test: RegExp; dot: string; text: string; bg: string }[] = [
+  {
+    test: /plugged|abandon|cancel/i,
+    dot: "#9ca3af",
+    text: "#6b7280",
+    bg: "#f1f2f4",
+  },
+  {
+    test: /inject|disposal|water|brine/i,
+    dot: "#4a7fbf",
+    text: "#3a6395",
+    bg: "#ecf2fa",
+  },
+  { test: /dry/i, dot: "#8b6d4a", text: "#7a5f3f", bg: "#f6f1ea" },
+  {
+    test: /oil\s*(\/|or|&|and)\s*gas/i,
+    dot: "#b45309",
+    text: "#96470a",
+    bg: "#fdf3e4",
+  },
+  { test: /gas/i, dot: "#d1584f", text: "#b34a42", bg: "#fdeceb" },
+  { test: /oil/i, dot: "#3f9d76", text: "#2f7d5d", bg: "#eaf5ef" },
+];
+
+const TYPE_FALLBACK = { dot: DOT_GREY, text: "#6b7280", bg: "#eef1ee" };
+
+/**
+ * One well type, as a pill.
+ *
+ * Kept to a single line — a wrapped pill is a three-line row beside eight
+ * one-line ones — and cut with an ellipsis when the phrase outruns the
+ * column, with the whole of it on hover and in the accessible name.
+ */
+function TypePill({ wtype }: { wtype: string }) {
+  const look = TYPE_LOOKS.find(({ test }) => test.test(wtype)) ?? TYPE_FALLBACK;
+
+  return (
+    <span
+      title={wtype}
+      style={{ backgroundColor: look.bg, color: look.text }}
+      /* A width in pixels, not `max-w-full`: the table lays itself out from
+         its content, so a cell is as wide as what is in it and "full" is
+         whatever the pill already grew to — the ellipsis never came, and one
+         long phrase pushed the column over the ones beside it. */
+      className="inline-flex max-w-[150px] items-center gap-[6px] rounded-full px-[10px] py-[4px] text-[12px] font-medium xl:max-w-[200px]"
+    >
+      <Dot color={look.dot} />
+      {/* `min-w-0`: a flex item will not shrink below its content without it,
+          so the ellipsis never appeared and the pill pushed the column wide. */}
+      <span className="min-w-0 truncate">{wtype}</span>
+    </span>
+  );
+}
 
 const STATUS_DOT: Record<string, string> = {
   Producing: "#3f9d76",
@@ -1250,6 +1538,89 @@ function TableIcon({ size = 15 }: { size?: number }) {
   );
 }
 
+/*
+ * Export, in both of its shapes.
+ *
+ * `compact` is the icon alone, for the heading row on a narrow screen; without
+ * it, the labelled button that sits beside the view switch from `lg` up. One
+ * component rather than two so the two cannot drift apart -- they are the same
+ * control, and the only difference is whether there is room to name it.
+ *
+ * The card on hover replaces the browser's own tooltip, which is late, plain,
+ * and on the icon says nothing a download arrow has not already said. What it
+ * has to add is the scope: Export gives you the rows on this page, not every
+ * row the filters matched.
+ */
+function ExportButton({
+  compact,
+  className = "",
+  onClick,
+  loading,
+  count,
+}: {
+  compact?: boolean;
+  className?: string;
+  onClick: () => void;
+  loading: boolean;
+  count: number;
+}) {
+  /* Locked while a page is in flight: the rows on screen are the previous
+     page's, and exporting them under a pager that already says 7 hands over
+     the wrong ten records. */
+  const disabled = loading || count === 0;
+
+  return (
+    /*
+     * The wrapper takes the hover, not the button: a disabled button stops
+     * firing pointer events in some engines, and "why can I not press this"
+     * is exactly the case the card is there to answer.
+     */
+    <span className={`group relative shrink-0 ${className}`}>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        aria-label="Export this page"
+        className={
+          compact
+            ? "grid h-[32px] w-[32px] cursor-pointer place-items-center rounded-lg border border-mv-line text-mv-slate enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-50"
+            : "inline-flex w-full items-center justify-center gap-2 rounded-lg border border-mv-line px-[14px] py-[8px] text-[12.5px] font-semibold text-mv-slate enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-50 lg:w-auto"
+        }
+      >
+        <Download size={compact ? 15 : 14} aria-hidden="true" />
+        {!compact && "Export this page"}
+      </button>
+
+      {/* Held to the right edge: the icon sits at the end of its row, and a
+          centred card would hang off the side of a phone screen. */}
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute right-0 top-full z-50 mt-[9px] hidden w-[232px] rounded-lg bg-white px-[13px] py-[10px] text-[11.5px] leading-snug text-mv-slate shadow-mv-lg ring-1 ring-mv-line group-hover:block group-focus-within:block"
+      >
+        <span
+          aria-hidden="true"
+          className="absolute -top-[5px] right-[14px] h-[9px] w-[9px] rotate-45 border-l border-t border-mv-line bg-white"
+        />
+        {loading ? (
+          "Loading this page — the rows are still arriving."
+        ) : count === 0 ? (
+          "Nothing to export: no rows matched these filters."
+        ) : (
+          <>
+            <span className="block font-semibold text-mv-ink">
+              Export this page
+            </span>
+            <span className="mt-[3px] block">
+              The {count} row{count === 1 ? "" : "s"} shown here, as a CSV —
+              this page only, not the whole result set.
+            </span>
+          </>
+        )}
+      </span>
+    </span>
+  );
+}
+
 function TabButton({
   icon: Icon,
   label,
@@ -1266,7 +1637,12 @@ function TabButton({
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`inline-flex cursor-pointer items-center gap-[6px] rounded-lg px-3 py-[6px] text-[13px] font-semibold ${
+      /* An equal share of the row until `lg`, where the switch sits in a
+         line with Back to map and the export button and takes only the width
+         its words need. Below that the row is the switch's own, and three
+         content-width buttons floating in the middle of it read as three
+         loose chips rather than one control. */
+      className={`inline-flex flex-1 cursor-pointer items-center justify-center gap-[6px] rounded-lg px-3 py-[6px] text-[13px] font-semibold lg:flex-none ${
         active
           ? "bg-mv-green-deep text-white"
           : "text-mv-slate hover:bg-[#f2f8f5] hover:text-mv-green-deep"

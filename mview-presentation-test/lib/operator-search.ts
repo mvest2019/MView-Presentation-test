@@ -11,7 +11,6 @@
 import {
   MASKED,
   OPERATOR_SORT_FIELDS,
-  TEMP_MEMBER_ID,
   operatorLogoPath,
   type OperatorSearchRecord,
   type OperatorSearchRequest,
@@ -21,8 +20,12 @@ import {
 export const QUICK_FILTERS = {
   activeInLast90Days: "Active in last 90 days",
   topProducers: "Top 10 producers",
-  moreThan5Counties: "Active in >5 counties",
-  moreThan10Counties: "Active in >10 counties",
+  /* DEFECT 116 — the snap rings ">5" and ">10": the operator was set hard against
+     its number, which reads as one token rather than as "more than five". A space
+     after the ">" is the whole fix; the wording is otherwise unchanged, and the
+     keys still match the API's payload properties. */
+  moreThan5Counties: "Active in > 5 counties",
+  moreThan10Counties: "Active in > 10 counties",
 } as const;
 
 /** Keys match the API's payload properties exactly, so no lookup table is needed. */
@@ -75,9 +78,26 @@ export const DEFAULT_FILTERS: OperatorFilters = {
   },
   status: "active",
   county: "",
-  sortKey: "oil",
+  /*
+   * DEFECT 122 — the listing opened ordered by oil produced, so the Counties
+   * column read 79, 110, 24, 22, 108 …, which is what the defect rings. It now
+   * opens on the widest footprint first.
+   *
+   * `countie_count` IS A REAL SORT UPSTREAM, not a silently ignored one. Probed
+   * against `status: active`: `desc` returns 123, 114, 110, 108, 95, 79, 75, 75 and
+   * `asc` returns 1, 1, 1 …, while a deliberately bogus field name returns the
+   * endpoint's own unordered default — so this ordering is the API's, not ours.
+   */
+  sortKey: "cty",
   sortDir: "desc",
   page: 1,
+};
+
+/** What each sort is called where the listing describes its own order. */
+export const SORT_CAPTIONS: Record<OperatorSortKey, string> = {
+  oil: "ranked by oil produced",
+  gas: "ranked by gas produced",
+  cty: "ranked by producing counties",
 };
 
 /**
@@ -110,10 +130,13 @@ export function buildOperatorSearchPayload(
     moreThan10Counties: filters.quick.moreThan10Counties,
     // Case-sensitive upstream: "MIDLAND" matches, "Midland" returns nothing.
     county: filters.county ? filters.county.toUpperCase() : "",
-    // TEMPORARY stand-in until auth supplies the real member id — see
-    // `TEMP_MEMBER_ID`. This is what keeps rows 4-10 unmasked under a quick
-    // filter; anonymous (`0`) would gate them.
-    member_id: TEMP_MEMBER_ID,
+    // A PLACEHOLDER, NOT THE ANSWER. The route handler at
+    // `app/api/operators/search/` overwrites this with the session's member id
+    // (or `0` when signed out) before the request leaves the server, because a
+    // client that could name its own id could unmask the gated rows. `0` is sent
+    // from here so the network tab shows what an anonymous browser is actually
+    // entitled to ask for, rather than advertising a member id it does not have.
+    member_id: 0,
     status: filters.status,
     // Same casing rule as county. The play types endpoint already returns upper
     // case, so this is belt-and-braces: if it ever returned title case, passing
@@ -204,6 +227,18 @@ function splitUnit(raw: string): { value: string; unit: string } {
 }
 
 function isMasked(value: unknown): boolean {
+  return value === MASKED;
+}
+
+/**
+ * True when a rendered cell value is withheld rather than absent.
+ *
+ * The table needs this for the two account-only columns, whose rows are
+ * otherwise entirely real — a locked `counties` on a row that still links to its
+ * operator profile. `OperatorRow.masked` cannot answer it: that flag is about the
+ * whole row being gated, which is a different thing.
+ */
+export function isLockedValue(value: string): boolean {
   return value === MASKED;
 }
 

@@ -1,5 +1,6 @@
 import { ArrowDown, ArrowUp } from "lucide-react";
 
+import { LockedValue } from "@/app/_components/locked-value";
 import { OperatorLogo } from "@/app/_components/operator-logo";
 import type {
   MatrixCell,
@@ -127,7 +128,7 @@ export function ComparisonMatrix({
                           </span>
                         </>
                       ) : null}
-                      <Cell cell={cell} />
+                      <Cell cell={cell} label={row.label} />
                     </td>
                   );
                 })}
@@ -140,7 +141,7 @@ export function ComparisonMatrix({
   );
 }
 
-function Cell({ cell }: { cell: MatrixCell }) {
+function Cell({ cell, label }: { cell: MatrixCell; label: string }) {
   switch (cell.kind) {
     case "text":
       // Addresses and county lists are prose, not figures — they should wrap and
@@ -178,6 +179,15 @@ function Cell({ cell }: { cell: MatrixCell }) {
           <span className="sr-only">No filed data</span>
         </span>
       );
+
+    case "locked":
+      /* A bar, not an em dash and not a number. The figure exists and is filed —
+         it is being withheld, which is a different statement from "nothing on file",
+         and the row must not imply the second while meaning the first.
+
+         THE SHARED TREATMENT (requested), naming its own row so sixteen locked cells
+         are sixteen distinct links rather than sixteen identical ones. */
+      return <LockedValue label={label} from="compare-statistics" />;
 
     case "status":
       return (

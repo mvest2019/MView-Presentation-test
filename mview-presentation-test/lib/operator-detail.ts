@@ -721,6 +721,22 @@ function buildConditionCards(
   const exact = (value: number) =>
     value.toLocaleString("en-US", { maximumFractionDigits: 20 });
 
+  /**
+   * A volume at three decimals — DEFECT 140.
+   *
+   * `exact` prints whatever the API sent, which is right for a percentage (2 must
+   * not become 2.0) and wrong for a volume: `9405.7284` rendered "9,405.7284" and
+   * `23324.0138` rendered "23,324.0138", four places of precision nobody asked for
+   * and enough extra glyphs to push the figure out of its card. Three is the
+   * convention the rest of this page already prints — the county table's 714.982,
+   * the panel's 1,907,873.826 — so the card now matches them.
+   *
+   * `minimumFractionDigits` is deliberately NOT set: a whole number stays whole
+   * rather than gaining ".000".
+   */
+  const volume = (value: number) =>
+    value.toLocaleString("en-US", { maximumFractionDigits: 3 });
+
   const signed = (value: number) =>
     `${value >= 0 ? "+" : "−"}${exact(Math.abs(value))}%`;
 
@@ -745,12 +761,37 @@ function buildConditionCards(
       ? []
       : [
           {
-            label: "Latest monthly BOE",
-            value: exact(latest.boe),
+            /*
+             * DEFECT 127 — THREE PERIODS, NONE OF THEM NAMED.
+             *
+             * The card read "23,324.0138 MBBL · 0.3% MoM · vs May 2025 +3%": a
+             * figure for an unstated month, a percentage against an unstated month
+             * labelled only "MoM", and a second percentage against a named one. A
+             * reader could not tell which month the headline belonged to, nor what
+             * "MoM" was measured against — and the two percentages looked like
+             * competing answers to the same question.
+             *
+             * The endpoint names all three and always did:
+             *   month_label      "May 2026"   — the month this figure is for
+             *   mom.month_label  "April 2026" — what the chip compares against
+             *   yoy.month_label  "May 2025"   — what the footer compares against
+             *
+             * So each is now stated. Nothing is computed here and no period is
+             * inferred; the labels are the API's own.
+             */
+            label: latest.month_label
+              ? `Monthly BOE · ${latest.month_label}`
+              : "Latest monthly BOE",
+            value: volume(latest.boe),
             unit: latest.boe_unit?.trim() || "BOE",
             ...(latest.mom.direction === null
               ? {}
-              : { direction: latest.mom.direction, window: "MoM" }),
+              : {
+                  direction: latest.mom.direction,
+                  window: latest.mom.month_label
+                    ? `vs ${latest.mom.month_label}`
+                    : "MoM",
+                }),
             ...(latest.mom.change_percent === null
               ? {}
               : {

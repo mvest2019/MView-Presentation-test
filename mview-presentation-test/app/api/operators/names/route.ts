@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { searchOperatorNames } from "@/lib/operator-statistics-api";
+import type { OperatorNameResult } from "@/lib/operator-statistics-shape";
 
 /**
  * `GET /api/operators/names?q=` — operator name suggestions for the compare picker.
@@ -23,9 +24,13 @@ import { searchOperatorNames } from "@/lib/operator-statistics-api";
  * 24,742 operators is reachable by scrolling without any single response being
  * large. `total` tells the picker when to stop asking.
  *
- * A FAILURE HERE IS NOT A PAGE FAILURE. `searchOperatorNames` already degrades to
- * an empty list and logs, so the picker shows "no matches" while every other block
- * on the page keeps working.
+ * A FAILURE HERE IS NOT A PAGE FAILURE, BUT IT MUST NOT LOOK LIKE AN EMPTY ONE.
+ * This used to answer 200 with `{ matches: [] }` when the upstream read failed,
+ * which is exactly the shape of "nothing matched what you typed" — so a timeout on
+ * the 4.11 MB name list rendered as an empty dropdown on both comparison pages,
+ * with nothing to distinguish it from a genuine no-match and nothing to retry. It
+ * now answers 503, which the picker reports and offers to try again. Every other
+ * block on the page is unaffected either way.
  */
 export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
@@ -36,10 +41,22 @@ export async function GET(request: Request) {
   const parsed = Number.parseInt(params.get("offset") ?? "0", 10);
   const offset = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 
-  const { matches, total } = await searchOperatorNames(query, offset);
+  let result: OperatorNameResult;
+  try {
+    result = await searchOperatorNames(query, offset);
+  } catch (error) {
+    console.error("[operators] name search unavailable", error);
+    // 503 rather than 500: the directory is momentarily unreachable, not broken,
+    // and the picker's retry is the right response to it. `no-store` so a shared
+    // cache cannot hold the outage past the moment it ends.
+    return NextResponse.json(
+      { matches: [], total: 0, offset, unavailable: true },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
+  }
 
   return NextResponse.json(
-    { matches, total, offset },
+    { matches: result.matches, total: result.total, offset },
     {
       headers: {
         // Shared caches hold this, the browser does not: `max-age=0` keeps a client

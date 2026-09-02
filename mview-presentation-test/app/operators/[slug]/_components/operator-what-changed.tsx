@@ -1,9 +1,11 @@
 "use client";
 
-import { RefreshCw } from "lucide-react";
+import { Lock, RefreshCw } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { ChangeItem } from "@/app/_components/change-item";
+import { Band, Panel, Row } from "@/app/_components/cta-band";
 import { DeferredSection } from "@/app/_components/deferred-section";
 import type { WhatChangedPanel } from "@/lib/operator-what-changed-api";
 
@@ -37,13 +39,194 @@ import type { WhatChangedPanel } from "@/lib/operator-what-changed-api";
  * service is unreachable or timed out.
  */
 
+/**
+ * One clean sentence out of whatever the service reported — DEFECT 134.
+ *
+ * Strips trailing separators and whitespace and guarantees a full stop, so a
+ * detail arriving as "The analysis service could not be reached.:" or with a
+ * dangling colon does not reach the page that way. A message that says nothing
+ * falls back to a sentence that does.
+ */
+function tidyDetail(detail: string): string {
+  const trimmed = (detail ?? "").trim().replace(/[\s:;,\-–—]+$/u, "");
+  if (trimmed === "") return "The analysis could not be loaded just now.";
+  return /[.!?]$/u.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
 /** Rows the skeleton draws — the contract is always six. */
 const SKELETON_ROWS = 6;
 
 type Loaded =
   | { state: "ready"; panel: WhatChangedPanel }
   | { state: "empty"; detail: string }
-  | { state: "error"; detail: string };
+  | { state: "error"; detail: string }
+  /** No account. The endpoint answers this without doing any of the work. */
+  | { state: "locked" };
+
+/* ==========================================================================
+   The sign-in gate
+
+   THIS SECTION AND NOT THE REST OF THE PAGE. Everything else on an operator's
+   profile is the filed public record - production, leases, counties, permits -
+   and the page says so. "What changed" is the one thing here that is not simply
+   the record: it is the record measured, ranked and written up, and it is by
+   some distance the most expensive thing the site does. It is the natural place
+   to ask for an account, and the only place on this page where asking is honest.
+
+   NOTHING IS BLURRED THAT WAS EVER FETCHED. The endpoint returns `locked`
+   without waking the analysis service, so there are no findings in the browser
+   to hide - the rows below are shapes, not withheld sentences. A CSS blur over
+   delivered text would be theatre, and this would be the wrong page to start.
+   ========================================================================== */
+
+/** The six card shapes, greyed and blurred, as the backdrop to the ask. */
+function LockedBackdrop() {
+  return (
+    <ul
+      aria-hidden="true"
+      className="m-0 grid list-none gap-[10px] p-0 blur-[3px]"
+    >
+      {Array.from({ length: SKELETON_ROWS }, (_, row) => (
+        <li
+          key={row}
+          className="flex items-start gap-3 rounded-[14px] border border-mv-line bg-white px-[18px] py-4"
+        >
+          {/* No `animate-pulse` here, unlike the skeleton it is shaped after: a
+              pulsing locked panel reads as still loading, and this is finished. */}
+          <span className="h-[26px] w-[26px] shrink-0 rounded-lg bg-mv-line-soft" />
+          <span className="min-w-0 flex-1">
+            <span
+              className="block h-[13px] rounded bg-mv-line-soft"
+              style={{ width: `${[82, 68, 76, 58, 88, 64][row % 6]}%` }}
+            />
+            <span className="mt-2 block h-[11px] w-[38%] rounded bg-mv-line-soft" />
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * What a signed-out reader sees in place of the findings.
+ *
+ * THE BACKDROP IS BEHIND AND THE ASK IS IN FRONT, opaque. A card floating on
+ * blurred shapes reads as a locked section; the same words laid flat over them
+ * read as a rendering fault. `pointer-events-none` on the backdrop so nothing
+ * beneath the overlay is clickable, and the whole region is one `role="status"`
+ * rather than six unlabelled list items a screen reader would walk through.
+ *
+ * IT KEEPS THE SECTION'S HEIGHT. `DeferredSection` reserved 520px for this and
+ * the six shapes fill it, so a locked panel and a loaded one occupy the same
+ * space and the page does not move under anyone.
+ */
+function LockedPanel() {
+  return (
+    <div role="status" className="relative">
+      <div aria-hidden="true" className="pointer-events-none select-none">
+        <LockedBackdrop />
+      </div>
+
+      <div className="absolute inset-0 grid place-items-center p-4">
+        <div className="max-w-[440px] rounded-[16px] border border-mv-line bg-white/95 px-6 py-[22px] text-center shadow-mv backdrop-blur-sm">
+          <span
+            aria-hidden="true"
+            className="mx-auto mb-3 grid h-[38px] w-[38px] place-items-center rounded-full bg-mv-mint text-mv-green-deep"
+          >
+            <Lock className="h-4 w-4" strokeWidth={2.3} />
+          </span>
+
+          <p className="m-0 text-[15px] font-bold leading-snug text-mv-ink">
+            What changed is part of a free account
+          </p>
+          {/*
+            THE LAST SENTENCE USED TO READ "Everything else on this page stays free
+            to read", and gating the profile's lifetime figures made that false — the
+            reader could see it while four locked rows sat above it. OPERATORS.md §4
+            rule 5 is precisely this case: a lock notice that misdescribes the lock is
+            worse than none, and the directory has already been burned by the same
+            sentence once.
+
+            IT NAMES WHAT IS FREE FIELD BY FIELD, and it has now been narrowed twice.
+            The first pass listed the production history, the lease book and the county
+            breakdown as free to read; that became false when the two `Produced`
+            columns in the lease and county tables were gated. It then named production
+            over time as the one section with no gate on any field; that became false
+            too, when the chart itself was gated (requested) — it is production data,
+            and production data is what an account buys everywhere else on these pages.
+
+            So it no longer promises any production figure. What is left is the
+            operator's identity and footprint, which genuinely is free, and saying only
+            that is what keeps this sentence true through the next change.
+          */}
+          <p className="m-0 mt-2 text-[13px] leading-relaxed text-mv-muted">
+            Six ranked findings for this operator - what moved, by how much, and
+            over which months - measured from the filed record and written up in
+            plain English. Who this operator is, where it operates and the counties
+            and leases on its record stay free to browse.
+          </p>
+
+          <div className="mt-[18px] flex flex-wrap items-center justify-center gap-[10px]">
+            <Link
+              href="/register?from=operator-profile"
+              className="inline-flex items-center gap-2 rounded-xl bg-mv-green-deep px-[18px] py-[11px] text-[13.5px] font-semibold text-white !no-underline shadow-mv transition-[filter] hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+            >
+              Register for free
+            </Link>
+            <Link
+              href="/login"
+              className="text-[13px] font-semibold text-mv-green-deep hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+            >
+              Sign in
+            </Link>
+          </div>
+
+          <p className="m-0 mt-[10px] text-[11.5px] text-mv-muted">
+            Free account &middot; no card required
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The band under the locked panel.
+ *
+ * THE SAME `Band` THE MAP GUIDE AND THE OPERATOR DIRECTORY USE, so all three
+ * asks on the site are one component rather than three that resemble each other.
+ * Rendered only in the locked state and only inside `DeferredSection`, so it
+ * costs a signed-in member nothing at all and a signed-out one nothing until
+ * they have scrolled this far.
+ */
+function LockedCta() {
+  return (
+    <div className="mt-4">
+      <Band
+        tone="deep"
+        icon={Lock}
+        eyebrow="Free account"
+        title="Follow what this operator does next"
+        body="Everything above - production, leases, counties, permits and wells - is the public record and free to read, with or without an account. A free account adds the measured analysis of this operator, and lets you claim your owner record so activity on your own acreage follows you."
+        primary={{
+          href: "/register?from=operator-profile",
+          label: "Register for free",
+        }}
+        secondary={{ href: "/login", label: "Sign in" }}
+      >
+        <Panel title="What a free account opens">
+          <Row label="What changed" note="six ranked findings, refreshed" />
+          <Row
+            label="Lease and producing-county counts"
+            note="across the directory"
+          />
+          <Row label="Your claimed owner record" note="and its lease activity" />
+          <Row label="No card, no obligation" />
+        </Panel>
+      </Band>
+    </div>
+  );
+}
 
 /** Shimmer rows that occupy the same height the finished panel will. */
 function Skeleton() {
@@ -82,11 +265,14 @@ function WhatChangedPanel({
   nonce,
   onBusyChange,
   onWriterChange,
+  onLockedChange,
 }: {
   operatorNumber: string;
   nonce: number;
   onBusyChange: (busy: boolean) => void;
   onWriterChange: (writer: string | null) => void;
+  /** Told upward so the shell can drop a Refresh button with nothing to refresh. */
+  onLockedChange: (locked: boolean) => void;
 }) {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   /**
@@ -117,6 +303,7 @@ function WhatChangedPanel({
         if (!active) return;
         setLoaded(body);
         onBusyChange(false);
+        onLockedChange(body.state === "locked");
         /* Told upward so the shell can say why a refresh changed nothing. `measured`
            and `deterministic` mean no model phrased these rows. */
         onWriterChange(body.state === "ready" ? body.panel.writer : null);
@@ -136,7 +323,14 @@ function WhatChangedPanel({
       active = false;
       controller.abort();
     };
-  }, [operatorNumber, nonce, attempt, onBusyChange, onWriterChange]);
+  }, [
+    operatorNumber,
+    nonce,
+    attempt,
+    onBusyChange,
+    onWriterChange,
+    onLockedChange,
+  ]);
 
   const retry = useCallback(() => {
     setLoaded(null);
@@ -166,6 +360,18 @@ function WhatChangedPanel({
     );
   }
 
+  /* ---- no account ----
+     Ahead of the three below because it is not a failure: nothing was attempted,
+     so there is nothing to retry and nothing to report about the service. */
+  if (loaded.state === "locked") {
+    return (
+      <>
+        <LockedPanel />
+        <LockedCta />
+      </>
+    );
+  }
+
   /* ---- service unreachable, or it timed out ---- */
   if (loaded.state === "error") {
     return (
@@ -173,7 +379,24 @@ function WhatChangedPanel({
         role="alert"
         className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-mv-line bg-mv-bg px-[18px] py-4"
       >
-        <p className="m-0 text-[13.5px] text-mv-ink-soft">{loaded.detail}</p>
+        {/*
+          DEFECT 134 — the snap shows "The analysis service could not be reached.:"
+          — the sentence with a stray colon hanging off it, which is what a bare
+          `detail` produces when the source appends a separator it has nothing to
+          follow with. Trimmed to one clean sentence, and paired with a line saying
+          what it means for the rest of the page, so an unreachable analysis service
+          reads as one section being unavailable rather than as a broken profile.
+          The Retry beside it is unchanged and still the only way it is re-fetched.
+        */}
+        <div className="min-w-0">
+          <p className="m-0 text-[13.5px] font-semibold text-mv-ink-soft">
+            {tidyDetail(loaded.detail)}
+          </p>
+          <p className="m-0 mt-[3px] text-[12.5px] text-mv-muted">
+            Everything else on this profile is unaffected — production, leases and
+            the county breakdown all come from a different source.
+          </p>
+        </div>
         <button
           type="button"
           onClick={retry}
@@ -248,12 +471,15 @@ export function OperatorWhatChanged({
   const [busy, setBusy] = useState(false);
   /** What phrased the rows on screen, once they arrive. */
   const [writer, setWriter] = useState<string | null>(null);
+  /** True once the panel reports the section is behind the sign-in gate. */
+  const [locked, setLocked] = useState(false);
 
   const onBusyChange = useCallback((value: boolean) => setBusy(value), []);
   const onWriterChange = useCallback(
     (value: string | null) => setWriter(value),
     [],
   );
+  const onLockedChange = useCallback((value: boolean) => setLocked(value), []);
 
   /**
    * Ask for the panel again, and get it phrased again.
@@ -282,7 +508,10 @@ export function OperatorWhatChanged({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">{heading}</div>
 
-        <div className="shrink-0">
+        {/* DROPPED ENTIRELY WHEN LOCKED, not disabled. A greyed-out Refresh beside
+            a panel asking for an account is a control for something the reader
+            cannot do, and it would be the only disabled control on the page. */}
+        <div className={locked ? "hidden" : "shrink-0"}>
           <button
             type="button"
             onClick={refresh}
@@ -306,6 +535,7 @@ export function OperatorWhatChanged({
           nonce={nonce}
           onBusyChange={onBusyChange}
           onWriterChange={onWriterChange}
+          onLockedChange={onLockedChange}
         />
       </DeferredSection>
     </>

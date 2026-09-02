@@ -30,16 +30,64 @@ export const getCountyListMap = async (): Promise<MapFilterItem[]> => {
   }
 };
 
-/** GET /api/v1/map/filters/operator -> { facet, items: [{ value, count }] } */
-export const getOperatorListMap = async (): Promise<MapFilterItem[]> => {
+/** A page of a facet: the rows asked for, and how many there are in all. */
+export type MapFilterPage = { items: MapFilterItem[]; total: number };
+
+/** How many operators a page holds. */
+export const OPERATOR_PAGE_SIZE = 50;
+
+/**
+ * The `offset` that asks for the rows after the ones already in hand.
+ *
+ * A row count, matching the service. One function so the whole app asks the
+ * same way, and one place to change it if the service starts counting pages.
+ */
+export const nextOffset = (loaded: number): number => loaded;
+
+/**
+ * GET /api/v1/map/filters/operator?limit=&offset=&q=
+ *
+ * Paged, unlike the other facets: there are 22,609 operators, and the whole
+ * list is a couple of megabytes to send and a couple of thousand rows to draw
+ * for a panel that shows eight at a time. `q` searches the whole set on the
+ * server, so a name outside the page in hand can still be found.
+ *
+ * `offset` is a row, not a page — the service was asked and answered:
+ * `limit=50&offset=1` returns rows 2 to 51, sharing 49 of its 50 rows with
+ * `offset=0`. So the second fifty is `offset=50`, the third `offset=100`.
+ * Should the service ever count pages instead, `nextOffset` below is the one
+ * line to change.
+ *
+ * Both parameters go on every request, the first included.
+ */
+export const getOperatorListMap = async (page?: {
+  limit?: number;
+  /** The first row wanted, counting from 0. */
+  offset?: number;
+  q?: string;
+}): Promise<MapFilterPage> => {
   try {
+    const query = new URLSearchParams();
+    query.set("limit", String(page?.limit ?? OPERATOR_PAGE_SIZE));
+    query.set("offset", String(page?.offset ?? 0));
+    if (page?.q) query.set("q", page.q);
+
+    const search = query.toString();
     const response = await fetch(
-      `${process.env.MAP_BASE_URL}/api/v1/map/filters/operator`,
+      `${process.env.MAP_BASE_URL}/api/v1/map/filters/operator${
+        search ? `?${search}` : ""
+      }`,
     );
     const data = await response.json();
 
     if (response.ok && Array.isArray(data?.items)) {
-      return data.items as MapFilterItem[];
+      return {
+        items: data.items as MapFilterItem[],
+        /* Older builds of the service send no total; the list is then however
+           much of it arrived. */
+        total:
+          typeof data.total === "number" ? data.total : data.items.length,
+      };
     } else {
       throw new Error("Failed to fetch operator list");
     }
@@ -186,6 +234,12 @@ export type MapCluster = {
   oilGas: number;
   name: string;
   topCounty: string;
+  /**
+   * Every county the cluster covers, largest first — the bubble is a square
+   * of the grid, not a county, so at the wider zooms it straddles a dozen of
+   * them. `topCounty` is the first of these.
+   */
+  countyNames?: string[];
   /** Null where the cluster has no producing wells to take shares of. */
   sharePct: { oil: number; gas: number; oilGas: number } | null;
 };
@@ -467,6 +521,10 @@ export type MapWellSummary = {
     recordType: string | null;
     lon: number | null;
     lat: number | null;
+    /** `WGS_84 (EPSG:4326)` — which datum the two figures above are in. */
+    coordinateSystem: string | null;
+    /** `Ector County, Texas, USA` — the same point said in words. */
+    location: string | null;
   };
   lease: {
     leaseNumber: string | null;
@@ -854,4 +912,82 @@ export const getWellInsightsMap = async (
   } catch (error) {
     throw new Error(String(error) || "Failed to fetch insights for this well");
   }
+};
+
+/** A standing watch on one lease: what to watch for, and where to write. */
+export type LeaseWatch = {
+  /** The lease's own key, district first — `7C-19955`. */
+  lease: string;
+  /** 1, 3 or 5 miles: the ring the service holds. */
+  radius: number;
+  notifyNewPermit: boolean;
+  notifyNewCompletion: boolean;
+  email: string;
+};
+
+/**
+ * POST /api/v1/watches
+ *
+ * Asks the service to watch one lease's ring and write to an address when
+ * something is filed inside it. Returns nothing on success — the watch is the
+ * service's to keep, and this page has nothing further to do with it.
+ *
+ * A refusal comes back as a status with a reason in the body where the service
+ * gives one, and that reason is what the reader is shown: "email is required"
+ * is worth reading, "400" is not.
+ */
+export const saveLeaseWatch = async (watch: LeaseWatch): Promise<void> => {
+  let response: Response;
+
+  try {
+    response = await fetch(`${process.env.MAP_BASE_URL}/api/v1/watches`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(watch),
+    });
+  } catch {
+    /* No answer at all — off the network, or the host is down. Said as
+       something a reader can act on rather than as "TypeError". */
+    throw new Error("Could not reach the service. Try again in a moment.");
+  }
+
+  if (response.ok) return;
+
+  /*
+   * This service wraps its refusals as `{ error: { message, details } }`, and
+   * the details are the part worth reading: "Invalid request payload" says
+   * nothing, "radius must be one of 1, 3, 5 miles" says everything. The
+   * flatter shapes and the bare status follow it, for a service that answers
+   * differently.
+   */
+  const said = (await response.json().catch(() => null)) as {
+    message?: unknown;
+    error?: unknown;
+  } | null;
+
+  const wrapped = said?.error as
+    | { message?: unknown; details?: unknown }
+    | undefined;
+
+  const details = Array.isArray(wrapped?.details)
+    ? wrapped.details
+        .map((detail: unknown) =>
+          typeof (detail as { message?: unknown })?.message === "string"
+            ? ((detail as { message: string }).message)
+            : null,
+        )
+        .filter((message): message is string => message !== null)
+    : [];
+
+  const reason = details.length
+    ? details.join(". ")
+    : typeof wrapped?.message === "string"
+      ? wrapped.message
+      : typeof said?.message === "string"
+        ? said.message
+        : typeof said?.error === "string"
+          ? said.error
+          : `The service would not save this watch (${response.status}).`;
+
+  throw new Error(reason);
 };

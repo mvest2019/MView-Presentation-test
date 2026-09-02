@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock, Download } from "lucide-react";
+import { Clock, Download, X } from "lucide-react";
 
 /*
  * The line above the summary: what this page is, and when it was last read.
@@ -52,6 +52,7 @@ export function WellSummaryHeader({
   loadedAt,
   completionExport,
   permitExport,
+  onClose,
 }: {
   /** Which of the well's two records this is, from the well itself. */
   record: WellRecord;
@@ -71,6 +72,8 @@ export function WellSummaryHeader({
    */
   completionExport: RecordExport;
   permitExport: RecordExport;
+  /** Puts the record away and leaves the map as it is. */
+  onClose?: () => void;
 }) {
   /*
    * One button, whichever record is open — Export is Export. Only the record
@@ -80,47 +83,88 @@ export function WellSummaryHeader({
   const target = isPermit ? permitExport : completionExport;
   const noun = isPermit ? "permit" : "completion";
 
+  /*
+   * The way out of a record. Without it the only way to empty this side of
+   * the page was to find another well to click.
+   *
+   * Written once and placed twice: narrow, it belongs in the top right beside
+   * the title, where a cross is always looked for. Wide, it belongs at the end
+   * of the actions row after Export and the timestamp. Only one of the two is
+   * ever rendered — the other is `display: none`, so nothing is announced
+   * twice.
+   */
+  const closeButton = onClose ? (
+    <button
+      type="button"
+      onClick={onClose}
+      aria-label="Close this summary"
+      title="Close"
+      /* A button, not a bare glyph: the panel's ground is the same pale grey
+         as the page, so an unbacked cross read as part of the timestamp
+         beside it. White on a border, like Export PDF next to it, and red
+         only on the way out. */
+      className="grid h-[30px] w-[30px] shrink-0 cursor-pointer place-items-center rounded-lg border border-mv-line bg-white text-mv-slate hover:border-mv-red hover:bg-mv-red-bg hover:text-mv-red"
+    >
+      <X size={15} strokeWidth={2.5} aria-hidden="true" />
+    </button>
+  ) : null;
+
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <h2 className="text-[19px] font-extrabold leading-tight text-mv-ink">
-            Well Summary
-          </h2>
+    /*
+     * A container, like the band below it: this line sits in a panel that is a
+     * share of a split view, so its width has little to do with the window's.
+     * Wide, the title and the actions share a line; narrow, the actions drop
+     * beneath the title rather than being held to the right of it with the
+     * space between them left empty.
+     */
+    <div className="@container">
+      <div className="flex flex-col gap-3 @xl:flex-row @xl:items-center @xl:gap-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+              <h2 className="text-[19px] font-extrabold leading-tight text-mv-ink">
+                Well Summary
+              </h2>
 
-          {/* Which record this is, said rather than offered: the well's own
-              label decides it, so there is nothing here to pick. */}
-          <span className="rounded-full bg-mv-mint px-[9px] py-[4px] text-[10px] font-extrabold uppercase leading-none tracking-[.08em] text-mv-green-deep">
-            {record}
-          </span>
+              {/* Which record this is, said rather than offered: the well's own
+                label decides it, so there is nothing here to pick. */}
+              <span className="rounded-full bg-mv-mint px-[9px] py-[4px] text-[10px] font-extrabold uppercase leading-none tracking-[.08em] text-mv-green-deep">
+                {record}
+              </span>
+            </div>
+            <p className="mt-[3px] text-[11.5px] text-mv-slate">
+              Comprehensive overview of well performance and reserves
+            </p>
+          </div>
+
+          <span className="@xl:hidden">{closeButton}</span>
         </div>
-        <p className="mt-[3px] text-[11.5px] text-mv-slate">
-          Comprehensive overview of well performance and reserves
-        </p>
-      </div>
 
-      <div className="ml-auto flex items-center gap-3">
-        <button
-          type="button"
-          onClick={target.download}
-          disabled={!target.ready || target.busy}
-          title={
-            target.busy
-              ? "Composing the pages"
-              : target.ready
-                ? `Download this ${noun} summary as PDF`
-                : `Waiting for this well's ${noun}`
-          }
-          className="inline-flex items-center gap-[7px] rounded-lg border border-mv-line bg-white px-[13px] py-[7px] text-[12.5px] font-semibold text-mv-ink enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Download size={14} strokeWidth={2} aria-hidden="true" />
-          {target.busy ? "Preparing…" : "Export PDF"}
-        </button>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 @xl:ml-auto @xl:flex-nowrap">
+          <button
+            type="button"
+            onClick={target.download}
+            disabled={!target.ready || target.busy}
+            title={
+              target.busy
+                ? "Composing the pages"
+                : target.ready
+                  ? `Download this ${noun} summary as PDF`
+                  : `Waiting for this well's ${noun}`
+            }
+            className="inline-flex shrink-0 items-center gap-[7px] rounded-lg border border-mv-line bg-white px-[13px] py-[7px] text-[12.5px] font-semibold text-mv-ink enabled:cursor-pointer enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Download size={14} strokeWidth={2} aria-hidden="true" />
+            {target.busy ? "Preparing…" : "Export PDF"}
+          </button>
 
-        <span className="flex items-center gap-[6px] text-[11px] text-mv-muted">
-          Last updated: {loadedAt ? stamp(loadedAt) : "loading…"}
-          <Clock size={13} strokeWidth={1.75} aria-hidden="true" />
-        </span>
+          <span className="flex items-center gap-[6px] whitespace-nowrap text-[11px] text-mv-muted">
+            Last updated: {loadedAt ? stamp(loadedAt) : "loading…"}
+            <Clock size={13} strokeWidth={1.75} aria-hidden="true" />
+          </span>
+
+          <span className="hidden @xl:block">{closeButton}</span>
+        </div>
       </div>
     </div>
   );

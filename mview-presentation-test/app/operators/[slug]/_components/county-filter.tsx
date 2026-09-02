@@ -46,7 +46,8 @@ export function CountyFilter({
       <option value={ALL_COUNTIES}>All counties</option>
       {options.map((name) => (
         <option key={name} value={name}>
-          {titleCase(name)} County
+          {/* DEFECT 132 — see the note in `operator-leases.tsx`. */}
+          {titleCase(name)}
         </option>
       ))}
     </SelectControl>

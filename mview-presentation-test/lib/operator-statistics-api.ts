@@ -105,17 +105,22 @@ export function matchOperatorNames(
 /**
  * The cached list, queried or browsed.
  *
- * Empty on failure rather than a throw — a picker that cannot offer suggestions is
- * a degraded control, not a broken page, and every other block keeps working.
+ * IT THROWS ON FAILURE, AND THAT IS THE FIX. It used to return `{ matches: [],
+ * total: 0 }` and log, which sounds like graceful degradation and was in fact how
+ * the operator listing disappeared without a trace: an upstream timeout became a
+ * 200 carrying an empty list, indistinguishable from "nothing matched what you
+ * typed". The picker cached that emptiness per query and never asked again, so one
+ * slow read left both comparison pages with a permanently empty dropdown and no
+ * error anywhere for anyone to notice.
+ *
+ * The degrading now happens one level up, in the route handler, which turns a
+ * throw into a 503 — a response the picker can tell apart from an empty result and
+ * offer to retry. Nothing else on either page depends on this call, so a failure
+ * here still costs only the dropdown.
  */
 export async function searchOperatorNames(
   query: string,
   offset: number = 0,
 ): Promise<OperatorNameResult> {
-  try {
-    return matchOperatorNames(await getOperatorNames(), query, offset);
-  } catch (error) {
-    console.error("[statistics] operator names unavailable", error);
-    return { matches: [], total: 0 };
-  }
+  return matchOperatorNames(await getOperatorNames(), query, offset);
 }

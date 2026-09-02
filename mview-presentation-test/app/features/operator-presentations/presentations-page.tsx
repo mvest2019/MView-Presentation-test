@@ -369,6 +369,21 @@ export function PresentationsPage() {
             </Button>
           </div>
         ) : records.length === 0 ? (
+          /*
+           * TWO WAYS TO HAVE NO RECORDS, AND THEY ARE NOT THE SAME SENTENCE.
+           *
+           * This used to say "No presentations match your filters · try a wider date
+           * range or a different operator" in both cases — including when no filter
+           * was set at all. Measured against the dev API: the endpoint answers 200
+           * with `totalCount: 0, totalPages: 0` for every input, so the library is
+           * currently empty, and the page was telling readers to widen filters they
+           * had never applied and offering a "Clear all filters" button with nothing
+           * to clear.
+           *
+           * With filters applied, the original wording is correct and stays.
+           * Without any, the truthful statement is that there is nothing on file
+           * yet — that is the library's state, not the reader's mistake.
+           */
           <div className="rounded-[18px] border border-dashed border-mv-line bg-white px-6 py-14 text-center shadow-[0_1px_2px_rgba(16,20,30,.05)]">
             <span
               aria-hidden="true"
@@ -376,15 +391,32 @@ export function PresentationsPage() {
             >
               <Search className="h-6 w-6" strokeWidth={1.9} />
             </span>
-            <p className="mb-[6px] font-sans text-[18px] font-bold leading-[1.3] text-mv-ink">
-              No presentations match your filters.
-            </p>
-            <p className="mb-[18px] text-sm text-mv-muted">
-              Try a wider date range or a different operator.
-            </p>
-            <Button variant="outline" onClick={clearFilters}>
-              Clear all filters
-            </Button>
+            {hasFilters(applied) ? (
+              <>
+                <p className="mb-[6px] font-sans text-[18px] font-bold leading-[1.3] text-mv-ink">
+                  No presentations match your filters.
+                </p>
+                <p className="mb-[18px] text-sm text-mv-muted">
+                  Try a wider date range or a different operator.
+                </p>
+                <Button variant="outline" onClick={clearFilters}>
+                  Clear all filters
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="mb-[6px] font-sans text-[18px] font-bold leading-[1.3] text-mv-ink">
+                  No presentations are on file yet.
+                </p>
+                <p className="mb-[18px] text-sm text-mv-muted">
+                  The library is empty right now — nothing to filter. Quarterly
+                  results and investor decks appear here as operators publish them.
+                </p>
+                <Button variant="outline" onClick={retry}>
+                  Check again
+                </Button>
+              </>
+            )}
           </div>
         ) : (
           <>

@@ -94,7 +94,7 @@ export function compareFindings(
     rows.push({
       kind: "up",
       headline: `${label(leader.operatorNumber) || leader.name} leads on oil`,
-      detail: `${formatMillions(leader.value)} bbl filed across the selected acreage.`,
+      detail: `${formatMillions(leader.value)} BBL filed across the selected acreage.`,
       source: SOURCE,
       evidence: evidence(
         "Oil is what most Texas royalty is calculated on, so the largest oil producer is usually the one whose filings move an owner's cheque the most.",
@@ -103,7 +103,7 @@ export function compareFindings(
           operators,
           (operator) => operator.oilTotal,
           (operator) => ({
-            v: `${formatMillions(operator.oilTotal)} bbl`,
+            v: `${formatMillions(operator.oilTotal)} BBL`,
             note: `${operator.oilPercent.toFixed(1)}% of volume`,
           }),
         ),
@@ -117,7 +117,7 @@ export function compareFindings(
     rows.push({
       kind: "up",
       headline: `${label(leader.operatorNumber) || leader.name} leads on gas`,
-      detail: `${formatMillions(leader.value)} Mcf over the same record.`,
+      detail: `${formatMillions(leader.value)} MCF over the same record.`,
       source: SOURCE,
       evidence: evidence(
         "An operator can lead on gas and trail badly on oil. Which of the two matters depends entirely on what a given acreage actually produces.",
@@ -126,7 +126,7 @@ export function compareFindings(
           operators,
           (operator) => operator.gasTotal,
           (operator) => ({
-            v: `${formatMillions(operator.gasTotal)} Mcf`,
+            v: `${formatMillions(operator.gasTotal)} MCF`,
             note: `${operator.gasPercent.toFixed(1)}% of volume`,
           }),
         ),

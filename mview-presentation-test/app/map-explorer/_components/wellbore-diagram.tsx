@@ -70,7 +70,14 @@ export function WellboreDiagram({
   return (
     <div className="mt-3 overflow-hidden rounded-lg">
       <svg
+        /* Spelled out for the PDF: the capture serialises this element on
+           its own, and a size and a namespace of its own are what a
+           standalone SVG needs. Inline in the page the browser supplies both,
+           so none of it changes what is drawn on screen. */
+        xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 300 120"
+        width={300}
+        height={120}
         className="h-[120px] w-full"
         role="img"
         aria-label={`${label} wellbore in section`}

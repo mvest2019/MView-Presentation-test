@@ -1,6 +1,12 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { type MapProductionPoint } from "@/lib/map-api";
 
@@ -109,6 +115,36 @@ export function ProductionChart({
   const now = useCurrentMonth();
   /** Whether the two month boxes are on show. */
   const [customOpen, setCustomOpen] = useState(false);
+
+  /*
+   * How much room the plot has, for deciding how many years fit under it.
+   *
+   * Measured rather than assumed: the card is a share of a panel that is a
+   * share of a split view, and the number of years is whatever the well has
+   * been producing for. Nineteen of them under a phone-width plot ran off
+   * the side of the card and took the whole card's width with them.
+   */
+  const [plotWidth, setPlotWidth] = useState(0);
+  const plotWatch = useRef<ResizeObserver | null>(null);
+
+  /*
+   * Attached as the plot appears, not on mount.
+   *
+   * The plot is one of three things this card can be showing — the other two
+   * are the spinner and "no production reported" — so on the first render
+   * there is nothing to watch. A mount effect looked once, found null, and
+   * the width stayed at zero for ever: every axis then printed the number of
+   * years a 600px plot has room for, whatever the plot turned out to be.
+   */
+  const watchPlot = useCallback((node: HTMLDivElement | null) => {
+    plotWatch.current?.disconnect();
+    plotWatch.current = null;
+    if (!node || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => setPlotWidth(node.clientWidth));
+    observer.observe(node);
+    plotWatch.current = observer;
+  }, []);
   /** Which month the pointer is over, as an index into the visible series. */
   const [hovered, setHovered] = useState<number | null>(null);
   /*
@@ -192,23 +228,51 @@ export function ProductionChart({
   /* One label per year present in the window, not per year in the range. */
   const years = [...new Set(shown.map((point) => point.year))];
 
+  /*
+   * The years the axis has room to print.
+   *
+   * Evenly spread and always including the first and the last, so the axis
+   * still says where the record starts and ends. Nineteen years under a
+   * phone-width plot overran the card and took its whole width with them;
+   * 34px is a four-digit year at this size with a little air.
+   */
+  const axisYears = pickYears(years, plotWidth);
+
   return (
-    <div className="rounded-xl border border-mv-line bg-white p-4">
+    <div
+      /* Its own card, built here rather than by `Card`, so it has to say for
+         itself that a page of the PDF may end at its foot. Without that the
+         only break above it was the row of cards before it, and the chart was
+         cut in half — heading at the bottom of one page, plot at the top of
+         the next. */
+      data-page-block=""
+      className="@container rounded-xl border border-mv-line bg-white p-4"
+    >
       {/* The title, and every control for this chart on the line with it:
           one place to look, at the top of the card where a reader arrives
-          rather than at the bottom where they leave. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          rather than at the bottom where they leave.
+
+          On a narrow card there is no such line. Held on one, the range and
+          its button were pushed to the right under a title that had wrapped,
+          reading as two rows of debris rather than a heading and a control.
+          There they stack: the title, then the range and the button as a row
+          of their own, ranged left with everything else in the card. */}
+      <div className="flex flex-col gap-2 @lg:flex-row @lg:flex-wrap @lg:items-center @lg:gap-x-3">
         <h3 className="text-[14px] font-bold leading-none text-mv-ink">
           Crude Oil &amp; Natural Gas Production
         </h3>
 
         {series.length > 0 && (
-          <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 @lg:ml-auto">
             <span className="text-[12px] font-semibold text-mv-ink">
               {monthName(from)} – {monthName(to)}
             </span>
+            {/* Screen only, like the track below: the header's own
+                "Mar 2012 – Feb 2031" is what a printed page needs from this
+                row. */}
             <button
               type="button"
+              data-screen-only=""
               aria-expanded={customOpen}
               onClick={() => setCustomOpen((open) => !open)}
               className={`cursor-pointer rounded-lg border px-[11px] py-[6px] text-[11.5px] font-semibold ${
@@ -223,6 +287,7 @@ export function ProductionChart({
             {window && (
               <button
                 type="button"
+                data-screen-only=""
                 onClick={() => {
                   setWindow(null);
                   setCustomOpen(false);
@@ -247,13 +312,16 @@ export function ProductionChart({
           actually has is shorter to read and cannot offer a month that does
           not exist: the To list starts at From, and the From list ends at To.
         */
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-mv-line bg-[#fafbfa] px-3 py-[10px]">
+        <div className="mt-2 flex flex-col gap-2 rounded-xl border border-mv-line bg-[#fafbfa] px-3 py-[10px] @lg:flex-row @lg:flex-wrap @lg:items-center @lg:gap-x-3">
+          {/* Each list takes the width it is given on a narrow card, so the
+              two sit one above the other rather than being squeezed side by
+              side into half a month name each. */}
           <label className="flex items-center gap-2 text-[11px] text-mv-muted">
             From
             <select
               value={from}
               onChange={(event) => setWindow({ from: event.target.value, to })}
-              className="cursor-pointer rounded-lg border border-mv-line bg-white px-[8px] py-[5px] text-[11.5px] font-semibold text-mv-ink outline-none focus:border-mv-green-deep"
+              className="w-full flex-1 cursor-pointer rounded-lg border border-mv-line bg-white px-[8px] py-[5px] text-[11.5px] font-semibold text-mv-ink outline-none focus:border-mv-green-deep @lg:w-auto @lg:flex-none"
             >
               {series
                 .filter((point) => point.month <= to)
@@ -270,7 +338,7 @@ export function ProductionChart({
             <select
               value={to}
               onChange={(event) => setWindow({ from, to: event.target.value })}
-              className="cursor-pointer rounded-lg border border-mv-line bg-white px-[8px] py-[5px] text-[11.5px] font-semibold text-mv-ink outline-none focus:border-mv-green-deep"
+              className="w-full flex-1 cursor-pointer rounded-lg border border-mv-line bg-white px-[8px] py-[5px] text-[11.5px] font-semibold text-mv-ink outline-none focus:border-mv-green-deep @lg:w-auto @lg:flex-none"
             >
               {series
                 .filter((point) => point.month >= from)
@@ -282,7 +350,7 @@ export function ProductionChart({
             </select>
           </label>
 
-          <span className="ml-auto text-[11px] text-mv-muted">
+          <span className="text-[11px] text-mv-muted @lg:ml-auto">
             {monthName(firstMonth)} – {monthName(lastMonth)} on file
           </span>
         </div>
@@ -318,7 +386,7 @@ export function ProductionChart({
           <div className="mt-2 flex gap-2">
             <Axis label="Oil Production (BBL)" colour={OIL} max={oilMax} />
 
-            <div className="min-w-0 flex-1">
+            <div ref={watchPlot} className="min-w-0 flex-1">
               {/*
                 The pointer is read off the container rather than the SVG's own
                 coordinates: `preserveAspectRatio="none"` stretches the viewBox
@@ -337,8 +405,13 @@ export function ProductionChart({
                 onMouseLeave={() => setHovered(null)}
               >
                 <svg
+                  /* As with the wellbore diagram: a namespace and a size of
+                     its own, for the capture that serialises it alone. */
+                  xmlns="http://www.w3.org/2000/svg"
                   viewBox={`0 0 ${W} ${H}`}
                   preserveAspectRatio="none"
+                  width={W}
+                  height={H}
                   className="h-[230px] w-full"
                   role="img"
                   aria-label="Monthly oil and gas production, history and forecast"
@@ -463,9 +536,15 @@ export function ProductionChart({
                 )}
               </div>
 
-              <div className="mt-1 flex justify-between text-[10.5px] text-mv-muted">
-                {years.map((year) => (
-                  <span key={year}>{year}</span>
+              {/* Every year where they fit, every second or fourth where
+                  they do not — with the last one always shown, so the axis
+                  says where the record ends. About 34px each, which is a
+                  four-digit year at this size and a little air. */}
+              <div className="mt-1 flex justify-between overflow-hidden text-[10.5px] text-mv-muted">
+                {axisYears.map((year) => (
+                  <span key={year} className="whitespace-nowrap">
+                    {year}
+                  </span>
                 ))}
               </div>
               <div className="mt-[2px] text-center text-[11px] font-semibold text-mv-slate">
@@ -487,7 +566,15 @@ export function ProductionChart({
               name than to slide to when it is one of two hundred. Both write
               the same window. One track under two handles — see
               `.mv-range-overlay`. */}
-          <div className="mt-3 flex items-center gap-3 border-t border-mv-line pt-3">
+          {/* Screen only. It is a control — two handles on a track — and a
+              picture of one in a PDF is furniture at best; at worst the
+              handles print over their own labels, which is what the export
+              was showing. The window it sets is already named in the card's
+              header, so the document loses nothing. */}
+          <div
+            data-screen-only=""
+            className="mt-3 flex items-center gap-3 border-t border-mv-line pt-3"
+          >
             <span className="w-[58px] shrink-0 text-[11px] font-semibold text-mv-slate">
               {monthName(from)}
             </span>
@@ -613,6 +700,25 @@ function Reading({
 }
 
 /** One side's scale, written bottom-up so it reads with the plot. */
+/**
+ * The years an axis of a given width has room to print.
+ *
+ * Evenly spread and always including the first and the last, so the axis
+ * still says where the record starts and ends. 34px is a four-digit year at
+ * this size with a little air; 600 is the assumption before the plot has been
+ * measured, which is roughly a desktop panel.
+ */
+function pickYears(years: number[], width: number): number[] {
+  const fits = Math.max(2, Math.floor((width || 600) / 34));
+  if (years.length <= fits) return years;
+
+  const picked = new Set<number>();
+  for (let step = 0; step < fits; step += 1) {
+    picked.add(Math.round((step * (years.length - 1)) / (fits - 1)));
+  }
+  return [...picked].sort((a, b) => a - b).map((index) => years[index]);
+}
+
 function Axis({
   label,
   colour,
@@ -629,8 +735,15 @@ function Axis({
   return (
     <div className="flex shrink-0 items-stretch gap-1">
       {right && <Ticks ticks={ticks} colour={colour} align="left" />}
+      {/*
+        The turned title, where there is width to spare for it.
+        Two of these and their tick columns took 180px of a 260px card on a
+        phone, leaving the plot 80px — a chart the width of its own axes. The
+        key above the plot names both series and their units, so on a narrow
+        card the titles are what goes.
+      */}
       <span
-        className="grid place-items-center text-[9.5px] font-semibold"
+        className="hidden place-items-center text-[9.5px] font-semibold @lg:grid"
         style={{ color: colour, writingMode: "vertical-rl", rotate: "180deg" }}
       >
         {label}
@@ -651,7 +764,7 @@ function Ticks({
 }) {
   return (
     <div
-      className={`flex h-[230px] w-[34px] flex-col-reverse justify-between py-[1px] text-[9.5px] ${
+      className={`flex h-[230px] w-[30px] flex-col-reverse justify-between py-[1px] text-[9px] @lg:w-[34px] @lg:text-[9.5px] ${
         align === "right" ? "text-right" : "text-left"
       }`}
       style={{ color: colour }}

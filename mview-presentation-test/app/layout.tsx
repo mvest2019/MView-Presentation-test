@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Lexend_Deca } from "next/font/google";
 
+import { HideInPortal } from "./_components/hide-in-portal";
 import { ScrollToTopOnNavigate } from "./_components/scroll-to-top";
 import { SiteFooter } from "./_components/site-footer";
 import { SiteHeader } from "./_components/site-header";
@@ -54,7 +55,13 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <main id="main" className="flex-1">
           {children}
         </main>
-        <SiteFooter />
+        {/* The portal carries its own top bar, sidebar and bottom tab bar, so
+            the marketing footer must not sit under it. The header hides itself
+            on those routes; the footer is a server component, so it is gated
+            from outside instead — see `hide-in-portal.tsx` for why. */}
+        <HideInPortal>
+          <SiteFooter />
+        </HideInPortal>
         {/* Transient, page-level notices only — see the note in `ui/sonner.tsx`.
             Field validation stays inline against the field it is about, where a
             screen reader meets it in the form's own tab order. */}

@@ -1,6 +1,6 @@
 "use client";
 
-import { X } from "lucide-react";
+import { Lock, X } from "lucide-react";
 import { useCallback, useState } from "react";
 
 import { Pager } from "@/app/_components/pager";
@@ -13,6 +13,8 @@ import {
 import { titleCase } from "@/lib/text-case";
 
 import { TableSkeletonRows } from "./table-skeleton";
+import Link from "next/link";
+
 import { usePagedResource } from "./use-paged-resource";
 
 /**
@@ -149,8 +151,9 @@ export function LeaseWells({
                   ["Well name", null, "left"],
                   ["Status", null, "left"],
                   ["County", null, "left"],
-                  ["Oil Produced", "bbl", "right"],
-                  ["Gas Produced", "Mcf", "right"],
+                  /* DEFECT 141 — uppercase; the second snap rings these two. */
+                  ["Oil Produced", "BBL", "right"],
+                  ["Gas Produced", "MCF", "right"],
                   ["Production start", null, "left"],
                 ] as const
               ).map(([label, unit, align]) => (
@@ -179,6 +182,17 @@ export function LeaseWells({
           >
             {firstLoad ? (
               <TableSkeletonRows rows={LEASE_PAGE_SIZE} columns={COLUMNS} />
+            ) : wells.locked ? (
+              /* NO ACCOUNT. Ahead of the error and empty branches because it is
+                 neither: nothing was attempted, so there is nothing to retry, and
+                 "no wells on record" would be a claim about this lease that the
+                 request never made. See `app/api/operators/wells/route.ts` — the
+                 rows are not fetched at all, so nothing is being hidden in CSS. */
+              <tr>
+                <td colSpan={COLUMNS} className="bg-white p-0">
+                  <LockedWells />
+                </td>
+              </tr>
             ) : wells.status === "error" ? (
               <tr>
                 <td colSpan={COLUMNS} className="bg-white px-4 py-6">
@@ -187,7 +201,10 @@ export function LeaseWells({
                     className="flex flex-wrap items-center justify-center gap-3 text-center"
                   >
                     <p className="text-sm text-mv-ink-soft">
-                      Wells could not be loaded.
+{/* DEFECT 154 / 155 — the reported reason when there is one, so a
+                          rate limit reads as "wait a moment" rather than as an
+                          outage. The generic line is the fallback. */}
+                      {wells.error || "Wells could not be loaded."}
                     </p>
                     <button
                       type="button"
@@ -286,5 +303,67 @@ export function LeaseWells({
         </div>
       ) : null}
     </section>
+  );
+}
+
+
+/**
+ * What a signed-out reader sees in place of the well table.
+ *
+ * WHY THE WELLS AND NOT THE LEASES. `/leases` returns real rows to anyone and
+ * `/wells` returns `*****` in every field without a member id — the backend's own
+ * division, not one invented here. So the lease book above stays completely free
+ * to read and browse, and the ask arrives only when someone opens a lease to see
+ * the wells inside it. That is the soft gate the right way round: the value is
+ * shown first, and the account is asked for at the point the reader has proved
+ * they want more.
+ *
+ * DRAWN INSIDE THE TABLE so the drawer keeps its shape — the header, the lease
+ * name and the close button are all still there, and only the body changes.
+ */
+function LockedWells() {
+  return (
+    <div className="flex flex-col items-center gap-[14px] px-6 py-[38px] text-center">
+      <span
+        aria-hidden="true"
+        className="grid h-[38px] w-[38px] place-items-center rounded-full bg-mv-mint text-mv-green-deep"
+      >
+        <Lock className="h-4 w-4" strokeWidth={2.3} />
+      </span>
+
+      <div className="max-w-[430px]">
+        <p className="m-0 text-[15px] font-bold leading-snug text-mv-ink">
+          Well records need a free account
+        </p>
+        {/* "Free to browse" was already the right word here and stays — but the
+            lease book's two `Produced` columns are now gated too, so the promise is
+            spelled out rather than left to the reader to scope. §4 rule 5. */}
+        <p className="m-0 mt-2 text-[13px] leading-relaxed text-mv-muted">
+          API number, well name, status, county, reported oil and gas, and the
+          month production started — for every well on this lease. The lease book
+          itself stays free to browse — every lease name, number, county and
+          status.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-center gap-[10px]">
+        <Link
+          href="/register?from=operator-profile"
+          className="inline-flex items-center gap-2 rounded-xl bg-mv-green-deep px-[18px] py-[11px] text-[13.5px] font-semibold text-white !no-underline shadow-mv transition-[filter] hover:brightness-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+        >
+          Register for free
+        </Link>
+        <Link
+          href="/login"
+          className="text-[13px] font-semibold text-mv-green-deep hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+        >
+          Sign in
+        </Link>
+      </div>
+
+      <p className="m-0 text-[11.5px] text-mv-muted">
+        Free account &middot; no card required
+      </p>
+    </div>
   );
 }

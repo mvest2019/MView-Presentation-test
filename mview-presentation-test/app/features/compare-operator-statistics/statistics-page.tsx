@@ -1,10 +1,12 @@
 "use client";
 
-import { BarChart3, Check, ChevronRight, FileDown, Plus } from "lucide-react";
+import { BarChart3, Check, ChevronRight, Plus, Unlock } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { Button, buttonClass } from "@/app/_components/button";
+import { Band, Panel, Row } from "@/app/_components/cta-band";
+import { LockedValue } from "@/app/_components/locked-value";
 import { OperatorLogo } from "@/app/_components/operator-logo";
 import {
   cardTitleClass,
@@ -17,7 +19,6 @@ import {
   buildCompanyRows,
   buildFullMatrixRows,
   buildProductionRows,
-  buildStatisticsCsvRows,
   buildTrendRows,
   emptySelection,
   exampleSelection,
@@ -25,7 +26,6 @@ import {
   formatCount,
   formatVolume,
   monogramOf,
-  toCsv,
   toStatisticsOperatorFromApi,
   type StatisticsLeaders,
   type StatisticsOperator,
@@ -107,6 +107,8 @@ export function StatisticsPage() {
   const leaders = useMemo(() => findStatisticsLeaders(operators), [operators]);
 
   const pending = state.status === "loading";
+  /** True when the endpoint withheld the volumes — see the route handler. */
+  const locked = state.status === "ready" && state.locked;
 
   /* Names the comparison came back without. The endpoint's own `operators_not_found`
      cannot be used for this — it echoes back every name that was asked for, found or
@@ -119,7 +121,24 @@ export function StatisticsPage() {
   const workspace = useRef<HTMLDivElement | null>(null);
 
   const chosenCount = operators.length;
-  const hasResults = chosenCount >= MIN_OPERATORS && leaders !== null;
+  /*
+   * TWO OR MORE OPERATORS IS THE WHOLE CONDITION, and it must stay that way.
+   *
+   * This used to read `&& leaders !== null`, which made one derived value the
+   * on/off switch for the entire page. `findStatisticsLeaders` returns null if ANY
+   * of its four leaders is missing, and `leaderBy` skips a score of 0 — so any
+   * moment the volumes arrived as zero, every block vanished behind "Nothing to
+   * compare yet" while the request had actually succeeded. That is exactly what a
+   * parse failure did once, and it is exactly what the sign-in gate would do now:
+   * an anonymous reader gets `"****"` for the volumes by design.
+   *
+   * A missing leaderboard is a missing SECTION, not a missing comparison. The
+   * identity cards, company information, lease and county figures do not depend on
+   * it and are shown regardless; `Results` renders the leaders block only when it
+   * has one. So a zero, a gate, or a future field that stops parsing can cost at
+   * most the block it belongs to.
+   */
+  const hasResults = chosenCount >= MIN_OPERATORS;
 
   /* The selection is the only input: `useOperatorComparison` requests the whole
      comparison whenever it changes and two or more are chosen, and answers a set it
@@ -139,28 +158,6 @@ export function StatisticsPage() {
   const chooseExample = useCallback(() => {
     setSelection(exampleSelection());
   }, []);
-
-  function editSelection() {
-    workspace.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    const firstEmpty = selection.findIndex((slug) => !slug);
-    inputs.current[firstEmpty < 0 ? 0 : firstEmpty]?.focus();
-  }
-
-  function exportCsv() {
-    const csv = toCsv(buildStatisticsCsvRows(operators, trendYears));
-    // A client-side blob: every figure is already in the browser, so a round trip
-    // would only add latency and an endpoint to maintain.
-    const url = URL.createObjectURL(
-      new Blob([csv], { type: "text/csv;charset=utf-8" }),
-    );
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "operator-statistics-comparison.csv";
-    document.body.append(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  }
 
   return (
     <div className="mx-auto max-w-[1180px] px-[22px] pb-16 max-[767px]:px-4 max-[767px]:pb-11">
@@ -259,8 +256,7 @@ export function StatisticsPage() {
           operators={operators}
           leaders={leaders}
           years={trendYears}
-          onEdit={editSelection}
-          onExport={exportCsv}
+          locked={locked}
         />
       ) : pending ? (
         /* Something is on its way but there is not yet enough to compare. The
@@ -278,6 +274,39 @@ export function StatisticsPage() {
             </p>
           </div>
         </section>
+      ) : state.status === "error" ? (
+        /*
+         * A FAILED READ IS NOT AN EMPTY SELECTION, and it used to be drawn as one.
+         * The upstream is intermittent by nature — a 502 or a timeout is a normal
+         * event here — and when one arrived this slot fell through to "Nothing to
+         * compare yet · Choose at least 2 operators above", directly under the
+         * error line the picker had already printed. Two operators WERE chosen; the
+         * page was telling the reader to fix something that was not broken, which
+         * is the same misreport as the blank comparison and worth closing with it.
+         *
+         * It holds the empty state's footprint so nothing jumps, and carries its own
+         * retry — the one in the picker is a small line and easy to miss down here.
+         */
+        <section className="pt-[22px]">
+          <div className="grid min-h-[220px] place-items-center rounded-2xl border border-mv-line bg-white p-8 text-center shadow-mv">
+            <div>
+              <p role="alert" className="m-0 text-[15px] font-bold text-mv-ink">
+                The comparison could not be loaded
+              </p>
+              <p className="mx-auto mt-2 max-w-[420px] text-[13px] leading-relaxed text-mv-muted">
+                The operator service did not answer. Your selection is still
+                here — try again in a moment.
+              </p>
+              <button
+                type="button"
+                onClick={retry}
+                className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-mv-line bg-white px-[18px] py-[10px] text-[13.5px] font-semibold text-mv-slate transition-colors hover:border-mv-line-strong hover:bg-mv-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+              >
+                Try again
+              </button>
+            </div>
+          </div>
+        </section>
       ) : (
         <EmptyState onExample={chooseExample} />
       )}
@@ -293,7 +322,7 @@ export function StatisticsPage() {
             alerts when one changes.
           </p>
           <Link
-            href="/signup?from=compare-statistics"
+            href="/register?from=compare-statistics"
             className={buttonClass({
               variant: "primary",
               size: "lg",
@@ -347,118 +376,122 @@ function Results({
   operators,
   leaders,
   years,
-  onEdit,
-  onExport,
+  locked,
 }: {
   operators: StatisticsOperator[];
-  leaders: StatisticsLeaders;
+  /**
+   * The leaderboard, or null when it could not be derived.
+   *
+   * NULLABLE ON PURPOSE — see the note on `hasResults`. It is one section's data,
+   * not the page's precondition.
+   */
+  leaders: StatisticsLeaders | null;
   /** The trend years from the API — see `useOperatorComparison`. */
   years: readonly number[];
-  onEdit: () => void;
-  onExport: () => void;
+  /** True when the response withheld the volumes behind the sign-in gate. */
+  locked: boolean;
 }) {
   return (
     <>
-      {/* ---- toolbar ---- */}
-      <section className="py-[22px]">
-        <div className="flex flex-wrap items-center gap-[14px] rounded-[14px] border border-mv-line bg-white px-[18px] py-[14px] shadow-[0_1px_2px_rgba(24,24,27,.05)]">
-          <p className="flex min-w-0 flex-wrap items-center gap-[14px]">
-            {operators.map((operator) => (
-              <span
-                key={operator.operatorNumber}
-                className="inline-flex items-center gap-[7px] text-[13px] font-semibold text-mv-ink"
-              >
-                {operator.short}
-              </span>
-            ))}
-          </p>
-
-          <span className="ml-auto flex gap-2">
-            <Button variant="outline" size="sm" onClick={onEdit}>
-              Edit selection
-            </Button>
-            <Button variant="outline" size="sm" onClick={onExport}>
-              <FileDown
-                aria-hidden="true"
-                className="h-[15px] w-[15px]"
-                strokeWidth={1.9}
-              />
-              Export CSV
-            </Button>
-          </span>
-        </div>
-      </section>
-
-      {/* ---- identity cards ---- */}
-      <section className="pb-[22px]">
+      {/* ---- identity cards ----
+          `pt-[26px]` is the gap the removed selection strip used to provide. Without
+          it this heading sat hard against the picker card above, so the results read
+          as part of the picker rather than as the answer to it. The other sections
+          already separate on their own `pb-[22px]`; only the first one needed the
+          space put back. */}
+      <section className="pb-[22px] pt-[26px]">
         <BlockHead
           title="Operators in this comparison"
           sub="RRC number and most-active counties — consistent with the operator directory."
         />
         <div className="grid grid-cols-4 gap-[14px] max-[940px]:grid-cols-2 max-[520px]:grid-cols-1">
           {operators.map((operator) => (
-            <IdentityCard key={operator.operatorNumber} operator={operator} />
+            <IdentityCard
+              key={operator.operatorNumber}
+              operator={operator}
+              locked={locked}
+            />
           ))}
         </div>
       </section>
 
-      {/* ---- KPI strip ---- */}
-      <section className="pb-[22px]">
-        <div className="grid grid-cols-4 gap-[14px] max-[940px]:grid-cols-2 max-[520px]:grid-cols-1">
-          <Kpi
-            label="Combined BOE"
-            value={formatVolume(leaders.combinedBoe)}
-            sub={`across ${operators.length} operators`}
-          />
-          <Kpi
-            label="Top producer"
-            value={leaders.topProducer.short}
-            sub={`${formatVolume(leaders.topProducer.boeTotal)} BOE`}
-            compact
-          />
-          <Kpi
-            label="Combined leases"
-            value={formatCount(leaders.combinedLeases)}
-            sub={`${formatCount(leaders.combinedCounties)} producing counties`}
-          />
-          <Kpi
-            label="Widest footprint"
-            value={String(leaders.widestFootprint.counties)}
-            unit="counties"
-            sub={leaders.widestFootprint.short}
-          />
-        </div>
-      </section>
+      {/* ---- the unlock ask ----
+          Placed here, under the identity cards, because that is where the first
+          locked figure appears — a reader meets the lock and the reason for it in
+          the same glance rather than scrolling to the foot of the page to find out.
+          Rendered only when something is actually withheld, so a signed-in member
+          never sees it. */}
+      {locked ? <StatisticsUnlock /> : null}
 
-      {/* ---- category leaders ---- */}
-      <section className="pb-[22px]">
-        <BlockHead
-          title="Category leaders"
-          sub="The front-runner on each headline metric across your selection."
-        />
-        <div className="grid grid-cols-4 gap-[14px] max-[940px]:grid-cols-2 max-[520px]:grid-cols-1">
-          <LeaderCard
-            label="Top producer"
-            operator={leaders.topProducer}
-            sub={`${formatVolume(leaders.topProducer.boeTotal)} BOE`}
+      {/* THE TWO LEADERS-DRIVEN BLOCKS, together and guarded.
+          Both read `leaders` on every line, so neither can render without it —
+          and `leaders` is null whenever the volumes did not arrive, which is the
+          normal state for a signed-out reader now that the endpoint withholds
+          them. Guarding here rather than at the page level is the whole point of
+          the change: everything below still renders. */}
+      {leaders ? (
+        <>
+  
+      {/* ---- KPI strip ---- */}
+        <section className="pb-[22px]">
+          <div className="grid grid-cols-4 gap-[14px] max-[940px]:grid-cols-2 max-[520px]:grid-cols-1">
+            <Kpi
+              label="Combined BOE"
+              value={formatVolume(leaders.combinedBoe)}
+              sub={`across ${operators.length} operators`}
+            />
+            <Kpi
+              label="Top producer"
+              value={leaders.topProducer.short}
+              sub={`${formatVolume(leaders.topProducer.boeTotal)} BOE`}
+              compact
+            />
+            <Kpi
+              label="Combined leases"
+              value={formatCount(leaders.combinedLeases)}
+              sub={`${formatCount(leaders.combinedCounties)} producing counties`}
+            />
+            <Kpi
+              label="Widest footprint"
+              value={String(leaders.widestFootprint.counties)}
+              unit="counties"
+              sub={leaders.widestFootprint.short}
+            />
+          </div>
+        </section>
+
+        {/* ---- category leaders ---- */}
+        <section className="pb-[22px]">
+          <BlockHead
+            title="Category leaders"
+            sub="The front-runner on each headline metric across your selection."
           />
-          <LeaderCard
-            label="Most leases"
-            operator={leaders.mostLeases}
-            sub={`${formatCount(leaders.mostLeases.leases)} leases on record`}
-          />
-          <LeaderCard
-            label="Widest footprint"
-            operator={leaders.widestFootprint}
-            sub={`${leaders.widestFootprint.counties} producing counties`}
-          />
-          <LeaderCard
-            label="Most oil-weighted"
-            operator={leaders.mostOilWeighted}
-            sub={`${leaders.mostOilWeighted.oilPct}% of BOE from oil`}
-          />
-        </div>
-      </section>
+          <div className="grid grid-cols-4 gap-[14px] max-[940px]:grid-cols-2 max-[520px]:grid-cols-1">
+            <LeaderCard
+              label="Top producer"
+              operator={leaders.topProducer}
+              sub={`${formatVolume(leaders.topProducer.boeTotal)} BOE`}
+            />
+            <LeaderCard
+              label="Most leases"
+              operator={leaders.mostLeases}
+              sub={`${formatCount(leaders.mostLeases.leases)} leases on record`}
+            />
+            <LeaderCard
+              label="Widest footprint"
+              operator={leaders.widestFootprint}
+              sub={`${leaders.widestFootprint.counties} producing counties`}
+            />
+            <LeaderCard
+              label="Most oil-weighted"
+              operator={leaders.mostOilWeighted}
+              sub={`${leaders.mostOilWeighted.oilPct}% of BOE from oil`}
+            />
+          </div>
+        </section>
+
+        </>
+      ) : null}
 
       {/* ---- company information ---- */}
       <section className="pb-[22px]">
@@ -479,31 +512,36 @@ function Results({
           title="Production metrics"
           sub="Reported volumes — oil (bbl), gas (Mcf), BOE at 15:1."
         />
-        <p className="mb-3 flex flex-wrap items-center gap-3 text-[12.5px] text-mv-muted">
-          <span>
-            <b className="font-semibold text-mv-ink">
-              {leaders.topProducer.short}
-            </b>{" "}
-            leads at {formatVolume(leaders.topProducer.boeTotal)} BOE
-          </span>
-          <Separator />
-          <span>
-            Combined{" "}
-            <b className="font-semibold text-mv-ink">
-              {formatVolume(leaders.combinedBoe)}
-            </b>
-          </span>
-          <Separator />
-          <span>
-            Average{" "}
-            <b className="font-semibold text-mv-ink">
-              {formatVolume(leaders.averageBoe)}
-            </b>
-          </span>
-        </p>
+        {/* The lede is three volume figures, so it goes with them. The matrix
+            below stays either way — it carries the per-operator rows and draws its
+            own locked cells. */}
+        {leaders ? (
+          <p className="mb-3 flex flex-wrap items-center gap-3 text-[12.5px] text-mv-muted">
+            <span>
+              <b className="font-semibold text-mv-ink">
+                {leaders.topProducer.short}
+              </b>{" "}
+              leads at {formatVolume(leaders.topProducer.boeTotal)} BOE
+            </span>
+            <Separator />
+            <span>
+              Combined{" "}
+              <b className="font-semibold text-mv-ink">
+                {formatVolume(leaders.combinedBoe)}
+              </b>
+            </span>
+            <Separator />
+            <span>
+              Average{" "}
+              <b className="font-semibold text-mv-ink">
+                {formatVolume(leaders.averageBoe)}
+              </b>
+            </span>
+          </p>
+        ) : null}
         <ComparisonMatrix
           operators={operators}
-          rows={buildProductionRows(operators, years)}
+          rows={buildProductionRows(operators, years, locked)}
           caption="Reported production volumes for the selected operators"
         />
       </section>
@@ -514,15 +552,23 @@ function Results({
           title="Historical production trends"
           sub={`Annual BOE, ${years[0]}–${years.at(-1)} · from filed RRC records.`}
         />
-        <TrendCards operators={operators} years={years} />
-        <p className="mb-3 text-[12.5px] text-mv-muted">
-          Each card is scaled to its own operator, so the lines show shape
-          rather than relative size. Best value each year is marked{" "}
-          <span aria-hidden="true">▲</span> in the table.
-        </p>
+        {/* The sparklines plot the annual series, and the whole series is
+            withheld at once — so without an account there is nothing to draw but a
+            flat line at zero, which reads as "this operator stopped producing".
+            The table below still lists every year, with each cell locked. */}
+        {locked ? null : (
+          <>
+            <TrendCards operators={operators} years={years} />
+            <p className="mb-3 text-[12.5px] text-mv-muted">
+              Each card is scaled to its own operator, so the lines show shape
+              rather than relative size. Best value each year is marked{" "}
+              <span aria-hidden="true">▲</span> in the table.
+            </p>
+          </>
+        )}
         <ComparisonMatrix
           operators={operators}
-          rows={buildTrendRows(operators, years)}
+          rows={buildTrendRows(operators, years, locked)}
           caption={`Annual BOE by year, ${years[0]} to ${years.at(-1)}`}
         />
         <p className="mt-[10px] text-[12px] text-mv-muted">
@@ -589,7 +635,14 @@ function Separator() {
   );
 }
 
-function IdentityCard({ operator }: { operator: StatisticsOperator }) {
+function IdentityCard({
+  operator,
+  locked,
+}: {
+  operator: StatisticsOperator;
+  /** True when the volumes were withheld — the card's BOE figure locks. */
+  locked: boolean;
+}) {
   return (
     <article className="relative overflow-hidden rounded-[14px] border border-mv-line bg-white p-4 shadow-[0_1px_2px_rgba(24,24,27,.05)]">
       <div className="flex min-w-0 items-center gap-[11px]">
@@ -636,12 +689,29 @@ function IdentityCard({ operator }: { operator: StatisticsOperator }) {
         </p>
       ) : null}
 
+      {/* THE COUNTY COUNT STAYS EITHER WAY. The endpoint sends it in full at
+          `member_id: 0` — it is the volume beside it that is withheld, so locking
+          both would withhold something freely given and make the card emptier than
+          the gate requires. */}
       <p className="mt-3 flex items-baseline justify-between gap-2 border-t border-mv-line-soft pt-3">
-        <span className="text-[19px] font-bold tracking-[-.02em] tabular-nums text-mv-ink">
-          {formatVolume(operator.boeTotal)}
-        </span>
+        {/* The shared lock treatment (requested), so this card reads the same as a
+            locked cell on the listing and the profile. The offer used to be in
+            `sr-only` text only. */}
+        {locked ? (
+          <LockedValue
+            label="Cumulative BOE"
+            from="compare-statistics"
+            width="w-[54px]"
+            align="start"
+          />
+        ) : (
+          <span className="text-[19px] font-bold tracking-[-.02em] tabular-nums text-mv-ink">
+            {formatVolume(operator.boeTotal)}
+          </span>
+        )}
         <span className="text-[12px] text-mv-muted">
-          cumulative BOE · {operator.counties} counties
+          {locked ? "" : "cumulative BOE · "}
+          {operator.counties} counties
         </span>
       </p>
     </article>
@@ -709,5 +779,49 @@ function LeaderCard({
       </p>
       <p className="text-[12px] text-mv-muted">{sub}</p>
     </div>
+  );
+}
+
+
+/**
+ * What a signed-out reader is offered in place of the volumes.
+ *
+ * THE SAME BAND THE MAP GUIDE AND THE OPERATOR DIRECTORY USE, from
+ * `app/_components/cta-band.tsx` — one component, so the site's asks cannot drift
+ * apart. It is a server-safe component with no state, so it adds no client
+ * JavaScript to this page beyond the markup itself.
+ *
+ * WHAT THE COPY IS ALLOWED TO PROMISE is exactly what the endpoint withholds:
+ * the five volume fields and the annual series. Everything else on this page —
+ * rank, headquarters, operator number, most-active counties, lease and county
+ * counts, the oil/gas split — comes back in full at `member_id: 0` and is free to
+ * read, so the band says so rather than implying the comparison is paywalled.
+ *
+ * PRIMARY IS REGISTRATION, NEVER PRICING. Routing free-account intent into a plan
+ * comparison is the defect this whole treatment exists to avoid.
+ */
+function StatisticsUnlock() {
+  return (
+    <section className="pb-[22px]">
+      <Band
+        tone="deep"
+        icon={Unlock}
+        eyebrow="Free account"
+        title="See what these operators actually produced"
+        body="Who they are, where they operate, how many leases and counties they hold and how their output splits between oil and gas are all free — you are reading them now. A free account adds the filed volumes and the year-by-year history behind them."
+        primary={{
+          href: "/register?from=compare-statistics",
+          label: "Register for free",
+        }}
+        secondary={{ href: "/login", label: "Sign in" }}
+      >
+        <Panel title="What a free account opens">
+          <Row label="Oil, gas and total BOE" note="per operator, lifetime" />
+          <Row label="The annual production history" note="every filed year" />
+          <Row label="Who leads on each metric" note="and by how much" />
+          <Row label="No card, no obligation" />
+        </Panel>
+      </Band>
+    </section>
   );
 }

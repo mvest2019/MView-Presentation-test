@@ -9,10 +9,11 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   getCountyListMap,
+  nextOffset,
   getFieldListMap,
   getMapSearch,
   getOperatorListMap,
@@ -91,6 +92,13 @@ type FilterSection = {
  * below; the static rows that stood in for them while there was no endpoint
  * are gone.
  */
+/** How many operators arrive at a time, and how long typing settles first. */
+const OPERATOR_PAGE = 50;
+const OPERATOR_FIND_WAIT = 260;
+
+/** How close to the end of a paged list counts as having reached it. */
+const NEAR_END = 48;
+
 export const FILTER_SECTIONS: FilterSection[] = [
   { id: "county", label: "County", searchable: true, defaultOpen: true, items: [] },
   { id: "operator", label: "Operator", searchable: true, items: [] },
@@ -177,6 +185,14 @@ type Suggestion = {
    */
   facet?: string;
   param?: string;
+  /**
+   * The lease's own number, or numbers, as the service reports them.
+   *
+   * A lease name is not unique — "AVERLY" is two leases in two districts —
+   * and the number is what tells them apart, so it is shown beside the name
+   * rather than left in the payload.
+   */
+  note?: string;
 };
 
 type FiltersPanelProps = {
@@ -186,6 +202,14 @@ type FiltersPanelProps = {
    * what to do with the answer.
    */
   onApply?: (filters: Record<string, string[]>) => void;
+  /**
+   * The filter the page was opened with, from the address.
+   *
+   * Keyed by the API's facet names, values as the API takes them — so an
+   * operator is an id here and a name in the list, which is why this is
+   * applied only once the lists have landed.
+   */
+  opening?: Record<string, string[]>;
   onCollapse?: () => void;
   /**
    * Turns the whole card off while the map is busy.
@@ -208,6 +232,7 @@ type FiltersPanelProps = {
 
 export function FiltersPanel({
   onApply,
+  opening,
   onCollapse,
   disabled,
   className = "",
@@ -487,31 +512,140 @@ export function FiltersPanel({
     };
   }, []);
 
+  /*
+   * The operators, a page at a time.
+   *
+   * There are twenty-two thousand of them. Asked for in one request it was a
+   * couple of megabytes and a couple of thousand rows drawn into a panel that
+   * shows eight — so the list arrives fifty at a time, with Show more under
+   * it, and the Find box asks the service rather than sifting the fifty in
+   * hand.
+   */
+  const [operatorsTotal, setOperatorsTotal] = useState(0);
+  const [operatorFind, setOperatorFind] = useState("");
+  const [operatorsMore, setOperatorsMore] = useState(false);
+  /*
+   * Set when a page comes back with nothing new in it.
+   *
+   * The end of the list, or a service that will not go further — either way
+   * asking again returns the same rows, and a list at the bottom of its
+   * scroll would ask on every frame.
+   */
+  const operatorsDone = useRef(false);
+  /* Only the newest search may fill the list — a slow one for "ex" must not
+     land on top of the answer for "exxon". */
+  const operatorRequest = useRef(0);
+
   useEffect(() => {
     let cancelled = false;
+    const request = ++operatorRequest.current;
+    const find = operatorFind.trim();
 
-    getOperatorListMap()
-      .then((list) => {
-        if (cancelled) return;
-        setOperators(list);
-        setOperatorsError(null);
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        setOperatorsError(
-          error instanceof Error ? error.message : "Could not load operators.",
-        );
-      })
-      .finally(() => {
-        if (!cancelled) setOperatorsLoading(false);
-      });
+    /* A beat before asking, so a name being typed is one request and not
+       one per letter. Nothing typed asks at once — that is the opening
+       list. */
+    const wait = setTimeout(
+      () => {
+        setOperatorsLoading(true);
+        operatorsDone.current = false;
+
+        getOperatorListMap({
+          limit: OPERATOR_PAGE,
+          offset: 0,
+          q: find || undefined,
+        })
+          .then((page) => {
+            if (cancelled || request !== operatorRequest.current) return;
+            setOperators(page.items);
+            setOperatorsTotal(page.total);
+            setOperatorsError(null);
+          })
+          .catch((error: unknown) => {
+            if (cancelled || request !== operatorRequest.current) return;
+            setOperatorsError(
+              error instanceof Error
+                ? error.message
+                : "Could not load operators.",
+            );
+          })
+          .finally(() => {
+            if (!cancelled && request === operatorRequest.current) {
+              setOperatorsLoading(false);
+            }
+          });
+      },
+      find ? OPERATOR_FIND_WAIT : 0,
+    );
 
     return () => {
       cancelled = true;
+      clearTimeout(wait);
     };
-  }, []);
+  }, [operatorFind]);
+
+  /*
+   * The next page, appended — asked for when the reader reaches the end of
+   * the list rather than by pressing anything.
+   */
+  const loadMoreOperators = useCallback(() => {
+    if (operatorsMore || operatorsDone.current) return;
+    /* Everything there is, already in hand. */
+    if (operatorsTotal > 0 && operators.length >= operatorsTotal) return;
+
+    const request = operatorRequest.current;
+    setOperatorsMore(true);
+
+    getOperatorListMap({
+      limit: OPERATOR_PAGE,
+      offset: nextOffset(operators.length),
+      q: operatorFind.trim() || undefined,
+    })
+      .then((page) => {
+        /* A search that landed while this was out has replaced the list; its
+           next page is not this one. */
+        if (request !== operatorRequest.current) return;
+        setOperators((current) => {
+          /*
+           * Only what is not already listed.
+           *
+           * Two operators can share a name — the Commission's register has
+           * several "EXXON CORP." under different numbers — and a service
+           * that reads `offset` as a row rather than a page hands back a
+           * page that overlaps the last one. Either way the list must not
+           * hold the same row twice: React keys off it, and a repeated key
+           * is a row that can be dropped or duplicated on the next redraw.
+           */
+          const seen = new Set(current.map((item) => item.id ?? item.value));
+          const fresh = page.items.filter(
+            (item) => !seen.has(item.id ?? item.value),
+          );
+          /* Nothing new means there is no more to be had; stop asking. */
+          if (fresh.length === 0) {
+            operatorsDone.current = true;
+            return current;
+          }
+          return [...current, ...fresh];
+        });
+        setOperatorsTotal(page.total);
+      })
+      .catch(() => {
+        /* The list on screen stands, and the next scroll asks again. */
+      })
+      .finally(() => setOperatorsMore(false));
+  }, [operators.length, operatorsTotal, operatorsMore, operatorFind]);
 
   const [query, setQuery] = useState("");
+  /*
+   * Bumped by Clear filters to rebuild the sections.
+   *
+   * Each section's Find… box is its own state, held inside the section, so
+   * nothing out here can empty it. Clearing left "kar" in the county box with
+   * every county unticked — a list filtered to one row, for a filter that had
+   * just been taken off. A new key is the one way to reach it.
+   */
+  const [sectionsResetAt, setSectionsResetAt] = useState(0);
+
+
   /*
    * What the search API returned for the box at the top of the panel. Only
    * this box goes to the network — the Find… box inside each section still
@@ -617,6 +751,14 @@ export function FiltersPanel({
                * by name, which `value` already is.
                */
               param: result.id ?? result.value,
+              /* Leases only: an operator's id is an internal number and a
+                 county has none, so neither is worth showing. The service
+                 sends several keys comma-separated where one name covers more
+                 than one lease. */
+              note:
+                result.type === "lease" && result.id
+                  ? result.id.split(",").map((key) => key.trim()).join(", ")
+                  : undefined,
             })),
           );
           setSearchError(null);
@@ -727,27 +869,116 @@ export function FiltersPanel({
    * Apply exists to say "run this filter", and an empty filter is not one —
    * unticking everything is a request to stop filtering, and leaving the wells
    * up until a button is pressed makes the panel disagree with the map.
+   *
+   * "Was filtering" means the map, not the boxes. Read off the draft, ticking
+   * a county and then unticking it — a change of mind, never applied — sent an
+   * empty filter to a map that was not filtered, which cleared a filter that
+   * was never there and threw the view back to the state extent.
    */
   const wasFiltering = useRef(false);
 
   useEffect(() => {
-    if (hasSelection) {
-      wasFiltering.current = true;
-      return;
-    }
-
-    if (!wasFiltering.current) return;
+    if (hasSelection || !wasFiltering.current) return;
 
     wasFiltering.current = false;
     setDirty(false);
     onApply?.({});
   }, [hasSelection, onApply]);
 
+  /*
+   * Ticks the boxes a shared link filtered by, once.
+   *
+   * In a frame rather than in the effect body: this is a setState from an
+   * effect, which the compiler's rule forbids outright and which is fine one
+   * tick later. The guard is a ref so a second list arriving does not tick
+   * everything twice.
+   */
+  const openingApplied = useRef(false);
+
+  useEffect(() => {
+    if (openingApplied.current) return;
+    if (!opening || Object.keys(opening).length === 0) return;
+    /* Nothing to match against yet. */
+    if (sections.every((section) => section.items.length === 0)) return;
+
+    /*
+     * A microtask, not an animation frame.
+     *
+     * The frame was being cancelled by this effect's own cleanup: `sections`
+     * is rebuilt whenever a facet list lands and the map re-renders many
+     * times a second while it loads, so the next render arrived before the
+     * next paint, every time, and the ticks were never applied. A microtask
+     * runs before that can happen — and it is still not the effect body,
+     * which is what the compiler's rule is about.
+     */
+    queueMicrotask(() => {
+      const ticks: Record<string, Set<string>> = {};
+      const params: Record<string, Record<string, string>> = {};
+
+      for (const section of sections) {
+        const facet = SECTION_FACETS[section.id] ?? section.id;
+        const wanted = opening[facet];
+        if (!wanted || wanted.length === 0) continue;
+
+        const chosen = new Set<string>();
+
+        for (const value of wanted) {
+          /* Operators and fields travel as ids; everything else as its own
+             name. Either way what is ticked is the row's name. */
+          const row = ID_FACETS.has(section.id)
+            ? section.items.find((item) => item.id === value)
+            : section.items.find(
+                (item) => item.name.toLowerCase() === value.toLowerCase(),
+              );
+
+          if (!row) continue;
+          chosen.add(row.name);
+          if (row.id) {
+            params[section.id] = { ...params[section.id], [row.name]: row.id };
+          }
+        }
+
+        if (chosen.size > 0) ticks[section.id] = chosen;
+      }
+
+      /* Nothing matched yet — the list this filter names has not arrived.
+         The guard stays down so the next list to land tries again; marking it
+         done here was what left the boxes empty while the map drew the
+         filter. */
+      if (Object.keys(ticks).length === 0) return;
+
+      openingApplied.current = true;
+      setChecked((previous) => ({ ...previous, ...ticks }));
+      setPickedParams((previous) => ({ ...previous, ...params }));
+      /* The map is already showing this, so it is applied, not a draft. */
+      setDirty(false);
+      wasFiltering.current = true;
+    });
+  }, [opening, sections]);
+
   function applySuggestion(suggestion: Suggestion) {
     // A search hit is a filter in its own right: picking one asks the map for
     // those wells, rather than only ticking a box to be applied afterwards.
     if (suggestion.facet && suggestion.param) {
-      onApply?.({ [suggestion.facet]: [suggestion.param] });
+      /*
+       * Added to what is already applied, not instead of it — and that goes
+       * for its own facet too.
+       *
+       * Sent alone, picking an operator threw away the county that was
+       * ticked; sent as the only value of its facet, searching for a second
+       * county threw away the first. Both left the map showing one thing
+       * while the panel's boxes said another. A pick is one more value on one
+       * facet, so it joins the list rather than becoming it.
+       */
+      const already = selectedFilters[suggestion.facet] ?? [];
+      /* A pick applies itself, so the map is filtered from here too. */
+      wasFiltering.current = true;
+      onApply?.({
+        ...selectedFilters,
+        [suggestion.facet]: already.includes(suggestion.param)
+          ? already
+          : [...already, suggestion.param],
+      });
       /* No section row to tick means nothing else will undo this. */
       searchAloneRef.current = !suggestion.sectionId;
     }
@@ -767,9 +998,12 @@ export function FiltersPanel({
       }
 
       setOpenSections((previous) => new Set(previous).add(sectionId));
+      /* Ticked as well as, not instead of: the row the search found is one
+         more county — or operator, or field — beside whatever was ticked
+         before it. */
       setChecked((previous) => ({
         ...previous,
-        [sectionId]: new Set([suggestion.label]),
+        [sectionId]: new Set(previous[sectionId]).add(suggestion.label),
       }));
     }
 
@@ -809,6 +1043,7 @@ export function FiltersPanel({
     if (searchAloneRef.current) {
       searchAloneRef.current = false;
       setDirty(false);
+      wasFiltering.current = false;
       onApply?.({});
     }
 
@@ -891,7 +1126,10 @@ export function FiltersPanel({
         miss.
       */
       style={style}
-      className={`mv-filters-card w-[196px] rounded-xl border border-mv-line bg-white shadow-mv-lg md:w-[224px] lg:w-[252px] ${className}`}
+      /* Rounded on the right only: the other three sides are the map's own
+         edges, and a rounded corner against a straight frame reads as a card
+         that has come loose. */
+      className={`mv-filters-card w-[196px] rounded-r-xl border-y-0 border-l-0 border-r border-mv-line bg-white shadow-mv-lg md:w-[224px] lg:w-[252px] ${className}`}
     >
       {/* Sits over the card and takes the clicks, so nothing inside needs a
           `disabled` of its own — there are six facets, two search boxes and a
@@ -1014,12 +1252,25 @@ export function FiltersPanel({
                     onMouseDown={(event) => event.preventDefault()}
                     onMouseEnter={() => setActiveSuggestion(index)}
                     onClick={() => applySuggestion(suggestion)}
+                    /* The row is 200px wide and an operator's name is often
+                       longer, so what is on screen is "MARATHON O…" — which
+                       could be any of several. Hovering gives the whole
+                       name. */
+                    title={`${suggestion.label}${
+                      suggestion.note ? ` (${suggestion.note})` : ""
+                    } · ${suggestion.kind}`}
                     className={`flex w-full cursor-pointer items-center gap-2 px-3 py-[9px] text-left ${
                       index === activeSuggestion ? "bg-[#f2f8f5]" : ""
                     }`}
                   >
                     <span className="min-w-0 flex-1 truncate text-[12px] lg:text-[13px] text-mv-slate">
                       <Highlighted text={suggestion.label} query={query} />
+                      {suggestion.note && (
+                        <span className="text-mv-muted">
+                          {" "}
+                          ({suggestion.note})
+                        </span>
+                      )}
                     </span>
                     <span className="shrink-0 rounded bg-[#f1f2f4] px-[7px] py-[3px] text-[8.5px] lg:text-[9.5px] font-bold uppercase tracking-[.06em] text-mv-muted">
                       {suggestion.kind}
@@ -1107,7 +1358,9 @@ export function FiltersPanel({
           onToggle={() => setLeasesOpen((open) => !open)}
         >
           <div className="flex justify-end pb-1">
-            <BulkAction onClick={() => setSelectedLease(null)}>None</BulkAction>
+            <BulkAction onClick={() => setSelectedLease(null)}>
+              Clear all
+            </BulkAction>
           </div>
 
           {MY_LEASES.map((lease, index) => (
@@ -1144,13 +1397,22 @@ export function FiltersPanel({
         {/* ---------------- the checkbox sections ---------------- */}
         {sections.map((section) => (
           <CheckboxSection
-            key={section.id}
+            key={`${section.id}-${sectionsResetAt}`}
             section={section}
             notice={notices[section.id]}
             open={openSections.has(section.id)}
             onToggle={() => toggleSection(section.id)}
             checked={checked[section.id]}
             onToggleItem={(name) => toggleItem(section.id, name)}
+            /* Operators are the one paged facet — see the loader above. */
+            {...(section.id === "operator"
+              ? {
+                  onFind: setOperatorFind,
+                  total: operatorsTotal,
+                  onMore: loadMoreOperators,
+                  loadingMore: operatorsMore,
+                }
+              : null)}
           />
         ))}
 
@@ -1169,6 +1431,9 @@ export function FiltersPanel({
           disabled={!canApply}
           onClick={() => {
             setDirty(false);
+            /* From here the map is showing this, so unticking the last box
+               has something to undo. */
+            wasFiltering.current = Object.keys(selectedFilters).length > 0;
             onApply?.(selectedFilters);
           }}
           className="w-full rounded-lg px-3 py-[9px] text-[12.5px] font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep enabled:cursor-pointer enabled:bg-mv-green-deep enabled:text-white enabled:hover:brightness-105 disabled:cursor-not-allowed disabled:bg-[#eef1ee] disabled:text-mv-muted"
@@ -1193,6 +1458,21 @@ export function FiltersPanel({
                 ),
               );
               setPickedParams({});
+              /* The box goes with the boxes. It holds the name of a filter
+                 that is being taken off — left there, the panel reads as
+                 filtered by an operator while the map shows the state. */
+              lastPickRef.current = null;
+              pickedQueryRef.current = null;
+              searchAloneRef.current = false;
+              setQuery("");
+              setSearchHits([]);
+              setSearchError(null);
+              setSearchedFor("");
+              setSuggestionsOpen(false);
+              setSelectedLease(null);
+              /* And the Find… box inside each section, which only a rebuild
+                 can reach. */
+              setSectionsResetAt((count) => count + 1);
             }}
             className="mt-2 w-full cursor-pointer rounded-lg border border-mv-red px-3 py-[8px] text-[12.5px] font-semibold text-mv-red hover:bg-mv-red-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-red"
           >
@@ -1211,6 +1491,10 @@ function CheckboxSection({
   checked,
   onToggleItem,
   notice,
+  onFind,
+  total,
+  onMore,
+  loadingMore,
 }: {
   section: FilterSection;
   open: boolean;
@@ -1219,16 +1503,33 @@ function CheckboxSection({
   onToggleItem: (name: string) => void;
   /** Shown in place of the list — "loading", or why there is nothing. */
   notice?: string | null;
+  /**
+   * Where the Find box goes for a section whose list is paged.
+   *
+   * Given one, the box asks the service instead of sifting what is in hand —
+   * which is the only way to find the twenty-thousandth operator when fifty
+   * are loaded. Without it the box filters locally, as every other section
+   * still does.
+   */
+  onFind?: (query: string) => void;
+  /** How many rows there are in all, where that is more than are loaded. */
+  total?: number;
+  /** Fetches the next page. */
+  onMore?: () => void;
+  loadingMore?: boolean;
 }) {
   const [query, setQuery] = useState("");
 
   const visible = useMemo(() => {
+    /* A paged list is filtered by the service; what arrived is the answer. */
+    if (onFind) return section.items;
+
     const needle = query.trim().toLowerCase();
     if (!needle) return section.items;
     return section.items.filter((item) =>
       item.name.toLowerCase().includes(needle),
     );
-  }, [query, section.items]);
+  }, [onFind, query, section.items]);
 
   return (
     <SectionShell
@@ -1247,7 +1548,10 @@ function CheckboxSection({
             id={`${section.id}-find`}
             type="search"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              onFind?.(event.target.value);
+            }}
             placeholder="Find…"
             className="min-w-0 flex-1 border-0 bg-transparent text-[11.5px] lg:text-[12.5px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted"
           />
@@ -1267,6 +1571,25 @@ function CheckboxSection({
           entries, so the old test missed it and that one section pushed
           everything below it out of reach. */}
       <div
+        /*
+         * The next page is asked for by reading, not by pressing: when the
+         * last rows come into view the following fifty are already on their
+         * way. `NEAR_END` is the run left below the fold that counts as
+         * having reached it.
+         */
+        onScroll={
+          onMore
+            ? (event) => {
+                const box = event.currentTarget;
+                if (
+                  box.scrollTop + box.clientHeight >=
+                  box.scrollHeight - NEAR_END
+                ) {
+                  onMore();
+                }
+              }
+            : undefined
+        }
         className={
           visible.length > LONG_LIST
             ? "mv-thin-scroll max-h-[248px] overflow-y-auto"
@@ -1276,7 +1599,9 @@ function CheckboxSection({
       {!notice &&
         visible.map((item) => (
         <label
-          key={item.name}
+          /* The number where the register gives one: two operators can share
+             a name, and a name alone is then the same key twice. */
+          key={item.id ?? item.name}
           className="flex cursor-pointer items-center gap-2 py-[5px]"
         >
           {/*
@@ -1316,6 +1641,25 @@ function CheckboxSection({
         ))}
 
       </div>
+
+      {/* Where the list has got to. Worth saying even though nothing has to
+          be pressed: fifty rows that stop with no word about it read as a
+          list of fifty. */}
+      {!notice && onMore && total !== undefined && total > 0 && (
+        <p className="flex items-center gap-[6px] pt-[6px] text-[11.5px] text-mv-muted lg:text-[12px]">
+          {loadingMore && (
+            <span
+              aria-hidden="true"
+              className="h-[11px] w-[11px] shrink-0 animate-spin rounded-full border-2 border-mv-line border-t-mv-green-deep"
+            />
+          )}
+          {section.items.length.toLocaleString("en-US")} of{" "}
+          {total.toLocaleString("en-US")}
+          {section.items.length < total && !loadingMore
+            ? " · scroll for more"
+            : ""}
+        </p>
+      )}
 
       {!notice && visible.length === 0 && (
         <p className="py-2 text-[11px] lg:text-[12px] text-mv-muted">Nothing matches.</p>

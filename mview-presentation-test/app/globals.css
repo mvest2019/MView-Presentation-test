@@ -121,6 +121,76 @@
   --color-mv-on-deep-muted: #c4d1cb;
   --color-mv-on-deep-accent: #79d3ac;
 
+  /* Owner-portal surfaces — `app/mineralownersite/*`.
+
+     EXTRACTED FROM `portal.css`, like everything above is extracted from its own
+     design. That stylesheet holds the portal's palette as `:root` custom
+     properties (`--green`, `--mint`, `--line`, …), and the values it shares with
+     this file are already identical — `--green` IS `--color-mv-green`, right down
+     to the hex. What was missing were the portal's OWN surfaces: the seven
+     literals below appear nowhere in the marketing design, so no `mv-` token
+     existed for them and a Tailwind-built portal module had no way to name them.
+
+     They are here rather than in `portal.css` because `@theme` is what generates
+     the utilities (`bg-mv-portal-wash`), and this file is the one place a colour
+     may be defined. Grouped and prefixed `mv-portal-` so it stays obvious which
+     design introduced them and that marketing pages have no business using them.
+
+     Anything the two palettes already agree on is NOT repeated here: the portal's
+     greens, mint, ink, slate, muted, line, card, bg, amber and blue all resolve
+     to the `mv-` tokens above. */
+  --color-mv-portal-wash: #e8ecf3;
+  --color-mv-portal-band-end: #16342a;
+  --color-mv-portal-band-sub: #8a94a6;
+  --color-mv-portal-explain: #fbfcfd;
+
+  /* `.dbhook` — a card whose figures are not read from the database yet. The
+     dashed edge is deliberately cool rather than amber: it says "not wired",
+     which is a build state, not a warning about the data. */
+  /* The reason chips under the new-well band. A green-grey rather than the
+     portal's blue-grey wash: these are model INPUTS, not status. */
+  --color-mv-chip-reason: #f1f5f3;
+
+  --color-mv-pending: #93b8e8;
+  --color-mv-pending-top: #fbfdff;
+  --color-mv-pending-bottom: #f5f9ff;
+  --color-mv-portal-hairline: #f0f1f4;
+  --color-mv-portal-row-tint: #f4fdf9;
+  --color-mv-portal-hero-tint: #f0fbf7;
+  --color-mv-portal-gold: #b8892f;
+
+  /* The Alerts inbox's own surfaces, from the reference's `.al-*` family
+     (`owner/src/styles/mineral-view-owner-full-site.css` and `v40css.css`).
+
+     They are here for the same reason as the seven above — they are literals the
+     marketing design has no equivalent for — and they are grouped separately
+     because they belong to ONE route. The two severity tags in particular are
+     deliberately not the existing `mv-amber-bg`/`mv-red-bg` pair: V40-AL-SEV
+     picked these six values to stay legible for colour-blind readers while the
+     tag ALSO carries its meaning as text ("Action recommended", "Important"), so
+     approximating them with a nearby token would discard the one thing they were
+     measured for. */
+  --color-mv-portal-alert-tint: #f7fdfb; /* unread row wash          */
+  --color-mv-portal-alert-gold-bg: #fdf3dd; /* money / record icon box  */
+  --color-mv-portal-alert-gold-ink: #8a6320;
+  --color-mv-portal-alert-blue-bg: #e5eefc; /* model-indicator icon box */
+  --color-mv-portal-sev-act-bg: #fdf0d3; /* "Action recommended"     */
+  --color-mv-portal-sev-act-ink: #7a5615;
+  --color-mv-portal-sev-act-line: #ecd9a4;
+  --color-mv-portal-sev-imp-bg: #fbe3df; /* "Important"              */
+  --color-mv-portal-sev-imp-ink: #8f3527;
+  --color-mv-portal-sev-imp-line: #f0c6bf;
+  --color-mv-portal-ledger-line: #cdeadd; /* watch-ledger foot rule   */
+  --color-mv-portal-ledger-ink: #2e6b52;
+  --color-mv-portal-expand-bg: #f2fbf7; /* the row's "expand" pill  */
+
+  /* The evidence drawer's dark header — `.ctx-head` / `.ctx-sub` / `.ctx-back`.
+     Both are a shade off the nearest existing token (`mv-on-head-soft` #9fb4ab,
+     `mv-tint-strong` #dff0e8) and the header is 680px of flat dark green, which
+     is exactly where a near-miss shows. */
+  --color-mv-portal-drawer-sub: #9fc9b8;
+  --color-mv-portal-drawer-back-hover: #d9efe6;
+
   /* Status */
   --color-mv-amber: #b45309;
   --color-mv-down: #c0392b;
@@ -376,9 +446,15 @@
    ------------------------------------------------------------------------- */
 .mv-filters-rail {
   position: absolute;
-  left: 12px;
-  top: 12px;
-  height: calc(100% - 36px);
+  left: 0;
+  top: 0;
+  /*
+   * Full height less Esri's attribution strip, which the panel must not
+   * cover — the terms of use require it to stay legible. 20px is the strip at
+   * its usual one line; the measurement in `map-chrome` refines it where it
+   * wraps to two.
+   */
+  height: calc(100% - 20px);
 }
 
 .mv-filters-card {

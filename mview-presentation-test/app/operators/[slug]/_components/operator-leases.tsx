@@ -14,6 +14,7 @@ import {
 } from "@/lib/operator-leases-api";
 import { titleCase } from "@/lib/text-case";
 
+import { LockedValue } from "./gated-figures";
 import { LeaseWells } from "./lease-wells";
 import { TableSkeletonRows } from "./table-skeleton";
 import { usePagedResource } from "./use-paged-resource";
@@ -40,9 +41,17 @@ import { usePagedResource } from "./use-paged-resource";
  * NOTHING IS SORTABLE, on request. Plain headers, the API's own order.
  *
  * UNITS SIT IN THE HEADER, not on every row. A column of numbers each trailing its own
- * "bbl" is harder to scan and harder to compare down, and the unit is a property of the
- * column rather than of any one figure. `normal-case` keeps "Mcf" spelled correctly
- * under the header row's uppercasing — "MCF" is not the unit.
+ * "BBL" is harder to scan and harder to compare down, and the unit is a property of the
+ * column rather than of any one figure.
+ *
+ * THEY ARE UPPERCASE ON REQUEST (defect 141), which reverses a deliberate earlier
+ * choice recorded here: `normal-case` was put on the unit span specifically to keep
+ * "Mcf" out of the header row's uppercasing, on the argument that "MCF" is not how the
+ * unit is written — Mcf is a thousand cubic feet, and the case carries that. QA asked
+ * for capitals across the page and the sheet rings these two headers, so capitals is
+ * what this ships. The `normal-case` class stays: it now means the span renders the
+ * literal it is given rather than being re-cased by the row, which is what keeps this
+ * one decision in one place if it is ever reversed again.
  *
  * THE WELLS ARE A SIBLING, NOT A CHILD. `LeaseWells` renders as its own card below this
  * one, keyed by lease number so picking a different lease remounts it clean. This
@@ -201,9 +210,11 @@ export function OperatorLeases({
               className="min-w-[180px] max-[767px]:min-w-full"
             >
               <option value="">Counties</option>
+              {/* DEFECT 132 — the control is already labelled "Counties"; the word
+                  repeated on every option was noise the snap rings row after row. */}
               {countyOptions.map((name) => (
                 <option key={name} value={name}>
-                  {name} County
+                  {titleCase(name)}
                 </option>
               ))}
             </SelectControl>
@@ -228,8 +239,10 @@ export function OperatorLeases({
                     ["Lease Name", null, "left"],
                     ["Lease Number", null, "left"],
                     ["County", null, "left"],
-                    ["Oil Produced", "bbl", "right"],
-                    ["Gas Produced", "Mcf", "right"],
+                    /* DEFECT 141 — uppercase, matching every other unit on the
+                       page. The snap rings these two headers. */
+                    ["Oil Produced", "BBL", "right"],
+                    ["Gas Produced", "MCF", "right"],
                   ] as const
                 ).map(([label, unit, align]) => (
                   <th
@@ -265,7 +278,8 @@ export function OperatorLeases({
                       className="flex flex-wrap items-center justify-center gap-3 text-center"
                     >
                       <p className="text-sm text-mv-ink-soft">
-                        Leases could not be loaded.
+{/* DEFECT 154 — the reported reason when there is one. */}
+                        {leases.error || "Leases could not be loaded."}
                       </p>
                       <button
                         type="button"
@@ -320,11 +334,23 @@ export function OperatorLeases({
                         {lease.leaseNumber}
                       </td>
                       <td className={td}>{titleCase(lease.county)}</td>
+                      {/* The two gated columns. `leases.locked` is the handler's own
+                          answer riding on the response — the rows are all present and
+                          their name, number, county and status are real, so there is
+                          no absence here to infer the gate from (§4 rule 2). */}
                       <td className={`${td} text-right tabular-nums`}>
-                        {volume(lease.oil)}
+                        {leases.locked ? (
+                          <LockedValue label="Oil produced" width="w-[52px]" />
+                        ) : (
+                          volume(lease.oil)
+                        )}
                       </td>
                       <td className={`${td} text-right tabular-nums`}>
-                        {volume(lease.gas)}
+                        {leases.locked ? (
+                          <LockedValue label="Gas produced" width="w-[52px]" />
+                        ) : (
+                          volume(lease.gas)
+                        )}
                       </td>
                     </tr>
                   );

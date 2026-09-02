@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Check,
   ClipboardList,
   Copy,
   Crosshair,
@@ -14,6 +15,8 @@ import {
 import { useEffect, useState } from "react";
 
 import { getWellPermitMap, type MapWellPermit } from "@/lib/map-api";
+
+import { copyText } from "./copy-text";
 
 import { AiSummary } from "./ai-summary";
 import { permitFields } from "./permit-fields";
@@ -158,40 +161,59 @@ export function PermitSummary({
       <div
         ref={printRef}
         aria-busy={loading}
-        className={loading ? "pointer-events-none select-none blur-[2px]" : ""}
+        /* Its own container, as on the completion side: this sheet is
+           captured 1280px wide whatever the window is, and a layout that asks
+           the window instead lays a tablet's single column down the middle of
+           it. */
+        className={`@container ${
+          loading ? "pointer-events-none select-none blur-[2px]" : ""
+        }`}
       >
         {/* ---------------- identity strip ----------------
           The completion record's band, to the pixel: switching records changes
           what is being read, not the furniture around it. */}
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-xl border border-[#cfe8da] bg-gradient-to-r from-[#eaf7ef] via-[#f2fbf5] to-[#e6f5ec] px-4 py-[14px]">
-          <span className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-full border border-[#bfe0cd] bg-white">
-            <Drill
-              size={19}
-              strokeWidth={1.75}
-              className="text-mv-green-deep"
-              aria-hidden="true"
-            />
-          </span>
+        <div className="@container rounded-xl border border-[#cfe8da] bg-gradient-to-r from-[#eaf7ef] via-[#f2fbf5] to-[#e6f5ec] px-4 py-[14px]">
+          <div className="flex items-center gap-4">
+            <span className="grid h-[42px] w-[42px] shrink-0 place-items-center rounded-full border border-[#bfe0cd] bg-white">
+              <Drill
+                size={19}
+                strokeWidth={1.75}
+                className="text-mv-green-deep"
+                aria-hidden="true"
+              />
+            </span>
 
-          <Fact
-            label="Well Number"
-            value={fields?.header.wellNumber ?? well.well ?? "—"}
-          />
-          <Fact label="API Number" value={well.api} mono />
-          <Fact
-            label="Filing Purpose"
-            value={fields?.header.filingPurpose ?? "—"}
-          />
-          <Fact
-            label="Status"
-            value={fields?.header.status ?? "—"}
-            tone="green"
-          />
+            {/* The completion band's grid, on the same terms. */}
+            <div className="grid min-w-0 flex-1 grid-cols-2 gap-x-5 gap-y-3 @min-[790px]:grid-cols-4">
+              <Fact
+                label="Well Number"
+                value={fields?.header.wellNumber ?? well.well ?? "—"}
+              />
+              <Fact label="API Number" value={well.api} mono />
+              <Fact
+                label="Filing Purpose"
+                value={fields?.header.filingPurpose ?? "—"}
+              />
+              <Fact
+                label="Status"
+                value={fields?.header.status ?? "—"}
+                tone="green"
+              />
+            </div>
+          </div>
         </div>
 
-        <div className="mt-3">
+        {/*
+          At tablet width the six cards below are one two-column flow, not two
+          groups of their own: grouped, the third card of the first group had
+          nothing to pair with and took a row to itself while the group under
+          it started again. The two wrappers become `contents` at that width —
+          they generate no box, so their cards become cells of this grid — and
+          return to being groups where there is room for three across.
+        */}
+        <div className="mt-3 @2xl:grid @2xl:grid-cols-2 @2xl:gap-3 @4xl:block">
           {/* ---------------- three across ---------------- */}
-          <div className="grid gap-3 xl:grid-cols-3">
+          <div className="grid gap-3 @2xl:contents @4xl:grid @4xl:grid-cols-3">
             <Card icon={FileText} title="Lease & Well">
               <Rows rows={fields?.leaseWell ?? blank(LEASE_WELL_LABELS)} />
             </Card>
@@ -208,12 +230,15 @@ export function PermitSummary({
             page — an operator name with its number, a field name with its own —
             and the two short cards stack in the other half rather than each
             taking a column of its own and leaving most of it empty. */}
-          <div className="mt-3 grid gap-3 xl:grid-cols-2">
+          <div className="mt-3 grid gap-3 @2xl:contents @4xl:mt-3 @4xl:grid @4xl:grid-cols-2">
             <Card icon={UserRound} title="Operator, Field & Area">
               <Rows rows={fields?.operatorField ?? blank(OPERATOR_LABELS)} />
             </Card>
 
-            <div className="flex flex-col gap-3">
+            {/* The two short cards share the operator card's half where there
+                is room for three columns, and take a row of their own — one
+                each — at the width where there are two. */}
+            <div className="flex flex-col gap-3 @2xl:contents @4xl:flex">
               <Card icon={MapPin} title="Location Coordinates">
                 <dl className="mt-[10px]">
                   {(fields?.coordinates ?? blank(COORDINATE_LABELS)).map(
@@ -234,8 +259,12 @@ export function PermitSummary({
             </div>
           </div>
 
-          {/* ---------------- the filing itself, then the read on it ------- */}
-          <div className="mt-3">
+          {/* ---------------- the filing itself, then the read on it -------
+              Full width, both of them: the grid above pairs the six cards,
+              and these two are not cards — one is a table that scrolls and
+              the other a written page, and half a column is not enough for
+              either. */}
+          <div className="mt-3 @2xl:col-span-2">
             <PermitDetailsTable
               columns={fields?.table ?? blank(TABLE_LABELS)}
             />
@@ -243,7 +272,7 @@ export function PermitSummary({
 
           {/* Written from the same filing the cards above draw, by way of
               `/api/permit-summary` — the key stays on the server. */}
-          <div className="mt-3">
+          <div className="mt-3 @2xl:col-span-2">
             <AiSummary
               api={well.api}
               endpoint="/api/permit-summary"
@@ -298,7 +327,7 @@ function Fact({
   tone?: "green";
 }) {
   return (
-    <div className="min-w-0 border-l border-[#cfe8da] pl-4 first-of-type:border-0 first-of-type:pl-0">
+    <div className="min-w-0 @min-[790px]:border-l @min-[790px]:border-[#cfe8da] @min-[790px]:pl-4 @min-[790px]:first-of-type:border-0 @min-[790px]:first-of-type:pl-0">
       <div className="text-[10.5px] leading-tight text-mv-muted">{label}</div>
       <div
         className={`mt-[3px] truncate text-[16px] font-bold leading-tight ${
@@ -324,6 +353,10 @@ function Card({
 }) {
   return (
     <div
+      /* A page of the PDF may end at the foot of any card — as on the
+         completion side, where guessing the depth instead cut a card in
+         half. */
+      data-page-block=""
       className={`rounded-xl border border-mv-line bg-white p-4 ${className}`}
     >
       <div className="flex items-center gap-2">
@@ -383,17 +416,29 @@ function CoordinateRow({ label, value }: { label: string; value: string }) {
       </dd>
       <button
         type="button"
+        data-screen-only=""
         onClick={() => {
-          void navigator.clipboard?.writeText(value).then(
-            () => setCopied(true),
-            () => setCopied(false),
-          );
+          void copyText(value).then((done) => {
+            if (!done) return;
+            setCopied(true);
+            /* Long enough to be seen, short enough that the next copy is not
+               reading the last one's tick. */
+            window.setTimeout(() => setCopied(false), 1600);
+          });
         }}
         aria-label={`Copy the ${label.toLowerCase()} coordinates`}
         title={copied ? "Copied" : "Copy"}
-        className="grid h-[24px] w-[24px] shrink-0 cursor-pointer place-items-center rounded-lg border border-mv-line text-mv-muted hover:border-mv-green-deep hover:text-mv-green-deep"
+        className={`grid h-[24px] w-[24px] shrink-0 cursor-pointer place-items-center rounded-lg border ${
+          copied
+            ? "border-mv-green-deep text-mv-green-deep"
+            : "border-mv-line text-mv-muted hover:border-mv-green-deep hover:text-mv-green-deep"
+        }`}
       >
-        <Copy size={13} strokeWidth={2} aria-hidden="true" />
+        {copied ? (
+          <Check size={13} strokeWidth={2.5} aria-hidden="true" />
+        ) : (
+          <Copy size={13} strokeWidth={2} aria-hidden="true" />
+        )}
       </button>
     </div>
   );
