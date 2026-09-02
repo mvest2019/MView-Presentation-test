@@ -1422,6 +1422,9 @@
 .mv-portal.view-ultra:not(.no-claim) .app-body > .ppf-why,
 .mv-portal.view-ultra:not(.no-claim) .app-body > .ppf,
 .mv-portal.view-ultra:not(.no-claim) .app-body > .mv-action-footer {
+  display: none !important;
+}
+
 /* ----------------------------------------------------------------------------
    ULTRA ON A LEASE REPORT — three things stay, the body collapses.
 

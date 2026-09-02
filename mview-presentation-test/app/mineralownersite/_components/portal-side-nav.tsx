@@ -79,7 +79,7 @@ export function PortalSideNav() {
              `4px 8px 18px` is top 4, sides 8, bottom 18. Written as three
              separate utilities before, which silently dropped the right margin
              to 0. */
-          className="m-[4px_8px_18px] block h-[30px] w-auto"
+          className="m-[4px_8px_18px] block h-7.5 w-auto"
           priority
         />
       </Link>
