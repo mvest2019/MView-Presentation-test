@@ -1,6 +1,9 @@
 import { PortalIcon } from "../portal-icon";
+import Link from "next/link";
+
 import {
   alertStrip,
+  alsoSinceLastVisit,
   changedSinceLastVisit,
   demoOwner,
 } from "../../_lib/portal-demo-data";
@@ -34,15 +37,47 @@ export function ChangedSinceCard() {
           <PortalIcon name="activity" className="mvi mvi-inline" /> What&apos;s
           changed since your last visit ({demoOwner.lastVisit})
         </h4>
+        {/* The reference links this to the alerts inbox, which is not built —
+            labelled rather than pointed at a 404. */}
+        <span className="small muted">all 9 alerts →</span>
       </div>
+
+      <p className="tiny muted" style={{ margin: "4px 0 0" }}>
+        Tap any item — the detail opens on the right.
+      </p>
+
       <ul className="timeline" style={{ marginTop: 10 }}>
         {changedSinceLastVisit.map((item) => (
           <li key={item.headline}>
             <strong>{item.headline}</strong>{" "}
-            <span className="sub tiny muted">{item.detail}</span>
+            <span className="sub tiny muted">
+              {item.detail} <span className="ctx-hint">{item.hint}</span>
+            </span>
+            <span className="sub tiny">{item.secondary}</span>
           </li>
         ))}
       </ul>
+
+      {/* The three quieter events, under the headline items, with the
+          reference's own lead-in. Each is a link into the explainer drawer
+          there; the drawer is not part of this build, so they render as the
+          text they are — but the lead-in is the source's, not a rewrite. */}
+      <p
+        className="small"
+        style={{
+          margin: "10px 0 0",
+          paddingTop: 8,
+          borderTop: "1px solid var(--line)",
+        }}
+      >
+        Also since {demoOwner.lastVisit} — tap to have it explained:{" "}
+        {alsoSinceLastVisit.map((event, i) => (
+          <span key={event}>
+            {i > 0 && " · "}
+            {event}
+          </span>
+        ))}
+      </p>
     </div>
   );
 }
@@ -61,12 +96,29 @@ export function EssentialsHero() {
       style={{ margin: "14px 0" }}
     >
       <h3 style={{ marginBottom: 6 }}>Your minerals, in one line</h3>
-      <p style={{ fontSize: 16, margin: 0 }}>
+      <p style={{ fontSize: 16, margin: "0 0 10px" }}>
         <strong>
           One thing worth a look: Ledbetter produced gas in months we can see
         </strong>{" "}
-        — only your check stubs show if you were paid.
+        — only your check stubs show if you were paid.{" "}
+        <span className="ctx-hint">Check it free →</span>
       </p>
+      <div className="flex" style={{ flexWrap: "wrap" }}>
+        {/* Lease Audit and the weekly briefing are not built, so the first is
+            labelled. The second IS faithful: the reference's button calls
+            `setViewTier('detailed')`, and density here is a URL parameter, so
+            this is the same action as a link. */}
+        <span
+          className="btn btn-primary btn-sm"
+          aria-disabled="true"
+          style={{ opacity: 0.6, cursor: "default" }}
+        >
+          Read this week&apos;s briefing
+        </span>
+        <Link className="btn btn-ghost btn-sm" href="?view=detailed" scroll={false}>
+          See the details
+        </Link>
+      </div>
     </div>
   );
 }
@@ -84,7 +136,9 @@ export function AlertStrip() {
           <span className="al-k">
             <span aria-hidden="true">{alert.kind}</span> {alert.headline}
           </span>
-          <span className="al-s">{alert.detail}</span>
+          <span className="al-s">
+            {alert.detail} <span className="ctx-hint">{alert.hint}</span>
+          </span>
         </span>
       ))}
 
@@ -102,7 +156,10 @@ export function AlertStrip() {
             Coming soon
           </span>
         </span>
-        <span className="al-s">worked example on Ledbetter</span>
+        <span className="al-s">
+          worked example on Ledbetter{" "}
+          <span className="ctx-hint">See the example →</span>
+        </span>
       </span>
       <span
         className="al-mini tier-p"
@@ -117,7 +174,10 @@ export function AlertStrip() {
             Coming soon
           </span>
         </span>
-        <span className="al-s">produced-vs-paid drift</span>
+        <span className="al-s">
+          produced-vs-paid drift{" "}
+          <span className="ctx-hint">See the drift →</span>
+        </span>
       </span>
     </div>
   );

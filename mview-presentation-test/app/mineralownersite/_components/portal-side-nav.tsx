@@ -6,10 +6,8 @@ import { usePathname } from "next/navigation";
 
 import { PortalNavRow } from "./portal-nav-row";
 import { PortalSectionList } from "./portal-section-list";
-import { usePortalState } from "./portal-state-provider";
 import { primarySlots } from "../_lib/portal-nav";
-import { demoDisclosure, demoOwner, referral } from "../_lib/portal-demo-data";
-import { FUNNEL_PLAN } from "../_lib/portal-state";
+import { referral } from "../_lib/portal-demo-data";
 
 /**
  * THE SIDEBAR WORDMARK, exactly as the reference build has it.
@@ -46,12 +44,18 @@ const SIDEBAR_LOGO = {
  *   2  ONE swapping primary slot — Claim Mineral Owner while unclaimed, Run a
  *      Lease Audit once claimed. Both are in the markup; `portal.css` picks.
  *   3  Three labelled sections: My Minerals · Services · Community.
- *   4  A line pointing at the account menu, because Profile, Settings and
- *      Billing MOVED there (v41 · AUDIT #35) and an owner looking in the old
- *      place should be told where they went, not find nothing.
- *   5  The referral CTA — persistent on purpose, hidden while unclaimed.
- *   6  The demo foot, which signs who the prototype is signed in as. Every
- *      screen says the account is fictional.
+ *   4  The referral CTA — persistent on purpose, hidden while unclaimed.
+ *
+ * REMOVED FROM THE RAIL (requested): the line pointing at the account menu
+ * (v41 · AUDIT #35), and the demo foot that carried the signed-in name, the plan
+ * and the "prototype demo account" note.
+ *
+ * NEITHER LOSS IS SILENT. The way back to the public site is still the wordmark
+ * at the top of this rail, which links to `/`. The fictional-account disclosure
+ * still runs on every portal screen through the other three surfaces the design
+ * uses for it: the fixed ribbon on desktop, the "Fictional demo" chip in the top
+ * bar below 900px, and the drawer's footnote. The plan is still stated by the
+ * top bar's plan pill and in the account menu.
  *
  * CLIENT, for one reason only: the active row needs `usePathname`. The markup
  * is otherwise static, and the Dashboard's own content is server-rendered — the
@@ -59,7 +63,6 @@ const SIDEBAR_LOGO = {
  */
 export function PortalSideNav() {
   const pathname = usePathname();
-  const { funnelState } = usePortalState();
 
   return (
     <aside className="app-side" role="navigation" aria-label="Portal navigation">
@@ -98,15 +101,6 @@ export function PortalSideNav() {
 
       <PortalSectionList pathname={pathname} />
 
-      {/* v41 · AUDIT #35 — the forwarding note. A `<p>` and not a nav row on
-          purpose: it is a signpost, not a destination. */}
-      <p
-        className="tiny"
-        style={{ margin: "14px 8px 0", color: "#5b6472", lineHeight: 1.45 }}
-      >
-        Profile, Settings &amp; Billing are in your account menu, top right.
-      </p>
-
       {/* v11 · the persistent referral CTA. `.side-ref` is hidden by
           `portal.css` while unclaimed — there are no co-owners to invite to a
           record nobody has claimed yet. */}
@@ -135,21 +129,6 @@ export function PortalSideNav() {
         >
           Invite co-owners
         </span>
-      </div>
-
-      {/* v12 · clear demo identity. The name goes generic while unclaimed, so
-          the fictional sample owner is the only persona on screen in that
-          state. */}
-      <div className="side-foot">
-        <span>
-          {funnelState === "unclaimed" ? "Your account" : demoOwner.name}
-        </span>
-        {" · "}
-        <span>{FUNNEL_PLAN[funnelState]}</span>
-        <br />
-        <span style={{ color: "#5b6472" }}>{demoDisclosure.sidebarFoot}</span>
-        <br />
-        <Link href="/">← Back to the public site</Link>
       </div>
     </aside>
   );

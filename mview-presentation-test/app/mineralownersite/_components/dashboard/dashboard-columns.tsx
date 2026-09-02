@@ -45,6 +45,7 @@ export function DashboardColumns() {
       <div className="stack" style={{ gap: 18 }}>
         <WatchedThisMonthCard />
         <ThisWeekCard />
+        <NewWellProbabilityCard />
         <ReferralCard />
       </div>
     </div>
@@ -96,7 +97,8 @@ function AroundYouCard() {
           </span>
           <span className="sub tiny" style={{ color: "var(--green-deep)" }}>
             <strong>Why it matters to you:</strong> more demand for Texas gas
-            supports the price your gas-heavy Bee units sell into.
+            supports the price your gas-heavy Bee units sell into.{" "}
+            <span className="ctx-hint">the story + the source →</span>
           </span>
         </li>
         <li>
@@ -109,7 +111,8 @@ function AroundYouCard() {
           </span>
           <span className="sub tiny" style={{ color: "var(--green-deep)" }}>
             <strong>Why it matters to you:</strong> steady oil keeps Ledbetter on
-            the decline path its math already assumes — no surprise either way.
+            the decline path its math already assumes — no surprise either way.{" "}
+            <span className="ctx-hint">the story + the source →</span>
           </span>
         </li>
         <li className="quiet">
@@ -123,14 +126,16 @@ function AroundYouCard() {
           <span className="sub tiny" style={{ color: "var(--green-deep)" }}>
             <strong>Why it matters to you:</strong> Bluestem posts in batches —
             this is the filing that refreshed all four of your Smith units this
-            week.
+            week.{" "}
+            <span className="ctx-hint">the story + the source →</span>
           </span>
         </li>
       </ul>
 
       <p className="tiny muted" style={{ marginTop: 8 }}>
         Headlines are context for your gas-weighted record — never a signal to
-        buy, sell, or lease.
+        buy, sell, or lease. Tap any headline for the plain-English story and
+        its real, verifiable source.
       </p>
     </div>
   );
@@ -168,11 +173,13 @@ function LeaseAuditCard() {
 
       <p className="small hide-s" style={{ margin: "8px 0" }}>
         <strong>Is your operator paying you correctly?</strong> Send your check
-        stubs — the audit re-computes what each month should have paid.
+        stubs — the audit re-computes what each month should have paid.{" "}
+        <span className="ctx-hint">How the audit works →</span>
       </p>
       <p className="tier-s" style={{ fontSize: 15, margin: "8px 0" }}>
-        Most owners never check whether their checks are right. Yours is included
-        with your plan — send us your check stubs and we do the math.
+        Most owners never check whether their checks are right. Yours is{" "}
+        <strong>included with your 12-month Premium term</strong> — send us your
+        check stubs and we do the math.
       </p>
 
       <div className="flex" style={{ flexWrap: "wrap" }}>
@@ -181,7 +188,15 @@ function LeaseAuditCard() {
           aria-disabled="true"
           style={{ opacity: 0.6, cursor: "default" }}
         >
-          Start my included audit — soon
+          Start my included audit
+        </span>
+        {/* `.hide-s` in the reference — the calmer views get one action. */}
+        <span
+          className="btn btn-ghost btn-sm hide-s"
+          aria-disabled="true"
+          style={{ opacity: 0.6, cursor: "default" }}
+        >
+          See a sample report
         </span>
       </div>
 
@@ -201,16 +216,42 @@ function LeaseAuditCard() {
  * which is the same fact without the model's vocabulary.
  *
  * `.ck-val` carries `.cl-lock`, and the `<details>` explains the arithmetic
- * rather than asking the reader to trust the figure. The bar list stands in for
- * the reference's chart — a chart library is out of scope for this foundation,
- * and a labelled bar per lease carries the same comparison honestly.
+ * rather than asking the reader to trust the figure. The chart itself is the
+ * reference's own axed SVG bar chart — no charting library is involved, in it
+ * or here.
  */
-function EstimateByLeaseCard() {
-  const top = leaseSnapshot.filter((lease) => lease.estimate !== "$0");
-  const max = Math.max(
-    ...top.map((lease) => Number(lease.estimate.replace(/[$,]/g, ""))),
-  );
+/**
+ * The chart's bars.
+ *
+ * PLOTTED THE WAY THE REFERENCE ACTUALLY PLOTS THEM AT RUNTIME, which is not
+ * what its route file contains. `app.html` carries a static SVG, but
+ * `drawDashChart()` runs on load and REPLACES it — so the static markup is a
+ * pre-render, not the rendered chart. The two disagree: the static one gives
+ * the three inactive leases the COUNTY's figure ($60 / $410 / $410) with a
+ * "county" annotation, while the drawn one shows them as `$0` stubs, and the
+ * bar heights differ because the static SVG was traced against a different
+ * scale.
+ *
+ * These figures come from the reference's own `DASH_LEASES` through its own
+ * geometry for the default MVestimate series: `ymax` 10000,
+ * `Y(v) = 240 - (v / 10000) * 190`, `x = 72 + i * 64`,
+ * `h = max(v / 10000 * 190, v > 0 ? 2 : 3)`, and the value label seven units
+ * above the bar.
+ */
+const CHART_BARS = [
+  { x: 72, y: 74.7, h: 165.3, fill: "#54bf96", label: "$8,700", labelY: 67.7, name: "Smith", no: "305892", zero: false },
+  { x: 136, y: 139.3, h: 100.7, fill: "#54bf96", label: "$5,300", labelY: 132.3, name: "Ledbetter", no: "74318", zero: false },
+  { x: 200, y: 162.1, h: 77.9, fill: "#54bf96", label: "$4,100", labelY: 155.1, name: "Smith", no: "423065", zero: false },
+  { x: 264, y: 183, h: 57, fill: "#54bf96", label: "$3,000", labelY: 176, name: "Cedar Bnd", no: "578204", zero: false },
+  { x: 328, y: 190.6, h: 49.4, fill: "#54bf96", label: "$2,600", labelY: 183.6, name: "Cedar Bnd", no: "619473", zero: false },
+  { x: 392, y: 200.1, h: 39.9, fill: "#54bf96", label: "$2,100", labelY: 193.1, name: "Cedar Bnd", no: "391756", zero: false },
+  { x: 456, y: 229.74, h: 10.26, fill: "#54bf96", label: "$540", labelY: 222.74, name: "Cedar Bnd", no: "480329", zero: false },
+  { x: 520, y: 237, h: 3, fill: "#cbd5e1", label: "$0", labelY: 230, name: "Averitt", no: "65081", zero: true },
+  { x: 584, y: 237, h: 3, fill: "#cbd5e1", label: "$0", labelY: 230, name: "Smith", no: "267145", zero: true },
+  { x: 648, y: 237, h: 3, fill: "#cbd5e1", label: "$0", labelY: 230, name: "Smith", no: "508936", zero: true },
+];
 
+function EstimateByLeaseCard() {
   return (
     <div className="chartbox">
       <div className="between" style={{ flexWrap: "wrap" }}>
@@ -218,66 +259,161 @@ function EstimateByLeaseCard() {
           <span className="hide-s">MVestimate by lease — owner share</span>
           <span className="tier-s">What each lease is worth to you</span>
         </h4>
-        <span className="chip chip-est" style={{ fontSize: 10 }}>
-          Estimate — not an appraisal
+        <span className="flex" style={{ gap: 8, alignItems: "center" }}>
+          <span className="ctx-hint">How it&apos;s built →</span>
+          <span className="chip chip-est" style={{ fontSize: 10 }}>
+            Estimate — not an appraisal
+          </span>
         </span>
       </div>
 
+      {/* v40 · D13-CHART-KPI — the headline number sits ABOVE the chart. */}
       <div className="chart-kpi">
-        <span className="ck-val num cl-lock">
-          {formatLakhs(portfolio.estimate)}
-        </span>
+        <span className="ck-val num cl-lock">{portfolio.estimate}</span>
         <span className="ck-lbl">
           total owner-share MVestimate · all {portfolio.leaseCount} leases ·
           six-year projection
         </span>
       </div>
 
-      <div className="stack" style={{ gap: 7, margin: "12px 0 14px" }}>
-        {top.map((lease) => {
-          const value = Number(lease.estimate.replace(/[$,]/g, ""));
-          return (
-            <div key={lease.lease} className="tiny">
-              <div className="between" style={{ gap: 8 }}>
-                <span>
-                  {lease.lease} · {lease.county}
-                </span>
-                <span className="num cl-lock" style={{ fontWeight: 700 }}>
-                  {formatLakhs(lease.estimate)}
-                </span>
-              </div>
-              <div
-                className="progress"
-                style={{ height: 6, marginTop: 3 }}
-                aria-hidden="true"
-              >
-                <div className="fill" style={{ width: `${(value / max) * 100}%` }} />
-              </div>
-            </div>
-          );
-        })}
-        <p className="tiny muted" style={{ margin: "2px 0 0" }}>
-          Four further leases have not produced enough to carry a projection yet.
-        </p>
+      <div className="legend">
+        <span>
+          <span className="sw" style={{ background: "#54bf96" }} />
+          Active lease — MVestimate
+        </span>
+        <span>
+          <span className="sw" style={{ background: "#cbd5e1" }} />
+          Inactive — county value shown (model projects ~$0 forward)
+        </span>
       </div>
 
-      <details className="devsources" style={{ marginBottom: 10 }}>
+      {/* v6 · the series toggle, export and hover note. The toggle re-charts
+          the series and the export writes a CSV; both belong to the chart
+          script the reference ships, so they render and are inert here. */}
+      <div className="chart-ctl hide-s">
+        <span className="range-tgl" role="group" aria-label="Value series">
+          <span className="on">MVestimate</span>
+          <span>County appraised (2026)</span>
+        </span>
+        <span className="btn-export">⤓ Export CSV</span>
+        <span className="tiny muted">hover a bar for the exact value</span>
+      </div>
+
+      {/* THE CHART, ported from the reference's own inline SVG — same viewBox,
+          same gridlines, same bar geometry, same axis titles. This was a list of
+          progress bars, which was a redesign rather than a port: the reference
+          draws a real axed bar chart, and it needs no charting library to do
+          it. */}
+      <svg
+        viewBox="0 0 740 300"
+        role="img"
+        aria-label="MVestimate by lease bar chart"
+      >
+        <line x1="60" y1="240" x2="710" y2="240" stroke="#cbd5e1" strokeWidth="1" />
+        <line x1="60" y1="145" x2="710" y2="145" stroke="#eef0f3" strokeWidth="1" />
+        <line x1="60" y1="50" x2="710" y2="50" stroke="#eef0f3" strokeWidth="1" />
+        <text x="54" y="244" fontSize="10" fill="#6b7280" textAnchor="end">
+          $0
+        </text>
+        <text x="54" y="149" fontSize="10" fill="#6b7280" textAnchor="end">
+          $5,000
+        </text>
+        <text x="54" y="54" fontSize="10" fill="#6b7280" textAnchor="end">
+          $10,000
+        </text>
+        <g>
+          {CHART_BARS.map((b) => (
+            <g key={b.x}>
+              <rect
+                x={b.x}
+                y={b.y}
+                width="40"
+                height={b.h}
+                rx="3"
+                fill={b.fill}
+              />
+              {/* A zero bar's label is grey and un-bolded — the reference
+                  distinguishes "nothing projected" from a real figure by
+                  weight, not by substituting another number for it. */}
+              <text
+                x={b.x + 20}
+                y={b.labelY}
+                fontSize="9.5"
+                fontWeight={b.zero ? undefined : "700"}
+                fill={b.zero ? "#6b7280" : "#04231a"}
+                textAnchor="middle"
+              >
+                {b.label}
+              </text>
+            </g>
+          ))}
+        </g>
+        {CHART_BARS.map((b) => (
+          <g key={"x" + b.x}>
+            <text x={b.x + 20} y="256" fontSize="8.5" fill="#6b7280" textAnchor="middle">
+              {b.name}
+            </text>
+            <text x={b.x + 20} y="266" fontSize="8.5" fill="#6b7280" textAnchor="middle">
+              {b.no}
+            </text>
+          </g>
+        ))}
+        <text x="385" y="288" fontSize="10" fill="#6b7280" textAnchor="middle">
+          Lease (no.) · owner-share MVestimate ($) · forward six-year
+          projection
+        </text>
+        <text
+          x="16"
+          y="145"
+          fontSize="10"
+          fill="#6b7280"
+          textAnchor="middle"
+          transform="rotate(-90 16 145)"
+        >
+          MVestimate ($)
+        </text>
+      </svg>
+
+      <p className="tiny muted" style={{ padding: "4px 2px 8px" }}>
+        Total across the record:{" "}
+        <strong className="num">{portfolio.estimate}</strong> — projected
+        six-year earnings at your{" "}
+        <span
+          className="gloss"
+          tabIndex={0}
+          title="Your ownership share of a lease, written as a decimal — e.g. 0.00538700. Multiply gross lease dollars by it to get your share."
+        >
+          decimal interests
+        </span>
+        .{" "}
+        <strong>
+          Covers your {portfolio.leaseCount} visible leases · 0 archived
+        </strong>{" "}
+        — if a plan limit ever archives leases, they&apos;re excluded from
+        this estimate and we say so here.{" "}
+        <span className="ctx-hint">Open My Leases →</span>
+      </p>
+
+      {/* v11 · explain-this expander — methodology transparency on every
+          estimate. `.explain` is the reference's own class: the summary carries
+          the ⓘ and the body carries the method. */}
+      <details className="explain" style={{ margin: "0 10px 12px" }}>
         <summary>
           Explain this estimate — how the {portfolio.estimate} is computed
         </summary>
-        <p className="tiny" style={{ marginTop: 8, lineHeight: 1.55 }}>
+        <div className="ex-body">
           Per lease: projected monthly production (the decline curve fitted to
-          the public RRC record) × the forward price outlook × your decimal
-          interest, summed over the next six years, then summed across your{" "}
-          {portfolio.leaseCount} leases. Inputs refresh as new production posts
-          and prices move. It is a{" "}
+          the public RRC record) × the forward price outlook × your
+          decimal interest, summed over the next six years, then summed across
+          your {portfolio.leaseCount} leases. Inputs refresh as new production
+          posts and prices move. It is a{" "}
           <strong>
-            market cash-flow projection — not an appraisal, not a payment ledger,
-            and not advice
+            market cash-flow projection — not an appraisal, not a payment
+            ledger, and not advice
           </strong>
           . The county&apos;s appraised value answers a different question
-          (annual tax value).
-        </p>
+          (annual tax value); toggle the chart above to compare the two.
+        </div>
       </details>
     </div>
   );
@@ -318,8 +454,27 @@ function KeepExploringCard() {
           className="btn btn-ghost btn-sm"
           aria-disabled="true"
           style={{ opacity: 0.6, cursor: "default" }}
+        />
+      </div>
+
+      {/* The reference's fourth row, which was missing. It is the group-economics
+          pitch: every co-owner who joins shrinks each owner's share of a
+          professional fee, and the figure recomputes as owners elect — which is
+          why the row states the arithmetic rather than just inviting. */}
+      <div className="setrow">
+        <div>
+          <strong className="small">Hire a pro together</strong>
+          <div className="tiny muted">
+            royalty audit pledge · <span className="num">3 of 12</span> · your
+            share ≈$417 — recomputes as owners elect
+          </div>
+        </div>
+        <span
+          className="btn btn-mint btn-sm"
+          aria-disabled="true"
+          style={{ opacity: 0.6, cursor: "default" }}
         >
-          Soon
+          Pledge
         </span>
       </div>
     </div>
@@ -339,8 +494,11 @@ function OperatorSignalsCard() {
     <div className="card card-pad hide-s">
       <div className="between" style={{ flexWrap: "wrap" }}>
         <h4>Operator payment signals</h4>
-        <span className="chip chip-slate" style={{ fontSize: 10 }}>
-          Informational — not a rating
+        <span className="flex" style={{ gap: 8, alignItems: "center" }}>
+          <span className="ctx-hint">How scores work →</span>
+          <span className="chip chip-slate" style={{ fontSize: 10 }}>
+            Informational — not a rating
+          </span>
         </span>
       </div>
       <p className="tiny muted" style={{ margin: "4px 0 8px" }}>
@@ -361,6 +519,7 @@ function OperatorSignalsCard() {
 
       <p className="tiny muted" style={{ marginTop: 8 }}>
         Built from findings owners chose to keep — never from their documents.
+        Verify anything flagged with a Lease Audit or a professional.
       </p>
     </div>
   );
@@ -420,10 +579,9 @@ function RawSnapshotCard() {
         </table>
       </div>
 
-      <p className="tiny muted" style={{ marginTop: 8 }}>
-        Gas and oil volumes are gross lease as posted to the RRC — not your
-        share. Apply your decimal interest for that.
-      </p>
+      {/* The reference ends this card at the table — the gross-vs-share caveat
+          it needs is already carried by the `.gloss` on "Decimal interest"
+          above, so a footnote here would be text the source does not have. */}
     </div>
   );
 }
@@ -443,8 +601,11 @@ function WatchedThisMonthCard() {
         <h4>
           <span aria-hidden="true">✦</span> What we watched for you
         </h4>
-        <span className="chip chip-mint" style={{ fontSize: 10 }}>
-          This month
+        <span className="flex" style={{ gap: 8, alignItems: "center" }}>
+          <span className="ctx-hint">See the full log →</span>
+          <span className="chip chip-mint" style={{ fontSize: 10 }}>
+            This month
+          </span>
         </span>
       </div>
 
@@ -509,8 +670,8 @@ function ThisWeekCard() {
             Bluestem Oil and Gas, LP · Bee Co.
           </span>
           <span className="sub tiny" style={{ color: "var(--green-deep)" }}>
-            <strong>What it means for you:</strong> steady income — a posting on
-            the expected curve, nothing to do.
+            <strong>What it means for you:</strong> steady income on your
+            $4,100 unit — a posting on the expected curve, nothing to do.
           </span>
         </li>
         <li>
@@ -521,7 +682,27 @@ function ThisWeekCard() {
           </span>
           <span className="sub tiny" style={{ color: "var(--green-deep)" }}>
             <strong>What it means for you:</strong> smaller checks are the plan,
-            not a problem — your share already assumes this slope.
+            not a problem — your $5,300 share already assumes this slope.
+          </span>
+        </li>
+        {/* v7 · the event alert — the one item in this list that was SENT, not
+            just observed, so it carries when and how. `.alert` is the design's
+            own class for it. A neighbour's permit is a signal about the area,
+            never the owner's income, and the copy says exactly that. */}
+        <li className="alert">
+          <strong>
+            ⚠ Event alert — nearby-permit list updated: 11 permits within 1 mi of
+            Ledbetter (74318)
+          </strong>
+          <span className="sub tiny muted">
+            neighbor tracts · Cass Co. · alert sent Jul 03, 8:12 AM (email +
+            push)
+          </span>
+          <span className="sub tiny" style={{ color: "var(--green-deep)" }}>
+            <strong>What it means for you:</strong> a neighbor&apos;s well is a
+            signal, not your income — but permits this close tend to keep
+            operators interested in your area.{" "}
+            <span className="ctx-hint">See the 11 — map + permit list →</span>
           </span>
         </li>
         <li className="quiet">
@@ -534,6 +715,15 @@ function ThisWeekCard() {
           </span>
         </li>
       </ul>
+
+      {/* The reference closes this card with the briefing action. */}
+      <span
+        className="btn btn-ghost btn-sm btn-block"
+        aria-disabled="true"
+        style={{ marginTop: 12, opacity: 0.6, cursor: "default" }}
+      >
+        Open this week&apos;s briefing
+      </span>
     </div>
   );
 }
@@ -548,6 +738,126 @@ function ThisWeekCard() {
  * The group-rate line is the real incentive — every claimed co-owner shrinks the
  * group's share of a professional fee.
  */
+/**
+ * "New-well probability — will they drill more near you?" — `#dashWellProb`.
+ *
+ * WHY THIS WAS MISSING, and why no text diff of the route would have caught it:
+ * `app.html` carries only `<div id="dashWellProb" class="hide-s"></div>`. The
+ * card's markup is built by `wellProbHtml()` in the reference's own scripts and
+ * injected by `fillWellProbCards()`, so the route file has an EMPTY container
+ * where the card goes.
+ *
+ * A BAND, NEVER A PERCENTAGE. This is the card's whole design constraint: v1
+ * reads spacing, remaining resource, nearby de-risking and lease clauses, and
+ * places the lease in Low / Moderate / High with a confidence level. The
+ * backtested reservoir-grid model that would justify a calibrated number is
+ * still in build, so the card shows direction and reasons instead — and says so
+ * twice, in the sub-line and in the expander.
+ *
+ * `.hide-s` — Essentials does not carry it, matching the reference. It has no
+ * funnel-state gate at all, so it reads the same in Claimed, Premium Trial,
+ * Trial Ended and Paid. Not Claimed shows the sample dashboard in place of this
+ * whole column (`.nc-swap`), which is the reference's behaviour too.
+ *
+ * The reference's `.anno` spans — a "Directional — model in build" chip and a
+ * "(v1)" aside — are review annotations, `display:none !important` outside its
+ * `mv-review` mode, so they are not part of what this card renders.
+ */
+const WELL_PROB_REASONS = [
+  "Room to drill — well spacing on your Bee units",
+  "Resource remaining — gas EUR not fully drawn down",
+  "Nearby de-risking — 22 adjacent leases · 38 permits within ~1 mi",
+  "Lease clause — no continuous-development clause on file",
+];
+
+function NewWellProbabilityCard() {
+  return (
+    <div id="dashWellProb" className="hide-s">
+      {/* `.kpi-click` is added to this card by the reference itself — the whole
+          card opens the all-leases drawer. That drawer is not part of this
+          build, so the card is not focusable here, but it keeps the hover
+          treatment the reference gives it. */}
+      <div
+        className="card card-pad kpi-click"
+        style={{ borderTop: "3px solid var(--green)" }}
+      >
+        <div className="between" style={{ flexWrap: "wrap" }}>
+          <h4>New-well probability — will they drill more near you?</h4>
+        </div>
+
+        <p className="tiny muted" style={{ margin: "2px 0 8px" }}>
+          Spacing-based indicator. Never a made-up percentage.
+        </p>
+
+        <div className="likely-band">
+          Moderate{" "}
+          <span
+            className="chip chip-mint"
+            style={{ fontSize: 10.5, fontFamily: "var(--sans)" }}
+          >
+            Confidence: Medium
+          </span>
+        </div>
+
+        <p className="small muted" style={{ margin: "10px 0 2px" }}>
+          <strong>Why:</strong>
+        </p>
+        <div className="why-chips">
+          {WELL_PROB_REASONS.map((reason) => (
+            <span key={reason} className="chip">
+              {reason}
+            </span>
+          ))}
+        </div>
+
+        <p className="tiny muted" style={{ marginTop: 10 }}>
+          Guardrails:{" "}
+          <strong>a neighbor&apos;s well is a signal, not your income</strong> —
+          and this is an <strong>estimate, not a certainty</strong>. Permits
+          slip, move, and vanish.
+        </p>
+
+        {/* v11 · explain-this on the indicator — what "directional" means and
+            what ships later. */}
+        <details className="explain">
+          <summary>
+            Explain this indicator — why a band, not a percentage
+          </summary>
+          <div className="ex-body">
+            Today&apos;s v1 reads well spacing, remaining resource, nearby
+            de-risking activity, and lease clauses to place the lease in a{" "}
+            <strong>band (Low / Moderate / High)</strong> with a confidence
+            level. The backtested reservoir-grid model (Phase A, in build) will
+            replace the band with a calibrated likelihood once it survives
+            backtesting against historical drilling. Until then we show
+            direction and reasons —{" "}
+            <strong>
+              never a percentage the math can&apos;t yet defend
+            </strong>
+            . You&apos;ll get an alert if this band changes.
+          </div>
+        </details>
+
+        <div className="flex" style={{ flexWrap: "wrap", marginTop: 10 }}>
+          <span className="btn btn-primary btn-sm" aria-disabled="true">
+            All {portfolio.leaseCount} leases — each band + why →
+          </span>
+        </div>
+
+        <p className="tiny muted" style={{ margin: "6px 2px 0" }}>
+          This indicator runs <strong>per lease</strong> —{" "}
+          <span className="ctx-hint">see each lease&apos;s band + why →</span>{" "}
+          (or the full card on any report: Ledbetter · Smith 305892 · My
+          Leases).{" "}
+          <span className="chip chip-blue" style={{ fontSize: 9 }}>
+            Per-lease model not available yet
+          </span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ReferralCard() {
   return (
     <div className="card card-pad hide-s" style={{ borderTop: "3px solid var(--green)" }}>
@@ -559,7 +869,8 @@ function ReferralCard() {
       <p className="tiny muted" style={{ marginTop: 4 }}>
         Earned from 1 referred co-owner who became a <strong>paid member</strong>{" "}
         (posted after the confirmation window — free signups earn no credit).
-        Credits are non-cash and spend on services, or auto-apply at your next
+        Credits are non-cash and spend on services — like a Lease Audit beyond
+        the one included with your annual plan — or auto-apply at your next
         renewal.
       </p>
 

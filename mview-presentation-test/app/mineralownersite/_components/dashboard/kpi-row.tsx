@@ -26,7 +26,7 @@ function KpiCard({ kpi }: { kpi: DashboardKpi }) {
   const lastY = kpi.spark?.points.trim().split(/\s+/).at(-1)?.split(",")[1];
 
   return (
-    <div className="kpi">
+    <div className="kpi kpi-click">
       <div className="k-label">
         {kpi.glossary ? (
           <span className="gloss" tabIndex={0} title={kpi.glossary}>
@@ -67,6 +67,9 @@ function KpiCard({ kpi }: { kpi: DashboardKpi }) {
       {kpi.subs.map((sub) => (
         <div className="k-sub" key={sub}>
           {sub}
+          {/* The reference's inline destination — Activities and Map, neither
+              built, so labelled rather than pointed at a 404. */}
+          {kpi.subLink && <> · {kpi.subLink}</>}
           {kpi.locked && (
             <>
               {" · "}
@@ -77,6 +80,11 @@ function KpiCard({ kpi }: { kpi: DashboardKpi }) {
           )}
         </div>
       ))}
+
+      {/* Every tile carries its own explainer hint in the reference. */}
+      <div className="k-sub">
+        <span className="ctx-hint">{kpi.hint}</span>
+      </div>
 
       <div className="freshness">{kpi.freshness}</div>
     </div>

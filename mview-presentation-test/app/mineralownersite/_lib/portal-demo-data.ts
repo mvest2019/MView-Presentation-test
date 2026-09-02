@@ -47,9 +47,21 @@ export const demoOwner = {
   initials: "SS",
   /** The owner RECORD, which is not the same thing as the member's name. */
   record: "SMITH, RAYMOND E",
+  /**
+   * The same record as the owner chip prints it (app.html:226). The chip is
+   * read as a sentence, so the reference title-cases it there while leaving the
+   * as-filed form for everywhere the record is quoted verbatim.
+   */
+  recordDisplay: "Smith Raymond E",
   /** What the greeting line says under the name. */
   asOf: "Jul 04, 2026",
   counties: "Bee, Cass & Hood counties",
+  /**
+   * The dark strip's own form — middots, no "counties" (app.html:246). The
+   * prose form above reads as a sentence; this one sits in a dense cell beside
+   * the operator list, which is middot-separated too.
+   */
+  countiesTight: "Bee · Cass · Hood",
   /** Drives "What's changed since your last visit". */
   lastVisit: "Jul 01",
 } as const;
@@ -106,6 +118,10 @@ export interface DashboardKpi {
   /** A smaller trailing qualifier inside the value, e.g. "of 10". */
   valueSuffix?: string;
   subs: string[];
+  /** The `.ctx-hint` pill the reference puts under each tile. */
+  hint: string;
+  /** An inline destination inside the sub, e.g. "activities →". */
+  subLink?: string;
   /** The `.cl-lock` opt-in. Only the money figure carries it. */
   locked?: boolean;
   /** The glossary definition shown on the label, where the design has one. */
@@ -118,6 +134,7 @@ export interface DashboardKpi {
 export const dashboardKpis: DashboardKpi[] = [
   {
     label: "MVestimate · owner share",
+    hint: "How it’s built →",
     value: portfolio.estimate,
     locked: true,
     glossary:
@@ -132,6 +149,7 @@ export const dashboardKpis: DashboardKpi[] = [
   },
   {
     label: "Leases earning income",
+    hint: "What paused means →",
     value: String(portfolio.producing),
     valueSuffix: `of ${portfolio.leaseCount}`,
     subs: ["3 paused · Bee, Cass, Hood"],
@@ -144,8 +162,10 @@ export const dashboardKpis: DashboardKpi[] = [
   },
   {
     label: "New production postings",
+    hint: "What a posting is →",
     value: "228",
     subs: ["your + nearby leases"],
+    subLink: "activities →",
     spark: {
       points: "0,16 12,15 24,14.4 36,12.8 48,11.8 60,9.6 72,7.8 90,5.5",
       stroke: "#54bf96",
@@ -155,8 +175,10 @@ export const dashboardKpis: DashboardKpi[] = [
   },
   {
     label: "Adjacent leases · within ~1 mi",
+    hint: "Why neighbors matter →",
     value: "22",
     subs: ["plus 38 nearby permits"],
+    subLink: "map →",
     spark: {
       points: "0,14 12,11 24,13 36,9 48,11.5 60,7.5 72,9.5 90,6",
       stroke: "#b8892f",
@@ -217,21 +239,41 @@ export const alertSummary: {
 export interface ChangedItem {
   headline: string;
   detail: string;
+  /** The `.ctx-hint` pill the reference puts after the detail. */
+  hint: string;
+  /** The reference's second line — the direct evidence shortcut. */
+  secondary: string;
 }
 
 export const changedSinceLastVisit: ChangedItem[] = [
   {
     headline: "Ledbetter produced gas — were you paid?",
     detail: "3 months in the public record",
+    hint: "See the evidence →",
+    secondary: "or run your included Lease Audit →",
   },
   {
     headline: "New money posted on your strongest lease",
     detail: "Smith 305892 · 27,120 mcf",
+    hint: "See the posting →",
+    secondary: "or open the lease report →",
   },
   {
     headline: "11 permits within 1 mile of Ledbetter",
     detail: "neighbors drilling nearby",
+    hint: "See 11 permits →",
+    secondary: "or open the permit map + list →",
   },
+];
+
+/**
+ * "Also since Jul 01" — the three quieter events the reference lists under the
+ * three headline items.
+ */
+export const alsoSinceLastVisit: string[] = [
+  "gas firmed +1.53% (your estimate held)",
+  "Margaret D. posted in your group",
+  "2026 owner records updated — 3 possible matches",
 ];
 
 /* ============================================================================
@@ -243,6 +285,11 @@ export const changedSinceLastVisit: ChangedItem[] = [
    ============================================================================ */
 
 export interface AlertCard {
+  /**
+   * The `.ctx-hint` that closes `.al-s`. v37 · A1 — "card subs trimmed to a
+   * short descriptor + expand →", so the descriptor and this are one line.
+   */
+  hint: string;
   kind: string;
   headline: string;
   detail: string;
@@ -253,36 +300,42 @@ export const alertStrip: AlertCard[] = [
   {
     kind: "⚑",
     headline: "11 permits within 1 mi of Ledbetter",
+    hint: "See 11 permits →",
     detail: "neighbor tracts · Cass Co.",
     tone: "green",
   },
   {
     kind: "▤",
     headline: "New production — Smith 305892",
+    hint: "See the posting →",
     detail: "27,120 mcf · Jul 02 · Bluestem batch",
     tone: "green",
   },
   {
     kind: "✓",
     headline: "Produced — but were you paid?",
+    hint: "See the evidence →",
     detail: "Ledbetter · 3 produced gas months",
     tone: "gold",
   },
   {
     kind: "▲",
     headline: "Gas +1.53% touched your estimate",
+    hint: "See why gas moved →",
     detail: "gas-weighted Bee units · $26,340 held",
     tone: "green",
   },
   {
     kind: "◉",
     headline: "Margaret D. posted in your group",
+    hint: "Read the post →",
     detail: "Smith Gas Unit — Owners · 2h",
     tone: "green",
   },
   {
     kind: "✚",
     headline: "2026 records — 3 new possible matches",
+    hint: "See 3 matches →",
     detail: "Smith C D variants · Karnes & DeWitt",
     tone: "gold",
   },
@@ -525,21 +578,54 @@ export const referral = {
 export interface SampleKpi {
   label: string;
   value: string;
-  sub: string;
+  /** The plain sub-line. Absent when the tile's sub is a chip instead. */
+  sub?: string;
+  /** `chip-est` in the sub slot, which is how the value tile qualifies itself. */
+  chip?: string;
+  /** The `▲ 3.1%` half is coloured; only the income tile carries a delta. */
   delta?: boolean;
+  /**
+   * The reference's per-tile density class. The sample thins out with the rest
+   * of the page: Essentials drops the two count tiles, Ultra drops the value
+   * too, so the calm views show one or two figures rather than four.
+   */
+  density?: "hide-u" | "hide-s";
+}
+
+/** One of the sample record's three alerts. */
+export interface SampleAlert {
+  headline: string;
+  detail: string;
 }
 
 export const sampleOwner: {
   name: string;
   greetingName: string;
-  counties: string;
+  /** The header chip: signed in, but nothing claimed yet. */
+  headerChip: string;
   planLine: string;
+  /** `.smp-tag` on the badge above the panel. */
+  sampleTag: string;
+  /** `.smp-chip` in the panel header. */
+  fictionalChip: string;
+  /** The panel's own sub-line — the record id makes the fixture identifiable. */
+  recordLine: string;
   kpis: SampleKpi[];
+  alerts: {
+    total: number;
+    line: string;
+    categories: { count: number; label: string }[];
+    items: SampleAlert[];
+  };
 } = {
   name: "J. T. Callahan",
   greetingName: "J. T.",
-  counties: "Karnes + Panola Co.",
+  headerChip: "Signed in · claim pending",
   planLine: "Free account · no owner record claimed yet",
+  sampleTag: "SAMPLE PREVIEW",
+  fictionalChip: "FICTIONAL SAMPLE OWNER",
+  recordLine:
+    "Sample owner record KRN-306471 · Karnes & Panola counties · 4 leases",
   kpis: [
     {
       label: "Owner-share income · Jun",
@@ -550,17 +636,52 @@ export const sampleOwner: {
     {
       label: "Est. portfolio value",
       value: "$41,270",
-      sub: "Estimate — not an appraisal",
+      chip: "Estimate — not an appraisal",
+      density: "hide-u",
     },
     {
       label: "Leases on the record",
       value: "4",
       sub: "3 producing · 1 inactive — all found automatically at claim",
+      density: "hide-s",
     },
     {
       label: "New activity nearby",
       value: "2",
       sub: "1 permit within 1 mi · 1 completion",
+      density: "hide-s",
     },
   ],
+  /* v43 · OW-33 (unclaimed half) — the sample gets the SAME alerts summary box
+     the claimed dashboard gets, so what an owner is being sold is the thing
+     they will actually receive. Chip-labelled throughout: these are J. T.
+     Callahan's three alerts, never a count of anything belonging to the reader.
+
+     "None need an answer" is the honest reading of the three: two are activity
+     and one is a price move, so nothing here asks the owner to do something. */
+  alerts: {
+    total: 3,
+    line: "since J. T. last visited · none need an answer, all three are context",
+    categories: [
+      { count: 2, label: "Activity" },
+      { count: 1, label: "Money & prices" },
+      { count: 0, label: "Community" },
+    ],
+    items: [
+      {
+        headline: "New production posted on Alameda Ranch",
+        detail:
+          "4,120 mcf of gas filed for June — the lease reported production (payment shows on statements)",
+      },
+      {
+        headline: "1 permit within a mile of Bluestem 2H",
+        detail:
+          "a neighbor is drilling close by — a good sign for the area, not income by itself",
+      },
+      {
+        headline: "Gas firmed +1.5% — touched the estimate",
+        detail: "good for a gas-weighted record like this one",
+      },
+    ],
+  },
 };

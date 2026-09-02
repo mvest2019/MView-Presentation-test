@@ -1,5 +1,18 @@
+import type { ReactNode } from "react";
+
 import { formatLakhs } from "../../_lib/format-lakhs";
 import { demoOwner, portfolio } from "../../_lib/portal-demo-data";
+
+/**
+ * The pale-mint destination that closes four of the five sub-lines. The
+ * reference styles it inline rather than with a class, because `.ctx-hint`'s
+ * green is unreadable on this dark strip.
+ */
+function StripHint({ children }: { children: ReactNode }) {
+  return (
+    <span style={{ color: "#9fd7bd", fontWeight: 700 }}>{children}</span>
+  );
+}
 
 /**
  * The dark portfolio strip — v37 · C2+C6.
@@ -30,7 +43,8 @@ export function PortfolioStrip() {
           {formatLakhs(portfolio.estimate)}
         </div>
         <div className="pf-sub">
-          six-year owner share · Estimate — not an appraisal
+          six-year owner share · Estimate — not an appraisal ·{" "}
+          <StripHint>See the math →</StripHint>
         </div>
       </div>
 
@@ -42,7 +56,10 @@ export function PortfolioStrip() {
             {portfolio.weekChangeNote}
           </span>
         </div>
-        <div className="pf-sub">vs last week&apos;s value snapshot</div>
+        <div className="pf-sub">
+          vs last week&apos;s value snapshot ·{" "}
+          <StripHint>See what moved →</StripHint>
+        </div>
       </div>
 
       <div className="pf-cell">
@@ -52,7 +69,8 @@ export function PortfolioStrip() {
           <span className="pf-val-s">{portfolio.gasUnit}</span>
         </div>
         <div className="pf-sub">
-          4 Smith units · Bluestem batch · oil: none new
+          4 Smith units · Bluestem batch · oil: none new ·{" "}
+          <StripHint>See the postings →</StripHint>
         </div>
       </div>
 
@@ -75,7 +93,8 @@ export function PortfolioStrip() {
           <span className="pf-val-s">of {portfolio.leaseCount}</span>
         </div>
         <div className="pf-sub">
-          {demoOwner.counties.replace(" counties", "")} — {portfolio.operators}
+          {demoOwner.countiesTight} — {portfolio.operators} ·{" "}
+          <StripHint>See all {portfolio.leaseCount} leases →</StripHint>
         </div>
       </div>
     </div>

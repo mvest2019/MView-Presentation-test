@@ -58,7 +58,21 @@ export async function PinnedValueBar() {
         <span className="pin-val num cl-lock">
           {formatLakhs(portfolio.estimate)}
         </span>
-        <span className="pin-sub hide-s">{portfolio.estimateBasis}</span>
+        {/* "MVestimate · estimate, not an appraisal", beside the figure it
+            qualifies (requested).
+
+            IT CARRIED `.hide-s` AND SO WAS INVISIBLE BY DEFAULT. Essentials is
+            the product default density, and `.hide-s` hides its element there —
+            so the one disclaimer attached to a money figure never appeared for
+            the owners most likely to need it. It now shows at every density.
+
+            `.pin-sub-basis` replaces `.hide-s` as the hook rather than the class
+            simply being deleted: the width ladder and the two state
+            replacements below still have to target this span, and they should
+            not be re-coupled to a density class. */}
+        <span className="pin-sub pin-sub-basis">
+          {portfolio.estimateBasis}
+        </span>
         <span className="pin-sub lp-only">
           portfolio total on hold — Premium
         </span>

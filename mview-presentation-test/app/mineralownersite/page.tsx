@@ -7,6 +7,8 @@ import {
   EssentialsHero,
 } from "./_components/dashboard/changed-since";
 import { DashboardColumns } from "./_components/dashboard/dashboard-columns";
+import { DataSources } from "./_components/dashboard/data-sources";
+import { GettingStartedChecklist } from "./_components/dashboard/getting-started-checklist";
 import { KpiRow } from "./_components/dashboard/kpi-row";
 import { PortfolioStrip } from "./_components/dashboard/portfolio-strip";
 import { StateCard } from "./_components/dashboard/state-card";
@@ -88,33 +90,37 @@ export default function MineralOwnerDashboard() {
 
       <div className="between" style={{ flexWrap: "wrap", marginBottom: 4 }}>
         <div>
-          {/* Deliberately not a time-of-day greeting. The reference sets one
-              from the VISITOR'S clock in JavaScript; doing that on the server
-              would print the server's morning to a reader's evening, and doing
-              it on the client would mean shipping JavaScript to say "Good
-              morning". The owner's name and the date carry the same welcome
-              without either problem. */}
+          {/* "Good morning" is the reference's own literal, on both this
+              greeting and the sample owner's (app.html:133, :220). Its
+              `setGreeting()` re-sets the word from the VISITOR'S clock, but
+              that function is not in the reference bundle, so its afternoon and
+              evening wordings are unknown — inventing them would put text on
+              the page that the source of truth does not contain. The literal
+              ships as written, which also makes this greeting and the sample's
+              agree. */}
           <h2 style={{ fontSize: 26 }}>
-            Welcome back, {demoOwner.name.split(" ")[0]}
+            Good morning, {demoOwner.name.split(" ")[0]}
           </h2>
           <p className="small muted">
             {demoOwner.asOf} · {demoOwner.counties}
           </p>
         </div>
 
-        {/* v33 · M38 — the owner chip names WHICH record fills every page. The
-            switcher needs the other claimed records to switch between, so it is
-            labelled and inert until that module lands. */}
+        {/* v33 · M38 — the owner chip names WHICH record fills every page.
+            The switcher's popover needs the account's other claimed records to
+            switch between, so the control is inert here — but it wears the
+            reference's own label and ▾, because the caret is what tells a
+            reader this is a switcher at all. */}
         <div className="flex" style={{ flexWrap: "wrap" }}>
-          <span className="owner-chip">
-            Owner: {demoOwner.record}
+          <span className="owner-chip" style={{ position: "relative" }}>
+            Owner: {demoOwner.recordDisplay}{" "}
             <span
               className="sw-btn"
               aria-disabled="true"
               style={{ opacity: 0.6 }}
-              title="Switch Owner — swaps which owner record fills every page. Not open yet."
+              title="Swap which owner record fills every page — dashboard, leases, map and reports"
             >
-              Switch Owner — soon
+              Switch Owner ▾
             </span>
           </span>
         </div>
@@ -132,8 +138,18 @@ export default function MineralOwnerDashboard() {
       <AlertStrip />
       <EssentialsHero />
 
+      {/* v37 · C8 — below the changing numbers, not above them: the checklist is
+          onboarding, and onboarding should not be the first thing an owner who
+          already claimed sees each visit. Dismissible, and it stays dismissed. */}
+      <GettingStartedChecklist />
+
       <KpiRow />
       <DashboardColumns />
+
+      {/* The reference's last block on this route — Professional density only,
+          collapsed by default. See `data-sources.tsx` for the note on what it
+          discloses. */}
+      <DataSources />
     </div>
   );
 }

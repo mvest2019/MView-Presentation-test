@@ -56,7 +56,7 @@ export function UltraHero() {
         aria-disabled="true"
         style={{ opacity: 0.6, cursor: "default" }}
       >
-        See my report — soon
+        See my report
       </span>
 
       <p className="u-note">

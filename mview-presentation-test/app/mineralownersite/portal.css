@@ -56,6 +56,15 @@
   --blue: #1d4ed8;
   --blue-bg: #dbeafe;
   --gold: #b8892f;
+  /* Both are the SAME stack in the reference — it keeps two names so a display
+     face can be swapped in later without touching every rule. They were
+     dropped when this file was ported, which left the `var(--serif)` and
+     `var(--sans)` references in it resolving to nothing; they only looked
+     right because the page font already is Lexend Deca. */
+  --serif: "Lexend Deca", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --sans: "Lexend Deca", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
   --shadow:
     0 1px 3px rgba(13, 14, 23, 0.07), 0 4px 14px rgba(13, 14, 23, 0.05);
   --shadow-lg:
@@ -646,8 +655,14 @@
   z-index: 45;
   display: flex;
   align-items: center;
-  gap: 0 18px;
-  flex-wrap: nowrap;
+  gap: 4px 18px;
+  /* WRAPS INSTEAD OF CLIPPING. This was `nowrap`, which is what let the spot
+     strip be squeezed until its tiles overflowed their own box. One row is
+     still the design's intent (OW-30, "one slim row"), and one row is what this
+     renders whenever it fits — wrapping only happens when the alternative is
+     hiding prices, which is the worse of the two. The reference already wraps
+     this bar in its unclaimed state for the same reason. */
+  flex-wrap: wrap;
   padding: 7px 26px;
   min-height: 46px;
   background: linear-gradient(160deg, #0d0e17, #16342a);
@@ -700,12 +715,34 @@
 .mv-portal #mvPinBar .pin-spot {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  /* FLEX-START, NOT FLEX-END, and this is the actual bug fix.
+
+     Right-aligned content that outgrows its box overflows to the LEFT — off the
+     leading edge — and `overflow: hidden` then clips it with no way to reach it.
+     Measured in the `claimed` state at 1440px: the WTI tile sat at x=566
+     against a box starting at x=676, so 110px of it was cut off and
+     `scrollWidth` equalled `clientWidth`, meaning it could not even be scrolled
+     to. The state's longer sub-line ("what it's worth — free for 7 days") is
+     what pushed it over.
+
+     Left-aligned, overflow runs the natural direction and `overflow-x: auto`
+     makes it reachable. `margin-left: auto` is kept, so with room to spare the
+     strip still sits hard right exactly as before — this only changes what
+     happens once it is squeezed. */
+  justify-content: flex-start;
   gap: 4px 8px;
   flex-wrap: nowrap;
   margin-left: auto;
   min-width: 0;
-  overflow: hidden;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* No visible scrollbar: it would sit across the numbers on a 46px bar. */
+  scrollbar-width: none;
+}
+
+.mv-portal #mvPinBar .pin-spot::-webkit-scrollbar {
+  display: none;
 }
 
 .mv-portal #mvPinBar .pin-tk {
@@ -747,8 +784,12 @@
   user-select: none;
 }
 
-.mv-portal.state-lapsed #mvPinBar .pin-sub.hide-s,
-.mv-portal.state-claimed #mvPinBar .pin-sub.hide-s {
+/* In these two states the value is gated, and the sub-line is replaced by the
+   state's own message ("portfolio total on hold — Premium" / "what it's worth —
+   free for 7 days"), so the estimate qualifier stands down rather than stacking
+   a second line under the figure. */
+.mv-portal.state-lapsed #mvPinBar .pin-sub-basis,
+.mv-portal.state-claimed #mvPinBar .pin-sub-basis {
   display: none;
 }
 
@@ -760,7 +801,16 @@
    prices.") is the half that folds away when there is no room and survives as
    the `title`, which the design's spec permits — it is the reference's own
    1400px rule, and without it the stamp wrapped to two lines on a phone. */
-@media (max-width: 1400px) {
+/* 1600px, not the design's 1400px, and the reason is the sidebar. This bar
+   lives inside `.app-main`, so its width is the VIEWPORT MINUS the 236px rail
+   plus 52px of padding — at a 1440px window the bar has about 1150px, not 1440.
+   Measured there at Detailed density: the row needed 1286px against 1137px
+   available, 149px over, and the basis sentence is ~250px of that. A viewport
+   breakpoint of 1400 was therefore letting the sentence stay ~250px past the
+   point the bar could hold it. Raised so the row stays on ONE line at every
+   common desktop width, which is the design's intent (OW-30); the sentence
+   still survives on the `title`, which the spec permits. */
+@media (max-width: 1600px) {
   .mv-portal #mvPinBar .pin-note-basis {
     display: none;
   }
@@ -768,8 +818,11 @@
 
 /* The width ladder. Propane and Brent go first, then the estimate disclaimer,
    because a settlement with no room is better dropped than truncated. */
+/* The width ladder still drops the qualifier when the row runs out of room —
+   the design's own behaviour, and it survives on the `title` and `aria-label`,
+   which both carry it. Only the DENSITY gate was removed. */
 @media (max-width: 1340px) {
-  .mv-portal #mvPinBar .pin-sub.hide-s {
+  .mv-portal #mvPinBar .pin-sub-basis {
     display: none;
   }
 }
@@ -979,43 +1032,103 @@
    ---------------------------------------------------------------------------- */
 .mv-portal #mvStateCard {
   display: none;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin: 0 0 16px;
+  font-size: 13.5px;
+  line-height: 1.5;
 }
 
 .mv-portal.state-claimed #mvStateCard,
 .mv-portal.state-trial #mvStateCard,
 .mv-portal.state-lapsed #mvStateCard {
   display: block;
-  border: 1px solid var(--line);
-  border-left: 4px solid currentColor;
-  border-radius: var(--r);
-  background: #fff;
-  padding: 14px 18px;
-  margin: 0 0 14px;
-  font-size: 13.5px;
-  line-height: 1.5;
 }
 
+/* Ultra's geometry: the card takes the hero's column so the two read as one
+   page. Its 16px bottom margin collapses against the hero's 8vh top margin,
+   which is why the hero needs no override. */
+.mv-portal.view-ultra #mvStateCard {
+  max-width: 640px;
+  margin: 0 auto 16px;
+}
+
+/* A TINTED PANEL PER STATE, which is the reference's design and not the white
+   card with a coloured left border this build had: the tint is what makes the
+   three states legible at a glance, and the blue/mint/amber are the same three
+   the funnel bar uses. */
 .mv-portal.state-claimed #mvStateCard {
+  background: #eef4fb;
+  border: 1px solid #c9dcf1;
   color: #1d4267;
-  border-left-color: #2f6fb0;
+}
+
+.mv-portal.state-claimed #mvStateCard .sc-row a {
+  background: #2f6fb0;
+}
+
+.mv-portal.state-claimed #mvStateCard .sc-row a.ghost {
+  background: transparent;
 }
 
 .mv-portal.state-trial #mvStateCard {
+  background: #eefaf4;
+  border: 1px solid #bfe6d5;
   color: #17513c;
-  border-left-color: #2e8f6d;
 }
 
 .mv-portal.state-lapsed #mvStateCard {
+  background: #fdf6e7;
+  border: 1px solid #ecd9a8;
   color: #5c4413;
-  border-left-color: #a8791a;
 }
 
 .mv-portal #mvStateCard h4 {
-  font-size: 16px;
-  font-weight: 800;
-  margin: 0 0 5px;
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 650;
   line-height: 1.3;
   color: inherit;
+}
+
+/* The card's own action row. `a` is the reference's selector, so the inert
+   spans this build renders in place of links to unbuilt routes carry the same
+   element-agnostic styling via `.sc-row > *`. */
+.mv-portal #mvStateCard .sc-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.mv-portal #mvStateCard .sc-row a,
+.mv-portal #mvStateCard .sc-row > span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 8px;
+  background: #2e8f6d;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.mv-portal #mvStateCard .sc-row a.ghost,
+.mv-portal #mvStateCard .sc-row > span.ghost {
+  background: transparent;
+  color: inherit;
+  border: 1px solid currentColor;
+  opacity: 0.8;
+}
+
+.mv-portal.state-claimed #mvStateCard .sc-row > span {
+  background: #2f6fb0;
+}
+
+.mv-portal.state-claimed #mvStateCard .sc-row > span.ghost {
+  background: transparent;
 }
 
 /* ----------------------------------------------------------------------------
@@ -1422,9 +1535,17 @@
 }
 
 /* Essentials is single-column: the two-column dashboard body is a Detailed and
-   Professional layout. */
-.mv-portal.view-simple #dashcols,
-.mv-portal.view-simple .app-body .g4 {
+   Professional layout.
+
+   `#dashcols` ONLY — `.app-body .g4` used to be in this selector and it was
+   doing harm in both directions. Its intended target, the real dashboard's KPI
+   row, carries `.hide-s` and so is not rendered in Essentials at all, which made
+   the rule a no-op there. What it DID catch was the unclaimed page's sample KPI
+   grid, which IS shown in Essentials — flattening four tiles into four
+   full-width rows, an 832px single column that stretched the sample block to
+   862px tall. `.g4` now follows the normal ladder instead: four across on
+   desktop, two below 900px, one below 767px. */
+.mv-portal.view-simple #dashcols {
   grid-template-columns: minmax(0, 1fr) !important;
 }
 
@@ -1673,6 +1794,28 @@
   padding: 7px 10px;
 }
 
+/* Each KPI tile presents itself as a target: the reference's tiles are
+   `role="button"` and open a plain-English explainer in a side panel. That
+   panel is not part of this build, so the tiles are not focusable here — but
+   the border and shadow on hover are the design's, and the tile's own
+   `.ctx-hint` already names what the tap would explain. */
+.mv-portal .kpi-click {
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  border: 1px solid transparent;
+}
+
+.mv-portal .kpi-click:hover,
+.mv-portal .kpi-click:focus-visible {
+  border-color: var(--green);
+  box-shadow: 0 4px 14px rgba(46, 143, 109, 0.16);
+  outline: none;
+}
+
+.mv-portal .kpi-click:hover .ctx-hint {
+  background: #d3ecdf;
+}
+
 .mv-portal .kpi {
   background: #fff;
   border: 1px solid var(--line);
@@ -1718,6 +1861,14 @@
   margin-top: 4px;
 }
 
+/* `.chartbox svg { width:100% }` below is what makes the ported chart scale.
+   It was never carried over, because this card had no chart to scale. */
+.mv-portal .chartbox svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
 .mv-portal .chartbox {
   position: relative;
   background: #fff;
@@ -1725,6 +1876,97 @@
   border-radius: var(--r);
   padding: 16px 18px 8px;
   box-shadow: var(--shadow);
+}
+
+/* The chart's control row — legend, series toggle, export. Ported verbatim
+   from the reference (`.chart-ctl` / `.range-tgl` / `.btn-export`). */
+/* The new-well probability card's band and reason chips. The band is set in
+   the SERIF face at 22px — it is the card's headline figure, and the only place
+   on the dashboard where a WORD ("Moderate") plays that role instead of a
+   number. The reason chips are a calmer grey-green than a default `.chip`. */
+.mv-portal .likely-band {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 700;
+  flex-wrap: wrap;
+}
+
+.mv-portal .why-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.mv-portal .why-chips .chip {
+  background: #f1f5f3;
+  color: var(--slate);
+  font-weight: 600;
+}
+
+/* The chart's legend — swatch plus label, one row. Ported from the reference
+   (`.legend` / `.legend .sw`). */
+.mv-portal .legend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--slate);
+  padding: 6px 2px 8px;
+}
+
+.mv-portal .legend .sw {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+
+.mv-portal .chart-ctl {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 2px 0 4px;
+}
+
+.mv-portal .chart-ctl .range-tgl {
+  display: inline-flex;
+  background: #e8ecf3;
+  border-radius: 9px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.mv-portal .chart-ctl .range-tgl > * {
+  border: 0;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--slate);
+  border-radius: 7px;
+  padding: 4px 10px;
+}
+
+.mv-portal .chart-ctl .range-tgl > .on {
+  background: #fff;
+  box-shadow: var(--shadow);
+  color: var(--ink);
+}
+
+.mv-portal .chart-ctl .btn-export {
+  border: 1px solid var(--line);
+  background: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--slate);
+  border-radius: 8px;
+  padding: 4px 10px;
 }
 
 .mv-portal .chart-kpi {
@@ -1850,6 +2092,13 @@
 .mv-portal .timeline li.quiet::before {
   background: #cbd5e1;
   box-shadow: 0 0 0 1.5px #cbd5e1;
+}
+
+/* An amber dot for an item that was SENT rather than merely observed — the
+   event alert in "This week for you". */
+.mv-portal .timeline li.alert::before {
+  background: var(--amber);
+  box-shadow: 0 0 0 1.5px var(--amber);
 }
 
 .mv-portal .timeline li .sub {
@@ -2598,6 +2847,27 @@
     flex: none;
     width: 100%;
   }
+
+  /* THESE THREE BELONG AT 900px, not at 640px where they had drifted.
+
+     Adding the 640px pin-bar block earlier closed this one early and swept them
+     into it, so between 641px and 900px the dashboard body stayed two columns,
+     the KPI grids stayed four across — 159px per card at 768px, measured — and
+     the demo menu stayed right-anchored past the point the top bar starts
+     wrapping. 900px is where the sidebar goes and the bar wraps, so it is where
+     all three were meant to take effect. */
+  .mv-portal .mv-demo-menu {
+    left: 0;
+    right: auto;
+  }
+
+  .mv-portal #dashcols {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .mv-portal .app-body .g4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* ONE ROW PER THING BELOW 640px, and this fixes a measured defect rather than
@@ -2646,28 +2916,25 @@
     white-space: normal;
   }
 
-  /* THE DEMO MENU FLIPS TO LEFT-ANCHORED once the top bar wraps.
-
-     `.v41-avmenu` is `right: 0`, which is correct for the account menu because
-     the avatar sits at the far right of the bar. The demo button does not: at
-     these widths the bar wraps and the button starts a new row at the left
-     padding, so right-anchoring a 280px panel to a button whose right edge is
-     at 187px put its left edge at -93px — 93px of the menu off the side of the
-     screen, unreachable. Measured at 375px.
-
-     Left-anchored instead, and the panel's width is already capped at
-     `min(280px, 100vw - 24px)` below, so it cannot run off the other edge. */
-  .mv-portal .mv-demo-menu {
-    left: 0;
-    right: auto;
+  /* The funnel bar on a phone: tighter, and its controls each take a full row
+     rather than being squeezed onto the message's line. */
+  .mv-portal #mvFunnelBar {
+    padding: 10px 13px;
+    font-size: 12.5px;
   }
 
-  .mv-portal #dashcols {
-    grid-template-columns: minmax(0, 1fr) !important;
+  .mv-portal #mvFunnelBar .fb-act,
+  .mv-portal #mvActiveLeaseWrap {
+    width: 100%;
   }
 
-  .mv-portal .app-body .g4 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .mv-portal #mvFunnelBar .fb-cta {
+    flex: 1;
+  }
+
+  .mv-portal #mvActiveLease {
+    max-width: none;
+    flex: 1;
   }
 }
 
@@ -2739,6 +3006,7 @@
     padding: 14px 14px calc(88px + env(safe-area-inset-bottom));
   }
 
+  .mv-portal .app-body .g2,
   .mv-portal .app-body .g4 {
     grid-template-columns: minmax(0, 1fr);
   }

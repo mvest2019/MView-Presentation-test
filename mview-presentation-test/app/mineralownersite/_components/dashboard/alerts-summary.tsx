@@ -36,12 +36,14 @@ export function AlertsSummary() {
             context
           </span>
         </div>
+        {/* The reference's wording. The alerts inbox is not built, so it is
+            labelled rather than pointed at a 404. */}
         <span
           className="btn btn-ghost btn-sm"
           aria-disabled="true"
           style={{ opacity: 0.6, cursor: "default" }}
         >
-          All {alertSummary.total} alerts — soon
+          Open all {alertSummary.total} alerts →
         </span>
       </div>
 
@@ -60,7 +62,11 @@ export function AlertsSummary() {
       <p className="as-top">
         <span className="as-act-tag">NEEDS YOU</span>
         <strong>Ledbetter produced gas in months we can see</strong> — only your
-        check stubs show whether you were paid.
+        check stubs show whether you were paid.{" "}
+        {/* Both routes the reference offers off this line. Neither module is
+            built, so both are labelled. */}
+        <span className="ctx-hint">Open the alert →</span>{" "}
+        <span className="ctx-hint">run your included Lease Audit →</span>
       </p>
     </div>
   );

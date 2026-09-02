@@ -28,6 +28,30 @@ import {
  * it; never ask them to claim again. Then it names the one thing held back and
  * why the trial is how they see it.
  */
+/**
+ * The card's action row. The reference styles `#mvStateCard .sc-row a`, and
+ * both destinations here (Billing, My Leases) are unbuilt modules — so these
+ * are inert spans, and `portal.css` carries the same rule for `.sc-row > span`.
+ * The secondary link is `.ghost hide-u`: Ultra's contract is ONE status and ONE
+ * action, so only the primary survives there.
+ */
+function StateCardRow({
+  primary,
+  secondary,
+}: {
+  primary: string;
+  secondary: string;
+}) {
+  return (
+    <div className="sc-row">
+      <span aria-disabled="true">{primary}</span>
+      <span className="ghost hide-u" aria-disabled="true">
+        {secondary}
+      </span>
+    </div>
+  );
+}
+
 export function StateCard() {
   const daysLeft = TRIAL_LENGTH_DAYS - TRIAL_DAY;
   const onHold = Math.max(0, portfolio.leaseCount - 1);
@@ -48,6 +72,10 @@ export function StateCard() {
         figure still covered up, together with your weekly report, the owner
         community and the monthly production report printed and mailed. Those are
         Premium, and you can have all of them free for {TRIAL_LENGTH_DAYS} days.
+        <StateCardRow
+          primary={`Start my ${TRIAL_LENGTH_DAYS}-day free trial`}
+          secondary={`See all ${portfolio.leaseCount} of my leases →`}
+        />
       </div>
 
       {/* --- state 4A · in trial -------------------------------------------- */}
@@ -61,6 +89,10 @@ export function StateCard() {
         community, your weekly report, and the monthly production report printed
         and mailed. <span className="hide-u">Nothing on this screen is a preview. </span>
         When the trial ends, one lease stays live and the rest go on hold.
+        <StateCardRow
+          primary="Upgrade to Premium — $99.95/mo"
+          secondary="See everything you have →"
+        />
       </div>
 
       {/* --- state 4B · trial ended ----------------------------------------- */}
@@ -72,6 +104,10 @@ export function StateCard() {
         <span className="hide-u">
           You can change which lease is live once every {LEASE_LOCK_DAYS} days.
         </span>
+        <StateCardRow
+          primary="Restore full access"
+          secondary="Choose my live lease →"
+        />
       </div>
     </div>
   );
