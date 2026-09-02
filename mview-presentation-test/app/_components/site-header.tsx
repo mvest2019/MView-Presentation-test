@@ -414,7 +414,6 @@ export function SiteHeader({ user }: { user: SessionUser | null }) {
             >
               Dashboard
             </Link>
-
             {user ? (
               <>
                 <Link
