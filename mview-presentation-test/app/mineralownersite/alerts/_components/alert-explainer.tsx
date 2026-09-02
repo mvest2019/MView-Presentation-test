@@ -1,54 +1,45 @@
 import Link from "next/link";
 
-import { ExplainPanel } from "../../_components/ui/explain-panel";
+import { PortalButtonLink } from "../../_components/ui/button";
+import { PrototypeButton } from "../../_components/ui/prototype-button";
 import type { AlertExplainer as AlertExplainerContent } from "../_lib/alert-types";
 
 /**
- * "WHAT THIS ALERT MEANS" — v34's drawer, as the row's own expander.
- *
- * ── WHY AN EXPANDER AND NOT THE DESIGN'S SIDE DRAWER ──
- *
- * The drawer's stated purpose is that the owner STAYS where they are:
- * "Explanation is the default; navigation is the choice." An inline `<details>`
- * satisfies that better than the drawer does, not worse — the explanation opens
- * directly under the row it explains, with the alert still on screen, and
- * nothing overlays the list.
- *
- * What the drawer additionally bought was room for a long essay without pushing
- * the page around. That is a real cost here, and it is the reason these stay
- * CLOSED by default and open one at a time by the reader's choice rather than
- * being rendered inline as prose.
- *
- * Everything `portal-ui.md` says about `<details>` applies with force to this
- * one: nine explainers that print, that the browser's own find-in-page can
- * search inside, and that work with JavaScript off — which the drawer, being
- * `mvCtxOpen()`, did not.
+ * THE BODY OF ONE EXPLAINER DRAWER — `mvAxHtml()`, as JSX.
  *
  * ── THE FOUR HEADINGS ARE FIXED AND ORDERED ──
  *
- * What this is · What it means for you · The evidence · What to do next. The same
- * four, in the same order, on all nine — that repetition is what lets a reader
- * learn the shape once and then skim straight to the heading they want. Adding a
- * fifth heading to one alert would cost more than the heading is worth.
+ * What this is · What it means for you · The evidence · What to do next. The
+ * same four, in the same order, on all nine — that repetition is what lets a
+ * reader learn the shape once and then skim straight to the heading they want.
+ * `mvAxHtml` is a template for exactly this reason, and adding a fifth heading
+ * to one alert would cost more than the heading is worth.
  *
  * ── THE DOOR COMES LAST, AND SAYS IT IS OPTIONAL ──
  *
- * "the explanation above is the whole story; navigating is your choice" is ported
- * verbatim. It is the sentence that stops the panel reading as a teaser for the
- * real page.
+ * "optional — the explanation above is the whole story; navigating is your
+ * choice" is ported verbatim. It is the sentence that stops the panel reading as
+ * a teaser for the real page, and it is the reason the drawer exists rather than
+ * the row simply linking somewhere.
+ *
+ * ── `deeper` IS THE DRAWER'S OWN BUTTON ROW ──
+ *
+ * Five explainers end with a control that opened a SECOND drawer in the
+ * reference — the permit table, the gas chart, the masked names, the trend view,
+ * a private message. None of those panels exists in this build, so each renders
+ * through `PrototypeButton`: a real, enabled control at its real weight that
+ * says plainly what is missing when pressed. That is the portal's standing
+ * convention (see `prototype-button.tsx`), and it keeps the drawer's layout
+ * honest — these buttons are part of how the panel reads, and dropping them
+ * changed it.
  */
-export function AlertExplainer({
+export function AlertExplainerBody({
   explainer,
 }: {
   explainer: AlertExplainerContent;
 }) {
   return (
-    <ExplainPanel
-      className="mt-2"
-      summary={<>What this alert means — {explainer.title}</>}
-    >
-      <p className="mb-2 text-[11px] text-mv-muted">{explainer.subtitle}</p>
-
+    <div className="text-[13px] leading-[1.55] text-mv-ink">
       <Heading>What this is</Heading>
       <p className="mb-3">{explainer.what}</p>
 
@@ -60,14 +51,61 @@ export function AlertExplainer({
         {explainer.evidence}
       </ul>
 
+      {explainer.deeper && (
+        <div className="mt-2 mb-3 flex flex-wrap gap-2">
+          {explainer.deeper.map((panel) => (
+            <PrototypeButton
+              key={panel.label}
+              size="sm"
+              acknowledgement={`${panel.label} — opens here ✓ (prototype)`}
+            >
+              {panel.label}
+            </PrototypeButton>
+          ))}
+        </div>
+      )}
+
       <Heading>What to do next</Heading>
       <p>{explainer.next}</p>
+
+      {explainer.actions && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {explainer.actions.map((action) =>
+            action.href ? (
+              <PortalButtonLink
+                key={action.label}
+                size="sm"
+                variant={action.variant ?? "ghost"}
+                href={action.href}
+              >
+                {action.label}
+              </PortalButtonLink>
+            ) : (
+              <PrototypeButton
+                key={action.label}
+                size="sm"
+                variant={action.variant ?? "ghost"}
+                acknowledgement={
+                  action.dismissal ??
+                  action.acknowledgement ??
+                  `${action.label} ✓ (prototype)`
+                }
+              >
+                {action.label}
+              </PrototypeButton>
+            ),
+          )}
+        </div>
+      )}
 
       {explainer.openHref && (
         <p className="mt-3 border-t border-mv-line pt-2.5">
           Want to go deeper?{" "}
-          <Link href={explainer.openHref.href}>
-            <strong>{explainer.openHref.label} →</strong>
+          <Link
+            href={explainer.openHref.href}
+            className="font-bold text-mv-green-deep"
+          >
+            {explainer.openHref.label} →
           </Link>{" "}
           <span className="text-[11px] text-mv-muted">
             optional — the explanation above is the whole story; navigating is
@@ -79,18 +117,17 @@ export function AlertExplainer({
       {explainer.foot && (
         <p className="mt-2 text-[11px] text-mv-muted">{explainer.foot}</p>
       )}
-    </ExplainPanel>
+    </div>
   );
 }
 
 /**
  * The design's `<h4>` inside the drawer: deep green, tight to the paragraph
- * under it. Local because nothing outside this panel uses it — four call sites,
- * all in the component below the definition.
+ * under it. Local because nothing outside this panel uses it.
  */
 function Heading({ children }: { children: string }) {
   return (
-    <h4 className="mb-1.5 text-[12px] font-bold text-mv-green-deep">
+    <h4 className="mb-1.5 text-[14px] font-bold text-mv-green-deep">
       {children}
     </h4>
   );

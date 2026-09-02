@@ -2,7 +2,6 @@ import { Badge } from "../../_components/ui/badge";
 import { gates } from "../../_components/ui/portal-gating";
 import type { AlertRecord } from "../_lib/alert-types";
 import { AlertActions } from "./alert-actions";
-import { AlertExplainer } from "./alert-explainer";
 import { AlertIconBox } from "./alert-icon-box";
 import { AlertSeverityTag } from "./alert-severity-tag";
 import { AlertWhy } from "./alert-why";
@@ -28,19 +27,19 @@ import { DeliveryClassBadge } from "./delivery-class-badge";
  * level down — and it is why `AlertInbox` can stay a thin client shell around
  * server-rendered content.
  *
- * ── THE ROW IS NOT A BUTTON, AND THAT IS A DELIBERATE DEPARTURE ──
+ * ── THE ROW IS THE TRIGGER, AND IT LIVES ONE LEVEL UP ──
  *
- * The reference makes the whole row `role="button"` and opens the explainer on
- * click, with a hand-rolled `onkeydown` and a guard that ignores clicks landing
- * on the links inside it. That nests interactive controls inside a control: a
- * screen reader announces a button containing three buttons and a link, and the
- * guard exists precisely because the browser has no idea which one was meant.
+ * Clicking anywhere on a row opens its explainer in the right-side drawer, which
+ * is the reference's own behaviour and the reason the "expand →" pill reads as a
+ * control rather than a label. The click handling is in `AlertRowTrigger`
+ * (`alert-drawer.tsx`), which wraps this row in the inbox — so this component
+ * stays a SERVER component and the nine explainer bodies stay out of the client
+ * bundle.
  *
- * The affordance survives — the "expand ↓" pill is still there, and it is the
- * `<summary>` of the row's own `<details>`, so it opens on click, on Enter, on
- * Space, and it is announced as a disclosure. What is lost is being able to hit
- * the row's whitespace, which is worth trading for a row whose controls are all
- * reachable and all distinct.
+ * The pill below is therefore styling, not a second control: the row it sits in
+ * is the button. That is `V40-AL-EXPAND` — the affordance "reads as a real
+ * control, not a whisper" — and putting a real `<button>` inside a
+ * `role="button"` would give the row two controls where the design has one.
  *
  * ── WHAT EACH DENSITY SEES ──
  *
@@ -52,7 +51,13 @@ export function AlertRow({ alert }: { alert: AlertRecord }) {
   return (
     <div
       data-alert-category={alert.category}
-      className={`flex items-start gap-3 rounded-xl border border-mv-line bg-mv-card p-[13px_15px] shadow-mv ${
+      /* `.al-row[role="button"]:hover` sets `border-color: var(--green)` and
+         re-states the shadow it already has — so the hover is the green outline
+         and nothing else, which is what the stylesheet actually does rather than
+         what a lift would look like. */
+      className={`group/row flex items-start gap-3 rounded-xl border border-mv-line bg-mv-card p-[13px_15px] shadow-mv transition-colors ${
+        alert.explainer ? "hover:border-mv-green" : ""
+      } ${
         alert.unread
           ? "border-l-4 border-l-mv-green bg-[linear-gradient(165deg,var(--color-mv-card),var(--color-mv-portal-alert-tint))] group-data-[all-read=true]/inbox:border-l group-data-[all-read=true]/inbox:border-l-mv-line group-data-[all-read=true]/inbox:bg-mv-card group-data-[all-read=true]/inbox:bg-none"
           : ""
@@ -114,20 +119,17 @@ export function AlertRow({ alert }: { alert: AlertRecord }) {
           {alert.explainer && (
             <>
               {" "}
-              {/* The pill is `V40-AL-EXPAND`: the row's expand affordance "reads
-                  as a real control, not a whisper". It is styling only — the
-                  actual control is the `<summary>` in the panel below, so this
-                  span stays non-interactive rather than becoming a second one. */}
-              <span className="inline-block rounded-full border border-mv-green bg-mv-portal-expand-bg px-2.5 py-[2px] text-[11px] font-extrabold whitespace-nowrap text-mv-green-deep">
-                explain ↓
+              {/* `group-hover` fills it green, which is `V40-AL-EXPAND`'s own
+                  hover rule — the row is the hover target, so the pill has to
+                  read off an ancestor rather than itself. */}
+              <span className="inline-block rounded-full border border-mv-green bg-mv-portal-expand-bg px-2.5 py-[2px] text-[11px] font-extrabold whitespace-nowrap text-mv-green-deep group-hover/row:bg-mv-green group-hover/row:text-white">
+                expand →
               </span>
             </>
           )}
         </p>
 
         <AlertActions actions={alert.actions} />
-
-        {alert.explainer && <AlertExplainer explainer={alert.explainer} />}
       </div>
     </div>
   );

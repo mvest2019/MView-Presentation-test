@@ -4,6 +4,11 @@ import { ClaimRail } from "../_components/dashboard/unclaimed-dashboard";
 import { PortalActionFooter } from "../_components/ui/action-footer";
 import { portalGate } from "../_components/ui/portal-gating";
 import { AlertClassLegend } from "./_components/alert-class-legend";
+import {
+  AlertDrawerProvider,
+  type AlertDrawerPanel,
+} from "./_components/alert-drawer";
+import { AlertExplainerBody } from "./_components/alert-explainer";
 import { AlertInbox, type AlertInboxItem } from "./_components/alert-inbox";
 import { AlertRow } from "./_components/alert-row";
 import { AlertsEssentialsHero } from "./_components/alerts-essentials-hero";
@@ -62,13 +67,22 @@ import { alertRecords } from "./_lib/alert-records";
  * rather than a wrapper element: a provider renders no DOM, so sections 4 to 11
  * remain direct children of the page root. See `_components/alerts-read-state.tsx`.
  *
+ * ── THE EXPLAINER DRAWER ──
+ *
+ * `AlertDrawerProvider` holds which alert's explainer is open and renders the one
+ * right-side panel the whole page shares. Like `AlertsReadProvider` it emits no
+ * DOM of its own, so the sections below stay direct children of the page root and
+ * both `portal.css` gates keep reaching them.
+ *
  * ── WHAT SHIPS TO THE BROWSER ──
  *
- * The read-state provider, "Mark all read", the inbox shell (search + filter),
- * the `why?` tooltips and the prototype buttons. The nine alert ROWS are rendered
- * here, on the server, and handed to the inbox as nodes — see the note in
- * `_components/alert-inbox.tsx` for why that matters on a page whose text is
- * mostly nine four-heading explainers.
+ * The two providers, "Mark all read", the inbox shell (search + filter), the row
+ * triggers, the drawer chrome, the `why?` tooltips and the prototype buttons.
+ *
+ * The nine alert ROWS and the nine explainer BODIES are rendered here, on the
+ * server, and handed down as nodes. That is most of this page's text, and it is
+ * the reason opening a drawer needs no fetch and no client-side templating — the
+ * markup is already there, and only which panel is visible changes.
  */
 export const metadata: Metadata = {
   title: "Alerts",
@@ -89,28 +103,49 @@ export default function AlertsPage() {
     headline: alert.headline,
     meta: alert.meta,
     keywords: alert.keywords,
+    hasExplainer: alert.explainer !== undefined,
     row: <AlertRow alert={alert} />,
   }));
 
+  /*
+   * THE DRAWER PANELS, ALSO RENDERED HERE. One per alert that has an explainer;
+   * the drawer host shows whichever id is open and hides the rest, which is what
+   * the reference does with `ctxPane-<key>` elements inside one `#ctxBody`.
+   *
+   * The suffix is appended once rather than typed into nine titles: every panel
+   * in the design ends "— what this alert means", and it is the phrase that tells
+   * the reader what kind of panel just opened.
+   */
+  const panels: AlertDrawerPanel[] = alertRecords
+    .filter((alert) => alert.explainer)
+    .map((alert) => ({
+      id: alert.id,
+      title: `${alert.explainer!.title} — what this alert means`,
+      subtitle: alert.explainer!.subtitle,
+      body: <AlertExplainerBody explainer={alert.explainer!} />,
+    }));
+
   return (
     <AlertsReadProvider>
-      <div className={portalGate.pageRoot}>
-        <ClaimRail />
+      <AlertDrawerProvider panels={panels}>
+        <div className={portalGate.pageRoot}>
+          <ClaimRail />
 
-        <UnclaimedAlerts />
+          <UnclaimedAlerts />
 
-        <AlertsUltra />
+          <AlertsUltra />
 
-        <AlertsHeader />
-        <AlertsEssentialsHero />
-        <WatchLedgerPanel />
-        <AlertClassLegend />
-        <AlertInbox items={items} />
-        <QuietWeekCard />
-        <DeliveryNote />
+          <AlertsHeader />
+          <AlertsEssentialsHero />
+          <WatchLedgerPanel />
+          <AlertClassLegend />
+          <AlertInbox items={items} />
+          <QuietWeekCard />
+          <DeliveryNote />
 
-        <PortalActionFooter setKey="app-alerts" />
-      </div>
+          <PortalActionFooter setKey="app-alerts" />
+        </div>
+      </AlertDrawerProvider>
     </AlertsReadProvider>
   );
 }

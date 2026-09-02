@@ -8,6 +8,7 @@ import {
   type AlertFilter,
   type AlertFilterFields,
 } from "../_lib/alert-filters";
+import { AlertRowTrigger } from "./alert-drawer";
 import { AlertFilterBar } from "./alert-filter-bar";
 import { AlertSearchBox } from "./alert-search-box";
 import { useAlertsRead } from "./alerts-read-state";
@@ -31,13 +32,10 @@ import { useAlertsRead } from "./alerts-read-state";
  * ── HIDING, NOT UNMOUNTING ──
  *
  * A filtered-out row is `hidden`, exactly as the reference sets `display:none`.
- * Two reasons, and the second is the load-bearing one:
- *
- *   · An open explainer stays open when the reader clears the search. Unmounting
- *     would collapse every `<details>` they had opened, which is the state most
- *     worth preserving on this page.
- *   · The rows are server-rendered nodes handed in as props. Removing them from
- *     the tree and putting them back is churn for no gain when the total is nine.
+ * The rows are server-rendered nodes handed in as props, so removing them from
+ * the tree and putting them back is churn for no gain when the total is nine —
+ * and `hidden` is what the filter's own visibility test reads, so what the
+ * reader sees and what the empty state counts cannot disagree.
  *
  * ── SEARCH AND FILTER ARE `hide-s`, THE LIST IS NOT ──
  *
@@ -50,6 +48,8 @@ export interface AlertInboxItem extends AlertFilterFields {
   id: string;
   /** The finished row, rendered on the server. */
   row: ReactNode;
+  /** Whether this row opens a drawer. Two of the nine do not. */
+  hasExplainer: boolean;
 }
 
 export function AlertInbox({ items }: { items: AlertInboxItem[] }) {
@@ -103,10 +103,19 @@ export function AlertInbox({ items }: { items: AlertInboxItem[] }) {
         className="group/inbox flex flex-col gap-2.5"
         data-all-read={allRead}
       >
+        {/* THE WRAPPER IS THE ROW'S BUTTON. `AlertRowTrigger` is the click and
+            keyboard target that opens the explainer drawer, and it also carries
+            the filter's `hidden` — one node per alert rather than a trigger
+            inside a wrapper inside a row. */}
         {items.map((item) => (
-          <div key={item.id} hidden={!visibleIds.has(item.id)}>
+          <AlertRowTrigger
+            key={item.id}
+            alertId={item.id}
+            hidden={!visibleIds.has(item.id)}
+            hasExplainer={item.hasExplainer}
+          >
             {item.row}
-          </div>
+          </AlertRowTrigger>
         ))}
       </div>
     </section>

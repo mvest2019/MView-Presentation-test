@@ -173,6 +173,13 @@
   --color-mv-portal-ledger-ink: #2e6b52;
   --color-mv-portal-expand-bg: #f2fbf7; /* the row's "expand" pill  */
 
+  /* The evidence drawer's dark header — `.ctx-head` / `.ctx-sub` / `.ctx-back`.
+     Both are a shade off the nearest existing token (`mv-on-head-soft` #9fb4ab,
+     `mv-tint-strong` #dff0e8) and the header is 680px of flat dark green, which
+     is exactly where a near-miss shows. */
+  --color-mv-portal-drawer-sub: #9fc9b8;
+  --color-mv-portal-drawer-back-hover: #d9efe6;
+
   /* Status */
   --color-mv-amber: #b45309;
   --color-mv-down: #c0392b;

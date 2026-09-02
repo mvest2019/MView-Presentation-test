@@ -32,18 +32,20 @@ import type { AlertExplainer } from "./alert-types";
  *     money, and saying so is what stops the inbox reading as a payday.
  *   · "An estimate, not an appraisal."              on every forward figure.
  *
- * ── WHAT IS DELIBERATELY DROPPED ──
+ * ── THE SECOND-LEVEL PANELS ──
  *
  * Five explainers end with a button into a SECOND drawer — the permit table
  * (`permits38`), the gas chart (`priceGas`), the masked names (`matches3`), the
  * trend view (`permitTrend`), a private message to a co-owner (`dmMargaret`).
- * None of those surfaces exist in this build, and the portal's standing
- * convention is that an affordance never points at nothing (`portal-nav.ts`).
+ * None of those surfaces exists in this build.
  *
- * Their INFORMATION is kept — the 38 standing filings, the $3.245 print, the
- * three masked names all remain in the evidence lists where the design put them.
- * What is dropped is the chrome around it. Each one becomes a link again when
- * its module lands, and `openHref` already carries the door that matters.
+ * They are still rendered, through `deeper`, as prototype-acknowledging buttons:
+ * a real control at its real weight that says plainly what is missing when
+ * pressed. That is the portal's convention for an unbuilt destination on a
+ * REVIEWABLE control (`prototype-button.tsx`) — the greyed-out treatment is for
+ * navigation rows — and it matters here because the chip row under the evidence
+ * is part of how the panel reads. Each becomes a real opener when its panel
+ * lands.
  */
 
 /** Shared by three explainers — the reference repeats it verbatim. */
@@ -52,7 +54,7 @@ const SMITH_REPORT = leaseReportPath("305892");
 export const alertExplainers: Record<string, AlertExplainer> = {
   /* ── MONEY · the one row that asks something ─────────────────────────────── */
   "paid-check": {
-    title: "Produced — but were you paid?",
+    title: "✓ Produced — but were you paid?",
     subtitle:
       "Alert explainer · you stay on this page · Ledbetter (74318) · detected Jul 04, 6:02 AM",
     what: (
@@ -99,13 +101,24 @@ export const alertExplainers: Record<string, AlertExplainer> = {
         paid on your decimal interest, flagging anything off in plain English.
       </>
     ),
+    actions: [
+      {
+        label: "Run your included Lease Audit →",
+        href: "/lease-audit",
+        variant: "primary",
+      },
+      {
+        label: "See a sample report",
+        acknowledgement: "Sample report — opens here ✓ (prototype)",
+      },
+    ],
     openHref: { href: "/lease-audit", label: "Open the full view — the Lease Audit" },
     foot: "Your statements are analyzed, not stored — we keep the findings, never the documents.",
   },
 
   /* ── ACTIVITY · the nearby-permit list ──────────────────────────────────── */
   "permits-11": {
-    title: "11 permits within 1 mile of Ledbetter",
+    title: "⚑ 11 permits within 1 mile of Ledbetter",
     subtitle:
       "Alert explainer · you stay on this page · Cass County · list updated Jul 03",
     what: (
@@ -149,6 +162,7 @@ export const alertExplainers: Record<string, AlertExplainer> = {
         </li>
       </>
     ),
+    deeper: [{ label: "See them on the map + the permit table →" }],
     next: (
       <>
         Nothing is required of you — file this under &ldquo;good to know.&rdquo;
@@ -202,6 +216,9 @@ export const alertExplainers: Record<string, AlertExplainer> = {
         </li>
       </>
     ),
+    deeper: [
+      { label: "The trend view — windows · direction · month-coloured map →" },
+    ],
     next: (
       <>
         Nothing to do today. When the dated permit feed wires, this alert starts
@@ -213,7 +230,7 @@ export const alertExplainers: Record<string, AlertExplainer> = {
 
   /* ── ACTIVITY · a production posting ────────────────────────────────────── */
   "prod-smith": {
-    title: "New production — Smith Gas Unit (305892)",
+    title: "▤ New production — Smith Gas Unit (305892)",
     subtitle:
       "Alert explainer · you stay on this page · posted Jul 02 · Bluestem batch",
     what: (
@@ -270,7 +287,7 @@ export const alertExplainers: Record<string, AlertExplainer> = {
 
   /* ── MONEY · the price move ─────────────────────────────────────────────── */
   "gas-move": {
-    title: "Gas +1.53% touched your estimate",
+    title: "▲ Gas +1.53% touched your estimate",
     subtitle:
       "Alert explainer · you stay on this page · Henry Hub $3.245 · week of Jul 04",
     what: (
@@ -303,6 +320,7 @@ export const alertExplainers: Record<string, AlertExplainer> = {
         </li>
       </>
     ),
+    deeper: [{ label: "The gas price chart →" }],
     next: (
       <>
         Nothing to do — this is context, not a decision. If you want the story
@@ -313,7 +331,7 @@ export const alertExplainers: Record<string, AlertExplainer> = {
 
   /* ── COMMUNITY · a co-owner's post ──────────────────────────────────────── */
   "group-post": {
-    title: "Margaret D. posted in your group",
+    title: "◉ Margaret D. posted in your group",
     subtitle:
       "Alert explainer · you stay on this page · Smith Gas Unit — Owners · 2h ago",
     what: (
@@ -357,6 +375,7 @@ export const alertExplainers: Record<string, AlertExplainer> = {
         </li>
       </>
     ),
+    deeper: [{ label: "✉ Message Margaret privately" }],
     next: (
       <>
         Reply in the thread if you have an answer (the honest one: the posting
@@ -368,7 +387,7 @@ export const alertExplainers: Record<string, AlertExplainer> = {
 
   /* ── MODELS · the spacing indicator ─────────────────────────────────────── */
   "new-well": {
-    title: "New-well probability nudged up",
+    title: "◈ New-well probability nudged up",
     subtitle:
       "Alert explainer · you stay on this page · Bee units · Moderate band",
     what: (
@@ -421,7 +440,7 @@ export const alertExplainers: Record<string, AlertExplainer> = {
 
   /* ── ACTIVITY · the digest itself ───────────────────────────────────────── */
   briefing: {
-    title: "Your weekly briefing is ready",
+    title: "✉ Your weekly briefing is ready",
     subtitle: "Alert explainer · you stay on this page · week ending Jun 27",
     what: (
       <>
@@ -464,7 +483,7 @@ export const alertExplainers: Record<string, AlertExplainer> = {
 
   /* ── MONEY · the annual records refresh ─────────────────────────────────── */
   "records-3": {
-    title: "2026 owner records updated — 3 possible matches",
+    title: "✚ 2026 owner records updated — 3 possible matches",
     subtitle:
       "Alert explainer · you stay on this page · Karnes & DeWitt counties · refresh detected Jul 03",
     what: (
@@ -498,6 +517,7 @@ export const alertExplainers: Record<string, AlertExplainer> = {
         </li>
       </>
     ),
+    deeper: [{ label: "See the 3 masked names →" }],
     next: (
       <>
         Verify by the address on file — it takes about a minute per record — or say
@@ -505,6 +525,17 @@ export const alertExplainers: Record<string, AlertExplainer> = {
         refresh.
       </>
     ),
+    actions: [
+      {
+        label: "Verify in the claim flow →",
+        href: "/claim",
+        variant: "primary",
+      },
+      {
+        label: "None of these are mine — dismiss for good",
+        dismissal: "Dismissed for good ✓ — quiet until the next records refresh",
+      },
+    ],
     openHref: { href: "/claim", label: "Open the full view — the claim flow" },
   },
 };

@@ -83,7 +83,7 @@ export interface AlertAction {
  * rather than a drawer.
  */
 export interface AlertExplainer {
-  /** The drawer's title, minus the glyph the icon box already carries. */
+  /** The drawer's title. Carries the design's own leading glyph. */
   title: string;
   /** The provenance line — "Alert explainer · Ledbetter (74318) · …". */
   subtitle: string;
@@ -91,7 +91,19 @@ export interface AlertExplainer {
   means: ReactNode;
   /** The bullet list. A node, because every item carries emphasis. */
   evidence: ReactNode;
+  /**
+   * CONTROLS THAT OPENED A SECOND DRAWER — the permit table, the gas chart, the
+   * masked names, the trend view, a private message to a co-owner.
+   *
+   * They sit under the evidence, which is where the design puts them: they are
+   * the "show me" for the facts just listed. None of those panels exists in this
+   * build, so they render as prototype-acknowledging buttons rather than being
+   * dropped — the row of chips is part of how the drawer reads.
+   */
+  deeper?: { label: string }[];
   next: ReactNode;
+  /** Buttons under "What to do next" — the design's own per-alert set. */
+  actions?: AlertAction[];
   /** The optional deeper view, and its own wording. */
   openHref?: { href: string; label: string };
   /** The closing caveat, when the design gives one. */

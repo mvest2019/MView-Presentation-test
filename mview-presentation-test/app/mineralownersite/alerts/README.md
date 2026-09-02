@@ -37,13 +37,15 @@ alerts/
     ├── delivery-class-badge.tsx    Urgent · digest · Educational · Community
     ├── alert-why.tsx               ⚡ the `why?` gloss, on tap as well as hover
     ├── alert-actions.tsx           the button row — link · prototype · dismissal
-    ├── alert-explainer.tsx         the four-heading panel, as `<details>`
+    ├── alert-drawer.tsx            ⚡ the one drawer host + the row trigger
+    ├── alert-explainer.tsx         the four-heading drawer body
     ├── quiet-week-card.tsx         what next week probably looks like
     ├── delivery-note.tsx           delivery · dedup · retention
     └── unclaimed-alerts.tsx        the nc-only page replacement
 ```
 
-`⚡` = `"use client"`. Six of twenty-one. **The nine alert rows and all nine
+`⚡` = `"use client"`. Seven of twenty-two, plus
+`_components/ui/context-drawer.tsx` one level up. **The nine alert rows and all nine
 explainers are server-rendered** and handed to the client inbox shell as nodes —
 the same arrangement `leases/_components/leases-tabs.tsx` uses, and the reason
 most of this page's text never enters the client bundle.
@@ -137,36 +139,48 @@ vanishes when the reader picks a calmer density. So the two were separated: the
 | `claimed` / `lapsed` | the funnel bar and the state card appear from the shell; this route carries no `cl-lock` of its own — see the hole below | matches |
 | `unclaimed` | the claim rail, then the sample inbox replaces the page | matches |
 
-## Two departures from the prototype's interaction model
+## The explainer drawer
 
-**The row is not a `role="button"`.** The prototype makes the whole row a button
-that opens the explainer, with a hand-rolled `onkeydown` and a guard ignoring
-clicks that land on the links inside it — interactive controls nested inside a
-control, announced by a screen reader as a button containing three buttons and a
-link. The affordance survives as the `<summary>` of the row's own `<details>`, so
-it opens on click, Enter and Space and is announced as a disclosure. What is lost
-is clicking the row's whitespace.
+`expand →` on any row opens the design's right-side evidence drawer — the surface
+`mvCtxOpen()` opens throughout the reference. Ported as the prototype has it:
 
-**The explainer is inline, not a right-side drawer.** The drawer's stated purpose
-is that the owner *stays where they are* — "explanation is the default;
-navigation is the choice" — which an inline `<details>` under the row satisfies
-better, with the alert still on screen and nothing overlaid. It also prints,
-survives find-in-page, and works with JavaScript off, none of which
-`mvCtxOpen()` did.
+- The **whole row** is the trigger (`role="button"`, `tabIndex=0`, Enter and
+  Space), with the prototype's own guard — a click landing on a link or button
+  inside the row belongs to that control, so "Run your included Lease Audit"
+  navigates instead of opening an explainer.
+- **One drawer, nine panels.** A single `#ctxDrawer` whose body holds every panel
+  with all but one hidden, exactly as the reference's `ctxPane-<key>` elements
+  work. Never two scrims, and opening a panel needs no fetch and no client-side
+  templating.
+- Dark header with **← Back**, the title carrying the design's own glyph, the
+  provenance subtitle and **✕**; scrim over the page; slide-in over 280ms.
+- **Escape**, focus moved into the panel on open, focus **restored to the row**
+  on close, Tab cycled inside, page scroll locked while open. The reference calls
+  this "a real dialog" (v38 · P1-13) and these are the four things that make it
+  one.
+- Full width below 680px, so the panel is the screen on a phone.
 
-## What was dropped, and what was kept from it
+The panels themselves are **server-rendered** and passed to the client host as
+nodes, so nine four-heading explainers — most of this page's text — never enter
+the client bundle.
 
-Five explainers ended with a button opening a **second** drawer: the permit table
-(`permits38`), the gas chart (`priceGas`), the masked names (`matches3`), the
-trend view (`permitTrend`), a private message to a co-owner (`dmMargaret`). None
-of those surfaces exist in this build, and the portal does not point an
-affordance at nothing (`portal-nav.ts`).
+`_components/ui/context-drawer.tsx` is portal-wide rather than module-local,
+because the reference opens the same drawer from the dashboard's alert cards, the
+permit views, the price charts and the audit hooks.
 
-Their **information** is kept — the 38 standing filings, the $3.245 print, the
-three masked name variants all remain in the evidence lists where the design put
-them. Only the chrome is gone. The records-refresh row's "See the 3 masked names"
-button went the same way for a second reason: the names are already in that row's
-own explainer, one click away in the same place.
+**Second-level panels are rendered, not dropped.** Five explainers end with a
+control that opened a *second* drawer: the permit table (`permits38`), the gas
+chart (`priceGas`), the masked names (`matches3`), the trend view
+(`permitTrend`), a private message to a co-owner (`dmMargaret`). None of those
+panels exists in this build, so each renders through `PrototypeButton` — a real,
+enabled control at its real weight that says plainly what is missing when
+pressed. That chip row is part of how the drawer reads.
+
+**One honest cost, recorded rather than fixed.** A `role="button"` containing its
+own buttons and links is not a shape a screen reader can describe well, and the
+guard exists because the browser cannot tell which control was meant either. The
+row is nonetheless keyboard-operable and the drawer is a real dialog. Ported as
+the design has it.
 
 ## Known holes left matching the design
 
