@@ -2,13 +2,15 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { ClaimRail } from "../../_components/dashboard/unclaimed-dashboard";
-import { PortalButtonLink } from "../../_components/ui/button";
 import { PortalActionFooter } from "../../_components/ui/action-footer";
+import { PortalButtonLink } from "../../_components/ui/button";
 import { Card } from "../../_components/ui/card";
 import { gates, portalGate } from "../../_components/ui/portal-gating";
-import { UltraHero } from "../../_components/ui/ultra-hero";
 import { ViewTierLink } from "../../_components/ui/view-tier-link";
 import { formatLeaseTitle } from "../_lib/lease-format";
+import { BenchmarkNote } from "./_components/benchmark-note";
+import { DeclineCurvePanel } from "./_components/decline-curve-panel";
+import { EstimateExplainer } from "./_components/estimate-explainer";
 import { LeaseBottomTiles } from "./_components/lease-bottom-tiles";
 import { LeaseReportNav } from "./_components/lease-report-nav";
 import { LeaseReportUnclaimed } from "./_components/lease-report-unclaimed";
@@ -112,34 +114,12 @@ export default async function LeaseReportPage({
   const eventCount = report.changes.filter((row) => row.tone === "event").length;
 
   return (
-    <div className={portalGate.pageRoot}>
+    <div className={`${portalGate.pageRoot} ${portalGate.reportRoot}`}>
       <ClaimRail />
       <LeaseReportUnclaimed lease={report.lease} />
 
-      {/* THE ULTRA TIER replaces the page: one headline, one sentence, one step
-          back to the list. `UltraHero` is the shared primitive, so this report
-          and the lease list read identically at that tier. */}
-      <div className={gates("ultraOnly")}>
-        <UltraHero
-          kicker={title}
-          headline={<>{report.ultra.headline}</>}
-          status={<>{report.ultra.body}</>}
-          action={
-            <ViewTierLink tier="simple" variant="primary" size="lg">
-              Read the plain-English report
-            </ViewTierLink>
-          }
-          note="We check this lease against the public record daily and will tell you if anything changes."
-        />
-      </div>
-
-      <div>
-        <PortalButtonLink size="sm" href="/mineralownersite/leases">
-          ← Back to My Leases
-        </PortalButtonLink>
-      </div>
-
-      <div>
+      {/* Kept at Ultra — it names the lease. The design's `.rpt-crumb`. */}
+      <div className={portalGate.ultraKeep}>
         <LeaseReportNav
           leaseNumber={report.lease.number}
           leaseTitle={title}
@@ -149,6 +129,32 @@ export default async function LeaseReportPage({
 
       <LeaseTitleCard report={report} />
       <OwnerValueCard report={report} />
+
+      {/*
+        THE ULTRA CARD — an ordinary card with a green top edge, NOT the big
+        centred hero the list pages use.
+
+        That difference is the design's, and it follows from what Ultra means on
+        a report. The list pages replace the whole page with one enormous
+        sentence; a report keeps its title card and its value card (see the
+        `mv-report-routes` rule in `portal.css`) and swaps only the body. A
+        640px centred hero underneath those two cards would read as a third
+        competing headline rather than as the calm summary it is.
+
+        Two actions, as the design has them: up a tier, or back to the list.
+      */}
+      <Card className={`mb-3.5 border-t-[3px] border-t-mv-green ${gates("ultraOnly")}`}>
+        <h3 className="mb-1.5 text-lg font-bold">{report.ultra.headline}</h3>
+        <p className="mb-2.5 text-[15px]">{report.ultra.body}</p>
+        <div className="flex flex-wrap gap-2">
+          <ViewTierLink tier="simple" variant="primary">
+            Read the plain-English report
+          </ViewTierLink>
+          <PortalButtonLink href="/mineralownersite/leases">
+            ← My Leases
+          </PortalButtonLink>
+        </div>
+      </Card>
 
       {/* THE ESSENTIALS TIER's plain-English answer, in four rows: what it is
           worth, where it sits in the total, what just happened, what to do. The
@@ -165,7 +171,23 @@ export default async function LeaseReportPage({
               <span className="flex-none text-[10.5px] font-extrabold tracking-[0.05em] text-mv-faint uppercase min-[560px]:w-[168px]">
                 {row.q}
               </span>
-              <span>{row.a}</span>
+              {/* Strings are prose; `{ money }` segments carry `cl-lock`, so
+                  the claimed state blurs the figure and leaves the sentence
+                  around it readable. See `CopySegment`. */}
+              <span>
+                {row.a.map((segment, index) =>
+                  typeof segment === "string" ? (
+                    segment
+                  ) : (
+                    <span
+                      key={index}
+                      className={`font-semibold tabular-nums ${portalGate.lockedValue}`}
+                    >
+                      {segment.money}
+                    </span>
+                  ),
+                )}
+              </span>
             </div>
           ))}
         </div>
@@ -209,7 +231,14 @@ export default async function LeaseReportPage({
               </>
             )}
 
+            {/* The forecast, then how the area compares, then the cheque, then
+                the derivation of the headline figure — the design's own order.
+                Each of the three renders only where its data exists, so the
+                eight uncaptured leases fall straight through to the tiles. */}
+            <DeclineCurvePanel report={report} />
+            <BenchmarkNote leaseNumber={report.lease.number} />
             <NextPaymentCard report={report} />
+            <EstimateExplainer report={report} />
             <LeaseBottomTiles report={report} />
           </>
         )}

@@ -3,8 +3,15 @@ import Link from "next/link";
 import { Badge, EstimateBadge } from "../../../_components/ui/badge";
 import { Card, CardHeader, StatRow } from "../../../_components/ui/card";
 import { Notice } from "../../../_components/ui/notice";
-import { gates } from "../../../_components/ui/portal-gating";
-import { formatLeaseTitle } from "../../_lib/lease-format";
+import { gates, portalGate } from "../../../_components/ui/portal-gating";
+import { ViewTierLink } from "../../../_components/ui/view-tier-link";
+import {
+  formatCount,
+  formatDollars,
+  formatLeaseTitle,
+  spellOut,
+} from "../../_lib/lease-format";
+import { leaseRecords } from "../../_lib/lease-records";
 import type { LeaseReportRecord } from "../_lib/lease-report-types";
 import { WhatChangedCard } from "./what-changed-card";
 
@@ -35,6 +42,11 @@ import { WhatChangedCard } from "./what-changed-card";
  */
 export function ReservoirPanel({ report }: { report: LeaseReportRecord }) {
   const { reservoir, lease } = report;
+  /* "its three sister units" — the leases sharing this one's name. Derived, so
+     the sentence cannot outlive the record. */
+  const siblingCount = leaseRecords.filter(
+    (entry) => entry.name === lease.name && entry.number !== lease.number,
+  ).length;
 
   return (
     <>
@@ -43,16 +55,25 @@ export function ReservoirPanel({ report }: { report: LeaseReportRecord }) {
       </h3>
       <p className="mb-3 text-[13px] text-mv-muted">
         Reservoir report · the rock unit {lease.number} produces from · first
-        production {report.firstProduction}
-        {report.operatorNote ? ` · ${report.operatorNote}` : ""}
+        production <strong>{report.firstProduction}</strong>
+        {report.operatorNote && (
+          <>
+            {" "}
+            · original operator{" "}
+            <strong>{report.operatorNote.replace("originally ", "")}</strong>
+          </>
+        )}
       </p>
 
       <Notice tone="mint" glyph="◎" className="mb-3.5">
         <strong>How Texas leases work:</strong> a lease produces from{" "}
         <strong>one reservoir</strong> and may have{" "}
         <strong>multiple wells</strong>. This tab is the reservoir report for unit{" "}
-        {lease.number} — any sister units are separate leases with their own
-        reservoirs.
+        {lease.number} —{" "}
+        {siblingCount > 0
+          ? `its ${spellOut(siblingCount)} sister unit${siblingCount === 1 ? " is a separate lease with its own reservoir" : "s are separate leases with their own reservoirs"}`
+          : "any sister units are separate leases with their own reservoirs"}
+        .
       </Notice>
 
       <WhatChangedCard
@@ -83,7 +104,11 @@ export function ReservoirPanel({ report }: { report: LeaseReportRecord }) {
               <strong>Well {well.name}</strong>{" "}
               <span className="text-mv-muted">API {well.api}</span>
               <span className="block text-[11px] text-mv-muted">
-                {well.status} · {lease.operator}
+                {[well.wellType, well.status,
+                  well.latestPosting && `latest posting ${well.latestPosting}`,
+                  lease.operator]
+                  .filter(Boolean)
+                  .join(" · ")}
               </span>
             </span>
             <Badge tone={well.status === "Producing" ? "mint" : "slate"} size="xs">
@@ -92,6 +117,44 @@ export function ReservoirPanel({ report }: { report: LeaseReportRecord }) {
           </div>
         ))}
       </Card>
+
+      {/*
+        THE ESSENTIALS CARD — the whole reservoir in four sentences.
+
+        `tier-s`, so it replaces the record tables for a plain-English reader
+        rather than sitting on top of them. Every figure in it is derived: the
+        rock's short name, the reserves still expected, and the owner's own share
+        — which carries `cl-lock`, because on this tier it is the one number the
+        claimed state withholds.
+
+        It was missing entirely, which left Essentials with a change card, a
+        narrative and two record tables and no answer to "so how much is left?".
+      */}
+      {report.recovery && (
+        <Card
+          className={`mb-3.5 border-l-4 border-l-mv-green ${gates("essentialsOnly")}`}
+        >
+          <h3 className="mb-1.5 text-lg font-bold">
+            The rock this unit drinks from
+          </h3>
+          <p className="mb-2.5 text-[15px]">
+            This unit produces natural gas from a rock layer called the{" "}
+            {reservoir.shortName}. Most of its gas has already been produced, but
+            about{" "}
+            <strong>
+              {formatCount(report.recovery.reservesGas)} units of gas
+            </strong>{" "}
+            are still expected over the next six years — that&rsquo;s where your{" "}
+            <strong
+              className={`tabular-nums ${portalGate.lockedValue}`}
+            >
+              {formatDollars(lease.mvestimate)}
+            </strong>{" "}
+            comes from.
+          </p>
+          <ViewTierLink tier="detailed">See the details</ViewTierLink>
+        </Card>
+      )}
 
       {reservoir.narrative.length > 0 && (
         <Card className="mb-4 border-l-4 border-l-mv-green">
@@ -112,9 +175,13 @@ export function ReservoirPanel({ report }: { report: LeaseReportRecord }) {
               gets the history. */}
           <p className="mb-2 text-[13.5px]">{reservoir.narrative[0]}</p>
           {reservoir.narrative.length > 1 && (
-            <details>
-              <summary className="cursor-pointer list-none text-[11px] font-bold text-mv-green-deep [&::-webkit-details-marker]:hidden">
-                Read more — the history of this rock, and why it matters to you →
+            <details className="group">
+              {/* A bordered summary, not a bare link: the design gives this one
+                  its own box because it is a section of the card rather than a
+                  footnote on it. */}
+              <summary className="cursor-pointer list-none rounded-[8px] border border-mv-line px-2.5 py-1.5 text-[11px] font-bold text-mv-green-deep hover:bg-mv-bg [&::-webkit-details-marker]:hidden">
+                <span aria-hidden="true">ⓘ </span>Read more — the history of this
+                rock, and why it matters to you →
               </summary>
               <div className="mt-1.5">
                 {reservoir.narrative.slice(1).map((paragraph) => (
@@ -127,41 +194,104 @@ export function ReservoirPanel({ report }: { report: LeaseReportRecord }) {
           )}
           <p className="mt-2 text-[10px] text-mv-muted">
             A short orientation, not a geological report — the numbers live in the
-            table on this tab.
-            {lease.play.startsWith("Not classified") &&
-              " The formal play classification for this field is not classified in the state's play table — a confirmed source gap, not a data error."}
+            tables on this tab.
+            {lease.play.startsWith("Not classified") && (
+              <>
+                {" "}
+                The formal play classification for this field is{" "}
+                <strong>not classified in the state&rsquo;s play table</strong> (a
+                confirmed source gap, not a data error) — we say so rather than
+                invent one.
+              </>
+            )}
           </p>
         </Card>
       )}
 
-      <Card className="mb-4">
-        <CardHeader
-          title={
-            <h4 className="text-[15px] font-bold">
-              Reservoir extent — where your unit sits in the rock
-            </h4>
-          }
-          action={
-            <Badge tone="slate" size="xs">
-              Outline not available yet
-            </Badge>
-          }
-        />
-        <p className="text-[13px] text-mv-muted">
-          Reservoir outline geometry has no source in this build, so no boundary
-          is drawn. The unit&rsquo;s own traced boundary and every wellbore around
-          it are on the{" "}
-          <Link
-            href={`/mineralownersite/leases/${lease.number}`}
-            className="font-semibold text-mv-green-deep"
-          >
-            Lease report&rsquo;s map
-          </Link>
-          , which is real geometry today.
-        </p>
-      </Card>
+      {/*
+        THE EXTENT PANEL — a real basemap with the unit pinned, and an honest
+        badge saying the OUTLINE is what is missing.
 
-      <div className={`grid gap-[18px] min-[900px]:grid-cols-2 ${gates("hideInEssentials")}`}>
+        The reservoir boundary has no source, so none is drawn. What the design
+        does draw is an Esri World Topo raster of the surrounding area with the
+        unit marked, because "where in the county am I" is answerable today and
+        is most of what a reader wants from this panel. An empty bordered box
+        would have answered neither question.
+      */}
+      <div className="mb-4 overflow-hidden rounded-mv border border-mv-line bg-mv-card shadow-mv">
+        <div className="p-[22px] pb-0">
+          <CardHeader
+            title={
+              <h4 className="text-[15px] font-bold">
+                Reservoir extent — where your unit sits in the rock
+              </h4>
+            }
+            action={
+              <Badge tone="blue" size="xs">
+                Outline not available yet
+              </Badge>
+            }
+          />
+        </div>
+
+        {reservoir.extentBbox && (
+          <div className="relative mt-3 aspect-7/4 w-full overflow-hidden bg-mv-bg">
+            {/* A plain `<img>`, not `next/image`: the URL is an Esri export with
+                a bbox in it, so there is nothing for the optimiser to resize and
+                a loader would only add a hop. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`https://services.arcgisonline.com/arcgis/rest/services/World_Topo_Map/MapServer/export?bbox=${reservoir.extentBbox.join(
+                ",",
+              )}&bboxSR=4326&size=700,400&format=png&f=image`}
+              alt={`Esri topographic map of the ${reservoir.name} area, ${reservoir.county} County — reservoir outline pending`}
+              loading="lazy"
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+            {/* The unit's pin sits at the frame's centre because the bbox is
+                built around it. */}
+            <span
+              aria-hidden="true"
+              title={formatLeaseTitle(lease.name, lease.number)}
+              className="absolute top-[46%] left-1/2 h-2.5 w-2.5 -translate-x-1/2 rounded-full border-2 border-white bg-mv-green-deep shadow-[0_0_0_3px_rgba(46,143,109,.35)]"
+            />
+            <span className="absolute top-[50.5%] left-1/2 -translate-x-1/2 rounded-[6px] bg-mv-card/85 px-2 py-0.5 text-[11px] font-bold whitespace-nowrap text-mv-ink">
+              {formatLeaseTitle(lease.name, lease.number)} — your unit
+            </span>
+            <span className="absolute bottom-[6%] left-1/2 max-w-[92%] -translate-x-1/2 text-center text-[11px] text-mv-slate">
+              The interactive well view loads on top — the wells around the unit
+              draw here. Reservoir outline: not available yet.
+            </span>
+          </div>
+        )}
+
+        <div className="p-[22px] pt-3">
+          <p className="text-[11px] text-mv-muted">
+            Live all-wells view — every well around the{" "}
+            {lease.name.split(" ")[0]} units streams by viewport. Reservoir
+            boundary + member wells + nearby drilling render from the extent
+            geometry.
+          </p>
+          <p className="mt-1.5 text-[11px] text-mv-muted">
+            The unit&rsquo;s own traced boundary and every wellbore around it are
+            on the{" "}
+            <Link
+              href={`/mineralownersite/leases/${lease.number}`}
+              className="font-semibold text-mv-green-deep"
+            >
+              Lease report&rsquo;s map
+            </Link>
+            , which is real geometry today.
+          </p>
+        </div>
+      </div>
+
+      {/* ONLY THE TOTALS CARD IS `hide-s`. The design leaves the reservoir RECORD
+          ungated — field, play, county, first production, which lease and which
+          wells — and hides only the recovery figures beside it. Wrapping both in
+          one gated grid hid the record from Essentials, which is the tier least
+          likely to know what a reservoir is. */}
+      <div className="grid gap-[18px] min-[900px]:grid-cols-2">
         <Card>
           <CardHeader
             title={<h4 className="text-[15px] font-bold">Reservoir — {reservoir.name}</h4>}
@@ -180,17 +310,47 @@ export function ReservoirPanel({ report }: { report: LeaseReportRecord }) {
             value={`${lease.county} · RRC ${report.district}`}
           />
           <StatRow label="First production" value={report.firstProduction} />
+          {/* The operator who drilled it — a reservoir fact, and the row the
+              record card was missing. */}
+          {report.operatorNote && (
+            <StatRow
+              label="Original operator"
+              value={report.operatorNote.replace("originally ", "")}
+            />
+          )}
           <StatRow
             label="Producing lease"
-            value={formatLeaseTitle(lease.name, lease.number)}
+            value={
+              <Link
+                href={`/mineralownersite/leases/${lease.number}`}
+                className="font-semibold text-mv-green-deep"
+              >
+                {formatLeaseTitle(lease.name, lease.number)} →
+              </Link>
+            }
           />
+          {/* Each well links to the Wells tab, as the design has it: "Well 5L →". */}
           <StatRow
             label="Wells in this reservoir"
-            value={report.wells.map((w) => `Well ${w.name}`).join(", ")}
+            value={
+              <>
+                {report.wells.map((well, index) => (
+                  <span key={well.api}>
+                    {index > 0 && ", "}
+                    <Link
+                      href={`/mineralownersite/leases/${lease.number}?report=wells`}
+                      className="font-semibold text-mv-green-deep"
+                    >
+                      Well {well.name} →
+                    </Link>
+                  </span>
+                ))}
+              </>
+            }
           />
         </Card>
 
-        <Card>
+        <Card className={gates("hideInEssentials")}>
           <CardHeader
             title={
               <h4 className="text-[15px] font-bold">
@@ -202,6 +362,10 @@ export function ReservoirPanel({ report }: { report: LeaseReportRecord }) {
             <StatRow key={row.label} label={row.label} value={row.value} />
           ))}
           <p className="mt-2 text-[10px] text-mv-muted">
+            A {report.recovery && report.recovery.eurGas > report.recovery.eurOil * 50 ? "gas" : "oil"}-weighted
+            reservoir — the {report.recovery && report.recovery.eurGas > report.recovery.eurOil * 50 ? "Nat Gas" : "WTI"}{" "}
+            price matters more here than{" "}
+            {report.recovery && report.recovery.eurGas > report.recovery.eurOil * 50 ? "WTI" : "Nat Gas"}.{" "}
             <EstimateBadge plural />
           </p>
         </Card>

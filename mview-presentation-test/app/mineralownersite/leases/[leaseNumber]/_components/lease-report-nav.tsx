@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { PortalButtonLink } from "../../../_components/ui/button";
-import { formatLeaseTitle } from "../../_lib/lease-format";
+import { formatLeaseShortLabel } from "../../_lib/lease-format";
 import { leaseReportPath } from "../../_lib/lease-routes";
 import { leaseReportNeighbours } from "../_lib/lease-report-records";
 import type { ReportTab } from "../_lib/lease-report-types";
@@ -48,6 +48,17 @@ export function LeaseReportNav({
 
   return (
     <>
+      {/* THE BACK CONTROL IS TWO THINGS, as the design has it: a short "← Back"
+          pill and the destination as plain text beside it. One long button
+          reading "← Back to My Leases" was wider than the crumb underneath it
+          and repeated the crumb's own first segment at button weight. */}
+      <div className="mb-1.5 flex flex-wrap items-baseline gap-2">
+        <PortalButtonLink size="sm" href="/mineralownersite/leases">
+          ← Back
+        </PortalButtonLink>
+        <span className="text-[13px] text-mv-muted">to My Leases</span>
+      </div>
+
       <nav
         aria-label="Report breadcrumb"
         className="flex flex-wrap items-center gap-1.5 text-[13px] text-mv-muted"
@@ -75,7 +86,7 @@ export function LeaseReportNav({
             scroll={false}
             href={leaseReportPath(pager.previous.number)}
           >
-            ← {formatLeaseTitle(pager.previous.name, pager.previous.number)}
+            ← {formatLeaseShortLabel(pager.previous.name, pager.previous.number)}
           </PortalButtonLink>
 
           <span className="text-[11px] text-mv-muted">
@@ -88,7 +99,7 @@ export function LeaseReportNav({
             scroll={false}
             href={leaseReportPath(pager.next.number)}
           >
-            {formatLeaseTitle(pager.next.name, pager.next.number)} →
+            {formatLeaseShortLabel(pager.next.name, pager.next.number)} →
           </PortalButtonLink>
         </div>
       )}

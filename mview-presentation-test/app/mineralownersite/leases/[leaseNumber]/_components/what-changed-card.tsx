@@ -68,19 +68,29 @@ export function WhatChangedCard({
       </div>
 
       <div className="mt-2">
+        {/*
+          A ROW WITH NO HEADLINE DROPS ITS GLYPH TOO.
+
+          When nothing changed there is one row and it is a sentence, not an
+          event: the design renders it as plain prose, because the badge in the
+          corner already says "No changes this period" and a glyph beside a
+          non-event implies one happened. Rows WITH a headline keep their marker.
+        */}
         {rows.map((row) => (
           <div
-            key={row.headline}
+            key={row.headline || row.body.slice(0, 24)}
             className="flex items-start gap-2.5 border-t border-dashed border-mv-line py-[7px] text-[13.5px] first:border-t-0"
           >
-            <span
-              aria-hidden="true"
-              className={`inline-flex h-[22px] w-[22px] flex-none items-center justify-center rounded-[7px] text-xs font-extrabold ${TONES[row.tone]}`}
-            >
-              {row.glyph}
-            </span>
+            {row.headline && (
+              <span
+                aria-hidden="true"
+                className={`inline-flex h-[22px] w-[22px] flex-none items-center justify-center rounded-[7px] text-xs font-extrabold ${TONES[row.tone]}`}
+              >
+                {row.glyph}
+              </span>
+            )}
             <div className="min-w-0">
-              <strong>{row.headline}</strong> {row.body}
+              {row.headline && <strong>{row.headline}</strong>} {row.body}
               {row.batch && (
                 <span className="ml-1">
                   {row.batch.map((number, index) => {

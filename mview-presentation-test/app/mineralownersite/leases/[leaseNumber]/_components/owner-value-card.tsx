@@ -47,7 +47,10 @@ export function OwnerValueCard({ report }: { report: LeaseReportRecord }) {
     <div
       role="group"
       aria-label="Your interest in this lease"
-      className="mb-3.5 rounded-mv p-[18px] text-white shadow-mv-lg bg-[linear-gradient(160deg,var(--color-mv-ink),var(--color-mv-portal-band-end))]"
+      /* `ultraKeep`: the design pins this card across all four tiers and the
+         whole report stack — the Ultra sentence ends "your share: the number
+         above", which needs a number above it. */
+      className={`mb-3.5 rounded-mv p-[18px] text-white shadow-mv-lg bg-[linear-gradient(160deg,var(--color-mv-ink),var(--color-mv-portal-band-end))] ${portalGate.ultraKeep}`}
     >
       <div className="flex flex-wrap items-stretch gap-x-[26px] gap-y-3 px-0.5">
         <div className="flex min-w-[240px] flex-1 flex-col justify-center gap-1 px-1.5 pt-1.5 pb-1">

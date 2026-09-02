@@ -1,11 +1,11 @@
-import Link from "next/link";
-
 import {
   portalActions,
   portalActionSets,
   type PortalActionSetKey,
 } from "../../_lib/portal-actions";
+import { PortalButtonLink } from "./button";
 import { gates } from "./portal-gating";
+import { PrototypeButton } from "./prototype-button";
 
 /**
  * "WHAT DO YOU WANT TO DO NEXT?" — the card every portal route ends with.
@@ -48,32 +48,41 @@ export function PortalActionFooter({ setKey }: { setKey: PortalActionSetKey }) {
         </span>
       </div>
 
+      {/*
+        ALL FOUR ARE GHOST BUTTONS, none emphasised and none disabled — the
+        design builds every chip in this row as `btn btn-ghost btn-sm`. Giving
+        the Lease Audit a green fill made it the page's loudest control, which
+        contradicts the line directly above it: no action is a fine choice.
+
+        The three without a built destination use the prototype's own
+        acknowledgement idiom rather than a greyed-out label. See
+        `PrototypeButton` for why that is the honest choice here.
+      */}
       <div className="mt-2.5 flex flex-wrap gap-2">
         {actions.map((id) => {
           const action = portalActions[id];
 
           if (action.href) {
             return (
-              <Link
+              <PortalButtonLink
                 key={id}
+                size="sm"
                 href={action.href}
                 title={action.hint}
-                className="inline-flex items-center gap-2 rounded-[10px] border border-transparent bg-mv-green px-3 py-1.5 text-[13px] font-semibold text-mv-green-ink no-underline transition-[filter] hover:brightness-105"
               >
                 {action.label}
-              </Link>
+              </PortalButtonLink>
             );
           }
 
           return (
-            <span
+            <PrototypeButton
               key={id}
-              aria-disabled="true"
-              title={`${action.hint} — not open yet`}
-              className="inline-flex cursor-default items-center gap-2 rounded-[10px] border border-mv-line bg-mv-bg px-3 py-1.5 text-[13px] font-semibold text-mv-muted opacity-70"
+              title={action.hint}
+              acknowledgement={`${action.label} — opens here ✓ (prototype)`}
             >
-              {action.label} — soon
-            </span>
+              {action.label}
+            </PrototypeButton>
           );
         })}
       </div>

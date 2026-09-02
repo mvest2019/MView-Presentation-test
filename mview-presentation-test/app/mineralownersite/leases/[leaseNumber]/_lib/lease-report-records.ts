@@ -1,5 +1,6 @@
 import { formatCount, formatDollars, formatLeaseTitle } from "../../_lib/lease-format";
 import { leaseRecords } from "../../_lib/lease-records";
+import { crowA2HCurve } from "./decline-curve-record";
 import type { LeaseRecord } from "../../_lib/lease-types";
 import type { LeaseReportRecord } from "./lease-report-types";
 
@@ -45,6 +46,9 @@ const smithReport: LeaseReportRecord = {
   wellsProducing: 1,
   operatorNote: "originally Chevron USA, Inc.",
   grossValuation: 1_100_000,
+  /* The model's own output before the banner's rounding. See
+     `EstimateExplainer` for the arithmetic this does NOT reconcile with. */
+  exactGrossValuation: 1_099_456,
   /* The owner's appraised $3,510 ÷ DI 0.00538700. Our arithmetic, not a CAD
      figure — no appraisal roll publishes a whole-unit value, and the card that
      prints this says so beside it. */
@@ -77,6 +81,20 @@ const smithReport: LeaseReportRecord = {
     "Data check resolved on this record: this unit has a real, producing Bluestem gas well — 5L (API 42-025-71286). Two source fields are genuinely blank upstream, so we say so instead of guessing: acreage is not reported to the RRC for this unit, and the play is not classified in the state's play table. Neither gap affects the $8,700 estimate, which is built on the unit's real posted gas.",
     "Why two valuation numbers: ours is a forward market cash-flow projection; the county's is a conservative annual tax value of your interest that lags about a year. Different jobs — both real. We show both and flag big gaps; we never rescale your estimate to match the county's.",
   ],
+  recovery: {
+    eurOil: 15_452,
+    producedOil: 15_072,
+    reservesOil: 380,
+    eurGas: 3_625_715,
+    producedGas: 3_335_715,
+    reservesGas: 290_000,
+  },
+  allocation: { splitComputed: "6 Aug 2026", curveResolved: "1 Feb 2026" },
+  /* The one lease in the module with a published engine fit to read. */
+  declineCurve: crowA2HCurve,
+  compareWith: "74318",
+  compareNote:
+    "Ledbetter (74318) is oil-weighted (275,798 bbl EUR) with a bigger gross value; this unit is gas-weighted (3,625,715 mcf EUR) with the bigger share to you thanks to a 4× larger decimal interest.",
   ultra: {
     headline: "Your best lease is doing its job",
     body: "This gas unit keeps producing steadily — the biggest single piece of your record. Your share: the number above.",
@@ -87,27 +105,39 @@ const smithReport: LeaseReportRecord = {
     rows: [
       {
         q: "What it's worth to you",
-        a: "about $8,700 over the next six years",
+        /* Each figure is its own segment because each one blurs on its own in
+           the claimed state — see `CopySegment`. */
+        a: ["about ", { money: "$8,700" }, " over the next six years"],
       },
       {
         q: "Its place in your total",
-        a: "the largest piece of your $26,340 — your three other Smith units add about $4,100 more",
+        a: [
+          "the largest piece of your ",
+          { money: "$26,340" },
+          " — your three other Smith units add about ",
+          { money: "$4,100" },
+          " more",
+        ],
       },
       {
         q: "What just happened",
-        a: "Jul 02 — the operator posted a month of gas, right on the expected trend, so your number did not move",
+        a: [
+          "Jul 02 — the operator posted a month of gas, right on the expected trend, so your number did not move",
+        ],
       },
-      { q: "What to do", a: "nothing — this lease is doing its job" },
+      { q: "What to do", a: ["nothing — this lease is doing its job"] },
     ],
   },
   reservoir: {
     name: "Blanco Creek (Wilcox Massive E)",
+    shortName: "Wilcox",
     county: "Bee",
+    extentBbox: [-98.0, 28.27, -97.58, 28.53],
     wellCount: 1,
     narrative: [
       "What it is: the Wilcox is a thick stack of ancient river-delta sands laid down when the Gulf Coast was building itself seaward, tens of millions of years ago. Under Bee County it sits deep and gas-charged.",
       'The "Massive E" in the field name is the driller\'s label for one of those stacked sand bodies. Wilcox sands are workhorse Gulf Coast producers: not flashy, but they flow for decades, which is exactly what this unit has done since Chevron drilled it in 2003.',
-      "Why it matters to you: a 20-year-plus Wilcox gas tail is the steady-eddy kind of minerals ownership — long, shallow decline, few surprises, income that shows up as long as the well is kept open.",
+      "Why it matters to you: a 20-year-plus Wilcox gas tail is the steady-eddy kind of minerals ownership — long, shallow decline, few surprises, income that shows up as long as the well is kept open. The risk to watch isn't the rock running out suddenly; it's the operator deciding the tail is no longer worth maintaining. That's why the operator card and your Activities feed matter as much as the geology here.",
     ],
     totals: [
       { label: "EUR — est. ultimate recovery", value: "15,452 bbl · 3,625,715 mcf" },
@@ -120,8 +150,10 @@ const smithReport: LeaseReportRecord = {
       {
         tone: "ok",
         glyph: "=",
-        headline: "No changes this period.",
-        body: "No reclassification, no new completions into this rock, no play-table update. The one recent event on this unit (the Jul 02 production posting) is a lease-level fact; the volumes flowed through well 5L.",
+        /* No headline: the badge in the card's corner already says "No changes
+           this period", and repeating it as a bold lead-in said it twice. */
+        headline: "",
+        body: "No reservoir-level changes on record this cycle — no reclassification, no new completions into this rock, no play-table update. The one recent event on this unit (the Jul 02 production posting) is a lease-level fact; the volumes flowed through well 5L.",
       },
     ],
   },
@@ -130,6 +162,15 @@ const smithReport: LeaseReportRecord = {
       name: "5L",
       api: "42-025-71286",
       status: "Producing",
+      /* The reservoir tab's well row reads "Gas · Producing · latest posting
+         27,120 mcf · Bluestem Oil and Gas, LP" — type and last posting, not
+         just status. */
+      wellType: "Gas",
+      latestPosting: "27,120 mcf gas · 133 bbl oil",
+      /* Vertical, completed 2003 — nothing filed, and nothing drawn. */
+      surveyOnFile: false,
+      completedYear: "2003",
+      location: "28.507219, −97.861344",
       record: [
         { label: "Well number", value: "5L" },
         {
@@ -157,8 +198,8 @@ const smithReport: LeaseReportRecord = {
         {
           tone: "event",
           glyph: "▤",
-          headline: "Well 5L carried this unit's posting",
-          body: "27,120 mcf gas + 133 bbl oil filed by Bluestem on Jul 02, 2026 — this unit's only wellbore, so the lease-level event and the well-level event are the same molecules. Status unchanged: Producing. No new completion, workover or recompletion on record.",
+          headline: "Well 5L carried this unit's posting:",
+          body: "27,120 mcf gas + 133 bbl oil filed by Bluestem on Jul 02, 2026 — this unit's only wellbore, so the lease-level event and the well-level event are the same molecules. Status unchanged: Producing. No new completion, workover or status filing on this well this cycle.",
         },
       ],
     },
@@ -199,6 +240,9 @@ const ledbetterReport: LeaseReportRecord = {
     "This lease has produced since 2019 and made the most money in its first year. Wells naturally slow down over time, and this one is slowing right on schedule — nothing is wrong.",
     "The public record shows production in Aug 2025, Nov 2025 and Feb 2026. Production is not payment: the RRC record shows what came out of the ground, never what reached you. Comparing the two is what the Lease Audit does.",
   ],
+  compareWith: "305892",
+  compareNote:
+    "Smith Gas Unit (305892) is gas-weighted (3,625,715 mcf EUR) with a 4× larger decimal interest, so more of it reaches you; this lease is oil-weighted (275,798 bbl EUR) with the bigger gross value.",
   ultra: {
     headline: "This lease is fine",
     body: "Ledbetter has produced since 2019 and is slowing right on schedule — nothing is wrong. Your share of what's left: the number above.",
@@ -209,22 +253,36 @@ const ledbetterReport: LeaseReportRecord = {
     rows: [
       {
         q: "What it's worth to you",
-        a: "about $5,300 over the next six years — your slice of the whole lease's projected $2,900,000",
+        a: [
+          "about ",
+          { money: "$5,300" },
+          " over the next six years — your slice of the whole lease's projected ",
+          { money: "$2,900,000" },
+        ],
       },
-      { q: "Its place in your total", a: "the second-largest piece of your $26,340" },
+      {
+        q: "Its place in your total",
+        a: ["the second-largest piece of your ", { money: "$26,340" }],
+      },
       {
         q: "What just happened",
-        a: "gas posted in Aug 2025, Nov 2025 and Feb 2026 — whether you were paid for them is on your check stubs, not the public record",
+        a: [
+          "gas posted in Aug 2025, Nov 2025 and Feb 2026 — whether you were paid for them is on your check stubs, not the public record",
+        ],
       },
       {
         q: "What to do",
-        a: "worth an audit — this is the lease with produced months to check against your statements",
+        a: [
+          "worth an audit — this is the lease with produced months to check against your statements",
+        ],
       },
     ],
   },
   reservoir: {
     name: "Lake Marlow (Pettit, Upper)",
+    shortName: "Pettit",
     county: "Cass",
+    extentBbox: [-94.45, 32.87, -94.03, 33.09],
     wellCount: 1,
     narrative: [
       "What it is: the Pettit is a Lower Cretaceous limestone-and-sand interval across East Texas, and the Upper Pettit is its shallower productive bench. Under Cass County it produces oil with associated gas.",
@@ -249,6 +307,9 @@ const ledbetterReport: LeaseReportRecord = {
       name: "1H",
       api: "42-067-51840",
       status: "Producing",
+      wellType: "Oil",
+      latestPosting: "399 mcf gas · 482 bbl oil",
+      location: "32.977120, −94.240387",
       record: [
         { label: "Well number", value: "1H" },
         { label: "Well type", value: "Oil" },
@@ -322,23 +383,44 @@ function genericReport(lease: LeaseRecord): LeaseReportRecord {
       rows: [
         {
           q: "What it's worth to you",
+          /* Only the MVestimate carries the gate. The COUNTY's appraised value
+             is public record and stays legible in the claimed state — the same
+             rule the lease table follows in its money column. */
           a: earning
-            ? `about ${formatDollars(lease.mvestimate)} over the next six years`
-            : `no forward projection — the county appraises your interest at ${formatDollars(lease.countyAppraised)}`,
+            ? [
+                "about ",
+                { money: formatDollars(lease.mvestimate) },
+                " over the next six years",
+              ]
+            : [
+                `no forward projection — the county appraises your interest at ${formatDollars(
+                  lease.countyAppraised,
+                )}`,
+              ],
         },
-        { q: "Where it is", a: `${lease.county} County · RRC district ${lease.district}` },
+        {
+          q: "Where it is",
+          a: [`${lease.county} County · RRC district ${lease.district}`],
+        },
         {
           q: "What it produced",
-          a: `${formatCount(lease.production.gasMcf)} mcf gas · ${formatCount(lease.production.oilBbl)} bbl oil (gross lease, not your share)`,
+          a: [
+            `${formatCount(lease.production.gasMcf)} mcf gas · ${formatCount(
+              lease.production.oilBbl,
+            )} bbl oil (gross lease, not your share)`,
+          ],
         },
         {
           q: "What to do",
-          a: "nothing — this lease's full report lands when its curve is captured",
+          a: ["nothing — this lease's full report lands when its curve is captured"],
         },
       ],
     },
     reservoir: {
       name: lease.field,
+      /* No captured reservoir, so the field name is the best short name there
+         is — the peer-rank rows it feeds are "not available yet" anyway. */
+      shortName: lease.field.split(" ")[0],
       county: lease.county,
       wellCount: lease.wells,
       narrative: [],
@@ -351,8 +433,8 @@ function genericReport(lease: LeaseRecord): LeaseReportRecord {
         {
           tone: "ok",
           glyph: "=",
-          headline: "Not captured yet.",
-          body: "This reservoir's recovery figures and narrative are not in this build.",
+          headline: "",
+          body: "This reservoir's recovery figures and narrative are not captured in this build.",
         },
       ],
     },

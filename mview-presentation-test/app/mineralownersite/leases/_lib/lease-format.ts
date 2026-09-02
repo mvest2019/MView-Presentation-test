@@ -131,3 +131,20 @@ const NUMBER_WORDS = [
 export function spellOut(value: number): string {
   return NUMBER_WORDS[value] ?? String(value);
 }
+
+/**
+ * `"Smith Gas Unit"` + `"305892"` -> `"Smith 305892"`.
+ *
+ * THE PAGER'S OWN LABEL, and shorter than the title on purpose. `MV_LEASE_ORDER`
+ * in the prototype spells these out by hand — "Smith 305892", "Cedar Bend
+ * 578204", "Ledbetter 74318" — because two full titles plus a sentence between
+ * them do not fit on one row, and the lease NUMBER is what distinguishes four
+ * Smith units from each other anyway.
+ *
+ * The rule is the unit-type suffix, not a character count: "Smith Gas Unit"
+ * loses "Gas Unit" while "Cedar Bend" and "Ledbetter" keep every word they have.
+ */
+export function formatLeaseShortLabel(name: string, number: string): string {
+  const short = name.replace(/\s+(Gas\s+Unit|Unit|Lease)$/i, "");
+  return `${short} ${number}`;
+}

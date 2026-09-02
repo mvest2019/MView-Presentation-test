@@ -24,11 +24,29 @@ import type { ComponentProps, ReactNode } from "react";
 export type PortalButtonVariant = "primary" | "ghost" | "mint";
 export type PortalButtonSize = "sm" | "md" | "lg";
 
+/*
+ * ⚠ `border` SETS THE WIDTH ONLY — the COLOUR belongs to each variant.
+ *
+ * This used to read `border border-transparent`, and it silently erased the
+ * ghost variant's outline. `border-transparent` and the variant's
+ * `border-mv-line` are both single-class utilities, so specificity does not
+ * separate them and Tailwind's own stylesheet order decides — and it put
+ * `border-transparent` last. Measured: every ghost button in the portal computed
+ * `border-color: rgba(0,0,0,0)`.
+ *
+ * That is roughly twenty controls — the pager, "← Back", the toolbar, "Invite a
+ * co-owner", "Add a note", "Watch this", "Sample report" — all rendering as
+ * bare text on a white card instead of as buttons. A ghost button IS its
+ * outline; without one there is nothing to show it can be pressed.
+ *
+ * So every variant now states its own border colour, including the filled ones.
+ */
 const BASE =
-  "inline-flex cursor-pointer items-center justify-center gap-2 rounded-[10px] border border-transparent font-semibold leading-[1.2] !no-underline transition-[background,border-color,filter] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep disabled:cursor-not-allowed disabled:opacity-55";
+  "inline-flex cursor-pointer items-center justify-center gap-2 rounded-[10px] border font-semibold leading-[1.2] !no-underline transition-[background,border-color,filter] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep disabled:cursor-not-allowed disabled:opacity-55";
 
 const VARIANTS: Record<PortalButtonVariant, string> = {
-  primary: "bg-mv-green text-mv-green-ink hover:brightness-[1.05]",
+  primary:
+    "border-transparent bg-mv-green text-mv-green-ink hover:brightness-[1.05]",
   ghost:
     "border-mv-line bg-mv-card text-mv-slate hover:bg-mv-bg hover:border-mv-line-strong",
   mint: "border-mv-mint-edge bg-mv-mint text-mv-green-ink hover:brightness-[1.03]",

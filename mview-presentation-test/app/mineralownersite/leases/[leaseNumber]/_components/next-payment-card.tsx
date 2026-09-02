@@ -1,5 +1,5 @@
 import { Badge } from "../../../_components/ui/badge";
-import { PortalButtonLink } from "../../../_components/ui/button";
+import { PrototypeButton } from "../../../_components/ui/prototype-button";
 import { portalGate } from "../../../_components/ui/portal-gating";
 import { formatDollars } from "../../_lib/lease-format";
 import type { LeaseReportRecord } from "../_lib/lease-report-types";
@@ -93,21 +93,24 @@ export function NextPaymentCard({ report }: { report: LeaseReportRecord }) {
         </div>
       </details>
 
+      {/* The design's own pair: a green primary that acknowledges the click,
+          and a ghost link to how the estimate is built. The Back button that
+          used to sit here was mine — the report already has one above the
+          breadcrumb. */}
       <div className="flex flex-wrap gap-2">
-        {/* The upload flow is not built. A button that silently does nothing is
-            worse than one that is honest about it, so this is a label rather
-            than a control — the portal's own convention for an unbuilt
-            destination (see `_lib/portal-nav.ts`). */}
-        <span
-          aria-disabled="true"
-          title="Uploading a division order and check stubs — not open yet"
-          className="inline-flex cursor-default items-center gap-2 rounded-[10px] border border-mv-line bg-mv-bg px-3 py-1.5 text-[13px] font-semibold text-mv-muted opacity-70"
+        <PrototypeButton
+          variant="primary"
+          acknowledgement="Upload opens here ✓ (prototype)"
+          title="Upload a division order and check stubs to narrow this range"
         >
-          ⌲ Make this estimate more accurate — soon
-        </span>
-        <PortalButtonLink size="sm" href="/mineralownersite/leases">
-          ← Back to My Leases
-        </PortalButtonLink>
+          ⌲ Make this estimate more accurate
+        </PrototypeButton>
+        <PrototypeButton
+          acknowledgement="Weekly report opens here ✓ (prototype)"
+          title="How the estimate is built"
+        >
+          How the estimate is built →
+        </PrototypeButton>
       </div>
     </div>
   );

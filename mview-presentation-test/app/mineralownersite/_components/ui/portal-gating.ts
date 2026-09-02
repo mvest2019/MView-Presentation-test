@@ -46,6 +46,21 @@ export const portalGate = {
    * them.
    */
   pageRoot: "mv-dash-routes",
+  /**
+   * MARKS A LEASE-REPORT PAGE ROOT. Added alongside `pageRoot`.
+   *
+   * Ultra collapses a report rather than replacing it — see the rule in
+   * `portal.css`. Without this the generic replacement strips the title card and
+   * the value card, leaving one sentence about an unnamed lease that refers to
+   * "the number above" with no number above it.
+   */
+  reportRoot: "mv-report-routes",
+  /**
+   * SURVIVES ULTRA ON A LEASE REPORT — the design's `v41-u-keep` and
+   * `rpt-crumb`. For the breadcrumb, the title card and the owner value card:
+   * which lease, and what it is worth.
+   */
+  ultraKeep: "mv-u-keep",
 } as const;
 
 export type PortalGate = keyof typeof portalGate;

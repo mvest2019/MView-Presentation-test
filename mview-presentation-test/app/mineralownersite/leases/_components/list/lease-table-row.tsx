@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { Badge } from "../../../_components/ui/badge";
 import { PortalButtonLink } from "../../../_components/ui/button";
+import { PrototypeButton } from "../../../_components/ui/prototype-button";
 import { gates, portalGate } from "../../../_components/ui/portal-gating";
 import { TableCell, TableRow } from "../../../_components/ui/table";
 import {
@@ -147,28 +148,19 @@ export function LeaseTableRow({
           Open
         </PortalButtonLink>{" "}
         {/*
-          THE SECOND, GHOST BUTTON — "show on map".
+          THE SECOND, GHOST BUTTON — "show on map", enabled like the design's.
 
-          INERT, and that is the honest state: it points at the OWNER map
-          (`#/app/map` in the design), which knows which tract is this reader's
-          and is not built — `app-map` has no `href` in `_lib/portal-nav.ts`. The
-          public `/map-explorer` is a different product: it draws every well in
-          Texas and none of them as yours, so sending this button there would
-          answer a different question than the one it asks.
-
-          Rendered rather than omitted because the affordance itself is
-          information: it tells a reader the map knows about this lease. The
-          glyph alone cannot say that to a screen reader, hence the `aria-label`
-          carrying both the action and its state.
+          It points at the OWNER map, which is not built here, so it uses the
+          prototype's own acknowledgement idiom rather than rendering greyed —
+          see `PrototypeButton`. The glyph alone says nothing to a screen reader,
+          hence the label naming the lease.
         */}
-        <span
-          aria-disabled="true"
-          aria-label={`Show ${title} on the map — the owner map is not open yet`}
-          title="Show on map — the owner map is not open yet"
-          className="inline-flex cursor-default items-center rounded-[8px] border border-mv-line bg-mv-bg px-2 py-[5px] text-[13px] font-semibold text-mv-muted opacity-60"
+        <PrototypeButton
+          acknowledgement="◈ Map opens here ✓"
+          title={`Show ${title} on the map`}
         >
-          <span aria-hidden="true">◈</span>
-        </span>
+          ◈
+        </PrototypeButton>
       </TableCell>
     </TableRow>
   );

@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { Badge } from "../../../_components/ui/badge";
 import { Card } from "../../../_components/ui/card";
+import { PagePurpose } from "../../../_components/ui/page-purpose";
 import { gates, portalGate } from "../../../_components/ui/portal-gating";
 import {
   formatDecimalInterest,
@@ -48,23 +49,34 @@ export function LeaseTitleCard({ report }: { report: LeaseReportRecord }) {
   const { lease } = report;
 
   return (
-    <Card className="mt-2.5 mb-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <h2 className="text-2xl font-bold">
-            {formatLeaseTitle(lease.name, lease.number)}
-          </h2>
-          <Badge tone={lease.status === "producing" ? "mint" : "slate"}>
-            ● {lease.status === "producing" ? "Producing" : "Inactive"} ·{" "}
-            {report.wellsProducing} of {lease.wells} wells
-          </Badge>
-        </div>
+    /* `ultraKeep`: at Ultra this card is one of three that survive — it is the
+       only thing on the page naming which lease the summary is about. */
+    <Card className={`mt-2.5 mb-3 ${portalGate.ultraKeep}`}>
+      <div className="flex flex-wrap items-center gap-2.5">
+        <h2 className="text-2xl font-bold">
+          {formatLeaseTitle(lease.name, lease.number)}
+        </h2>
+        <Badge tone={lease.status === "producing" ? "mint" : "slate"}>
+          ● {lease.status === "producing" ? "Producing" : "Inactive"} ·{" "}
+          {report.wellsProducing} of {lease.wells} wells
+        </Badge>
+      </div>
+
+      {/* THE DESIGN'S `.ppf-slot` — the row under the title holding the ownership
+          chip and the "Why this page?" control. Both sat on the far right of the
+          title row here, which pushed the chip away from the heading it
+          qualifies and left the control with nowhere to open into. */}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         {/* Essentials only: on that tier this is the page's one statement of the
             decimal interest, because the green card's group heading — which
             carries it in the denser tiers — is not the same sentence. */}
         <Badge tone="slate" className={gates("essentialsOnly")}>
           Your ownership share: {formatDecimalInterest(lease.decimalInterest)}
         </Badge>
+        <PagePurpose routeKey="app-lease-report">
+          One lease&rsquo;s full story — value, production, reservoir, wells, and
+          its owner group.
+        </PagePurpose>
       </div>
 
       <div className="mt-2 grid gap-x-9 border-t border-mv-line pt-0.5 min-[860px]:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">

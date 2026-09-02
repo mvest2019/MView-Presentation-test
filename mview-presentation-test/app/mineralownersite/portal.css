@@ -1279,10 +1279,38 @@
    a trial or lapsed owner is not left on an unexplained blurred number.
 
    `#mvStateCard` cannot simply be given `.tier-u` — that class is hidden in
-   the other three views, and the card has to show in all four. */
+   the other three views, and the card has to show in all four.
+
+   `:not(.mv-report-routes)` — A LEASE REPORT DOES NOT REPLACE ITS PAGE. See the
+   next block for why, and for what it keeps instead. */
 .mv-portal.view-ultra:not(.no-claim)
-  .mv-dash-routes
+  .mv-dash-routes:not(.mv-report-routes)
   > :not(.tier-u):not(#mvStateCard) {
+  display: none !important;
+}
+
+/* ----------------------------------------------------------------------------
+   ULTRA ON A LEASE REPORT — three things stay, the body collapses.
+
+   The list pages replace themselves wholesale at Ultra: "all 10 leases are
+   watched" and nothing else. A REPORT cannot do that, and the design scopes a
+   separate rule to the three lease-report routes to say so:
+
+     body.view-ultra:not(.no-claim) section[data-route="app-lease-smith"]
+       > *:not(.tier-u):not(.v41-valbar):not(.v41-u-keep):not(.rpt-crumb)
+
+   Four exemptions, and each earns its place. A reader who has asked for the
+   calmest possible view of ONE LEASE still needs to know WHICH lease
+   (`.rpt-crumb`, the title card) and WHAT IT IS WORTH (the owner value card) —
+   strip those and the remaining sentence is about an unnamed lease and refers to
+   "the number above" when there is no number above it.
+
+   So Ultra here is not a replacement, it is a collapse: identity, money, and one
+   card in place of the body.
+   ---------------------------------------------------------------------------- */
+.mv-portal.view-ultra:not(.no-claim)
+  .mv-report-routes
+  > :not(.tier-u):not(.mv-u-keep):not(#mvStateCard) {
   display: none !important;
 }
 

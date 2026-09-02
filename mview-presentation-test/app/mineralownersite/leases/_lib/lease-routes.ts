@@ -12,7 +12,18 @@
  * link, the grid card, the plain-English list, both explainers, the annual
  * table…), which is exactly how many places would need editing if the shape
  * changed. Now it is one.
+ *
+ * `tab` carries the report's Reservoir and Wells panels. The lease tab is the
+ * default and takes no query, so a bare lease link and the lease tab's own link
+ * are the same URL — which is what makes the tab strip's `aria-current` and the
+ * browser's history behave.
  */
-export function leaseReportPath(leaseNumber: string): string {
-  return `/mineralownersite/leases/${leaseNumber}`;
+export type LeaseReportTab = "lease" | "reservoir" | "wells";
+
+export function leaseReportPath(
+  leaseNumber: string,
+  tab: LeaseReportTab = "lease",
+): string {
+  const path = `/mineralownersite/leases/${leaseNumber}`;
+  return tab === "lease" ? path : `${path}?report=${tab}`;
 }
