@@ -1,6 +1,7 @@
 import { formatCount, formatDollars, formatLeaseTitle } from "../../_lib/lease-format";
 import { leaseRecords } from "../../_lib/lease-records";
 import { crowA2HCurve } from "./decline-curve-record";
+import { smithWellAllocation } from "./well-allocation-record";
 import type { LeaseRecord } from "../../_lib/lease-types";
 import type { LeaseReportRecord } from "./lease-report-types";
 
@@ -89,7 +90,14 @@ const smithReport: LeaseReportRecord = {
     producedGas: 3_335_715,
     reservesGas: 290_000,
   },
-  allocation: { splitComputed: "6 Aug 2026", curveResolved: "1 Feb 2026" },
+  allocation: smithWellAllocation,
+  newWellProbability: {
+    band: "Moderate",
+    confidence: "Medium",
+    spacingUnits: 4,
+    nearby: { adjacentLeases: 22, permits: 38 },
+    continuousDevelopmentClause: false,
+  },
   /* The one lease in the module with a published engine fit to read. */
   declineCurve: crowA2HCurve,
   compareWith: "74318",
