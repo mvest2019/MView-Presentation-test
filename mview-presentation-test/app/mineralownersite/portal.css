@@ -1507,8 +1507,20 @@
 
    `:not(.mv-report-routes)` — A LEASE REPORT DOES NOT REPLACE ITS PAGE. See the
    next block for why, and for what it keeps instead. */
+/* `.mv-u-keep` ON THE WRAPPER opts a whole route out of the replacement,
+   which Production & Forecast needs: the reference applies this rule
+   PER ROUTE and names seven of them — `app`, `app-leases`,
+   `app-briefing`, `app-activities`, `app-alerts`, `app-groups` and
+   `app-dossier` — while `app-production` is deliberately absent. That
+   page keeps its whole self in Ultra (values, the ten-lease table, the
+   map and the scorecard) and swaps only its CHART for the one sentence
+   the chart was trying to say: "nothing is removed from any tier… the
+   tables were the part that already worked."
+
+   Same class the report routes already use to spare a single child,
+   read one level up: a dash route that is itself marked keep. */
 .mv-portal.view-ultra:not(.no-claim)
-  .mv-dash-routes:not(.mv-report-routes)
+  .mv-dash-routes:not(.mv-report-routes):not(.mv-u-keep)
   > :not(.tier-u):not(#mvStateCard) {
   display: none !important;
 }
@@ -4168,7 +4180,588 @@
 }
 
 /* ----------------------------------------------------------------------------
-   21 · PRINT
+   21 · PRODUCTION & FORECAST  (pf2- · v3)
+
+   The reference ships this route's CSS in a `<style>` block inside the route
+   file itself, scoped by `section[data-route="app-production"]`. It lives here
+   instead, scoped by `.mv-portal`, for the same reason every other module's
+   CSS does: one stylesheet, one cascade, and no route that can render before
+   its own styles exist.
+
+   The two `#pf2Svg` / `#pf2SimpleSvg` rules keep an id selector because that is
+   what makes an inline SVG scale - `width:100%; height:auto` against the
+   viewBox. `cursor:crosshair` is on the deep-dive chart only; the Essentials
+   chart is not interactive and must not pretend to be.
+   ---------------------------------------------------------------------------- */
+
+/* ---- chart header: title + quiet meta line + 2-item legend ---- */
+.mv-portal .pf2-chead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 2px 2px 12px;
+}
+
+.mv-portal .pf2-chead h4 {
+  margin: 0;
+}
+
+.mv-portal .pf2-sub {
+  font-size: 12px;
+  color: var(--slate);
+  margin: 4px 0 0;
+  line-height: 1.55;
+  letter-spacing: 0.01em;
+}
+
+.mv-portal .pf2-sub .pf2-dot {
+  color: #c3ccd4;
+  margin: 0 5px;
+}
+
+.mv-portal .pf2-legend {
+  display: flex;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  padding-top: 3px;
+}
+
+/* The legend swatch is a LINE, not a block: it has to read as the same mark
+   the chart draws, which is why it is a top border and why the dashed variant
+   in the Essentials key only has to switch `border-top-style`. */
+.mv-portal .pf2-sw {
+  display: inline-block;
+  width: 20px;
+  border-top: 3px solid var(--green-deep);
+  border-radius: 2px;
+  vertical-align: middle;
+  margin-right: 7px;
+}
+
+.mv-portal .pf2-sw.gas {
+  border-top-color: var(--amber);
+}
+
+.mv-portal .pf2-lgnote {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--slate);
+  opacity: 0.85;
+  border-left: 1px solid #e2e8f0;
+  padding-left: 14px;
+}
+
+.mv-portal #pf2Svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  cursor: crosshair;
+}
+
+/* ---- brush + presets ---- */
+.mv-portal .pf2-brushrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 2px 6px;
+}
+
+.mv-portal .pf2-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mv-portal .pf2-preset {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--slate);
+  background: #fff;
+  border: 1px solid #dde4ea;
+  border-radius: 999px;
+  padding: 5px 12px;
+  cursor: pointer;
+  line-height: 1;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+
+.mv-portal .pf2-preset:hover {
+  border-color: var(--green-deep);
+  color: var(--green-deep);
+}
+
+.mv-portal .pf2-preset.on {
+  background: var(--green-deep);
+  border-color: var(--green-deep);
+  color: #fff;
+}
+
+.mv-portal .pf2-winlab {
+  font-variant-numeric: tabular-nums;
+}
+
+.mv-portal .pf2-brush {
+  position: relative;
+  height: 36px;
+  margin: 2px 2px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 9px;
+  background: #fbfcfd;
+}
+
+.mv-portal .pf2-brush .pf2-ctx {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+.mv-portal .pf2-win {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  background: rgba(46, 143, 109, 0.09);
+  border-left: 2px solid var(--green-deep);
+  border-right: 2px solid var(--green-deep);
+  pointer-events: none;
+}
+
+/* TWO SLIDERS STACKED ON ONE TRACK is what makes this a range brush. Each
+   input covers the whole strip and is `pointer-events:none`, so only the
+   THUMBS are grabbable - otherwise the upper input would swallow every click
+   meant for the lower one. */
+.mv-portal .pf2-brush input[type="range"] {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 36px;
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  pointer-events: none;
+  outline: none;
+}
+
+.mv-portal .pf2-brush input[type="range"]::-webkit-slider-runnable-track {
+  height: 36px;
+  background: transparent;
+}
+
+.mv-portal .pf2-brush input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: auto;
+  width: 15px;
+  height: 24px;
+  margin-top: 6px;
+  border-radius: 5px;
+  background: #fff;
+  border: 2px solid var(--green-deep);
+  box-shadow: 0 1px 4px rgba(15, 40, 30, 0.25);
+  cursor: ew-resize;
+}
+
+.mv-portal .pf2-brush input[type="range"]::-moz-range-track {
+  height: 36px;
+  background: transparent;
+}
+
+.mv-portal .pf2-brush input[type="range"]::-moz-range-thumb {
+  pointer-events: auto;
+  width: 15px;
+  height: 24px;
+  border-radius: 5px;
+  background: #fff;
+  border: 2px solid var(--green-deep);
+  box-shadow: 0 1px 4px rgba(15, 40, 30, 0.25);
+  cursor: ew-resize;
+}
+
+.mv-portal .pf2-brush input[type="range"]:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--amber);
+  outline-offset: 1px;
+}
+
+.mv-portal .pf2-note {
+  font-size: 11px;
+  color: var(--slate);
+  line-height: 1.55;
+  padding: 2px 2px 6px;
+  margin: 0;
+}
+
+.mv-portal .pf2-note strong {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* ---- map + scorecard duo ---- */
+.mv-portal .pf2-duo {
+  display: grid;
+  grid-template-columns: minmax(230px, 300px) 1fr;
+  gap: 16px;
+  margin-top: 16px;
+  align-items: stretch;
+}
+
+.mv-portal .pf2-mapcard {
+  display: flex;
+  flex-direction: column;
+}
+
+.mv-portal .pf2-mapcard h4 {
+  margin: 0 0 10px;
+}
+
+.mv-portal .pf2-mapfig {
+  background: linear-gradient(180deg, #f8fafc 0%, #eef3f7 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px 14px 12px;
+  margin: 0 0 12px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mv-portal .pf2-mapfig svg {
+  display: block;
+  width: 100%;
+  max-width: 236px;
+  height: auto;
+}
+
+.mv-portal .pf2-mapcap {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink);
+  letter-spacing: 0.01em;
+}
+
+.mv-portal .pf2-mapsub {
+  text-align: center;
+  font-size: 11px;
+  color: var(--slate);
+  line-height: 1.55;
+  margin-top: 5px;
+}
+
+/* ---- dark scorecard band ---- */
+.mv-portal .pf2-kband {
+  background: var(--ink);
+  color: #fff;
+  border: 1px solid var(--ink);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+}
+
+.mv-portal .pf2-kt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 20px 10px;
+}
+
+.mv-portal .pf2-kt h4 {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: #fff;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+.mv-portal .pf2-int {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #dfeae4;
+  background: rgba(46, 143, 109, 0.22);
+  border: 1px solid rgba(120, 190, 160, 0.35);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* "example" in amber, not italic - it is a warning about the number beside
+   it, and the reference resets `font-style` for exactly that reason. */
+.mv-portal .pf2-int em {
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #e9c986;
+}
+
+.mv-portal .pf2-tbl {
+  display: grid;
+  grid-template-columns:
+    minmax(112px, 1.2fr) minmax(74px, 0.95fr) minmax(66px, 0.8fr)
+    minmax(74px, 0.95fr) minmax(66px, 0.8fr);
+  padding: 0 20px 6px;
+  flex: 1;
+  align-content: start;
+}
+
+.mv-portal .pf2-c {
+  padding: 7px 8px 7px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.mv-portal .pf2-c.sh {
+  background: rgba(255, 255, 255, 0.04);
+  padding-left: 10px;
+  padding-right: 6px;
+}
+
+.mv-portal .pf2-c.gh {
+  border-top: none;
+  padding-top: 2px;
+  padding-bottom: 1px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.mv-portal .pf2-c.gh.o {
+  color: var(--green);
+}
+
+.mv-portal .pf2-c.gh.g {
+  color: #ecc07c;
+}
+
+.mv-portal .pf2-c.shh {
+  border-top: none;
+  padding-top: 2px;
+  padding-bottom: 6px;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #8fa3ad;
+}
+
+.mv-portal .pf2-l {
+  color: #b7c3cc;
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.mv-portal .pf2-est {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #d9a441;
+  margin-top: 2px;
+}
+
+.mv-portal .pf2-vo,
+.mv-portal .pf2-vg {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  font-size: 14px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.mv-portal .pf2-vo {
+  color: var(--green);
+}
+
+.mv-portal .pf2-vg {
+  color: #ecc07c;
+}
+
+.mv-portal .pf2-vs {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 12.5px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.mv-portal .pf2-vs.o {
+  color: #9fd3ba;
+}
+
+.mv-portal .pf2-vs.g {
+  color: #e9d1a4;
+}
+
+.mv-portal .pf2-vs.na {
+  color: #5f7482;
+  font-weight: 600;
+}
+
+.mv-portal .pf2-u {
+  font-size: 10px;
+  font-weight: 700;
+  color: #8fa3ad;
+  margin-left: 2px;
+}
+
+.mv-portal .pf2-kstrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 22px;
+  padding: 10px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 11px;
+  color: #b7c3cc;
+}
+
+.mv-portal .pf2-kstrip strong {
+  color: #fff;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  margin-right: 3px;
+}
+
+.mv-portal .pf2-kfoot {
+  font-size: 10.5px;
+  color: #8fa3ad;
+  text-align: center;
+  line-height: 1.6;
+  padding: 8px 18px 12px;
+  margin: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* ---- v43 · OW-45 - values at the top, every view ---- */
+.mv-portal .pf2-topvals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin: 0 0 14px;
+}
+
+.mv-portal .pf2-tv {
+  border: 2px solid var(--green);
+  border-radius: 14px;
+  padding: 12px 15px;
+  background: #f8fdfb;
+}
+
+.mv-portal .pf2-tv .tvl {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--slate);
+  display: block;
+}
+
+.mv-portal .pf2-tv .tvv {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.2;
+  display: block;
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mv-portal .pf2-tv .tvs {
+  font-size: 11.5px;
+  color: var(--slate);
+  line-height: 1.5;
+  display: block;
+  margin-top: 4px;
+}
+
+/* ---- v43 · OW-10 - the simplified chart for Essentials ---- */
+.mv-portal #pf2SimpleSvg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.mv-portal .pf2-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: 12px;
+  color: var(--slate);
+  padding: 6px 2px 0;
+}
+
+.mv-portal .pf2-key strong {
+  color: var(--ink);
+}
+
+/* The duo stacks before the scorecard's five columns would crush. */
+@media (max-width: 860px) {
+  .mv-portal .pf2-duo {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .mv-portal .pf2-lgnote {
+    border-left: none;
+    padding-left: 0;
+  }
+
+  .mv-portal .pf2-tv .tvv {
+    font-size: 19px;
+  }
+
+  .mv-portal .pf2-tbl {
+    grid-template-columns:
+      minmax(92px, 1.15fr) minmax(58px, 0.95fr) minmax(52px, 0.8fr)
+      minmax(58px, 0.95fr) minmax(52px, 0.8fr);
+    padding: 0 14px 6px;
+  }
+
+  .mv-portal .pf2-vo,
+  .mv-portal .pf2-vg {
+    font-size: 12.5px;
+  }
+
+  .mv-portal .pf2-vs {
+    font-size: 11px;
+  }
+
+  .mv-portal .pf2-kt,
+  .mv-portal .pf2-kstrip {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   22 · PRINT
 
    The chrome goes; the body takes the whole page. An owner printing their
    dashboard wants the numbers, not the navigation.
@@ -4254,7 +4847,7 @@
 }
 
 /* ----------------------------------------------------------------------------
-   22 · REDUCED MOTION
+   23 · REDUCED MOTION
    ---------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
   .mv-portal .btn {

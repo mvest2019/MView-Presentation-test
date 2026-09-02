@@ -186,6 +186,7 @@ export const navSections: PortalNavSection[] = [
       {
         label: "Production & Forecast",
         icon: "trend",
+        href: "/mineralownersite/production",
         navKey: "app-production",
       },
     ],
