@@ -13,6 +13,13 @@ import type { ComponentProps, ReactNode } from "react";
  * the plain-English hero and the "worth reading" notices. It also drops the
  * card's own left border, or the two stack into a 5px double rule.
  *
+ * `pendingData` is `portal.css`'s `.dbhook` — the design's own name for it is
+ * "pending-DB hook cards". A dashed blue edge and a cool wash mark a card whose
+ * figures are NOT yet read from the database: the spacing percentile, the
+ * operator league position, the reservoir extent. It is a promise about the
+ * card's contents, so it belongs on the surface rather than in a footnote —
+ * a reader can see at a glance which cards are waiting on a feed.
+ *
  * `CardHeader` is shadcn's shape (a header row that holds a title and an
  * optional action) narrowed to what the portal actually does with it: a heading
  * on the left, a chip or a button on the right, wrapping on a phone. Fourteen
@@ -22,12 +29,15 @@ import type { ComponentProps, ReactNode } from "react";
 export function Card({
   padded = true,
   accent = false,
+  pendingData = false,
   className = "",
   children,
   ...props
 }: {
   padded?: boolean;
   accent?: boolean;
+  /** `.dbhook` — this card's figures are not wired to the database yet. */
+  pendingData?: boolean;
   className?: string;
   children: ReactNode;
 } & ComponentProps<"div">) {
@@ -38,6 +48,10 @@ export function Card({
       } ${
         accent
           ? "border-l-4 border-l-mv-green bg-[linear-gradient(160deg,var(--color-mv-card),var(--color-mv-portal-hero-tint))]"
+          : ""
+      } ${
+        pendingData
+          ? "border-[1.5px] border-dashed border-mv-pending bg-[linear-gradient(180deg,var(--color-mv-pending-top),var(--color-mv-pending-bottom))]"
           : ""
       } ${className}`.trim()}
       {...props}

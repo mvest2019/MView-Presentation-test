@@ -38,6 +38,7 @@ export type ReportDepth = "full" | "generic";
  * amount but is not the product, such as the county's own appraised value.
  */
 import type { DeclineCurveRecord } from "./decline-curve-record";
+import type { WellAllocationRecord } from "./well-allocation-record";
 
 export type CopySegment = string | { money: string };
 
@@ -220,7 +221,30 @@ export interface LeaseReportRecord {
    * is not recorded, which is where that panel declines to render.
    */
   exactGrossValuation?: number;
-  allocation?: { splitComputed: string; curveResolved: string };
+  /**
+   * The engine's per-well allocation document for this lease.
+   *
+   * Present on the one lease whose split is published — see
+   * `well-allocation-record.ts`. Absent means we have not established a split,
+   * which is not the same as a lease having nothing to divide.
+   */
+  allocation?: WellAllocationRecord;
+  /**
+   * The new-well outlook — a band and its inputs, never a percentage.
+   *
+   * Absent where we have not placed the lease in a band. The two neighbourhood
+   * counts are the only figures stored here; the rest of the tile's reasons are
+   * read off this record so they cannot contradict the numbers beside them.
+   */
+  newWellProbability?: {
+    band: "Low" | "Moderate" | "High";
+    confidence: "Low" | "Medium" | "High";
+    /** How many of the owner's units in this county share the spacing picture. */
+    spacingUnits: number;
+    nearby: { adjacentLeases: number; permits: number };
+    /** A clause that would oblige the operator to keep drilling. */
+    continuousDevelopmentClause: boolean;
+  };
   /** See `Recovery`. Absent on the eight leases with no captured curve. */
   recovery?: Recovery;
   reservoir: ReservoirReport;
