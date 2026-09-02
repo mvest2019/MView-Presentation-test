@@ -30,6 +30,7 @@
  * not merged behind one flag.
  */
 
+import { alertCounts } from "../alerts/_lib/alert-counts";
 import type { FunnelState } from "./portal-state";
 
 /** The icons the portal uses, by the reference's own `mvi-*` sprite ids. */
@@ -49,7 +50,13 @@ export type PortalIconName =
   | "claim"
   | "back"
   | "trend"
-  | "lock";
+  | "lock"
+  /* Added by the Alerts inbox — the three icons its rows use that no navigation
+     row does. Kept in this union because `PortalIcon` is the portal's one icon
+     component and its map is keyed off these names. */
+  | "flag"
+  | "price"
+  | "chat";
 
 export interface PortalNavItem {
   /** The visible label. Literal text — never an icon-only row. */
@@ -134,9 +141,26 @@ export const navSections: PortalNavSection[] = [
         href: "/mineralownersite",
         navKey: "app",
       },
-      // The badge is the reference's own count for the demo record: 9 alerts
-      // since the last visit, 6 of them unread.
-      { label: "Alerts", icon: "bell", navKey: "app-alerts", badge: 6 },
+      /*
+       * THE BADGE IS DERIVED, and it used to be the literal `6` the reference
+       * hardcodes here.
+       *
+       * That number disagreed with the reference's own markup, which carries
+       * SEVEN unread rows on the Alerts route. Two hand-kept copies of one fact,
+       * and the same defect its v50 · BG-03 note records inside that page: the
+       * badge promised six and the inbox showed seven.
+       *
+       * `alertCounts.unread` counts `alertRecords`, so the pill on this row and
+       * the green edges on those rows cannot disagree — and marking an alert read
+       * in the data moves both.
+       */
+      {
+        label: "Alerts",
+        icon: "bell",
+        href: "/mineralownersite/alerts",
+        navKey: "app-alerts",
+        badge: alertCounts.unread,
+      },
       // The module itself is not built. The row is a real link anyway, to a
       // placeholder page that says so — a dimmed, unclickable row left an owner
       // unable to tell "not open yet" from "my click did nothing".

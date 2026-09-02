@@ -83,6 +83,13 @@ export const portalActionSets = {
   app: ["watch", "audit", "briefing", "invite"],
   /** My Leases — `upgrade` because this is where a free owner counts what they cannot open. */
   "app-leases": ["audit", "watch", "map", "upgrade"],
+  /**
+   * Alerts — THREE, not four, and no `upgrade`. The inbox's job is retention,
+   * not conversion (OW-32), and the design's own set says so: the reader has
+   * just been told most days are quiet, so the page closes by offering the
+   * audit, the watch list and the map, and asks for nothing.
+   */
+  "app-alerts": ["audit", "watch", "map"],
   /** A fully captured lease report — `ask` because there is now one lease to ask about. */
   "app-lease-detail": ["audit", "ask", "watch", "invite"],
   /** A lease with no captured curve — three actions, not four. */
