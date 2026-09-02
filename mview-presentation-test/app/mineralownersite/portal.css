@@ -887,6 +887,68 @@
   opacity: 0.75;
 }
 
+/* The secondary action each state carries — "What the trial includes",
+   "Compare plans", "What I am missing". Outlined and underlined rather than
+   filled, so the primary stays the one obvious next step; the reference's own
+   `.fb-2nd`. */
+.mv-portal #mvFunnelBar .fb-2nd {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-weight: 500;
+  font-size: 13px;
+  text-decoration: underline;
+  border: 1px solid currentColor;
+  opacity: 0.75;
+}
+
+/* Both secondaries are state-gated the same way the primaries are — section 8
+   hides `.cl-only` / `.tr-only` / `.lp-only` by default, and each state shows
+   its own. Without these three the secondary would never appear, exactly as
+   the note in section 8 warns for `.chip` and `.fb-cta`. */
+.mv-portal.state-claimed .fb-2nd.cl-only,
+.mv-portal.state-trial .fb-2nd.tr-only,
+.mv-portal.state-lapsed .fb-2nd.lp-only {
+  display: inline-flex !important;
+}
+
+/* State 4B · the active-lease picker lives in the bar itself, and ONLY in the
+   lapsed state — the lapsed copy says "pick which below", so the control is
+   part of that message rather than an addition to it. */
+.mv-portal #mvActiveLeaseWrap {
+  display: none;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+}
+
+.mv-portal.state-lapsed #mvActiveLeaseWrap {
+  display: flex;
+}
+
+.mv-portal #mvActiveLease {
+  min-height: 38px;
+  padding: 0 9px;
+  border-radius: 8px;
+  border: 1px solid #ecd9a8;
+  background: #fff;
+  color: #5c4413;
+  font: inherit;
+  font-size: 13px;
+  max-width: 210px;
+}
+
+/* Ryan's seven-day rule, shown rather than merely enforced: while the choice is
+   locked the control looks locked, and its `title` says when it reopens. */
+.mv-portal #mvActiveLease:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* The trial's day pips — spent days go pale. */
 .mv-portal #mvFunnelBar .fb-pips {
   display: inline-flex;
@@ -986,8 +1048,32 @@
 }
 
 /* A route with an `.nc-swap` panel shows ONLY that panel while unclaimed —
-   the sample dashboard replaces the real one rather than stacking under it. */
-.mv-portal.no-claim .mv-dash-routes > :not(.nc-only) {
+   the sample replaces the real page rather than stacking under it.
+
+   `:has(> .nc-swap)` IS THE REFERENCE'S OWN GUARD and it is load-bearing, not
+   decoration. Its rule reads
+   `body.no-claim section[data-route].active:has(> .nc-swap) > :not(.nc-only)`,
+   so the replacement only fires on a route that ACTUALLY HAS a sample panel.
+   Without the guard, the first portal module built without a guest sample
+   would render completely blank to an unclaimed visitor — every child hidden
+   and nothing put in their place. */
+.mv-portal.no-claim .mv-dash-routes:has(> .nc-swap) > :not(.nc-only) {
+  display: none !important;
+}
+
+/* THE SWEEP HAS TO REACH THE SHELL'S FURNITURE TOO, for the same reason the
+   Ultra rule does (see section 9): in the reference the back row and the
+   "Why this page?" pill are direct children of the route's `<section>`, so its
+   sweep hides them, and an unclaimed visitor sees the claim rail and the
+   sample and nothing else. Measured against the reference at
+   `?state=noclaim`: two visible children, both `.nc-only`.
+
+   The action footer already carries `.nc-hide` — actions are owner-record
+   decisions and a visitor has no record — so it is covered twice over, which
+   is harmless and keeps that component's own intent readable at its call site. */
+.mv-portal.no-claim
+  .app-body:has(.mv-dash-routes > .nc-swap)
+  > :not(.mv-dash-routes) {
   display: none !important;
 }
 
@@ -1045,6 +1131,31 @@
    choice rather than a selector that quietly catches the next number someone
    adds to the page. */
 .mv-portal.state-claimed .cl-lock {
+  filter: blur(6px);
+  opacity: 0.55;
+  user-select: none;
+}
+
+/* THE WEEKLY REPORT'S TWO MONEY TABLES, locked by COLUMN rather than by class.
+
+   Why not `cl-lock` on each cell: these are the report's per-lease dollar
+   breakdowns — the August range and its midpoint on `#wrEstByLease`, the
+   MVestimate on `#wrAppendix` — and they are generated a row per lease. Tagging
+   every generated cell is the version that goes wrong the first time a lease is
+   added, so the gate targets the columns, exactly as the reference does.
+
+   MEASURED GAP THIS CLOSES: at `claimed`, the reference blurs 18 cells in
+   `#wrEstByLease` and 10 in `#wrAppendix`; before these rules this build blurred
+   none of them, so a free account could read the whole per-lease money
+   breakdown that Premium sells.
+
+   WHAT STAYS SHARP, and it matters: the lease name, the operator, the DECIMAL
+   INTEREST and the posted volumes. Those are the owner's own record and the
+   public filing — a free owner is shown less of the PRODUCT, never less of
+   their own record. */
+.mv-portal.state-claimed #wrEstByLease tbody td:nth-child(3),
+.mv-portal.state-claimed #wrEstByLease tbody td:nth-child(4),
+.mv-portal.state-claimed #wrAppendix tbody td:nth-child(4) {
   filter: blur(6px);
   opacity: 0.55;
   user-select: none;
@@ -1192,6 +1303,31 @@
 .mv-portal.view-ultra:not(.no-claim)
   .mv-dash-routes
   > :not(.tier-u):not(#mvStateCard) {
+  display: none !important;
+}
+
+/* THE PAGE-REPLACEMENT MUST REACH THE SHELL'S PER-ROUTE FURNITURE TOO — the
+   back row, the "Why this page?" pill and the action footer.
+
+   In the reference these three are injected as DIRECT CHILDREN of the route's
+   own `<section>`, so its rule —
+   `body.view-ultra:not(.no-claim) section[data-route="app-activities"] >
+   :not(.tier-u)` — sweeps them up with everything else, and Ultra renders the
+   hero and literally nothing else (measured: 1 visible child, 23 hidden).
+
+   This build renders them from `PortalShell`, one level out from the page's own
+   `.mv-dash-routes` wrapper, so the rule above cannot see them and Ultra kept a
+   back row, an explainer pill and three more buttons around a page whose whole
+   promise is one headline, one status, one button.
+
+   Matching the reference by SELECTOR rather than by moving the markup: the
+   furniture belongs to the shell — that is what stops it drifting between
+   routes — so the fix is to widen the sweep, not to push three components back
+   into every page. */
+.mv-portal.view-ultra:not(.no-claim) .app-body > .mv-backrow,
+.mv-portal.view-ultra:not(.no-claim) .app-body > .ppf-why,
+.mv-portal.view-ultra:not(.no-claim) .app-body > .ppf,
+.mv-portal.view-ultra:not(.no-claim) .app-body > .mv-action-footer {
   display: none !important;
 }
 
@@ -1475,27 +1611,66 @@
 .mv-portal table {
   border-collapse: collapse;
   width: 100%;
-  font-size: 13px;
+  font-size: 13.5px;
 }
 
 .mv-portal th,
 .mv-portal td {
-  padding: 10px 14px;
   text-align: left;
-  border-bottom: 1px solid var(--line);
 }
 
 .mv-portal th {
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--muted);
   white-space: nowrap;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  /* The header band. Without it a long table's headings scroll away into the
+     body copy, which is the whole reason the reference tints them. */
+  background: #fafbfc;
+}
+
+.mv-portal td {
+  padding: 11px 14px;
+  /* Lighter than the header rule on purpose: the heavy line belongs under the
+     headings, and repeating it on every row turns a table into a grid. */
+  border-bottom: 1px solid #f0f1f4;
+  vertical-align: middle;
 }
 
 .mv-portal tbody tr:last-child td {
   border-bottom: 0;
+}
+
+/* A second line inside a cell — the "what it means" notes under a lease name. */
+.mv-portal td .sub {
+  display: block;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* PROFESSIONAL TIGHTENS EVERY TABLE — 12.5px cells at 6/10 padding.
+
+   This is the density contract doing its job on the one element that carries
+   most of the Professional view: "full tables, maximum density, exports". The
+   Activities by-lease table, the report's per-lease money table and its data
+   appendix are all read at this tier by someone checking figures against
+   another document, and the tighter row lets more of them be on screen at once.
+
+   MEASURED GAP THIS CLOSES: at `view=pro` the reference renders `td` at
+   12.5px/19.4 line-height and this build rendered 13px/20.2 — every table in
+   the portal was a half-point too loose in the one view that exists to be
+   dense. */
+.mv-portal.view-pro td {
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+
+.mv-portal.view-pro th {
+  padding: 7px 10px;
 }
 
 .mv-portal .kpi {
@@ -2587,11 +2762,1012 @@
   }
 }
 
+
 /* ----------------------------------------------------------------------------
-   15 · PRINT
+   15 · SHARED PRIMITIVES THE ACTIVITY + REPORT MODULES ADD
+
+   The design's own building blocks, extracted from the reference alongside
+   section 10's. They live in their own block only because they arrived with
+   these two routes; nothing here is route-specific and any later module may
+   use them.
+   ---------------------------------------------------------------------------- */
+.mv-portal .g2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mv-portal .g3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.mv-portal .delta-down {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.mv-portal .section-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--green-deep);
+}
+
+/* A coloured note with a glyph gutter. Four tones, and they carry different
+   meanings: mint is good news, gold is "do this", amber is caution, slate is
+   scope or method. */
+.mv-portal .notice {
+  border-radius: 10px;
+  padding: 13px 16px;
+  font-size: 13.5px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.mv-portal .notice.mint {
+  background: var(--mint);
+  color: var(--green-ink);
+}
+
+.mv-portal .notice.gold {
+  background: #fdf3dd;
+  color: #7a5410;
+}
+
+.mv-portal .notice.amber {
+  background: var(--amber-bg);
+  color: var(--amber);
+}
+
+.mv-portal .notice.slate {
+  background: #e8ecf3;
+  color: var(--slate);
+}
+
+.mv-portal .pill-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.mv-portal .pill-tabs a,
+.mv-portal .pill-tabs button {
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--slate);
+  border-radius: 999px;
+  padding: 7px 15px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.mv-portal .pill-tabs .on {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+
+.mv-portal .layerchips {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+/* The type chips are `.btn-ghost` buttons, so the selected state has to beat
+   the ghost background rather than sit beside it. */
+.mv-portal .layerchips .btn.on {
+  background: var(--mint);
+  border-color: #bfe9d8;
+  color: var(--green-ink);
+}
+
+.mv-portal .leaselist .li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 4px;
+  border-bottom: 1px solid #f0f1f4;
+  font-size: 12.5px;
+}
+
+.mv-portal .leaselist .li:last-child {
+  border-bottom: 0;
+}
+
+.mv-portal .leaselist .li:hover {
+  background: #fafcfb;
+}
+
+.mv-portal .glossary-term {
+  padding: 14px 0;
+  border-bottom: 1px solid #f0f1f4;
+}
+
+.mv-portal .glossary-term dt {
+  font-weight: 700;
+  font-size: 14.5px;
+}
+
+.mv-portal .glossary-term dd {
+  margin: 4px 0 0;
+  color: var(--slate);
+  font-size: 13.5px;
+  max-width: 700px;
+}
+
+/* The disclosure both modules use for "what is this number". `list-style:
+   none` plus the marker pseudo-element is the reference's own treatment. */
+.mv-portal .explain {
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fbfcfd;
+}
+
+.mv-portal .explain summary {
+  cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--green-deep);
+  padding: 7px 11px;
+  list-style: none;
+}
+
+.mv-portal .explain summary::-webkit-details-marker {
+  display: none;
+}
+
+.mv-portal .explain summary::before {
+  content: "\24D8  ";
+  font-weight: 400;
+}
+
+.mv-portal .explain[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.mv-portal .explain .ex-body {
+  padding: 9px 11px;
+  font-size: 12px;
+  color: var(--slate);
+  line-height: 1.55;
+}
+
+/* A verify-here chip: the public source behind a claim, one tap away. */
+.mv-portal .src-chip {
+  display: inline-block;
+  border: 1px solid #bfe9d8;
+  background: #f0fbf7;
+  color: var(--green-ink);
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 10.5px;
+  font-weight: 700;
+  margin: 2px 4px 0 0;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.mv-portal .src-chip:hover {
+  border-color: var(--green);
+  color: var(--green-deep);
+}
+
+.mv-portal .pricebox {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+
+.mv-portal .pricebox .pb {
+  flex: 1;
+  min-width: 130px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fafbfc;
+}
+
+.mv-portal .pricebox .pb .v {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* Form controls inside the portal — the activity toolbar's select and search.
+   Scoped here, so the marketing pages' inputs are untouched. */
+.mv-portal .v33-acttools select,
+.mv-portal .v33-acttools input[type="search"] {
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12.5px;
+  background: #fff;
+  color: var(--slate);
+}
+
+/* ----------------------------------------------------------------------------
+   16 · ACTIVITIES  (v31 · #31 · v41 · AUDIT #26-#30)
+
+   THE TWO KPI GROUPS MUST NEVER READ AS ONE GRID. "On your land" and "Nearby"
+   answer different questions, and a reader who takes a neighbour's permit for
+   a rig on their own acreage has been actively misinformed — so the section
+   pills are deliberately different colours (green-ink for the owner's own
+   land, navy for the neighbourhood) and a legend sits between them.
+   ---------------------------------------------------------------------------- */
+.mv-portal .act-win button,
+.mv-portal .act-win a {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--slate);
+  padding: 4px 12px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.mv-portal .act-win a.on {
+  background: var(--green-ink);
+  color: #fff;
+  border-color: var(--green-ink);
+}
+
+/* The `.btn` in the same row keeps its own styling — it is a navigation, not
+   one of the two scope selectors. */
+.mv-portal .act-win a.btn {
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.mv-portal .act-legend {
+  font-size: 11.5px;
+  color: var(--muted);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 6px 0 10px;
+}
+
+.mv-portal .act-legend .sw {
+  width: 14px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--green);
+  display: inline-block;
+  flex: none;
+}
+
+.mv-portal .v41-actsec {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  background: var(--green-ink);
+  color: #9fd7bd;
+  border-radius: 999px;
+  padding: 3px 12px;
+}
+
+.mv-portal .v41-actsec.v41-actsec-near {
+  background: #1d2b4a;
+  color: #b8ccf5;
+}
+
+/* ----------------------------------------------------------------------------
+   17 · THE WEEKLY REPORT  (v43 · OW-35/36 · v49 · OWNER-50)
+
+   THIS MODULE IS A DOCUMENT, and its styling follows from that: pages with
+   page numbers, a masthead rule, and a print block that turns each `.wr-page`
+   into a sheet of paper. `wr-noprint` marks everything that is navigation
+   rather than report — the rail, the buttons, the back matter.
+   ---------------------------------------------------------------------------- */
+.mv-portal .wr-page {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  padding: 32px 36px;
+  margin: 0 auto 20px;
+  max-width: 880px;
+  position: relative;
+}
+
+.mv-portal .wr-pageno {
+  position: absolute;
+  bottom: 10px;
+  right: 18px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.mv-portal .wr-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 2.5px solid var(--ink);
+  padding-bottom: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.mv-portal .wr-mast {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--green-ink);
+}
+
+.mv-portal .wr-q {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.mv-portal .wr-mini {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafdfb;
+  overflow: hidden;
+}
+
+.mv-portal .wr-answer {
+  box-shadow: none;
+  border-left: 4px solid var(--green);
+}
+
+/* Lists that carry a lead-in phrase instead of a bullet glyph. */
+.mv-portal .wr-bullets {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13.5px;
+  margin: 0;
+  padding: 0;
+}
+
+.mv-portal .wr-reasons,
+.mv-portal .wr-ordered {
+  margin: 0 0 10px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mv-portal .wr-summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.mv-portal .wr-closing {
+  margin: 16px 0 4px;
+  border-left: 4px solid var(--green);
+}
+
+/* --- THE PAGE RAIL, the report's stepper ---------------------------------- */
+.mv-portal .wr-rail {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px 12px;
+  box-shadow: var(--shadow);
+  overflow-x: auto;
+  margin: 10px 0 16px;
+}
+
+.mv-portal .wr-rail button {
+  flex: 1;
+  min-width: 86px;
+  background: none;
+  border: 0;
+  border-left: 1px solid var(--line);
+  cursor: pointer;
+  padding: 2px 10px;
+  text-align: left;
+}
+
+.mv-portal .wr-rail button:first-child {
+  border-left: 0;
+}
+
+.mv-portal .wr-rail .rl-n {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--mint);
+  color: var(--green-deep);
+  font-size: 11px;
+  font-weight: 800;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 3px;
+}
+
+.mv-portal .wr-rail .rl-t {
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--slate);
+  line-height: 1.25;
+}
+
+.mv-portal .wr-rail .rl-s {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+.mv-portal .wr-rail button:hover .rl-t {
+  color: var(--green-deep);
+}
+
+/* --- THE NEXT-STATEMENT BAND ---------------------------------------------- */
+.mv-portal .wr-est {
+  border: 2px solid var(--green);
+  border-radius: 14px;
+  overflow: hidden;
+  margin: 10px 0 18px;
+  background: #fff;
+}
+
+.mv-portal .wr-est-head {
+  background: linear-gradient(165deg, #04231a, #0b3d2c);
+  padding: 14px 18px;
+  color: #fff;
+}
+
+.mv-portal .wr-est-range {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  margin: 4px 0 0;
+  color: #fff;
+}
+
+.mv-portal .wr-est-mid {
+  font-size: 13px;
+  font-weight: 700;
+  color: #9fd7bd;
+  margin: 4px 0 0;
+}
+
+.mv-portal .wr-est-bar {
+  position: relative;
+  height: 42px;
+  margin: 14px 2px 4px;
+}
+
+.mv-portal .wr-est-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 16px;
+  height: 14px;
+  border-radius: 8px;
+  background: linear-gradient(
+    90deg,
+    #eef4f1,
+    #54bf96 35%,
+    #54bf96 65%,
+    #eef4f1
+  );
+}
+
+.mv-portal .wr-est-tick {
+  position: absolute;
+  top: 8px;
+  width: 2.5px;
+  height: 30px;
+  background: var(--green-ink);
+  border-radius: 2px;
+}
+
+.mv-portal .wr-est-cap {
+  position: absolute;
+  top: 0;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--slate);
+  transform: translateX(-50%);
+}
+
+.mv-portal .wr-est-acc {
+  box-shadow: none;
+  border: 2px dashed var(--green);
+  background: #f8fdfb;
+}
+
+/* --- THE BACK MATTER ------------------------------------------------------ */
+.mv-portal .wr-about {
+  margin: 0 0 14px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.mv-portal .wr-about > summary {
+  cursor: pointer;
+  padding: 10px 16px;
+  font-weight: 700;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mv-portal .wr-email {
+  max-width: 520px;
+  margin: 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+}
+
+.mv-portal .wr-email-head {
+  background: var(--green-ink);
+  color: #fff;
+  padding: 10px 16px;
+  font-size: 12px;
+}
+
+.mv-portal .wr-email-body {
+  padding: 14px 16px;
+  background: #fff;
+}
+
+.mv-portal .wr-email-lines {
+  margin: 0 0 10px 18px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* --- PAGE 3's MAPS -------------------------------------------------------- */
+.mv-portal .wr-maphost {
+  position: relative;
+  aspect-ratio: 10 / 7;
+  background: #eef4f1;
+  overflow: hidden;
+}
+
+.mv-portal .wr-raster {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.mv-portal .wr-raster img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  display: block;
+}
+
+/* `print-color-adjust` is load-bearing rather than a nicety: a printed report
+   whose lease pins were dropped by the browser's ink-saving default is a map
+   of nothing. */
+.mv-portal .wr-pin {
+  position: absolute;
+  z-index: 3;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--green);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(13, 14, 23, 0.4);
+  transform: translate(-50%, -50%);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.mv-portal .wr-pin.hot {
+  background: var(--green-deep);
+  width: 15px;
+  height: 15px;
+}
+
+.mv-portal .wr-pin.idle {
+  background: #94a3b8;
+}
+
+.mv-portal .wr-pin.adj {
+  width: 8px;
+  height: 8px;
+  background: var(--gold);
+  border-width: 1.5px;
+}
+
+.mv-portal .wr-maplabel {
+  position: absolute;
+  z-index: 3;
+  transform: translate(-50%, 0);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--green-ink);
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 5px;
+  padding: 1px 6px;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(13, 14, 23, 0.18);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.mv-portal .wr-mapco {
+  position: absolute;
+  z-index: 3;
+  top: 6px;
+  left: 8px;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #334155;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.mv-portal .wr-mapbadge {
+  position: absolute;
+  z-index: 3;
+  right: 6px;
+  top: 6px;
+  background: rgba(4, 35, 26, 0.85);
+  color: #8ee7c0;
+  font-size: 9.5px;
+  font-weight: 800;
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+
+.mv-portal .wr-mapcap {
+  font-size: 9.5px;
+  color: var(--muted);
+  text-align: center;
+  padding: 5px 6px;
+  background: #fafdfb;
+  border-top: 1px solid var(--line);
+}
+
+.mv-portal .wr-minigrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.mv-portal .wr-leasemini {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.mv-portal .wr-celllabel {
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--slate);
+}
+
+.mv-portal .wr-cellval {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+/* --- PAGES 4 AND 5 -------------------------------------------------------- */
+.mv-portal .wr-chip-amber {
+  background: var(--amber-bg);
+  color: var(--amber);
+  font-weight: 700;
+}
+
+.mv-portal .wr-sources {
+  margin: 0 0 10px;
+  background: linear-gradient(165deg, #ffffff, #f0fbf7);
+  border: 1px solid #bfe9d8;
+  box-shadow: none;
+}
+
+.mv-portal .wr-next {
+  box-shadow: none;
+  border: 2px solid var(--green);
+}
+
+.mv-portal .wr-next-range {
+  font-size: 19px;
+  font-weight: 800;
+  margin: 4px 0 2px;
+}
+
+.mv-portal .wr-next-mid {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--slate);
+}
+
+/* --- THE ULTRA ESTIMATE BOX ----------------------------------------------- */
+.mv-portal .wr-ultra-est {
+  border: 2px solid var(--green);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 2px 0 14px;
+  background: #f4fdf9;
+  text-align: left;
+}
+
+.mv-portal .wr-ultra-range {
+  font-size: 26px;
+  font-weight: 800;
+  margin: 2px 0;
+}
+
+/* --- THE MONTHLY ---------------------------------------------------------- */
+.mv-portal .wr-monthly {
+  margin: 18px 0 14px;
+  overflow: hidden;
+  border: 2px solid var(--green);
+}
+
+.mv-portal .wr-monthly-head {
+  background: linear-gradient(165deg, #04231a, #0b3d2c);
+  padding: 16px 20px;
+}
+
+.mv-portal .wr-monthly-find {
+  color: #ffe9c2;
+  font-size: 14px;
+  font-weight: 700;
+  margin-top: 6px;
+}
+
+.mv-portal .wr-monthly-prov {
+  color: #9fc9b8;
+  margin-top: 3px;
+}
+
+.mv-portal .wr-chip-included {
+  background: var(--green);
+  color: var(--green-ink);
+  font-weight: 800;
+}
+
+.mv-portal .wr-btn-ondark {
+  color: #c9ede0;
+  border-color: #2e5a48;
+}
+
+.mv-portal .wr-plannote {
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+
+/* --- THE GUEST SAMPLE ISSUE ----------------------------------------------- */
+.mv-portal .wr-sample-head {
+  background: linear-gradient(165deg, #04231a, #0b3d2c);
+  padding: 16px 18px;
+}
+
+.mv-portal .wr-sample-pages {
+  border-top: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.mv-portal .wr-sample-est {
+  border-top: 1px solid var(--line);
+  background: #f8fdfb;
+}
+
+.mv-portal .wr-sample-range {
+  font-size: 20px;
+  font-weight: 800;
+  margin: 6px 0 2px;
+}
+
+.mv-portal .wr-sample-mid {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--slate);
+}
+
+
+/* ----------------------------------------------------------------------------
+   18 · THE PER-ROUTE FURNITURE
+
+   The back row (§A-1), the "Why this page?" control (v38 · P1-03) and the
+   owner action footer (v32 · C4). All three are rendered by `PortalShell`, so
+   these rules apply on every module including ones not built yet.
+   ---------------------------------------------------------------------------- */
+.mv-portal .mv-backrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+}
+
+.mv-portal .mv-backrow a,
+.mv-portal .mv-backrow button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--green-deep);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+  text-decoration: none;
+  box-shadow: var(--shadow);
+}
+
+.mv-portal .mv-backrow a:hover,
+.mv-portal .mv-backrow button:hover {
+  border-color: var(--green);
+}
+
+.mv-portal .mv-backrow .tiny {
+  color: var(--muted);
+}
+
+/* "Why this page?" — the pill is always there; the banner only when asked for,
+   which is the whole point of P1-03. */
+.mv-portal .ppf-why {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 999px;
+  color: var(--green-deep);
+  font-size: 11.5px;
+  font-weight: 700;
+  min-height: 32px;
+  padding: 4px 12px;
+  cursor: pointer;
+  margin: 0 0 10px;
+}
+
+.mv-portal .ppf-why:hover {
+  background: #f0fbf7;
+}
+
+.mv-portal .ppf {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  background: var(--mint);
+  border: 1px solid #bfe9d8;
+  border-radius: 10px;
+  padding: 8px 13px;
+  font-size: 12.5px;
+  color: var(--green-ink);
+  margin: 0 0 14px;
+}
+
+.mv-portal .ppf .ppf-x {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--green-ink);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  flex: none;
+}
+
+.mv-portal .ppf .ppf-x:hover {
+  background: rgba(4, 35, 26, 0.08);
+}
+
+/* The action footer. Green top rule, so it reads as the end of the page rather
+   than one more card in it. */
+.mv-portal .mv-action-footer {
+  margin: 18px 0 4px;
+  border-top: 3px solid var(--green);
+}
+
+.mv-portal .mv-action-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.mv-portal .mv-action-row {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* ----------------------------------------------------------------------------
+   19 · A DESTINATION THAT IS NOT BUILT YET
+
+   `portal-nav.ts` states the rule this implements: "not built yet" is a BUILD
+   FACT and must never look like "not for your plan", which is a PRODUCT RULE.
+   So an unbuilt cross-link is muted, inert text with an explanatory title —
+   never blurred, never locked, never carrying an upgrade prompt.
+
+   `cursor: help` rather than `not-allowed`: the title is the whole affordance,
+   and `not-allowed` reads as a refusal rather than a "not yet".
+   ---------------------------------------------------------------------------- */
+.mv-portal .mv-unbuilt {
+  color: var(--muted);
+  cursor: help;
+  text-decoration: none;
+}
+
+.mv-portal .btn.mv-unbuilt {
+  background: #fff;
+  border-color: var(--line);
+  color: var(--muted);
+  box-shadow: none;
+  font-weight: 600;
+}
+
+.mv-portal .btn.mv-unbuilt:hover {
+  filter: none;
+  border-color: var(--line);
+}
+
+/* ----------------------------------------------------------------------------
+   20 · THE WEEKLY REPORT'S DENSITY GATE
+
+   The engine has `tier-u` / `tier-s` / `tier-d` / `tier-p` and section 9
+   applies them everywhere. The report needs ONE extra rule on top, and only
+   one: the COVER is the report's complete top layer, so it renders in
+   Essentials too while pages 2-5 stay one deliberate click deeper. Without
+   this the calmest reader gets a chart and no verdict.
+   ---------------------------------------------------------------------------- */
+.mv-portal.view-simple:not(.no-claim) .wr-page {
+  display: none;
+}
+
+.mv-portal.view-simple:not(.no-claim) #wrPage1 {
+  display: block;
+}
+
+/* Ultra replaces the page entirely, and the cover goes with everything else. */
+.mv-portal.view-ultra:not(.no-claim) #wrPage1 {
+  display: none;
+}
+
+/* ----------------------------------------------------------------------------
+   21 · PRINT
 
    The chrome goes; the body takes the whole page. An owner printing their
    dashboard wants the numbers, not the navigation.
+
+   THE WEEKLY REPORT IS THE REASON THIS BLOCK MATTERS. Every other route
+   prints as a courtesy; the report is a deliverable owners file and forward to
+   family, and it is mailed on paper monthly. So `.wr-page` becomes an actual
+   sheet — five of them, one break between each — and `.wr-noprint` removes
+   everything that was navigation rather than report: the rail, the buttons,
+   the back matter, the density switches.
    ---------------------------------------------------------------------------- */
 @media print {
   .mv-portal .app-side,
@@ -2599,7 +3775,11 @@
   .mv-portal #mvPinBar,
   .mv-portal .tabbar,
   .mv-portal .app-drawer,
-  .mv-portal .side-ref {
+  .mv-portal .side-ref,
+  .mv-portal .mv-backrow,
+  .mv-portal .ppf-why,
+  .mv-portal .ppf,
+  .mv-portal .wr-noprint {
     display: none !important;
   }
 
@@ -2611,10 +3791,59 @@
     max-width: none !important;
     padding: 0 !important;
   }
+
+  /* One page per section, and no border or shadow: the paper is the card. */
+  .mv-portal .wr-page {
+    border: 0;
+    box-shadow: none;
+    border-radius: 0;
+    max-width: none;
+    padding: 0 0 12px;
+    margin: 0;
+    page-break-after: always;
+    break-after: page;
+  }
+
+  .mv-portal .wr-page:last-of-type {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  /* PRINT WIDTH IS ABOUT 720px, which lands inside the phone breakpoint and
+     would collapse every grid to one column. A report page whose four KPIs
+     print as four stacked full-width blocks wastes most of the sheet, so the
+     desktop columns are forced back on paper. */
+  .mv-portal .wr-page .grid.g2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mv-portal .wr-page .grid.g3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .mv-portal .wr-page .grid.g4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  /* A scroll container has no meaning on paper — let the table print whole. */
+  .mv-portal .wr-page .tablewrap {
+    overflow: visible;
+  }
+
+  /* The maps are the reason the report uses rasters rather than a live map;
+     do not let the browser drop their ink. */
+  .mv-portal .wr-raster img {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  @page {
+    margin: 14mm;
+  }
 }
 
 /* ----------------------------------------------------------------------------
-   16 · REDUCED MOTION
+   22 · REDUCED MOTION
    ---------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
   .mv-portal .btn {

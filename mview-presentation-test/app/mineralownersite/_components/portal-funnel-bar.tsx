@@ -1,9 +1,6 @@
+import { ActiveLeasePicker } from "./active-lease-picker";
 import { portfolio } from "../_lib/portal-demo-data";
-import {
-  LEASE_LOCK_DAYS,
-  TRIAL_DAY,
-  TRIAL_LENGTH_DAYS,
-} from "../_lib/portal-state";
+import { TRIAL_DAY, TRIAL_LENGTH_DAYS } from "../_lib/portal-state";
 
 /**
  * The funnel bar — states 3, 4A and 4B, under the pinned value bar on every
@@ -34,11 +31,21 @@ import {
  * of the wrong message painting first. Nothing shows for `unclaimed` (the claim
  * rail on the page is that state's message) or for `paid` (nothing to say).
  *
- * The active-lease picker the lapsed state carries is deliberately absent: it
- * chooses among the ten leases on the My Leases module, which is not built. A
- * picker with nothing to pick would be worse than the sentence that explains
- * the rule.
+ * THE ACTIVE-LEASE PICKER IS PART OF THE LAPSED MESSAGE, not an extra. The
+ * copy says "pick which below", so the control has to be there or the sentence
+ * points at nothing — see `active-lease-picker.tsx`. It needs no unbuilt route:
+ * the choice is the owner's own and is stored on their device.
+ *
+ * THE TWO CTAs ARE INERT, and that is a build fact rather than a design one.
+ * Each points at Billing & Plan, which is not built, so both render with the
+ * reference's exact wording and styling but `aria-disabled` and a `title`
+ * saying the module is not open yet — the same convention the top bar's bell
+ * follows. They become real links when `billing/page.tsx` lands.
  */
+/** Both CTAs point at the same unbuilt module, so they say so the same way. */
+const UNBUILT =
+  "Billing & Plan is not open yet — it arrives with its own module.";
+
 export function PortalFunnelBar() {
   const daysLeft = TRIAL_LENGTH_DAYS - TRIAL_DAY;
   const onHold = Math.max(0, portfolio.leaseCount - 1);
@@ -74,23 +81,40 @@ export function PortalFunnelBar() {
       <span className="fb-tag lp-only">Trial ended</span>
       <span className="fb-msg lp-only">
         Your <b>Premium</b> trial has ended, so your account is on the free plan.{" "}
-        <b>One lease stays fully live</b> — you can change which one once every{" "}
-        {LEASE_LOCK_DAYS} days. Your other {onHold} leases and their values are
-        on hold, and <b>nothing has been deleted</b>.
+        <b>One lease stays fully live</b> — pick which below. Your other {onHold}{" "}
+        leases and their values are on hold, and nothing has been deleted.
       </span>
 
-      {/* The CTAs. Billing & Plan is not built, so each is a labelled
-          non-action rather than a button into a 404 — the message is the point
-          of this bar, and it still lands. */}
+      {/* State 4B only — `portal.css` shows `#mvActiveLeaseWrap` in `lapsed`
+          and hides it everywhere else, so it costs nothing on the other
+          states. */}
+      <ActiveLeasePicker />
+
+      {/* The CTAs — a primary and a secondary per state, the reference's own
+          pairs: trial / "What the trial includes", upgrade / "Compare plans",
+          restore / "What I am missing". Both go to Billing & Plan, which is not
+          built, so both are labelled non-actions rather than buttons into a
+          404 — the message is the point of this bar, and it still lands. */}
       <span className="fb-act">
-        <span className="fb-cta cl-only" aria-disabled="true">
-          Start my {TRIAL_LENGTH_DAYS}-day free trial — soon
+        <span className="fb-cta cl-only" aria-disabled="true" title={UNBUILT}>
+          Start my {TRIAL_LENGTH_DAYS}-day free trial
         </span>
-        <span className="fb-cta tr-only" aria-disabled="true">
-          Upgrade to Premium — soon
+        <span className="fb-2nd cl-only" aria-disabled="true" title={UNBUILT}>
+          What the trial includes
         </span>
-        <span className="fb-cta lp-only" aria-disabled="true">
-          Restore full access — soon
+
+        <span className="fb-cta tr-only" aria-disabled="true" title={UNBUILT}>
+          Upgrade to Premium
+        </span>
+        <span className="fb-2nd tr-only" aria-disabled="true" title={UNBUILT}>
+          Compare plans
+        </span>
+
+        <span className="fb-cta lp-only" aria-disabled="true" title={UNBUILT}>
+          Restore full access
+        </span>
+        <span className="fb-2nd lp-only" aria-disabled="true" title={UNBUILT}>
+          What I am missing
         </span>
       </span>
     </div>

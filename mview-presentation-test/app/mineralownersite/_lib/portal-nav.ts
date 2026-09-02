@@ -139,8 +139,18 @@ export const navSections: PortalNavSection[] = [
       { label: "Alerts", icon: "bell", navKey: "app-alerts", badge: 6 },
       { label: "My Leases", icon: "leases", navKey: "app-leases" },
       { label: "Map", icon: "map", navKey: "app-map" },
-      { label: "Activities", icon: "activity", navKey: "app-activities" },
-      { label: "Weekly Report", icon: "mail", navKey: "app-briefing" },
+      {
+        label: "Activities",
+        icon: "activity",
+        href: "/mineralownersite/activities",
+        navKey: "app-activities",
+      },
+      {
+        label: "Weekly Report",
+        icon: "mail",
+        href: "/mineralownersite/briefing",
+        navKey: "app-briefing",
+      },
       {
         label: "Production & Forecast",
         icon: "trend",
@@ -198,7 +208,12 @@ export const tabBar: PortalNavItem[] = [
   { label: "Home", icon: "home", href: "/mineralownersite", navKey: "app" },
   { label: "Leases", icon: "leases", navKey: "app-leases" },
   { label: "Map", icon: "map", navKey: "app-map" },
-  { label: "Activity", icon: "activity", navKey: "app-activities" },
+  {
+    label: "Activity",
+    icon: "activity",
+    href: "/mineralownersite/activities",
+    navKey: "app-activities",
+  },
   { label: "Profile", icon: "user", navKey: "app-dossier" },
 ];
 

@@ -45,6 +45,29 @@ export function PortalNavRow({
   /** The drawer closes itself on navigation; the sidebar passes nothing. */
   onNavigate?: () => void;
 }) {
+  /**
+   * The unread count, if the row has one.
+   *
+   * IT BELONGS TO BOTH BRANCHES, and leaving it out of the inert one was a
+   * real defect: Alerts is the only badged row in the whole rail AND its module
+   * is unbuilt, so the count rendered nowhere and the reference's "Alerts 6"
+   * came out as a bare "Alerts".
+   *
+   * A COUNT IS NOT AN AFFORDANCE. That is why it survives the row being inert —
+   * "six things changed on your record" is information the owner should have
+   * whether or not the screen that lists them is finished, and it is the same
+   * reasoning the top bar's bell already follows (it reports 6 while saying the
+   * inbox is not open yet). The "soon" badge that WAS removed from these rows
+   * is a different thing entirely: that was build status repeated down the
+   * rail, and the dimming plus the title already carry it.
+   */
+  const badge =
+    item.badge !== undefined ? (
+      <span className="unread" style={{ marginLeft: "auto" }}>
+        {item.badge}
+      </span>
+    ) : null;
+
   if (!item.href) {
     return (
       <span
@@ -57,6 +80,7 @@ export function PortalNavRow({
           <PortalIcon name={item.icon} />
         </span>
         {item.label}
+        {badge}
       </span>
     );
   }
@@ -73,11 +97,7 @@ export function PortalNavRow({
         <PortalIcon name={item.icon} />
       </span>
       {item.label}
-      {item.badge !== undefined && (
-        <span className="unread" style={{ marginLeft: "auto" }}>
-          {item.badge}
-        </span>
-      )}
+      {badge}
     </Link>
   );
 }

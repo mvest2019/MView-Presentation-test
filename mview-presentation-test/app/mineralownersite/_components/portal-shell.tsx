@@ -3,7 +3,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 
+import { PortalActionFooter } from "./portal-action-footer";
+import { PortalBackRow } from "./portal-back-row";
 import { PortalMobileDrawer } from "./portal-mobile-drawer";
+import { PortalPagePurpose } from "./portal-page-purpose";
 import { PortalSideNav } from "./portal-side-nav";
 import { PortalTabBar } from "./portal-tab-bar";
 import { PortalTopNav } from "./portal-top-nav";
@@ -87,7 +90,28 @@ export function PortalShell({
           />
           {pinnedBar}
           {funnelBar}
-          <div className="app-body">{children}</div>
+          {/*
+            THE PER-ROUTE FURNITURE — the back row, "Why this page?" and the
+            action footer. All three are the reference's shell components, and
+            they live HERE rather than in each page for the reason the
+            reference injects them per route: every module gets them for free,
+            and none of them can drift between routes. A page added next week
+            inherits all three by adding its entries to
+            `_lib/portal-page-furniture.ts`.
+
+            THEY SIT OUTSIDE THE PAGE'S OWN `.mv-dash-routes` WRAPPER, which
+            matches the reference's structure exactly — there they are appended
+            to the active `<section>`, and `.mv-dash-routes` is the inner
+            container the Ultra page-replacement rule targets. So Ultra empties
+            the page but keeps the reader's way back and their way onward,
+            which is what the calm density is supposed to do.
+          */}
+          <div className="app-body">
+            <PortalBackRow />
+            <PortalPagePurpose />
+            {children}
+            <PortalActionFooter />
+          </div>
         </div>
       </div>
 
