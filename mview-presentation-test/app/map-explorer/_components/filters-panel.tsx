@@ -1473,6 +1473,11 @@ export function FiltersPanel({
               /* And the Find… box inside each section, which only a rebuild
                  can reach. */
               setSectionsResetAt((count) => count + 1);
+              /* The operator list is searched on the server, so rebuilding
+                 the section empties its box but leaves the list showing the
+                 twelve that matched "abc". This is what puts the whole
+                 register back. */
+              setOperatorFind("");
             }}
             className="mt-2 w-full cursor-pointer rounded-lg border border-mv-red px-3 py-[8px] text-[12.5px] font-semibold text-mv-red hover:bg-mv-red-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-red"
           >

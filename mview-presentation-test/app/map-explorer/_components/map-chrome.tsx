@@ -953,14 +953,13 @@ export function MapChrome({
                 }}
                 /* A number pad on a phone: the field takes digits only. */
                 inputMode="numeric"
-                placeholder="API NO.(e.g.42-123-45678)"
-                /* 162px from `lg` up: the placeholder names a whole API
-                   number and measures 158px in this face at this size, so
-                   this is the narrowest the field can be without cutting its
-                   own example mid-number — which would teach the wrong shape.
-                   The 190px it had before was 28px of slack in a bar that has
-                   none to spare. */
-                className="w-full min-w-0 border-0 bg-transparent text-[12.5px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted lg:w-[162px]"
+                placeholder="API No. (e.g. 42-123-45678)"
+                /* Wide enough for the whole hint, and no wider: the
+                   placeholder names a complete API number, and a field that
+                   cuts its own example mid-number teaches the wrong shape.
+                   Measured against this exact string in this face at this
+                   size — re-measure it if the wording changes. */
+                className="w-full min-w-0 border-0 bg-transparent text-[12.5px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted lg:w-[170px]"
               />
               {placeQuery !== "" && (
                 <button
