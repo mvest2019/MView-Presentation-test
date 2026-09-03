@@ -132,10 +132,11 @@ export function exportVisible(
 
   const columns: SheetColumn[] = [
     { head: named, width: 30 },
-    { head: "County", width: 16 },
-    /* One line, like every other cell. Wrapped, twenty-five county names
-       made a row six lines deep and the sheet unreadable — the value is all
-       there, and the column widens with a double-click when it is wanted. */
+    /* Every county the bubble covers, largest first — the first of them is
+       the one the cluster is named for, so a separate "County" column beside
+       this repeated it on every row. One line, like every other cell:
+       wrapped, twenty-five names made a row six lines deep. The column
+       widens with a double-click when the whole list is wanted. */
     { head: "Counties", width: 46 },
     { head: "Longitude", width: 12, format: "coordinate" },
     { head: "Latitude", width: 12, format: "coordinate" },
@@ -151,7 +152,6 @@ export function exportVisible(
     columns,
     visible.map((cluster) => [
       shown(cluster.name),
-      shown(cluster.topCounty),
       /* Semicolons, not commas: the list is one value, and a comma inside it
          is the classic way to have a spreadsheet split it into columns. */
       shown(cluster.counties.join("; ")),

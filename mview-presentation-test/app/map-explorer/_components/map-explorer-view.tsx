@@ -1663,6 +1663,20 @@ export function MapExplorerView() {
     setSelectedWell(null);
   }, []);
 
+  /*
+   * The cross in the summary's header.
+   *
+   * Closing a record is being done with that well, so the page goes back to
+   * the map — the alternative was the Insights tab with "Pick a well" in it,
+   * which is a page asking for something the reader has just finished doing.
+   * Nothing else moves: the filter stands, the camera stands, and anything a
+   * tool drew is where it was left.
+   */
+  const closeSummaryToMap = useCallback(() => {
+    closeSummary();
+    setViewTab("map");
+  }, [closeSummary]);
+
   const clearWells = useCallback(() => {
     wellRequestRef.current += 1;
     /* Nothing is held any more, so the next extent is new ground. */
@@ -4276,7 +4290,7 @@ export function MapExplorerView() {
               <WellInsightsPanel
                 key={selectedWell.api}
                 well={selectedWell}
-                onClose={closeSummary}
+                onClose={closeSummaryToMap}
               />
             ) : (
               <div className="grid h-full place-items-center bg-mv-bg p-6">
