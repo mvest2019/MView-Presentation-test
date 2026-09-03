@@ -37,7 +37,8 @@ export function Band({
   icon: LucideIcon;
   eyebrow: string;
   title: string;
-  body: string;
+  /** One paragraph, or several — some bands open with two. */
+  body: string | string[];
   primary: { href: string; label: string };
   secondary: { href: string; label: string };
   children: React.ReactNode;
@@ -62,9 +63,16 @@ export function Band({
           <h2 className="mt-4 text-[23px] font-extrabold leading-[1.12] tracking-[-0.02em] text-mv-ink lg:text-[30px]">
             {title}
           </h2>
-          <p className="mt-3 max-w-[58ch] text-[13px] leading-relaxed text-mv-slate lg:text-[14px]">
-            {body}
-          </p>
+          {(Array.isArray(body) ? body : [body]).map((paragraph, at) => (
+            <p
+              key={paragraph}
+              className={`max-w-[58ch] text-[13px] leading-relaxed text-mv-slate lg:text-[14px] ${
+                at === 0 ? "mt-3" : "mt-2"
+              }`}
+            >
+              {paragraph}
+            </p>
+          ))}
 
           <div className="mt-7 flex flex-wrap items-center gap-3">
             <Link

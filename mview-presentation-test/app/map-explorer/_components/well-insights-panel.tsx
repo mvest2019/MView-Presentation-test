@@ -66,7 +66,7 @@ import { wellSummaryFields } from "./well-summary-fields";
 const WELL_INFO_LABELS = [
   "Well Type",
   "Direction",
-  "Well Age",
+  "Producing Span",
   "Reservoir/Play",
 ];
 const LEASE_LABELS = ["Lease Name", "Lease No.", "Acres", "District"];

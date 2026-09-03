@@ -256,6 +256,9 @@ export function WellsTable({
    * The options behind each dropdown, from the facet endpoints. Fetched once,
    * together: four small lists, and the table is unusable without any of them.
    */
+  /** The table card, for taking the reader to the rows an Apply just asked for. */
+  const tableRef = useRef<HTMLDivElement>(null);
+
   const [facetItems, setFacetItems] = useState<Record<FacetKey, MapFilterItem[]>>({
     operator: [],
     type: [],
@@ -520,14 +523,15 @@ export function WellsTable({
     {
       stream: "oil" as const,
       label: "Producing oil",
-      unit: "bbl",
+      /* As the column heading and the record write it. */
+      unit: "BBL",
       min: appliedProduction.oilMin,
       max: appliedProduction.oilMax,
     },
     {
       stream: "gas" as const,
       label: "Producing gas",
-      unit: "mcf",
+      unit: "MCF",
       min: appliedProduction.gasMin,
       max: appliedProduction.gasMax,
     },
@@ -597,6 +601,11 @@ export function WellsTable({
     setAppliedProduction(production);
     setAppliedPicked(picked);
     setPage(1);
+
+    /* And the rows are what was asked for, so the page goes to them. The
+       filter bar, the chips and the counts sit above the table; from the top
+       of the page the answer is off the bottom of the screen. */
+    tableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   /** A stable spelling of a selection, for telling draft from applied. */
@@ -959,26 +968,44 @@ export function WellsTable({
       </div>
 
       {/* ---------------- table ---------------- */}
-      <div className="relative mt-4 overflow-hidden rounded-xl border border-mv-line bg-white">
+      <div
+        ref={tableRef}
+        /* A little room above it, so the card does not land flush against
+           the top of the window with its heading row half under the site
+           header. */
+        className="relative mt-4 scroll-mt-24 overflow-hidden rounded-xl border border-mv-line bg-white"
+      >
       {/* Over the dimmed rows, not instead of them: dimming alone reads as a
           disabled table, and says nothing about how long it will be.
 
-          Centred on the screen rather than on the card. The card is
-          twenty-five rows tall, so its middle is a long way down the page —
-          the pill was landing near the foot of the window, or past it, while
-          the rows it was explaining were at the top. Fixed, it is where the
-          reader is looking whatever they have scrolled to. */}
+          Held over the rows and nowhere else. Fixed to the window it was
+          centred on the screen, which on a short window is exactly where the
+          column headings are — so the pill sat across them, reading as a
+          thing dropped on the table rather than the table's own state. This
+          starts below the headings and, being `sticky`, follows the scroll
+          within the rows: always in view, never off the card. */}
       {loading && rows.length > 0 && (
-        <div className="pointer-events-none fixed inset-0 z-50 grid place-items-center">
-          <span className="flex items-center gap-[12px] rounded-full border border-mv-line bg-white px-[22px] py-[13px] shadow-mv-lg">
-            <span
-              aria-hidden="true"
-              className="h-[20px] w-[20px] shrink-0 animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
-            />
-            <span className="text-[15px] font-semibold leading-none text-mv-slate">
-              Loading wells…
+        /*
+         * The rows go quiet, and the pill sits in the middle of them.
+         *
+         * `sticky`, pulled up by half its own height: while the rows fill the
+         * screen that puts it at the centre of the window, and once the table
+         * is scrolled half past it stays inside the table rather than
+         * floating over whatever else is on screen. The headings are left
+         * clear either way, so the columns being waited on stay legible.
+         */
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 top-[46px] z-30 bg-white/55">
+          <div className="sticky top-1/2 flex -translate-y-1/2 justify-center">
+            <span className="flex items-center gap-[12px] rounded-full border border-mv-line bg-white px-[22px] py-[13px] shadow-mv-lg">
+              <span
+                aria-hidden="true"
+                className="h-[20px] w-[20px] shrink-0 animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
+              />
+              <span className="text-[15px] font-semibold leading-none text-mv-slate">
+                Loading wells…
+              </span>
             </span>
-          </span>
+          </div>
         </div>
       )}
 
