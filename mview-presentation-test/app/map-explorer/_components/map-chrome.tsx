@@ -1104,6 +1104,7 @@ export function MapChrome({
               setShareOpen(false);
               onPrint();
             }}
+            onClose={() => setShareOpen(false)}
             className="pointer-events-auto fixed z-50"
             style={{ top: shareAnchor.top, right: shareAnchor.right }}
           />
@@ -1304,8 +1305,15 @@ function ToolbarButton({
       aria-expanded={expanded}
       aria-label={label || title}
       title={title ?? label}
-      /* No chrome of its own: it sits inside the bar that has it. */
-      className="inline-flex shrink-0 items-center gap-[6px] rounded-lg bg-transparent px-[9px] py-[7px] text-[12.5px] font-semibold leading-tight text-mv-slate transition-colors enabled:cursor-pointer enabled:hover:bg-[#f2f8f5] enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-50 lg:py-[5px]"
+      /* No chrome of its own: it sits inside the bar that has it — except
+         while what it opened is on screen. A replay running or a menu down is
+         a state the reader is in, and a button that looks untouched while its
+         own panel is open reads as a button that did nothing. */
+      className={`inline-flex shrink-0 items-center gap-[6px] rounded-lg px-[9px] py-[7px] text-[12.5px] font-semibold leading-tight transition-colors enabled:cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 lg:py-[5px] ${
+        expanded
+          ? "bg-mv-mint text-mv-green-deep"
+          : "bg-transparent text-mv-slate enabled:hover:bg-[#f2f8f5] enabled:hover:text-mv-green-deep"
+      }`}
     >
       <Icon size={15} strokeWidth={2} aria-hidden="true" />
       <span className="hidden lg:inline">{label}</span>
