@@ -392,21 +392,37 @@ export function MapChrome({
    * either gets cut off or widens the strip and gives it a scrollbar.
    */
   const timeLapseButtonRef = useRef<HTMLButtonElement>(null);
+  const insightsTabRef = useRef<HTMLButtonElement>(null);
   const [hintAnchor, setHintAnchor] = useState<{
     top: number;
     left: number;
+    /* Two buttons ask for a hint, and each says its own thing. */
+    text: string;
   } | null>(null);
 
-  const showTimeLapseHint = () => {
+  const showHint = (button: HTMLButtonElement | null, text: string) => {
     const toolbar = toolbarRef.current?.getBoundingClientRect();
-    const button = timeLapseButtonRef.current?.getBoundingClientRect();
-    if (!toolbar || !button) return;
+    const box = button?.getBoundingClientRect();
+    if (!toolbar || !box) return;
 
     setHintAnchor({
-      top: Math.round(button.bottom - toolbar.top + 8),
-      left: Math.round(button.left + button.width / 2 - toolbar.left),
+      top: Math.round(box.bottom - toolbar.top + 8),
+      left: Math.round(box.left + box.width / 2 - toolbar.left),
+      text,
     });
   };
+
+  const showTimeLapseHint = () =>
+    showHint(
+      timeLapseButtonRef.current,
+      "Time-lapse replays individual wells. Zoom in to level 10, where the wells are drawn, then press it.",
+    );
+
+  const showInsightsHint = () =>
+    showHint(
+      insightsTabRef.current,
+      "Insights reads one well's record. Zoom in until the wells are drawn in place of the count bubbles, then pick one.",
+    );
   const shareButtonRef = useRef<HTMLSpanElement>(null);
   const bar = scaleBar(scale);
 
@@ -774,25 +790,49 @@ export function MapChrome({
           <div
             ref={viewTabsRef}
             className="flex w-full shrink-0 items-center gap-1 rounded-xl border border-mv-line bg-white/97 p-1 shadow-mv-lg backdrop-blur-[6px] lg:w-auto lg:justify-start lg:rounded-lg lg:border-0 lg:bg-[#f1f2f4] lg:p-[3px] lg:shadow-none">
-          {VIEW_TABS.map(({ id, label, icon: Icon }) => (
+          {VIEW_TABS.map(({ id, label, icon: Icon }) => {
+            /*
+             * Insights is about one well, and over the bubbles there are no
+             * wells to pick — the tab opened on "Pick a well" and left the
+             * reader to work out that the map was the thing in the way. It
+             * waits for them instead, and says so on hover.
+             */
+            const waiting = id === "insights" && !wellsVisible;
+
+            return (
             <button
               key={id}
               type="button"
+              ref={id === "insights" ? insightsTabRef : undefined}
               aria-pressed={viewTab === id}
-              onClick={() => onViewTabChange(id)}
+              aria-disabled={waiting}
+              onClick={() => {
+                if (waiting) {
+                  showInsightsHint();
+                  return;
+                }
+                onViewTabChange(id);
+              }}
+              onMouseEnter={waiting ? showInsightsHint : undefined}
+              onFocus={waiting ? showInsightsHint : undefined}
+              onMouseLeave={() => setHintAnchor(null)}
+              onBlur={() => setHintAnchor(null)}
               /* Each tab takes a third of the card on a phone: three equal
                  targets read as one control, where content-width buttons in a
                  full-width card read as three loose chips with a gap. */
-              className={`inline-flex flex-1 shrink-0 items-center justify-center gap-[6px] rounded-lg px-[10px] py-[7px] text-[13px] font-semibold leading-tight transition-colors enabled:cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 lg:flex-none lg:py-[5px] lg:text-[12.5px] ${
+              className={`inline-flex flex-1 shrink-0 items-center justify-center gap-[6px] rounded-lg px-[10px] py-[7px] text-[13px] font-semibold leading-tight transition-colors lg:flex-none lg:py-[5px] lg:text-[12.5px] ${
                 viewTab === id
                   ? "bg-mv-green-deep text-white shadow-mv"
-                  : "text-mv-slate enabled:hover:bg-white/70 enabled:hover:text-mv-green-deep"
+                  : waiting
+                    ? "cursor-not-allowed text-mv-muted"
+                    : "cursor-pointer text-mv-slate hover:bg-white/70 hover:text-mv-green-deep"
               }`}
             >
               <Icon size={15} strokeWidth={2} aria-hidden="true" />
               {label}
             </button>
-          ))}
+            );
+          })}
           </div>
 
           {/* Export is the first to go when the map is only half the page
@@ -1016,8 +1056,7 @@ export function MapChrome({
               aria-hidden="true"
               className="absolute -top-[5px] left-1/2 h-[9px] w-[9px] -translate-x-1/2 rotate-45 border-l border-t border-mv-line bg-white"
             />
-            Time-lapse replays individual wells. Zoom in to level 10, where the
-            wells are drawn, then press it.
+            {hintAnchor.text}
           </div>
         )}
 
@@ -1065,6 +1104,7 @@ export function MapChrome({
               setShareOpen(false);
               onPrint();
             }}
+            onClose={() => setShareOpen(false)}
             className="pointer-events-auto fixed z-50"
             style={{ top: shareAnchor.top, right: shareAnchor.right }}
           />
@@ -1265,8 +1305,15 @@ function ToolbarButton({
       aria-expanded={expanded}
       aria-label={label || title}
       title={title ?? label}
-      /* No chrome of its own: it sits inside the bar that has it. */
-      className="inline-flex shrink-0 items-center gap-[6px] rounded-lg bg-transparent px-[9px] py-[7px] text-[12.5px] font-semibold leading-tight text-mv-slate transition-colors enabled:cursor-pointer enabled:hover:bg-[#f2f8f5] enabled:hover:text-mv-green-deep disabled:cursor-not-allowed disabled:opacity-50 lg:py-[5px]"
+      /* No chrome of its own: it sits inside the bar that has it — except
+         while what it opened is on screen. A replay running or a menu down is
+         a state the reader is in, and a button that looks untouched while its
+         own panel is open reads as a button that did nothing. */
+      className={`inline-flex shrink-0 items-center gap-[6px] rounded-lg px-[9px] py-[7px] text-[12.5px] font-semibold leading-tight transition-colors enabled:cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 lg:py-[5px] ${
+        expanded
+          ? "bg-mv-mint text-mv-green-deep"
+          : "bg-transparent text-mv-slate enabled:hover:bg-[#f2f8f5] enabled:hover:text-mv-green-deep"
+      }`}
     >
       <Icon size={15} strokeWidth={2} aria-hidden="true" />
       <span className="hidden lg:inline">{label}</span>

@@ -759,6 +759,9 @@ export function MapExplorerView() {
 
   const [status, setStatus] = useState<Status>("loading");
   const [viewTab, setViewTab] = useState<ViewTab>("map");
+  /* What is on screen, readable from a callback — the tab is set from half a
+     dozen places and only one of them should leave a history step. */
+  const viewTabRef = useRef<ViewTab>("map");
 
   /*
    * The filter the address arrived with, if any.
@@ -3557,6 +3560,15 @@ export function MapExplorerView() {
     drawNearby(null);
   }, [drawNearby]);
 
+  /*
+   * Switching tabs leaves a step for the back button.
+   *
+   * The tab is not in the address — nothing about the view is, deliberately —
+   * so this pushes an entry at the same URL and remembers the tab in its
+   * state. Back then walks the tabs the reader came through and lands on the
+   * map, rather than taking them off the page entirely, which is what a tab
+   * switch that leaves no trace does.
+   */
   const changeViewTab = useCallback((tab: ViewTab) => {
     /*
      * Coming back to the map puts the ring out.
@@ -3571,8 +3583,47 @@ export function MapExplorerView() {
       highlightLayerRef.current?.removeAll();
     }
 
+    /*
+     * Pushed here, not inside the updater: React runs updaters during render
+     * to check they are pure, and a history push in one is the router being
+     * changed mid-render — which React reports as exactly that.
+     */
+    if (viewTabRef.current !== tab && typeof window !== "undefined") {
+      window.history.pushState({ mvTab: tab }, "", window.location.href);
+    }
+
+    viewTabRef.current = tab;
     setViewTab(tab);
-    /* So a link sent from the table opens on the table. */
+  }, []);
+
+  /* The tab can be set without going through `changeViewTab` — a row's "view
+     on map", a well clicked, a shared link. Kept in step here so the next
+     switch knows whether it is a change at all. */
+  useEffect(() => {
+    viewTabRef.current = viewTab;
+  }, [viewTab]);
+
+  /*
+   * And the back button walks them.
+   *
+   * The entry before the first switch carries no tab of ours, which is the
+   * map — the view this page opens on.
+   */
+  useEffect(() => {
+    const onPop = (event: PopStateEvent) => {
+      const state = event.state as { mvTab?: ViewTab } | null;
+      const tab = state?.mvTab ?? "map";
+
+      if (tab === "map") {
+        clearInterval(pulseTimerRef.current);
+        highlightLayerRef.current?.removeAll();
+      }
+      viewTabRef.current = tab;
+      setViewTab(tab);
+    };
+
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
   }, []);
 
   /*

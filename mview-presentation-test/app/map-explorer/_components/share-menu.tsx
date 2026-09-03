@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Download, Printer } from "lucide-react";
+import { Check, Download, Printer, X } from "lucide-react";
 import {
   useEffect,
   useRef,
@@ -26,6 +26,8 @@ type ShareMenuProps = {
   url?: string;
   onSaveImage?: () => void;
   onPrint?: () => void;
+  /** Shuts the menu. Without it the only way out was a click elsewhere. */
+  onClose?: () => void;
   className?: string;
   style?: CSSProperties;
 };
@@ -46,6 +48,7 @@ export function ShareMenu({
   url,
   onSaveImage,
   onPrint,
+  onClose,
   className = "",
   style,
 }: ShareMenuProps) {
@@ -91,8 +94,22 @@ export function ShareMenu({
       className={`w-[284px] rounded-xl border border-mv-line bg-white p-[14px] shadow-mv-lg ${className}`}
       style={style}
     >
-      <div className="text-[10px] font-extrabold uppercase leading-none tracking-[.14em] text-mv-muted">
-        Link to this view
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-[10px] font-extrabold uppercase leading-none tracking-[.14em] text-mv-muted">
+          Link to this view
+        </div>
+
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            title="Close"
+            className="-mr-1 -mt-1 grid h-[22px] w-[22px] shrink-0 cursor-pointer place-items-center rounded-md text-mv-muted hover:bg-mv-red-bg hover:text-mv-red focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-mv-green-deep"
+          >
+            <X size={14} strokeWidth={2.5} aria-hidden="true" />
+          </button>
+        )}
       </div>
 
       <div className="mt-[10px] flex items-center gap-2">
