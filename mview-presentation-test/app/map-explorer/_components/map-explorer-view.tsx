@@ -1689,6 +1689,17 @@ export function MapExplorerView() {
     const layer = wellLayerRef.current;
     if (!ctors || !layer) return 0;
 
+    /*
+     * Only while a replay is on.
+     *
+     * The replay ticks on a timer, and stopping it is a state change — so
+     * between the close and React clearing that timer, one more tick could
+     * fire. It drew a year of wells back onto a map that had just been
+     * emptied, which is how a cleared filter ended with a patch of wells
+     * sitting over the statewide bubbles.
+     */
+    if (!timeLapseRef.current) return 0;
+
     const shown = wellsUpTo(timeLapseYearsRef.current, step);
     layer.removeAll();
     layer.addMany(
@@ -1707,7 +1718,29 @@ export function MapExplorerView() {
     setTimeLapseStep(-1);
     setTimeLapseOpen(false);
 
-    /* Everything back at once, undated wells included. */
+    /*
+     * Everything back at once, undated wells included — but only where the
+     * map would be drawing wells anyway.
+     *
+     * The replay holds its own copy of the set it is replaying, and putting
+     * that back is right when the reader closes the bar over the same map
+     * they opened it on. It is wrong once that map has moved on: a filter
+     * lifted, or a zoom back out to the bubbles, leaves nothing that should
+     * be drawn — and the replay's wells sat over the statewide bubbles with
+     * no bar to explain them.
+     */
+    const view = viewRef.current;
+    const drawsWells = filteredRef.current || zoomLevel(view) >= WELL_ZOOM;
+
+    /* The replay's own years go too, so nothing can be drawn from them. */
+    timeLapseYearsRef.current = [];
+
+    if (!drawsWells) {
+      timeLapseAllRef.current = [];
+      clearWells();
+      return;
+    }
+
     if (ctors && layer) {
       layer.removeAll();
       layer.addMany(
@@ -1718,7 +1751,7 @@ export function MapExplorerView() {
         ),
       );
     }
-  }, []);
+  }, [clearWells]);
 
   /*
    * Opening clears the map and starts from nothing.
@@ -2018,6 +2051,14 @@ export function MapExplorerView() {
       const view = viewRef.current;
       if (!ctors || !layer || !view) return;
 
+      /*
+       * A replay is of the wells that were on screen, so a change to which
+       * wells those are ends it — whether the filter is being applied or
+       * lifted. Left running, the bar counted through a year of a set that
+       * was no longer on the map.
+       */
+      if (timeLapseRef.current) closeTimeLapse();
+
       /* Remembered for the Share menu. The address is left alone: a link is
          made when somebody asks for one, not on every Apply. */
       setShareFilters(filters);
@@ -2276,7 +2317,14 @@ export function MapExplorerView() {
           if (request === wellRequestRef.current) setWellsLoading(false);
         });
     },
-    [clearClusters, clearWells, closeSummary, loadClusters, highlightWell],
+    [
+      clearClusters,
+      clearWells,
+      closeSummary,
+      closeTimeLapse,
+      loadClusters,
+      highlightWell,
+    ],
   );
 
   /* Kept current so the empty-result reset can reach it without depending on
@@ -2929,6 +2977,21 @@ export function MapExplorerView() {
           const ctors = ctorsRef.current;
 
           /*
+           * A click on the map ends a replay.
+           *
+           * Time-lapse owns what is drawn while it runs — the wells on screen
+           * are a year's worth, not the map's own set — so a click that
+           * opened a record, or drew a tool over it, would be acting on a
+           * half-built map. Ending it puts every well back, and the click is
+           * spent doing that rather than doing two things at once.
+           */
+          if (timeLapseRef.current) {
+            event.stopPropagation();
+            closeTimeLapse();
+            return;
+          }
+
+          /*
            * Over wells, a click picks one and switches to Insights with it.
            *
            * The hovered well first: the pointer has already hit-tested this
@@ -3359,6 +3422,7 @@ export function MapExplorerView() {
     clearWells,
     highlightWell,
     focusWell,
+    closeTimeLapse,
     replayTools,
     openingTools,
     /* Read once at mount and never reassigned, so listing them changes
