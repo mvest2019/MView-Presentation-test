@@ -6,10 +6,14 @@ import { btnGhost, LockedValue, tableHead } from "./ui";
 /** One lease of one ticked record — the modal's row grain. */
 export interface LeaseDetailRow {
   lease: string;
-  /** Parsed from a trailing "(12345)" in the lease name; "—" when absent. */
+  /** The roll's lease number (API `leaseNumbers`); "" when it sent none. */
   leaseNo: string;
   owner: string;
   county: string;
+  /** Operator of record (API `operators`); "" when unknown. */
+  operator: string;
+  /** Decimal interest (API `interestValues`), e.g. 0.007753. */
+  interest?: number;
   /** THIS lease's county-appraised value (the API's per-lease figure). */
   value: number;
   /** The API's flag: true = working interest, false = royalty interest. */
@@ -23,10 +27,9 @@ export interface LeaseDetailRow {
  * bold. OWNER NAME LEADS — the portal's table spans one owner, this one spans
  * every ticked record, so the owner is the column that groups the rows.
  *
- * Current operator is not served by the owners API yet, so it shows "—" with
- * the footnote saying where it arrives. Interest type is real
- * (`workingInterest`); the value column is the county-appraised figure, which
- * is the only per-lease number the API returns.
+ * EVERY COLUMN IS LIVE DATA (2026-08-27): lease number, operator, interest
+ * type and decimal interest all come from the owners API's index-aligned
+ * per-lease arrays. Only a genuinely blank field falls back to "—".
  */
 export function LeaseDetailsModal({
   rows,
@@ -76,7 +79,7 @@ export function LeaseDetailsModal({
           {/* Phones get the same rows as cards — an 860px six-column grid is
               unusable at 375px. */}
           <div className="overflow-hidden rounded-xl border border-mv-line max-[767px]:hidden">
-            <table className="w-full min-w-[860px] border-collapse text-[13px]">
+            <table className="w-full min-w-[980px] border-collapse text-[13px]">
               <thead>
                 <tr>
                   <th className={tableHead}>Owner Name</th>
@@ -84,6 +87,9 @@ export function LeaseDetailsModal({
                   <th className={tableHead}>County</th>
                   <th className={tableHead}>Current Operator</th>
                   <th className={tableHead}>Interest Type</th>
+                  <th className={`${tableHead} !text-right`}>
+                    Interest Value
+                  </th>
                   <th className={`${tableHead} !text-right`}>
                     Appraised Value
                   </th>
@@ -98,17 +104,28 @@ export function LeaseDetailsModal({
                     <td className={td}>
                       <div className="font-bold text-mv-ink">{r.lease}</div>
                       <div className="mt-[2px] text-[11.5px] text-mv-sublabel">
-                        {r.leaseNo === "—" ? "—" : `#${r.leaseNo}`}
+                        {r.leaseNo ? `#${r.leaseNo}` : "—"}
                       </div>
                     </td>
                     <td className={`${td} text-mv-slate`}>{r.county}</td>
-                    <td className={`${td} text-mv-muted`}>—</td>
+                    <td className={`${td} text-mv-slate`}>
+                      {r.operator || <span className="text-mv-muted">—</span>}
+                    </td>
                     <td className={td}>
                       <span className="inline-flex whitespace-nowrap rounded-full bg-mv-tint px-[11px] py-[4px] text-[11.5px] font-semibold text-mv-green-ink">
                         {r.workingInterest
                           ? "Working Interest"
                           : "Royalty Interest"}
                       </span>
+                    </td>
+                    <td
+                      className={`${td} whitespace-nowrap text-right tabular-nums text-mv-slate`}
+                    >
+                      {/* Decimal interest, shown to 6 places as the roll
+                          carries it — not a percentage. */}
+                      {typeof r.interest === "number"
+                        ? r.interest.toFixed(6).replace(/0+$/, "").replace(/\.$/, "")
+                        : "—"}
                     </td>
                     <td
                       className={`${td} whitespace-nowrap text-right font-bold tabular-nums text-mv-ink`}
@@ -137,9 +154,21 @@ export function LeaseDetailsModal({
                   {r.lease}
                 </div>
                 <div className="mt-[1px] text-[11.5px] text-mv-sublabel">
-                  {r.leaseNo === "—" ? "No lease number" : `#${r.leaseNo}`} ·{" "}
-                  {r.county}
+                  {r.leaseNo ? `#${r.leaseNo}` : "No lease number"} · {r.county}
                 </div>
+                {r.operator && (
+                  <div className="mt-[6px] text-[12px] text-mv-slate">
+                    Operator: <span className="font-semibold">{r.operator}</span>
+                  </div>
+                )}
+                {typeof r.interest === "number" && (
+                  <div className="mt-[2px] text-[12px] text-mv-slate">
+                    Interest:{" "}
+                    <span className="font-semibold tabular-nums">
+                      {r.interest.toFixed(6).replace(/0+$/, "").replace(/\.$/, "")}
+                    </span>
+                  </div>
+                )}
                 <div className="mt-[8px] text-[12.5px] font-semibold text-mv-slate">
                   {r.owner}
                 </div>
@@ -159,9 +188,9 @@ export function LeaseDetailsModal({
             ))}
           </ul>
           <p className="mt-[12px] text-[11px] text-mv-muted">
-            Current operator and the decimal interest value arrive with the full
-            Lease Report in your account. Interest type and the appraised value
-            come from the county roll.
+            Lease number, operator, interest type and interest value all come
+            from the county roll. Production and wells arrive with the full
+            Lease Report in your account.
           </p>
         </div>
 
