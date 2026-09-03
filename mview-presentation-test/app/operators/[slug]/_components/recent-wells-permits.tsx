@@ -96,7 +96,14 @@ function DateBound({
       aria-label={label}
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="min-h-[44px] w-full rounded-[11px] border border-mv-line bg-white px-[11px] text-[13px] text-mv-ink outline-none transition-[border-color,box-shadow] focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.15)]"
+      /* `min-w-0` IS LOAD-BEARING, not tidying. `input[type="date"]` carries a UA
+         intrinsic minimum width — the `dd-mm-yyyy` text plus the picker button —
+         and `width: 100%` does NOT override the default `min-width: auto`. Chromium
+         happens to clip instead, but Firefox and Safari honour that minimum and the
+         input then refuses to shrink into its grid cell: two of them plus the "to"
+         overflow the group and land on top of the group beside it, which is the
+         reported overlap. With `min-w-0` the input shrinks with its cell instead. */
+      className="min-h-[44px] w-full min-w-0 rounded-[11px] border border-mv-line bg-white px-[11px] text-[13px] text-mv-ink outline-none transition-[border-color,box-shadow] focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.15)]"
     />
   );
 }
@@ -309,11 +316,25 @@ export function RecentWellsPermits({
             stacking below 720px. */}
         {filings.rows.length > 0 ? (
           <div className="border-t border-mv-line-soft px-[22px] py-[14px] max-[560px]:px-4">
-            {/* Four groups now that the wellbore profile has one (defect 131), so the
-                two date pairs — which need roughly twice the width of a select — get
-                their own row on anything narrower than 1180px rather than being
-                squeezed to four across. */}
-            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_auto] items-end gap-x-[14px] gap-y-3 max-[1180px]:grid-cols-2 max-[560px]:grid-cols-1">
+            {/* TWO ACROSS, NOT FOUR — the date ranges get a row of their own.
+
+                Each range is two date inputs plus a "to"; `input[type="date"]` needs
+                roughly 150px for `dd-mm-yyyy` and its picker button, so a range needs
+                about 334px. Two selects wide enough for "PendingApproval" need about
+                160px each. This card is capped at 1112px, and once the Clear button
+                takes its column that leaves 982px for the four groups against the 988px
+                they need — four across does not fit, at ANY viewport width, because
+                the cap means extra viewport never reaches this row.
+
+                That is the overlap: the pair overflowed its group and landed on the
+                group beside it. Chromium hides it by clipping the inputs instead;
+                Firefox and Safari honour the intrinsic minimum and it shows.
+
+                So the ranges wrap to their own row. Each now gets about 549px and each
+                input about 256px. This is not a new layout — it is the two-column
+                arrangement the row already used below 1180px, now used at every width
+                above the single-column phone breakpoint. */}
+            <div className="grid grid-cols-2 items-end gap-x-[14px] gap-y-3 max-[560px]:grid-cols-1">
               <FilterGroup label="Status">
                 <SelectControl
                   label="Filter by status"
@@ -350,7 +371,10 @@ export function RecentWellsPermits({
               ) : null}
 
               <FilterGroup label="Submitted date">
-                <div className="flex items-center gap-2">
+                {/* `min-w-0` for the same reason as the inputs: a flex container
+                    defaults to `min-width: auto` and would otherwise refuse to
+                    shrink below its two children's intrinsic widths. */}
+                <div className="flex min-w-0 items-center gap-2">
                   <DateBound
                     label="Submitted on or after"
                     value={submittedFrom}
@@ -368,7 +392,7 @@ export function RecentWellsPermits({
               </FilterGroup>
 
               <FilterGroup label="Approved date">
-                <div className="flex items-center gap-2">
+                <div className="flex min-w-0 items-center gap-2">
                   <DateBound
                     label="Approved on or after"
                     value={approvedFrom}
