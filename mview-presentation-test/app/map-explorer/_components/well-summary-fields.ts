@@ -101,7 +101,7 @@ export function wellSummaryFields(summary: MapWellSummary) {
       { label: "Well Type", value: text(identity.wtype) },
       { label: "Direction", value: text(wellbore?.profile) },
       {
-        label: "Well Age",
+        label: "Producing Span",
         value:
           dates?.ageYears === null || dates?.ageYears === undefined
             ? "—"

@@ -182,28 +182,28 @@ export function MapFeatureGuide() {
             number="01"
             icon={Layers}
             eyebrow="The map"
-            title="Start statewide, finish at a single well"
-            lead="The map opens as count bubbles over Texas — one per district, sized and shaded by how many wells it holds. Click a bubble and it opens into sub-clusters. Click again and the wells themselves are drawn, each carrying the Railroad Commission's own symbol."
+            title="From Statewide Activity to Individual Well Detail"
+            lead="Explore Texas well activity from a broad statewide perspective, then zoom in to districts, local clusters, and individual wells. Mineral View organizes the data visually so you can move from the big picture to specific well information quickly and intuitively."
             points={[
               {
                 icon: Layers,
-                title: "Three levels, one gesture",
-                body: "Clusters at zoom 5, sub-clusters at 8, wells at 10. A click takes you down a level and centres it.",
+                title: "Navigate from Statewide to Individual Wells",
+                body: "Zoom from statewide clusters to sub-clusters and individual wells, with each selection automatically centering the map.",
               },
               {
                 icon: Sparkle,
-                title: "The Commission's own symbols",
-                body: "Oil, gas, plugged, dry hole, permitted, injection — each drawn as the Commission draws it.",
+                title: "Texas Railroad Commission Symbols",
+                body: "Wells are displayed using familiar Railroad Commission classifications for quick, consistent interpretation.",
               },
               {
                 icon: Spline,
-                title: "The whole bore, not just the hole",
-                body: "Horizontal wells draw their full path, so a lateral under your land shows as a line.",
+                title: "View the Full Wellbore",
+                body: "Horizontal wells show the complete wellbore path, helping you understand how laterals relate to nearby acreage and mineral interests.",
               },
               {
                 icon: Info,
-                title: "Hover before you commit",
-                body: "The tooltip gives API, well number, operator, status, type and county.",
+                title: "Preview Key Well Details",
+                body: "Hover over any well to see the API number, well number, operator, status, type, and county.",
               },
             ]}
             image={{
@@ -212,7 +212,7 @@ export function MapFeatureGuide() {
               height: 1632,
               alt: "The map past zoom 10 over a field, wells packed across it, each with its Railroad Commission symbol",
               caption:
-                "Past zoom 10 the bubbles give way to the wells themselves — every one its own symbol.",
+                "Zoom in from clustered well activity to individual well locations and symbols.",
             }}
           />
 
@@ -222,33 +222,36 @@ export function MapFeatureGuide() {
             number="02"
             icon={Table2}
             eyebrow="The table"
-            title="The same wells, as rows you can sort"
-            lead="Switch to Table and the map's result set becomes a grid: API number, operator, lease, type, status, county, and the oil and gas each well has produced. A summary strip above it counts what you are looking at — not the whole state."
+            title="Turn Map Results Into a Sortable Table"
+            lead={[
+              "Switch to Table view to explore the same well results in a structured format. Review API number, operator, lease, well type, status, county, and oil and gas production—all in one place.",
+              "Summary metrics update automatically as you filter, so the data always reflects your current result set.",
+            ]}
             points={[
               {
                 icon: Hash,
-                title: "Counts for this result set",
-                body: "Wells, the oil and gas split, active count, operators and counties — recalculated as you filter.",
+                title: "Results at a Glance",
+                body: "See total wells, oil and gas production, active wells, operators, and counties—updated as filters change.",
               },
               {
                 icon: ArrowUpDown,
-                title: "Sort by what matters",
-                body: "Sort by operator, lease, county or volume — producing oil finds the wells worth reading.",
+                title: "Sort by What Matters",
+                body: "Sort results by operator, lease, county, production volume, and other key fields to quickly identify relevant wells.",
               },
               {
                 icon: MapPin,
-                title: "Back to the map in one click",
-                body: "Each row has a pin to that well on the map; the row itself opens its full record.",
+                title: "Return to the Map Instantly",
+                body: "Use the map pin in any row to locate the well, or open the row to view its complete record.",
               },
               {
                 icon: Filter,
-                title: "Filter from the table itself",
-                body: "The same facets sit above the table. Tick, Apply, and the rows and counts move together.",
+                title: "Filter Directly From the Table",
+                body: "Apply filters above the table and see both the results and summary metrics update together.",
               },
               {
                 icon: Rows3,
-                title: "Paged, not truncated",
-                body: "Twenty thousand wells stays usable, and Export writes the page you are looking at.",
+                title: "Built for Large Result Sets",
+                body: "Navigate large datasets through paginated results while keeping every column easy to sort and review.",
               },
             ]}
             /* In the order the product puts them: the filter bar and the
@@ -260,7 +263,7 @@ export function MapFeatureGuide() {
               height: 462,
               alt: "The filter bar with the Status facet open over the summary strip",
               caption:
-                "The facets sit above the counts — open one, tick, Apply.",
+                "Apply filters directly above the table to refine your results.",
               frame: "wide",
               fit: "contain",
             }}
@@ -270,7 +273,7 @@ export function MapFeatureGuide() {
               height: 1754,
               alt: "The table's rows: API, operator, lease, type, status, county and the produced volumes, with the pager beneath",
               caption:
-                "Ten rows at a time out of 1,131,586, every column sortable.",
+                "Review wells page by page, with sortable data across every column.",
             }}
           />
 
@@ -289,28 +292,28 @@ export function MapFeatureGuide() {
             number="03"
             icon={Filter}
             eyebrow="Filters"
-            title="Narrow it to the wells you care about"
-            lead="Six facets, a lease search and production ranges. Tick what you want and press Apply; the map reloads to the matches and frames them, and the confirmation tells you how many there were."
+            title="Focus on the Wells That Matter Most"
+            lead="Refine your search using location, operator, well type, status, play, field, lease, and production criteria. Apply your filters to instantly update the map and view only the wells that match your selection."
             points={[
               {
                 icon: ListChecks,
-                title: "1 · Open Filters and pick what you want",
-                body: "Six facets — county, operator, type, status, play and field — each counted and searchable.",
+                title: "1 Choose Your Filters",
+                body: "Filter by county, operator, well type, status, play, or field. Each option is searchable and shows the number of matching wells.",
               },
               {
                 icon: Zap,
-                title: "2 · Press Apply, and watch the map change",
-                body: "The map reloads to the matches, frames them, and says how many landed.",
+                title: "2 Apply and Update the Map",
+                body: "Select Apply to refresh the map with your chosen criteria and automatically focus on the matching wells.",
               },
               {
                 icon: SlidersHorizontal,
-                title: "3 · Narrow further, or lift one filter at a time",
-                body: "Filters show as chips; lift one and the rest stay. Production ranges need both ends.",
+                title: "3 Refine Your Results",
+                body: "Add or remove individual filters as needed while keeping the rest of your selections in place. Production ranges can be used to narrow results further.",
               },
               {
                 icon: Search,
-                title: "Or search a lease by name",
-                body: "One box for leases, operators and counties. Pick one and the map filters at once.",
+                title: "Search by Lease, Operator, or County",
+                body: "Use the search field to quickly locate a lease, operator, or county and update the map with the relevant results.",
               },
             ]}
             image={{
@@ -318,7 +321,8 @@ export function MapFeatureGuide() {
               width: 2800,
               height: 1632,
               alt: "The filters rail with a county being searched for and ticked, before applying",
-              caption: "Search the facet, tick what you want, press Apply.",
+              caption:
+                "Select your criteria, apply the filters, and view the matching wells directly on the map.",
             }}
           />
 
@@ -328,38 +332,41 @@ export function MapFeatureGuide() {
             number="04"
             icon={ChartColumn}
             eyebrow="Insights · completion summary"
-            title="The completion summary — what the well has done"
-            lead="Pick a well and Insights opens its record. A well that has been drilled and completed shows its completion summary: the production it has reported, how fast that is falling, what is booked against it, and the hole itself. The badge beside the heading says COMPLETION so you always know which of the two filings you are reading."
+            title="Understand What the Well Has Produced"
+            lead={[
+              "Select a completed well to open its Insights record. The Completion Summary brings together reported production, forecast performance, decline trends, reserves, wellbore details, lease information, and operator data in one clear view.",
+              "The Completion label makes it easy to distinguish completed wells from permit records.",
+            ]}
             points={[
               {
                 icon: ChartColumn,
-                title: "Production, reported and forecast",
-                body: "Monthly oil and gas on twin axes, forecast marked off from reported. Hover for figures.",
+                title: "Production History & Forecast",
+                body: "Review monthly oil and gas production alongside projected future performance, with reported and forecast periods clearly separated.",
               },
               {
                 icon: TrendingDown,
-                title: "Decline diagnostics",
-                body: "Month-on-month step, implied annual decline, GOR, and how long the booked reserves last.",
+                title: "Decline & Reserve Insights",
+                body: "See month-over-month production changes, estimated decline rates, gas-oil ratio, and reserve life indicators.",
               },
               {
                 icon: Ruler,
-                title: "The wellbore in section",
-                body: "Drawn to the record's profile: vertical straight down, horizontal along the formation.",
+                title: "Wellbore Profile",
+                body: "View the wellbore configuration, including vertical depth and horizontal lateral placement where available.",
               },
               {
                 icon: FileText,
-                title: "Lease, operator, dates, depth",
-                body: "Lease and operator with their numbers, acreage, district, dates, depths and nearest well.",
+                title: "Lease, Operator & Well Details",
+                body: "Access lease and operator information, acreage, district, key dates, depths, and nearby well data.",
               },
               {
                 icon: Hash,
-                title: "Six figures across the top",
-                body: "Last month's oil and gas, next month estimated, and both reserve figures.",
+                title: "Key Metrics at a Glance",
+                body: "Quickly review recent oil and gas production, estimated next-month volumes, and reserve figures.",
               },
               {
                 icon: Download,
-                title: "The whole record, as a PDF",
-                body: "Export PDF takes the page as laid out, written summary and all, stamped with the time it was read.",
+                title: "Export the Complete Record",
+                body: "Download the full well summary as a PDF, including key data, charts, and record details.",
               },
             ]}
             image={{
@@ -368,7 +375,7 @@ export function MapFeatureGuide() {
               height: 1632,
               alt: "The Insights view: the map on the left, the well's record on the right",
               caption:
-                "The map stays beside the record — the well you are reading is the one ringed on it.",
+                "The selected well remains highlighted on the map while its complete record is displayed alongside it.",
             }}
             second={{
               src: "/map-feature/production-chart.png",
@@ -378,7 +385,7 @@ export function MapFeatureGuide() {
               frame: "flat",
               alt: "Crude oil and natural gas production chart with reported and forecast months",
               caption:
-                "Reported months to the left of the marker, forecast to the right.",
+                "Reported production is shown separately from forecast performance for a clearer view of historical and projected output.",
             }}
           />
 
@@ -388,28 +395,28 @@ export function MapFeatureGuide() {
             number="05"
             icon={FileText}
             eyebrow="Insights · permit summary"
-            title="The permit summary — what was filed to drill"
-            lead="A well that is permitted but not yet completed opens its permit instead, badged PERMIT. It is a different document and it answers different questions: who applied, for what, where exactly, and how it stands with the Commission."
+            title="Understand What Was Filed to Drill"
+            lead="For wells that have been permitted but not yet completed, Mineral View displays the permit record instead of the completion summary. The Permit label clearly identifies the record and helps you review who filed it, what was proposed, where the well is planned, and its current status with the Texas Railroad Commission."
             points={[
               {
                 icon: FileText,
-                title: "The filing itself",
-                body: "Purpose, type, permit date, status number and approval — plus the filing's own columns.",
+                title: "Permit Details",
+                body: "Review the filing purpose, permit type, permit date, status, approval information, and key filing data in one place.",
               },
               {
                 icon: LandPlot,
-                title: "Lease, operator and field",
-                body: "Lease, county and district; the operator with its number; the field and reservoir named.",
+                title: "Lease, Operator & Field",
+                body: "See the associated lease, county, district, operator information, field, and reservoir details.",
               },
               {
                 icon: MapPin,
-                title: "Where it is, to six decimals",
-                body: "Surface and bottom-hole coordinates, each with a copy button, and the nearest well.",
+                title: "Location & Coordinates",
+                body: "View surface and bottom-hole coordinates, along with nearby well information for additional geographic context.",
               },
               {
                 icon: Sparkle,
-                title: "Written up as well",
-                body: "A written read sits under the filing, generated from the permit's own fields.",
+                title: "Clear Written Summary",
+                body: "Mineral View organizes key permit information into an easy-to-read summary based on the underlying filing data.",
               },
             ]}
             image={{
@@ -418,7 +425,7 @@ export function MapFeatureGuide() {
               height: 338,
               alt: "The written summary card that sits under a record, with its heading, the well it describes and a Regenerate control",
               caption:
-                "The written read that sits under the filing, dated and regenerable.",
+                "Review the permit filing alongside a clear summary of the key details and current record information.",
               /* Fitted, not cropped: the card is far wider than the frame and
                  filling it would cut the text in half. */
               fit: "contain",
@@ -440,28 +447,28 @@ export function MapFeatureGuide() {
             number="06"
             icon={Clock}
             eyebrow="Time-lapse"
-            title="Watch the field fill in"
-            lead="Time-lapse replays the wells on screen in the order they were drilled, plotting them year by year until the map you started with is back. It is the quickest way to see how a field grew — where the drilling started, and where it moved."
+            title="See How a Field Developed Over Time"
+            lead="Time-Lapse replays the wells currently shown on the map in the order they were drilled, year by year. It provides a clear visual view of where development began, how activity expanded, and how drilling progressed across the area."
             points={[
               {
                 icon: Play,
-                title: "Press it and the map empties",
-                body: "Everything drawn is taken off and replayed from bare ground rather than a full map.",
+                title: "Replay Development from the Beginning",
+                body: "Start the Time-Lapse to clear the current well display and rebuild the field chronologically from the earliest wells forward.",
               },
               {
                 icon: Gauge,
-                title: "A counter, not a mystery",
-                body: "The bar reports progress as it goes — “468 of 1,351 plotted” — so it never looks stalled.",
+                title: "Track Progress as Wells Appear",
+                body: "A live progress indicator shows how many wells have been plotted, so you can follow the replay as it moves through the selected area.",
               },
               {
                 icon: Pause,
-                title: "Play, pause, and close",
-                body: "Pause to hold a year on screen, or close the bar to put every well back.",
+                title: "Play, Pause, and Resume",
+                body: "Pause the replay at any point to examine development for a specific period, then continue when you are ready.",
               },
               {
                 icon: Eye,
-                title: "What is on screen is what replays",
-                body: "It replays the wells the map has loaded, so zoom or filter to the field first.",
+                title: "Replay the Area You Choose",
+                body: "Time-Lapse uses the wells currently loaded on the map. Zoom in or apply filters first to focus the replay on a specific field or area.",
               },
             ]}
             image={{
@@ -469,7 +476,8 @@ export function MapFeatureGuide() {
               width: 2800,
               height: 1632,
               alt: "The time-lapse bar part way through a replay, with wells plotted across the field",
-              caption: "Part way through: 468 of 1,351 wells plotted.",
+              caption:
+                "Watch well development unfold over time as each well is plotted in chronological order.",
             }}
           />
 
@@ -479,28 +487,28 @@ export function MapFeatureGuide() {
             number="07"
             icon={Crosshair}
             eyebrow="Tools"
-            title="Ask questions of the ground itself"
-            lead="Four tools sit over the map. Each opens with a worked example in its own window, so you can watch the gesture once before making it."
+            title="Explore the Ground with Interactive Map Tools"
+            lead="Use Mineral View's map tools to measure, define, and investigate specific areas directly on the map. Each tool includes a guided example so you can quickly understand how it works before using it."
             points={[
               {
                 icon: SquareDashed,
-                title: "Draw an area",
-                body: "Drag a box or click two opposite corners. Every well whose bore falls inside is counted — not just the surface holes near it — with the acreage, the square miles, and a CSV of exactly those wells.",
+                title: "Draw an Area",
+                body: "Define a custom area on the map to identify wells within its boundaries. View the acreage, square mileage, well count, and export the matching wells to CSV.",
               },
               {
                 icon: Ruler,
-                title: "Measure distance",
-                body: "Drag from one point to another for the distance across the ground. Geodesic, not across the screen, so the reading holds wherever on the map you take it and however far you are zoomed out.",
+                title: "Measure Distance",
+                body: "Measure the real-world distance between two points on the map using geodesic calculations for consistent accuracy at any zoom level.",
               },
               {
                 icon: LandPlot,
-                title: "Measure area",
-                body: "Click a tract corner by corner, then click the first again to close it. The acreage is geodesic, as a survey gives it: a nominal one-mile section comes out at 640 acres.",
+                title: "Measure Area",
+                body: "Outline a tract or custom boundary to calculate its acreage using geodesic measurements.",
               },
               {
                 icon: Crosshair,
-                title: "What's near my land",
-                body: "Click your land and the lease under that point is looked up. You get the wells inside the ring, permits and completions from the last three months, the closest bore, and a CSV of the filings.",
+                title: "What's Near My Land",
+                body: "Select a location to identify the underlying lease and explore nearby wells, recent permits and completions, the closest wellbore, and related filing data.",
               },
             ]}
             art="tools"
@@ -511,38 +519,38 @@ export function MapFeatureGuide() {
             number="08"
             icon={Compass}
             eyebrow="Around the map"
-            title="The smaller controls, and what each is for"
-            lead="Not everything needs a section of its own. These sit around the edge of the map and are worth knowing about before you need them."
+            title="Additional Map Controls for Faster Exploration"
+            lead="Mineral View includes several supporting controls around the map to help you search, interpret, export, share, and navigate well data more efficiently."
             points={[
               {
                 icon: Search,
-                title: "Search by API number",
-                body: "Type as much of an API number as you have and pick from the matches, each tagged with the county it sits in. Faster than filtering when you already know which well you want.",
+                title: "Search by API Number",
+                body: "Enter a full or partial API number to quickly find matching wells. Results are identified by county, making it easier to locate the correct record without applying multiple filters.",
               },
               {
                 icon: Layers,
-                title: "Legends",
-                body: "The panel bottom-left names every symbol on the map — permitted location, dry hole, oil, gas, the plugged variants, injection and disposal. Leave it open while you learn them.",
+                title: "Map Legend",
+                body: "Use the legend to identify well symbols and classifications, including permitted locations, dry holes, oil wells, gas wells, plugged wells, injection wells, disposal wells, and other statuses.",
               },
               {
                 icon: MapIcon,
-                title: "Basemap",
-                body: "Streets by default; switch to satellite or a plain canvas when the roads are getting in the way of the wells, or when you want the land itself rather than what is drawn over it.",
+                title: "Choose Your Basemap",
+                body: "Switch between street, satellite, and simplified map views depending on the level of geographic detail you need.",
               },
               {
                 icon: Download,
-                title: "Export — what is in view",
-                body: "Writes whatever the current extent holds — the wells themselves past zoom 10, or the count bubbles above it. Pan, zoom and export; nothing has to be drawn or filtered first.",
+                title: "Export the Current Map View",
+                body: "Export the wells or clustered results currently visible on the map to CSV. Pan or zoom to define the area you want to include before exporting.",
               },
               {
                 icon: Share2,
-                title: "Share, save and print",
-                body: "Share copies a link back to the exact view you are looking at. Save image captures the map as drawn, and Print map sends that capture to paper rather than the whole page.",
+                title: "Share, Save, and Print",
+                body: "Copy a link to the exact map view you are viewing, save the map as an image, or print the current map for offline reference.",
               },
               {
                 icon: Maximize,
-                title: "Zoom, reset and full screen",
-                body: "The buttons down the right zoom in and out and put the view back where it started. Full screen gives the map the whole window when the panels are in the way of it.",
+                title: "Zoom, Reset, and Full Screen",
+                body: "Use the map controls to zoom in or out, return to the default view, or expand the map to full screen for a more focused experience.",
               },
             ]}
             image={{
@@ -551,7 +559,7 @@ export function MapFeatureGuide() {
               height: 836,
               alt: "The map over Midland with an API number part typed and the matching wells listed under the toolbar",
               caption:
-                "Type part of an API number and the matches appear, each with its county.",
+                "Search by full or partial API number to quickly locate matching wells.",
             }}
             second={{
               src: "/map-feature/chrome-share-field.png",
@@ -559,7 +567,7 @@ export function MapFeatureGuide() {
               height: 836,
               alt: "The map closer in over a Permian field, wells and their bores clearly spaced, with the Share menu open",
               caption:
-                "Share carries the view in the link, and saves or prints the map as drawn.",
+                "Share, save, or print the current map view while preserving the area you are exploring.",
             }}
           />
         </div>
@@ -585,51 +593,51 @@ export function MapFeatureGuide() {
             </div>
 
             <h2 className="mt-4 text-[20px] font-bold leading-tight text-mv-ink lg:text-[26px]">
-              Everything on screen comes off it
+              Export Your Data in the Format You Need
             </h2>
             <p className="mt-[10px] max-w-[70ch] text-[12.5px] leading-relaxed text-mv-slate lg:text-[13.5px]">
-              Nothing is locked behind a request form. What you filtered, drew
-              or read is what downloads — filters and all. Export from the map,
-              from the table, from a drawn area, or from a well&rsquo;s own
-              record.
+              Mineral View makes it easy to take your work beyond the platform.
+              Export filtered results, selected areas, current map views, well
+              records, and nearby activity without submitting a separate
+              request.
             </p>
 
             <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {[
                 {
                   icon: FileSpreadsheet,
-                  title: "Table results — CSV",
-                  body: "The rows you are looking at, filters and all, with every column the table shows.",
+                  title: "Table Results — CSV",
+                  body: "Export the rows currently displayed in the table, including applied filters and available columns such as API number, operator, lease, type, status, county, oil, and gas production.",
                   note: "API · operator · lease · type · status · county · oil · gas",
                 },
                 {
                   icon: SquareDashed,
-                  title: "A drawn area — CSV",
-                  body: "Every well whose bore falls inside the box you drew, not just the surface holes near it.",
+                  title: "Selected Area — CSV",
+                  body: "Export wells located within a custom area you draw on the map, based on the wellbore locations included within that boundary.",
                   note: "Counted well by well past zoom 10",
                 },
                 {
                   icon: MapIcon,
-                  title: "What is in view — Excel",
-                  body: "The toolbar's export takes the current extent as it stands: the wells past zoom 10, the counts above it.",
+                  title: "Current Map View — CSV",
+                  body: "Download the wells or clustered results currently visible on the map, based on your selected zoom level and map extent.",
                   note: "mineral-view-wells.xlsx",
                 },
                 {
                   icon: ImageIcon,
-                  title: "The map itself — PNG",
-                  body: "Share → Save image captures the map as drawn, ready to drop into a report. Print map sends the same capture to paper.",
+                  title: "Map View — PNG",
+                  body: "Save the current map as an image for use in reports, presentations, or internal documentation.",
                   note: "mineral-view-map.png",
                 },
                 {
                   icon: FileText,
-                  title: "Well summaries — PDF",
-                  body: "Completion or permit, laid out as it appears on screen, in the page's own type — and the written summary comes with it, on the page where you read it.",
+                  title: "Well Summaries — PDF",
+                  body: "Download completion or permit records as formatted PDFs, including key well information and the accompanying written summary.",
                   note: "completion-42-001-32729.pdf · permit-42-227-34620.pdf",
                 },
                 {
                   icon: Crosshair,
-                  title: "Nearby filings — CSV",
-                  body: "What the lease lookup found around your land: every permit and completion in the ring, each with its distance and bearing from the point you clicked.",
+                  title: "Nearby Activity — CSV",
+                  body: "Export nearby permits and completions identified around a selected lease or location, including available distance and directional information.",
                   note: "near-7C-04254-1mi.csv",
                 },
               ].map((card) => (
@@ -795,7 +803,8 @@ function Section({
   icon: LucideIcon;
   eyebrow: string;
   title: string;
-  lead: string;
+  /** One paragraph, or several — some sections open with two. */
+  lead: string | string[];
   points: { icon: LucideIcon; title: string; body: string }[];
   image?: Shot;
   second?: Shot;
@@ -844,9 +853,16 @@ function Section({
       <h2 className="mt-5 text-[26px] font-extrabold leading-[1.08] tracking-[-0.02em] text-mv-ink lg:text-[38px]">
         {title}
       </h2>
-      <p className="mt-4 text-[14px] leading-relaxed text-mv-slate lg:text-[15.5px]">
-        {lead}
-      </p>
+      {(Array.isArray(lead) ? lead : [lead]).map((paragraph, at) => (
+        <p
+          key={paragraph}
+          className={`text-[14px] leading-relaxed text-mv-slate lg:text-[15.5px] ${
+            at === 0 ? "mt-4" : "mt-3"
+          }`}
+        >
+          {paragraph}
+        </p>
+      ))}
 
       <div
         className={`mt-8 grid gap-6 lg:mt-10 lg:gap-10 ${
@@ -949,14 +965,21 @@ function Hero() {
           The map explorer
         </span>
 
-        {/* Keyed by the slide, so the words fade in rather than swapping
-            mid-sentence. */}
-        <div key={index} className="mv-fade">
+        {/* One heading for the block, rather than a line per slide: the four
+            below switch the picture, and the words above them say what the
+            whole thing is. */}
+        <div>
           <h1 className="mt-6 text-[32px] font-extrabold leading-[1.06] tracking-[-0.02em] text-mv-ink lg:text-[46px]">
-            {slide.title}
+            One Well. Every Detail That Matters
           </h1>
           <p className="mt-4 max-w-[50ch] text-[13.5px] leading-relaxed text-mv-slate lg:text-[15.5px]">
-            {slide.body}
+            Access the production history, forecasts, decline trends, reserves,
+            wellbore details, lease information, operator data, permits, and
+            completion records connected to each well.
+          </p>
+          <p className="mt-3 max-w-[50ch] text-[13.5px] leading-relaxed text-mv-slate lg:text-[15.5px]">
+            Mineral View brings essential well information together in one
+            place.
           </p>
         </div>
 
@@ -1020,10 +1043,11 @@ function Hero() {
             plain terms: the account is the way in. */}
         <p className="mt-7 max-w-[46ch] text-[13px] leading-relaxed text-mv-slate lg:text-[13.5px]">
           <span className="font-semibold text-mv-ink">
-            The map opens with a free account.
+            Start exploring with a free account.
           </span>{" "}
-          Create one — about a minute — and every well, filter, record and
-          export on this page is yours to use.
+          Create your account in about a minute to explore wells, apply
+          filters, review detailed records, and access available data and
+          export tools across the Mineral View map.
         </p>
 
         {/* The ask, at the top of the page as well as in the band further
@@ -1034,7 +1058,7 @@ function Hero() {
             href="/register"
             className="inline-flex items-center gap-2 rounded-xl bg-mv-green-deep px-[20px] py-[12px] text-[13.5px] font-semibold text-white shadow-mv transition-[filter] hover:brightness-105"
           >
-            Create your free account
+            Create Your Free Account
             <ArrowRight size={15} aria-hidden="true" />
           </Link>
 
@@ -1042,7 +1066,7 @@ function Hero() {
             href="/login"
             className="inline-flex items-center gap-2 rounded-xl bg-white px-[18px] py-[11px] text-[13.5px] font-semibold text-mv-green-deep ring-1 ring-mv-line transition-shadow hover:ring-mv-green-deep"
           >
-            Sign in
+            Sign In
           </Link>
         </div>
       </div>
@@ -1175,29 +1199,29 @@ function ToolsArt() {
   const tools = [
     {
       icon: SquareDashed,
-      label: "Draw an area",
-      note: "wells inside, counted",
+      label: "Draw an Area",
+      note: "Identify and export wells within a selected area.",
       src: "/map-feature/tool-draw-area.png",
       alt: "The Draw an area window: a dashed box over a field of wells, with the count it found",
     },
     {
       icon: Ruler,
-      label: "Measure distance",
-      note: "miles across the ground",
+      label: "Measure Distance",
+      note: "Measure real-world distance between map points.",
       src: "/map-feature/tool-measure-distance.png",
       alt: "The Measure distance window: a line drawn between two points with the distance",
     },
     {
       icon: LandPlot,
-      label: "Measure area",
-      note: "acres, as a survey gives them",
+      label: "Measure Area",
+      note: "Calculate acreage for a selected tract.",
       src: "/map-feature/tool-measure-area.png",
       alt: "The Measure area window: a tract clicked out corner by corner with its acreage",
     },
     {
       icon: Crosshair,
-      label: "What's near my land",
-      note: "wells and filings around a lease",
+      label: "What's Near My Land",
+      note: "Explore nearby wells, leases, and recent activity.",
       src: "/map-feature/tool-nearby.png",
       alt: "The What's near my land window: a ring around a point with the wells inside it",
     },
