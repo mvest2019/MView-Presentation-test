@@ -229,6 +229,16 @@ export function MapChrome({
    */
   const [appliedCount, setAppliedCount] = useState(0);
   /*
+   * Rebuilds the panel when the toolbar chip clears the filter.
+   *
+   * The chip is a phone's control and only appears with the rail shut, but the
+   * rail is still mounted behind it holding every tick it was applied with —
+   * so clearing the map alone left the boxes ticked and the panel reopened
+   * saying the map was filtered by a county it no longer showed. A new key is
+   * the same way the view drops that selection after a filter matched nothing.
+   */
+  const [railResetAt, setRailResetAt] = useState(0);
+  /*
    * Filters is open or closed per view, not globally. On the map it is the
    * panel people work from, so it opens with the page; alongside Insights the
    * map is only half as wide and the summary is the point, so it starts
@@ -654,8 +664,13 @@ export function MapChrome({
       {!bare && (
         <>
       <FiltersPanel
-        key={filtersResetAt}
-        opening={openingFilters}
+        key={`${filtersResetAt}:${railResetAt}`}
+        /* Only until something clears it. Rebuilt, the panel ticks `opening`
+           again as it mounts, and the filter the link arrived with came back
+           on boxes the reader had just emptied. */
+        opening={
+          filtersResetAt + railResetAt > 0 ? undefined : openingFilters
+        }
         /* Applied, and out of the way. On a phone the rail covers most of
            the map, so leaving it open after Apply hides the very thing that
            just changed. Wide screens keep it open — there the map is beside
@@ -871,6 +886,7 @@ export function MapChrome({
                 onClick={() => {
                   onApplyFilters({});
                   setAppliedCount(0);
+                  setRailResetAt((count) => count + 1);
                 }}
                 aria-label="Clear the applied filters"
                 title="Clear filters"
