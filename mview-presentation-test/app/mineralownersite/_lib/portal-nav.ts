@@ -215,7 +215,12 @@ export const navSections: PortalNavSection[] = [
 
 export const accountMenu: PortalNavItem[] = [
   { label: "My Profile", icon: "user", navKey: "app-dossier" },
-  { label: "Settings", icon: "settings", navKey: "app-settings" },
+  {
+    label: "Settings",
+    icon: "settings",
+    href: "/mineralownersite/settings",
+    navKey: "app-settings",
+  },
   { label: "Billing & Plan", icon: "billing", navKey: "app-billing" },
   // Contact is a marketing route and exists. The reference points at `#/contact`;
   // this build's equivalent is `/contact-us`.
@@ -271,7 +276,12 @@ export const drawerSections: PortalNavSection[] = [
   {
     heading: "Account",
     items: [
-      { label: "Settings", icon: "settings", navKey: "app-settings" },
+      {
+        label: "Settings",
+        icon: "settings",
+        href: "/mineralownersite/settings",
+        navKey: "app-settings",
+      },
       { label: "Billing & Plan", icon: "billing", navKey: "app-billing" },
     ],
   },
@@ -285,10 +295,22 @@ export const drawerSections: PortalNavSection[] = [
  * the Dashboard's name because `/mineralownersite` is the portal's index.
  */
 export function pageNameForPath(pathname: string): string {
-  for (const section of navSections) {
-    for (const item of section.items) {
-      if (item.href && isNavItemActive(item.href, pathname)) return item.label;
-    }
+  /*
+   * THE ACCOUNT MENU IS SEARCHED TOO, and it has to be.
+   *
+   * AUDIT #35 moved Settings, My Profile and Billing & Plan OUT of the sidebar
+   * and into the avatar menu. This function only walked `navSections`, so the
+   * moment Settings shipped, the top bar of a page titled "Settings" read
+   * "Dashboard" — the fallback, silently, because the route was no longer in
+   * the list being searched.
+   *
+   * Both lists are the portal's navigation; the split between them is about
+   * where a row is DISPLAYED, not about whether it names a page.
+   */
+  const rows = [...navSections.flatMap((section) => section.items), ...accountMenu];
+
+  for (const item of rows) {
+    if (item.href && isNavItemActive(item.href, pathname)) return item.label;
   }
   return "Dashboard";
 }

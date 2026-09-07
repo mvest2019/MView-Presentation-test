@@ -48,6 +48,7 @@ export function PrototypeButton({
   size = "sm",
   block = false,
   title,
+  className,
 }: {
   children: string;
   /** What the label becomes once pressed. The prototype's wording, verbatim. */
@@ -57,6 +58,13 @@ export function PrototypeButton({
   /** Full width, for the two controls the design renders as `btn-block`. */
   block?: boolean;
   title?: string;
+  /**
+   * For the one prototype control the design colours differently — Settings'
+   * "Request deletion", which is ghost-with-red-text rather than a filled red
+   * button a mis-click away from three harmless ones. Not a general escape
+   * hatch: a variant is the right answer for anything that recurs.
+   */
+  className?: string;
 }) {
   const [pressed, setPressed] = useState(false);
 
@@ -65,7 +73,7 @@ export function PrototypeButton({
       variant={variant}
       size={size}
       title={title}
-      className={block ? "w-full" : undefined}
+      className={`${block ? "w-full" : ""} ${className ?? ""}`.trim() || undefined}
       onClick={() => setPressed(true)}
     >
       {pressed ? acknowledgement : children}

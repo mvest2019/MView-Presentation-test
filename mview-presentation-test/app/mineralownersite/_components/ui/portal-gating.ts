@@ -30,6 +30,19 @@ export const portalGate = {
   /** Unclaimed record only. */
   unclaimedOnly: "nc-only",
   /**
+   * An `unclaimedOnly` element that stays INLINE inside a sentence rather than
+   * becoming a block. `portal.css`'s `span.nc-only.nc-inline`, so it only works
+   * on a `<span>` and only alongside `unclaimedOnly` — the two hints inside one
+   * settings row that swap for a visitor with no record.
+   */
+  unclaimedInline: "nc-inline",
+  /**
+   * HIDDEN WHILE UNCLAIMED — the counterpart to `unclaimedOnly`, and the class
+   * `portal-ui.md` lists beside it. Anything that names the owner's record, the
+   * plan they are on, or a figure derived from either.
+   */
+  hideInUnclaimed: "nc-hide",
+  /**
    * Marks the unclaimed panel that REPLACES the page rather than topping it.
    * Always used together with `unclaimedOnly`.
    */

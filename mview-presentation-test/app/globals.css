@@ -159,6 +159,22 @@
   --color-mv-portal-hero-tint: #f0fbf7;
   --color-mv-portal-gold: #b8892f;
 
+  /* The Settings surface's own four literals, from the reference's
+     `mineral-view-owner-full-site.css` (`.toggle`, `.future-tag`) and
+     `v33css.css` (`.v33-req`, `mvSavedToast`).
+
+     Here for the same reason as the group above — they are values the marketing
+     design has no equivalent for — and grouped because they belong to one
+     route. Each is a NEAR MISS for an existing token, which is exactly why it is
+     defined rather than approximated: the switch track at `mv-line-strong`
+     (#d5dae0) reads as a disabled control rather than an off one, and the
+     required asterisk at `mv-red` (#b91c1c) is the deletion button's red, which
+     is a different statement from "you have not filled this in". */
+  --color-mv-portal-toast: #0b3d2c; /* the "Saved ✓" pill           */
+  --color-mv-portal-switch-off: #cbd5e1; /* the switch track, off        */
+  --color-mv-portal-inert: #eef0f3; /* the "Future" tag's ground    */
+  --color-mv-required: #b3261e; /* the required-field asterisk  */
+
   /* The Alerts inbox's own surfaces, from the reference's `.al-*` family
      (`owner/src/styles/mineral-view-owner-full-site.css` and `v40css.css`).
 
