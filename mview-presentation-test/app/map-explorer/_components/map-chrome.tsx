@@ -27,6 +27,7 @@ import { LegendsPanel } from "./legends-panel";
 import { getWellLookupMap, type MapWellLookup } from "@/lib/map-api";
 
 import { ApiResults } from "./api-results";
+import { DemoStateMenu, type FunnelState } from "./demo-state-menu";
 import { DensitySwitch, showsAt, type Density } from "./density-switch";
 import { shareUrl, type ShareState } from "./filter-url";
 import { ShareMenu } from "./share-menu";
@@ -67,6 +68,11 @@ type MapChromeProps = {
   /** How much of a well's record the Insights tab shows. */
   density: Density;
   onDensityChange: (density: Density) => void;
+  /** The furthest the demo's account state may read. */
+  ceiling: Density;
+  /** The demo control: which kind of account the map is being shown as. */
+  funnel: FunnelState;
+  onFunnelChange: (state: FunnelState) => void;
   /** Active basemap id, so the gallery can mark its tile. */
   basemap: string;
   onBasemapChange: (id: string) => void;
@@ -191,6 +197,9 @@ export function MapChrome({
   share,
   density,
   onDensityChange,
+  ceiling,
+  funnel,
+  onFunnelChange,
   basemap,
   onBasemapChange,
   onSaveImage,
@@ -829,6 +838,18 @@ export function MapChrome({
         }`}
       >
         <div className="pointer-events-auto relative flex w-full max-w-full flex-col items-stretch gap-2 lg:w-auto lg:flex-row lg:flex-nowrap lg:items-center lg:gap-1 lg:overflow-x-auto lg:rounded-xl lg:border lg:border-mv-line lg:bg-white/97 lg:px-[6px] lg:py-[4px] lg:shadow-mv-lg lg:backdrop-blur-[6px]">
+          {/* The view mode, before the view switch: it decides what the map
+              holds, and the tabs decide which part of it you are looking at.
+              A menu rather than a second row of pills — see `DensitySwitch`. */}
+          <DensitySwitch
+            value={density}
+            onChange={onDensityChange}
+            ceiling={ceiling}
+          />
+
+          {/* The demo control, beside the mode it caps. */}
+          <DemoStateMenu value={funnel} onChange={onFunnelChange} />
+
           {/* A segmented control: the grey track groups the three views and
               makes the filled one read as the raised tab. */}
           <div
@@ -879,11 +900,6 @@ export function MapChrome({
               );
             })}
           </div>
-
-          {/* How much of a well's record Insights prints. Beside the view
-              switch because it is the same kind of choice — which of the
-              things on this map you are looking at, and how closely. */}
-          <DensitySwitch value={density} onChange={onDensityChange} />
 
           {/* Export is the first to go when the map is only half the page
               — the mock drops it too, and Share falls back to its icon.
