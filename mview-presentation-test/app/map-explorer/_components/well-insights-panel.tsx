@@ -29,6 +29,7 @@ import {
   type MapWellSummary,
 } from "@/lib/map-api";
 
+import { DEFAULT_DENSITY, showsAt, type Density } from "./density-switch";
 import { copyText } from "./copy-text";
 import { declineRows, depletionBars, eurBars } from "./well-insights-fields";
 import { WELLBORE } from "./well-insights-data";
@@ -63,6 +64,9 @@ import { wellSummaryFields } from "./well-summary-fields";
  * response's own shape, so the cards keep their height and the page does not
  * jump when the figures arrive.
  */
+/** The headline figures that are a projection rather than a reading. */
+const FORECAST_METRIC = /^(Next Month|Reserve)/i;
+
 const WELL_INFO_LABELS = [
   "Well Type",
   "Direction",
@@ -151,9 +155,20 @@ function readable(failure: unknown, fallback: string): string {
 
 export function WellInsightsPanel({
   well,
+  density = DEFAULT_DENSITY,
   onClose,
 }: {
   well: SelectedWell;
+  /**
+   * How much of the record to print, from the switch in the toolbar.
+   *
+   * Every card is still fetched and still here — the density decides which of
+   * them are on screen. Ultra is the six figures and what the well is;
+   * Essentials adds the lease, the latest activity and the operator; Detailed
+   * adds location, depths, the wellbore and the production chart; Professional
+   * adds the diagnostics.
+   */
+  density?: Density;
   /** Closes the record and hands the panel back to "Pick a well". */
   onClose?: () => void;
 }) {
@@ -504,26 +519,35 @@ export function WellInsightsPanel({
           other axis `auto` too, and a stray pixel of height would put a second
           bar down the side of the strip. */}
               <div className="mv-thin-scroll mt-3 flex gap-px overflow-x-auto overflow-y-hidden rounded-xl border border-mv-line bg-mv-line">
-                {(fields?.metrics ?? WELL_METRICS_LOADING).map((metric) => (
-                  <div
-                    key={metric.label}
-                    className="min-w-[140px] shrink-0 grow bg-white px-[14px] py-[12px]"
-                  >
-                    <span className="block truncate text-[11px] leading-tight text-mv-slate">
-                      {metric.label}
-                    </span>
-                    {/* Unit beside the figure, not under it: "10,826 BBL" is one
+                {(fields?.metrics ?? WELL_METRICS_LOADING)
+                  /* Two of the six are what the well produced last month; the
+                     other four are next month's estimate and the reserves
+                     behind it. Those are forecasts, and forecasts are Pro. */
+                  .filter(
+                    (metric) =>
+                      showsAt(density, "pro") ||
+                      !FORECAST_METRIC.test(metric.label),
+                  )
+                  .map((metric) => (
+                    <div
+                      key={metric.label}
+                      className="min-w-[140px] shrink-0 grow bg-white px-[14px] py-[12px]"
+                    >
+                      <span className="block truncate text-[11px] leading-tight text-mv-slate">
+                        {metric.label}
+                      </span>
+                      {/* Unit beside the figure, not under it: "10,826 BBL" is one
                 reading, and on its own line the unit read as a third fact. */}
-                    <span className="mt-[6px] flex items-baseline gap-[5px]">
-                      <span className="text-[20px] font-bold leading-none tabular-nums text-mv-ink">
-                        {metric.value}
+                      <span className="mt-[6px] flex items-baseline gap-[5px]">
+                        <span className="text-[20px] font-bold leading-none tabular-nums text-mv-ink">
+                          {metric.value}
+                        </span>
+                        <span className="text-[10px] font-semibold uppercase tracking-[.08em] text-mv-muted">
+                          {metric.unit}
+                        </span>
                       </span>
-                      <span className="text-[10px] font-semibold uppercase tracking-[.08em] text-mv-muted">
-                        {metric.unit}
-                      </span>
-                    </span>
-                  </div>
-                ))}
+                    </div>
+                  ))}
               </div>
 
               {/* ---------------- well · lease · operator ---------------- */}
@@ -534,131 +558,148 @@ export function WellInsightsPanel({
                   />
                 </Card>
 
-                <Card icon={ScrollText} title="Lease Information">
-                  <Rows
-                    rows={fields?.leaseInformation ?? blank(LEASE_LABELS)}
-                  />
-                </Card>
+                {showsAt(density, "simple") && (
+                  <Card icon={ScrollText} title="Lease Information">
+                    <Rows
+                      rows={fields?.leaseInformation ?? blank(LEASE_LABELS)}
+                    />
+                  </Card>
+                )}
 
-                <Card
-                  icon={Layers}
-                  title="Wellbore"
-                  badge={fields?.wellboreKind ?? WELLBORE.kind}
-                  /* Two columns is an odd number of cards short: at tablet
+                {showsAt(density, "detailed") && (
+                  <Card
+                    icon={Layers}
+                    title="Wellbore"
+                    badge={fields?.wellboreKind ?? WELLBORE.kind}
+                    /* Two columns is an odd number of cards short: at tablet
                      width this one is the third of three, so it takes the row
                      under the other two rather than half of one. */
-                  className="@2xl:col-span-2 @4xl:col-span-1"
-                >
-                  {/* Drawn to the record's own profile: a vertical hole is not
+                    className="@2xl:col-span-2 @4xl:col-span-1"
+                  >
+                    {/* Drawn to the record's own profile: a vertical hole is not
                   illustrated with a mile of lateral. */}
-                  <WellboreDiagram
-                    kind={fields?.wellboreKind ?? WELLBORE.kind}
-                    surface={WELLBORE.surface}
-                    /* The record's own producing interval where it names one. */
-                    formation={fields?.formation || WELLBORE.formation}
-                  />
-                </Card>
+                    <WellboreDiagram
+                      kind={fields?.wellboreKind ?? WELLBORE.kind}
+                      surface={WELLBORE.surface}
+                      /* The record's own producing interval where it names one. */
+                      formation={fields?.formation || WELLBORE.formation}
+                    />
+                  </Card>
+                )}
               </div>
 
               {/* ---------------- activity · location · wellbore ---------------- */}
-              <div className="mt-3 grid gap-3 @2xl:grid-cols-2 @4xl:grid-cols-3">
-                <Card
-                  icon={FileText}
-                  title="Latest Well Activity and Production"
-                >
-                  {/* One column: at half the card's width the dates were truncating to
+              {showsAt(density, "simple") && (
+                <div className="mt-3 grid gap-3 @2xl:grid-cols-2 @4xl:grid-cols-3">
+                  <Card
+                    icon={FileText}
+                    title="Latest Well Activity and Production"
+                  >
+                    {/* One column: at half the card's width the dates were truncating to
               "12-03…" and "0…", which is worse than a taller card. */}
-                  <Rows rows={fields?.activity ?? blank(ACTIVITY_LABELS)} />
-                </Card>
+                    <Rows rows={fields?.activity ?? blank(ACTIVITY_LABELS)} />
+                  </Card>
 
-                <Card
-                  icon={MapPin}
-                  title="Location"
-                  aside="Well latitude & longitude"
-                >
-                  {/* The readings alone. The tile was a drawing rather than a
+                  {showsAt(density, "detailed") && (
+                    <Card
+                      icon={MapPin}
+                      title="Location"
+                      aside="Well latitude & longitude"
+                    >
+                      {/* The readings alone. The tile was a drawing rather than a
                       map of anywhere — the streets were the same on every well
                       — and the chip over it named what the four rows below
                       already say. */}
-                  <div className="min-w-0">
-                    <dl className="mt-2">
-                      <PlaceRow
-                        icon={Globe}
-                        label="Latitude"
-                        value={locationRow(fields?.location, "Latitude")}
-                        copy
-                      />
-                      <PlaceRow
-                        icon={Globe}
-                        label="Longitude"
-                        value={locationRow(fields?.location, "Longitude")}
-                        copy
-                      />
-                      <PlaceRow
-                        icon={LocateFixed}
-                        label="Coordinate system"
-                        value={locationRow(fields?.place, "Coordinate system")}
-                      />
-                      <PlaceRow
-                        icon={Map}
-                        label="Location"
-                        value={locationRow(fields?.place, "Location")}
-                      />
-                    </dl>
-                  </div>
-                </Card>
+                      <div className="min-w-0">
+                        <dl className="mt-2">
+                          <PlaceRow
+                            icon={Globe}
+                            label="Latitude"
+                            value={locationRow(fields?.location, "Latitude")}
+                            copy
+                          />
+                          <PlaceRow
+                            icon={Globe}
+                            label="Longitude"
+                            value={locationRow(fields?.location, "Longitude")}
+                            copy
+                          />
+                          <PlaceRow
+                            icon={LocateFixed}
+                            label="Coordinate system"
+                            value={locationRow(
+                              fields?.place,
+                              "Coordinate system",
+                            )}
+                          />
+                          <PlaceRow
+                            icon={Map}
+                            label="Location"
+                            value={locationRow(fields?.place, "Location")}
+                          />
+                        </dl>
+                      </div>
+                    </Card>
+                  )}
 
-                <div
-                  /* One under the other in the third column where there are
+                  <div
+                    /* One under the other in the third column where there are
                      three, and side by side across the row at the width where
                      there are two — stacked full width they were two short
                      cards with a page of empty line beside each. */
-                  className="grid gap-3 @2xl:col-span-2 @2xl:grid-cols-2 @4xl:col-span-1 @4xl:grid-cols-1"
-                >
-                  <Card icon={Building2} title="Operator Info">
-                    <div className="mt-[10px] flex items-baseline justify-between gap-3 text-[12px]">
-                      <span className="shrink-0 text-mv-muted">Operator</span>
-                      <span className="text-right font-semibold text-mv-ink">
-                        {fields?.operator.value ?? well.operator ?? "—"}
-                      </span>
-                    </div>
-                  </Card>
+                    className="grid gap-3 @2xl:col-span-2 @2xl:grid-cols-2 @4xl:col-span-1 @4xl:grid-cols-1"
+                  >
+                    <Card icon={Building2} title="Operator Info">
+                      <div className="mt-[10px] flex items-baseline justify-between gap-3 text-[12px]">
+                        <span className="shrink-0 text-mv-muted">Operator</span>
+                        <span className="text-right font-semibold text-mv-ink">
+                          {fields?.operator.value ?? well.operator ?? "—"}
+                        </span>
+                      </div>
+                    </Card>
 
-                  <Card icon={Ruler} title="Depth & Geometry">
-                    {/* One column, like the cards beside it: two columns cut every
-                depth down to "11,4…". */}
-                    <Rows rows={fields?.depth ?? blank(DEPTH_LABELS)} />
-                  </Card>
+                    {showsAt(density, "detailed") && (
+                      <Card icon={Ruler} title="Depth & Geometry">
+                        {/* One column, like the cards beside it: two columns cut
+                  every depth down to "11,4…". */}
+                        <Rows rows={fields?.depth ?? blank(DEPTH_LABELS)} />
+                      </Card>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* ---------------- production ---------------- */}
-              <div className="mt-3">
-                <ProductionChart
-                  points={production ?? []}
-                  /* The endpoint sends reported and forecast months in one
+              {showsAt(density, "detailed") && (
+                <div className="mt-3">
+                  <ProductionChart
+                    withForecast={showsAt(density, "pro")}
+                    points={production ?? []}
+                    /* The endpoint sends reported and forecast months in one
                      list; the record's last reported month is what separates
                      them. */
-                  historyThrough={summary?.dates?.lastProduction ?? null}
-                  loading={production === null && productionError === null}
-                  /* Silent when the record itself failed: one outage, one
+                    historyThrough={summary?.dates?.lastProduction ?? null}
+                    loading={production === null && productionError === null}
+                    /* Silent when the record itself failed: one outage, one
                      message at the top, rather than the same news repeated
                      down the page. */
-                  error={error ? null : productionError}
-                />
-              </div>
+                    error={error ? null : productionError}
+                  />
+                </div>
+              )}
 
               {/* ---------------- diagnostics · integrity · cohort ----------------
           Two across, then the cohort table on its own row: at a third of the
           width its five bars had no room to differ, and the difference between
           them is the whole point of that card. */}
-              <div className="mt-3 grid gap-3 @2xl:grid-cols-2">
-                <Card
-                  title="Decline Diagnostics"
-                  aside="What the rate curve anchors reveal"
-                  className="flex flex-col"
-                >
-                  {/* One column, and it scrolls.
+              {showsAt(density, "pro") && (
+                <div className="mt-3 grid gap-3 @2xl:grid-cols-2">
+                  <Card
+                    title="Decline Diagnostics"
+                    aside="What the rate curve anchors reveal"
+                    className="flex flex-col"
+                  >
+                    {/* One column, and it scrolls.
 
               Two columns were bought with the labels: at half the width every
               one of the fourteen was cut to "Last Month ...", which is the
@@ -671,91 +712,91 @@ export function WellInsightsPanel({
               shrink below its content and would push the card taller instead
               of scrolling. The cap is for the stacked case, where there is no
               chart alongside to set a height. */}
-                  <dl className="mv-thin-scroll mt-2 max-h-[300px] min-h-0 flex-1 overflow-y-auto pr-[6px]">
-                    {(insights
-                      ? declineRows(insights)
-                      : DECLINE_LABELS.map(DECLINE_LOADING)
-                    ).map((row) => (
-                      <div
-                        key={row.label}
-                        className="flex items-center justify-between gap-3 border-b border-mv-line py-[6px] text-[12px]"
-                      >
-                        <dt className="min-w-0 truncate text-mv-slate">
-                          {row.label}
-                        </dt>
-                        <dd className="flex items-baseline gap-[5px] whitespace-nowrap">
-                          <span
-                            className={`font-bold tabular-nums ${
-                              row.tone === "down"
-                                ? "text-mv-red"
-                                : row.tone === "up"
-                                  ? "text-mv-green-deep"
-                                  : "text-mv-ink"
-                            }`}
-                          >
-                            {row.value}
-                          </span>
-                          {row.unit && (
-                            <span className="text-[10.5px] text-mv-muted">
-                              {row.unit}
+                    <dl className="mv-thin-scroll mt-2 max-h-[300px] min-h-0 flex-1 overflow-y-auto pr-[6px]">
+                      {(insights
+                        ? declineRows(insights)
+                        : DECLINE_LABELS.map(DECLINE_LOADING)
+                      ).map((row) => (
+                        <div
+                          key={row.label}
+                          className="flex items-center justify-between gap-3 border-b border-mv-line py-[6px] text-[12px]"
+                        >
+                          <dt className="min-w-0 truncate text-mv-slate">
+                            {row.label}
+                          </dt>
+                          <dd className="flex items-baseline gap-[5px] whitespace-nowrap">
+                            <span
+                              className={`font-bold tabular-nums ${
+                                row.tone === "down"
+                                  ? "text-mv-red"
+                                  : row.tone === "up"
+                                    ? "text-mv-green-deep"
+                                    : "text-mv-ink"
+                              }`}
+                            >
+                              {row.value}
                             </span>
-                          )}
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
+                            {row.unit && (
+                              <span className="text-[10.5px] text-mv-muted">
+                                {row.unit}
+                              </span>
+                            )}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
 
-                  {/* The service's own caveats about these figures — that an
+                    {/* The service's own caveats about these figures — that an
                       annual rate is one month compounded, that a stored zero
                       is a gap rather than a reading. They belong under the
                       numbers they qualify, and nothing else was rendering
                       them. */}
-                  {(insights?.decline?.notes ?? []).map((note) => (
-                    <Note
-                      key={note.title}
-                      tone={note.tone === "warn" ? "red" : "blue"}
-                      icon={note.tone === "warn" ? ArrowDown : Info}
-                    >
-                      <span className="font-semibold">{note.title}.</span>{" "}
-                      {note.body}
-                    </Note>
-                  ))}
-                </Card>
-
-                <Card
-                  title="Reserve Integrity"
-                  aside="Stated Depletion vs Well Age"
-                  className="flex flex-col"
-                >
-                  {/* The chart takes the slack and the note sits on the floor of the
-              card, rather than both bunching at the top with a gap below. */}
-                  {/* `items-stretch`, so each column is as tall as the box and
-                      the bars can be drawn as a share of it. */}
-                  <div className="mt-4 flex min-h-[168px] flex-1 gap-3">
-                    {depletionBars(insights).map((bar, index) => (
-                      <div
-                        key={bar.label}
-                        className="flex flex-1 flex-col items-center"
+                    {(insights?.decline?.notes ?? []).map((note) => (
+                      <Note
+                        key={note.title}
+                        tone={note.tone === "warn" ? "red" : "blue"}
+                        icon={note.tone === "warn" ? ArrowDown : Info}
                       >
-                        {/* The plot: the bar rises from the floor of this box
+                        <span className="font-semibold">{note.title}.</span>{" "}
+                        {note.body}
+                      </Note>
+                    ))}
+                  </Card>
+
+                  <Card
+                    title="Reserve Integrity"
+                    aside="Stated Depletion vs Well Age"
+                    className="flex flex-col"
+                  >
+                    {/* The chart takes the slack and the note sits on the floor of the
+              card, rather than both bunching at the top with a gap below. */}
+                    {/* `items-stretch`, so each column is as tall as the box and
+                      the bars can be drawn as a share of it. */}
+                    <div className="mt-4 flex min-h-[168px] flex-1 gap-3">
+                      {depletionBars(insights).map((bar, index) => (
+                        <div
+                          key={bar.label}
+                          className="flex flex-1 flex-col items-center"
+                        >
+                          {/* The plot: the bar rises from the floor of this box
                             and its figure rides on top. Both are placed
                             against the box rather than laid out in order,
                             which is what lets a percentage height mean
                             anything. */}
-                        <div className="relative w-full flex-1">
-                          <span
-                            style={{
-                              bottom: `calc(${Math.max(12, bar.share * 84)}% + 5px)`,
-                            }}
-                            className={`absolute inset-x-0 text-center text-[11px] font-bold leading-none tabular-nums ${
-                              bar.isOwn ? "text-mv-green-deep" : "text-mv-ink"
-                            }`}
-                          >
-                            {bar.display}
-                          </span>
+                          <div className="relative w-full flex-1">
+                            <span
+                              style={{
+                                bottom: `calc(${Math.max(12, bar.share * 84)}% + 5px)`,
+                              }}
+                              className={`absolute inset-x-0 text-center text-[11px] font-bold leading-none tabular-nums ${
+                                bar.isOwn ? "text-mv-green-deep" : "text-mv-ink"
+                              }`}
+                            >
+                              {bar.display}
+                            </span>
 
-                          <div
-                            /* Against the tallest bar rather than a fixed
+                            <div
+                              /* Against the tallest bar rather than a fixed
                                axis: these are medians whose range changes
                                with the county, and a fixed ceiling flattened
                                most of them into five near-identical columns.
@@ -767,135 +808,136 @@ export function WellInsightsPanel({
                                of an otherwise empty card. 84% leaves the
                                figure above the tallest one somewhere to
                                go. */
-                            className="absolute inset-x-0 bottom-0 rounded-t-md"
-                            style={{
-                              height: `${Math.max(12, bar.share * 84)}%`,
-                              background:
-                                BAR_COLOURS[index % BAR_COLOURS.length],
-                            }}
-                          />
+                              className="absolute inset-x-0 bottom-0 rounded-t-md"
+                              style={{
+                                height: `${Math.max(12, bar.share * 84)}%`,
+                                background:
+                                  BAR_COLOURS[index % BAR_COLOURS.length],
+                              }}
+                            />
+                          </div>
+
+                          <span
+                            className={`mt-[6px] text-[9.5px] ${
+                              bar.isOwn
+                                ? "font-bold text-mv-green-deep"
+                                : "text-mv-muted"
+                            }`}
+                          >
+                            {bar.label}
+                          </span>
+                          <span className="text-[9px] text-mv-muted/70">
+                            {bar.count}
+                          </span>
                         </div>
+                      ))}
+                    </div>
 
-                        <span
-                          className={`mt-[6px] text-[9.5px] ${
-                            bar.isOwn
-                              ? "font-bold text-mv-green-deep"
-                              : "text-mv-muted"
-                          }`}
-                        >
-                          {bar.label}
-                        </span>
-                        <span className="text-[9px] text-mv-muted/70">
-                          {bar.count}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* The service writes these, and marks each with a tone —
+                    {/* The service writes these, and marks each with a tone —
                       so the page shows what it was told rather than deciding
                       for itself which finding is the bad news. */}
-                  {findings.slice(0, 1).map((finding) => (
-                    <Note
-                      key={finding.title}
-                      tone={finding.tone === "ok" ? "blue" : "red"}
-                      icon={finding.tone === "ok" ? Info : ArrowDown}
-                    >
-                      {finding.body}
-                    </Note>
-                  ))}
+                    {findings.slice(0, 1).map((finding) => (
+                      <Note
+                        key={finding.title}
+                        tone={finding.tone === "ok" ? "blue" : "red"}
+                        icon={finding.tone === "ok" ? Info : ArrowDown}
+                      >
+                        {finding.body}
+                      </Note>
+                    ))}
 
-                  {insightsError && !error && (
-                    <Note tone="red" icon={ArrowDown}>
-                      {insightsError}
-                    </Note>
-                  )}
-                </Card>
+                    {insightsError && !error && (
+                      <Note tone="red" icon={ArrowDown}>
+                        {insightsError}
+                      </Note>
+                    )}
+                  </Card>
 
-                {/*
+                  {/*
           The chart and its reading side by side, not stacked: the two notes
           are what the bars are for, and under them they read as footnotes to a
           chart that has already been passed over.
         */}
-                {/*
+                  {/*
           The chart and its reading side by side — unless the service returned
           only the one finding, which the card above has already used. Then the
           chart takes the whole width rather than sitting beside an empty box.
         */}
-                <div
-                  /* The width of the row, at every size the row has more
+                  <div
+                    /* The width of the row, at every size the row has more
                      than one column: it is a chart with a reading beside it,
                      and half a column left it a stack of bars with a page of
                      nothing next to them. */
-                  className={`grid gap-4 rounded-xl border border-mv-line bg-white p-4 @2xl:col-span-2 @4xl:gap-6 ${
-                    cohortNotes.length > 0 ? "@4xl:grid-cols-2" : ""
-                  }`}
-                >
-                  <div className="min-w-0">
-                    <h3 className="text-[13px] font-bold leading-none text-mv-ink">
-                      Cohort EUR — the tell
-                    </h3>
-                    <div className="mt-[6px] text-[10.5px] text-mv-muted">
-                      median booked EUR by age
-                    </div>
+                    className={`grid gap-4 rounded-xl border border-mv-line bg-white p-4 @2xl:col-span-2 @4xl:gap-6 ${
+                      cohortNotes.length > 0 ? "@4xl:grid-cols-2" : ""
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <h3 className="text-[13px] font-bold leading-none text-mv-ink">
+                        Cohort EUR — the tell
+                      </h3>
+                      <div className="mt-[6px] text-[10.5px] text-mv-muted">
+                        median booked EUR by age
+                      </div>
 
-                    {/*
+                      {/*
               One colour, not five. These are the same measure at five ages, so
               colouring them differently would suggest five kinds of thing —
               the point is the shape of the sequence, which the bar lengths
               already carry.
             */}
-                    <div className="mt-3">
-                      {eurBars(insights).map((bar) => (
-                        <div
-                          key={bar.label}
-                          className="flex items-center gap-3 py-[7px]"
-                        >
-                          <span
-                            className={`w-[58px] shrink-0 text-[11px] ${
-                              bar.isOwn
-                                ? "font-bold text-mv-green-deep"
-                                : "text-mv-slate"
-                            }`}
+                      <div className="mt-3">
+                        {eurBars(insights).map((bar) => (
+                          <div
+                            key={bar.label}
+                            className="flex items-center gap-3 py-[7px]"
                           >
-                            {bar.label}
-                          </span>
-                          <span className="h-[8px] min-w-0 flex-1 overflow-hidden rounded-full bg-[#eef0f2]">
                             <span
-                              className="block h-full rounded-full bg-mv-green-deep"
-                              style={{ width: `${bar.share * 100}%` }}
-                            />
-                          </span>
-                          <span className="w-[56px] shrink-0 text-right text-[11.5px] font-bold tabular-nums text-mv-ink">
-                            {bar.display}
-                          </span>
-                        </div>
-                      ))}
+                              className={`w-[58px] shrink-0 text-[11px] ${
+                                bar.isOwn
+                                  ? "font-bold text-mv-green-deep"
+                                  : "text-mv-slate"
+                              }`}
+                            >
+                              {bar.label}
+                            </span>
+                            <span className="h-[8px] min-w-0 flex-1 overflow-hidden rounded-full bg-[#eef0f2]">
+                              <span
+                                className="block h-full rounded-full bg-mv-green-deep"
+                                style={{ width: `${bar.share * 100}%` }}
+                              />
+                            </span>
+                            <span className="w-[56px] shrink-0 text-right text-[11.5px] font-bold tabular-nums text-mv-ink">
+                              {bar.display}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
-                  {cohortNotes.length > 0 && (
-                    <div className="flex min-w-0 flex-col justify-center gap-3">
-                      {cohortNotes.map((finding) => (
-                        <Note
-                          key={finding.title}
-                          tone={finding.tone === "warn" ? "red" : "blue"}
-                          icon={finding.tone === "warn" ? ArrowDown : Info}
-                          flush
-                          /* Half the card's width, so two lines came to a
+                    {cohortNotes.length > 0 && (
+                      <div className="flex min-w-0 flex-col justify-center gap-3">
+                        {cohortNotes.map((finding) => (
+                          <Note
+                            key={finding.title}
+                            tone={finding.tone === "warn" ? "red" : "blue"}
+                            icon={finding.tone === "warn" ? ArrowDown : Info}
+                            flush
+                            /* Half the card's width, so two lines came to a
                              clause and a Read more. */
-                          lines={3}
-                        >
-                          <span className="font-semibold">
-                            {finding.title}.
-                          </span>{" "}
-                          {finding.body}
-                        </Note>
-                      ))}
-                    </div>
-                  )}
+                            lines={3}
+                          >
+                            <span className="font-semibold">
+                              {finding.title}.
+                            </span>{" "}
+                            {finding.body}
+                          </Note>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* ---------------- the written read ----------------
           The permit tab's card, on this tab's record: same component, same

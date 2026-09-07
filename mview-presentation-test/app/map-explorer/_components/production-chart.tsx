@@ -105,12 +105,20 @@ export function ProductionChart({
   historyThrough,
   loading = false,
   error = null,
+  withForecast = true,
 }: {
   points: MapProductionPoint[];
   /** The last reported month; everything after it is forecast. */
   historyThrough?: string | null;
   loading?: boolean;
   error?: string | null;
+  /**
+   * Whether to plot the projected months as well as the reported ones.
+   *
+   * Off below Pro: a forecast is a claim about the future, and the view modes
+   * that are there to say what a well *is* stop at what has been reported.
+   */
+  withForecast?: boolean;
 }) {
   const now = useCurrentMonth();
   /** Whether the two month boxes are on show. */
@@ -161,13 +169,22 @@ export function ProductionChart({
 
   const series = useMemo(
     () =>
-      points.map((point) => ({
-        month: point.month,
-        year: yearOf(point.month),
-        oil: point.oil ?? 0,
-        gas: point.gas ?? 0,
-      })),
-    [points],
+      points
+        /* The projected months come in the same list as the reported ones,
+           after the record's last reported month. Dropped here rather than
+           hidden in the drawing, so the axis, the window and the year labels
+           all describe the same series the reader can see. */
+        .filter(
+          (point) =>
+            withForecast || !historyThrough || point.month <= historyThrough,
+        )
+        .map((point) => ({
+          month: point.month,
+          year: yearOf(point.month),
+          oil: point.oil ?? 0,
+          gas: point.gas ?? 0,
+        })),
+    [points, withForecast, historyThrough],
   );
 
   const firstMonth = series.length > 0 ? series[0].month : "";
