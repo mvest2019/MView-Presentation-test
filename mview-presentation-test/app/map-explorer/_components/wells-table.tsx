@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { DensitySwitch, showsAt, type Density } from "./density-switch";
 import { MapToast } from "./map-toast";
 import { usePanelPlacement } from "./panel-placement";
 import { downloadSheet, type SheetColumn } from "./xlsx";
@@ -95,14 +96,7 @@ const PER_PAGE = 10;
 
 /** The columns a header can order by — the endpoint's own list. */
 type SortKey =
-  | "api"
-  | "operator"
-  | "lease"
-  | "type"
-  | "status"
-  | "county"
-  | "oil"
-  | "gas";
+  "api" | "operator" | "lease" | "type" | "status" | "county" | "oil" | "gas";
 
 type ViewTab = "map" | "table" | "insights";
 
@@ -115,6 +109,9 @@ type WellsTableProps = {
   activeTab: ViewTab;
   onTabChange: (tab: ViewTab) => void;
   onShowOnMap: (row: MapTableRow) => void;
+  /** How many columns to print — the switch beside the view tabs. */
+  density: Density;
+  onDensityChange: (density: Density) => void;
 };
 
 /**
@@ -135,27 +132,43 @@ const COLUMNS: {
   width: string;
   /** Columns the server will not order by, so the header is plain text. */
   sortable?: boolean;
+  /**
+   * The least density this column belongs to, from the toolbar switch.
+   *
+   * Ultra is which well it is and what state it is in; Essentials adds who
+   * holds it and where; Detailed adds what kind of well it is; Pro adds the
+   * production figures. Omitted means the column is in every mode.
+   */
+  from?: Density;
 }[] = [
   { key: "api", label: "API", width: "w-[10%]", sortable: false },
-  { key: "operator", label: "Operator", width: "w-[13%]" },
+  { key: "operator", label: "Operator", width: "w-[13%]", from: "simple" },
   { key: "lease", label: "Lease", width: "w-[15%]" },
   /* The widest of the short columns: its values are phrases — "Injection /
      Disposal from Oil" — and at the old width every one of them wrapped to
      three lines, which set the height of the row it was in. */
-  { key: "type", label: "Type", width: "w-[15%]", sortable: false },
+  {
+    key: "type",
+    label: "Type",
+    width: "w-[15%]",
+    sortable: false,
+    from: "detailed",
+  },
   { key: "status", label: "Status", width: "w-[12%]", sortable: false },
-  { key: "county", label: "County", width: "w-[10%]" },
+  { key: "county", label: "County", width: "w-[10%]", from: "simple" },
   {
     key: "oil",
     label: "Producing Oil (bbl)",
     align: "right",
     width: "w-[12%]",
+    from: "pro",
   },
   {
     key: "gas",
     label: "Producing Gas (mcf)",
     align: "right",
     width: "w-[12%]",
+    from: "pro",
   },
 ];
 
@@ -221,6 +234,8 @@ export function WellsTable({
   activeTab,
   onTabChange,
   onShowOnMap,
+  density,
+  onDensityChange,
 }: WellsTableProps) {
   const [page, setPage] = useState(1);
   /*
@@ -248,7 +263,8 @@ export function WellsTable({
    */
   const [facets, setFacets] = useState<Facets>(emptyFacets);
   const [appliedFacets, setAppliedFacets] = useState<Facets>(emptyFacets);
-  const [production, setProduction] = useState<ProductionRange>(EMPTY_PRODUCTION);
+  const [production, setProduction] =
+    useState<ProductionRange>(EMPTY_PRODUCTION);
   const [appliedProduction, setAppliedProduction] =
     useState<ProductionRange>(EMPTY_PRODUCTION);
   const [productionOpen, setProductionOpen] = useState(false);
@@ -259,7 +275,17 @@ export function WellsTable({
   /** The table card, for taking the reader to the rows an Apply just asked for. */
   const tableRef = useRef<HTMLDivElement>(null);
 
-  const [facetItems, setFacetItems] = useState<Record<FacetKey, MapFilterItem[]>>({
+  /* Which columns this density prints. The header and the cells read the same
+     list, so a column cannot appear in one and not the other. */
+  const shownColumns = COLUMNS.filter((column) =>
+    /* No mode named means the lowest one — the column is in every mode. */
+    showsAt(density, column.from ?? "ultra"),
+  );
+  const shows = (from: Density) => showsAt(density, from);
+
+  const [facetItems, setFacetItems] = useState<
+    Record<FacetKey, MapFilterItem[]>
+  >({
     operator: [],
     type: [],
     status: [],
@@ -489,7 +515,14 @@ export function WellsTable({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [page, sort, appliedPicked, appliedFacets, appliedProduction, operatorIds]);
+  }, [
+    page,
+    sort,
+    appliedPicked,
+    appliedFacets,
+    appliedProduction,
+    operatorIds,
+  ]);
 
   const safePage = Math.min(page, totalPages);
   const firstShown = total ? (safePage - 1) * PER_PAGE + 1 : 0;
@@ -700,271 +733,282 @@ export function WellsTable({
           bottom edge and it would slice them off. The summary strip rounds its
           own bottom corners instead, which is all the clipping was for. */}
       <div className="rounded-xl border border-mv-line bg-white">
-      {/* ---------------- heading ----------------
+        {/* ---------------- heading ----------------
           Back sits on the heading's own row rather than a row of its own: the
           table fills the screen, so the map is otherwise only reachable from
           the view switch on the far right, but a 116px button does not earn a
           full-width band when this row already has ~880px going spare. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 pt-4 lg:px-6 lg:pt-5">
-        <button
-          type="button"
-          onClick={() => onTabChange("map")}
-          className="inline-flex shrink-0 cursor-pointer items-center gap-[6px] rounded-lg border border-mv-line px-3 py-[6px] text-[12.5px] font-semibold text-mv-green-deep hover:border-mv-green-deep hover:bg-[#f2f8f5]"
-        >
-          <ArrowLeft size={14} aria-hidden="true" />
-          Back to map
-        </button>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 pt-4 lg:px-6 lg:pt-5">
+          <button
+            type="button"
+            onClick={() => onTabChange("map")}
+            className="inline-flex shrink-0 cursor-pointer items-center gap-[6px] rounded-lg border border-mv-line px-3 py-[6px] text-[12.5px] font-semibold text-mv-green-deep hover:border-mv-green-deep hover:bg-[#f2f8f5]"
+          >
+            <ArrowLeft size={14} aria-hidden="true" />
+            Back to map
+          </button>
 
-        <span aria-hidden="true" className="h-5 w-px shrink-0 bg-mv-line" />
+          <span aria-hidden="true" className="h-5 w-px shrink-0 bg-mv-line" />
 
-        {/* A title, not a tally: the count already appears in the line below
+          {/* A title, not a tally: the count already appears in the line below
             and again in the summary strip, and "match your search" claimed a
             search that has usually not happened. */}
-        <h2 className="text-[16px] font-bold leading-tight text-mv-ink lg:text-[19px] lg:leading-none">
-          Well results
-        </h2>
+          <h2 className="text-[16px] font-bold leading-tight text-mv-ink lg:text-[19px] lg:leading-none">
+            Well results
+          </h2>
 
-        {/* Narrow: the icon at the end of this row, where there is room going
+          {/* Narrow: the icon at the end of this row, where there is room going
             spare and the eye already is. The labelled button below takes over
             at `lg`, beside the view switch. */}
-        <ExportButton
-          compact
-          className="ml-auto lg:hidden"
-          onClick={exportPage}
-          loading={loading}
-          count={rows.length}
-        />
-
-        <div className="flex w-full shrink-0 flex-wrap items-center gap-2 lg:ml-auto lg:w-auto lg:flex-nowrap lg:pl-2">
-          <div className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-mv-line bg-white p-1 lg:flex-none lg:justify-start">
-            <TabButton
-              icon={MapIcon}
-              label="Map"
-              active={activeTab === "map"}
-              onClick={() => onTabChange("map")}
-            />
-            <TabButton
-              icon={TableIcon}
-              label="Table"
-              active={activeTab === "table"}
-              onClick={() => onTabChange("table")}
-            />
-            <TabButton
-              icon={Activity}
-              label="Insights"
-              active={activeTab === "insights"}
-              onClick={() => onTabChange("insights")}
-            />
-          </div>
-
           <ExportButton
-            className="hidden lg:inline-flex"
+            compact
+            className="ml-auto lg:hidden"
             onClick={exportPage}
             loading={loading}
             count={rows.length}
           />
-        </div>
-      </div>
 
-      {/* ---------------- controls ----------------
+          <div className="flex w-full shrink-0 flex-wrap items-center gap-2 lg:ml-auto lg:w-auto lg:flex-nowrap lg:pl-2">
+            <div className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-mv-line bg-white p-1 lg:flex-none lg:justify-start">
+              <TabButton
+                icon={MapIcon}
+                label="Map"
+                active={activeTab === "map"}
+                onClick={() => onTabChange("map")}
+              />
+              <TabButton
+                icon={TableIcon}
+                label="Table"
+                active={activeTab === "table"}
+                onClick={() => onTabChange("table")}
+              />
+              <TabButton
+                icon={Activity}
+                label="Insights"
+                active={activeTab === "insights"}
+                onClick={() => onTabChange("insights")}
+              />
+            </div>
+
+            {/* The same switch the map's toolbar carries, on the same choice:
+              here it decides how many columns the table prints. */}
+            <div className="flex-1 lg:flex-none">
+              <DensitySwitch value={density} onChange={onDensityChange} />
+            </div>
+
+            {shows("detailed") && (
+              <ExportButton
+                className="hidden lg:inline-flex"
+                onClick={exportPage}
+                loading={loading}
+                count={rows.length}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* ---------------- controls ----------------
           One row: `nowrap` plus a scroller rather than `flex-wrap`, which
           collapsed this into a three-line block on a narrow viewport. */}
-      <div
-        ref={filterBarRef}
-        /* A band of its own: bordered off from the heading above and tinted,
+        <div
+          ref={filterBarRef}
+          /* A band of its own: bordered off from the heading above and tinted,
            so the controls read as one strip rather than as loose chips
            floating under the title. */
-        className="mt-4 flex flex-wrap items-center gap-2 border-t border-mv-line bg-[#fafbfa] px-4 pb-[10px] pt-[12px] lg:flex-nowrap lg:px-6"
-      >
-        <TableSearch
-          picked={picked}
-          disabled={loading}
-          onPick={setPicked}
-          onClear={() => {
-            // Applied straight away, unlike picking: clearing is a request to
-            // stop filtering, and waiting for Apply would leave the box empty
-            // while the table still showed that one operator's wells.
-            setPicked(null);
-            setAppliedPicked(null);
-            setPage(1);
-          }}
-        />
+          className="mt-4 flex flex-wrap items-center gap-2 border-t border-mv-line bg-[#fafbfa] px-4 pb-[10px] pt-[12px] lg:flex-nowrap lg:px-6"
+        >
+          <TableSearch
+            picked={picked}
+            disabled={loading}
+            onPick={setPicked}
+            onClear={() => {
+              // Applied straight away, unlike picking: clearing is a request to
+              // stop filtering, and waiting for Apply would leave the box empty
+              // while the table still showed that one operator's wells.
+              setPicked(null);
+              setAppliedPicked(null);
+              setPage(1);
+            }}
+          />
 
-        {/* A rule, not a "FILTER" label: the pills say what they are, and the
+          {/* A rule, not a "FILTER" label: the pills say what they are, and the
             word was competing with them for attention. */}
-        <span
-          aria-hidden="true"
-          className="mx-1 hidden h-5 w-px shrink-0 bg-mv-line lg:block"
-        />
+          <span
+            aria-hidden="true"
+            className="mx-1 hidden h-5 w-px shrink-0 bg-mv-line lg:block"
+          />
 
-        {FACETS.map((facet) => (
-          <FilterDropdown
-            key={facet.key}
-            label={facet.label}
-            options={facetItems[facet.key].map((item) => item.value)}
-            loading={facetsLoading}
-            searchable={facet.searchable}
-            chosen={facets[facet.key]}
-            open={openFacet === facet.key}
+          {FACETS.map((facet) => (
+            <FilterDropdown
+              key={facet.key}
+              label={facet.label}
+              options={facetItems[facet.key].map((item) => item.value)}
+              loading={facetsLoading}
+              searchable={facet.searchable}
+              chosen={facets[facet.key]}
+              open={openFacet === facet.key}
+              disabled={loading}
+              onOpenChange={(next) => {
+                setOpenFacet(next ? facet.key : null);
+                if (next) setProductionOpen(false);
+              }}
+              onChange={(next) => updateFacet(facet.key, next)}
+              /* Only the operators run to tens of thousands. */
+              {...(facet.key === "operator"
+                ? {
+                    onScrollEnd: loadMoreOperators,
+                    loadingMore: operatorMore,
+                    total: operatorTotal,
+                  }
+                : null)}
+            />
+          ))}
+
+          <ProductionFilter
+            range={production}
+            open={productionOpen}
             disabled={loading}
             onOpenChange={(next) => {
-              setOpenFacet(next ? facet.key : null);
-              if (next) setProductionOpen(false);
+              setProductionOpen(next);
+              if (next) setOpenFacet(null);
             }}
-            onChange={(next) => updateFacet(facet.key, next)}
-            /* Only the operators run to tens of thousands. */
-            {...(facet.key === "operator"
-              ? {
-                  onScrollEnd: loadMoreOperators,
-                  loadingMore: operatorMore,
-                  total: operatorTotal,
-                }
-              : null)}
+            onChange={setProduction}
           />
-        ))}
 
-        <ProductionFilter
-          range={production}
-          open={productionOpen}
-          disabled={loading}
-          onOpenChange={(next) => {
-            setProductionOpen(next);
-            if (next) setOpenFacet(null);
-          }}
-          onChange={setProduction}
-        />
-
-        {/* Apply and Clear at the end of the row, where the space is. */}
-        <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
-          <button
-            type="button"
-            onClick={clearAll}
-            disabled={loading || (!pending && !anyFilter)}
-            className="rounded-lg border border-mv-red px-[13px] py-[6px] text-[12.5px] font-semibold text-mv-red enabled:cursor-pointer enabled:hover:bg-mv-red-bg disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Clear
-          </button>
-          <button
-            type="button"
-            onClick={applyFacets}
-            // A half-filled or back-to-front range cannot be sent.
-            disabled={
-              loading || !pending || productionProblem(production) !== null
-            }
-            /* Ringed while it is the next thing to do. The reader has just
+          {/* Apply and Clear at the end of the row, where the space is. */}
+          <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
+            <button
+              type="button"
+              onClick={clearAll}
+              disabled={loading || (!pending && !anyFilter)}
+              className="rounded-lg border border-mv-red px-[13px] py-[6px] text-[12.5px] font-semibold text-mv-red enabled:cursor-pointer enabled:hover:bg-mv-red-bg disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={applyFacets}
+              // A half-filled or back-to-front range cannot be sent.
+              disabled={
+                loading || !pending || productionProblem(production) !== null
+              }
+              /* Ringed while it is the next thing to do. The reader has just
                come from a dropdown at the other end of the row, and a button
                that looks the same whether or not it is waiting on them is a
                button they walk past. */
-            className={`rounded-lg px-[15px] py-[6px] text-[12.5px] font-bold enabled:cursor-pointer enabled:bg-mv-green-deep enabled:text-white enabled:hover:brightness-105 disabled:cursor-not-allowed disabled:bg-[#e9ecea] disabled:text-mv-muted ${
-              pending ? "ring-4 ring-mv-green-deep/25" : ""
-            }`}
-          >
-            {pending && draftCount > 0
-              ? `Apply ${draftCount} filter${draftCount === 1 ? "" : "s"}`
-              : "Apply"}
-          </button>
+              className={`rounded-lg px-[15px] py-[6px] text-[12.5px] font-bold enabled:cursor-pointer enabled:bg-mv-green-deep enabled:text-white enabled:hover:brightness-105 disabled:cursor-not-allowed disabled:bg-[#e9ecea] disabled:text-mv-muted ${
+                pending ? "ring-4 ring-mv-green-deep/25" : ""
+              }`}
+            >
+              {pending && draftCount > 0
+                ? `Apply ${draftCount} filter${draftCount === 1 ? "" : "s"}`
+                : "Apply"}
+            </button>
+          </div>
         </div>
 
-      </div>
-
-      {/* ---------------- applied filters ----------------
+        {/* ---------------- applied filters ----------------
           Each chip names its facet as well as its value: "Anderson" alone
           leaves you to work out which of five filters put it there, and two
           facets can hold the same word. */}
-      {(chips.length > 0 || rangeChips.length > 0) && (
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-[6px] border-b border-mv-line bg-[#fafbfa] px-4 pb-[11px] pt-[9px] lg:px-6">
-          <span className="mr-1 shrink-0 text-[10px] font-extrabold uppercase tracking-[.1em] text-mv-muted">
-            Applied
-          </span>
-
-          {chips.map((chip) => (
-            <span
-              key={`${chip.key}:${chip.value}`}
-              className="inline-flex items-center gap-[7px] rounded-lg border border-mv-green-deep/25 bg-mv-mint py-[4px] pl-[10px] pr-[5px] text-[12px] text-mv-green-deep"
-            >
-              <span className="text-mv-green-deep/70">{chip.label}</span>
-              <span className="font-semibold">{chip.value || "—"}</span>
-              <button
-                type="button"
-                onClick={() => removeChip(chip)}
-                aria-label={`Remove ${chip.label} ${chip.value}`}
-                className="grid h-[16px] w-[16px] cursor-pointer place-items-center rounded text-mv-green-deep/60 hover:bg-white hover:text-mv-red"
-              >
-                <X size={11} strokeWidth={2.5} aria-hidden="true" />
-              </button>
+        {(chips.length > 0 || rangeChips.length > 0) && (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-[6px] border-b border-mv-line bg-[#fafbfa] px-4 pb-[11px] pt-[9px] lg:px-6">
+            <span className="mr-1 shrink-0 text-[10px] font-extrabold uppercase tracking-[.1em] text-mv-muted">
+              Applied
             </span>
-          ))}
 
-          {rangeChips.map(({ stream, label, unit, min, max }) => (
-            <span
-              key={stream}
-              className="inline-flex items-center gap-[7px] rounded-lg border border-mv-green-deep/25 bg-mv-mint py-[4px] pl-[10px] pr-[5px] text-[12px] text-mv-green-deep"
-            >
-              <span className="text-mv-green-deep/70">{label}</span>
-              <span className="font-semibold tabular-nums">
-                {Number(min).toLocaleString("en-US")} –{" "}
-                {Number(max).toLocaleString("en-US")} {unit}
+            {chips.map((chip) => (
+              <span
+                key={`${chip.key}:${chip.value}`}
+                className="inline-flex items-center gap-[7px] rounded-lg border border-mv-green-deep/25 bg-mv-mint py-[4px] pl-[10px] pr-[5px] text-[12px] text-mv-green-deep"
+              >
+                <span className="text-mv-green-deep/70">{chip.label}</span>
+                <span className="font-semibold">{chip.value || "—"}</span>
+                <button
+                  type="button"
+                  onClick={() => removeChip(chip)}
+                  aria-label={`Remove ${chip.label} ${chip.value}`}
+                  className="grid h-[16px] w-[16px] cursor-pointer place-items-center rounded text-mv-green-deep/60 hover:bg-white hover:text-mv-red"
+                >
+                  <X size={11} strokeWidth={2.5} aria-hidden="true" />
+                </button>
               </span>
-              <button
-                type="button"
-                onClick={() => removeRange(stream)}
-                aria-label={`Remove the ${label} range`}
-                className="grid h-[16px] w-[16px] cursor-pointer place-items-center rounded text-mv-green-deep/60 hover:bg-white hover:text-mv-red"
+            ))}
+
+            {rangeChips.map(({ stream, label, unit, min, max }) => (
+              <span
+                key={stream}
+                className="inline-flex items-center gap-[7px] rounded-lg border border-mv-green-deep/25 bg-mv-mint py-[4px] pl-[10px] pr-[5px] text-[12px] text-mv-green-deep"
               >
-                <X size={11} strokeWidth={2.5} aria-hidden="true" />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
+                <span className="text-mv-green-deep/70">{label}</span>
+                <span className="font-semibold tabular-nums">
+                  {Number(min).toLocaleString("en-US")} –{" "}
+                  {Number(max).toLocaleString("en-US")} {unit}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeRange(stream)}
+                  aria-label={`Remove the ${label} range`}
+                  className="grid h-[16px] w-[16px] cursor-pointer place-items-center rounded text-mv-green-deep/60 hover:bg-white hover:text-mv-red"
+                >
+                  <X size={11} strokeWidth={2.5} aria-hidden="true" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
 
-      {/* ---------------- summary strip ----------------
-          Top border only — the card's own edge closes it off below. */}
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-b-xl border-t border-mv-line bg-mv-line md:grid-cols-3 xl:grid-cols-6">
-        <SummaryCard
-          icon={FlaskConical}
-          tint="green"
-          label="Total wells"
-          value={summary?.totalWells ?? 0}
-          note="Across this result set"
-        />
-        <SummaryCard
-          icon={Activity}
-          tint="green"
-          label="Oil wells"
-          value={summary?.oilWells ?? 0}
-          note={`${summary?.oilPct ?? 0}%`}
-        />
-        <SummaryCard
-          icon={Droplet}
-          tint="red"
-          label="Gas wells"
-          value={summary?.gasWells ?? 0}
-          note={`${summary?.gasPct ?? 0}%`}
-        />
-        <SummaryCard
-          icon={CircleCheck}
-          tint="green"
-          label="Active wells"
-          value={summary?.activeWells ?? 0}
-          note={`${summary?.activePct ?? 0}%`}
-        />
-        <SummaryCard
-          icon={Layers}
-          tint="blue"
-          label="Unique operators"
-          value={summary?.operators ?? 0}
-          note="Across this result set"
-        />
-        <SummaryCard
-          icon={MapIcon}
-          tint="purple"
-          label="Counties"
-          value={summary?.counties ?? 0}
-          note="Across this result set"
-        />
-      </div>
+        {/* ---------------- summary strip ----------------
+          Top border only — the card's own edge closes it off below.
 
+          Essentials and up: six statewide tallies are context for a result
+          set, and Ultra is one question at a time. */}
+        {shows("simple") && (
+          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-b-xl border-t border-mv-line bg-mv-line md:grid-cols-3 xl:grid-cols-6">
+            <SummaryCard
+              icon={FlaskConical}
+              tint="green"
+              label="Total wells"
+              value={summary?.totalWells ?? 0}
+              note="Across this result set"
+            />
+            <SummaryCard
+              icon={Activity}
+              tint="green"
+              label="Oil wells"
+              value={summary?.oilWells ?? 0}
+              note={`${summary?.oilPct ?? 0}%`}
+            />
+            <SummaryCard
+              icon={Droplet}
+              tint="red"
+              label="Gas wells"
+              value={summary?.gasWells ?? 0}
+              note={`${summary?.gasPct ?? 0}%`}
+            />
+            <SummaryCard
+              icon={CircleCheck}
+              tint="green"
+              label="Active wells"
+              value={summary?.activeWells ?? 0}
+              note={`${summary?.activePct ?? 0}%`}
+            />
+            <SummaryCard
+              icon={Layers}
+              tint="blue"
+              label="Unique operators"
+              value={summary?.operators ?? 0}
+              note="Across this result set"
+            />
+            <SummaryCard
+              icon={MapIcon}
+              tint="purple"
+              label="Counties"
+              value={summary?.counties ?? 0}
+              note="Across this result set"
+            />
+          </div>
+        )}
       </div>
 
       {/* ---------------- table ---------------- */}
@@ -975,7 +1019,7 @@ export function WellsTable({
            header. */
         className="relative mt-4 scroll-mt-24 overflow-hidden rounded-xl border border-mv-line bg-white"
       >
-      {/* Over the dimmed rows, not instead of them: dimming alone reads as a
+        {/* Over the dimmed rows, not instead of them: dimming alone reads as a
           disabled table, and says nothing about how long it will be.
 
           Held over the rows and nowhere else. Fixed to the window it was
@@ -984,299 +1028,311 @@ export function WellsTable({
           thing dropped on the table rather than the table's own state. This
           starts below the headings and, being `sticky`, follows the scroll
           within the rows: always in view, never off the card. */}
-      {loading && rows.length > 0 && (
-        /*
-         * The rows go quiet, and the pill sits in the middle of them.
-         *
-         * `sticky`, pulled up by half its own height: while the rows fill the
-         * screen that puts it at the centre of the window, and once the table
-         * is scrolled half past it stays inside the table rather than
-         * floating over whatever else is on screen. The headings are left
-         * clear either way, so the columns being waited on stay legible.
-         */
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 top-[46px] z-30 bg-white/55">
-          <div className="sticky top-1/2 flex -translate-y-1/2 justify-center">
-            <span className="flex items-center gap-[12px] rounded-full border border-mv-line bg-white px-[22px] py-[13px] shadow-mv-lg">
-              <span
-                aria-hidden="true"
-                className="h-[20px] w-[20px] shrink-0 animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
-              />
-              <span className="text-[15px] font-semibold leading-none text-mv-slate">
-                Loading wells…
+        {loading && rows.length > 0 && (
+          /*
+           * The rows go quiet, and the pill sits in the middle of them.
+           *
+           * `sticky`, pulled up by half its own height: while the rows fill the
+           * screen that puts it at the centre of the window, and once the table
+           * is scrolled half past it stays inside the table rather than
+           * floating over whatever else is on screen. The headings are left
+           * clear either way, so the columns being waited on stay legible.
+           */
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 top-[46px] z-30 bg-white/55">
+            <div className="sticky top-1/2 flex -translate-y-1/2 justify-center">
+              <span className="flex items-center gap-[12px] rounded-full border border-mv-line bg-white px-[22px] py-[13px] shadow-mv-lg">
+                <span
+                  aria-hidden="true"
+                  className="h-[20px] w-[20px] shrink-0 animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
+                />
+                <span className="text-[15px] font-semibold leading-none text-mv-slate">
+                  Loading wells…
+                </span>
               </span>
-            </span>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      <div className="mv-thin-scroll overflow-x-auto">
-        <table className="w-full min-w-[1160px] border-collapse text-left">
-          <thead>
-            <tr className="border-b border-mv-line bg-[#f8f9fa]">
-              {/* The first and last cells carry the page's 24px gutter, so the
+        <div className="mv-thin-scroll overflow-x-auto">
+          <table className="w-full min-w-[1160px] border-collapse text-left">
+            <thead>
+              <tr className="border-b border-mv-line bg-[#f8f9fa]">
+                {/* The first and last cells carry the page's 24px gutter, so the
                   grid lines up with the heading above it. */}
-              {COLUMNS.map(({ key, label, align, width, sortable }, index) => (
-                <th
-                  key={key}
-                  scope="col"
-                  aria-sort={
-                    sortable === false
-                      ? undefined
-                      : sort?.key === key
-                        ? sort.ascending
-                          ? "ascending"
-                          : "descending"
-                        : "none"
-                  }
-                  className={`whitespace-nowrap py-[8px] ${
-                    index === 0 ? "pl-6 pr-4" : "px-4"
-                  } ${width} ${align === "right" ? "text-right" : ""}`}
-                >
-                  {sortable === false ? (
-                    <span className="inline-flex whitespace-nowrap text-[12.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate">
-                      {label}
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={() => toggleSort(key)}
-                      className="inline-flex items-center gap-1 whitespace-nowrap text-[12.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate enabled:cursor-pointer enabled:hover:text-mv-green-deep disabled:cursor-wait"
+                {shownColumns.map(
+                  ({ key, label, align, width, sortable }, index) => (
+                    <th
+                      key={key}
+                      scope="col"
+                      aria-sort={
+                        sortable === false
+                          ? undefined
+                          : sort?.key === key
+                            ? sort.ascending
+                              ? "ascending"
+                              : "descending"
+                            : "none"
+                      }
+                      className={`whitespace-nowrap py-[8px] ${
+                        index === 0 ? "pl-6 pr-4" : "px-4"
+                      } ${width} ${align === "right" ? "text-right" : ""}`}
                     >
-                      {label}
-                      <SortMark
-                        active={sort?.key === key}
-                        ascending={sort?.ascending ?? true}
-                      />
-                    </button>
-                  )}
+                      {sortable === false ? (
+                        <span className="inline-flex whitespace-nowrap text-[12.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate">
+                          {label}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={loading}
+                          onClick={() => toggleSort(key)}
+                          className="inline-flex items-center gap-1 whitespace-nowrap text-[12.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate enabled:cursor-pointer enabled:hover:text-mv-green-deep disabled:cursor-wait"
+                        >
+                          {label}
+                          <SortMark
+                            active={sort?.key === key}
+                            ascending={sort?.ascending ?? true}
+                          />
+                        </button>
+                      )}
+                    </th>
+                  ),
+                )}
+
+                <th
+                  scope="col"
+                  className="whitespace-nowrap py-[8px] pl-4 pr-6 text-center text-[12.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate"
+                >
+                  View on map
                 </th>
-              ))}
+              </tr>
+            </thead>
 
-              <th
-                scope="col"
-                className="whitespace-nowrap py-[8px] pl-4 pr-6 text-center text-[12.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate"
-              >
-                View on map
-              </th>
-            </tr>
-          </thead>
-
-          <tbody className={loading && rows.length > 0 ? "opacity-50" : ""}>
-            {rows.map((row) => (
-              /*
-               * The whole row opens the well, not just the pin at the end of
-               * it. Keyboard too: a `tr` takes no focus of its own, so it is
-               * given a row role, a tab stop and Enter/Space.
-               *
-               * Held back while a page is in flight — the rows on screen are
-               * the previous page's, and a click would open a well the reader
-               * is no longer looking at.
-               */
-              <tr
-                key={row.api}
-                role="row"
-                tabIndex={loading ? -1 : 0}
-                aria-label={`Show ${row.api} on the map`}
-                onClick={() => {
-                  if (!loading) onShowOnMap(row);
-                }}
-                onKeyDown={(event) => {
-                  if (loading) return;
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    onShowOnMap(row);
-                  }
-                }}
-                className={`border-b border-mv-line hover:bg-[#f4f9f6] focus-visible:bg-[#f4f9f6] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-mv-green-deep ${
-                  loading ? "cursor-wait" : "cursor-pointer"
-                }`}
-              >
-                <td className="py-[14px] pl-6 pr-4">
-                  <span className="text-[13px] font-semibold text-mv-green-deep underline underline-offset-2">
-                    {row.api}
-                  </span>
-                </td>
-                <td className="px-4 py-[14px] text-[13px] text-mv-slate">
-                  {shown(row.operator)}
-                </td>
-                <td
-                  className={`px-4 py-[14px] text-[13px] ${
-                    missing(row.lease)
-                      ? "text-mv-muted"
-                      : "font-bold text-mv-ink"
+            <tbody className={loading && rows.length > 0 ? "opacity-50" : ""}>
+              {rows.map((row) => (
+                /*
+                 * The whole row opens the well, not just the pin at the end of
+                 * it. Keyboard too: a `tr` takes no focus of its own, so it is
+                 * given a row role, a tab stop and Enter/Space.
+                 *
+                 * Held back while a page is in flight — the rows on screen are
+                 * the previous page's, and a click would open a well the reader
+                 * is no longer looking at.
+                 */
+                <tr
+                  key={row.api}
+                  role="row"
+                  tabIndex={loading ? -1 : 0}
+                  aria-label={`Show ${row.api} on the map`}
+                  onClick={() => {
+                    if (!loading) onShowOnMap(row);
+                  }}
+                  onKeyDown={(event) => {
+                    if (loading) return;
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onShowOnMap(row);
+                    }
+                  }}
+                  className={`border-b border-mv-line hover:bg-[#f4f9f6] focus-visible:bg-[#f4f9f6] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-mv-green-deep ${
+                    loading ? "cursor-wait" : "cursor-pointer"
                   }`}
                 >
-                  {shown(row.lease)}
-                </td>
-                <td className="px-4 py-[14px]">
-                  {missing(row.wtype) ? (
-                    <span className="text-[13px] text-mv-muted">N/A</span>
-                  ) : (
-                    <TypePill wtype={row.wtype} />
-                  )}
-                </td>
-                <td className="px-4 py-[14px] text-[13px] text-mv-slate">
-                  {missing(row.status) ? (
-                    <span className="text-mv-muted">N/A</span>
-                  ) : (
-                    <span className="inline-flex items-center gap-[6px]">
-                      <Dot color={STATUS_DOT[row.status] ?? DOT_GREY} />
-                      {row.status}
+                  <td className="py-[14px] pl-6 pr-4">
+                    <span className="text-[13px] font-semibold text-mv-green-deep underline underline-offset-2">
+                      {row.api}
                     </span>
+                  </td>
+                  {shows("simple") && (
+                    <td className="px-4 py-[14px] text-[13px] text-mv-slate">
+                      {shown(row.operator)}
+                    </td>
                   )}
-                </td>
-                <td className="px-4 py-[14px] text-[13px] text-mv-slate">
-                  {shown(row.county)}
-                </td>
-                <Volume value={row.producedOil} />
-                <Volume value={row.producedGas} />
-                <td className="py-[14px] pl-4 pr-6">
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      // The row already carries this; without stopping here it
-                      // would run twice on one click.
-                      event.stopPropagation();
-                      if (!loading) onShowOnMap(row);
-                    }}
-                    // The row is the control now; the pin is its marker, so it
-                    // is not a second tab stop announcing the same action.
-                    tabIndex={-1}
-                    aria-hidden="true"
-                    title="View on map"
-                    className="mx-auto grid h-[26px] w-[26px] cursor-pointer place-items-center rounded-lg border border-mv-line text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep"
+                  <td
+                    className={`px-4 py-[14px] text-[13px] ${
+                      missing(row.lease)
+                        ? "text-mv-muted"
+                        : "font-bold text-mv-ink"
+                    }`}
                   >
-                    <MapPin size={13} aria-hidden="true" />
-                  </button>
-                </td>
-              </tr>
-            ))}
+                    {shown(row.lease)}
+                  </td>
+                  {shows("detailed") && (
+                    <td className="px-4 py-[14px]">
+                      {missing(row.wtype) ? (
+                        <span className="text-[13px] text-mv-muted">N/A</span>
+                      ) : (
+                        <TypePill wtype={row.wtype} />
+                      )}
+                    </td>
+                  )}
+                  <td className="px-4 py-[14px] text-[13px] text-mv-slate">
+                    {missing(row.status) ? (
+                      <span className="text-mv-muted">N/A</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-[6px]">
+                        <Dot color={STATUS_DOT[row.status] ?? DOT_GREY} />
+                        {row.status}
+                      </span>
+                    )}
+                  </td>
+                  {shows("simple") && (
+                    <td className="px-4 py-[14px] text-[13px] text-mv-slate">
+                      {shown(row.county)}
+                    </td>
+                  )}
+                  {shows("pro") && (
+                    <>
+                      <Volume value={row.producedOil} />
+                      <Volume value={row.producedGas} />
+                    </>
+                  )}
+                  <td className="py-[14px] pl-4 pr-6">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        // The row already carries this; without stopping here it
+                        // would run twice on one click.
+                        event.stopPropagation();
+                        if (!loading) onShowOnMap(row);
+                      }}
+                      // The row is the control now; the pin is its marker, so it
+                      // is not a second tab stop announcing the same action.
+                      tabIndex={-1}
+                      aria-hidden="true"
+                      title="View on map"
+                      className="mx-auto grid h-[26px] w-[26px] cursor-pointer place-items-center rounded-lg border border-mv-line text-mv-slate hover:border-mv-green-deep hover:text-mv-green-deep"
+                    >
+                      <MapPin size={13} aria-hidden="true" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
 
-            {rows.length === 0 && (
-              <tr>
-                {/* Empty, and only there for its height: with no rows the card
+              {rows.length === 0 && (
+                <tr>
+                  {/* Empty, and only there for its height: with no rows the card
                     collapsed to a strip. What goes in the space is drawn over
                     the card instead — see below — because this cell is a cell
                     of a 1,160px table, and centred in it on a phone means
                     centred 600px off the right-hand edge of the screen. */}
-                <td
-                  colSpan={COLUMNS.length + 1}
-                  /* 220 on a phone, where the whole summary strip sits above
+                  <td
+                    colSpan={shownColumns.length + 1}
+                    /* 220 on a phone, where the whole summary strip sits above
                      this card: at 300 the middle of the space — where the
                      message is — fell just under the fold. */
-                  className="h-[220px] lg:h-[52vh]"
-                />
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+                    className="h-[220px] lg:h-[52vh]"
+                  />
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
-      {/* What the empty table is doing, said over the card.
+        {/* What the empty table is doing, said over the card.
           The card is as wide as the screen; the table inside it is 1,160px and
           scrolls, so anything centred in the table is centred somewhere off to
           the right on a narrow viewport. */}
-      {rows.length === 0 && (
-        /* Centred in the empty space itself: the header row above it and the
+        {rows.length === 0 && (
+          /* Centred in the empty space itself: the header row above it and the
            pager below it are outside the box, so "the middle" is the middle of
            the blank area rather than of the card. The space is 220px on a
            phone — half of 52vh, under a card that already starts low on a
            narrow screen, put the message below the fold, which is the same
            message-nobody-can-see this replaced. */
-        <div className="pointer-events-none absolute inset-x-0 bottom-[64px] top-[46px] grid place-items-center px-6 text-center">
-          {loading ? (
-            <span className="inline-flex items-center gap-[10px] text-[13px] lg:text-[15px] font-semibold text-mv-slate">
-              <span
-                aria-hidden="true"
-                className="h-[22px] w-[22px] shrink-0 animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
-              />
-              Loading wells…
-            </span>
-          ) : (
-            <span className="text-[12.5px] lg:text-[13px] text-mv-muted">
-              {error ?? "No wells match these filters."}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* ---------------- pager ---------------- */}
-      <div
-        className={`flex flex-col items-center gap-2 px-4 py-3 lg:flex-row lg:flex-wrap lg:justify-end lg:px-6 ${
-          loading && rows.length === 0 ? "invisible" : ""
-        }`}
-      >
-        <span className="text-[12.5px] text-mv-muted lg:mr-2">
-          {firstShown.toLocaleString("en-US")}–
-          {lastShown.toLocaleString("en-US")} of{" "}
-          {total.toLocaleString("en-US")}
-        </span>
-
-        <div className="flex flex-wrap items-center justify-center gap-[6px] lg:contents">
-          <PagerButton
-            label="First page"
-            icon={ChevronsLeft}
-            disabled={loading || safePage === 1}
-            onClick={() => setPage(1)}
-          />
-          <PagerButton
-            label="Previous page"
-            icon={ChevronLeft}
-            disabled={loading || safePage === 1}
-            onClick={() => setPage(Math.max(1, safePage - 1))}
-          />
-
-          {pageWindow(safePage, totalPages).map((entry, index) =>
-            entry === null ? (
-              <span
-                key={`gap-${index}`}
-                className="px-1 text-[12.5px] text-mv-muted"
-              >
-                …
+          <div className="pointer-events-none absolute inset-x-0 bottom-[64px] top-[46px] grid place-items-center px-6 text-center">
+            {loading ? (
+              <span className="inline-flex items-center gap-[10px] text-[13px] lg:text-[15px] font-semibold text-mv-slate">
+                <span
+                  aria-hidden="true"
+                  className="h-[22px] w-[22px] shrink-0 animate-spin rounded-full border-[3px] border-mv-line border-t-mv-green-deep"
+                />
+                Loading wells…
               </span>
             ) : (
-              <button
-                key={entry}
-                type="button"
-                disabled={loading}
-                aria-current={entry === safePage ? "page" : undefined}
-                onClick={() => setPage(entry)}
-                /* A phone fits one row of pager controls, not two, so below
+              <span className="text-[12.5px] lg:text-[13px] text-mv-muted">
+                {error ?? "No wells match these filters."}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* ---------------- pager ---------------- */}
+        <div
+          className={`flex flex-col items-center gap-2 px-4 py-3 lg:flex-row lg:flex-wrap lg:justify-end lg:px-6 ${
+            loading && rows.length === 0 ? "invisible" : ""
+          }`}
+        >
+          <span className="text-[12.5px] text-mv-muted lg:mr-2">
+            {firstShown.toLocaleString("en-US")}–
+            {lastShown.toLocaleString("en-US")} of{" "}
+            {total.toLocaleString("en-US")}
+          </span>
+
+          <div className="flex flex-wrap items-center justify-center gap-[6px] lg:contents">
+            <PagerButton
+              label="First page"
+              icon={ChevronsLeft}
+              disabled={loading || safePage === 1}
+              onClick={() => setPage(1)}
+            />
+            <PagerButton
+              label="Previous page"
+              icon={ChevronLeft}
+              disabled={loading || safePage === 1}
+              onClick={() => setPage(Math.max(1, safePage - 1))}
+            />
+
+            {pageWindow(safePage, totalPages).map((entry, index) =>
+              entry === null ? (
+                <span
+                  key={`gap-${index}`}
+                  className="px-1 text-[12.5px] text-mv-muted"
+                >
+                  …
+                </span>
+              ) : (
+                <button
+                  key={entry}
+                  type="button"
+                  disabled={loading}
+                  aria-current={entry === safePage ? "page" : undefined}
+                  onClick={() => setPage(entry)}
+                  /* A phone fits one row of pager controls, not two, so below
                    lg the window narrows to the current page and its nearest
                    neighbours — the ends and the ellipses stay, since they are
                    what makes the gap readable as a gap. */
-                className={`h-[28px] min-w-[28px] rounded-lg border px-2 text-[12.5px] font-semibold enabled:cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
-                  entry === 1 ||
-                  entry === totalPages ||
-                  Math.abs(entry - safePage) <= 2
-                    ? ""
-                    : "hidden lg:inline-block"
-                } ${
-                  entry === safePage
-                    ? "border-mv-green-deep bg-mv-green-deep text-white"
-                    : "border-mv-line text-mv-slate enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep"
-                }`}
-              >
-                {entry}
-              </button>
-            ),
-          )}
+                  className={`h-[28px] min-w-[28px] rounded-lg border px-2 text-[12.5px] font-semibold enabled:cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
+                    entry === 1 ||
+                    entry === totalPages ||
+                    Math.abs(entry - safePage) <= 2
+                      ? ""
+                      : "hidden lg:inline-block"
+                  } ${
+                    entry === safePage
+                      ? "border-mv-green-deep bg-mv-green-deep text-white"
+                      : "border-mv-line text-mv-slate enabled:hover:border-mv-green-deep enabled:hover:text-mv-green-deep"
+                  }`}
+                >
+                  {entry}
+                </button>
+              ),
+            )}
 
-          <PagerButton
-            label="Next page"
-            icon={ChevronRight}
-            disabled={loading || safePage === totalPages}
-            onClick={() => setPage(Math.min(totalPages, safePage + 1))}
-          />
-          <PagerButton
-            label="Last page"
-            icon={ChevronsRight}
-            disabled={loading || safePage === totalPages}
-            onClick={() => setPage(totalPages)}
-          />
+            <PagerButton
+              label="Next page"
+              icon={ChevronRight}
+              disabled={loading || safePage === totalPages}
+              onClick={() => setPage(Math.min(totalPages, safePage + 1))}
+            />
+            <PagerButton
+              label="Last page"
+              icon={ChevronsRight}
+              disabled={loading || safePage === totalPages}
+              onClick={() => setPage(totalPages)}
+            />
+          </div>
         </div>
-      </div>
       </div>
     </div>
   );

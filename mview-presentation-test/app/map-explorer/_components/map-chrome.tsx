@@ -21,15 +21,16 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { BasemapGallery } from "./basemap-gallery";
+import { BASEMAP_OPTIONS, BasemapGallery } from "./basemap-gallery";
 import { FiltersPanel } from "./filters-panel";
 import { LegendsPanel } from "./legends-panel";
 import { getWellLookupMap, type MapWellLookup } from "@/lib/map-api";
 
 import { ApiResults } from "./api-results";
+import { DensitySwitch, showsAt, type Density } from "./density-switch";
 import { shareUrl, type ShareState } from "./filter-url";
 import { ShareMenu } from "./share-menu";
-import { ToolsPanel } from "./tools-panel";
+import { MAP_TOOLS, ToolsPanel } from "./tools-panel";
 
 /*
  * Every control that floats over the map, ported from the explorer mock: the
@@ -63,6 +64,9 @@ type MapChromeProps = {
   center: { longitude: number; latitude: number };
   /** What a shared link should carry — see `shareUrl`. */
   share: ShareState;
+  /** How much of a well's record the Insights tab shows. */
+  density: Density;
+  onDensityChange: (density: Density) => void;
   /** Active basemap id, so the gallery can mark its tile. */
   basemap: string;
   onBasemapChange: (id: string) => void;
@@ -111,18 +115,12 @@ type MapChromeProps = {
   activeTool: string | null;
   onSelectTool: (
     id:
-      | "draw-area"
-      | "measure-distance"
-      | "whats-near-my-land"
-      | "measure-area",
+      "draw-area" | "measure-distance" | "whats-near-my-land" | "measure-area",
   ) => void;
   /** Play a tool's worked example, without arming the tool. */
   onShowToolSample: (
     id:
-      | "draw-area"
-      | "measure-distance"
-      | "whats-near-my-land"
-      | "measure-area",
+      "draw-area" | "measure-distance" | "whats-near-my-land" | "measure-area",
   ) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -166,6 +164,18 @@ function asApiNumber(typed: string): string {
   return `${digits.slice(0, 2)}-${digits.slice(2, 5)}-${digits.slice(5)}`;
 }
 
+/**
+ * The view mode each basemap arrives at.
+ *
+ * Streets is the map the mock opens on and the one every reading in this app
+ * is drawn against; Satellite is the other one people actually ask for. The
+ * four after that are taste.
+ */
+const BASEMAP_FROM: Record<string, Density> = {
+  streets: "ultra",
+  satellite: "simple",
+};
+
 const VIEW_TABS: { id: ViewTab; label: string; icon: typeof MapIcon }[] = [
   { id: "map", label: "Map", icon: MapIcon },
   { id: "table", label: "Table", icon: Table2 },
@@ -179,6 +189,8 @@ export function MapChrome({
   marksVisible,
   center,
   share,
+  density,
+  onDensityChange,
   basemap,
   onBasemapChange,
   onSaveImage,
@@ -309,8 +321,7 @@ export function MapChrome({
          sibling of the map's own container, not a child of it, so `closest`
          from here never reaches the view — which is why subtracting nothing
          left the panel sitting on the credits. */
-      const credit =
-        document.querySelector<HTMLElement>(".esri-attribution");
+      const credit = document.querySelector<HTMLElement>(".esri-attribution");
       const height = layer.clientHeight - (credit?.offsetHeight ?? 20);
       setRailHeight(height > 0 ? height : null);
 
@@ -333,9 +344,7 @@ export function MapChrome({
       );
 
       const toolbar = toolbarRef.current;
-      setEdgeTop(
-        wide || !toolbar ? null : toolbar.offsetHeight + EDGE_TAB_GAP,
-      );
+      setEdgeTop(wide || !toolbar ? null : toolbar.offsetHeight + EDGE_TAB_GAP);
     });
 
     observer.observe(layer);
@@ -357,7 +366,11 @@ export function MapChrome({
   const [placeQuery, setPlaceQuery] = useState(openingApi ?? "");
   const [placeOpen, setPlaceOpen] = useState(false);
   const [placeIndex, setPlaceIndex] = useState(0);
-  const [placeAnchor, setPlaceAnchor] = useState({ top: 60, left: 0, width: 220 });
+  const [placeAnchor, setPlaceAnchor] = useState({
+    top: 60,
+    left: 0,
+    width: 220,
+  });
   const searchBoxRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   /* Below lg the field collapses to its magnifier — a full-width text input
@@ -510,33 +523,36 @@ export function MapChrome({
 
     // The clear runs inside the timer too: a setState in the effect body is a
     // render-phase update, and React rightly refuses it.
-    const timer = setTimeout(() => {
-      if (digits.length < API_MIN_DIGITS) {
-        setPlaces([]);
-        setPlaceError(null);
-        setPlaceLoading(false);
-        return;
-      }
-
-      setPlaceLoading(true);
-      getWellLookupMap(placeQuery.trim())
-        .then((wells) => {
-          if (cancelled) return;
-          setPlaces(wells);
-          setPlaceError(null);
-          anchorPlaceResults();
-        })
-        .catch((error: unknown) => {
-          if (cancelled) return;
+    const timer = setTimeout(
+      () => {
+        if (digits.length < API_MIN_DIGITS) {
           setPlaces([]);
-          setPlaceError(
-            error instanceof Error ? error.message : "Lookup failed.",
-          );
-        })
-        .finally(() => {
-          if (!cancelled) setPlaceLoading(false);
-        });
-    }, digits.length < API_MIN_DIGITS ? 0 : 250);
+          setPlaceError(null);
+          setPlaceLoading(false);
+          return;
+        }
+
+        setPlaceLoading(true);
+        getWellLookupMap(placeQuery.trim())
+          .then((wells) => {
+            if (cancelled) return;
+            setPlaces(wells);
+            setPlaceError(null);
+            anchorPlaceResults();
+          })
+          .catch((error: unknown) => {
+            if (cancelled) return;
+            setPlaces([]);
+            setPlaceError(
+              error instanceof Error ? error.message : "Lookup failed.",
+            );
+          })
+          .finally(() => {
+            if (!cancelled) setPlaceLoading(false);
+          });
+      },
+      digits.length < API_MIN_DIGITS ? 0 : 250,
+    );
 
     return () => {
       cancelled = true;
@@ -597,7 +613,8 @@ export function MapChrome({
     if (!toolsOpen) return;
 
     function onPointerDown(event: MouseEvent) {
-      if (!toolsRef.current?.contains(event.target as Node)) setToolsOpen(false);
+      if (!toolsRef.current?.contains(event.target as Node))
+        setToolsOpen(false);
     }
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") setToolsOpen(false);
@@ -663,88 +680,100 @@ export function MapChrome({
           rather than on every reopen. */}
       {!bare && (
         <>
-      <FiltersPanel
-        key={`${filtersResetAt}:${railResetAt}`}
-        /* Only until something clears it. Rebuilt, the panel ticks `opening`
+          <FiltersPanel
+            key={`${filtersResetAt}:${railResetAt}`}
+            density={density}
+            /* Only until something clears it. Rebuilt, the panel ticks `opening`
            again as it mounts, and the filter the link arrived with came back
            on boxes the reader had just emptied. */
-        opening={
-          filtersResetAt + railResetAt > 0 ? undefined : openingFilters
-        }
-        /* Applied, and out of the way. On a phone the rail covers most of
+            opening={
+              filtersResetAt + railResetAt > 0 ? undefined : openingFilters
+            }
+            /* Applied, and out of the way. On a phone the rail covers most of
            the map, so leaving it open after Apply hides the very thing that
            just changed. Wide screens keep it open — there the map is beside
            the panel, not under it. Read at the tap rather than at mount, so
            a turned phone is judged as it is now. */
-        onApply={(filters) => {
-          onApplyFilters(filters);
-          /*
-           * The API number goes with the filter it was.
-           *
-           * A number in the box is itself a filter of one, and applying a
-           * county replaces it — so leaving the number on screen said the map
-           * was showing one well when it was showing thirteen thousand.
-           */
-          setPlaceQuery("");
-          setPlaceOpen(false);
-          setAppliedCount(
-            Object.values(filters).reduce(
-              (total, values) => total + values.length,
-              0,
-            ),
-          );
-          if (!window.matchMedia("(min-width: 1024px)").matches) {
-            setFiltersOpen(false);
-          }
-        }}
-        onCollapse={() => setFiltersOpen(false)}
-        /*
-         * The card's height is measured off the map, not derived from it.
-         *
-         * Every version of this that let CSS work the height out — a top
-         * edge with a bottom edge, then a percentage, then a stretched grid
-         * cell — could come out short on some machines, leaving the Apply
-         * button stranded mid-card with white beneath it. A number in pixels
-         * cannot: `railHeight` is this layer's own height less the 12px
-         * inset above and the 24px below, remeasured whenever the map
-         * resizes. The `.mv-filters-rail` class holds the position and a
-         * `calc` for the first paint, before the measurement lands.
-         */
-        className="mv-filters-rail pointer-events-auto z-10"
-        /*
-         * Closed is `display: none` in the style attribute, not the `hidden`
-         * class. The card's own `.mv-filters-card` rule sets `display: grid`,
-         * and being authored CSS it wins against a utility of the same
-         * specificity — the panel stayed on screen with the toolbar chip
-         * beside it saying it was shut. An inline style outranks both.
-         */
-        style={{
-          top: railTop,
-          ...(railHeight === null
-            ? null
-            : { height: Math.max(railHeight - railTop, 0) }),
-          ...(filtersOpen ? null : { display: "none" }),
-        }}
-      />
+            onApply={(filters) => {
+              onApplyFilters(filters);
+              /*
+               * The API number goes with the filter it was.
+               *
+               * A number in the box is itself a filter of one, and applying a
+               * county replaces it — so leaving the number on screen said the map
+               * was showing one well when it was showing thirteen thousand.
+               */
+              setPlaceQuery("");
+              setPlaceOpen(false);
+              setAppliedCount(
+                Object.values(filters).reduce(
+                  (total, values) => total + values.length,
+                  0,
+                ),
+              );
+              if (!window.matchMedia("(min-width: 1024px)").matches) {
+                setFiltersOpen(false);
+              }
+            }}
+            onCollapse={() => setFiltersOpen(false)}
+            /*
+             * The card's height is measured off the map, not derived from it.
+             *
+             * Every version of this that let CSS work the height out — a top
+             * edge with a bottom edge, then a percentage, then a stretched grid
+             * cell — could come out short on some machines, leaving the Apply
+             * button stranded mid-card with white beneath it. A number in pixels
+             * cannot: `railHeight` is this layer's own height less the 12px
+             * inset above and the 24px below, remeasured whenever the map
+             * resizes. The `.mv-filters-rail` class holds the position and a
+             * `calc` for the first paint, before the measurement lands.
+             */
+            className="mv-filters-rail pointer-events-auto z-10"
+            /*
+             * Closed is `display: none` in the style attribute, not the `hidden`
+             * class. The card's own `.mv-filters-card` rule sets `display: grid`,
+             * and being authored CSS it wins against a utility of the same
+             * specificity — the panel stayed on screen with the toolbar chip
+             * beside it saying it was shut. An inline style outranks both.
+             */
+            style={{
+              top: railTop,
+              ...(railHeight === null
+                ? null
+                : { height: Math.max(railHeight - railTop, 0) }),
+              ...(filtersOpen ? null : { display: "none" }),
+            }}
+          />
 
-      {!filtersOpen && (
-        <EdgeTab
-          side="left"
-          label="Filters"
-          icon={SlidersHorizontal}
-          top={edgeTop}
-          onClick={() => setFiltersOpen(true)}
-        />
-      )}
+          {!filtersOpen && (
+            <EdgeTab
+              side="left"
+              label="Filters"
+              icon={SlidersHorizontal}
+              top={edgeTop}
+              onClick={() => setFiltersOpen(true)}
+            />
+          )}
         </>
       )}
 
       {/* The panel takes the tab's place rather than sitting beside it, so the
-          right edge never shows both. */}
-      <div ref={toolsRef} className={bare ? "hidden" : undefined}>
+          right edge never shows both.
+
+          Detailed and up: measuring is the point of these four, and Ultra and
+          Essentials are modes for reading a well rather than working a map. */}
+      <div
+        ref={toolsRef}
+        className={bare || !showsAt(density, "detailed") ? "hidden" : undefined}
+      >
         {toolsOpen ? (
           <ToolsPanel
             activeId={activeTool ?? undefined}
+            /* Draw an area and Measure area are Pro; the other two are the
+               ones an owner reaches for. */
+            tools={MAP_TOOLS.filter((tool) =>
+              showsAt(density, tool.from ?? "detailed"),
+            )}
             /* Over bubbles the tools have no wells to measure, so the panel
                says what to do instead of arming one. */
             wellsVisible={wellsVisible}
@@ -804,51 +833,57 @@ export function MapChrome({
               makes the filled one read as the raised tab. */}
           <div
             ref={viewTabsRef}
-            className="flex w-full shrink-0 items-center gap-1 rounded-xl border border-mv-line bg-white/97 p-1 shadow-mv-lg backdrop-blur-[6px] lg:w-auto lg:justify-start lg:rounded-lg lg:border-0 lg:bg-[#f1f2f4] lg:p-[3px] lg:shadow-none">
-          {VIEW_TABS.map(({ id, label, icon: Icon }) => {
-            /*
-             * Insights is about one well, and over the bubbles there are no
-             * wells to pick — the tab opened on "Pick a well" and left the
-             * reader to work out that the map was the thing in the way. It
-             * waits for them instead, and says so on hover.
-             */
-            const waiting = id === "insights" && !wellsVisible;
+            className="flex w-full shrink-0 items-center gap-1 rounded-xl border border-mv-line bg-white/97 p-1 shadow-mv-lg backdrop-blur-[6px] lg:w-auto lg:justify-start lg:rounded-lg lg:border-0 lg:bg-[#f1f2f4] lg:p-[3px] lg:shadow-none"
+          >
+            {VIEW_TABS.map(({ id, label, icon: Icon }) => {
+              /*
+               * Insights is about one well, and over the bubbles there are no
+               * wells to pick — the tab opened on "Pick a well" and left the
+               * reader to work out that the map was the thing in the way. It
+               * waits for them instead, and says so on hover.
+               */
+              const waiting = id === "insights" && !wellsVisible;
 
-            return (
-            <button
-              key={id}
-              type="button"
-              ref={id === "insights" ? insightsTabRef : undefined}
-              aria-pressed={viewTab === id}
-              aria-disabled={waiting}
-              onClick={() => {
-                if (waiting) {
-                  showInsightsHint();
-                  return;
-                }
-                onViewTabChange(id);
-              }}
-              onMouseEnter={waiting ? showInsightsHint : undefined}
-              onFocus={waiting ? showInsightsHint : undefined}
-              onMouseLeave={() => setHintAnchor(null)}
-              onBlur={() => setHintAnchor(null)}
-              /* Each tab takes a third of the card on a phone: three equal
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  ref={id === "insights" ? insightsTabRef : undefined}
+                  aria-pressed={viewTab === id}
+                  aria-disabled={waiting}
+                  onClick={() => {
+                    if (waiting) {
+                      showInsightsHint();
+                      return;
+                    }
+                    onViewTabChange(id);
+                  }}
+                  onMouseEnter={waiting ? showInsightsHint : undefined}
+                  onFocus={waiting ? showInsightsHint : undefined}
+                  onMouseLeave={() => setHintAnchor(null)}
+                  onBlur={() => setHintAnchor(null)}
+                  /* Each tab takes a third of the card on a phone: three equal
                  targets read as one control, where content-width buttons in a
                  full-width card read as three loose chips with a gap. */
-              className={`inline-flex flex-1 shrink-0 items-center justify-center gap-[6px] rounded-lg px-[10px] py-[7px] text-[13px] font-semibold leading-tight transition-colors lg:flex-none lg:py-[5px] lg:text-[12.5px] ${
-                viewTab === id
-                  ? "bg-mv-green-deep text-white shadow-mv"
-                  : waiting
-                    ? "cursor-not-allowed text-mv-muted"
-                    : "cursor-pointer text-mv-slate hover:bg-white/70 hover:text-mv-green-deep"
-              }`}
-            >
-              <Icon size={15} strokeWidth={2} aria-hidden="true" />
-              {label}
-            </button>
-            );
-          })}
+                  className={`inline-flex flex-1 shrink-0 items-center justify-center gap-[6px] rounded-lg px-[10px] py-[7px] text-[13px] font-semibold leading-tight transition-colors lg:flex-none lg:py-[5px] lg:text-[12.5px] ${
+                    viewTab === id
+                      ? "bg-mv-green-deep text-white shadow-mv"
+                      : waiting
+                        ? "cursor-not-allowed text-mv-muted"
+                        : "cursor-pointer text-mv-slate hover:bg-white/70 hover:text-mv-green-deep"
+                  }`}
+                >
+                  <Icon size={15} strokeWidth={2} aria-hidden="true" />
+                  {label}
+                </button>
+              );
+            })}
           </div>
+
+          {/* How much of a well's record Insights prints. Beside the view
+              switch because it is the same kind of choice — which of the
+              things on this map you are looking at, and how closely. */}
+          <DensitySwitch value={density} onChange={onDensityChange} />
 
           {/* Export is the first to go when the map is only half the page
               — the mock drops it too, and Share falls back to its icon.
@@ -859,8 +894,7 @@ export function MapChrome({
               it, and stripping them left a reader on Insights with no way to
               share or export what they were looking at. */}
           <div className="flex flex-wrap items-center justify-end gap-2 lg:contents">
-
-          {/* What is filtering the map, and the way off it.
+            {/* What is filtering the map, and the way off it.
               Shut, the rail says nothing about the filter it is holding — the
               map is simply missing wells with no telling why. The count
               reopens the panel, the cross clears where it stands, which is the
@@ -871,33 +905,33 @@ export function MapChrome({
               has to speak for it. From `lg` up the rail is open beside the map
               as a matter of course, and it says all this itself — a second
               copy in the toolbar is one badge too many. */}
-          {appliedCount > 0 && !filtersOpen && (
-            <span className="flex shrink-0 items-center gap-[6px] rounded-lg border border-mv-green-deep bg-white px-[9px] py-[6px] shadow-mv lg:hidden">
-              <button
-                type="button"
-                onClick={() => setFiltersOpen(true)}
-                className="cursor-pointer text-[11px] lg:text-[12px] font-bold leading-none text-mv-green-deep"
-              >
-                {appliedCount} filter{appliedCount === 1 ? "" : "s"} on
-              </button>
+            {appliedCount > 0 && !filtersOpen && (
+              <span className="flex shrink-0 items-center gap-[6px] rounded-lg border border-mv-green-deep bg-white px-[9px] py-[6px] shadow-mv lg:hidden">
+                <button
+                  type="button"
+                  onClick={() => setFiltersOpen(true)}
+                  className="cursor-pointer text-[11px] lg:text-[12px] font-bold leading-none text-mv-green-deep"
+                >
+                  {appliedCount} filter{appliedCount === 1 ? "" : "s"} on
+                </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  onApplyFilters({});
-                  setAppliedCount(0);
-                  setRailResetAt((count) => count + 1);
-                }}
-                aria-label="Clear the applied filters"
-                title="Clear filters"
-                className="grid h-[18px] w-[18px] shrink-0 cursor-pointer place-items-center rounded-md text-mv-muted hover:bg-mv-red-bg hover:text-mv-red"
-              >
-                <X size={12} strokeWidth={2.5} aria-hidden="true" />
-              </button>
-            </span>
-          )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    onApplyFilters({});
+                    setAppliedCount(0);
+                    setRailResetAt((count) => count + 1);
+                  }}
+                  aria-label="Clear the applied filters"
+                  title="Clear filters"
+                  className="grid h-[18px] w-[18px] shrink-0 cursor-pointer place-items-center rounded-md text-mv-muted hover:bg-mv-red-bg hover:text-mv-red"
+                >
+                  <X size={12} strokeWidth={2.5} aria-hidden="true" />
+                </button>
+              </span>
+            )}
 
-          {/*
+            {/*
             One bar, not four floating chips.
             Below `lg` each of these used to carry its own border, background
             and shadow, so the row read as four loose circles scattered along
@@ -907,155 +941,167 @@ export function MapChrome({
             crowding it. At `lg` the wrapper dissolves and they take their
             places in the single toolbar pill as before.
           */}
-          <div className="flex shrink-0 items-center gap-[2px] rounded-xl border border-mv-line bg-white/97 p-[3px] shadow-mv-lg backdrop-blur-[6px] lg:contents">
-
-          {/* Always pressable — the view decides whether it can replay. The
+            <div className="flex shrink-0 items-center gap-[2px] rounded-xl border border-mv-line bg-white/97 p-[3px] shadow-mv-lg backdrop-blur-[6px] lg:contents">
+              {/* Always pressable — the view decides whether it can replay. The
               hint only says why it cannot, and only while the map is showing
-              bubbles rather than wells. */}
-          <ToolbarButton
-            icon={Clock}
-            label="Time-lapse"
-            title="Replay the wells by the year they were recompleted"
-            expanded={timeLapseOpen}
-            onClick={onToggleTimeLapse}
-            buttonRef={timeLapseButtonRef}
-            onHoverStart={wellsVisible ? undefined : showTimeLapseHint}
-            onHoverEnd={() => setHintAnchor(null)}
-          />
+              bubbles rather than wells.
 
-          <Divider />
+              Pro only: a thirty-year replay of the state's drilling is a
+              market view, not an answer about one well. */}
+              {showsAt(density, "pro") && (
+                <>
+                  <ToolbarButton
+                    icon={Clock}
+                    label="Time-lapse"
+                    title="Replay the wells by the year they were recompleted"
+                    expanded={timeLapseOpen}
+                    onClick={onToggleTimeLapse}
+                    buttonRef={timeLapseButtonRef}
+                    onHoverStart={wellsVisible ? undefined : showTimeLapseHint}
+                    onHoverEnd={() => setHintAnchor(null)}
+                  />
 
-          {/* Its icon alone where the bar is short of room — Insights halves
+                  <Divider />
+                </>
+              )}
+
+              {/* Its icon alone where the bar is short of room — Insights halves
               the map, and on a phone's summary strip there is less again. It
               used to be dropped outright there, which left the reader looking
               at a record with no way to take it away. */}
-          <ToolbarButton
-            icon={Download}
-            label={compact ? "" : "Export Excel"}
-            title="Export Excel"
-            onClick={onExportCsv}
-          />
+              {/* Detailed and up: a spreadsheet of the result set is a working
+                  file. The record's own PDF, which is what one well's owner
+                  wants, stays at every mode. */}
+              {showsAt(density, "detailed") && (
+                <>
+                  <ToolbarButton
+                    icon={Download}
+                    label={compact ? "" : "Export Excel"}
+                    title="Export Excel"
+                    onClick={onExportCsv}
+                  />
 
-          <Divider />
+                  <Divider />
+                </>
+              )}
 
-          <span ref={shareButtonRef} className="shrink-0">
-            <ToolbarButton
-              icon={Share2}
-              label={compact ? "" : "Share"}
-              title="Share"
-              onClick={toggleShare}
-              expanded={shareOpen}
-            />
-          </span>
+              <span ref={shareButtonRef} className="shrink-0">
+                <ToolbarButton
+                  icon={Share2}
+                  label={compact ? "" : "Share"}
+                  title="Share"
+                  onClick={toggleShare}
+                  expanded={shareOpen}
+                />
+              </span>
 
-          <Divider />
+              <Divider />
 
-          <button
-            type="button"
-            onClick={openSearch}
-            aria-label="Search by API number"
-            aria-expanded={searchOpen}
-            className="grid shrink-0 cursor-pointer place-items-center rounded-lg px-[9px] py-[7px] text-mv-slate transition-colors hover:bg-[#f2f8f5] hover:text-mv-green-deep lg:hidden"
-          >
-            <Search size={15} aria-hidden="true" />
-          </button>
+              <button
+                type="button"
+                onClick={openSearch}
+                aria-label="Search by API number"
+                aria-expanded={searchOpen}
+                className="grid shrink-0 cursor-pointer place-items-center rounded-lg px-[9px] py-[7px] text-mv-slate transition-colors hover:bg-[#f2f8f5] hover:text-mv-green-deep lg:hidden"
+              >
+                <Search size={15} aria-hidden="true" />
+              </button>
+            </div>
 
-          </div>
-
-          {/* A full-width row is what pushes the box onto its own line below the
+            {/* A full-width row is what pushes the box onto its own line below the
               icons, so the trigger above never shifts — but the box inside it
               is narrower than the row and right-aligned under the icons. The
               row dissolves at lg, putting the box back in the single-row bar. */}
-          <div
-            className={`w-full lg:contents ${searchOpen ? "" : "hidden lg:contents"}`}
-          >
             <div
-              ref={searchBoxRef}
-              className={`ml-auto w-[232px] max-w-full items-center gap-2 rounded-lg border border-mv-line bg-white/97 px-[9px] py-[7px] shadow-mv-lg backdrop-blur-[6px] focus-within:border-mv-green focus-within:ring-1 focus-within:ring-mv-green lg:ml-1 lg:mr-0 lg:flex lg:w-auto lg:shrink-0 lg:bg-white lg:py-[4px] lg:pl-[10px] lg:pr-[6px] lg:shadow-none lg:backdrop-blur-none ${
-                searchOpen ? "flex" : "hidden lg:flex"
-              }`}
+              className={`w-full lg:contents ${searchOpen ? "" : "hidden lg:contents"}`}
             >
-              <label htmlFor="map-search" className="sr-only">
-                Search by API number
-              </label>
-              <input
-                ref={searchInputRef}
-                id="map-search"
-                type="text"
-                role="combobox"
-                autoComplete="off"
-                aria-expanded={placeOpen && places.length > 0}
-                aria-controls="map-search-results"
-                aria-activedescendant={
-                  placeOpen && places.length > 0
-                    ? `map-search-option-${placeIndex}`
-                    : undefined
-                }
-                value={placeQuery}
-                onChange={(event) => {
-                  const number = asApiNumber(event.target.value);
-                  setPlaceQuery(number);
-                  // Emptying the box undoes what picking a number did.
-                  if (number === "") onClearApi();
-                  setPlaceIndex(0);
-                  /* The results and the share menu open into the same corner.
+              <div
+                ref={searchBoxRef}
+                className={`ml-auto w-[232px] max-w-full items-center gap-2 rounded-lg border border-mv-line bg-white/97 px-[9px] py-[7px] shadow-mv-lg backdrop-blur-[6px] focus-within:border-mv-green focus-within:ring-1 focus-within:ring-mv-green lg:ml-1 lg:mr-0 lg:flex lg:w-auto lg:shrink-0 lg:bg-white lg:py-[4px] lg:pl-[10px] lg:pr-[6px] lg:shadow-none lg:backdrop-blur-none ${
+                  searchOpen ? "flex" : "hidden lg:flex"
+                }`}
+              >
+                <label htmlFor="map-search" className="sr-only">
+                  Search by API number
+                </label>
+                <input
+                  ref={searchInputRef}
+                  id="map-search"
+                  type="text"
+                  role="combobox"
+                  autoComplete="off"
+                  aria-expanded={placeOpen && places.length > 0}
+                  aria-controls="map-search-results"
+                  aria-activedescendant={
+                    placeOpen && places.length > 0
+                      ? `map-search-option-${placeIndex}`
+                      : undefined
+                  }
+                  value={placeQuery}
+                  onChange={(event) => {
+                    const number = asApiNumber(event.target.value);
+                    setPlaceQuery(number);
+                    // Emptying the box undoes what picking a number did.
+                    if (number === "") onClearApi();
+                    setPlaceIndex(0);
+                    /* The results and the share menu open into the same corner.
                      Typing is the field's turn. */
-                  setShareOpen(false);
-                  setPlaceOpen(true);
-                  anchorPlaceResults();
-                }}
-                onFocus={() => {
-                  /* From `lg` up the field is always there, so it is focus
+                    setShareOpen(false);
+                    setPlaceOpen(true);
+                    anchorPlaceResults();
+                  }}
+                  onFocus={() => {
+                    /* From `lg` up the field is always there, so it is focus
                      rather than a magnifier that says the reader has come
                      back to it — and the menu gets out of the way. */
-                  setShareOpen(false);
-                  setPlaceOpen(true);
-                  anchorPlaceResults();
-                }}
-                onKeyDown={onPlaceKeyDown}
-                onBlur={() => {
-                  if (!placeQuery.trim()) setSearchOpen(false);
-                }}
-                /* A number pad on a phone: the field takes digits only. */
-                inputMode="numeric"
-                placeholder="API No. (e.g. 42-123-45678)"
-                /* Wide enough for the whole hint, and no wider: the
+                    setShareOpen(false);
+                    setPlaceOpen(true);
+                    anchorPlaceResults();
+                  }}
+                  onKeyDown={onPlaceKeyDown}
+                  onBlur={() => {
+                    if (!placeQuery.trim()) setSearchOpen(false);
+                  }}
+                  /* A number pad on a phone: the field takes digits only. */
+                  inputMode="numeric"
+                  placeholder="API No. (e.g. 42-123-45678)"
+                  /* Wide enough for the whole hint, and no wider: the
                    placeholder names a complete API number, and a field that
                    cuts its own example mid-number teaches the wrong shape.
                    Measured against this exact string in this face at this
                    size — re-measure it if the wording changes. */
-                className="w-full min-w-0 border-0 bg-transparent text-[12.5px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted lg:w-[170px]"
-              />
-              {placeQuery !== "" && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    /*
+                  className="w-full min-w-0 border-0 bg-transparent text-[12.5px] leading-tight text-mv-slate outline-none placeholder:text-mv-muted lg:w-[170px]"
+                />
+                {placeQuery !== "" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      /*
                       The same undoing the box does when it is emptied by hand:
                       the number stops filtering the map, the dropdown closes,
                       and focus goes back to the field so the next number can
                       be typed straight away.
                     */
-                    setPlaceQuery("");
-                    setPlaceOpen(false);
-                    onClearApi();
-                    searchInputRef.current?.focus();
-                  }}
-                  aria-label="Clear the API number"
-                  title="Clear the API number"
-                  className="grid h-[18px] w-[18px] shrink-0 cursor-pointer place-items-center rounded text-mv-muted hover:bg-[#f1f2f4] hover:text-mv-red"
-                >
-                  <X size={12} strokeWidth={2.5} aria-hidden="true" />
-                </button>
-              )}
+                      setPlaceQuery("");
+                      setPlaceOpen(false);
+                      onClearApi();
+                      searchInputRef.current?.focus();
+                    }}
+                    aria-label="Clear the API number"
+                    title="Clear the API number"
+                    className="grid h-[18px] w-[18px] shrink-0 cursor-pointer place-items-center rounded text-mv-muted hover:bg-[#f1f2f4] hover:text-mv-red"
+                  >
+                    <X size={12} strokeWidth={2.5} aria-hidden="true" />
+                  </button>
+                )}
 
-              <Search
-                size={15}
-                aria-hidden="true"
-                className="hidden shrink-0 text-mv-muted lg:block"
-              />
+                <Search
+                  size={15}
+                  aria-hidden="true"
+                  className="hidden shrink-0 text-mv-muted lg:block"
+                />
+              </div>
             </div>
-          </div>
           </div>
         </div>
 
@@ -1107,6 +1153,7 @@ export function MapChrome({
 
         {shareOpen && (
           <ShareMenu
+            withImageAndPrint={showsAt(density, "simple")}
             /* Rendered only after a click, so building this from
                `window.location` is client-side by construction. */
             url={shareUrl(share)}
@@ -1145,44 +1192,44 @@ export function MapChrome({
               : "left-3 flex"
         }`}
       >
-      {/* Explains whichever of the two the map is drawing, and steps aside
+        {/* Explains whichever of the two the map is drawing, and steps aside
           when it is drawing neither. */}
-      {legendsOpen && marksVisible && (
-        <LegendsPanel
-          mode={wellsVisible ? "wells" : "clusters"}
-          defaultOpen={wideScreen}
-          className="pointer-events-auto"
-        />
-      )}
+        {legendsOpen && marksVisible && (
+          <LegendsPanel
+            mode={wellsVisible ? "wells" : "clusters"}
+            defaultOpen={wideScreen}
+            className="pointer-events-auto"
+          />
+        )}
 
-      {/* The legend's own widths, to the pixel — the two stack one above the
+        {/* The legend's own widths, to the pixel — the two stack one above the
           other in the bottom corner, and two boxes of different widths on the
           same left edge read as a mistake. 168/186/204 is the wider of the
           pair; the readings inside this one are shorter than that at every
           size. */}
-      <div className="pointer-events-auto w-[168px] overflow-hidden rounded-lg border border-mv-line bg-white/97 shadow-mv md:w-[186px] lg:w-[204px]">
-        <div className="px-[10px] pb-[3px] pt-[5px] text-[11px] font-semibold text-mv-ink lg:px-3 lg:pb-[6px] lg:pt-2 lg:text-[12px]">
-          1 : {Math.round(scale).toLocaleString("en-US")}
-        </div>
-        <div className="flex items-center gap-2 px-[10px] pb-[6px] lg:gap-[10px] lg:px-3 lg:pb-[9px]">
-          {/* A bracket, not a line — the mock's bar has end ticks. */}
-          <span
-            aria-hidden="true"
-            className="h-[7px] border-x border-b border-mv-slate/70"
-            style={{ width: `${bar.width}px` }}
-          />
-          <span className="text-[10px] leading-none text-mv-slate lg:text-[11px]">
-            {bar.miles} mi · {bar.km} km
-          </span>
-        </div>
-        {/* Abbreviated at every size. Spelled out it came to 212px, which
+        <div className="pointer-events-auto w-[168px] overflow-hidden rounded-lg border border-mv-line bg-white/97 shadow-mv md:w-[186px] lg:w-[204px]">
+          <div className="px-[10px] pb-[3px] pt-[5px] text-[11px] font-semibold text-mv-ink lg:px-3 lg:pb-[6px] lg:pt-2 lg:text-[12px]">
+            1 : {Math.round(scale).toLocaleString("en-US")}
+          </div>
+          <div className="flex items-center gap-2 px-[10px] pb-[6px] lg:gap-[10px] lg:px-3 lg:pb-[9px]">
+            {/* A bracket, not a line — the mock's bar has end ticks. */}
+            <span
+              aria-hidden="true"
+              className="h-[7px] border-x border-b border-mv-slate/70"
+              style={{ width: `${bar.width}px` }}
+            />
+            <span className="text-[10px] leading-none text-mv-slate lg:text-[11px]">
+              {bar.miles} mi · {bar.km} km
+            </span>
+          </div>
+          {/* Abbreviated at every size. Spelled out it came to 212px, which
             fitted the old 214px card exactly — one degree further west and it
             would have been clipped mid-number, which on a coordinate is worse
             than no coordinate — and it does not fit this one at all. */}
-        <div className="border-t border-mv-line px-[10px] py-[4px] text-[10px] text-mv-slate lg:px-3 lg:py-[7px] lg:text-[11px]">
-          Lat {center.latitude.toFixed(4)} · Lon {center.longitude.toFixed(4)}
+          <div className="border-t border-mv-line px-[10px] py-[4px] text-[10px] text-mv-slate lg:px-3 lg:py-[7px] lg:text-[11px]">
+            Lat {center.latitude.toFixed(4)} · Lon {center.longitude.toFixed(4)}
+          </div>
         </div>
-      </div>
       </div>
 
       {/* ---------------- navigation stack ---------------- */}
@@ -1191,10 +1238,14 @@ export function MapChrome({
           bare ? "hidden" : "flex"
         }`}
       >
-
         <div ref={basemapRef} className="relative">
           {basemapOpen && (
             <BasemapGallery
+              /* One at Ultra, two at Essentials, all six from Detailed: the
+                 rest are preference rather than information. */
+              options={BASEMAP_OPTIONS.filter((option) =>
+                showsAt(density, BASEMAP_FROM[option.id] ?? "detailed"),
+              )}
               selected={basemap}
               onSelect={(id) => {
                 onBasemapChange(id);
@@ -1440,7 +1491,12 @@ function EdgeTab({
     >
       {/* The icon carries the meaning on a phone; the desktop tab is the
           mock's, which is lettering alone. */}
-      <Icon size={14} strokeWidth={2.25} aria-hidden="true" className="lg:hidden" />
+      <Icon
+        size={14}
+        strokeWidth={2.25}
+        aria-hidden="true"
+        className="lg:hidden"
+      />
 
       {/* `vertical-rl` runs top-to-bottom; the flip makes it read upwards —
           and only from `lg`, where the tab is tall rather than wide. */}

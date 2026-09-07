@@ -13,6 +13,12 @@ import { AreaSelectionBar } from "./area-selection";
 import { loadArcgisModules } from "./arcgis-loader";
 import { ClusterTooltip } from "./cluster-tooltip";
 import { SampleBanner } from "./sample-banner";
+import {
+  DEFAULT_DENSITY,
+  showsAt,
+  toDensity,
+  type Density,
+} from "./density-switch";
 import { WellInsightsPanel, type SelectedWell } from "./well-insights-panel";
 import { MapChrome, type ViewTab } from "./map-chrome";
 import { MeasureAreaPanel, type AreaMeasurement } from "./measure-area-panel";
@@ -193,6 +199,8 @@ interface EsriExtent {
 }
 
 interface EsriGeoJSONLayer {
+  /** Turned off in the view modes that draw a plain map. */
+  visible: boolean;
   /** Client-side query over the loaded features. */
   queryExtent(query: {
     where: string;
@@ -563,6 +571,9 @@ function rememberDemo(tool: DemoTool): void {
 
 const DEFAULT_BASEMAP = "streets";
 
+/** Where the chosen density is remembered between visits. */
+const DENSITY_KEY = "mvMapDensity";
+
 const SCREENSHOT_FILENAME = "mineral-view-map.png";
 
 /**
@@ -658,6 +669,7 @@ export function MapExplorerView() {
   const rootRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EsriView | null>(null);
   const countyLayersRef = useRef<EsriGeoJSONLayer[]>([]);
+  const districtLayerRef = useRef<EsriGeoJSONLayer | null>(null);
   /*
    * The bubbles currently on the map. Held in a ref as well as state: the Esri
    * handlers below are registered once and close over their first render, so
@@ -759,6 +771,50 @@ export function MapExplorerView() {
 
   const [status, setStatus] = useState<Status>("loading");
   const [viewTab, setViewTab] = useState<ViewTab>("map");
+
+  /*
+   * How much of a well's record Insights prints.
+   *
+   * Remembered between visits, like the portal remembers its own: someone who
+   * reads wells at Professional does not want to say so again every time the
+   * map opens. Read in an effect rather than in the initialiser — the server
+   * renders this page too, and it has no `localStorage` to read.
+   */
+  const [density, setDensity] = useState<Density>(DEFAULT_DENSITY);
+
+  useEffect(() => {
+    const stored = toDensity(window.localStorage.getItem(DENSITY_KEY));
+    if (stored === DEFAULT_DENSITY) return;
+    /* In a microtask rather than in the effect body: this is a setState from
+       an effect, which the compiler's rule forbids outright and which is fine
+       one tick later — the same way the filters panel applies a shared link's
+       ticks. Starting from the default and correcting keeps the server's
+       markup and the browser's first render identical. */
+    queueMicrotask(() => setDensity(stored));
+  }, []);
+
+  /*
+   * The district and county lines are Essentials and up.
+   *
+   * Drawn on the map itself rather than in React, so they are switched by
+   * their own `visible` flag rather than by not rendering something. Ultra is
+   * the wells on a plain map; every line over it is one more thing to read.
+   */
+  useEffect(() => {
+    const on = showsAt(density, "simple");
+    if (districtLayerRef.current) districtLayerRef.current.visible = on;
+    for (const layer of countyLayersRef.current) layer.visible = on;
+  }, [density]);
+
+  const chooseDensity = useCallback((next: Density) => {
+    setDensity(next);
+    try {
+      window.localStorage.setItem(DENSITY_KEY, next);
+    } catch {
+      /* Private windows and blocked storage. The choice still holds for this
+         visit; only remembering it fails. */
+    }
+  }, []);
   /* What is on screen, readable from a callback — the tab is set from half a
      dozen places and only one of them should leave a history step. */
   const viewTabRef = useRef<ViewTab>("map");
@@ -770,7 +826,9 @@ export function MapExplorerView() {
    * re-read as the URL is rewritten by every later Apply.
    */
   const [openingFilters] = useState<Record<string, string[]>>(() =>
-    typeof window === "undefined" ? {} : readFilterParams(window.location.search),
+    typeof window === "undefined"
+      ? {}
+      : readFilterParams(window.location.search),
   );
 
   /** Whatever a tool drew, from a link that was shared with one on it. */
@@ -2671,6 +2729,7 @@ export function MapExplorerView() {
           );
         }
         countyLayersRef.current = countyLayers;
+        districtLayerRef.current = districtLayer;
 
         const clusters = new GraphicsLayer({ id: "well-clusters" });
         clusterLayerRef.current = clusters;
@@ -3808,7 +3867,7 @@ export function MapExplorerView() {
       } else if (tool === "measure-area") {
         tractRef.current = [];
         setTract([]);
-      setTract([]);
+        setTract([]);
         setTractResult(null);
         drawTract([], false);
       }
@@ -4033,7 +4092,10 @@ export function MapExplorerView() {
           />
         )}
 
-        {status === "ready" && hoveredWell && (
+        {/* Essentials and up: Ultra is a map you click, not one you read by
+            hovering — and the card carries API, operator and status, which is
+            the detail that mode leaves out. */}
+        {status === "ready" && hoveredWell && showsAt(density, "simple") && (
           <WellTooltip well={hoveredWell} />
         )}
 
@@ -4186,8 +4248,8 @@ export function MapExplorerView() {
                 }
                 tractRef.current = [];
                 setTract([]);
-        setTract([]);
-      setTract([]);
+                setTract([]);
+                setTract([]);
                 setTractResult(null);
                 drawTract([], false);
                 startTool(null);
@@ -4240,6 +4302,8 @@ export function MapExplorerView() {
             center={readout.center}
             /* Everything the Share menu puts in a link, since none of it is
                in the address any more. */
+            density={density}
+            onDensityChange={chooseDensity}
             share={{
               filters: shareFilters,
               tab: viewTab,
@@ -4272,7 +4336,12 @@ export function MapExplorerView() {
               tools: {
                 ...(area ? { area } : null),
                 ...(measurement
-                  ? { line: [measurement.from, measurement.to] as [LonLat, LonLat] }
+                  ? {
+                      line: [measurement.from, measurement.to] as [
+                        LonLat,
+                        LonLat,
+                      ],
+                    }
                   : null),
                 ...(tract.length >= 3 ? { tract } : null),
                 ...(nearby ? { near: nearby } : null),
@@ -4341,6 +4410,7 @@ export function MapExplorerView() {
               <WellInsightsPanel
                 key={selectedWell.api}
                 well={selectedWell}
+                density={density}
                 onClose={closeSummaryToMap}
               />
             ) : (
@@ -4406,6 +4476,8 @@ export function MapExplorerView() {
           activeTab={viewTab}
           onTabChange={changeViewTab}
           onShowOnMap={showRowOnMap}
+          density={density}
+          onDensityChange={chooseDensity}
         />
       )}
     </div>
