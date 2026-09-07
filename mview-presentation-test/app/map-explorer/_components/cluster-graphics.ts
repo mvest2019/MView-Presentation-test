@@ -24,9 +24,12 @@ export type WellCluster = {
   oil: number;
   gas: number;
   oilGas: number;
+  /** The rest of the bubble — dry, injection, permitted, plugged. */
+  other: number;
   oilShare: number;
   gasShare: number;
   oilGasShare: number;
+  otherShare: number;
 };
 
 /*
@@ -144,17 +147,48 @@ export function toWellCluster(cluster: MapCluster): WellCluster {
        "& 14 more" it is wrapped in does not say which. The export names them
        all; the map has no room to. */
     counties: cluster.countyNames ?? [],
-    oil: cluster.oil ?? 0,
-    gas: cluster.gas ?? 0,
-    oilGas: cluster.oilGas ?? 0,
-    /*
-     * `sharePct` is not always there. A cluster with no producing wells comes
-     * back with it null, and reading through it threw — which took the whole
-     * view down, so the map stopped zooming and drawing anything at all.
-     */
-    oilShare: cluster.sharePct?.oil ?? 0,
-    gasShare: cluster.sharePct?.gas ?? 0,
-    oilGasShare: cluster.sharePct?.oilGas ?? 0,
+    ...mixOf(cluster),
+  };
+}
+
+/**
+ * The four kinds in a cluster, as counts and as shares of the whole bubble.
+ *
+ * The shares are worked out here rather than taken from the response.
+ * `sharePct` is the mix of the three producing kinds — 96/1/3 on a cluster
+ * where a sixth of the wells produce nothing at all — so printing it beside a
+ * fourth row for those wells would put two different denominators in one card.
+ * Against the count they all mean the same thing and they add up.
+ *
+ * Rounded to whole numbers, like the response's own, and the remainder falls
+ * where it falls: the bar's last stop is pinned to 100%.
+ */
+function mixOf(cluster: MapCluster) {
+  const oil = cluster.oil ?? 0;
+  const gas = cluster.gas ?? 0;
+  const oilGas = cluster.oilGas ?? 0;
+  const count = cluster.count ?? 0;
+  /* Given by the service; derived where an older response omits it. Never
+     negative, in case the parts ever exceed the whole. */
+  const other = cluster.other ?? Math.max(0, count - oil - gas - oilGas);
+
+  /*
+   * A cluster with nothing in it: every share is zero rather than NaN. The
+   * old code read `sharePct` through a null and threw, which took the view
+   * down with it — the map stopped zooming and drawing anything at all.
+   */
+  const share = (part: number) =>
+    count > 0 ? Math.round((part / count) * 100) : 0;
+
+  return {
+    oil,
+    gas,
+    oilGas,
+    other,
+    oilShare: share(oil),
+    gasShare: share(gas),
+    oilGasShare: share(oilGas),
+    otherShare: share(other),
   };
 }
 

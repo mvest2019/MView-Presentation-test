@@ -85,8 +85,7 @@ export const getOperatorListMap = async (page?: {
         items: data.items as MapFilterItem[],
         /* Older builds of the service send no total; the list is then however
            much of it arrived. */
-        total:
-          typeof data.total === "number" ? data.total : data.items.length,
+        total: typeof data.total === "number" ? data.total : data.items.length,
       };
     } else {
       throw new Error("Failed to fetch operator list");
@@ -232,6 +231,15 @@ export type MapCluster = {
   oil: number;
   gas: number;
   oilGas: number;
+  /**
+   * Everything that is none of the three: dry holes, injection and disposal
+   * wells, permitted locations, plugged holes with no stream against them.
+   *
+   * `oil + gas + oilGas + other` is the cluster's `count`, so this is the
+   * difference between the producing mix and the bubble's own number — a
+   * sixth of the wells in a big cluster, and unaccounted for without it.
+   */
+  other?: number;
   name: string;
   topCounty: string;
   /**
@@ -816,9 +824,7 @@ export const getLeaseNearbyMap = async (
       throw new Error("Failed to fetch what is near this lease");
     }
   } catch (error) {
-    throw new Error(
-      String(error) || "Failed to fetch what is near this lease",
-    );
+    throw new Error(String(error) || "Failed to fetch what is near this lease");
   }
 };
 
@@ -966,14 +972,13 @@ export const saveLeaseWatch = async (watch: LeaseWatch): Promise<void> => {
   } | null;
 
   const wrapped = said?.error as
-    | { message?: unknown; details?: unknown }
-    | undefined;
+    { message?: unknown; details?: unknown } | undefined;
 
   const details = Array.isArray(wrapped?.details)
     ? wrapped.details
         .map((detail: unknown) =>
           typeof (detail as { message?: unknown })?.message === "string"
-            ? ((detail as { message: string }).message)
+            ? (detail as { message: string }).message
             : null,
         )
         .filter((message): message is string => message !== null)
