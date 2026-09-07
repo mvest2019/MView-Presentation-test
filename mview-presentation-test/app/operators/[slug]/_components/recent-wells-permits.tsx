@@ -85,16 +85,36 @@ function DateBound({
   label,
   value,
   onChange,
+  min,
+  max,
+  invalid = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  /**
+   * The filed range — DEFECT 195, "show calendar from where the data is available".
+   *
+   * These bound the platform picker, so the calendar opens on a month that has filings
+   * in it and greys out the years that cannot. Without them it opened on today and let
+   * the reader page back through decades of empty months to find the range by hand.
+   *
+   * READ FROM THE ROWS, NOT WRITTEN HERE: they are this operator's own first and last
+   * filing dates, so an operator with two years of filings gets a two-year calendar.
+   */
+  min?: string;
+  max?: string;
+  /** Ringed when the pair reads backwards — DEFECT 192. */
+  invalid?: boolean;
 }) {
   return (
     <input
       type="date"
       aria-label={label}
       value={value}
+      min={min}
+      max={max}
+      aria-invalid={invalid || undefined}
       onChange={(event) => onChange(event.target.value)}
       /* `min-w-0` IS LOAD-BEARING, not tidying. `input[type="date"]` carries a UA
          intrinsic minimum width — the `dd-mm-yyyy` text plus the picker button —
@@ -103,8 +123,41 @@ function DateBound({
          input then refuses to shrink into its grid cell: two of them plus the "to"
          overflow the group and land on top of the group beside it, which is the
          reported overlap. With `min-w-0` the input shrinks with its cell instead. */
-      className="min-h-[44px] w-full min-w-0 rounded-[11px] border border-mv-line bg-white px-[11px] text-[13px] text-mv-ink outline-none transition-[border-color,box-shadow] focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.15)]"
+      /*
+       * DEFECT 192, THE SIZING HALF — "For ipad and mobile not showing formatt and box
+       * size is small as compared to above filters."
+       *
+       * 16px AT EVERY WIDTH, not just on a phone. A `type="date"` input renders the
+       * platform's own `dd-mm-yyyy` mask rather than text of its own, and below 16px
+       * iOS and iPadOS both shrink that mask towards illegibility — the "not showing
+       * formatt" half — and zoom the page in when it is focused (defect 193). Neither
+       * behaviour is limited to phone widths, so neither is the size.
+       *
+       * The row makes space for it rather than the input giving way: see the two date
+       * groups' `col-span-2` below.
+       */
+      className={`min-h-[44px] w-full min-w-0 rounded-[11px] border bg-white px-[11px] text-base text-mv-ink outline-none transition-[border-color,box-shadow] focus-visible:ring-[3px] ${
+        invalid
+          ? "border-mv-red focus-visible:border-mv-red focus-visible:ring-[rgba(185,28,28,.15)]"
+          : "border-mv-line focus-visible:border-mv-green focus-visible:ring-[rgba(84,191,150,.15)]"
+      }`}
     />
+  );
+}
+
+/**
+ * The message under a date range entered backwards — DEFECT 192.
+ *
+ * `role="alert"` because it appears in response to something the reader just did and
+ * has no other announcement; `mt-[6px]` keeps it inside its `FilterGroup` rather than
+ * pushing the grid row's baseline, so the controls beside it do not move when it
+ * appears.
+ */
+function RangeError({ children }: { children: React.ReactNode }) {
+  return (
+    <p role="alert" className="mt-[6px] text-[12px] font-medium text-mv-red">
+      {children}
+    </p>
   );
 }
 
@@ -112,12 +165,15 @@ function DateBound({
 function FilterGroup({
   label,
   children,
+  className = "",
 }: {
   label: string;
   children: React.ReactNode;
+  /** Grid sizing from the caller — the date ranges claim a full row on a tablet. */
+  className?: string;
 }) {
   return (
-    <div className="min-w-0">
+    <div className={`min-w-0 ${className}`}>
       <p className="mb-[5px] text-[11.5px] font-semibold uppercase tracking-[.05em] text-mv-muted">
         {label}
       </p>
@@ -203,6 +259,43 @@ export function RecentWellsPermits({
   }, [filings.rows]);
 
   /**
+   * The earliest and latest dates this operator has on file — DEFECT 195.
+   *
+   * Both date columns feed it, because both pickers are bounded by it: the useful
+   * window is "when this operator filed anything", and a submitted date is always the
+   * earlier end of a filing's own pair.
+   *
+   * Empty strings when nothing is dated, which `DateBound` passes through as no bound
+   * at all — an unbounded picker is the correct answer when there is no range to know.
+   */
+  const filedRange = useMemo(() => {
+    let first = "";
+    let last = "";
+    for (const row of filings.rows) {
+      for (const on of [row.submittedOn, row.approvedOn]) {
+        if (on === null || on === "") continue;
+        if (first === "" || on < first) first = on;
+        if (last === "" || on > last) last = on;
+      }
+    }
+    return { first, last };
+  }, [filings.rows]);
+
+  /**
+   * A range entered backwards — DEFECT 192.
+   *
+   * "to date is less than from date and still not showing error msg". It could not
+   * show one because nothing was checking: the pair went straight into `inRange`,
+   * which is simply never true for `from > to`, so the table emptied itself and
+   * offered "No filings match these filters" — which is true of the filter as typed
+   * and tells the reader nothing about what they did wrong.
+   */
+  const submittedBackwards =
+    submittedFrom !== "" && submittedTo !== "" && submittedFrom > submittedTo;
+  const approvedBackwards =
+    approvedFrom !== "" && approvedTo !== "" && approvedFrom > approvedTo;
+
+  /**
    * The filters, applied here rather than upstream.
    *
    * NO REQUEST, BY DESIGN. `/recent-wells-permits` takes an operator number and
@@ -214,15 +307,20 @@ export function RecentWellsPermits({
    * A ROW WITH NO DATE IS EXCLUDED BY A DATE BOUND, not kept. A permit with no
    * approved date has not been approved, so it does not belong in "approved between
    * these dates"; keeping it would pad the range with rows that fail its premise.
+   *
+   * A BACKWARDS RANGE IS NOT APPLIED AT ALL (defect 192). Applying it would empty the
+   * table, and an empty table beside an error message says the same thing twice — the
+   * second time as if the data were at fault. The rows stay, the message says the
+   * range was ignored and why, and correcting either end puts it straight back in.
    */
   const matching = useMemo(() => {
+    const useSubmitted = !submittedBackwards;
+    const useApproved = !approvedBackwards;
     const anyFilter =
       status !== ANY_STATUS ||
       profile !== ANY_PROFILE ||
-      submittedFrom !== "" ||
-      submittedTo !== "" ||
-      approvedFrom !== "" ||
-      approvedTo !== "";
+      (useSubmitted && (submittedFrom !== "" || submittedTo !== "")) ||
+      (useApproved && (approvedFrom !== "" || approvedTo !== ""));
     if (!anyFilter) return filings.rows;
 
     const inRange = (on: string | null, from: string, to: string) => {
@@ -236,8 +334,9 @@ export function RecentWellsPermits({
         (status === ANY_STATUS || row.status === status) &&
         (profile === ANY_PROFILE ||
           titleCase(row.wellboreProfile) === profile) &&
-        inRange(row.submittedOn, submittedFrom, submittedTo) &&
-        inRange(row.approvedOn, approvedFrom, approvedTo),
+        (!useSubmitted ||
+          inRange(row.submittedOn, submittedFrom, submittedTo)) &&
+        (!useApproved || inRange(row.approvedOn, approvedFrom, approvedTo)),
     );
   }, [
     filings.rows,
@@ -247,6 +346,8 @@ export function RecentWellsPermits({
     submittedTo,
     approvedFrom,
     approvedTo,
+    submittedBackwards,
+    approvedBackwards,
   ]);
 
   /**
@@ -350,10 +451,22 @@ export function RecentWellsPermits({
                 </SelectControl>
               </FilterGroup>
 
-              {/* DEFECT 131's third filter. Rendered only where the operator has more
-                  than one profile on record — a lone "Horizontal" option filters
-                  nothing and just widens the row. */}
-              {profiles.length > 1 ? (
+              {/*
+                DEFECT 131's third filter — and DEFECT 196, "wellbore profile filter get
+                removed".
+
+                IT WAS NEVER REMOVED; IT WAS CONDITIONAL. This was `profiles.length > 1`,
+                on the argument that a lone "Horizontal" option filters nothing and only
+                widens the row. That argument is about this control in isolation and it
+                is wrong about the row it sits in: the reader who was shown it on one
+                operator and not on the next has no way to tell a deliberate omission
+                from a bug, and reports it as one — which is exactly what happened.
+
+                A filter row that changes shape per operator is worse than a filter that
+                is sometimes trivially satisfied. It renders whenever the operator has
+                any profile on record, and where there is only one the dropdown says so.
+              */}
+              {profiles.length > 0 ? (
                 <FilterGroup label="Wellbore profile">
                   <SelectControl
                     label="Filter by wellbore profile"
@@ -370,7 +483,16 @@ export function RecentWellsPermits({
                 </FilterGroup>
               ) : null}
 
-              <FilterGroup label="Submitted date">
+              <FilterGroup
+                label="Submitted date"
+                /* DEFECT 192 — A FULL ROW BELOW 1024px. Two 16px date inputs plus the
+                   "to" need roughly 320px; in a half-width column on a 768px tablet
+                   they get about 160px each and the platform clips the mask, which is
+                   the "box size is small" report. Spanning the row gives each input
+                   about 340px there. Above 1024px the card is wide enough for two
+                   groups across and this does not apply. */
+                className="max-[1024px]:col-span-2"
+              >
                 {/* `min-w-0` for the same reason as the inputs: a flex container
                     defaults to `min-width: auto` and would otherwise refuse to
                     shrink below its two children's intrinsic widths. */}
@@ -379,34 +501,68 @@ export function RecentWellsPermits({
                     label="Submitted on or after"
                     value={submittedFrom}
                     onChange={setSubmittedFrom}
+                    min={filedRange.first}
+                    max={filedRange.last}
+                    invalid={submittedBackwards}
                   />
-                  <span aria-hidden="true" className="text-[12px] text-mv-muted">
+                  <span
+                    aria-hidden="true"
+                    className="text-[12px] text-mv-muted"
+                  >
                     to
                   </span>
                   <DateBound
                     label="Submitted on or before"
                     value={submittedTo}
                     onChange={setSubmittedTo}
+                    min={filedRange.first}
+                    max={filedRange.last}
+                    invalid={submittedBackwards}
                   />
                 </div>
+                {/* DEFECT 192 — `role="alert"` so it is announced, not just drawn. */}
+                {submittedBackwards ? (
+                  <RangeError>
+                    The end of this range is before its start, so it has been
+                    ignored.
+                  </RangeError>
+                ) : null}
               </FilterGroup>
 
-              <FilterGroup label="Approved date">
+              <FilterGroup
+                label="Approved date"
+                className="max-[1024px]:col-span-2"
+              >
                 <div className="flex min-w-0 items-center gap-2">
                   <DateBound
                     label="Approved on or after"
                     value={approvedFrom}
                     onChange={setApprovedFrom}
+                    min={filedRange.first}
+                    max={filedRange.last}
+                    invalid={approvedBackwards}
                   />
-                  <span aria-hidden="true" className="text-[12px] text-mv-muted">
+                  <span
+                    aria-hidden="true"
+                    className="text-[12px] text-mv-muted"
+                  >
                     to
                   </span>
                   <DateBound
                     label="Approved on or before"
                     value={approvedTo}
                     onChange={setApprovedTo}
+                    min={filedRange.first}
+                    max={filedRange.last}
+                    invalid={approvedBackwards}
                   />
                 </div>
+                {approvedBackwards ? (
+                  <RangeError>
+                    The end of this range is before its start, so it has been
+                    ignored.
+                  </RangeError>
+                ) : null}
               </FilterGroup>
 
               {/* Only once something is in force — a permanently greyed control is
@@ -570,7 +726,6 @@ export function RecentWellsPermits({
   );
 }
 
-
 /**
  * What a signed-out reader sees in place of the filings feed.
  *
@@ -615,8 +770,8 @@ function LockedFilings() {
             <p className="m-0 mt-2 text-[13px] leading-relaxed text-mv-muted">
               Every permit and completion on record — lease, county, wellbore
               profile, status and the dates each was submitted and approved,
-              filterable. Who this operator is, where it operates and the counties
-              and leases on its record stay free to browse.
+              filterable. Who this operator is, where it operates and the
+              counties and leases on its record stay free to browse.
             </p>
           </div>
 

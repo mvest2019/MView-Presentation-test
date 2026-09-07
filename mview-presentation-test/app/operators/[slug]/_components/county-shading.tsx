@@ -1,11 +1,14 @@
 "use client";
 
+import { Lock } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   fetchProductionMap,
   type ProductionMapData,
 } from "@/lib/operator-production-map-api";
+import { formatCanonicalVolume } from "@/lib/operator-volume-units";
 
 /**
  * Shades the Texas choropleth from `/operators/production-map`.
@@ -91,6 +94,8 @@ type State =
   | { status: "loading" }
   | { status: "ready"; data: ProductionMapData }
   | { status: "empty" }
+  /** No account — DEFECT 189. A different fact from "empty", and said differently. */
+  | { status: "locked" }
   | { status: "error" };
 
 export function CountyShading({
@@ -112,10 +117,15 @@ export function CountyShading({
     fetchProductionMap(operatorNumber, controller.signal)
       .then((data) => {
         if (!active) return;
+        /* `locked` before emptiness, and the order is the point: a locked read returns
+           no counties, so falling through would say this operator reports none — a
+           claim about the operator the request never made. */
         setState(
-          data.counties.length === 0
-            ? { status: "empty" }
-            : { status: "ready", data },
+          data.locked
+            ? { status: "locked" }
+            : data.counties.length === 0
+              ? { status: "empty" }
+              : { status: "ready", data },
         );
       })
       .catch(() => {
@@ -146,13 +156,31 @@ export function CountyShading({
       state.data.counties.map((county) => county.gas?.value ?? 0),
     );
 
+    /*
+     * DEFECT 147 — THE MAP'S TOOLTIP WAS THE ONE SURFACE LEFT OUT.
+     *
+     * `label` is the API's own string, and this endpoint answers MMBBL and BCF — so a
+     * county read "714.982 (MMBBL)" here while the Production by county table directly
+     * below it, showing the SAME county's SAME figure, read "714,982 (MBBL)". The two
+     * were a thousand apart on one screen, which is the defect in its purest form.
+     *
+     * The label is rebuilt from the parsed value and its declared unit rather than
+     * string-edited, so the conversion is the same one every other surface uses.
+     * `null` — the endpoint sent nothing, or the reader is gated — stays an em dash.
+     */
+    const label = (measured: { value: number; unit: string } | null) => {
+      if (!measured) return "—";
+      const { text, unit } = formatCanonicalVolume(measured.value, measured.unit);
+      return unit ? `${text} (${unit})` : text;
+    };
+
     const map = new Map<string, Shade>();
     for (const county of state.data.counties) {
       map.set(county.key, {
         oil: bucketOf(county.oil?.value ?? 0, oilScale),
         gas: bucketOf(county.gas?.value ?? 0, gasScale),
-        oilLabel: county.oil?.label ?? "—",
-        gasLabel: county.gas?.label ?? "—",
+        oilLabel: label(county.oil),
+        gasLabel: label(county.gas),
       });
     }
     return map;
@@ -230,6 +258,23 @@ export function CountyShading({
       {state.status === "empty" ? (
         <p className="mt-2 px-1 text-[12px] text-mv-muted">
           No per-county production is reported for this operator.
+        </p>
+      ) : null}
+
+      {/* DEFECT 189 — the map keeps its geometry, which is public record, and says
+          plainly that the shading is what needs an account. It does NOT say the
+          operator has no county production; that is the line above, and it is a
+          different statement. */}
+      {state.status === "locked" ? (
+        <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-[12px] text-mv-muted">
+          <Lock aria-hidden="true" className="h-3 w-3 shrink-0" strokeWidth={2.3} />
+          Per-county oil and gas need a free account.
+          <Link
+            href="/register?from=operator-profile"
+            className="font-semibold text-mv-green-deep underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+          >
+            Create one →
+          </Link>
         </p>
       ) : null}
 

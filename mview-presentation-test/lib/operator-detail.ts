@@ -778,6 +778,20 @@ function buildConditionCards(
              *
              * So each is now stated. Nothing is computed here and no period is
              * inferred; the labels are the API's own.
+             *
+             * RE-OPENED, AND NARROWED TO A FORM: QA asked for the comparison to read
+             * "<earlier month> vs <later month>: <signed %>" — one string naming both
+             * ends and the direction, rather than a percentage on one side of the card
+             * and the month it belongs to on the other. Naming all three periods was
+             * necessary and was not sufficient: "23,324.0138 MBBL · ↓20.7% · vs April
+             * 2026" still leaves the reader to work out which month 20.7% is a fall
+             * FROM and which it is a fall TO.
+             *
+             * Both comparisons take that form now, so the two lines are read the same
+             * way rather than each in its own. The sign is on the number rather than
+             * only in the arrow — `−20.7%` is unambiguous printed, quoted or read
+             * aloud, and the arrow beside it is now a repetition rather than the only
+             * statement of direction.
              */
             label: latest.month_label
               ? `Monthly BOE · ${latest.month_label}`
@@ -788,19 +802,22 @@ function buildConditionCards(
               ? {}
               : {
                   direction: latest.mom.direction,
-                  window: latest.mom.month_label
-                    ? `vs ${latest.mom.month_label}`
-                    : "MoM",
+                  window:
+                    latest.mom.month_label && latest.month_label
+                      ? `${latest.mom.month_label} vs ${latest.month_label}`
+                      : latest.mom.month_label
+                        ? `vs ${latest.mom.month_label}`
+                        : "MoM",
                 }),
             ...(latest.mom.change_percent === null
               ? {}
-              : {
-                  delta: `${exact(Math.abs(latest.mom.change_percent))}%`,
-                }),
+              : { delta: signed(latest.mom.change_percent) }),
             foot:
               latest.yoy.change_percent === null || !latest.yoy.month_label
                 ? "No comparable month on record"
-                : `vs ${latest.yoy.month_label}: ${signed(latest.yoy.change_percent)}`,
+                : latest.month_label
+                  ? `${latest.yoy.month_label} vs ${latest.month_label}: ${signed(latest.yoy.change_percent)}`
+                  : `vs ${latest.yoy.month_label}: ${signed(latest.yoy.change_percent)}`,
             // The year-on-year change sits beside the month-on-month chip, not under it.
             footInline: true,
             icon: "production" as const,

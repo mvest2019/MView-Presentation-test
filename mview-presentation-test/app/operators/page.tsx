@@ -229,10 +229,16 @@ export default async function OperatorsRoute() {
           </p>
         </div>
 
+        {/* `isSignedIn` — DEFECTS 182 and 183. The listing's own gate still comes from
+            the response; this only decides whether Export is offered, and gives the
+            client fetch something to key on when the session changes. `router.refresh()`
+            after signing out re-runs this component, which is what delivers the new
+            value. See the prop's note in `use-operator-directory.ts`. */}
         <OperatorPage
           playTypes={playTypes}
           counties={counties}
           visitorId={visitorId}
+          isSignedIn={Boolean(user)}
         />
 
         {/* All three routes are built, each under `/features/` — see the note at

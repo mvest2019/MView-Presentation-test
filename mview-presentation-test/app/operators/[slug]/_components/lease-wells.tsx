@@ -11,6 +11,12 @@ import {
   type WellRecord,
 } from "@/lib/operator-leases-api";
 import { titleCase } from "@/lib/text-case";
+import { GAS_UNIT, OIL_UNIT } from "@/lib/operator-activity-api";
+import {
+  CANONICAL_GAS_UNIT,
+  CANONICAL_OIL_UNIT,
+  formatCanonicalVolume,
+} from "@/lib/operator-volume-units";
 
 import { TableSkeletonRows } from "./table-skeleton";
 import Link from "next/link";
@@ -46,8 +52,15 @@ import { usePagedResource } from "./use-paged-resource";
 const EM_DASH = "—";
 const COLUMNS = 7;
 
-const volume = (value: number | null) =>
-  value === null ? EM_DASH : value.toLocaleString("en-US");
+/**
+ * A volume in the profile's own units, or the dash — never a fabricated zero.
+ *
+ * DEFECT 147 — `/operators/wells` reports raw barrels and Mcf, like `/operators/leases`
+ * above it and unlike everything else on the page. A well's figure sitting under its
+ * lease's, at a different magnitude, was the tightest place the inconsistency showed.
+ */
+const volume = (value: number | null, declaredUnit: string) =>
+  value === null ? EM_DASH : formatCanonicalVolume(value, declaredUnit).text;
 
 /**
  * The pill's colour, from whatever the API actually said.
@@ -101,6 +114,65 @@ export function LeaseWells({
   const td =
     "whitespace-nowrap border-b border-mv-line-soft bg-white px-4 py-3 text-mv-ink-soft";
 
+  /**
+   * What stands in for the table when there are no rows to put in one — DEFECT 197.
+   *
+   * Null means "render the table". Everything else is a state in which the table has
+   * nothing to show, and the reason is what the reader needs instead of seven empty
+   * columns; see the note at the render site for why it cannot be a `<td colSpan>`.
+   *
+   * The order is the one the branches had, and it still matters. `locked` is first
+   * because it is neither an error nor an emptiness: nothing was attempted, so there
+   * is nothing to retry, and "no wells on record" would be a claim about this lease
+   * that the request never made — the rows are not fetched at all for a signed-out
+   * reader (see `app/api/operators/wells/route.ts`), so nothing is hidden in CSS.
+   */
+  const placeholder = firstLoad ? null : wells.locked ? (
+    <LockedWells />
+  ) : wells.status === "error" ? (
+    <div
+      role="alert"
+      className="flex flex-wrap items-center justify-center gap-3 text-center"
+    >
+      <p className="text-sm text-mv-ink-soft">
+        {/* DEFECT 154 / 155 — the reported reason when there is one, so a rate limit
+            reads as "wait a moment" rather than as an outage. The generic line is the
+            fallback. */}
+        {wells.error || "Wells could not be loaded."}
+      </p>
+      <button
+        type="button"
+        onClick={wells.retry}
+        className="cursor-pointer rounded-[10px] border border-mv-line bg-white px-4 py-2 text-[13px] font-semibold text-mv-slate transition-colors hover:border-mv-line-strong hover:bg-mv-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+      >
+        Try again
+      </button>
+    </div>
+  ) : wells.rows.length === 0 ? (
+    <p className="m-0 text-center text-sm text-mv-muted">
+      {wells.total === 0 ? (
+        /* The API's own answer for a lease it holds no wells for: HTTP 200,
+           `total_count: 0`, an empty array. Not an error — there is simply nothing on
+           record, and the pager stays hidden. */
+        "No wells are recorded against this lease."
+      ) : (
+        /* Rows empty but the count says otherwise — the API does this for a page past
+           the end, and the set can shrink between the count and the page. Saying "no
+           wells" here would contradict the pager, so offer the way back instead. */
+        <>
+          This page has no wells to show.{" "}
+          <button
+            type="button"
+            onClick={() => setPage(1)}
+            className="cursor-pointer font-semibold text-mv-green-deep underline hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+          >
+            Back to the first page
+          </button>
+        </>
+      )}
+    </p>
+  ) : null;
+
   return (
     <section
       aria-labelledby="lease-wells-heading"
@@ -138,6 +210,27 @@ export function LeaseWells({
         </button>
       </div>
 
+      {/*
+        DEFECT 197 — THE MESSAGE CANNOT LIVE INSIDE THE TABLE.
+
+        "'No wells are recorded against this lease.' msg not shown for mobile so when
+        any lease wells are not present then dont scroll the table and show proper msg."
+
+        Exactly right, and the cause is structural rather than a style: every one of
+        these states was a `<td colSpan={7}>` inside a `min-w-[760px]` table inside an
+        `overflow-x-auto`. On a 375px screen the cell is 760px wide and its text is
+        centred — so the sentence was centred at roughly x=380, off the right edge, and
+        the reader got a horizontal scrollbar under an apparently empty panel. Centring
+        is what did it; the text was never on screen at the resting scroll position.
+
+        So when there are no rows there is no table. The message renders in a normal
+        block that is as wide as the card, at any width, and there is nothing to scroll
+        because there is nothing 760px wide. The skeleton still uses the table — it is
+        drawing columns, so it needs them.
+      */}
+      {placeholder ? (
+        <div className="px-[22px] py-8 max-[560px]:px-4">{placeholder}</div>
+      ) : (
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] border-separate border-spacing-0 text-[13.5px]">
           <caption className="sr-only">
@@ -152,8 +245,9 @@ export function LeaseWells({
                   ["Status", null, "left"],
                   ["County", null, "left"],
                   /* DEFECT 141 — uppercase; the second snap rings these two. */
-                  ["Oil Produced", "BBL", "right"],
-                  ["Gas Produced", "MCF", "right"],
+                  /* DEFECT 147 — the converted unit, matching the cells below. */
+                  ["Oil Produced", CANONICAL_OIL_UNIT, "right"],
+                  ["Gas Produced", CANONICAL_GAS_UNIT, "right"],
                   ["Production start", null, "left"],
                 ] as const
               ).map(([label, unit, align]) => (
@@ -182,69 +276,6 @@ export function LeaseWells({
           >
             {firstLoad ? (
               <TableSkeletonRows rows={LEASE_PAGE_SIZE} columns={COLUMNS} />
-            ) : wells.locked ? (
-              /* NO ACCOUNT. Ahead of the error and empty branches because it is
-                 neither: nothing was attempted, so there is nothing to retry, and
-                 "no wells on record" would be a claim about this lease that the
-                 request never made. See `app/api/operators/wells/route.ts` — the
-                 rows are not fetched at all, so nothing is being hidden in CSS. */
-              <tr>
-                <td colSpan={COLUMNS} className="bg-white p-0">
-                  <LockedWells />
-                </td>
-              </tr>
-            ) : wells.status === "error" ? (
-              <tr>
-                <td colSpan={COLUMNS} className="bg-white px-4 py-6">
-                  <div
-                    role="alert"
-                    className="flex flex-wrap items-center justify-center gap-3 text-center"
-                  >
-                    <p className="text-sm text-mv-ink-soft">
-{/* DEFECT 154 / 155 — the reported reason when there is one, so a
-                          rate limit reads as "wait a moment" rather than as an
-                          outage. The generic line is the fallback. */}
-                      {wells.error || "Wells could not be loaded."}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={wells.retry}
-                      className="cursor-pointer rounded-[10px] border border-mv-line bg-white px-4 py-2 text-[13px] font-semibold text-mv-slate transition-colors hover:border-mv-line-strong hover:bg-mv-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
-                    >
-                      Try again
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ) : wells.rows.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={COLUMNS}
-                  className="whitespace-normal bg-white px-4 py-6 text-center text-sm text-mv-muted"
-                >
-                  {wells.total === 0 ? (
-                    /* The API's own answer for a lease it holds no wells for: HTTP 200,
-                       `total_count: 0`, an empty array. Not an error — there is simply
-                       nothing on record, and the pager stays hidden. */
-                    "No wells are recorded against this lease."
-                  ) : (
-                    /* Rows empty but the count says otherwise — the API does this for a
-                       page past the end, and the set can shrink between the count and
-                       the page. Saying "no wells" here would contradict the pager
-                       directly below, so offer the way back instead. */
-                    <>
-                      This page has no wells to show.{" "}
-                      <button
-                        type="button"
-                        onClick={() => setPage(1)}
-                        className="cursor-pointer font-semibold text-mv-green-deep underline hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
-                      >
-                        Back to the first page
-                      </button>
-                    </>
-                  )}
-                </td>
-              </tr>
             ) : (
               wells.rows.map((well) => (
                 <tr
@@ -276,10 +307,10 @@ export function LeaseWells({
                   </td>
                   <td className={td}>{titleCase(well.county) || EM_DASH}</td>
                   <td className={`${td} text-right tabular-nums`}>
-                    {volume(well.oil)}
+                    {volume(well.oil, OIL_UNIT)}
                   </td>
                   <td className={`${td} text-right tabular-nums`}>
-                    {volume(well.gas)}
+                    {volume(well.gas, GAS_UNIT)}
                   </td>
                   <td className={td}>{well.productionStart ?? EM_DASH}</td>
                 </tr>
@@ -288,8 +319,9 @@ export function LeaseWells({
           </tbody>
         </table>
       </div>
+      )}
 
-      {wells.total > LEASE_PAGE_SIZE ? (
+      {wells.total > LEASE_PAGE_SIZE && !placeholder ? (
         <div className="px-[22px] pb-4 max-[560px]:px-4">
           <Pager
             current={page}

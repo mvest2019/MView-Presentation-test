@@ -1,15 +1,16 @@
-import { publicOperatorApiBaseUrl, TEMP_MEMBER_ID } from "./operator-api-types";
-
 /**
- * `POST /api/v1/operators/production-map` — per-county oil and gas for the choropleth.
+ * The choropleth's per-county oil and gas.
  *
- * `member_id` IS THE VIEWER, NOT THE OPERATOR. Without it every value comes back as
- * `****`; with any member id the figures are real (4795 and 3448 both work). So it is
- * an access gate on the reader's identity, which is why it comes from the project's
- * existing `TEMP_MEMBER_ID` rather than being passed in per operator — there is nothing
- * about an operator that could determine it. That constant carries the same warning it
- * does elsewhere: it stands in for real authentication and must not reach production
- * as-is.
+ * IT GOES THROUGH `/api/operators/production-map`, NOT STRAIGHT AT THE OPERATOR API —
+ * DEFECT 189. This used to post to `POST /api/v1/operators/production-map` from the
+ * browser with a hard-coded `member_id: TEMP_MEMBER_ID`, which answered the upstream
+ * gate on the reader's behalf: `member_id` IS the viewer here — without one every value
+ * returns `****`, with one they are real — so every signed-out visitor received the
+ * per-county volumes that the directory, the profile panel and the county table all
+ * withhold. It also shipped a real member id in the client bundle.
+ *
+ * The route handler pins `member_id` from the session and answers `locked` for a
+ * visitor without calling upstream at all. See the note there.
  *
  * THE VALUES ARRIVE AS FORMATTED STRINGS WITH THEIR UNITS INSIDE THEM —
  * `"714.982 (MMBBL)"`, `"2,274.798 (BCF)"`. So this endpoint does state its units, and
@@ -27,7 +28,6 @@ import { publicOperatorApiBaseUrl, TEMP_MEMBER_ID } from "./operator-api-types";
 
 export interface ProductionMapRequest {
   operator_no: string;
-  member_id: number;
 }
 
 /** One county's figure: the number that scales, and the unit the API named. */
@@ -54,6 +54,13 @@ export interface ProductionMapData {
   /** The unit label shared by the oil column, for the legend. */
   oilUnit: string;
   gasUnit: string;
+  /**
+   * The handler's own answer — DEFECT 189. True means the reader has no account, which
+   * is a different fact from "this operator has no county figures" and the map draws it
+   * differently. It travels on the response rather than being inferred from an empty
+   * list, per OPERATORS.md §4 rule 2.
+   */
+  locked: boolean;
 }
 
 /** `"2,274.798 (BCF)"` → `{ value: 2274.798, unit: "BCF", label: "2,274.798 (BCF)" }`. */
@@ -80,26 +87,24 @@ export async function fetchProductionMap(
   operatorNumber: string,
   signal?: AbortSignal,
 ): Promise<ProductionMapData> {
-  const request: ProductionMapRequest = {
-    operator_no: operatorNumber,
-    member_id: TEMP_MEMBER_ID,
-  };
+  const request: ProductionMapRequest = { operator_no: operatorNumber };
 
-  const response = await fetch(
-    `${publicOperatorApiBaseUrl()}/api/v1/operators/production-map`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request),
-      signal,
-    },
-  );
+  const response = await fetch("/api/operators/production-map", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+    cache: "no-store",
+    signal,
+  });
 
   if (!response.ok) {
     throw new Error(`Production map unavailable (${response.status})`);
   }
 
   const payload: unknown = await response.json();
+  const locked = (payload as { locked?: unknown }).locked === true;
+  if (locked) return { counties: [], oilUnit: "", gasUnit: "", locked: true };
+
   const raw = (payload as { counties?: unknown }).counties;
   const list = Array.isArray(raw) ? raw : [];
 
@@ -130,5 +135,5 @@ export async function fetchProductionMap(
     });
   }
 
-  return { counties, oilUnit, gasUnit };
+  return { counties, oilUnit, gasUnit, locked: false };
 }
