@@ -19,6 +19,12 @@ import {
   toDensity,
   type Density,
 } from "./density-switch";
+import {
+  DEFAULT_FUNNEL_STATE,
+  FUNNEL_CEILING,
+  toFunnelState,
+  type FunnelState,
+} from "./demo-state-menu";
 import { WellInsightsPanel, type SelectedWell } from "./well-insights-panel";
 import { MapChrome, type ViewTab } from "./map-chrome";
 import { MeasureAreaPanel, type AreaMeasurement } from "./measure-area-panel";
@@ -574,6 +580,9 @@ const DEFAULT_BASEMAP = "streets";
 /** Where the chosen density is remembered between visits. */
 const DENSITY_KEY = "mvMapDensity";
 
+/** And the demo's account state, which decides how far that may go. */
+const FUNNEL_KEY = "mvMapFunnel";
+
 const SCREENSHOT_FILENAME = "mineral-view-map.png";
 
 /**
@@ -780,7 +789,7 @@ export function MapExplorerView() {
    * map opens. Read in an effect rather than in the initialiser — the server
    * renders this page too, and it has no `localStorage` to read.
    */
-  const [density, setDensity] = useState<Density>(DEFAULT_DENSITY);
+  const [chosenDensity, setDensity] = useState<Density>(DEFAULT_DENSITY);
 
   useEffect(() => {
     const stored = toDensity(window.localStorage.getItem(DENSITY_KEY));
@@ -791,6 +800,42 @@ export function MapExplorerView() {
        ticks. Starting from the default and correcting keeps the server's
        markup and the browser's first render identical. */
     queueMicrotask(() => setDensity(stored));
+  }, []);
+
+  /*
+   * Which kind of account the map is being shown as — the demo control.
+   *
+   * Remembered like the density, and for the same reason: someone showing the
+   * free view to three people in a row should not have to set it three times.
+   */
+  const [funnel, setFunnel] = useState<FunnelState>(DEFAULT_FUNNEL_STATE);
+
+  useEffect(() => {
+    const stored = toFunnelState(window.localStorage.getItem(FUNNEL_KEY));
+    if (stored === DEFAULT_FUNNEL_STATE) return;
+    queueMicrotask(() => setFunnel(stored));
+  }, []);
+
+  /* What the account may read. A free one stops at Essentials. */
+  const ceiling = FUNNEL_CEILING[funnel];
+
+  /*
+   * The mode actually in force: the reader's choice, held to the ceiling.
+   *
+   * Derived rather than written back, so dropping to the free state and
+   * returning to a paid one gives the reader their own mode again instead of
+   * the one the demo left them on.
+   */
+  const density = showsAt(ceiling, chosenDensity) ? chosenDensity : ceiling;
+
+  const chooseFunnel = useCallback((next: FunnelState) => {
+    setFunnel(next);
+    try {
+      window.localStorage.setItem(FUNNEL_KEY, next);
+    } catch {
+      /* Private windows and blocked storage — the choice holds for this
+         visit, only remembering it fails. */
+    }
   }, []);
 
   /*
@@ -4304,6 +4349,9 @@ export function MapExplorerView() {
                in the address any more. */
             density={density}
             onDensityChange={chooseDensity}
+            ceiling={ceiling}
+            funnel={funnel}
+            onFunnelChange={chooseFunnel}
             share={{
               filters: shareFilters,
               tab: viewTab,

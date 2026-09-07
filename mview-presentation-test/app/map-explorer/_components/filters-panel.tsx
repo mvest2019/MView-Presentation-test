@@ -915,7 +915,24 @@ export function FiltersPanel({
   const wasFiltering = useRef(false);
 
   useEffect(() => {
-    if (hasSelection || !wasFiltering.current) return;
+    /*
+     * `searchAloneRef` is the third case, and leaving it out broke the search.
+     *
+     * A lease hit filters the map on its own and ticks no box — that is what
+     * the flag records — so `hasSelection` stays false while the map is very
+     * much filtered. The map's `onApply` is an inline arrow, a new function on
+     * every render, so this effect runs again the moment anything re-renders:
+     * one render after picking "AVERLY" it read "nothing ticked, but we were
+     * filtering" and sent an empty filter. That cleared the filter before the
+     * matched wells came back, so the answer was discarded as stale, the map
+     * never framed the five wells, and the bubbles loaded straight over them.
+     *
+     * Emptying the search box still clears the map — `clearSearch` does it
+     * outright, which is the path that is actually a request to stop.
+     */
+    if (hasSelection || searchAloneRef.current || !wasFiltering.current) {
+      return;
+    }
 
     wasFiltering.current = false;
     setDirty(false);
