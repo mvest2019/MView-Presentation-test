@@ -10,12 +10,13 @@ import { titleCase } from "@/lib/text-case";
  * (requested). All three operator pages now carry one dropdown, imported rather than
  * reproduced, so the style cannot drift between them.
  *
- * WHAT THAT COSTS, since it was a styled listbox with a filter field before: the popup
- * is the operating system's again, so with eighty-odd counties it runs the height of
- * the viewport and looks nothing like the card around it, and there is no longer a way
- * to type to narrow the list. That is the trade the shared style asks for. What it buys
- * back is the platform's own keyboard handling and mobile wheel picker, and no
- * JavaScript at all for the control.
+ * THAT TRADE IS OVER — DEFECTS 160 and 181. This note used to record what sharing the
+ * control cost: "the popup is the operating system's again, so with eighty-odd counties
+ * it runs the height of the viewport and looks nothing like the card around it, and
+ * there is no longer a way to type to narrow the list." QA reported both halves of that
+ * on the comparison page and on mobile, so `SelectControl` is a real listbox now — it
+ * caps its own height, keeps itself inside the viewport, and has the filter field back.
+ * This file did not change to get any of it.
  *
  * WHAT STAYS HERE is everything about counties rather than about dropdowns: the "All
  * counties" sentinel, and the "Andrews County" label format that matches the listing's

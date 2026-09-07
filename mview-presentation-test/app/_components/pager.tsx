@@ -48,6 +48,30 @@ export function Pager({
      Part of the same defect as the slot count below — see `pageSlots`. */
   const numberWidth = Math.max(34, `${pageCount}`.length * 9 + 20);
 
+  /*
+   * THE RUN'S WIDTH IS RESERVED; THE ELLIPSES ARE NOT — DEFECT 172.
+   *
+   * Defect 156's fix kept the pager's footprint constant by rendering a gap slot even
+   * where no pages were skipped, hidden with `invisible`. That held the width, and it
+   * is what defect 172 then rings: `invisible` still occupies its box, so pages 1 and 2
+   * sat either side of a blank the reader reads as a missing number.
+   *
+   * The width does not have to be held by the ellipsis itself. This reserves it on the
+   * RUN — always the widest arrangement the window can produce, five buttons and two
+   * ellipses — and centres whatever actually renders inside it. So an unused gap costs
+   * the same pixels it always did, the card still cannot change height (156), and the
+   * slack lands at the ends of the run as alignment rather than between two numbers as
+   * a hole (172).
+   */
+  const ellipsisWidth = 16;
+  const slotGap = 5;
+  const runWidth =
+    pageCount <= AROUND + 4
+      ? undefined
+      : NUMBER_SLOTS * numberWidth +
+        GAP_SLOTS * ellipsisWidth +
+        (NUMBER_SLOTS + GAP_SLOTS - 1) * slotGap;
+
   return (
     <nav
       aria-label={label}
@@ -69,34 +93,42 @@ export function Pager({
           ← Previous
         </PageButton>
 
-        {slots.map((slot, index) =>
-          slot === "gap" ? (
-            /* A GAP SLOT IS ALWAYS RENDERED, and only sometimes visible. Printing the
-               ellipsis conditionally is what let the run change width; keeping the box
-               and hiding its glyph keeps the footprint identical while never claiming
-               a gap that is not there. `invisible` still occupies its space. */
-            <span
-              key={`gap-${index}`}
-              aria-hidden="true"
-              className={`px-[2px] text-mv-muted ${
-                isRealGap(slots, index) ? "" : "invisible"
-              }`}
-            >
-              …
-            </span>
-          ) : (
-            <PageButton
-              key={slot}
-              onClick={() => onPage(slot)}
-              current={slot === current}
-              disabled={busy && slot !== current}
-              label={`Page ${slot}`}
-              minWidth={numberWidth}
-            >
-              {slot}
-            </PageButton>
-          ),
-        )}
+        {/* The reserved run — see `runWidth`. `justify-center` is what puts the slack
+            at the ends instead of inside the numbers. */}
+        {/* `max-w-full` so the reserved width is a floor the viewport can still
+            override: on a phone the run has to be allowed to wrap rather than push
+            the card wider than the screen. */}
+        <span
+          style={runWidth === undefined ? undefined : { minWidth: runWidth }}
+          className="flex max-w-full flex-wrap items-center justify-center gap-[5px]"
+        >
+          {slots.map((slot, index) =>
+            slot === "gap" ? (
+              /* Rendered ONLY where pages are genuinely skipped. Nothing stands in for
+                 one that is not — the run's reserved width already holds the space. */
+              isRealGap(slots, index) ? (
+                <span
+                  key={`gap-${index}`}
+                  aria-hidden="true"
+                  className="px-[2px] text-mv-muted"
+                >
+                  …
+                </span>
+              ) : null
+            ) : (
+              <PageButton
+                key={slot}
+                onClick={() => onPage(slot)}
+                current={slot === current}
+                disabled={busy && slot !== current}
+                label={`Page ${slot}`}
+                minWidth={numberWidth}
+              >
+                {slot}
+              </PageButton>
+            ),
+          )}
+        </span>
 
         <PageButton
           onClick={() => onPage(current + 1)}
@@ -151,6 +183,10 @@ type Slot = number | "gap";
 /** How many consecutive pages sit between the two gaps. */
 const AROUND = 3;
 
+/** What `pageSlots` returns above the threshold: first + interior + last, and two gaps. */
+const NUMBER_SLOTS = AROUND + 2;
+const GAP_SLOTS = 2;
+
 /**
  * The page run — DEFECT 156, "after some pages table height increase".
  *
@@ -168,10 +204,12 @@ const AROUND = 3;
  *
  * SO THE COUNT IS NOW FIXED. Above the threshold this always returns exactly seven
  * slots — first, gap, three consecutive, gap, last — with the interior run clamped so
- * it never slides off either end. A gap that spans nothing renders as an invisible
- * placeholder rather than being dropped, so the width is the same whether or not it
- * has anything to say. Below the threshold every page is listed, which is likewise
- * constant for that table.
+ * it never slides off either end. Below the threshold every page is listed, which is
+ * likewise constant for that table.
+ *
+ * A GAP THAT SPANS NOTHING IS NOT DRAWN, and does not need to be: the width it used to
+ * hold is reserved on the run instead — see `runWidth`, and defect 172 for why the
+ * invisible placeholder that used to sit here had to go.
  *
  * The window still moves with the reader and the ellipses still appear exactly where
  * pages are genuinely skipped; only the footprint stopped changing.

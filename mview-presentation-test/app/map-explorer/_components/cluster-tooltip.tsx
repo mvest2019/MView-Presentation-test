@@ -20,6 +20,10 @@ const MIX_COLOURS = {
   oil: "#12a13f",
   gas: "#e2231a",
   oilGas: "#b45309",
+  /* No stream of its own: dry holes, injection and disposal, permitted
+     locations, plugged wells. Grey, because the Commission gives them no
+     colour and inventing a fourth would read as a fourth product. */
+  other: "#98a5a0",
 } as const;
 
 type ClusterTooltipProps = {
@@ -46,11 +50,10 @@ type ClusterTooltipProps = {
  * it goes on, so an estimate is enough — and it must not be measured, because
  * measuring means rendering it in the wrong place first and moving it.
  */
-const CARD_HEIGHT = 176;
+const CARD_HEIGHT = 196;
 
 /** The card's own width, for holding it inside the map near the edges. */
 const CARD_WIDTH = 228;
-
 
 export function ClusterTooltip({
   cluster,
@@ -73,6 +76,18 @@ export function ClusterTooltip({
       label: "Oil / gas",
       value: cluster.oilGas,
       share: cluster.oilGasShare,
+    },
+    /*
+     * The rest of the bubble. Without it the three rows summed to less than
+     * the headline — 50,046 of 58,732 wells, with the missing 8,686 nowhere
+     * on the card. Shown even at zero, so the four rows are the same four
+     * every time and the eye can compare bubbles without re-reading labels.
+     */
+    {
+      key: "other",
+      label: "Other",
+      value: cluster.other,
+      share: cluster.otherShare,
     },
   ] as const;
 
@@ -115,17 +130,14 @@ export function ClusterTooltip({
           <div
             className="mt-[9px] h-[6px] overflow-hidden rounded-full bg-mv-line"
             role="img"
-            aria-label={`${cluster.oilShare}% oil, ${cluster.gasShare}% gas, ${cluster.oilGasShare}% oil and gas`}
+            aria-label={`${cluster.oilShare}% oil, ${cluster.gasShare}% gas, ${cluster.oilGasShare}% oil and gas, ${cluster.otherShare}% other`}
             style={{ backgroundImage: mixGradient(mix) }}
           />
         </div>
 
         <dl className="px-[14px] py-[9px] text-[11.5px] leading-none">
           {mix.map(({ key, label, value, share }) => (
-            <div
-              key={key}
-              className="flex items-center gap-2 py-[4px]"
-            >
+            <div key={key} className="flex items-center gap-2 py-[4px]">
               <span
                 aria-hidden="true"
                 className="h-[7px] w-[7px] shrink-0 rounded-full"

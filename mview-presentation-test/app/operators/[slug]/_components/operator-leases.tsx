@@ -13,8 +13,14 @@ import {
   type LeaseRecord,
 } from "@/lib/operator-leases-api";
 import { titleCase } from "@/lib/text-case";
+import { GAS_UNIT, OIL_UNIT } from "@/lib/operator-activity-api";
+import {
+  CANONICAL_GAS_UNIT,
+  CANONICAL_OIL_UNIT,
+  formatCanonicalVolume,
+} from "@/lib/operator-volume-units";
 
-import { LockedValue } from "./gated-figures";
+import { LockedCell, LockedColumnsNotice } from "./gated-figures";
 import { LeaseWells } from "./lease-wells";
 import { TableSkeletonRows } from "./table-skeleton";
 import { usePagedResource } from "./use-paged-resource";
@@ -72,9 +78,18 @@ import { usePagedResource } from "./use-paged-resource";
 const EM_DASH = "—";
 const COLUMNS = 5;
 
-/** A volume, or the dash — never a fabricated zero. */
-const volume = (value: number | null) =>
-  value === null ? EM_DASH : value.toLocaleString("en-US");
+/**
+ * A volume in the profile's own units, or the dash — never a fabricated zero.
+ *
+ * DEFECT 147 — `/operators/leases` reports raw barrels and Mcf, and the rest of the
+ * page is in thousands of barrels and millions of cubic feet. Printed as sent, one
+ * lease read 7,676,866 against a county's 714.982 and an operator total of
+ * 1,907,873.826: three true figures at three magnitudes, on one screen, with nothing
+ * saying so. Converted here, at the display boundary — see `lib/operator-volume-units.ts`
+ * for why not in the API layer, and why an unrecognised unit is left alone.
+ */
+const volume = (value: number | null, declaredUnit: string) =>
+  value === null ? EM_DASH : formatCanonicalVolume(value, declaredUnit).text;
 
 export function OperatorLeases({
   operatorNumber,
@@ -192,7 +207,16 @@ export function OperatorLeases({
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search by Lease Name or Lease Number…"
-                className={`w-full rounded-xl border bg-white py-[13px] pl-11 pr-[14px] text-[15px] text-mv-ink outline-none transition-colors placeholder:text-mv-placeholder hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)] ${CONTROL_TINT}`}
+                /* DEFECT 179 — the same defect as 120 on the directory, one page
+                   along and never fixed here: `py-[13px]` at 15px made this 48px
+                   against the county filter's 44px, so the two sat at different
+                   heights on one row. `min-h-[44px]` with `py-2` matches
+                   `SelectControl` exactly.
+
+                   DEFECT 193 — 16px below `sm` so mobile Safari does not zoom the
+                   page in when this is focused; 14px from `sm` up, which is what
+                   keeps it level with the control beside it. */
+                className={`min-h-[44px] w-full rounded-xl border bg-white py-2 pl-11 pr-[14px] text-base text-mv-ink outline-none transition-colors placeholder:text-mv-placeholder hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)] sm:text-sm ${CONTROL_TINT}`}
               />
             </div>
 
@@ -209,7 +233,10 @@ export function OperatorLeases({
               }}
               className="min-w-[180px] max-[767px]:min-w-full"
             >
-              <option value="">Counties</option>
+              {/* DEFECT 180 — "Counties" read as a category heading rather than as the
+                  option it is, so a reader who had narrowed to one county could not tell
+                  which entry took them back. "All Counties" names the value. */}
+              <option value="">All Counties</option>
               {/* DEFECT 132 — the control is already labelled "Counties"; the word
                   repeated on every option was noise the snap rings row after row. */}
               {countyOptions.map((name) => (
@@ -227,6 +254,12 @@ export function OperatorLeases({
           </div>
         </div>
 
+        {/* DEFECT 188 — see the county table. One notice on the card, not a link in
+            every withheld cell. */}
+        {leases.locked && leases.rows.length > 0 ? (
+          <LockedColumnsNotice what="Per-lease oil and gas" />
+        ) : null}
+
         <div className="overflow-x-auto">
           <table className="w-full min-w-[620px] border-separate border-spacing-0 text-[13.5px]">
             <caption className="sr-only">
@@ -237,12 +270,19 @@ export function OperatorLeases({
                 {(
                   [
                     ["Lease Name", null, "left"],
-                    ["Lease Number", null, "left"],
+                    /* DEFECT 178 — a lease number is a figure and belongs on the
+                       right, with the two volumes. Left-aligned it read as a second
+                       name column, and ragged-right digits of different lengths
+                       cannot be compared down the column at all. */
+                    ["Lease Number", null, "right"],
                     ["County", null, "left"],
                     /* DEFECT 141 — uppercase, matching every other unit on the
-                       page. The snap rings these two headers. */
-                    ["Oil Produced", "BBL", "right"],
-                    ["Gas Produced", "MCF", "right"],
+                       page. The snap rings these two headers.
+                       DEFECT 147 — and the CANONICAL unit, not this endpoint's own
+                       BBL/MCF: the cells are converted, so the header names what is
+                       actually in them. */
+                    ["Oil Produced", CANONICAL_OIL_UNIT, "right"],
+                    ["Gas Produced", CANONICAL_GAS_UNIT, "right"],
                   ] as const
                 ).map(([label, unit, align]) => (
                   <th
@@ -330,7 +370,8 @@ export function OperatorLeases({
                           {titleCase(lease.leaseName)}
                         </button>
                       </th>
-                      <td className={`${td} tabular-nums`}>
+                      {/* DEFECT 178 — right, matching its header. */}
+                      <td className={`${td} text-right tabular-nums`}>
                         {lease.leaseNumber}
                       </td>
                       <td className={td}>{titleCase(lease.county)}</td>
@@ -340,16 +381,16 @@ export function OperatorLeases({
                           no absence here to infer the gate from (§4 rule 2). */}
                       <td className={`${td} text-right tabular-nums`}>
                         {leases.locked ? (
-                          <LockedValue label="Oil produced" width="w-[52px]" />
+                          <LockedCell label="Oil produced" width="w-[52px]" />
                         ) : (
-                          volume(lease.oil)
+                          volume(lease.oil, OIL_UNIT)
                         )}
                       </td>
                       <td className={`${td} text-right tabular-nums`}>
                         {leases.locked ? (
-                          <LockedValue label="Gas produced" width="w-[52px]" />
+                          <LockedCell label="Gas produced" width="w-[52px]" />
                         ) : (
-                          volume(lease.gas)
+                          volume(lease.gas, GAS_UNIT)
                         )}
                       </td>
                     </tr>

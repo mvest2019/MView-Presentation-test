@@ -50,7 +50,21 @@ export function FootprintMap({
     y: number;
   } | null>(null);
 
-  function onPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+  /**
+   * Read the county under the pointer, and show its figures.
+   *
+   * DEFECT 190 — "in map click on any county the popup or tooltip is not shown for
+   * mobile and ipad". This was wired to `onPointerMove` alone, and a touch screen has
+   * no hover: a tap fires `pointerdown` and `pointerup` with no movement between them,
+   * so nothing ever called this and the tooltip was mouse-only. Every figure the map
+   * carries was unreachable on the devices most likely to be looking at it.
+   *
+   * The same handler now runs on `pointerdown` as well, which is the tap. Nothing
+   * changes for a mouse — a click already follows a move over the same county, so it
+   * recomputes the identical tooltip — and a pen behaves as a touch. See the caller
+   * for how a tap outside a county dismisses it.
+   */
+  function showCountyAt(event: React.PointerEvent<HTMLDivElement>) {
     const path = (event.target as Element).closest("path[data-county]");
     if (!path) {
       setHover(null);
@@ -102,8 +116,18 @@ export function FootprintMap({
       {/* `metric-gas` is what the server-rendered CSS keys the second fill off. */}
       <div
         className={`relative px-3 pb-3 pt-2 ${metric === "gas" ? "metric-gas" : ""}`}
-        onPointerMove={onPointerMove}
-        onPointerLeave={() => setHover(null)}
+        onPointerMove={showCountyAt}
+        /* DEFECT 190 — the tap. `showCountyAt` clears the tooltip when the tap lands
+           outside any county, so tapping the sea dismisses it and there is no state
+           a touch reader can get stuck in. */
+        onPointerDown={showCountyAt}
+        /* MOUSE ONLY — a touch pointer ceases to exist on lift, so the browser fires
+           `pointerleave` on the same tap that opened the tooltip and it would flash and
+           vanish. On touch the tooltip stays until the next tap moves or dismisses it;
+           `showCountyAt` clears it when that tap lands outside a county. */
+        onPointerLeave={(event) => {
+          if (event.pointerType === "mouse") setHover(null);
+        }}
       >
         {children}
 

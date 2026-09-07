@@ -35,6 +35,7 @@ import { resolveOperatorSlug } from "@/lib/operator-slug-api";
 import { TEXAS_COUNTY_PATHS, TEXAS_VIEWBOX } from "@/lib/texas-county-paths";
 
 import { FootprintMap } from "./_components/footprint-map";
+import { LinkPending } from "./_components/link-pending";
 import { getOperatorCounties } from "@/lib/operator-api";
 import { fetchOperatorDetails } from "@/lib/operator-details-api";
 import {
@@ -47,6 +48,7 @@ import {
   GatedFigure,
   GatedFigures,
   GatedPill,
+  SignedOutOnly,
 } from "./_components/gated-figures";
 import { OperatorLeases } from "./_components/operator-leases";
 import { OperatorWhatChanged } from "./_components/operator-what-changed";
@@ -791,7 +793,12 @@ export default async function OperatorDetailRoute({
           </section>
         )}
 
-        {/* ---- 10 · CTA ---- */}
+        {/* ---- 10 · CTA ----
+            DEFECT 199 — for signed-out readers only. This band asks for a free account,
+            and a member already has one; it was being shown to them at the foot of every
+            operator profile. `SignedOutOnly` reads the gate the page already resolves
+            for its seven withheld figures, so this costs no extra request. */}
+        <SignedOutOnly>
         <section className="pt-[26px]">
           <div className="flex flex-wrap items-center justify-between gap-5 rounded-2xl bg-[linear-gradient(120deg,var(--color-mv-forest),var(--color-mv-night))] px-[26px] py-6 shadow-mv max-[560px]:px-5">
             <div className="min-w-[260px] flex-1">
@@ -819,6 +826,7 @@ export default async function OperatorDetailRoute({
             </Link>
           </div>
         </section>
+        </SignedOutOnly>
       </div>
       </div>
     </GatedFigures>
@@ -1069,11 +1077,15 @@ function RelatedCard({ peer }: { peer: RelatedOperator }) {
   }
 
   return (
+    /* `relative` for `LinkPending`'s bar, which is pinned to the card's bottom edge —
+       DEFECT 198. The bar marks THIS card while its profile loads; the route's
+       `loading.tsx` covers the page, but it cannot say which of the four was pressed. */
     <Link
       href={`/operators/${peer.slug}`}
-      className={`${shell} !no-underline transition-[transform,box-shadow,border-color] hover:-translate-y-px hover:border-mv-mint-line hover:shadow-mv focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep`}
+      className={`${shell} relative !no-underline transition-[transform,box-shadow,border-color] hover:-translate-y-px hover:border-mv-mint-line hover:shadow-mv focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep`}
     >
       {inner}
+      <LinkPending />
     </Link>
   );
 }
