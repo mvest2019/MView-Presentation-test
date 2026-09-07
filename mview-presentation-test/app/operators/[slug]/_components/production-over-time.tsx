@@ -4,10 +4,19 @@
    and had no other caller. */
 import { Droplet, Lock } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { cardTitleClass } from "@/app/_components/typography";
 import { titleCase } from "@/lib/text-case";
+import type { ProductionYear } from "@/lib/operator-production-graph";
+import { toCanonicalVolume } from "@/lib/operator-volume-units";
 
 import { ALL_COUNTIES, CountyFilter } from "./county-filter";
 import { useProductionGraph, type YearRange } from "./use-production-graph";
@@ -59,10 +68,17 @@ import { YearBrush } from "./year-brush";
  * EACH AXIS CARRIES ITS OWN UNIT, and can only do so because each series now has its
  * own axis (defect 146). While oil and gas shared one y-axis it could carry no unit
  * honestly — they arrive in DIFFERENT units — and the "MM" suffix that used to sit
- * there papered over exactly that. The caption above each axis is read from the
- * response, so it follows the endpoint when a county selection rescales it from
- * MBBL/MMCF to MMBBL/BCF (defect 147). Units also stay where they belong to a single
+ * there papered over exactly that. Units also stay where they belong to a single
  * series: the summary cards, the tooltip rows and the subtitle.
+ *
+ * THE UNIT NO LONGER CHANGES UNDER THE READER — DEFECT 147. This endpoint answers
+ * MBBL/MMCF for All counties and MMBBL/BCF for a single county, so picking a county
+ * silently rescaled both axes by a thousand; an earlier pass made the axis captions
+ * follow it, which named the change without making the two comparable, and left the
+ * chart disagreeing with the county and lease tables underneath it as well. Every
+ * value here is now converted into the profile's one convention on the way in — see
+ * `lib/operator-volume-units.ts` — and the captions name that. A unit the converter
+ * does not recognise is still passed through and printed as the endpoint spelled it.
  *
  * THE PLOT IS ALWAYS AN AREA. The line/area toggle is gone on request, so the fill is
  * unconditional rather than a mode nothing can switch. The subtitle and the footnote
@@ -95,6 +111,75 @@ const PILL_LIMIT = VIEW.width - AXIS_RIGHT - 8;
  */
 const PILL_CHAR = 8.4;
 const PILL_PAD = 11;
+
+/** An end pill's drawn height, and the least clear air between two of them. */
+const PILL_HEIGHT = 30;
+const PILL_MIN_GAP = 34;
+
+/**
+ * The y-scale's ceiling: a round number a little above the series' peak — DEFECT 171.
+ *
+ * TWO THINGS COME OUT OF IT. The peak is no longer drawn ON the top edge of the plot,
+ * which is what made a single-year or flat county read as an empty chart — every point
+ * was the peak, so the whole series lay along the top rule with nothing under it. And
+ * the four gridlines land on figures a reader can hold: 125,000 rather than 102,359.75.
+ *
+ * `HEADROOM` is what guarantees the first of those. Rounding alone does not: a peak
+ * that is already a round number rounds to itself and touches the ceiling again.
+ *
+ * THE LADDER IS FINER THAN THE USUAL 1/2/5. That set would take a peak of 100,000 all
+ * the way to 200,000 and spend half the plot on empty space. Every rung here still
+ * divides by four into a terminating decimal, which is what `step` needs — it is the
+ * ceiling over four, and a recurring gridline label would be worse than an ugly one.
+ */
+const HEADROOM = 1.08;
+
+/**
+ * A y-axis tick label — DEFECT 173, and the other half of 171.
+ *
+ * "The values get overlapping." The gridline labels used to be printed in full:
+ * `Math.round(value).toLocaleString()`, so a large operator's top tick read
+ * "1,000,000" — about 63px at 13px, in a right-hand gutter 62px wide. It ran into the
+ * end pills beside it and past the viewBox, which the SVG's `overflow-visible` then
+ * painted over the card's own padding rather than clipping.
+ *
+ * ROUNDING THE CEILING MADE THAT WORSE BEFORE IT MADE IT BETTER. `niceCeiling` moves a
+ * peak of 818,878 up to 1,000,000 — a rounder number, and two characters longer. Fixing
+ * 171 without this would have traded a flat chart for a crowded axis.
+ *
+ * So a large tick is abbreviated, which is the ordinary convention for a chart axis and
+ * takes the worst case from nine characters to two. Small volumes are untouched: an
+ * operator whose whole history is 3.5 MBBL needs its decimals, and "3.5" is not long
+ * enough to crowd anything.
+ *
+ * THE AXIS'S TOP DECIDES, NOT THE INDIVIDUAL VALUE — every label on one axis is then
+ * formatted the same way, and mixing "250K" with "500,000" down a single column would
+ * be worse than either alone. Deciding from the STEP instead is the near miss: a
+ * 2,000,000 ceiling has a 500,000 step, which is under the million mark, so the top
+ * label came out "2,000K" — abbreviated into the wrong unit and no shorter for it.
+ */
+function axisTick(value: number, axisTop: number): string {
+  const trim = (n: number) => Number(n.toFixed(2)).toLocaleString("en-US");
+  if (axisTop >= 1_000_000) return `${trim(value / 1_000_000)}M`;
+  if (axisTop >= 1_000) return `${trim(value / 1_000)}K`;
+  // Whole numbers once the axis is coarse enough to separate the lines without
+  // decimals; below that a small-volume operator keeps them.
+  return axisTop >= 400
+    ? Math.round(value).toLocaleString("en-US")
+    : Number(value.toFixed(3)).toLocaleString("en-US");
+}
+
+function niceCeiling(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 1;
+  const padded = value * HEADROOM;
+  const magnitude = 10 ** Math.floor(Math.log10(padded));
+  const scaled = padded / magnitude;
+  const step =
+    [1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find(
+      (candidate) => scaled <= candidate,
+    ) ?? 10;
+  return step * magnitude;
+}
 
 /** The design's two plotted series. BOE is deliberately absent. */
 const SERIES = [
@@ -175,20 +260,62 @@ export function ProductionOverTime({
   });
 
   /**
-   * What the response called this series' figures — `MBBL`, `MMCF`.
+   * What this series' figures are printed in — DEFECT 147.
    *
-   * READ FROM THE RESPONSE, NEVER ASSUMED. The two series are in different units, so
-   * there is no single unit for this chart and nothing may print one. Empty until the
-   * first response lands, and empty if the endpoint ever stops declaring them: an
-   * unlabelled number is recoverable, a confidently wrong label is not.
+   * IT USED TO BE WHATEVER THE RESPONSE DECLARED, and that is the defect: this endpoint
+   * answers MBBL/MMCF for All counties and MMBBL/BCF for a single county, so choosing a
+   * county rescaled both axes by a thousand under the reader. The axis captions named
+   * the new unit, which is the "explicit indicator" the defect offers as its second
+   * option — but knowing the scale changed does not let anyone compare across it, and
+   * the chart's numbers still disagreed with the county table and the lease table
+   * below.
+   *
+   * So the series is converted to the profile's one convention (see
+   * `lib/operator-volume-units.ts`) and this names that. `unitFor` is still derived
+   * from the response rather than hard-coded: a unit the converter does not recognise
+   * is passed through untouched and printed as the endpoint spelled it, so an
+   * unlabelled or unfamiliar figure is never relabelled as something it is not.
    */
-  const unitFor = (key: SeriesKey) =>
-    key === "oil" ? (graph.range?.oilUnit ?? "") : (graph.range?.gasUnit ?? "");
+  const unitFor = (key: SeriesKey) => {
+    const declared =
+      key === "oil" ? (graph.range?.oilUnit ?? "") : (graph.range?.gasUnit ?? "");
+    if (declared === "") return "";
+    return toCanonicalVolume(0, declared).unit;
+  };
+
+  /**
+   * Both series in the page's units — DEFECT 147.
+   *
+   * Applied to `full` as well as `range`, and it has to be: `all` is the year brush's
+   * domain and `data` is what is plotted, and a brush scaled from one convention over a
+   * plot drawn in another would put the handles in the wrong place.
+   */
+  const convertRows = useCallback(
+    (rows: readonly ProductionYear[], oilUnit: string, gasUnit: string) =>
+      rows.map((row) => ({
+        ...row,
+        oil: toCanonicalVolume(row.oil, oilUnit).value,
+        gas: toCanonicalVolume(row.gas, gasUnit).value,
+      })),
+    [],
+  );
 
   /** The full history — the brush's domain, and never narrowed by it. */
-  const all = useMemo(() => graph.full?.rows ?? [], [graph.full]);
+  const all = useMemo(
+    () =>
+      graph.full
+        ? convertRows(graph.full.rows, graph.full.oilUnit, graph.full.gasUnit)
+        : [],
+    [graph.full, convertRows],
+  );
   /** The selected range — what is plotted. Straight from the API, not sliced here. */
-  const data = useMemo(() => graph.range?.rows ?? [], [graph.range]);
+  const data = useMemo(
+    () =>
+      graph.range
+        ? convertRows(graph.range.rows, graph.range.oilUnit, graph.range.gasUnit)
+        : [],
+    [graph.range, convertRows],
+  );
 
   /*
    * The brush moves continuously; the request must not. A settled window becomes a
@@ -237,9 +364,25 @@ export function ProductionOverTime({
     const innerHeight = VIEW.height - INSET.top - INSET.bottom;
     const peakOf = (key: SeriesKey) =>
       data.reduce((top, p) => Math.max(top, p[key]), 0) || 1;
+
+    /*
+     * DEFECT 171, THE CEILING HALF.
+     *
+     * The scale used to top out AT the peak, so the highest point in a series was
+     * drawn exactly on `INSET.top` — the top edge of the plot. On a long series that
+     * is one point touching the ceiling and reads fine. On a county with a single
+     * year, or with a flat history, EVERY point is the peak, so the whole series sat
+     * on the top rule with the plot empty beneath it: "a large blank plotting area,
+     * while the Oil and Gas values are displayed only at the top".
+     *
+     * A rounded ceiling above the peak fixes it and improves the ordinary case at the
+     * same time. `niceCeiling` rounds up to a 1/2/2.5/5 × 10ⁿ boundary, which is both
+     * the headroom the flat case needs and what turns the four gridline labels from
+     * "204,719.5" into "250,000" — the axis figures a reader can actually hold.
+     */
     const peaks: Record<SeriesKey, number> = {
-      oil: peakOf("oil"),
-      gas: peakOf("gas"),
+      oil: niceCeiling(peakOf("oil")),
+      gas: niceCeiling(peakOf("gas")),
     };
     const last = data.length - 1 || 1;
     return {
@@ -248,7 +391,18 @@ export function ProductionOverTime({
       peaks,
       // Four gridlines above zero, so the top label is a round-ish readable figure.
       step: (key: SeriesKey) => peaks[key] / 4,
-      x: (i: number) => INSET.left + (innerWidth * i) / last,
+      /*
+       * DEFECT 171, THE WIDTH HALF. A one-point series has no span, so `x` returned
+       * `INSET.left` for it: the point, the area fill and the line all collapsed onto
+       * the left edge, and a path of one command draws nothing at all. Centred
+       * instead — a single year is a fact about the whole plot, not about its left
+       * margin — and `linePath` gives it a short rule to stand on so the series is
+       * visible as a series rather than as a stray dot.
+       */
+      x: (i: number) =>
+        data.length === 1
+          ? INSET.left + innerWidth / 2
+          : INSET.left + (innerWidth * i) / last,
       y: (key: SeriesKey, v: number) =>
         INSET.top + innerHeight * (1 - v / peaks[key]),
     };
@@ -294,13 +448,27 @@ export function ProductionOverTime({
 
   const baseline = INSET.top + geometry.innerHeight;
 
-  const linePath = (key: SeriesKey) =>
-    data
+  /** Half the width of the rule a single-point series is drawn as — DEFECT 171. */
+  const LONE_POINT_HALF_WIDTH = 38;
+
+  const linePath = (key: SeriesKey) => {
+    /* One year is still a series, and `M x y` on its own paints nothing — an SVG path
+       needs a second command before it has any length to stroke. A short horizontal
+       rule through the point says "this is the level, across the one year there is",
+       which is what the chart is for. */
+    if (data.length === 1) {
+      const only = data[0];
+      const x = geometry.x(0);
+      const y = geometry.y(key, only[key]).toFixed(1);
+      return `M${(x - LONE_POINT_HALF_WIDTH).toFixed(1)} ${y} L${(x + LONE_POINT_HALF_WIDTH).toFixed(1)} ${y}`;
+    }
+    return data
       .map(
         (p, i) =>
           `${i === 0 ? "M" : "L"}${geometry.x(i).toFixed(1)} ${geometry.y(key, p[key]).toFixed(1)}`,
       )
       .join(" ");
+  };
 
   /* ---- interaction ---- */
 
@@ -339,6 +507,20 @@ export function ProductionOverTime({
    */
 
   const onPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
+    /*
+     * DEFECT 190 — "and for chart also not showing the tooltip (for mobile and ipad)".
+     *
+     * The tooltip was set from `onPointerMove` only, and a touch screen has no hover:
+     * a tap fires down and up with nothing in between, and the `touch-pan-y` on this
+     * SVG hands vertical drags to the browser so there is no move to read either. So
+     * the chart's values were mouse-only — on the device where reading the numbers off
+     * the plot by eye is hardest.
+     *
+     * Setting hover on the press is the tap. It costs a mouse nothing: a click is
+     * already preceded by a move over the same year, so this recomputes the same index.
+     */
+    setHover(pointerIndex(event));
+
     if (!zoom) return;
     dragFrom.current = {
       x: event.clientX,
@@ -368,6 +550,35 @@ export function ProductionOverTime({
 
   const tinted = (colour: string, amount: string) =>
     `color-mix(in srgb, ${colour} ${amount}, white)`;
+
+  /* ---- first paint ----
+     DEFECTS 194 AND 176, WHICH ARE ONE BUG SEEN FROM TWO SIDES.
+
+     194: "the full chart shell (Oil/Gas legend cards, 'All counties' dropdown, skeleton
+     chart) renders first, then is replaced by the 'Register for free' gate." That is
+     exactly what happened: `locked` is a property of the RESPONSE, so before the
+     response there is no way to know, and the component fell through to the whole card
+     while it waited. A signed-out reader was shown a chart being prepared for them and
+     then had it taken away — which reads as a fault, not as a gate.
+
+     176: "in chart show white space for some time" is the same seconds, described by a
+     reader who was entitled to the chart. The shell it drew was mostly the empty plot
+     area with one small shimmer bar in the middle of it.
+
+     So nothing that presumes an answer is drawn until there is one. `ProductionSkeleton`
+     commits to the card's size and to the fact that something is loading, and to
+     nothing else: no legend cards carrying units it does not know, no county filter, no
+     axis captions. Whichever answer arrives — the chart, the gate, or "no production
+     reported" — replaces a placeholder rather than a promise.
+
+     ONLY ON FIRST PAINT. Once anything has resolved, the shell stays put through every
+     later request: a reader who has just used the county filter must not have it
+     removed from under them, and the chart dims in place instead (see `aria-busy`
+     below). Derived during render rather than in an effect, the same pattern the year
+     brush and the filings table use. */
+  const [settled, setSettled] = useState(false);
+  if (!settled && graph.status !== "loading") setSettled(true);
+  if (!settled) return <ProductionSkeleton />;
 
   /* ---- no account ----
      BEFORE every other state, and the ordering is the point: a locked read returns no
@@ -418,11 +629,18 @@ export function ProductionOverTime({
       <div className="mt-4 grid grid-cols-2 gap-[14px] max-[860px]:grid-cols-1">
         {SERIES.map((series) => {
           // The API's own total over the selected range, not a figure summed here and
-          // not a single year's value.
-          const value =
+          // not a single year's value — converted into the page's convention, like the
+          // series it summarises (defect 147). Converting the total rather than adding
+          // up the converted rows keeps it the API's sum: the same figure, restated.
+          const raw =
             series.key === "oil"
               ? (graph.range?.totalOil ?? 0)
               : (graph.range?.totalGas ?? 0);
+          const declared =
+            series.key === "oil"
+              ? (graph.range?.oilUnit ?? "")
+              : (graph.range?.gasUnit ?? "");
+          const value = toCanonicalVolume(raw, declared).value;
 
           return (
             <div
@@ -545,9 +763,22 @@ export function ProductionOverTime({
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={() => (dragFrom.current = null)}
-              onPointerLeave={() => {
+              onPointerLeave={(event) => {
                 dragFrom.current = null;
-                setHover(null);
+                /*
+                 * DEFECT 190, THE HALF THAT WOULD HAVE UNDONE THE OTHER HALF.
+                 *
+                 * A touch pointer CEASES TO EXIST when the finger lifts, so the browser
+                 * fires `pointerleave` immediately after `pointerup` — on the same tap.
+                 * Clearing here unconditionally would have set the hover on
+                 * `pointerdown` and cleared it milliseconds later, so the tooltip would
+                 * flash and vanish and the defect would look unfixed.
+                 *
+                 * A MOUSE LEAVING HAS ACTUALLY LEFT, and its tooltip should go with it.
+                 * So the clear is for mouse only; on touch the tooltip stays until the
+                 * next tap moves it, which is what a reader without a cursor needs.
+                 */
+                if (event.pointerType === "mouse") setHover(null);
               }}
               onDoubleClick={() => {
                 setZoom(null);
@@ -593,14 +824,10 @@ export function ProductionOverTime({
                    it by construction. */
                 const y = geometry.y("oil", geometry.step("oil") * i);
                 const tick = (key: SeriesKey) => {
-                  const step = geometry.step(key);
                   if (i === 0) return "0";
-                  const value = step * i;
-                  // Rounded only where the step is large enough for whole numbers to
-                  // separate the lines; a small-volume operator keeps its decimals.
-                  return step >= 100
-                    ? Math.round(value).toLocaleString("en-US")
-                    : exact(value);
+                  /* `peaks[key]` is the axis's top — the ceiling `niceCeiling` chose.
+                     It is what picks the unit, so all four labels agree. */
+                  return axisTick(geometry.step(key) * i, geometry.peaks[key]);
                 };
                 return (
                   <g key={i}>
@@ -698,8 +925,22 @@ export function ProductionOverTime({
 
               {SERIES.map((series) => (
                 <g key={series.key}>
+                  {/* The area under the line: the line itself, then down to the
+                      baseline at each end and closed. The single-point case closes
+                      under its rule rather than under a zero-width span, so the fill
+                      is the same block the line sits on — see `linePath`. */}
                   <path
-                    d={`${linePath(series.key)} L${geometry.x(data.length - 1).toFixed(1)} ${baseline.toFixed(1)} L${geometry.x(0).toFixed(1)} ${baseline.toFixed(1)} Z`}
+                    d={(() => {
+                      const rightX =
+                        data.length === 1
+                          ? geometry.x(0) + LONE_POINT_HALF_WIDTH
+                          : geometry.x(data.length - 1);
+                      const leftX =
+                        data.length === 1
+                          ? geometry.x(0) - LONE_POINT_HALF_WIDTH
+                          : geometry.x(0);
+                      return `${linePath(series.key)} L${rightX.toFixed(1)} ${baseline.toFixed(1)} L${leftX.toFixed(1)} ${baseline.toFixed(1)} Z`;
+                    })()}
                     fill={`url(#${gradientId}-${series.key})`}
                   />
                   <path
@@ -722,68 +963,124 @@ export function ProductionOverTime({
                     />
                   ))}
 
-                  {/*
-                    The end pill.
-
-                    DEFECT 150 — this was a FIXED 82px rect with its text centred
-                    inside it, so the pill fitted the number only by luck. `exact()`
-                    prints the API's own figure in full, thousands separators and up
-                    to three decimals included, and "1,444,012.261" is thirteen
-                    characters — roughly 104px at this weight and size. The text
-                    overflowed the rect symmetrically and ran past `VIEW.width`,
-                    where the SVG viewport clips it: the last year's value, which is
-                    the single number a reader comes to this chart for, was cut off
-                    at the card's edge.
-
-                    THE PILL IS NOW SIZED TO ITS TEXT and pinned so its right edge
-                    can never leave the viewBox. `PILL_CHAR` is a measured advance
-                    width for these digits at 14px/700 rather than a guess — SVG has
-                    no intrinsic sizing to lean on here, and a `<foreignObject>` for
-                    two labels would cost more than it returns.
-
-                    IT PREFERS THE RESERVED GUTTER and only encroaches on the plot
-                    when the number genuinely does not fit in it, which is the right
-                    trade: a pill overlapping a few pixels of empty right-hand plot
-                    is legible, and a clipped one is not.
-                  */}
-                  {(() => {
-                    const lastPoint = data.at(-1);
-                    if (!lastPoint) return null;
-                    const label = exact(lastPoint[series.key]);
-                    const y = geometry.y(series.key, lastPoint[series.key]);
-                    const width = Math.max(
-                      56,
-                      label.length * PILL_CHAR + PILL_PAD * 2,
-                    );
-                    const x = Math.min(
-                      VIEW.width - INSET.right + 10,
-                      PILL_LIMIT - width,
-                    );
-                    return (
-                      <g>
-                        <rect
-                          x={x}
-                          y={y - 15}
-                          width={width}
-                          height="30"
-                          rx="15"
-                          fill={series.colour}
-                        />
-                        <text
-                          x={x + width / 2}
-                          y={y + 5}
-                          textAnchor="middle"
-                          fontSize="14"
-                          fontWeight="700"
-                          fill="#fff"
-                        >
-                          {label}
-                        </text>
-                      </g>
-                    );
-                  })()}
                 </g>
               ))}
+
+              {/*
+                THE END PILLS, DRAWN TOGETHER RATHER THAN ONE PER SERIES.
+
+                DEFECT 150 — each was a FIXED 82px rect with its text centred inside
+                it, so the pill fitted the number only by luck. `exact()` prints the
+                API's own figure in full, thousands separators and up to three decimals
+                included, and "1,444,012.261" is thirteen characters — roughly 104px at
+                this weight and size. The text overflowed the rect symmetrically and ran
+                past `VIEW.width`, where the SVG viewport clips it: the last year's
+                value, the single number a reader comes to this chart for, was cut off
+                at the card's edge. Each pill is sized to its text now, `PILL_CHAR`
+                being a measured advance width for these digits rather than a guess, and
+                pinned so its right edge can never leave the viewBox.
+
+                DEFECT 173 — "the values get overlapping". THAT IS WHY THIS BLOCK IS NO
+                LONGER INSIDE `SERIES.map`. Each pill was placed from its own series'
+                final value and knew nothing about the other, so wherever oil and gas
+                finished at a similar height on their own scales — which is common, the
+                two scales being independent, and certain on a flat or single-year
+                county where both sit at the ceiling — the two pills were drawn at the
+                same y, one over the other, and the number underneath was unreadable.
+
+                Placed as a pair, they can be separated: when the gap is under
+                `PILL_MIN_GAP` the higher one moves up and the lower one moves down by
+                the shortfall, split between them so neither is displaced further than
+                it has to be, and both are then clamped inside the plot. They are still
+                anchored to their series by colour and by the leader line back to the
+                final point, which is what carries the association once a pill has been
+                nudged off its own value's height.
+              */}
+              {(() => {
+                const lastPoint = data.at(-1);
+                if (!lastPoint) return null;
+
+                const pills = SERIES.map((series) => {
+                  const label = exact(lastPoint[series.key]);
+                  const width = Math.max(
+                    56,
+                    label.length * PILL_CHAR + PILL_PAD * 2,
+                  );
+                  return {
+                    key: series.key,
+                    colour: series.colour,
+                    label,
+                    width,
+                    /* Where the pill points at: the value's own height, kept even when
+                       the pill itself is moved off it. */
+                    anchorY: geometry.y(series.key, lastPoint[series.key]),
+                    y: geometry.y(series.key, lastPoint[series.key]),
+                    x: Math.min(
+                      VIEW.width - INSET.right + 10,
+                      PILL_LIMIT - width,
+                    ),
+                  };
+                });
+
+                const [first, second] = pills;
+                const gap = Math.abs(first.y - second.y);
+                if (gap < PILL_MIN_GAP) {
+                  const push = (PILL_MIN_GAP - gap) / 2;
+                  const upper = first.y <= second.y ? first : second;
+                  const lower = upper === first ? second : first;
+                  upper.y -= push;
+                  lower.y += push;
+                }
+
+                /* Inside the plot, whatever the nudge asked for. A pill pushed past the
+                   top or bottom edge would be clipped by the viewBox, which is the
+                   defect it was moved to avoid. */
+                const half = PILL_HEIGHT / 2;
+                for (const pill of pills) {
+                  pill.y = Math.max(
+                    INSET.top + half,
+                    Math.min(baseline - half, pill.y),
+                  );
+                }
+
+                return pills.map((pill) => (
+                  <g key={pill.key}>
+                    {/* Only where the pill has actually been moved — a leader line
+                        from a pill sitting on its own value is a line of zero length
+                        drawn over the point it starts at. */}
+                    {Math.abs(pill.y - pill.anchorY) > 1 ? (
+                      <line
+                        x1={geometry.x(data.length - 1)}
+                        y1={pill.anchorY}
+                        x2={pill.x}
+                        y2={pill.y}
+                        stroke={pill.colour}
+                        strokeWidth="1"
+                        strokeDasharray="3 3"
+                        opacity="0.55"
+                      />
+                    ) : null}
+                    <rect
+                      x={pill.x}
+                      y={pill.y - half}
+                      width={pill.width}
+                      height={PILL_HEIGHT}
+                      rx={half}
+                      fill={pill.colour}
+                    />
+                    <text
+                      x={pill.x + pill.width / 2}
+                      y={pill.y + 5}
+                      textAnchor="middle"
+                      fontSize="14"
+                      fontWeight="700"
+                      fill="#fff"
+                    >
+                      {pill.label}
+                    </text>
+                  </g>
+                ));
+              })()}
             </svg>
 
             {/* tooltip, positioned over the crosshair */}
@@ -896,6 +1193,56 @@ export function ProductionOverTime({
  * Texas footprint map, and the county and lease lists — all still readable with no
  * account. The volumes inside those lists are not, and this does not say they are.
  */
+/**
+ * The card before anything is known about it — DEFECTS 194 and 176.
+ *
+ * IT CLAIMS ONLY WHAT IS ALREADY TRUE: that this is the production section, that it is
+ * loading, and how much room it will take. The heading is server-known and safe to
+ * print. Everything the old shell drew here was a guess about the answer — legend cards
+ * with units read from a response that had not arrived, a county filter, two axis
+ * captions — and for a signed-out reader every one of them was then withdrawn.
+ *
+ * DRAWN AS A CHART, not as a blank panel with one bar in the middle of it, which is
+ * what read as "white space for some time". Four gridlines and a run of columns of
+ * varying height say "a chart is coming" at a glance, and they occupy the plot, so
+ * there is no large empty area to mistake for a failure. Purely decorative — the whole
+ * block is `aria-hidden` behind one `role="status"` line.
+ */
+function ProductionSkeleton() {
+  /* Fixed heights, not random: a skeleton that reshuffles on every render draws the
+     eye to itself. These are eyeballed against a typical series' silhouette. */
+  const columns = [38, 52, 45, 63, 58, 72, 66, 80, 74, 88, 82, 95];
+
+  return (
+    <div className="rounded-2xl border border-mv-line bg-white px-[22px] py-5 shadow-mv max-[560px]:px-4">
+      <div className="flex items-start gap-[11px]">
+        <span aria-hidden="true" className="mt-[3px] shrink-0 text-mv-green-deep">
+          <Droplet className="h-[19px] w-[19px]" strokeWidth={1.9} />
+        </span>
+        <div className="min-w-0">
+          <h2 className={cardTitleClass}>Production over time</h2>
+          <p className="mt-1 text-[13px] text-mv-muted" role="status">
+            Loading reported annual volumes…
+          </p>
+        </div>
+      </div>
+
+      <div
+        aria-hidden="true"
+        className="mt-4 flex h-[400px] items-end gap-[2.2%] border-b border-mv-line px-1 pb-1 max-[767px]:h-[280px]"
+      >
+        {columns.map((height, index) => (
+          <span
+            key={index}
+            style={{ height: `${height}%` }}
+            className="flex-1 animate-pulse rounded-t-[4px] bg-mv-line-soft"
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function LockedProduction() {
   return (
     <div className="overflow-hidden rounded-2xl border border-mv-line bg-white shadow-mv">

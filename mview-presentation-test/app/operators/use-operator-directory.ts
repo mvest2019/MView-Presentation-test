@@ -192,14 +192,33 @@ const SEARCH_DEBOUNCE_MS = 300;
 const EXPORT_CHUNK = 2000;
 
 /**
- * How many rows one export asks for.
+ * How many rows one export REQUEST asks for.
  *
  * The search endpoint honours it: probed at 10, 100, 1000 and 5000 against a query
  * whose `total_count` is 3,095 — the last returned all 3,095 rows in one response.
- * 5000 therefore covers every filtered result set the listing can produce while
- * staying one request rather than 310 pages of ten.
  */
 const EXPORT_PAGE_SIZE = 5000;
+
+/**
+ * DEFECT 121, THE HALF THAT WAS STILL OPEN.
+ *
+ * This used to be the whole export: one request for 5,000 rows, and whatever came
+ * back was the file. That was written against a filtered set of 3,095, where the cap
+ * was never reached — but "All statuses" is 24,744, so QA got a file with 5,000 rows
+ * in it and a table above it saying 24,744. A truncated export that says nothing about
+ * being truncated is worse than a slow one: the reader has no way to know the tail is
+ * missing.
+ *
+ * So the export pages. `total_count` on the first response says how many there are and
+ * the loop asks for the rest, `EXPORT_PAGE_SIZE` at a time — five requests for the
+ * whole directory, and still exactly one for every filtered set that fits in a page.
+ *
+ * THE CEILING IS A GUARD, NOT A LIMIT. 24,744 is the entire operator table; 60,000 is
+ * comfortably clear of it and stops a runaway `total_count` from asking for pages
+ * forever. If a build ever hits it the file is short, so it is reported rather than
+ * silently accepted — which is the whole point of this defect.
+ */
+const EXPORT_MAX_ROWS = 60000;
 
 /**
  * Hand control back to the browser so it can paint and handle input.
@@ -221,6 +240,7 @@ function yieldToBrowser(): Promise<void> {
 export function useOperatorDirectory({
   playTypes,
   visitorId,
+  isSignedIn,
 }: {
   playTypes: string[];
   /**
@@ -229,6 +249,27 @@ export function useOperatorDirectory({
    * from the cookie, so this value is for visibility, not for trust.
    */
   visitorId: string;
+  /**
+   * Whether a session exists, read server-side in `page.tsx` — DEFECTS 182, 183.
+   *
+   * NOT A GATE. Every lock in the table is the server's decision, carried on the
+   * response; this changes no figure and unlocks nothing. It does two things:
+   *
+   *   182 — the Export button is offered only to a member. A signed-out export is
+   *         already gated field by field, so it produced a file of "Locked" cells; a
+   *         live button that hands back a column of the word "Locked" is a worse
+   *         answer than a button that says what it needs first.
+   *
+   *   183 — it is in the request effect's dependencies, which is what makes signing
+   *         out actually change the table. `signOutAction` is followed by
+   *         `router.refresh()`, which re-renders the server tree and re-runs
+   *         `getSessionUser()` in `page.tsx` — but the rows come from a client fetch,
+   *         and nothing in that fetch's key had changed, so the previous member's
+   *         unlocked results stayed on screen under a header that said Sign in.
+   *         Refetching on the flip is the fix, and it costs one request at the exact
+   *         moment the answer is known to be different.
+   */
+  isSignedIn: boolean;
 }) {
   const [filters, setFilters] = useState<OperatorFilters>(DEFAULT_FILTERS);
   const [page, setPage] = useState<OperatorResultPage>(EMPTY_RESULT_PAGE);
@@ -341,7 +382,10 @@ export function useOperatorDirectory({
     });
 
     return () => controller.abort();
-  }, [filters, reloadNonce, visitorId]);
+    /* `isSignedIn` is a dependency and is deliberately NOT in the payload — the
+       handler reads the session itself. It is here so that signing in or out
+       re-issues the request; see the note on the prop (defect 183). */
+  }, [filters, reloadNonce, visitorId, isSignedIn]);
 
   /**
    * Loading until the first response lands, then only while a request is in
@@ -448,10 +492,9 @@ export function useOperatorDirectory({
    * `Showing 1–10 of 779` exports 779 rows; turning Leases count on adds the
    * column and nothing else.
    *
-   * ONE REQUEST, NOT 310. The endpoint honours a large `pageSize` — probed:
-   * `pageSize: 5000` returns all 3,095 matching rows in a single response with the
-   * same `total_count` — so the export asks for the whole result set at once rather
-   * than paging it ten at a time. `EXPORT_PAGE_SIZE` is the ceiling it asks for.
+   * PAGED IN 5,000s, NOT ten at a time and not one truncated request — see
+   * `EXPORT_MAX_ROWS` for defect 121's second half. `total_count` on the first
+   * response says how far to go.
    *
    * IT GOES THROUGH `/api/operators/search`, WHICH IS WHAT KEEPS THE GATE. That
    * handler pins `member_id` from the session, so a signed-out visitor's export is
@@ -466,30 +509,69 @@ export function useOperatorDirectory({
     setIsExporting(true);
 
     try {
-      const response = await fetch("/api/operators/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        /* The filters on screen, verbatim — `buildOperatorSearchPayload` is the one
-           payload builder, so the export cannot drift from the table. Only the page
-           size differs: the table wants ten, the file wants all of them. */
-        body: JSON.stringify({
-          ...buildOperatorSearchPayload(filters, visitorId),
-          page: 1,
-          pageSize: EXPORT_PAGE_SIZE,
-        }),
-        cache: "no-store",
-      });
+      /* The filters on screen, verbatim — `buildOperatorSearchPayload` is the one
+         payload builder, so the export cannot drift from the table. Only the page
+         size differs: the table wants ten, the file wants all of them. */
+      const base = buildOperatorSearchPayload(filters, visitorId);
 
-      if (!response.ok) throw new Error(`export responded ${response.status}`);
+      const fetchPage = async (pageNumber: number) => {
+        const response = await fetch("/api/operators/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...base,
+            page: pageNumber,
+            pageSize: EXPORT_PAGE_SIZE,
+          }),
+          cache: "no-store",
+        });
+        if (!response.ok) throw new Error(`export responded ${response.status}`);
+        return (await response.json()) as OperatorSearchResponse;
+      };
 
-      const { result } = (await response.json()) as OperatorSearchResponse;
+      const first = await fetchPage(1);
+      const result = [...first.result];
+
+      /* Every page after the first, in order. `total_count` is the endpoint's own
+         answer for this query — the same number the table prints — so the file and
+         the "Showing … of N" line can never disagree about how many there were. */
+      const wanted = Math.min(first.total_count, EXPORT_MAX_ROWS);
+      for (
+        let pageNumber = 2;
+        result.length < wanted && result.length < EXPORT_MAX_ROWS;
+        pageNumber += 1
+      ) {
+        const next = await fetchPage(pageNumber);
+        if (next.result.length === 0) break; // the endpoint ran out before we did
+        result.push(...next.result);
+        await yieldToBrowser();
+      }
+
+      /*
+       * DEFECT 169 — THE UNITS WERE NOWHERE IN THE FILE.
+       *
+       * On screen the unit sits in the column header ("Oil Produced (MBBL)") because
+       * it never varies down the column, and the cells carry the bare figure. The
+       * export copied the cells and not the header, so a spreadsheet of "721,180.666"
+       * did not say whether that was barrels or thousands of barrels — and the two are
+       * a thousandfold apart.
+       *
+       * Read off the rows rather than hard-coded, exactly as the table's own header
+       * does: `toOperatorRows` keeps `oilUnit`/`gasUnit` as the response sent them.
+       * A gated row carries no unit, so the first row with one wins.
+       */
+      const sample = toOperatorRows(result.slice(0, 200));
+      const oilUnit = sample.find((row) => row.oilUnit)?.oilUnit ?? "";
+      const gasUnit = sample.find((row) => row.gasUnit)?.gasUnit ?? "";
+      const withUnit = (label: string, unit: string) =>
+        unit ? `${label} (${unit})` : label;
 
       /* The visible columns, and only those. Rank, name and number are the row's
          identity and are always written — a CSV of figures with no operator on it
          answers nothing. */
       const header = ["Rank", "Operator Name", "Operator No."];
-      if (columns.oil) header.push("Oil Produced");
-      if (columns.gas) header.push("Gas Produced");
+      if (columns.oil) header.push(withUnit("Oil Produced", oilUnit));
+      if (columns.gas) header.push(withUnit("Gas Produced", gasUnit));
       if (columns.cty) header.push("Counties");
       if (columns.leases) header.push("Leases count");
       if (columns.lastProduction) header.push("Last production");
@@ -499,10 +581,9 @@ export function useOperatorDirectory({
       const lines = [header.join(",")];
 
       /*
-       * BUILT IN SLICES, YIELDING BETWEEN THEM. The set is far smaller than the old
-       * 24,744-row dump, but a filter that matches every active operator is still
-       * 3,095 rows, and mapping and joining them in one pass is unbroken main-thread
-       * work. Slicing keeps the page painting while the file is assembled.
+       * BUILT IN SLICES, YIELDING BETWEEN THEM. Mapping and joining 24,744 rows in one
+       * pass is unbroken main-thread work. Slicing keeps the page painting while the
+       * file is assembled.
        */
       for (let start = 0; start < result.length; start += EXPORT_CHUNK) {
         toOperatorRows(result.slice(start, start + EXPORT_CHUNK)).forEach(
@@ -679,5 +760,8 @@ export function useOperatorDirectory({
     clearFilters,
     retry,
     exportCsv,
+    /* Passed straight back out so the toolbar can decide what to offer — DEFECT 182.
+       The hook does not act on it beyond the refetch dependency above. */
+    isSignedIn,
   };
 }

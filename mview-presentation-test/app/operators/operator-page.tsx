@@ -78,14 +78,16 @@ export function OperatorPage({
   /**
    * Whether a session exists, read server-side in `page.tsx`.
    *
-   * Passed straight through to `useOperatorDirectory` for the CSV export and used
-   * nowhere else here. The table's own locks come from the response, not from
-   * this — see the note on the prop there.
+   * Passed through to `useOperatorDirectory`, which uses it for the Export button
+   * (defect 182) and to refetch when the session flips (defect 183). The table's own
+   * locks still come from the response, not from this — see the note on the prop there.
    */
+  isSignedIn,
 }: {
   playTypes: string[];
   counties: string[];
   visitorId: string;
+  isSignedIn: boolean;
 }) {
   const {
     filters,
@@ -110,7 +112,7 @@ export function OperatorPage({
     retry,
     exportCsv,
     isExporting,
-  } = useOperatorDirectory({ playTypes, visitorId });
+  } = useOperatorDirectory({ playTypes, visitorId, isSignedIn });
 
   return (
     <section
@@ -159,11 +161,26 @@ export function OperatorPage({
           >
             {/* `hasError` is tested first on purpose: the previous page's totals
                 are still in state when a request fails, and printing them beside
-                an error would present stale numbers as the current result. */}
+                an error would present stale numbers as the current result.
+
+                DEFECT 187 — AND THE SAME IS TRUE OF A REQUEST THAT IS MERELY SLOW.
+                This used to fall through to the totals whenever `hasLoadedOnce` was
+                set, so changing a filter left "Showing 1–10 of 3,054 operators" above
+                ten skeleton rows for as long as the request took. Those numbers
+                described the result that had just been discarded — the one case where
+                a stale figure is indistinguishable from a fresh one. It is a
+                placeholder now for every request, not just the first: the sentence
+                returns when there is a result to describe. */}
             {hasError ? (
               "Results unavailable"
-            ) : isLoading && !hasLoadedOnce ? (
-              "Loading operators…"
+            ) : isLoading ? (
+              <>
+                <span className="sr-only">Loading operators…</span>
+                <span
+                  aria-hidden="true"
+                  className="inline-block h-[13px] w-[230px] max-w-full animate-pulse rounded-md bg-mv-line-soft align-middle"
+                />
+              </>
             ) : page.total > 0 ? (
               <>
                 <strong className="font-bold text-mv-ink">
@@ -187,6 +204,7 @@ export function OperatorPage({
             onColumnsChange={setColumns}
             onExport={exportCsv}
             isExporting={isExporting}
+            isSignedIn={isSignedIn}
           />
         </div>
 
@@ -203,7 +221,9 @@ export function OperatorPage({
           onRetry={retry}
         />
 
-        {!hasError && <Pager page={page} onPage={goToPage} />}
+        {!hasError && (
+          <Pager page={page} onPage={goToPage} busy={isLoading} />
+        )}
       </div>
     </section>
   );
@@ -330,8 +350,16 @@ function FindBar({
           placeholder="Search by Operator Name or Operator Number…"
           /* DEFECT 120 — `py-[13px]` at 15px text made this 48px against the
              selects' 44px, so the filter row sat crooked. `min-h-[44px]` with the
-             selects' own padding and text size puts every control on one line. */
-          className={`min-h-[44px] w-full rounded-xl border bg-white py-2 pl-11 pr-[14px] text-sm text-mv-ink outline-none transition-colors placeholder:text-mv-placeholder hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)] ${CONTROL_TINT}`}
+             selects' own padding and text size puts every control on one line.
+
+             DEFECT 193 — `text-base` (16px) UP TO `sm`, THEN BACK TO 14px. Mobile
+             Safari zooms the viewport in on any field it focuses below 16px, and it
+             does not zoom back out — so tapping this search box left the reader on a
+             magnified page with the filter row off the right edge. 16px is the
+             threshold, and it only has to hold at the widths where that behaviour
+             exists; from `sm` up the control keeps the 14px it was designed at, which
+             is what keeps it the same height as the selects beside it. */
+          className={`min-h-[44px] w-full rounded-xl border bg-white py-2 pl-11 pr-[14px] text-base text-mv-ink outline-none transition-colors placeholder:text-mv-placeholder hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)] sm:text-sm ${CONTROL_TINT}`}
         />
       </div>
 
@@ -339,13 +367,26 @@ function FindBar({
           filter stays usable even when the request failed and `playTypes` is
           empty. `disabled` in that case would trap a visitor who had already
           picked a play, so the control stays live. */}
+      {/*
+        DEFECT 185 — "SELECT STATUS" DESCRIBED THE CONTROL, NOT THE STATE IT WAS IN.
+        The default option is the API's `""`, which means every status, and the filter
+        opens on Active — so a reader who cleared the status chip landed on an
+        unfiltered list whose dropdown still read "Select status", an instruction
+        rather than an answer. Naming the value it actually holds is the fix, and it
+        makes the trigger readable as a filter summary.
+
+        The other two defaults are the same option in the same row and are changed with
+        it: leaving "Select Play type" beside "All Statuses" and "All Counties" is the
+        inconsistency the defect is about, one control further along. The county half
+        is also what defect 180 asks for on the detail page's own copy of this control.
+      */}
       <SelectControl
         label="Choose a play type"
         value={play}
         onChange={onPlay}
         className="min-w-[180px] max-[767px]:min-w-full"
       >
-        <option value={ALL_PLAYS}>Select Play type</option>
+        <option value={ALL_PLAYS}>All Play Types</option>
         {playTypes.map((name) => (
           <option key={name} value={name}>
             {name}
@@ -361,7 +402,7 @@ function FindBar({
         onChange={(value) => onStatus(value as OperatorStatusFilter)}
         className="min-w-[180px] max-[767px]:min-w-full"
       >
-        <option value="">Select status</option>
+        <option value="">All Statuses</option>
         <option value="active">Active</option>
         <option value="inactive">Inactive</option>
       </SelectControl>
@@ -372,7 +413,7 @@ function FindBar({
         onChange={onCounty}
         className="min-w-[180px] max-[767px]:min-w-full"
       >
-        <option value="">Counties</option>
+        <option value="">All Counties</option>
         {counties.map((name) => (
           <option key={name} value={name}>
             {name} County
@@ -503,12 +544,15 @@ function TableControls({
   onColumnsChange,
   onExport,
   isExporting,
+  isSignedIn,
 }: {
   columns: OperatorColumns;
   onColumnsChange: (columns: OperatorColumns) => void;
   onExport: () => void;
   /** True while the file is being fetched and built — DEFECT 121. */
   isExporting: boolean;
+  /** Decides whether Export is offered at all — DEFECT 182. */
+  isSignedIn: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -601,18 +645,46 @@ function TableControls({
         )}
       </div>
 
-      {/* DEFECT 121 — the button now says it is working and refuses a second
-          click while it does. The export is a whole result set and a file build,
-          so silence for the duration read as a dead control. */}
-      <Button
-        onClick={onExport}
-        disabled={isExporting}
-        aria-busy={isExporting}
-        className="max-[767px]:text-sm"
-      >
-        {isExporting ? "Exporting…" : "Export CSV"}
-        <span aria-hidden="true">{isExporting ? "" : "↓"}</span>
-      </Button>
+      {/*
+        DEFECT 182 — EXPORT IS A MEMBER'S CONTROL, so a visitor is offered the account
+        rather than the button.
+
+        It is not a new gate: the export goes through `/api/operators/search`, which
+        pins `member_id` from the session, so a signed-out export already came back
+        with "Locked" written into every gated cell. The button was live and produced a
+        file that answered nothing — which is worse than not offering it, because the
+        reader only finds out after downloading. This says what it needs first.
+
+        A LINK, NOT A DISABLED BUTTON. A greyed control with a tooltip is a dead end;
+        this one goes where it can be satisfied, and carries `from=operators-export` so
+        the source of the registration is recorded as this control rather than the page.
+      */}
+      {isSignedIn ? (
+        /* DEFECT 121 — the button says it is working and refuses a second click while
+           it does. The export is a whole result set and a file build, so silence for
+           the duration read as a dead control. */
+        <Button
+          onClick={onExport}
+          disabled={isExporting}
+          aria-busy={isExporting}
+          className="max-[767px]:text-sm"
+        >
+          {isExporting ? "Exporting…" : "Export CSV"}
+          <span aria-hidden="true">{isExporting ? "" : "↓"}</span>
+        </Button>
+      ) : (
+        <Link
+          href="/register?from=operators-export"
+          className="inline-flex items-center gap-[7px] whitespace-nowrap rounded-[10px] border border-mv-line bg-white px-[14px] py-[9px] text-[13.5px] font-semibold text-mv-slate no-underline transition-colors hover:border-mv-line-strong hover:bg-mv-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep max-[767px]:text-sm"
+        >
+          <Lock
+            aria-hidden="true"
+            className="h-[13px] w-[13px] shrink-0"
+            strokeWidth={2.3}
+          />
+          Export CSV
+        </Link>
+      )}
     </div>
   );
 }
@@ -719,10 +791,21 @@ function ResultsTable({
   const firstOpenRow = page.rows.find((row) => !row.masked);
   const ctyLocked = !!firstOpenRow && isLockedValue(firstOpenRow.counties);
   const leasesLocked = !!firstOpenRow && isLockedValue(firstOpenRow.leases);
+  const oilLocked = !!firstOpenRow && isLockedValue(firstOpenRow.oil);
+  const gasLocked = !!firstOpenRow && isLockedValue(firstOpenRow.gas);
   const columnLocked: Partial<Record<keyof OperatorColumns, boolean>> = {
     cty: ctyLocked,
     leases: leasesLocked,
   };
+
+  /* DEFECT 188 — whether the ONE unlock prompt is warranted. A gated row counts too:
+     its cells carry no figure at all, which is the same gate said a different way. */
+  const anythingLocked =
+    oilLocked ||
+    gasLocked ||
+    ctyLocked ||
+    leasesLocked ||
+    page.rows.some((row) => row.masked);
   // `#` + name + the visible optional columns, for the empty row's colspan.
   const columnCount =
     2 +
@@ -740,6 +823,14 @@ function ResultsTable({
 
   return (
     <div className="overflow-hidden rounded-[14px] border border-mv-line">
+      {/* DEFECT 188 — SAID ONCE, ABOVE THE TABLE, INSTEAD OF THIRTY TIMES INSIDE IT.
+          Every locked cell used to carry its own "Free account" link. That put the
+          offer where the reader reached for it, which was the intent, but at up to
+          thirty cells a page it read as an advertisement stitched through the data and
+          it was the same sentence every time. One notice on the table makes the same
+          offer once, and the cells go back to being cells. */}
+      {anythingLocked && !isLoading && !hasError && <LockedNotice />}
+
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] border-collapse">
           <caption className="sr-only">
@@ -755,9 +846,11 @@ function ResultsTable({
                 #
               </th>
 
-              {/* Plain label, not a button: the API cannot sort by name. */}
+              {/* Plain label, not a button: the API cannot sort by name.
+                  DEFECT 170 — "operator no." was the only lower-case label in a
+                  header row of Title Case. */}
               <th scope="col" className={`${TH_CLASS} text-left`}>
-                Operator Name (operator no.)
+                Operator Name (Operator No.)
               </th>
 
               {visibleSortable.map((col) => (
@@ -918,20 +1011,55 @@ function LockedHeaderMark() {
 }
 
 /**
+ * The one unlock prompt for the whole table — DEFECT 188.
+ *
+ * It replaces the per-cell "Free account" link, not the locks themselves: the bars and
+ * the header padlocks are untouched, so what is withheld and where is still visible at
+ * a glance. This is only where the offer is made.
+ *
+ * INSIDE THE TABLE'S OWN BORDER, above the header rather than below the last row, so
+ * it is read before the locked columns rather than discovered after scrolling past
+ * them — which is the reason the per-cell links existed in the first place. It renders
+ * only once a real result is on screen; over skeleton rows it would be an offer to
+ * unlock something the reader cannot yet see.
+ */
+function LockedNotice() {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-mv-line bg-mv-tint px-[18px] py-[10px]">
+      <p className="m-0 flex min-w-0 items-center gap-2 text-[12.5px] text-mv-green-deep">
+        <Lock
+          aria-hidden="true"
+          className="h-[13px] w-[13px] shrink-0"
+          strokeWidth={2.3}
+        />
+        <span className="min-w-0">
+          Some figures in this table are locked. They are free — they just need an
+          account.
+        </span>
+      </p>
+      <Link
+        href="/register?from=operators"
+        className="shrink-0 whitespace-nowrap text-[12.5px] font-semibold text-mv-green-deep underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+      >
+        Create a free account →
+      </Link>
+    </div>
+  );
+}
+
+/**
  * A numeric cell whose value is withheld from signed-out visitors.
  *
- * THE SAME TREATMENT AS "FIND YOUR RECORD" (requested) — see
- * `app/claim/_components/ui.tsx`. A redacted bar with a lock and a "Free account"
- * link under it, so the reader can see there IS a value and what it costs to read
- * it, rather than a bar that only says something is missing.
+ * A REDACTED BAR AND A PADLOCK — AND, SINCE DEFECT 188, NOTHING ELSE. Each cell used
+ * to carry its own "Free account" link beside the bar. That put the offer where the
+ * reader reached for it, which was the intent, but at up to thirty cells a page they
+ * met the same six words thirty times: it stopped reading as an offer and started
+ * reading as chrome printed through the data. The offer moved to `LockedNotice` —
+ * once, on the table.
  *
- * LAID OUT FOR A TABLE, NOT A CARD. The claim page stacks the bar and the link and
- * can afford the height; this appears in up to thirty numeric cells at once, so the
- * two sit on one right-aligned line and the row keeps its height.
- *
- * EVERY LINK CARRIES ITS OWN `aria-label` naming the field. Thirty links reading
- * "Free account" would be thirty identical stops in a screen reader's link list;
- * "Create a free account to see the oil produced" tells it which cell it is in.
+ * THE LABEL IS STILL CARRIED, and is now what a screen reader gets in the link's
+ * place: "Oil produced — locked" says which cell it is in, where thirty identical
+ * "Free account" links said only that there were thirty of them.
  */
 function LockedValue({
   label,
@@ -944,15 +1072,13 @@ function LockedValue({
 }) {
   return (
     <span className="inline-flex items-center justify-end gap-[7px]">
+      <span className="sr-only">{label} — locked</span>
       <LockedBar width={width} />
-      <Link
-        href="/register?from=operators"
-        aria-label={`Create a free account to see the ${label.toLowerCase()}`}
-        className="inline-flex shrink-0 items-center gap-[4px] whitespace-nowrap text-[11.5px] font-semibold text-mv-green-deep no-underline underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
-      >
-        <Lock aria-hidden="true" className="h-3 w-3 shrink-0" strokeWidth={2.3} />
-        Free account
-      </Link>
+      <Lock
+        aria-hidden="true"
+        className="h-3 w-3 shrink-0 text-mv-muted"
+        strokeWidth={2.3}
+      />
     </span>
   );
 }
@@ -1409,20 +1535,39 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
 function Pager({
   page,
   onPage,
+  /** DEFECT 187 — dimmed and inert while the next result is in flight. */
+  busy,
 }: {
   page: OperatorResultPage;
   onPage: (page: number) => void;
+  busy: boolean;
 }) {
   if (page.total === 0) return null;
 
   return (
-    <SharedPager
-      current={page.page}
-      pageCount={page.pageCount}
-      total={page.total}
-      onPage={onPage}
-      label="Directory pages"
-    />
+    /*
+     * DEFECT 187, THE PAGINATION HALF.
+     *
+     * `page` still holds the PREVIOUS result while a new one is in flight, so the
+     * page numbers and the "Total records" count below the table went on describing
+     * a result set that was no longer on screen — 3,054 operators under ten skeleton
+     * rows. Dimming the whole nav says the numbers in it are not the current answer,
+     * and `busy` stops a click from queueing a page of a result that is being
+     * replaced. The footprint does not change, so nothing shifts when it settles.
+     */
+    <div
+      aria-busy={busy}
+      className={busy ? "opacity-45 transition-opacity" : "transition-opacity"}
+    >
+      <SharedPager
+        current={page.page}
+        pageCount={page.pageCount}
+        total={page.total}
+        onPage={onPage}
+        label="Directory pages"
+        busy={busy}
+      />
+    </div>
   );
 }
 

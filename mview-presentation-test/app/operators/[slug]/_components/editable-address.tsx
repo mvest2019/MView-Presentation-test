@@ -279,7 +279,12 @@ export function EditableAddress({
                   void commit();
                 }
               }}
-              className="h-[38px] min-w-[220px] flex-1 rounded-[9px] border border-mv-line bg-white px-[11px] text-[12.5px] text-mv-ink outline-none transition-[border-color,box-shadow] focus-visible:border-mv-green-deep focus-visible:shadow-[0_0_0_3px_var(--color-mv-tint)]"
+              /* DEFECT 193 — 16px below `sm`, or mobile Safari zooms the page in the
+                 moment this is focused, and it is `autoFocus`: opening the editor
+                 would zoom the profile with no tap on the field at all. `min-h` rather
+                 than a fixed height, because 16px text does not fit in 38px. 12.5px
+                 from `sm` up, as designed. */
+              className="min-h-[38px] min-w-[220px] flex-1 rounded-[9px] border border-mv-line bg-white px-[11px] text-base text-mv-ink outline-none transition-[border-color,box-shadow] focus-visible:border-mv-green-deep focus-visible:shadow-[0_0_0_3px_var(--color-mv-tint)] sm:h-[38px] sm:text-[12.5px]"
             />
             <button
               type="button"

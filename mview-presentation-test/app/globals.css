@@ -611,3 +611,32 @@
   background-size: 44px 44px;
 }
 
+
+/* ----------------------------------------------------------------------------
+   The indeterminate sweep on a pending link — DEFECT 198.
+
+   Used by `app/operators/[slug]/_components/link-pending.tsx`, which marks the
+   related-operator card that was actually pressed while its page loads. A
+   determinate bar would be a lie: nothing here knows how far along the
+   navigation is, only that one is under way.
+
+   `transform` rather than `left`, so the sweep is composited and does not lay
+   out the card sixty times a second.
+   ---------------------------------------------------------------------------- */
+@keyframes mv-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+/* A pending link still has to say it is pending, so the bar does not vanish for a
+   reader who has asked for less motion — it stops travelling and simply fills. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-\[mv-indeterminate_1\.1s_ease-in-out_infinite\] {
+    animation: none;
+    width: 100%;
+  }
+}

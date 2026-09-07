@@ -126,20 +126,8 @@ export interface ActivityResult<T> {
 
 /* ---------------------------------------------------------------- parsing */
 
-const MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
+/* The month-name table went with defect 177 — `formatFilingDate` prints MM-DD-YYYY
+   now and nothing else in this module spells a month. */
 
 const US_DATE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})/;
@@ -207,7 +195,17 @@ export function filingDateKey(value: unknown): string | null {
 }
 
 /**
- * `"07/15/2025"` or `"2025-07-15"` → `"Jul 15, 2025"`.
+ * `"07/15/2025"` or `"2025-07-15"` → `"07-15-2025"` — DEFECT 177.
+ *
+ * IT USED TO RETURN `"Jul 15, 2025"`, and the defect asks for `MM-DD-YYYY`. That is not
+ * only a house-style preference: the column it renders is beside two `input[type="date"]`
+ * filters, and a month name cannot be compared against what those show at a glance. A
+ * numeric format sorts visually, aligns under `tabular-nums`, and reads the same length
+ * on every row — three things "Jul 15, 2025" against "Sep 3, 2026" does not.
+ *
+ * ZERO-PADDED, both parts. `7-5-2025` and `07-05-2025` are the same date and only one
+ * of them lines up in a column, and an unpadded pair is genuinely ambiguous once the
+ * reader is scanning rather than reading.
  *
  * The API sends US-ordered dates on the two filing columns and ISO on
  * `most_recent_date`, so both shapes are accepted. Anything else is returned unchanged
@@ -218,17 +216,14 @@ export function formatFilingDate(value: unknown): string | null {
   const raw = optional(value);
   if (raw === null) return null;
 
+  const pad = (part: string) => part.padStart(2, "0");
+
   const us = US_DATE.exec(raw);
-  if (us) {
-    const month = MONTHS[Number(us[1]) - 1];
-    return month ? `${month} ${Number(us[2])}, ${us[3]}` : raw;
-  }
+  if (us) return `${pad(us[1])}-${pad(us[2])}-${us[3]}`;
 
   const iso = ISO_DATE.exec(raw);
-  if (iso) {
-    const month = MONTHS[Number(iso[2]) - 1];
-    return month ? `${month} ${Number(iso[3])}, ${iso[1]}` : raw;
-  }
+  if (iso) return `${pad(iso[2])}-${pad(iso[3])}-${iso[1]}`;
+
   return raw;
 }
 
