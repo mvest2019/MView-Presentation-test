@@ -26,6 +26,13 @@ type ShareMenuProps = {
   url?: string;
   onSaveImage?: () => void;
   onPrint?: () => void;
+  /**
+   * Whether to offer the image and the printout as well as the link.
+   *
+   * Off in the map's simplest view mode, where sending someone the link is the
+   * whole of sharing and two more ways to do it is furniture.
+   */
+  withImageAndPrint?: boolean;
   /** Shuts the menu. Without it the only way out was a click elsewhere. */
   onClose?: () => void;
   className?: string;
@@ -48,6 +55,7 @@ export function ShareMenu({
   url,
   onSaveImage,
   onPrint,
+  withImageAndPrint = true,
   onClose,
   className = "",
   style,
@@ -135,10 +143,16 @@ export function ShareMenu({
         </button>
       </div>
 
-      <div className="mt-[14px] flex flex-col">
-        <MenuItem icon={Download} label="Save image (PNG)" onClick={onSaveImage} />
-        <MenuItem icon={Printer} label="Print map" onClick={onPrint} />
-      </div>
+      {withImageAndPrint && (
+        <div className="mt-[14px] flex flex-col">
+          <MenuItem
+            icon={Download}
+            label="Save image (PNG)"
+            onClick={onSaveImage}
+          />
+          <MenuItem icon={Printer} label="Print map" onClick={onPrint} />
+        </div>
+      )}
 
       {/* Announces the copy without moving focus off the button. */}
       <span role="status" aria-live="polite" className="sr-only">
@@ -163,7 +177,12 @@ function MenuItem({
       onClick={onClick}
       className="flex cursor-pointer items-center gap-[10px] rounded-lg px-1 py-[6px] text-left text-[13.5px] font-medium leading-tight text-mv-ink transition-colors hover:bg-[#f2f8f5] hover:text-mv-green-deep focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-mv-green-deep"
     >
-      <Icon size={15} strokeWidth={1.9} className="shrink-0 text-mv-slate" aria-hidden="true" />
+      <Icon
+        size={15}
+        strokeWidth={1.9}
+        className="shrink-0 text-mv-slate"
+        aria-hidden="true"
+      />
       {label}
     </button>
   );

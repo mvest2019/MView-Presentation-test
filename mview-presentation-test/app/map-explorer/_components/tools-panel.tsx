@@ -13,6 +13,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { type Density } from "./density-switch";
+
 /*
  * The Tools panel that opens off the TOOLS edge tab.
  *
@@ -49,10 +51,20 @@ export type MapTool = {
    * nearest loaded well — so it waits for the wells with the rest.
    */
   needsWells?: boolean;
+  /** The least view mode that offers this tool. */
+  from?: Density;
 };
 
 export const MAP_TOOLS: MapTool[] = [
-  { id: "draw-area", label: "Draw an area", icon: SquareDashed, needsWells: true },
+  {
+    id: "draw-area",
+    label: "Draw an area",
+    icon: SquareDashed,
+    needsWells: true,
+    /* Acreage work: professional, where distance and "what's near" are what an
+       owner reaches for. */
+    from: "pro",
+  },
   {
     id: "measure-distance",
     label: "Measure distance",
@@ -67,7 +79,13 @@ export const MAP_TOOLS: MapTool[] = [
        there has to be one — see the lookup in `map-explorer-view.tsx`. */
     needsWells: true,
   },
-  { id: "measure-area", label: "Measure area", icon: LandPlot, needsWells: true },
+  {
+    id: "measure-area",
+    label: "Measure area",
+    icon: LandPlot,
+    needsWells: true,
+    from: "pro",
+  },
 ];
 
 type ToolsPanelProps = {
@@ -135,61 +153,61 @@ export function ToolsPanel({
           const gated = Boolean(needsWells) && !wellsVisible;
 
           return (
-          /* A row rather than a single button: the example needs a control of
+            /* A row rather than a single button: the example needs a control of
              its own, and a button inside a button is not markup a browser
              will accept. The row keeps the border and the hover it always
              had; the parts inside it carry the clicks. */
-          <div
-            key={id}
-            className={`flex w-full items-center gap-2 rounded-[10px] border px-[10px] py-[7px] lg:gap-[10px] lg:px-3 lg:py-[10px] transition-colors ${
-              id === activeId
-                ? "border-mv-green-deep bg-mv-mint"
-                : "border-mv-line bg-white hover:border-mv-green-deep hover:bg-[#f2f8f5]"
-            }`}
-          >
-            <button
-              type="button"
-              aria-pressed={id === activeId}
-              aria-disabled={gated}
-              title={
-                gated
-                  ? "Zoom in until the wells appear — this tool reads well data"
-                  : undefined
-              }
-              onClick={() => {
-                // Over bubbles the click asks for the wells instead of arming.
-                if (gated) {
-                  setAsked(true);
-                  return;
-                }
-                setAsked(false);
-                onSelect?.(id);
-              }}
-              className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left lg:gap-[10px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+            <div
+              key={id}
+              className={`flex w-full items-center gap-2 rounded-[10px] border px-[10px] py-[7px] lg:gap-[10px] lg:px-3 lg:py-[10px] transition-colors ${
+                id === activeId
+                  ? "border-mv-green-deep bg-mv-mint"
+                  : "border-mv-line bg-white hover:border-mv-green-deep hover:bg-[#f2f8f5]"
+              }`}
             >
-              <Icon
-                size={16}
-                strokeWidth={1.75}
-                className="shrink-0 text-mv-slate"
-                aria-hidden="true"
-              />
-              <span className="min-w-0 flex-1 text-[12px] lg:text-[13px] font-semibold leading-[1.25] text-mv-ink">
-                {label}
-              </span>
-            </button>
-
-            {onShowSample && (
               <button
                 type="button"
-                onClick={() => onShowSample(id)}
-                aria-label={`Show an example of ${label}`}
-                title="Show an example"
-                className="grid h-[22px] w-[22px] shrink-0 cursor-pointer place-items-center rounded-md text-mv-muted hover:bg-white hover:text-mv-green-deep focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-mv-green-deep"
+                aria-pressed={id === activeId}
+                aria-disabled={gated}
+                title={
+                  gated
+                    ? "Zoom in until the wells appear — this tool reads well data"
+                    : undefined
+                }
+                onClick={() => {
+                  // Over bubbles the click asks for the wells instead of arming.
+                  if (gated) {
+                    setAsked(true);
+                    return;
+                  }
+                  setAsked(false);
+                  onSelect?.(id);
+                }}
+                className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left lg:gap-[10px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
               >
-                <CirclePlay size={15} strokeWidth={1.75} aria-hidden="true" />
+                <Icon
+                  size={16}
+                  strokeWidth={1.75}
+                  className="shrink-0 text-mv-slate"
+                  aria-hidden="true"
+                />
+                <span className="min-w-0 flex-1 text-[12px] lg:text-[13px] font-semibold leading-[1.25] text-mv-ink">
+                  {label}
+                </span>
               </button>
-            )}
-          </div>
+
+              {onShowSample && (
+                <button
+                  type="button"
+                  onClick={() => onShowSample(id)}
+                  aria-label={`Show an example of ${label}`}
+                  title="Show an example"
+                  className="grid h-[22px] w-[22px] shrink-0 cursor-pointer place-items-center rounded-md text-mv-muted hover:bg-white hover:text-mv-green-deep focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-mv-green-deep"
+                >
+                  <CirclePlay size={15} strokeWidth={1.75} aria-hidden="true" />
+                </button>
+              )}
+            </div>
           );
         })}
       </div>
@@ -206,10 +224,15 @@ export function ToolsPanel({
               : "border-mv-line bg-[#fafbfa] text-mv-muted"
           }`}
         >
-          <ZoomIn size={13} strokeWidth={2} className="mt-[1px] shrink-0" aria-hidden="true" />
+          <ZoomIn
+            size={13}
+            strokeWidth={2}
+            className="mt-[1px] shrink-0"
+            aria-hidden="true"
+          />
           <span>
-            These tools read individual wells. Zoom in until the wells appear
-            in place of the count bubbles.
+            These tools read individual wells. Zoom in until the wells appear in
+            place of the count bubbles.
           </span>
         </p>
       )}

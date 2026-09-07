@@ -23,6 +23,7 @@ import {
   type MapFilterItem,
 } from "@/lib/map-api";
 
+import { DEFAULT_DENSITY, showsAt, type Density } from "./density-switch";
 
 /*
  * The Search & filters panel that opens off the FILTERS edge tab.
@@ -78,6 +79,14 @@ type FilterSection = {
   id: string;
   label: string;
   items: FilterItem[];
+  /**
+   * The least view mode this facet belongs to.
+   *
+   * Ultra is one map and one question — which county; Essentials adds who
+   * holds the well and what state it is in; Detailed adds the two facets that
+   * are industry vocabulary. Omitted means every mode has it.
+   */
+  from?: Density;
   /** Puts the Find… box above the list — for the sections that run long. */
   searchable?: boolean;
   /** The amber flag beside the heading. */
@@ -100,12 +109,30 @@ const OPERATOR_FIND_WAIT = 260;
 const NEAR_END = 48;
 
 export const FILTER_SECTIONS: FilterSection[] = [
-  { id: "county", label: "County", searchable: true, defaultOpen: true, items: [] },
-  { id: "operator", label: "Operator", searchable: true, items: [] },
-  { id: "well-type", label: "Well type", items: [] },
-  { id: "status", label: "Well status", items: [] },
-  { id: "play-type", label: "Play type", items: [] },
-  { id: "field", label: "Field", searchable: true, items: [] },
+  {
+    id: "county",
+    label: "County",
+    searchable: true,
+    defaultOpen: true,
+    items: [],
+  },
+  {
+    id: "operator",
+    label: "Operator",
+    searchable: true,
+    items: [],
+    from: "simple",
+  },
+  { id: "well-type", label: "Well type", items: [], from: "simple" },
+  { id: "status", label: "Well status", items: [], from: "simple" },
+  { id: "play-type", label: "Play type", items: [], from: "detailed" },
+  {
+    id: "field",
+    label: "Field",
+    searchable: true,
+    items: [],
+    from: "detailed",
+  },
 ];
 
 /**
@@ -202,6 +229,8 @@ type FiltersPanelProps = {
    * what to do with the answer.
    */
   onApply?: (filters: Record<string, string[]>) => void;
+  /** Which facets to offer — the view mode from the toolbar. */
+  density?: Density;
   /**
    * The filter the page was opened with, from the address.
    *
@@ -232,6 +261,7 @@ type FiltersPanelProps = {
 
 export function FiltersPanel({
   onApply,
+  density = DEFAULT_DENSITY,
   opening,
   onCollapse,
   disabled,
@@ -266,7 +296,6 @@ export function FiltersPanel({
   const [wellStatusesError, setWellStatusesError] = useState<string | null>(
     null,
   );
-
 
   /*
    * The live county list replaces the section's items. It arrives as a prop
@@ -369,9 +398,9 @@ export function FiltersPanel({
   const [openSections, setOpenSections] = useState<Set<string>>(
     () =>
       new Set(
-        sections.filter((section) => section.defaultOpen).map(
-          (section) => section.id,
-        ),
+        sections
+          .filter((section) => section.defaultOpen)
+          .map((section) => section.id),
       ),
   );
 
@@ -645,7 +674,6 @@ export function FiltersPanel({
    */
   const [sectionsResetAt, setSectionsResetAt] = useState(0);
 
-
   /*
    * What the search API returned for the box at the top of the panel. Only
    * this box goes to the network — the Find… box inside each section still
@@ -725,61 +753,64 @@ export function FiltersPanel({
      * thousands of rows and the endpoint takes seconds to answer. Debounced on
      * top of that, so a word typed at speed is one request, not five.
      */
-    const timer = setTimeout(() => {
-      if (needle.length < SEARCH_MIN_CHARS) {
-        setSearchHits([]);
-        setSearchError(null);
-        setSearchedFor(needle);
-        return;
-      }
+    const timer = setTimeout(
+      () => {
+        if (needle.length < SEARCH_MIN_CHARS) {
+          setSearchHits([]);
+          setSearchError(null);
+          setSearchedFor(needle);
+          return;
+        }
 
-      getMapSearch(needle)
-        .then((results) => {
-          if (cancelled) return;
-          setSearchHits(
-            results.map((result, index) => ({
-              key: `${result.type}:${result.id ?? result.value}:${index}`,
-              label: result.value || (result.label ?? ""),
-              kind: SEARCH_KINDS[result.type] ?? result.type,
-              sectionId: SEARCH_SECTIONS[result.type],
-              facet: SEARCH_FACETS[result.type],
-              /*
-               * `id` first. The search reports the name in `value` and, where
-               * the filter wants something else, the id alongside it — so an
-               * operator comes back as KABCO OIL & GAS COMPANY with id 449245,
-               * and it is the id that matches. Counties have no id and filter
-               * by name, which `value` already is.
-               */
-              param: result.id ?? result.value,
-              /* Leases only: an operator's id is an internal number and a
+        getMapSearch(needle)
+          .then((results) => {
+            if (cancelled) return;
+            setSearchHits(
+              results.map((result, index) => ({
+                key: `${result.type}:${result.id ?? result.value}:${index}`,
+                label: result.value || (result.label ?? ""),
+                kind: SEARCH_KINDS[result.type] ?? result.type,
+                sectionId: SEARCH_SECTIONS[result.type],
+                facet: SEARCH_FACETS[result.type],
+                /*
+                 * `id` first. The search reports the name in `value` and, where
+                 * the filter wants something else, the id alongside it — so an
+                 * operator comes back as KABCO OIL & GAS COMPANY with id 449245,
+                 * and it is the id that matches. Counties have no id and filter
+                 * by name, which `value` already is.
+                 */
+                param: result.id ?? result.value,
+                /* Leases only: an operator's id is an internal number and a
                  county has none, so neither is worth showing. The service
                  sends several keys comma-separated where one name covers more
                  than one lease, each as district-and-number — the district is
                  dropped here, leaving the lease numbers that tell the two
                  apart. */
-              note:
-                result.type === "lease" && result.id
-                  ? result.id
-                      .split(",")
-                      .map((key) => key.trim().replace(/^\d{2}-/, ""))
-                      .filter(Boolean)
-                      .join(", ")
-                  : undefined,
-            })),
-          );
-          setSearchError(null);
-        })
-        .catch((error: unknown) => {
-          if (cancelled) return;
-          setSearchHits([]);
-          setSearchError(
-            error instanceof Error ? error.message : "Search failed.",
-          );
-        })
-        .finally(() => {
-          if (!cancelled) setSearchedFor(needle);
-        });
-    }, needle.length < SEARCH_MIN_CHARS ? 0 : 300);
+                note:
+                  result.type === "lease" && result.id
+                    ? result.id
+                        .split(",")
+                        .map((key) => key.trim().replace(/^\d{2}-/, ""))
+                        .filter(Boolean)
+                        .join(", ")
+                    : undefined,
+              })),
+            );
+            setSearchError(null);
+          })
+          .catch((error: unknown) => {
+            if (cancelled) return;
+            setSearchHits([]);
+            setSearchError(
+              error instanceof Error ? error.message : "Search failed.",
+            );
+          })
+          .finally(() => {
+            if (!cancelled) setSearchedFor(needle);
+          });
+      },
+      needle.length < SEARCH_MIN_CHARS ? 0 : 300,
+    );
 
     return () => {
       cancelled = true;
@@ -1347,7 +1378,6 @@ export function FiltersPanel({
                   )}
                 </li>
               )}
-
             </ul>
           )}
         </div>
@@ -1401,26 +1431,28 @@ export function FiltersPanel({
         */}
 
         {/* ---------------- the checkbox sections ---------------- */}
-        {sections.map((section) => (
-          <CheckboxSection
-            key={`${section.id}-${sectionsResetAt}`}
-            section={section}
-            notice={notices[section.id]}
-            open={openSections.has(section.id)}
-            onToggle={() => toggleSection(section.id)}
-            checked={checked[section.id]}
-            onToggleItem={(name) => toggleItem(section.id, name)}
-            /* Operators are the one paged facet — see the loader above. */
-            {...(section.id === "operator"
-              ? {
-                  onFind: setOperatorFind,
-                  total: operatorsTotal,
-                  onMore: loadMoreOperators,
-                  loadingMore: operatorsMore,
-                }
-              : null)}
-          />
-        ))}
+        {sections
+          .filter((section) => showsAt(density, section.from ?? "ultra"))
+          .map((section) => (
+            <CheckboxSection
+              key={`${section.id}-${sectionsResetAt}`}
+              section={section}
+              notice={notices[section.id]}
+              open={openSections.has(section.id)}
+              onToggle={() => toggleSection(section.id)}
+              checked={checked[section.id]}
+              onToggleItem={(name) => toggleItem(section.id, name)}
+              /* Operators are the one paged facet — see the loader above. */
+              {...(section.id === "operator"
+                ? {
+                    onFind: setOperatorFind,
+                    total: operatorsTotal,
+                    onMore: loadMoreOperators,
+                    loadingMore: operatorsMore,
+                  }
+                : null)}
+            />
+          ))}
 
         <div className="h-2" />
       </div>
@@ -1570,7 +1602,9 @@ function CheckboxSection({
       )}
 
       {notice ? (
-        <p className="py-2 text-[11px] lg:text-[12px] text-mv-muted">{notice}</p>
+        <p className="py-2 text-[11px] lg:text-[12px] text-mv-muted">
+          {notice}
+        </p>
       ) : null}
 
       {/* The long lists scroll inside the section rather than stretching it —
@@ -1607,15 +1641,15 @@ function CheckboxSection({
             : ""
         }
       >
-      {!notice &&
-        visible.map((item) => (
-        <label
-          /* The number where the register gives one: two operators can share
+        {!notice &&
+          visible.map((item) => (
+            <label
+              /* The number where the register gives one: two operators can share
              a name, and a name alone is then the same key twice. */
-          key={item.id ?? item.name}
-          className="flex cursor-pointer items-center gap-2 py-[5px]"
-        >
-          {/*
+              key={item.id ?? item.name}
+              className="flex cursor-pointer items-center gap-2 py-[5px]"
+            >
+              {/*
             The real checkbox sits exactly where the drawn one is, invisible
             over it, rather than being tucked away with `sr-only`.
 
@@ -1625,32 +1659,31 @@ function CheckboxSection({
             jumped. Over the drawn box it is already in view, and there is
             nothing to scroll to.
           */}
-          <span className="relative grid h-[15px] w-[15px] shrink-0 place-items-center">
-            <input
-              type="checkbox"
-              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-              checked={checked.has(item.name)}
-              onChange={() => onToggleItem(item.name)}
-            />
-            <Checkbox checked={checked.has(item.name)} />
-          </span>
-          {/* Without a count to keep clear of, a long name may wrap rather
+              <span className="relative grid h-[15px] w-[15px] shrink-0 place-items-center">
+                <input
+                  type="checkbox"
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                  checked={checked.has(item.name)}
+                  onChange={() => onToggleItem(item.name)}
+                />
+                <Checkbox checked={checked.has(item.name)} />
+              </span>
+              {/* Without a count to keep clear of, a long name may wrap rather
               than be cut off. */}
-          <span
-            className={`flex-1 text-[11.5px] lg:text-[12.5px] text-mv-ink ${
-              item.count === undefined ? "leading-tight" : "truncate"
-            }`}
-          >
-            {item.name}
-          </span>
-          {item.count !== undefined && (
-            <span className="shrink-0 rounded-full bg-mv-mint px-[7px] py-[2px] text-[10px] font-semibold tabular-nums leading-none text-mv-green-deep lg:text-[11px]">
-              {item.count.toLocaleString("en-US")}
-            </span>
-          )}
-          </label>
-        ))}
-
+              <span
+                className={`flex-1 text-[11.5px] lg:text-[12.5px] text-mv-ink ${
+                  item.count === undefined ? "leading-tight" : "truncate"
+                }`}
+              >
+                {item.name}
+              </span>
+              {item.count !== undefined && (
+                <span className="shrink-0 rounded-full bg-mv-mint px-[7px] py-[2px] text-[10px] font-semibold tabular-nums leading-none text-mv-green-deep lg:text-[11px]">
+                  {item.count.toLocaleString("en-US")}
+                </span>
+              )}
+            </label>
+          ))}
       </div>
 
       {/* Where the list has got to. Worth saying even though nothing has to
@@ -1673,7 +1706,9 @@ function CheckboxSection({
       )}
 
       {!notice && visible.length === 0 && (
-        <p className="py-2 text-[11px] lg:text-[12px] text-mv-muted">Nothing matches.</p>
+        <p className="py-2 text-[11px] lg:text-[12px] text-mv-muted">
+          Nothing matches.
+        </p>
       )}
     </SectionShell>
   );
