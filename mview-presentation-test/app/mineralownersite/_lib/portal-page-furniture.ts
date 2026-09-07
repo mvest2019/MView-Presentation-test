@@ -48,6 +48,12 @@ export const PAGE_PURPOSE: Record<string, string> = {
     "The raw feed — every posting and filing that touched your record or its neighbors.",
   "/mineralownersite/briefing":
     "Your Saturday-morning read — the four questions answered honestly, in five pages.",
+  /* The reference's own sentence for this route, from `PAGE_PURPOSE` in
+     `route-groups-3.js`. Its last clause is the one that matters — there is no
+     Save button on that page, and saying so is what stops a reader hunting for
+     one. */
+  "/mineralownersite/settings":
+    "Delivery, alerts, privacy, and your view — everything saves immediately.",
 };
 
 /** Where the per-route dismissal is remembered. The reference's own key. */

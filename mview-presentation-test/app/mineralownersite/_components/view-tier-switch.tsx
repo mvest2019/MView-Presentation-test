@@ -30,7 +30,22 @@ import {
  * click handler. The provider writes the chosen tier to `localStorage` so it
  * also survives the next visit.
  */
-export function ViewTierSwitch({ onNavigate }: { onNavigate?: () => void }) {
+export function ViewTierSwitch({
+  onNavigate,
+  compact = true,
+}: {
+  onNavigate?: () => void;
+  /**
+   * `v41-avviews` — the ACCOUNT MENU's copy of the switch: short labels at every
+   * width, because that panel is 280px whatever the viewport is.
+   *
+   * Settings is the switch's other sanctioned home (v41 · AUDIT #1) and has a
+   * full card to put it in, so it passes `compact={false}` and gets the design's
+   * full labels. Defaulted to `true` so the account menu — which mounted this
+   * before Settings existed — keeps the geometry it was measured at.
+   */
+  compact?: boolean;
+}) {
   const { viewTier } = usePortalState();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -45,7 +60,7 @@ export function ViewTierSwitch({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <div
-      className="view-switch v41-avviews"
+      className={`view-switch${compact ? " v41-avviews" : ""}`}
       role="tablist"
       aria-label="View density"
     >

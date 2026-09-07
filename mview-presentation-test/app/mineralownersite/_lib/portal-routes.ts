@@ -37,8 +37,23 @@
 export const BUILT_PORTAL_ROUTES: readonly string[] = [
   "/mineralownersite",
   "/mineralownersite/activities",
+  /*
+   * ALERTS AND LEASES WERE MISSING FROM THIS LIST while both pages existed.
+   *
+   * The file header's rule is "if a page exists, it belongs here", and the cost
+   * of the omission is the exact defect the module was written to prevent, only
+   * inverted: `PortalLink` was rendering every cross-link to those two modules
+   * as inert text with "not open yet" on it, on top of pages that were built and
+   * working. The Settings page's "Open inbox →" was one of them.
+   *
+   * Found while adding `settings` below. A one-line list is easy to forget in a
+   * module's own pull request, which is the argument for the render-time check
+   * this file exists to be — the check just has to be told the truth.
+   */
+  "/mineralownersite/alerts",
+  "/mineralownersite/leases",
   "/mineralownersite/briefing",
-  "/mineralownersite/production",
+  "/mineralownersite/settings",
 ];
 
 /**
@@ -53,6 +68,10 @@ const BUILT_SITE_ROUTES: readonly string[] = [
   "/blogs",
   "/login",
   "/register",
+  /* The Settings page's Privacy card links out twice — the retention schedule
+     and the policy itself. The reference points both at `#/privacy`; this
+     build's equivalent route is `/privacy-policy`. */
+  "/privacy-policy",
 ];
 
 /**
