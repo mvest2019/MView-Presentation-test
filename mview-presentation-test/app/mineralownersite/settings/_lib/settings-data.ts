@@ -8,20 +8,24 @@
  * note travels with the data rather than being dropped, because those are the
  * decisions a future reader will otherwise re-litigate.
  *
- * ── "RECOMMENDED" IS A FLAG HERE, NOT A REGEX ──
+ * ── "RECOMMENDED" IS RECORDED HERE FOR THE WIRING PASS ──
+ *
+ * The button does nothing yet — this is the UI pass — but WHICH rows it will
+ * turn on is a decision, so it is written down rather than left to be
+ * rediscovered.
  *
  * The prototype's `mvRecommendedSettings()` walked the DOM and matched each
  * row's label text against `/production|adjacent|permit/i` and
  * `/payment gap|permit|production/i`. That works exactly until somebody edits a
  * label — rename "Adjacent lease activity" to "Nearby lease activity" and the
- * button silently stops turning it on, with nothing to fail.
+ * button silently stops turning it on, with nothing to fail. So the same rule
+ * is a `recommended: true` flag on the six rows those two expressions selected,
+ * checked row by row: it survives a copy change, and a reader can see which
+ * rows it covers without running the regex in their head.
  *
- * So the same rule is stated as a `recommended: true` flag on the six rows it
- * selected. The outcome is identical, checked row by row against those two
- * expressions; the difference is that the rule now survives a copy change and
- * that a reader can see which rows it covers without running the regex in their
- * head. Marketing email and the group digest are deliberately NOT flagged — the
- * design's note is explicit that the button touches neither.
+ * Marketing email and the group digest are deliberately NOT flagged — the
+ * design's note is explicit that the button touches neither, and that restraint
+ * is what makes the button trustworthy. Keep it that way when it is wired.
  */
 
 import type {
@@ -140,6 +144,9 @@ export const settingsMeta = {
   recommendedLabel: "★ Use Recommended Settings",
   recommendedTitle:
     "Turns on the alerts most owners should have: possible payment gaps, new production on your leases, and permits or completions nearby",
+  /* The two confirmations the strapline promises. Not rendered yet — kept here
+     because they are the design's exact wording and the wiring pass needs them,
+     not because anything reads them today. */
   recommendedToast: "Recommended settings applied ✓",
   savedToast: "Saved ✓",
 } as const;
@@ -597,40 +604,3 @@ export const advancedCard = {
     value: "On — via your view",
   },
 } as const;
-
-/* ============================================================================
-   THE STARTING POSITIONS, AS THE PROVIDER WANTS THEM
-
-   Built from the lists above rather than restated, so a row added to a card
-   cannot be forgotten here — which is how a switch ends up rendering `off`
-   whatever its own data says.
-   ============================================================================ */
-
-export const allToggleSettings: readonly ToggleSetting[] = [
-  ...deliverySettings,
-  ...notificationSettings,
-  scheduledExport,
-];
-
-export function initialToggleState(): Record<string, boolean> {
-  return Object.fromEntries(
-    allToggleSettings
-      .filter((row) => !row.future)
-      .map((row) => [row.id, row.on]),
-  );
-}
-
-export function initialChannelState() {
-  return Object.fromEntries(
-    alertPreferences.map((row) => [row.id, { ...row.channels }]),
-  );
-}
-
-/** The rows "Use Recommended Settings" switches on. See the file header. */
-export const RECOMMENDED_TOGGLE_IDS: readonly string[] = notificationSettings
-  .filter((row) => row.recommended)
-  .map((row) => row.id);
-
-export const RECOMMENDED_ALERT_IDS: readonly string[] = alertPreferences
-  .filter((row) => row.recommended)
-  .map((row) => row.id);

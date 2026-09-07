@@ -1,5 +1,5 @@
 import { Badge } from "../../_components/ui/badge";
-import { PrototypeButton } from "../../_components/ui/prototype-button";
+import { PortalButton } from "../../_components/ui/button";
 import { gates } from "../../_components/ui/portal-gating";
 import { SETTINGS_SECTIONS, advancedCard } from "../_lib/settings-data";
 import { SettingRow } from "./setting-row";
@@ -26,9 +26,9 @@ import { SettingsCard } from "./settings-card";
  * ── THE TOKEN ROW IS HONEST ABOUT ITS DEPENDENCY ──
  *
  * "wires with the API program" is an `.anno` — an aside about the BUILD, not
- * about the reader's plan. The button is real and acknowledges the press, which
- * is the prototype's own idiom for a control whose backend is not there yet;
- * see `PrototypeButton` for why that beats a greyed-out one.
+ * about the reader's plan. It is a real, enabled button rather than a greyed-out
+ * one, which is the prototype's own idiom: a reviewer has to be able to see the
+ * control at its real weight, in its real colour, in the real layout.
  */
 export function AdvancedCard() {
   return (
@@ -49,6 +49,7 @@ export function AdvancedCard() {
           <SettingToggle
             id={advancedCard.export.id}
             label={advancedCard.export.label}
+            on={advancedCard.export.on}
           />
         }
       />
@@ -62,9 +63,7 @@ export function AdvancedCard() {
           </>
         }
         control={
-          <PrototypeButton acknowledgement={advancedCard.token.acknowledgement}>
-            {advancedCard.token.action}
-          </PrototypeButton>
+          <PortalButton size="sm">{advancedCard.token.action}</PortalButton>
         }
       />
 
@@ -72,11 +71,7 @@ export function AdvancedCard() {
         label={advancedCard.auditLog.label}
         hint={advancedCard.auditLog.hint}
         control={
-          <PrototypeButton
-            acknowledgement={advancedCard.auditLog.acknowledgement}
-          >
-            {advancedCard.auditLog.action}
-          </PrototypeButton>
+          <PortalButton size="sm">{advancedCard.auditLog.action}</PortalButton>
         }
       />
 

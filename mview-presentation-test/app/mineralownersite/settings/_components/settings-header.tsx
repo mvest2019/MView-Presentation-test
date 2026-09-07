@@ -2,7 +2,7 @@ import { Notice } from "../../_components/ui/notice";
 import { PortalLink } from "../../_components/portal-link";
 import { gates } from "../../_components/ui/portal-gating";
 import { settingsMeta, unclaimedNotice } from "../_lib/settings-data";
-import { RecommendedSettingsButton } from "./recommended-button";
+import { RecommendedSettingsButton } from "./settings-card";
 
 /**
  * THE PAGE HEAD — the title, what the page confirms, and the one button.
@@ -10,8 +10,8 @@ import { RecommendedSettingsButton } from "./recommended-button";
  * The strapline's last clause is doing work: "every change confirms itself with
  * a Saved ✓". There is no Save button anywhere on this page, and a settings
  * screen with no Save button is either instant or broken — saying which is what
- * stops a reader hunting for one. `SettingsStateProvider` is the half of that
- * promise that has to be kept.
+ * stops a reader hunting for one. The confirmation it promises is the other half
+ * of that, and it is the first thing the functionality pass owes this page.
  */
 export function SettingsHeader() {
   return (

@@ -2,7 +2,7 @@ import { Card } from "../../_components/ui/card";
 import { ViewTierLink } from "../../_components/ui/view-tier-link";
 import { gates } from "../../_components/ui/portal-gating";
 import { ultraSettings } from "../_lib/settings-data";
-import { RecommendedSettingsButton } from "./recommended-button";
+import { RecommendedSettingsButton } from "./settings-card";
 
 /**
  * SETTINGS AT ULTRA — one card, two sentences, two buttons.  (v41 · AUDIT #2)

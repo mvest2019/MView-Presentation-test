@@ -1,6 +1,6 @@
 import { PortalLink } from "../../_components/portal-link";
 import { StatRow } from "../../_components/ui/card";
-import { PrototypeButton } from "../../_components/ui/prototype-button";
+import { PortalButton } from "../../_components/ui/button";
 import { gates } from "../../_components/ui/portal-gating";
 import {
   SETTINGS_SECTIONS,
@@ -67,15 +67,14 @@ function ClaimedAccountCard() {
         control={
           <span className="inline-flex flex-wrap items-center gap-2 rounded-full border-[1.5px] border-mv-green bg-mv-card py-[5px] pr-2 pl-[13px] text-[12.5px] font-bold text-mv-green-ink">
             {activeOwnerRecord.value}
-            <PrototypeButton
-              acknowledgement={activeOwnerRecord.acknowledgement}
+            <PortalButton
               title={activeOwnerRecord.switchTitle}
               variant="mint"
               size="sm"
               className="!rounded-full !border-0 !px-[9px] !py-[3px] !text-[10.5px]"
             >
               {activeOwnerRecord.switchLabel}
-            </PrototypeButton>
+            </PortalButton>
           </span>
         }
       />

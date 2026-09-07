@@ -36,7 +36,7 @@ export function DeliveryCard() {
             row.future ? (
               <FutureTag />
             ) : (
-              <SettingToggle id={row.id} label={row.label} />
+              <SettingToggle id={row.id} label={row.label} on={row.on} />
             )
           }
         />

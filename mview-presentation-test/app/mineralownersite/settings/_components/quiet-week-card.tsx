@@ -1,7 +1,3 @@
-"use client";
-
-import { useState } from "react";
-
 import { gates } from "../../_components/ui/portal-gating";
 import {
   SETTINGS_SECTIONS,
@@ -9,7 +5,6 @@ import {
   quietWeekOptions,
 } from "../_lib/settings-data";
 import { SettingsCard } from "./settings-card";
-import { useSettingsState } from "./settings-state";
 
 /**
  * QUIET-WEEK BEHAVIOUR — what arrives when nothing happened.
@@ -34,16 +29,17 @@ import { useSettingsState } from "./settings-state";
  * pay for, and the one thing a royalty product may never do is drop a payment
  * figure because of a display preference.
  *
+ * ── UNCONTROLLED, WHICH IS THE UI PASS'S ANSWER FOR A RADIO GROUP ──
+ *
+ * `defaultChecked` rather than `checked`, so the three radios are the browser's
+ * own and the reader can still move between them — a native radio group needs
+ * no JavaScript to behave correctly. Wiring means reading the choice, not
+ * building the control.
+ *
  * `hide-s` — an Essentials reader gets the design's default and is not asked to
- * choose. `useState` and not the provider: nothing else on the page reads this,
- * and "Use Recommended Settings" deliberately does not touch it.
+ * choose.
  */
 export function QuietWeekCard() {
-  const [chosen, setChosen] = useState(
-    () => quietWeekOptions.find((option) => option.selected)?.id ?? quietWeekOptions[0].id,
-  );
-  const { announce } = useSettingsState();
-
   return (
     <SettingsCard
       section={SETTINGS_SECTIONS.quietWeek}
@@ -69,11 +65,7 @@ export function QuietWeekCard() {
               type="radio"
               name="quiet-week"
               value={option.id}
-              checked={chosen === option.id}
-              onChange={() => {
-                setChosen(option.id);
-                announce();
-              }}
+              defaultChecked={option.selected}
               className="accent-mv-green"
             />
             {option.label}

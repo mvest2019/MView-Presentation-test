@@ -1,7 +1,43 @@
 import type { ReactNode } from "react";
 
+import { PortalButton, type PortalButtonSize } from "../../_components/ui/button";
 import { Card, CardHeader } from "../../_components/ui/card";
-import type { SettingsSection } from "../_lib/settings-data";
+import { settingsMeta, type SettingsSection } from "../_lib/settings-data";
+
+/**
+ * "★ USE RECOMMENDED SETTINGS"  (v36 · #11)
+ *
+ * PRESENTATIONAL. It renders at its real weight and in its real place, and it
+ * does nothing yet.
+ *
+ * ── WHAT IT WILL DO, AND WHY THE `title` ALREADY SAYS SO ──
+ *
+ * One press turns on the alerts that protect an owner's money — possible
+ * payment gaps, new production on their own leases, and permits or completions
+ * nearby — across both cards that carry them. It does NOT touch marketing email
+ * or the group digest, and that restraint is the reason the button can be
+ * trustworthy: a "recommended" button that also opts the reader into marketing
+ * is a dark pattern wearing a helpful label. The rows it covers are the
+ * `recommended` flag in `settings-data.ts`, ready for the wiring pass.
+ *
+ * RENDERED TWICE — in the page head and in the Ultra card. That is what will
+ * make the state it changes shared rather than local to either card.
+ */
+export function RecommendedSettingsButton({
+  size = "sm",
+}: {
+  size?: PortalButtonSize;
+}) {
+  return (
+    <PortalButton
+      variant="primary"
+      size={size}
+      title={settingsMeta.recommendedTitle}
+    >
+      {settingsMeta.recommendedLabel}
+    </PortalButton>
+  );
+}
 
 /**
  * ONE SETTINGS CARD — the surface every section on this page is built on.

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { PrototypeButton } from "../../_components/ui/prototype-button";
+import { PortalButton } from "../../_components/ui/button";
 import { SETTINGS_SECTIONS, privacyCard } from "../_lib/settings-data";
 import { SettingRow } from "./setting-row";
 import { SettingsCard } from "./settings-card";
@@ -47,9 +47,7 @@ export function PrivacyCard() {
           label={row.label}
           hint={row.hint}
           control={
-            <PrototypeButton acknowledgement={row.acknowledgement}>
-              {row.action}
-            </PrototypeButton>
+            <PortalButton size="sm">{row.action}</PortalButton>
           }
         />
       ))}
@@ -66,12 +64,9 @@ export function PrivacyCard() {
           /* Red text on the ghost button, which is the design's own treatment:
              a destructive action should not be a filled red button sitting a
              mis-click away from three harmless ones. */
-          <PrototypeButton
-            acknowledgement={privacyCard.deletion.acknowledgement}
-            className="!text-mv-red"
-          >
+          <PortalButton size="sm" className="!text-mv-red">
             {privacyCard.deletion.action}
-          </PrototypeButton>
+          </PortalButton>
         }
       />
 

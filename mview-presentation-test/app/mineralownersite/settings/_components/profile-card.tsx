@@ -1,7 +1,3 @@
-"use client";
-
-import { useState } from "react";
-
 import { PortalButton } from "../../_components/ui/button";
 import { SETTINGS_SECTIONS, profileCard } from "../_lib/settings-data";
 import type { ProfileField } from "../_lib/settings-data";
@@ -19,7 +15,15 @@ import { SettingsCard } from "./settings-card";
  *   · changing the mailing address RE-RUNS the claim address check before it
  *     applies, because that address is what proved the record was theirs.
  * Both are stated in the field hints, where somebody about to make the change
- * will actually read them. In this build the save is a confirmation only.
+ * will actually read them.
+ *
+ * ── THE UI PASS: MARKUP, NOT SUBMISSION ──
+ *
+ * There is no submit handler and no validation state yet. The fields are
+ * uncontrolled (`defaultValue`), and `required` is on the inputs — which means
+ * the browser's own constraint validation already works and the message line
+ * shows its idle promise. Wiring is a handler on the `<form>` plus a state for
+ * that one line; nothing about the layout has to change for it.
  *
  * ── WHY THE FIELDS ARE GROUPED ──
  *
@@ -38,54 +42,14 @@ import { SettingsCard } from "./settings-card";
  * asterisk is decorative — `aria-hidden` — because `required` on the input is
  * what actually tells assistive tech, and "Full name star" is not a field name.
  *
- * ── THE MESSAGE LINE, AND WHY IT IS A LIVE REGION ──
+ * ── THE MESSAGE LINE IS ALREADY A LIVE REGION ──
  *
- * One line does three jobs: the idle promise, the validation failure, and the
- * confirmation. It is `aria-live="polite"` so a change of state is announced
- * rather than only shown — a sighted reader sees the text turn red, and this is
- * the same information for somebody who cannot.
+ * `aria-live="polite"`, so when the validation and confirmation states land in
+ * it they are announced rather than only shown. Declaring the region up front
+ * matters: a live region created at the same moment its text arrives is the one
+ * case where announcements are unreliable.
  */
 export function ProfileCard() {
-  const [status, setStatus] = useState<"idle" | "invalid" | "saved">("idle");
-
-  const message =
-    status === "invalid"
-      ? profileCard.invalid
-      : status === "saved"
-        ? profileCard.saved
-        : profileCard.idle;
-
-  function onSubmit(event: React.FormEvent<HTMLFormElement>) {
-    /*
-     * ALWAYS PREVENTED. There is nowhere to submit to — this is a design build —
-     * and letting the form navigate would reload the portal and drop the
-     * reader's `?view=` and `?state=`.
-     */
-    event.preventDefault();
-
-    /* `checkValidity()` rather than the prototype's hand-rolled scan for
-       `input:required:invalid` plus a second pass for empty values. The browser
-       already knows, and it knows about the email field's format too, which the
-       hand-rolled version missed. */
-    const form = event.currentTarget;
-    if (!form.checkValidity()) {
-      setStatus("invalid");
-      /*
-       * `input:invalid`, AND THE `input` IS LOAD-BEARING.
-       *
-       * A bare `:invalid` also matches the `<fieldset>` wrapping the fields —
-       * HTML gives fieldsets and forms that pseudo-class when they CONTAIN an
-       * invalid control — and a fieldset is not focusable, so `.focus()` was a
-       * silent no-op. Measured: the message line turned red and the caret stayed
-       * wherever it was, which on a four-field form is the reader hunting for
-       * which one is missing.
-       */
-      form.querySelector<HTMLInputElement>("input:invalid")?.focus();
-      return;
-    }
-    setStatus("saved");
-  }
-
   return (
     <SettingsCard section={SETTINGS_SECTIONS.profile}>
       <p className="mt-1 mb-3 text-[11px] leading-[1.55] text-mv-muted">
@@ -95,9 +59,7 @@ export function ProfileCard() {
         {profileCard.requiredNote}
       </p>
 
-      {/* `noValidate` so the browser's own bubble does not pre-empt the card's
-          message line — the validity check above is still the browser's. */}
-      <form onSubmit={onSubmit} noValidate>
+      <form>
         {profileCard.groups.map((group) => (
           <fieldset
             key={group.legend}
@@ -115,15 +77,9 @@ export function ProfileCard() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span
             aria-live="polite"
-            className={`text-[11px] leading-[1.5] ${
-              status === "invalid"
-                ? "text-mv-required"
-                : status === "saved"
-                  ? "font-semibold text-mv-green-deep"
-                  : "text-mv-muted"
-            }`}
+            className="text-[11px] leading-[1.5] text-mv-muted"
           >
-            {message}
+            {profileCard.idle}
           </span>
           <PortalButton type="submit" variant="primary" size="sm">
             {profileCard.submit}

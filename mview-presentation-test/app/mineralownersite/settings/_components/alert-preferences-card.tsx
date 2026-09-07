@@ -62,7 +62,9 @@ export function AlertPreferencesCard() {
               ) : null}
             </>
           }
-          control={<ChannelChips id={row.id} label={row.label} />}
+          control={
+            <ChannelChips id={row.id} label={row.label} channels={row.channels} />
+          }
         />
       ))}
       <p className="mt-2 text-[11px] leading-[1.55] text-mv-muted">

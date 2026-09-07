@@ -32,7 +32,7 @@ export function NotificationsCard() {
           key={row.id}
           label={row.label}
           hint={<NotificationHint row={row} />}
-          control={<SettingToggle id={row.id} label={row.label} />}
+          control={<SettingToggle id={row.id} label={row.label} on={row.on} />}
         />
       ))}
     </SettingsCard>

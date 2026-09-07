@@ -1,15 +1,16 @@
-"use client";
-
 import {
   ALERT_CHANNELS,
   ALERT_CHANNEL_NAME,
-  type AlertChannel,
+  type ChannelSet,
 } from "../_lib/settings-types";
-import { useSettingsState } from "./settings-state";
 
 /**
  * WHERE ONE ALERT TYPE REACHES YOU — three press-to-toggle chips, the design's
  * `.chtg` pair (`chip-mint` when on, `chip-slate` when off).
+ *
+ * PRESENTATIONAL, like `SettingToggle`: each chip renders the position its row's
+ * data gives it and nothing happens on press. They are real buttons carrying
+ * `aria-pressed`, so wiring is an `onClick`.
  *
  * ── WHY A CHIP AND NOT THREE MORE SWITCHES ──
  *
@@ -30,24 +31,31 @@ import { useSettingsState } from "./settings-state";
  * delete the record. That distinction is stated in the card's own footnote and
  * is the reason unsubscribing here is safe — see `alert-preferences-card.tsx`.
  */
-export function ChannelChips({ id, label }: { id: string; label: string }) {
-  const { channels, setChannel } = useSettingsState();
-  const set = channels[id];
-
+export function ChannelChips({
+  id,
+  label,
+  channels,
+}: {
+  /** `AlertPreference.id` — the key this row's channels will be stored under. */
+  id: string;
+  label: string;
+  channels: ChannelSet;
+}) {
   return (
     <div
       className="flex flex-wrap items-center justify-end gap-[5px]"
       role="group"
       aria-label={`Where to send: ${label}`}
     >
-      {ALERT_CHANNELS.map((channel: AlertChannel) => {
-        const on = set?.[channel] ?? false;
+      {ALERT_CHANNELS.map((channel) => {
+        const on = channels[channel];
         return (
           <button
             key={channel}
             type="button"
             aria-pressed={on}
-            onClick={() => setChannel(id, channel, !on)}
+            data-alert={id}
+            data-channel={channel}
             className={`inline-flex cursor-pointer items-center rounded-full px-[10px] py-[3px] text-[11.5px] leading-[1.3] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep ${
               on
                 ? "bg-mv-mint text-mv-green-ink"

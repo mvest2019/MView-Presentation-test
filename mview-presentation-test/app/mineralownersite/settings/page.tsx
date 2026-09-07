@@ -16,7 +16,6 @@ import {
   UnclaimedSettingsNotice,
 } from "./_components/settings-header";
 import { SettingsJumpNav } from "./_components/settings-jump-nav";
-import { SettingsStateProvider } from "./_components/settings-state";
 import { UltraSettings } from "./_components/ultra-settings";
 import { ViewCard } from "./_components/view-card";
 
@@ -29,18 +28,22 @@ import { ViewCard } from "./_components/view-card";
  * and the portal's own primitives. `settings/README.md` carries the full map;
  * this header is the two decisions a reader of the page needs first.
  *
- * ── WHY THE PROVIDER WRAPS THE WHOLE PAGE ──
+ * ── THIS IS THE UI PASS: NOTHING HERE IS WIRED ──
  *
- * `SettingsStateProvider` is a client component and everything below it here is
- * a server component — which is fine, and worth being explicit about because it
- * looks like it should not be. Server components passed as `children` to a
- * client component are rendered on the server and handed over as already-built
- * output; only the client leaves inside them (the switches, the channel chips,
- * the two Recommended buttons, the profile form) ship JavaScript, and those are
- * what read the context.
+ * Every component under this route is a SERVER component and the page ships no
+ * JavaScript of its own. The switches, the channel chips, the two Recommended
+ * buttons and the profile form render the positions their data gives them and
+ * do nothing when pressed. The controls are real `<button>`s and real inputs
+ * carrying the right roles and ARIA state, so wiring each one is adding a
+ * handler rather than rebuilding it.
  *
- * The provider exists for one reason: "Use Recommended Settings" appears twice
- * and has to reach six rows across two cards. See its own header.
+ * ONE THING THE FUNCTIONALITY PASS SHOULD KNOW BEFORE IT STARTS. "Use
+ * Recommended Settings" is rendered TWICE — in the page head and in the Ultra
+ * card — and one press has to reach three rows in the Notifications card and
+ * every channel on three rows in Alert preferences. That is four components,
+ * so the positions will have to be shared state rather than local to each
+ * control. Which rows it covers is already recorded, as the `recommended` flag
+ * in `_lib/settings-data.ts`.
  *
  * ── WHY THE TOP-LEVEL SECTIONS ARE FLAT ──
  *
@@ -62,62 +65,60 @@ export const metadata: Metadata = {
 
 export default function SettingsPage() {
   return (
-    <SettingsStateProvider>
-      <div className={gates("pageRoot")}>
-        {/* v9 — the no-claim banner. `nc-only` and deliberately NOT `nc-swap`. */}
-        <UnclaimedSettingsNotice />
+    <div className={gates("pageRoot")}>
+      {/* v9 — the no-claim banner. `nc-only` and deliberately NOT `nc-swap`. */}
+      <UnclaimedSettingsNotice />
 
-        {/* v41 · AUDIT #2 — Ultra's whole page. Everything below is hidden by
-            `portal.css` while this card is showing. */}
-        <UltraSettings />
+      {/* v41 · AUDIT #2 — Ultra's whole page. Everything below is hidden by
+          `portal.css` while this card is showing. */}
+      <UltraSettings />
 
-        <SettingsHeader />
+      <SettingsHeader />
 
-        {/* v33 · H18/H19 — the section map, for a page this long. */}
-        <SettingsJumpNav />
+      {/* v33 · H18/H19 — the section map, for a page this long. */}
+      <SettingsJumpNav />
 
-        {/*
-          THE TWO COLUMNS, AND WHY THEY ARE SPLIT WHERE THEY ARE.
+      {/*
+        THE TWO COLUMNS, AND WHY THEY ARE SPLIT WHERE THEY ARE.
 
-          `items-start` is load-bearing: grid items stretch to the tallest row by
-          default, so without it every card in the shorter column grows to match
-          the taller one and the page fills with cards holding four rows in
-          eighteen rows of white. That is the misalignment the design's own
-          `align-items:start` was there to prevent.
+        `items-start` is load-bearing: grid items stretch to the tallest row by
+        default, so without it every card in the shorter column grows to match
+        the taller one and the page fills with cards holding four rows in
+        eighteen rows of white. That is the misalignment the design's own
+        `align-items:start` was there to prevent.
 
-          LEFT IS WHAT THE PRODUCT SENDS YOU — view, delivery, quiet weeks,
-          notifications, alert channels. RIGHT IS WHO YOU ARE AND WHAT YOU CAN
-          DO ABOUT IT — the tour, credits, profile, privacy, account, and the
-          Professional surface. The split is by subject, not by height, so a
-          reader scanning for "where does my report go" only has to read one
-          column.
+        LEFT IS WHAT THE PRODUCT SENDS YOU — view, delivery, quiet weeks,
+        notifications, alert channels. RIGHT IS WHO YOU ARE AND WHAT YOU CAN
+        DO ABOUT IT — the tour, credits, profile, privacy, account, and the
+        Professional surface. The split is by subject, not by height, so a
+        reader scanning for "where does my report go" only has to read one
+        column.
 
-          One column below 1024px, in the design's own order: the whole left
-          column, then the whole right one. That keeps the four cards that hold
-          switches together on a phone rather than interleaving them with the
-          account furniture.
-        */}
-        <div className="grid grid-cols-1 items-start gap-[18px] min-[1024px]:grid-cols-2">
-          <div className="flex flex-col gap-[18px]">
-            <ViewCard />
-            <DeliveryCard />
-            <QuietWeekCard />
-            <NotificationsCard />
-            <AlertPreferencesCard />
-          </div>
+        One column below 1024px, in the design's own order: the whole left
+        column, then the whole right one. That keeps the four cards that hold
+        switches together on a phone rather than interleaving them with the
+        account furniture.
+      */}
+      <div className="grid grid-cols-1 items-start gap-[18px] min-[1024px]:grid-cols-2">
+        <div className="flex flex-col gap-[18px]">
+          <ViewCard />
+          <DeliveryCard />
+          <QuietWeekCard />
+          <NotificationsCard />
+          <AlertPreferencesCard />
+        </div>
 
-          <div className="flex flex-col gap-[18px]">
-            <GuidedTourCard />
-            <CreditsCard />
-            <ProfileCard />
-            <PrivacyCard />
-            {/* v26 · S3 — two cards, one per claim state, sharing one anchor so
-                the jump chip lands in both. Only ever one shows. */}
-            <AccountCards />
-            <AdvancedCard />
-          </div>
+        <div className="flex flex-col gap-[18px]">
+          <GuidedTourCard />
+          <CreditsCard />
+          <ProfileCard />
+          <PrivacyCard />
+          {/* v26 · S3 — two cards, one per claim state, sharing one anchor so
+              the jump chip lands in both. Only ever one shows. */}
+          <AccountCards />
+          <AdvancedCard />
         </div>
       </div>
-    </SettingsStateProvider>
+    </div>
   );
 }
