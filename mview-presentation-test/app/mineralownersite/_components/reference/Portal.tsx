@@ -33,12 +33,11 @@
  *      Report is `/mineralownersite/briefing`, which is where this app's
  *      sidebar has always pointed.
  *
- *   2  ALERTS AND ACTIVITIES ARE THIS APP'S OWN PAGES. They are outside the
- *      scope of this work, so `go('alerts')` and `go('activities')` navigate
- *      to the existing `/mineralownersite/alerts` and `.../activities` rather
- *      than rendering the reference's `AlertsView`/`ActivitiesView`. Every
- *      label, icon, badge and position in the chrome is still the reference's;
- *      only the destination is this build's.
+ *   2  THE MAP IS A FIFTH ROUTE. The reference has four surfaces; this app
+ *      also has the map, so `Route` carries it and the sidebar row points at
+ *      `/mineralownersite/map`. It is not one of `OWNED` — it renders itself
+ *      through `children`, per adaptation 3 — but it is in the table, so Back
+ *      onto it resolves to the right row.
  *
  *   3  A PAGE CAN BRING ITS OWN VIEW. `children`, plus `shellClass` for the
  *      layout that view needs. The Map is the one caller: it is a route of its
@@ -64,6 +63,8 @@ import { type Tier } from './bits';
 import Chrome from './Chrome';
 import Dashboard from './Dashboard';
 import WeeklyView from './WeeklyView';
+import AlertsView from './AlertsView';
+import ActivitiesView from './ActivitiesView';
 import DrawerPanel from './DrawerPanel';
 import Loader, { type Step } from './Loader';
 import { PortalViewStateProvider } from './view-state';
@@ -101,8 +102,20 @@ export const ROUTE_PATH: Record<Route, string> = {
   activities: '/mineralownersite/activities',
   map: '/mineralownersite/map',
 };
-/** ADAPTED 2 · which routes this shell renders itself */
-const OWNED: Route[] = ['dashboard', 'weekly'];
+/**
+ * WHICH ROUTES THIS SHELL RENDERS ITSELF — the reference's four, all of them.
+ *
+ * They switch without a request, which is the reference's own arrangement and
+ * its own reason: a route change must not discard a snapshot that took seconds
+ * to build, and the four surfaces read ONE payload, so the bell badge, the
+ * alert list, the activity feed and the dashboard's rollup cannot disagree.
+ * Each still has a real server page, which is what makes a cold entry or a
+ * shared link work.
+ *
+ * The Map is absent deliberately: it is 51 files and an ArcGIS runtime, and it
+ * borrows this shell through `children` instead — see adaptation 3.
+ */
+const OWNED: Route[] = ['dashboard', 'weekly', 'alerts', 'activities'];
 
 export const ROUTE_TITLE: Record<Route, string> = {
   dashboard: 'Dashboard', alerts: 'Alerts', activities: 'Activities',
@@ -255,12 +268,10 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
   }, []);
 
   const go = useCallback((r: Route) => {
-    /* ADAPTED 2 · the two routes this shell does not own are real pages under
-       this app's other layout, so they are a navigation rather than a state
-       change. The reference's own reason for keeping ITS four in-component —
-       "a route change must not discard a snapshot that took seconds to build"
-       — still applies to the two it does own, which is why those still switch
-       without a request. */
+    /* THE FOUR ROUTES THIS SHELL OWNS SWITCH WITHOUT A REQUEST — the
+       reference's own arrangement, for the reference's own reason: "a route
+       change must not discard a snapshot that took seconds to build". The Map
+       is not one of them and is a real navigation. */
     /* AND A PAGE THAT BROUGHT ITS OWN VIEW OWNS NONE OF THEM. `children` wins
        over `view` for as long as this shell is mounted, so switching `route` on
        the Map would have pushed `/mineralownersite` into the address bar and
@@ -366,12 +377,16 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
     (!data ? null
       : route === 'weekly'
         ? <WeeklyView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
-        : (
-          <Dashboard
-            p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go}
-            trialStarted={trialStarted} setFunnel={pickFunnel}
-          />
-        ))
+        : route === 'alerts'
+          ? <AlertsView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
+          : route === 'activities'
+            ? <ActivitiesView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
+            : (
+              <Dashboard
+                p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go}
+                trialStarted={trialStarted} setFunnel={pickFunnel}
+              />
+            ))
   );
 
   return (

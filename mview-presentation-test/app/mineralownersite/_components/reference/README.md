@@ -1,11 +1,16 @@
-# The Dashboard and the Weekly Report, ported
+# The reference build's four surfaces, ported
 
-`/mineralownersite` and `/mineralownersite/briefing` are the **reference
-build's** Dashboard and Weekly Report, ported from `mineral-owner-site-2.0`
+`/mineralownersite`, `/mineralownersite/briefing`, `/mineralownersite/alerts`
+and `/mineralownersite/activities` are the **reference build's** Dashboard,
+Weekly Report, Alerts and Activities, ported from `mineral-owner-site-2.0`
 (the ZIP; its `ARCHITECTURE.md` describes it) — chrome included. This folder
 holds the components, `../_lib/reference/` the contract and the data,
-`../dashboard-reference.css` the stylesheet, and `../(reference)/` the two
-routes.
+`../dashboard-reference.css` the stylesheet, and `../(reference)/` the routes.
+
+**The URLs did not move.** Alerts and Activities are at the same two paths they
+have always been at; only what renders there changed. A route group's name never
+appears in a URL, so relocating the two pages from `(portal)/` to `(reference)/`
+is invisible to every link, bookmark and nav entry that points at them.
 
 ## Why the tree is shaped like this
 
@@ -14,9 +19,11 @@ different products:
 
 ```
 (reference)/   layout.tsx · page.tsx (Dashboard) · briefing/ (Weekly Report)
-               soon/[slug]/            the reference's "not in this build" page
+               alerts/ · activities/     the reference's, at their own paths
+               map/                      this app's map, borrowing the shell
+               soon/[slug]/    the reference's "not in this build" page
 (portal)/      layout.tsx  ← this app's existing shell, unchanged
-               alerts/ leases/ activities/ settings/
+               leases/ settings/ claim/ production/
 ```
 
 A route group's name never appears in a URL, so `(reference)/page.tsx` is still
@@ -59,9 +66,10 @@ they stop being synchronous. The four API routes read the same seam, so they do
 not change either.
 
 `nearby.rows` is kept in full (all 149) because the weekly report's five-mile
-map plots every row. Three arrays neither route renders were shortened —
-`activities.nearby`, `timeline.events`, `leases[*].monthly`; every key survives
-because `sample.ts` maps over all three. See `owner-data.ts` for the list.
+map plots every row, and so is `timeline.events` (all 893) because Activities
+renders it and counts its own totals off it. Two arrays no route renders were
+shortened — `activities.nearby`, `leases[*].monthly`; every key survives because
+`sample.ts` maps over them. See `owner-data.ts` for the list and the reasoning.
 
 ## What came across, and how faithfully
 
@@ -83,7 +91,7 @@ marked `ADAPTED` in the file:
 | | |
 |---|---|
 | route table | the reference serves `/` and `/weekly`; here they are `/mineralownersite` and `/mineralownersite/briefing`, where this app's nav has always pointed |
-| Alerts & Activities | out of scope, so `go()` navigates to this app's existing pages. Every label, icon, badge and position in the chrome is still the reference's |
+| the Map | a fifth route this app has and the reference does not. It renders itself and borrows the shell through `children`; it is in `ROUTE_PATH` so Back onto it lights the right sidebar row |
 | gate classes | the reference writes `in-app`, `view-*`, `state-*`, `ctx-open` to `<body>`; here they go on Portal's own wrapper, because this document also carries the marketing site |
 | sidebar `href` | My Leases and Map exist in this app, so those rows link to them and lose the `soon` tag — see below |
 
@@ -119,8 +127,10 @@ the sidebar to each route, then the four density tabs and five state options,
 and reads `.app-shell` as text.
 
 ```
-DASHBOARD        20 of 20 identical
-WEEKLY REPORT    20 of 20 identical
+ALERTS           20 of 20 identical
+ACTIVITIES       20 of 20 identical
+DASHBOARD        12 of 12 identical   (re-checked after the CSS changes below)
+WEEKLY REPORT    12 of 12 identical   (same)
 ```
 
 Compare on the same clock — `greetLine()` reads the viewer's own clock, so a
@@ -187,3 +197,24 @@ Neither of these was visible by eye, and the first was invisible to a text diff:
   own, which is why its avatar initials are Arial at `line-height: normal`. Six
   selectors differed until the trailing block in `dashboard-reference.css`
   reverted them.
+
+The Alerts and Activities pass added two more, both found the same way — 44
+computed properties on every distinct element of the route section, against the
+reference running beside it:
+
+- **The Professional table padding was the wrong one.** Scoping `body.view-pro`
+  to `.mv-ref-app.view-pro` adds a class *and removes an element*, so every
+  state rule silently lost one element-level unit against every other rule in
+  the sheet. `body.view-pro td` beats `.rp-tbl td` in the reference; the folded
+  pair tie, and the later one won. Every such selector now carries a leading
+  `body `, which restores exactly the unit the fold removed and no more. The
+  header of `dashboard-reference.css` works the arithmetic.
+- **Inline icons were block boxes.** Preflight sets `svg{display:block}`; the
+  reference sets nothing, so its `.mvi-inline` glyphs stay inline — and its own
+  `vertical-align:-2px` on them is written for an inline box. Inside a flex
+  parent display is blockified anyway, which is why only the Dashboard, the one
+  surface that puts an icon in running text, showed it. Reverted alongside the
+  font block, together with preflight's `color: inherit` on unstyled controls.
+
+What remains, on all four routes: zero-width border *colours* (this app's reset
+computes `currentColor`, the reference the UA's grey — no pixels either way).

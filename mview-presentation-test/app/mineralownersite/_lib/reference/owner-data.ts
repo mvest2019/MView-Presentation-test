@@ -33,21 +33,30 @@ import raw from './owner-payload.json';
  * history, the well coordinates, the whole Saturday report and all forty
  * drawer explainers.
  *
- * WHAT WAS TRIMMED, and why it is invisible on these two routes. The captured
- * payload is 1.8 MB. Three arrays that neither the Dashboard nor the Weekly
- * Report renders were shortened; every key survives, because `sample.ts` maps
- * over all three verbatim and a missing key would throw in the not-claimed
- * state:
+ * WHAT WAS TRIMMED, and why it is invisible on the four routes. The captured
+ * payload is 1.8 MB. Two arrays that none of them renders were shortened;
+ * every key survives, because `sample.ts` maps over them verbatim and a
+ * missing key would throw in the not-claimed state:
  *
  *   activities.nearby        the dashboard card slices at most 8
- *                            (Professional). The figure it prints is
+ *                            (Professional), and `ActivitiesView` reads only
+ *                            `activities.compare_90` and `compare_180` from
+ *                            this block — the feed it draws is
+ *                            `timeline.events`. The figure the card prints is
  *                            `activities.counts.nearby`, its own field, which
  *                            still reads 709.
- *   timeline.events          read by the Activities route only, which is not
- *                            part of this work.
- *   leases[*].monthly        both views read the aggregated `series.months`;
+ *   leases[*].monthly        every view reads the aggregated `series.months`;
  *                            nothing reads the per-lease months. 24 kept, to
  *                            match that window.
+ *
+ * `timeline.events` IS KEPT IN FULL — all 893 rows, captured from the same
+ * reference build and the same run day, its first twelve byte-identical to the
+ * twelve an earlier pass kept. It was trimmed while Activities was out of
+ * scope; now that the route renders it, a trim is not a smaller fixture but a
+ * different page. The counts on screen are read from the array itself — "120
+ * of 886 events", "133 on your leases" — so a short array does not show fewer
+ * rows, it shows wrong numbers, and the page opens on the owner's own leases,
+ * of which the trimmed capture held none.
  *
  * `nearby.rows` is kept IN FULL — all 149 of them. The weekly report's
  * five-mile map plots every single row at its own measured offset, so trimming

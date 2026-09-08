@@ -59,6 +59,23 @@ export interface AlertStat {
 }
 
 /* -------------------------------------------------------------- timeline.ts */
+/** the six kinds of thing the activity timeline carries — the reference's own
+ *  `EventKind`. Declared rather than inferred: this record happens to hold
+ *  only permits and completions, so pass 1 would have narrowed it to two. */
+export type EventKind =
+  | 'permit' | 'completion' | 'production' | 'adjacent' | 'status' | 'operator';
+
+/** the three measured bands, as the object keys `rings.rings` uses */
+export type RingKey = '1' | '3' | '5';
+
+/** a figure carried on a timeline row — the reference's `EventStat` */
+export interface EventStat {
+  label: string;
+  value: string;
+  sub?: string;
+  tone?: 'up' | 'down' | 'warn';
+}
+
 /** where the row sits, and therefore what a mile button can do with it */
 export type EventScope =
   /** on a lease this owner holds */
@@ -493,7 +510,7 @@ export interface Payload {
     rings: {
       "1": {
         radius_mi: number;
-        key: string;
+        key: RingKey;
         standing_permits: number;
         neighbour_leases: number;
         leases_covered: number;
@@ -549,7 +566,7 @@ export interface Payload {
       };
       "3": {
         radius_mi: number;
-        key: string;
+        key: RingKey;
         standing_permits: number;
         neighbour_leases: number;
         leases_covered: number;
@@ -605,7 +622,7 @@ export interface Payload {
       };
       "5": {
         radius_mi: number;
-        key: string;
+        key: RingKey;
         standing_permits: number;
         neighbour_leases: number;
         leases_covered: number;
@@ -739,13 +756,8 @@ export interface Payload {
       action_href: string | null;
       link: string | null;
       next_step: string;
-      stats: ({
-        label: string;
-        value: string;
-        sub?: string;
-        tone?: string;
-      })[];
-      spark: number[];
+      stats: AlertStat[];
+      spark: number[] | null;
       spark_label: string | null;
       unread: boolean;
       channels: string;
@@ -913,7 +925,7 @@ export interface Payload {
   timeline: {
     events: ({
       id: string;
-      kind: string;
+      kind: EventKind;
       kind_label: string;
       title: string;
       body: string;
@@ -926,19 +938,15 @@ export interface Payload {
       county: string | null;
       operator_name: string | null;
       sort_key: string;
-      cycle: string;
+      cycle: string | null;
       when_label: string | null;
       standing: boolean;
-      stats: ({
-        label: string;
-        value: string;
-      })[];
-      ring_stats: Record<'1' | '3' | '5', { label: string; value: string;
-        sub?: string; tone?: 'up' | 'down' | 'warn' }[]> | null;
+      stats: EventStat[];
+      ring_stats: Record<RingKey, EventStat[]> | null;
       ctx: string;
     })[];
     kinds: ({
-      kind: string;
+      kind: EventKind;
       label: string;
       count: number;
       mine: number;
@@ -1020,3 +1028,17 @@ export interface Payload {
   built_at: string;
 }
 
+
+/* ---------------------------------------------------------------- the rows */
+/**
+ * The two ROW types the Alerts and Activities views take, derived from the
+ * payload rather than re-declared beside it.
+ *
+ * In the reference these are `Alert` in `lib/alerts.ts` and `TimelineEvent` in
+ * `lib/timeline.ts` — modules that also BUILD the rows, out of Mongo, and so
+ * cannot come across. Deriving them here keeps the one seam this port has:
+ * there is exactly one shape, the views cannot drift from what the payload
+ * actually carries, and a field renamed above is a compile error below.
+ */
+export type Alert = Payload['alerts']['items'][number];
+export type TimelineEvent = Payload['timeline']['events'][number];
