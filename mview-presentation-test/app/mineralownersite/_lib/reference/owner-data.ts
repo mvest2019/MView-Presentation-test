@@ -1,5 +1,6 @@
-import type { Payload } from './payload';
+import type { Alert, Drawer, Payload } from './payload';
 import raw from './owner-payload.json';
+import { apiBase, fetchOwnerLiveBlocks, OwnerApiError } from './owner-api';
 
 /**
  * THE DATA SEAM — the only module in the Dashboard/Weekly Report tree that
@@ -81,16 +82,191 @@ export interface OwnerSelection {
  */
 const FIXTURE = raw as unknown as Payload;
 
+/** what a caller is willing to wait for */
+export interface PayloadOptions {
+  /**
+   * Read Alerts and Activity from `mineralview-api` when one is configured.
+   *
+   * `true` (the default) for anything that renders the chrome: `Chrome`
+   * computes the sidebar badge and the bell from `p.alerts.items`, so a route
+   * that skipped the live read would show a stale count beside a live page —
+   * the one defect the contract's §13 and the reference's own comments both
+   * single out.
+   *
+   * `false` for the two weekly endpoints. Neither `weekly.ts` nor
+   * `weekly-render.ts` reads a single field of the four live blocks, so making
+   * a CSV download fail because the alerts service is having a bad afternoon
+   * would be a coupling with nothing on the other end of it.
+   */
+  live?: boolean;
+}
+
 /**
- * The owner record both routes render.
+ * The owner record every surface renders.
  *
- * The selection is accepted and currently ignored, because the fixture holds
- * one owner. It is in the signature rather than added later so the call sites
- * — the two pages and three of the four API handlers — already pass what a
- * real backend needs. When they stop being ignored, no caller changes.
+ * TWO SOURCES, ONE SEAM, AND THE JOIN IS DECLARED HERE — the whole reason this
+ * module exists. `mineralview-api` serves four of the record's blocks and no
+ * more (`OWNER-ALERTS-ACTIVITY-API.md`, §1), so:
+ *
+ *   alerts · timeline · activities · rings     the API, when configured
+ *   everything else                            the committed capture
+ *
+ * WHY THE FOUR ARE FETCHED TOGETHER even for a route that shows one of them:
+ * they are one snapshot on the server and they must stay one here. The bell
+ * badge, the alert list, the dashboard's rollup, the activity feed and the
+ * mile panel are all counted off these four objects, and the redesign's own
+ * note records that they drifted apart when they were not. `owner-api.ts`
+ * fetches them in the order §3 asks for, so the four reads cost one cold build.
+ *
+ * WHY A FAILURE IS NOT PATCHED WITH THE CAPTURE. A page showing this owner's
+ * chrome above last month's alerts, with nothing on screen saying so, is worse
+ * than a page that says it could not load — and the shell already has somewhere
+ * honest to put that: `Portal` retries once on mount and then renders the error
+ * with the API's own message in it. So the error is thrown. The capture is the
+ * source only when NO API is configured at all, which is the state this app
+ * shipped in before the service existed.
  */
-export async function getOwnerPayload(_sel?: OwnerSelection): Promise<Payload> {
-  return FIXTURE;
+export async function getOwnerPayload(
+  sel?: OwnerSelection, opts?: PayloadOptions,
+): Promise<Payload> {
+  const base = apiBase();
+  if (!base || opts?.live === false) return FIXTURE;
+
+  /* THE CONTRACT HAS NO DEFAULT OWNER — "omitting `owner` is a 400" — but this
+     app does, and it is the owner the capture holds. Entering
+     `/mineralownersite/alerts` with no query string has to work, so the
+     default is supplied here rather than left to fail at the API. Its number
+     and district go with it: §2 rule 2 is that an owner number is a county
+     appraisal key and is reused, so the identity is pinned with all three. */
+  const owner = sel?.owner?.trim() || FIXTURE.owner.ownername;
+  const isDefault = owner === FIXTURE.owner.ownername;
+
+  /* NO MIXED RECORDS. Every block except the four is this one owner's, so
+     asking for somebody else would print their alerts under this owner's name,
+     value and lease count. Until the rest of the record has a source, that is
+     refused rather than rendered. Nothing in the UI can reach this — the
+     picker only ever returns the owner the capture holds — so it guards a
+     hand-typed URL. */
+  if (!isDefault) {
+    throw new OwnerApiError('/alerts', 409, {
+      statusCode: 409,
+      code: 'OWNER_NOT_AVAILABLE',
+      message: `Alerts and Activity can be read for any owner, but the rest of `
+        + `this record — the portfolio, the leases and the weekly report — is `
+        + `still the captured one for ${FIXTURE.owner.ownername}. Showing `
+        + `"${owner}" would mix two people's figures on one page.`,
+    });
+  }
+
+  const live = await fetchOwnerLiveBlocks(base, {
+    owner,
+    num: sel?.num ?? (isDefault ? FIXTURE.owner.ownernumber : null),
+    dist: sel?.dist ?? (isDefault ? FIXTURE.owner.districtcode : null),
+    year: sel?.year ?? null,
+  });
+
+  /* `live` is four whole blocks, each already checked against its `Payload`
+     member by `owner-api.ts`, so this is a replace and not a deep merge. A
+     deep merge would be the bug: it would let a field the API stopped sending
+     be back-filled from a capture taken on a different day. */
+  return {
+    ...FIXTURE,
+    ...live,
+    activities: { ...live.activities, nearby: trimNearby(live.activities.nearby) },
+    drawers: withAlertDrawers(FIXTURE.drawers, live.alerts.items),
+  };
+}
+
+/**
+ * 709 ROWS TO RENDER AT MOST EIGHT.
+ *
+ * `activities.nearby` is the county's raw filing feed and the service returns
+ * all of it — 720 KB on this owner. Exactly one thing reads it: the dashboard's
+ * "what is going on around you" card, which does
+ * `ac.nearby.slice(0, tier === 'pro' ? 8 : 5)`. The figure printed beside that
+ * list is `activities.counts.nearby`, a field of its own, so it still says 709
+ * however few rows are kept.
+ *
+ * Every one of those rows would otherwise be serialised into the RSC payload of
+ * every portal page, because the shell holds one snapshot for all four
+ * surfaces. Twelve is the capture's own trim, kept so the two sources produce
+ * the same record — see the note at the top of this file.
+ *
+ * The API has no parameter for this, which is why it is done here and not in
+ * the query. If `nearby` ever gains a real consumer — a "see all filings" page
+ * — this is the line to remove, and the endpoint is the place to page it.
+ */
+function trimNearby(
+  rows: Payload['activities']['nearby'],
+): Payload['activities']['nearby'] {
+  return rows.length > 12 ? rows.slice(0, 12) : rows;
+}
+
+/**
+ * THE EXPLAINER FOR A FINDING THE CAPTURE HAS NEVER SEEN.
+ *
+ * `drawers` has no endpoint, so it stays the capture's — but the findings no
+ * longer do, and two of the ten ids the contract lists are DATED or keyed on a
+ * lease: `filed-<YYYYMM>` rolls every month, and `handover-<lease_id>` /
+ * `trend-<lease_id>` name a lease. The moment the service anchors on a month
+ * the capture was not taken in, `drawers['alert:filed-202607']` is absent —
+ * and a missing key is not a blank panel, it is a DEAD CONTROL: `DrawerPanel`
+ * puts `display:none` on both the panel and the scrim when its `copy` is null,
+ * so the row's "expand →" would do nothing at all, with no error and nothing
+ * on screen to explain it. Every other row would keep working, which is what
+ * makes it the kind of fault nobody reports for a month.
+ *
+ * IT IS REBUILT RATHER THAN STUBBED, because it can be exactly. The reference's
+ * `drawers.ts` derives an alert's panel from the alert and nothing else, and
+ * the API sends every field it uses. Checked against all nine of the capture's
+ * alert drawers, field for field: `title`, `what`, `means`, `evidence`,
+ * `next`, `chips`, `stats`, `spark`, `spark_label` and the composed `sub` all
+ * reproduce identically. So this is the reference's own panel, not a
+ * placeholder apologising for a missing one.
+ *
+ * EVERY `alert:` PANEL IS REBUILT, not just the absent ones, and that is the
+ * second half of the same fault. Keeping the capture's copy where it exists
+ * would leave the panel describing one snapshot and the row above it another:
+ * measured on this owner, the live `permit-ring` finding has already moved its
+ * `evidence` and `next_step` since the capture was taken, so the row and its
+ * own explainer disagree today. Since the reconstruction is what the
+ * reference's builder produces, deriving all nine from the live rows costs
+ * nothing and makes that disagreement impossible.
+ *
+ * The other 31 keys — `permits`, `production`, `value`, `lease:<id>`,
+ * `well:<api14>` — are NOT derivable from an alert and are left exactly as the
+ * capture has them.
+ */
+function withAlertDrawers(
+  base: Record<string, Drawer>, items: Alert[],
+): Record<string, Drawer> {
+  let out = base;
+  for (const a of items) {
+    const key = 'alert:' + a.id;
+    if (out === base) out = { ...base };
+    out[key] = {
+      title: a.title,
+      /* the reference's own composition, verbatim: class, then the event date,
+         then the date it was detected, each dropped when the alert has none */
+      sub: [
+        a.klass,
+        a.event_label ? `event ${a.event_label}` : null,
+        a.detected_label ? `detected ${a.detected_label}` : null,
+      ].filter(Boolean).join(' · '),
+      what: a.body,
+      means: a.why,
+      evidence: a.evidence,
+      next: a.next_step,
+      chips: [a.klass],
+      stats: a.stats,
+      /* `community` has no drawer tone of its own in the reference; `record`
+         is the neutral one it falls to */
+      tone: a.category === 'community' ? 'record' : a.category,
+      spark: a.spark,
+      spark_label: a.spark_label,
+    };
+  }
+  return out;
 }
 
 /** the reference's `selectionFrom(url)`, reading the same four parameters */

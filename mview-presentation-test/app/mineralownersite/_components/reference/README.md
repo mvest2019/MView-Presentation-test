@@ -45,10 +45,71 @@ to `alerts/_lib/alert-counts`.
 ```
 _lib/reference/owner-data.ts     ← THE SEAM. the only module that knows where a
                                     figure comes from
-_lib/reference/owner-payload.json   one captured reference payload (414 KB)
+_lib/reference/owner-api.ts         the mineralview-api client (server-only)
+_lib/reference/owner-payload.json   one captured reference payload (1.1 MB)
 _lib/reference/payload.ts        the Payload contract
 _lib/reference/weekly.ts         the reference's own weekly type declarations
 ```
+
+**Two sources, joined at the seam.** `mineralview-api` serves four of the
+record's blocks — see `OWNER-ALERTS-ACTIVITY-API.md` — and the capture serves
+the rest:
+
+| block | source |
+|---|---|
+| `alerts` | `GET /api/v1/alerts` |
+| `timeline` | `GET /api/v1/activity` |
+| `activities` | `GET /api/v1/activity/summary` |
+| `rings` | `GET /api/v1/activity/rings` |
+| everything else | the capture |
+
+Those four are the whole of it, by decision: `OWNER-ALERTS-ACTIVITY-API.md` is
+the contract, and nothing outside it is read. The service does expose
+`/dashboard`, `/dashboard/drawers/{key}` and `/weekly`, which would cover most
+of the rest — they are deliberately NOT used, and they key on a `member_id`
+rather than the roll owner, so they are a different piece of work.
+
+Of the sheet's seven, three are redundant here and are not called:
+`/alerts/summary` and `/alerts/ledger` are already inside the `/alerts`
+response (`ledger` is a field of it), and `/activity/production` is the export
+contract, not a screen.
+
+**Two things the join has to do**, both in `owner-data.ts` and both measured
+against the live service:
+
+- **Alert explainers are rebuilt from the alert.** `drawers` has no endpoint
+  and stays the capture's, but the findings do not — and `filed-<YYYYMM>`
+  rolls monthly while `handover-`/`trend-` name a lease. A missing key is not a
+  blank panel, it is a dead control: `DrawerPanel` hides both itself and the
+  scrim when its `copy` is null, so "expand →" would do nothing at all. The
+  reference derives an alert's panel from the alert and nothing else, and the
+  API sends every field it uses, so all nine are rebuilt — checked field for
+  field against the capture's own drawers. That also removes a live mismatch:
+  the capture's `permit-ring` panel and the live row it belongs to already
+  disagree.
+- **`activities.nearby` is trimmed to 12.** The service returns all 709 rows —
+  720 KB — and the only consumer slices at most 8, printing its count from
+  `counts.nearby` instead. Trimming took the page payload from 2.14 MB to
+  1.34 MB with nothing changing on screen.
+
+`MINERALVIEW_API_BASE_URL` is the whole switch and it is **off by default**;
+`.env.example` explains why and what changes when it is set. The four are
+always fetched together even by a route that shows one of them, because
+`Chrome` counts the sidebar badge off `alerts.items` — one snapshot, or the
+badge and the page disagree. `owner-api.ts` fetches them in the order §3 of the
+contract asks for: `/alerts` alone first, so one cold build is paid, then the
+three activity reads against a warm snapshot.
+
+**The API responses are not mapped, and that is the contract test.** Each one is
+assigned straight into the `Payload` block it fills, so `tsc` checks the whole
+shape at the assignment — a renamed or newly-nullable field stops the build
+rather than reaching a page. There is no hand-written mapper to drift.
+
+**`limit` is deliberately not sent.** §9 advises it for the first paint, but
+`ActivitiesView` is the reference's and filters the whole list in the browser
+against the eight-character sort key; its kind cards, its month chart and its
+summary line are counted off `timeline.events` itself. A `limit` would not
+shorten the page, it would make its numbers wrong.
 
 Every component takes `Payload` and nothing else — no fetch, no fixture import,
 no knowledge of the source. Replacing the temporary data with a backend is a
@@ -168,7 +229,34 @@ and the honest explanation → *Open it in your mail app* / *Copy the message* /
 *Download it to attach* → a `mailto:` with the encoded subject → the rendered
 1,640-character message in its `<pre>`.
 
-**5 · Computed styles.** 146 selectors on the Dashboard and 122 on the Weekly
+**5 · The API path, against the live service.** Both screens were run against
+`mview-dev-api.mineralview.com`, and the four responses were compared to the
+`Payload` blocks they fill, recursively, key by key:
+
+```
+/alerts            -> Payload.alerts       IDENTICAL SHAPE   (+ filtered_count)
+/activity          -> Payload.timeline     IDENTICAL SHAPE   (+ filter, truncated)
+/activity/summary  -> Payload.activities   IDENTICAL SHAPE
+/activity/rings    -> Payload.rings        IDENTICAL SHAPE
+```
+
+Zero missing fields; the only extras are the two already declared. Rendered
+against live data, both screens still match the reference exactly:
+
+```
+ALERTS      detailed|paid   72dc1b45:7183    identical
+ACTIVITIES  detailed|paid   a7ed3cb4:13474   identical
+requests    /alerts, then /activity + /activity/summary + /activity/rings
+            owner · num · dist only — no refresh, no limit, no unknown key
+failure     service stopped → "That did not load — /alerts could not be
+            reached", no stale figures rendered
+```
+
+Against the same owner, the live `timeline` and `rings` blocks are BYTE-identical
+to the capture and `alerts` differs by one character — a straight `'` where the
+capture has `’`. `activities` differs only by the `nearby` trim above.
+
+**6 · Computed styles.** 146 selectors on the Dashboard and 122 on the Weekly
 Report, 35 properties each, measured in the browser at a matched viewport with
 both sides in the same state. Zero selectors absent on either side. What remains
 after the two fixes below is: the `.soon-tag` auto-margin (a different element

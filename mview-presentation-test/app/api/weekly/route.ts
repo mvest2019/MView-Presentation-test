@@ -47,7 +47,10 @@ export async function GET(req: Request) {
   const download = url.searchParams.get("dl") === "1";
 
   try {
-    const live = await getOwnerPayload(selectionFrom(url));
+    /* `live: false` — this endpoint reads `payload.weekly` and nothing else,
+       so it does not wait on the Alerts and Activity service, and a download
+       cannot fail because that service is down. See `PayloadOptions`. */
+    const live = await getOwnerPayload(selectionFrom(url), { live: false });
     /* the not-claimed form goes through the SAME transform the screen uses, so
        a downloaded sample cannot carry figures the screen withheld */
     const payload = sample ? sampleize(live).payload : live;
