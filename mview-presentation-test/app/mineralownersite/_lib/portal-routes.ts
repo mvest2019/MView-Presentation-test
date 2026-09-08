@@ -53,6 +53,7 @@ export const BUILT_PORTAL_ROUTES: readonly string[] = [
   "/mineralownersite/alerts",
   "/mineralownersite/leases",
   "/mineralownersite/briefing",
+  "/mineralownersite/claim",
   "/mineralownersite/settings",
 ];
 

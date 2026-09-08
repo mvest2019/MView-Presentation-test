@@ -1,0 +1,78 @@
+/* ============================================================================
+   THE CLAIM FLOW RENDERS IDENTICALLY IN ALL FOUR DENSITIES.
+
+   Every other portal route is meant to change with the density switch — that is
+   the whole point of Ultra / Essentials / Detailed / Professional. This one is
+   not, and the reason is what the flow IS: a five-step legal attestation. The
+   sentence an owner reads before ticking "I have a good-faith basis and
+   authority to claim this record" must be the same sentence at every setting,
+   and the layout it sits in should not rearrange under someone halfway through.
+   A density switch is a reading preference; this is a form that commits.
+
+   ── WHY THIS IS CSS AND NOT TAILWIND ──
+
+   Both rules below neutralise a rule in `portal.css` that targets an ANCESTOR
+   of this route, or a bare element inside it. Neither can be reached from a
+   utility class on the component: CSS has no way for a child to widen a parent
+   whose `max-width` is set, and a Tailwind utility loses to an unlayered
+   stylesheet regardless of specificity.
+
+   This is not the module drifting back to `portal.css`'s class system — see
+   `_components/ui/portal-ui.md`. It is the opposite: three lines that opt this
+   one route OUT of two global rules, scoped by a marker class so nothing else
+   in the portal can be affected.
+   ============================================================================ */
+
+/* ----------------------------------------------------------------------------
+   1 · THE BODY WIDTH CAP
+
+   `portal.css` sets `.app-body` to 920px in Essentials and Ultra, 1180px in
+   Detailed and 1340px in Professional. That alone changed this flow's shape:
+   at 920 the shell had 866px to work with and the rail dropped BELOW the form,
+   at 1180 and above it sat beside it. Two visibly different pages from a
+   control that is supposed to change how much detail is shown, not where the
+   page's furniture lives.
+
+   Pinned to 1180 — the middle value, and the one that gives the two-column
+   layout its intended proportions (a ~750px form beside the 320px rail).
+
+   `:has()` rather than a class on `.app-body` itself, because that element
+   belongs to the portal layout and this route does not own it. The same
+   construction is already used in `portal.css` for the unclaimed page swap.
+   ---------------------------------------------------------------------------- */
+.mv-portal:has(.mv-claim-flow) .app-body {
+  max-width: 1180px;
+}
+
+/* ----------------------------------------------------------------------------
+   2 · PROFESSIONAL'S TABLE TIGHTENING
+
+   `.mv-portal.view-pro td/th` re-pads and re-sizes EVERY table in the portal —
+   a bare element selector, so it reaches step 4's lease table too and shrinks
+   it to 12.5px cells on 6px rows in that one density.
+
+   THE VALUES BELOW ARE `portal.css`'s OWN BASE VALUES, not the Tailwind ones
+   the component asks for. That distinction is the whole correctness of this
+   rule and it was got wrong first time round. `portal.css` styles portal tables
+   from bare `td`/`th` selectors, and an unlayered stylesheet beats a Tailwind
+   utility whatever its specificity — so the lease table renders at 11px/14px
+   cells in EVERY density already, and `table.tsx`'s own 10px/14px never
+   applies. Restoring the component's values here would have left Professional
+   the one density that differs, which is the exact defect this file exists to
+   remove. Measured before and after.
+
+   `font-size: inherit` rather than a restated `13.5px`: the base size is set on
+   `.mv-portal table`, so inheriting takes whatever that rule says and cannot
+   fall out of step with it.
+
+   Base values: `portal.css` `.mv-portal th` (10px 14px) and `.mv-portal td`
+   (11px 14px), with the size from `.mv-portal table`.
+   ---------------------------------------------------------------------------- */
+.mv-portal.view-pro .mv-claim-flow td {
+  padding: 11px 14px;
+  font-size: inherit;
+}
+
+.mv-portal.view-pro .mv-claim-flow th {
+  padding: 10px 14px;
+}

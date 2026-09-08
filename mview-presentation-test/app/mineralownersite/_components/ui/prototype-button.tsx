@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import {
   PortalButton,
@@ -43,6 +43,7 @@ import {
  */
 export function PrototypeButton({
   children,
+  icon,
   acknowledgement,
   variant = "ghost",
   size = "sm",
@@ -50,6 +51,12 @@ export function PrototypeButton({
   title,
 }: {
   children: string;
+  /**
+   * A glyph before the label. Optional, and it survives the press — the
+   * acknowledgement replaces the WORDS, not the button, and a control that lost
+   * its icon on click would read as having been replaced by a different one.
+   */
+  icon?: ReactNode;
   /** What the label becomes once pressed. The prototype's wording, verbatim. */
   acknowledgement: string;
   variant?: PortalButtonVariant;
@@ -68,6 +75,7 @@ export function PrototypeButton({
       className={block ? "w-full" : undefined}
       onClick={() => setPressed(true)}
     >
+      {icon}
       {pressed ? acknowledgement : children}
     </PortalButton>
   );

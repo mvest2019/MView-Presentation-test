@@ -107,9 +107,11 @@ export const primarySlots: PortalPrimarySlot[] = [
   {
     label: "Claim Mineral Owner",
     icon: "claim",
-    // The claim flow is a marketing route and it is already built, so this one
-    // row genuinely goes somewhere.
-    href: "/claim",
+    // A PORTAL route, not the marketing `/claim`. This row is portal chrome, so
+    // following it should not throw the owner out to the public site mid-flow;
+    // `mineralownersite/claim/page.tsx` greets them inside the shell and links
+    // on to the record finder at `/claim`, which is still where search happens.
+    href: "/mineralownersite/claim",
     navKey: "claim",
     slotClass: "v33-claimnav",
     states: ["unclaimed"],
@@ -307,8 +309,19 @@ export function pageNameForPath(pathname: string): string {
    *
    * Both lists are the portal's navigation; the split between them is about
    * where a row is DISPLAYED, not about whether it names a page.
+   *
+   * AND THE PRIMARY SLOTS, for the third time in the same way. Claim Mineral
+   * Owner became a portal route (`/mineralownersite/claim`), and a page titled
+   * "Claim Mineral Owner" opened with "Dashboard" in the top bar — the same
+   * silent fallback Settings hit above, from the same cause: a list that names
+   * pages was left out of the search. The rule this function needs is that
+   * EVERY list of nav rows is searched, so all three are spread here.
    */
-  const rows = [...navSections.flatMap((section) => section.items), ...accountMenu];
+  const rows = [
+    ...primarySlots,
+    ...navSections.flatMap((section) => section.items),
+    ...accountMenu,
+  ];
 
   for (const item of rows) {
     if (item.href && isNavItemActive(item.href, pathname)) return item.label;

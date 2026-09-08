@@ -224,3 +224,35 @@ export const ACTION_FOOTER_COPY = {
   heading: "What do you want to do next?",
   reassurance: "No action is a fine choice — nothing here is urgent.",
 } as const;
+
+/* ============================================================================
+   4 · ROUTES THAT SUPPRESS THE FUNNEL BAR
+
+   `#mvFunnelBar` is the green band under the pinned value bar, and it reports
+   the account's FUNNEL STATE: "Your record is claimed — all 10 of your leases
+   are here and stay here… Start my 7-day free trial."
+
+   ON EVERY OTHER ROUTE THAT IS EXACTLY RIGHT — it is the one place the portal
+   says where the account stands and what the next commercial step is. On the
+   claim flow it is a contradiction the reader is entitled to be confused by:
+   the page asks them to claim a record while the band above it announces the
+   record is already claimed, and offers a trial upgrade over the top of a
+   five-step form they have not finished. In the unclaimed state the same band
+   reads "Claim your mineral owner record — Claim now →", which is a link to the
+   page they are standing on.
+
+   A LIST RATHER THAN A FLAG ON THE ROUTE, for the same reason the three
+   structures above are lists: this is the shell's decision about its own
+   furniture, and `PortalShell` should be able to answer "does this route get
+   the bar?" without importing anything from a page.
+   ============================================================================ */
+export const ROUTES_WITHOUT_FUNNEL_BAR: readonly string[] = [
+  "/mineralownersite/claim",
+];
+
+/** Does this route show the funnel bar? Prefix-matched, like the nav's rows. */
+export function showsFunnelBar(pathname: string): boolean {
+  return !ROUTES_WITHOUT_FUNNEL_BAR.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  );
+}

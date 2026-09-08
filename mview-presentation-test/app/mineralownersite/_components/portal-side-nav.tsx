@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 
 import { PortalNavRow } from "./portal-nav-row";
 import { PortalSectionList } from "./portal-section-list";
-import { primarySlots } from "../_lib/portal-nav";
+import { isNavItemActive, primarySlots } from "../_lib/portal-nav";
 import { referral } from "../_lib/portal-demo-data";
 
 /**
@@ -89,12 +89,19 @@ export function PortalSideNav() {
 
       {/* The two swapping slots. Rendering BOTH and letting the state class
           choose is what makes the swap free — no JavaScript, and no chance of
-          the wrong one flashing before hydration. */}
+          the wrong one flashing before hydration.
+
+          THE ACTIVE STATE IS REAL NOW. It was hard-coded `false` while Claim
+          pointed out to the marketing site and Lease Audit went nowhere — no
+          portal route could ever be one of these, so there was nothing to
+          light. Claim is a portal route today, and a rail that leaves every row
+          unlit on the page you are standing on is the one case the `.on` wash
+          exists for. */}
       {primarySlots.map((slot) => (
         <PortalNavRow
           key={slot.slotClass}
           item={slot}
-          active={false}
+          active={isNavItemActive(slot.href, pathname)}
           extraClass={slot.slotClass}
         />
       ))}

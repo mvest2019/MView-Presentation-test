@@ -1,0 +1,210 @@
+"use client";
+
+import { CircleCheck, Lock, ShieldCheck } from "lucide-react";
+import { useEffect, useRef, type ReactNode } from "react";
+
+import { claimSteps, TOTAL_STEPS } from "../_lib/claim-steps";
+import { ClaimStepper } from "./claim-stepper";
+
+/**
+ * How far down the viewport the flow's top edge should land after a step
+ * change: the portal's sticky top bar (58px) plus the pinned value bar (45px),
+ * plus a few pixels so the card does not touch the bar above it.
+ */
+const STICKY_OFFSET = 112;
+
+/**
+ * THE FRAME EVERY STEP RENDERS INSIDE — title bar, stepper, caption bar, and
+ * the two columns.
+ *
+ * ── THE CAPTION BAR IS THE PIECE THAT EARNS ITS KEEP ──
+ *
+ * "Step 3 of 5 — Confirm the address, then the claim is made" on the left, and
+ * on the right the step's own promise. It reads as chrome and it is not: it is
+ * the only place the flow tells you, before you have read a word of the step,
+ * whether this screen commits anything. Both halves come from `claim-steps.ts`
+ * so the stepper above cannot disagree with them.
+ *
+ * ── THE COLUMNS SPLIT ON THE CONTAINER, NOT THE VIEWPORT ──
+ *
+ * `@container` plus `@[920px]:grid-cols-[1fr_320px]`. The space this flow gets
+ * is not the window's width — the portal's sidebar takes a fixed slice of it
+ * and `.app-body` caps what is left — so a `lg:` breakpoint is measuring the
+ * wrong thing. It measured 1024px of window and split into two columns while
+ * the body cap left the form 486px, which is not enough for a five-column lease
+ * table and pushed step 4 into a sideways scroll on a wide monitor.
+ *
+ * `claim.css` now pins that cap to one value for this route, so the DENSITY
+ * switch no longer moves this boundary — but the container query is still what
+ * makes the split correct, and it is what keeps it correct on a narrow window
+ * and on a phone. It also means this component never has to know what a
+ * density is.
+ *
+ * When it does collapse, main content comes FIRST: the rail carries progress
+ * and reassurance, both secondary to the step itself, and putting it on top
+ * would push the actual form below the fold.
+ *
+ * ── IT RETURNS YOU TO THE TOP WHEN THE STEP CHANGES ──
+ *
+ * Every step's button is at the BOTTOM of a long screen, so advancing without
+ * this drops you into the middle of the next one — past its heading, past the
+ * stepper, and on step 3 past the record you are being asked to confirm. The
+ * first render is skipped so arriving at the page does not yank it.
+ */
+export function ClaimShell({
+  current,
+  done = false,
+  rail,
+  below,
+  children,
+}: {
+  current: number;
+  /**
+   * THE CLAIM IS WRITTEN AND THE FLOW IS OVER. The stepper comes off — five
+   * numbered stages with the last one lit would invite a sixth tap on a form
+   * that no longer exists — and the caption bar says so instead.
+   */
+  done?: boolean;
+  /** The step-specific rail cards, under the standing two. */
+  rail: ReactNode;
+  /**
+   * Full width, BELOW both columns. Only the completion screen uses it, for the
+   * groups footer — see `done-groups.tsx` for why that is not main-column
+   * content.
+   */
+  below?: ReactNode;
+  children: ReactNode;
+}) {
+  const step = claimSteps[current - 1];
+  const root = useRef<HTMLDivElement>(null);
+  const mounted = useRef(false);
+
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+
+    /*
+     * ── WHY AN EXPLICIT `scrollTo` AND NOT `scrollIntoView` + `scroll-mt` ──
+     *
+     * The idiomatic pair was tried first and does not land here: it stopped
+     * with the card's top at 32px, under the pinned value bar, and calling it
+     * again would not move it. Computing the target and scrolling the window to
+     * it is deterministic and checkable — the card's top lands at exactly
+     * `STICKY_OFFSET`.
+     *
+     * ── WHY `instant`, EXPLICITLY, AND NOT THE INHERITED SMOOTH ──
+     *
+     * `globals.css` sets `scroll-behavior: smooth` on `html`, so an unqualified
+     * scroll inherits it — and a smooth scroll UPWARD was measured doing
+     * nothing at all on this page, leaving the reader mid-step with no
+     * indication the step had changed. Naming `instant` opts out of the
+     * inherited value rather than relying on it.
+     *
+     * It is also the better behaviour on its own merits. This is a full content
+     * swap, not a jump within one document: animating the scroll of a page
+     * whose content has already been replaced animates nothing meaningful, and
+     * an instant reposition is what an ordinary page navigation does. It needs
+     * no `prefers-reduced-motion` branch for the same reason — there is no
+     * motion to reduce.
+     *
+     * ── DEFERRED BY ONE FRAME ──
+     *
+     * So the incoming step's layout has settled. The five steps are different
+     * heights, and a target measured against the outgoing one is wrong by that
+     * difference.
+     */
+    const frame = requestAnimationFrame(() => {
+      const node = root.current;
+      if (!node) return;
+      const target =
+        node.getBoundingClientRect().top + window.scrollY - STICKY_OFFSET;
+      window.scrollTo({ top: Math.max(0, target), behavior: "instant" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [current, done]);
+
+  return (
+    <div
+      ref={root}
+      /* `mv-claim-flow` is a MARKER, not styling — `claim.css` uses it to opt
+         this route out of two global `portal.css` rules that would otherwise
+         make the flow look different in each density. See that file. */
+      className="mv-claim-flow @container rounded-mv border border-mv-line bg-mv-card p-5 shadow-mv max-[767px]:p-3"
+    >
+      <header className="mb-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+        <h1 className="flex items-center gap-[9px] text-[17px] font-extrabold tracking-[-.01em] text-mv-ink">
+          <ShieldCheck
+            aria-hidden="true"
+            className="h-[19px] w-[19px] text-mv-green-deep"
+          />
+          Claim your owner record
+        </h1>
+        <p className="flex items-center gap-[6px] text-[12px] text-mv-muted">
+          <CircleCheck
+            aria-hidden="true"
+            className="h-[14px] w-[14px] text-mv-green-deep"
+          />
+          {TOTAL_STEPS} short steps · Saved as you go · No card, ever
+        </p>
+      </header>
+
+      {!done && <ClaimStepper current={current} />}
+
+      {/* The caption bar sits CLOSER to the step card than to the stepper above
+          it (requested): 10px below, 12px above. It reads as that card's own
+          strapline — "Step 1 of 5 — Search the public record" describes what is
+          in the panel underneath, not what is in the numbered rail on top — and
+          the tighter side is the side it belongs to. */}
+      <div
+        className={`mb-[10px] flex flex-wrap items-center justify-between gap-x-6 gap-y-1 text-[12px] text-mv-muted ${
+          done ? "" : "mt-3"
+        }`}
+      >
+        {done ? (
+          /* No right-hand aside once the flow is over: the "you can change this
+             in Settings" line it used to carry is said again, in place, by the
+             "Unclaim in Settings" link at the foot of the card. */
+          <p className="flex items-center gap-[7px] text-[12.5px]">
+            <CircleCheck
+              aria-hidden="true"
+              className="h-[15px] w-[15px] flex-none text-mv-green-deep"
+            />
+            <span>
+              <b className="font-bold text-mv-green-deep">Done</b> — Your owner
+              record is claimed!
+            </span>
+          </p>
+        ) : (
+          <>
+            <p>
+              Step {current} of {TOTAL_STEPS} — {step.caption}
+            </p>
+            <p className="flex items-center gap-[6px]">
+              {step.asideLock && (
+                <Lock aria-hidden="true" className="h-[12px] w-[12px]" />
+              )}
+              {step.aside}
+            </p>
+          </>
+        )}
+      </div>
+
+      <div className="grid items-start gap-[18px] @[920px]:grid-cols-[1fr_320px]">
+        {/* A container in its own right, so the grids INSIDE a step (step 1's
+            field pairs, step 4's stat tiles, step 5's lease cards) measure the
+            column they actually live in rather than the window — the same
+            reasoning as the split above, one level down. */}
+        <div className="@container min-w-0 rounded-mv border border-mv-line bg-mv-card p-[22px] max-[767px]:p-4">
+          {children}
+        </div>
+        <aside className="grid gap-3" aria-label="Claim guidance">
+          {rail}
+        </aside>
+      </div>
+
+      {below && <div className="mt-[18px]">{below}</div>}
+    </div>
+  );
+}

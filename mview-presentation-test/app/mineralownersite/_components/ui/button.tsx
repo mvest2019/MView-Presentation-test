@@ -21,7 +21,7 @@ import type { ComponentProps, ReactNode } from "react";
  * stylesheet, not a Tailwind approximation of it.
  */
 
-export type PortalButtonVariant = "primary" | "ghost" | "mint";
+export type PortalButtonVariant = "primary" | "ghost" | "mint" | "dark";
 export type PortalButtonSize = "sm" | "md" | "lg";
 
 /*
@@ -50,6 +50,19 @@ const VARIANTS: Record<PortalButtonVariant, string> = {
   ghost:
     "border-mv-line bg-mv-card text-mv-slate hover:bg-mv-bg hover:border-mv-line-strong",
   mint: "border-mv-mint-edge bg-mv-mint text-mv-green-ink hover:brightness-[1.03]",
+  /*
+   * THE NEAR-BLACK FILL, for the one action on a screen that has finished.
+   *
+   * A REAL VARIANT AND NOT A `className` OVERRIDE, for exactly the reason the
+   * note above records: a background utility passed through `className` and the
+   * variant's own `bg-*` are both single classes, so specificity cannot separate
+   * them and Tailwind's stylesheet order decides which wins. Naming it here puts
+   * it in the same cascade position as its siblings, where it is deterministic.
+   *
+   * `mv-ink` is the portal's own near-black — the sidebar's ground — so the
+   * darkest control on a page matches the darkest surface in the shell.
+   */
+  dark: "border-transparent bg-mv-ink text-white hover:brightness-[1.35]",
 };
 
 const SIZES: Record<PortalButtonSize, string> = {

@@ -7,7 +7,11 @@ import { usePathname } from "next/navigation";
 import { PortalIcon } from "./portal-icon";
 import { PortalNavRow } from "./portal-nav-row";
 import { PortalSectionList } from "./portal-section-list";
-import { drawerSections, primarySlots } from "../_lib/portal-nav";
+import {
+  drawerSections,
+  isNavItemActive,
+  primarySlots,
+} from "../_lib/portal-nav";
 import { demoDisclosure } from "../_lib/portal-demo-data";
 
 /**
@@ -77,7 +81,9 @@ export function PortalMobileDrawer({
           <PortalNavRow
             key={slot.slotClass}
             item={slot}
-            active={false}
+            // Real, for the same reason as the sidebar's copy — see the note
+            // there. The drawer mirrors the rail, including which row is lit.
+            active={isNavItemActive(slot.href, pathname)}
             extraClass={slot.slotClass}
             onNavigate={onClose}
           />

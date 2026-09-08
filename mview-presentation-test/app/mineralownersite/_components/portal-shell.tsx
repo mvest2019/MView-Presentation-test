@@ -11,6 +11,7 @@ import { PortalSideNav } from "./portal-side-nav";
 import { PortalTabBar } from "./portal-tab-bar";
 import { PortalTopNav } from "./portal-top-nav";
 import { pageNameForPath } from "../_lib/portal-nav";
+import { showsFunnelBar } from "../_lib/portal-page-furniture";
 
 /**
  * The portal chrome: sidebar, top bar, the two pinned bars, and the body.
@@ -33,7 +34,7 @@ import { pageNameForPath } from "../_lib/portal-nav";
  *     .app-main
  *       .app-top          sticky, 58px
  *       #mvPinBar         sticky under it — value + spot, EVERY route
- *       #mvFunnelBar      the state message, EVERY route
+ *       #mvFunnelBar      the state message, every route BUT the claim flow
  *       .app-body         the page
  *
  * Both bars sit OUTSIDE `.app-body`, which is what makes them survive
@@ -89,7 +90,13 @@ export function PortalShell({
             onOpenDrawer={() => setDrawerOpen(true)}
           />
           {pinnedBar}
-          {funnelBar}
+          {/* Not on the claim flow — see `ROUTES_WITHOUT_FUNNEL_BAR`. Skipped
+              rather than hidden with CSS so the contradictory sentence is not
+              in the document at all: `display:none` would still leave it in the
+              page source, and a bar announcing "your record is claimed" is
+              exactly the thing that should not be sitting in the markup of the
+              page that claims it. */}
+          {showsFunnelBar(pathname) && funnelBar}
           {/*
             THE PER-ROUTE FURNITURE — the back row, "Why this page?" and the
             action footer. All three are the reference's shell components, and
