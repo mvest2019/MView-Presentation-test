@@ -464,6 +464,11 @@ function PfStrip(
           : 'no gas has ever been filed on these leases'),
       'production', 'Why this is not a cheque'));
 
+    /* THE FIGURE IS THE FIX HERE, not the wording. This cell read
+       "no oil has ever been filed" for a record holding 1.9M barrels of it,
+       because the volume was being taken from a column the state leaves empty
+       on a gas lease. `rules.liquid` reads whichever column it was filed in;
+       the label is just "Oil", which is what an owner's statement calls it. */
     cells.push(cell(`Oil filed in ${a.data_month_label ?? '—'}`,
       t.has_oil
         ? <>{n0(t.anchor_oil_net)}<span className="pf-val-s"> {BBL}</span></>
@@ -473,8 +478,9 @@ function PfStrip(
           ? 'no earlier filed month to compare'
           : `${pctS(t.oil_change_pct)} against ${a.prev_month_label}`)
         : (t.reserves_oil_net > 0
-          ? `no oil has ever been filed — the model still forecasts ${nShort(t.reserves_oil_net)} ${BBL}`
-          : 'no oil has ever been filed on these leases'),
+          ? `nothing filed that month — the model forecasts `
+            + `${nShort(t.reserves_oil_net)} ${BBL} ahead`
+          : 'no oil on the record for that month'),
       'production', 'Why this is not a cheque'));
   }
   if (!t.has_gas && !t.has_oil) {

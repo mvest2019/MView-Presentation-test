@@ -1,11 +1,17 @@
-# The Dashboard and the Weekly Report, ported
+# The Dashboard, the Weekly Report and Production & Forecast, ported
 
-`/mineralownersite` and `/mineralownersite/briefing` are the **reference
-build's** Dashboard and Weekly Report, ported from `mineral-owner-site-2.0`
-(the ZIP; its `ARCHITECTURE.md` describes it) — chrome included. This folder
-holds the components, `../_lib/reference/` the contract and the data,
-`../dashboard-reference.css` the stylesheet, and `../(reference)/` the two
+`/mineralownersite`, `/mineralownersite/briefing` and
+`/mineralownersite/production` are the **reference build's** Dashboard, Weekly
+Report and Production & Forecast, ported from `mineral-owner-site-2.0` (the ZIP;
+its `ARCHITECTURE.md` describes it) — chrome included. This folder holds the
+components, `../_lib/reference/` the contract and the data,
+`../dashboard-reference.css` the stylesheet, and `../(reference)/` the three
 routes.
+
+The reference was re-captured at its newer version for the Production &
+Forecast port. That version's payload is **additive** — it adds `forecast` and
+`my_leases` and changes nothing the other two routes read — so all three routes
+run off the one snapshot, and all three were re-verified against it together.
 
 ## Why the tree is shaped like this
 
@@ -14,10 +20,19 @@ different products:
 
 ```
 (reference)/   layout.tsx · page.tsx (Dashboard) · briefing/ (Weekly Report)
+               production/             Production & Forecast
                soon/[slug]/            the reference's "not in this build" page
 (portal)/      layout.tsx  ← this app's existing shell, unchanged
-               alerts/ leases/ activities/ settings/
+               alerts/ leases/ activities/ settings/ claim/
 ```
+
+`(portal)/production/` used to hold a page built from the v1 prototype. Two
+pages cannot claim one path, so it was removed when this one landed; its
+components stay under `_components/production/` and `_lib/portal-production-*`,
+unreferenced by any route. `soon/[slug]` lost its `production-and-forecast`
+entry at the same time, for the reason that file already gives about My Leases
+and Map — a "not in this build" page for a page one click away is a false
+statement.
 
 A route group's name never appears in a URL, so `(reference)/page.tsx` is still
 `/mineralownersite` and `(portal)/alerts/page.tsx` is still
@@ -38,9 +53,10 @@ to `alerts/_lib/alert-counts`.
 ```
 _lib/reference/owner-data.ts     ← THE SEAM. the only module that knows where a
                                     figure comes from
-_lib/reference/owner-payload.json   one captured reference payload (414 KB)
+_lib/reference/owner-payload.json   one captured reference payload (1.36 MB)
 _lib/reference/payload.ts        the Payload contract
 _lib/reference/weekly.ts         the reference's own weekly type declarations
+_lib/reference/forecast.ts       the reference's own forecast type declarations
 ```
 
 Every component takes `Payload` and nothing else — no fetch, no fixture import,
@@ -59,9 +75,12 @@ they stop being synchronous. The four API routes read the same seam, so they do
 not change either.
 
 `nearby.rows` is kept in full (all 149) because the weekly report's five-mile
-map plots every row. Three arrays neither route renders were shortened —
-`activities.nearby`, `timeline.events`, `leases[*].monthly`; every key survives
-because `sample.ts` maps over all three. See `owner-data.ts` for the list.
+map plots every row, and `forecast` in full (707 KB of the payload, 555 KB of it
+`leases[].months`) because Production & Forecast charts every month of it — 261
+months on the totals, 189 of them posted, and 102 to 279 per lease across the
+ten. Three arrays no route renders were shortened — `activities.nearby`,
+`timeline.events`, `leases[*].monthly`; every key survives because `sample.ts`
+maps over all three. See `owner-data.ts` for the list.
 
 ## What came across, and how faithfully
 
@@ -70,7 +89,13 @@ mechanically, every changed line is an `import`: `Dashboard.tsx` (3),
 `WeeklyView.tsx` (4), `panels.tsx` (2), `bits.tsx` (2), `funnel.tsx` (2),
 `maturity.tsx` (2), `LineChart.tsx` (1), `DrawerPanel.tsx` (1),
 `_lib/reference/fmt.ts` (0), `chart.ts` (0), `sample.ts` (0),
-`weekly-render.ts` (0).
+`weekly-render.ts` (0), `weekly.ts` (0), `forecast.ts` (0).
+
+`ProductionView.tsx` (1,175 lines) and `ForecastChart.tsx` (527 lines) came
+across the same way — verbatim, plus the `eslint-disable` header described
+below. `ProductionView` reads `p.forecast` and nothing else; `ForecastChart`
+draws its own SVG, keeps the two axes apart (MCF and BBL are never added), and
+owns the hover, the arrow keys and the pin.
 
 Two more are the reference's code with one non-import change each, and only
 these: `Loader.tsx` gains the `eslint-disable` comment described below — no
@@ -82,52 +107,84 @@ marked `ADAPTED` in the file:
 
 | | |
 |---|---|
-| route table | the reference serves `/` and `/weekly`; here they are `/mineralownersite` and `/mineralownersite/briefing`, where this app's nav has always pointed |
+| route table | the reference serves `/`, `/weekly` and `/production`; here they are `/mineralownersite`, `/mineralownersite/briefing` and `/mineralownersite/production`, where this app's nav has always pointed |
 | Alerts & Activities | out of scope, so `go()` navigates to this app's existing pages. Every label, icon, badge and position in the chrome is still the reference's |
 | gate classes | the reference writes `in-app`, `view-*`, `state-*`, `ctx-open` to `<body>`; here they go on Portal's own wrapper, because this document also carries the marketing site |
-| sidebar `href` | My Leases and Map exist in this app, so those rows link to them and lose the `soon` tag — see below |
+| sidebar `href` | Map exists in this app, so that row links to it and loses the `soon` tag — see below |
 
-Four ESLint `no-unused-vars` warnings (`ProdCols`, `Charts`, `productCharts`,
-`max`, `CHIP`, `WeeklyReport`, `sample`) are the reference's own dead code, kept
-so the files stay copies. `Portal`, `Chrome` and `Loader` carry a file-scoped
+Ten ESLint `no-unused-vars` warnings (`ProdCols`, `Charts`, `productCharts`,
+`max`, `CHIP`, `WeeklyReport`, `sample`, `pctS`, `cap`, and this port's own
+`_sel`) are the reference's own dead code, kept so the files stay copies.
+`Portal`, `Chrome`, `Loader` and `ProductionView` carry a file-scoped
 `eslint-disable` for `react-hooks/set-state-in-effect` with the reason in the
-comment: all four reports are the reference's own external-system effects, and
-rewriting them would make these files forks rather than copies.
+comment: every report is the reference's own external-system effect, and
+rewriting them would make these files forks rather than copies. `npx tsc
+--noEmit` is clean, `npm run build` exits 0, and ESLint reports **0 errors**.
 
 ## The one deliberate content deviation
 
-The reference marks **My Leases** and **Map** `SOON`, because those modules are
-not in that build. They are in this one, so those two rows are real links and
-carry no tag. That is two lines of text across the whole port, and it is the
-only place the rendered content differs from the reference. Keeping the
-reference's copy would have printed "not in this build" about a page sitting one
-click away.
+The reference marks **Map** `SOON`, because that module is not in that build. It
+is in this one, so the row is a real link and carries no tag. That is **one
+line** of text across the whole port — the newer reference already ships My
+Leases and Production & Forecast as real pages — and it is the only place the
+rendered content differs from the reference. Keeping the reference's copy would
+have printed "not in this build" about a page sitting one click away.
 
-The rows that genuinely have no page here — Production & Forecast, Lease Audit,
-Groups, Invite Co-Owners — keep the reference's `soon` treatment and land on
+The rows that genuinely have no page here — Lease Audit, Groups, Invite
+Co-Owners — keep the reference's `soon` treatment and land on
 `(reference)/soon/[slug]`, which carries the reference's own copy.
 
 ## How this was verified
 
-Both apps were run side by side — this one on `:3000`, the reference on `:8787`
-— and compared mechanically. Re-running needs the ZIP unpacked, `npm install`,
-its `config.json`, and network access to the Mongo host it names.
+Both apps were run side by side — this one on `:3000`, the newer reference on
+`:8788` — and compared mechanically. Re-running needs the ZIP unpacked, `npm
+install`, its `config.json`, and network access to the Mongo host it names.
 
-**1 · Rendered text, whole shell, 40 combinations.** The reference and the port
-expose the *same controls* after this port, so one script drives both: it clicks
-the sidebar to each route, then the four density tabs and five state options,
-and reads `.app-shell` as text.
+Two things about driving them, both learned the hard way. **The port hydrates
+slower than the reference in dev, and a click on a button React has not attached
+a handler to yet is silently a no-op** — that produced twenty *identical*
+captures that looked like a frozen page. So every control click is verified
+against the control's own `aria-selected` / `aria-checked` and retried.
+**Second, a hidden browser pane throttles the task queue to about four turns a
+second**, so waiting a fixed number of turns cost seconds and blew the
+evaluation timeout; the driver waits for `.app-shell` text to go quiet instead.
+
+**1 · Rendered text, whole shell, 60 combinations.** The reference and the port
+expose the *same controls*, so one script drives both: the four density tabs
+against the five account states, on each of the three routes, reading
+`.app-shell` as text.
 
 ```
-DASHBOARD        20 of 20 identical
-WEEKLY REPORT    20 of 20 identical
+DASHBOARD               20 of 20 identical
+WEEKLY REPORT           20 of 20 identical
+PRODUCTION & FORECAST   20 of 20 identical
 ```
 
-Compare on the same clock — `greetLine()` reads the viewer's own clock, so a
-capture taken either side of noon differs by one line, correctly. The two
-`SOON` lines above are normalised out and reported separately.
+Compare on the same clock, and close together — `greetLine()` reads the viewer's
+own clock, and two reference captures taken minutes apart already differed by
+two bytes. The one `SOON` line is normalised out and reported separately.
 
-**2 · The Dashboard's click surface.** Every control in the route section,
+**2 · Production & Forecast's whole interactive surface**, every capture
+byte-identical:
+
+```
+48 controls clicked in DOM order          14,770 B   identical
+   3 boundary segments · 12 insight cards · 1 explainer link
+   10 per-lease life bars · 12 chart presets · 10 table rows
+   13 of them open a drawer, recorded by title and body length
+11 lease-select options                    3,144 B   identical
+the two-handle brush, 5 drags              1,389 B   identical
+the chart: 4 hover positions               1,893 B   identical
+the chart: pin, then 5 keys                2,803 B   identical
+the chart: leave, then unpin                 751 B   identical
+```
+
+Each observation records the section's text length and hash, every `.on` /
+`aria-pressed` element, the length of every SVG path, the select's value and the
+open drawer — so a chart that redrew differently, or a selection that landed on
+the wrong lease, shows up even when the wording does not change.
+
+**3 · The Dashboard's click surface.** Every control in the route section,
 enumerated in DOM order and clicked, with the drawer it opened recorded by title
 and body length:
 
@@ -135,14 +192,14 @@ and body length:
 108 controls · 98 open a drawer · 4 no-ops · 6 navigate     identical
 ```
 
-**3 · The Weekly Report's interaction surface**, 34 observations, identical:
+**4 · The Weekly Report's interaction surface**, 34 observations, identical:
 7 rail anchors with live targets, the 4 cover `Page N →` links, the source chip,
 5 controls, 2 collapsible explainers that both toggle, all 8 pages present at
 identical byte counts, 7 tables, 2 axis bar charts, the five-mile map with 139
 neighbour dots and 10 own-lease squares, the estimate band with 3 ticks, 4 price
 boxes, 3 drivers with 3 source chips.
 
-**4 · The four endpoints behind its buttons.**
+**5 · The four endpoints behind its buttons.**
 
 ```
 GET  /api/weekly/email          identical JSON
@@ -158,18 +215,31 @@ and the honest explanation → *Open it in your mail app* / *Copy the message* /
 *Download it to attach* → a `mailto:` with the encoded subject → the rendered
 1,640-character message in its `<pre>`.
 
-**5 · Computed styles.** 146 selectors on the Dashboard and 122 on the Weekly
-Report, 35 properties each, measured in the browser at a matched viewport with
-both sides in the same state. Zero selectors absent on either side. What remains
-after the two fixes below is: the `.soon-tag` auto-margin (a different element
-is sampled, because of the deviation above), zero-width border *colours* (this
-app's reset computes `0px solid`, the reference `0px none` — no pixels either
-way), and sub-pixel rounding on auto margins and one 2.5px border whose
-declaration is identical on both sides.
+**6 · Computed styles.** 172 selectors on the Dashboard, 148 on the Weekly
+Report and 180 on Production & Forecast — 41 properties each, measured in the
+browser at a matched viewport with both sides in the same state, plus a second
+Production & Forecast pass of 25 selectors taken *after* a lease row, a life bar
+and a measure preset were clicked, so the `.on` states are measured too. The
+lists now also carry the bare elements the two builds could disagree about
+(`svg`, `p`, `a`, `ul`, `li`, `table`, `th`, `td`, `pre`, `code`, `summary`,
+`dl`, `dt`, `dd`, `button`, `input`, `select`) rather than classes alone. Zero
+selectors absent on either side, and after the four fixes below what remains is:
+
+```
+Dashboard               2 differences
+Weekly Report          12 differences
+Production & Forecast   2 differences
+```
+
+— and all sixteen are one of three known artefacts: the `.soon-tag` auto-margin
+(a *different element* is sampled, because of the deviation above), sub-pixel
+rounding on auto margins (`0.075px`, `116.963` against `117.062`), and one
+2.5px border that computes `2.4px` at the reference tab's device-pixel ratio and
+`2px` at this one's, from an identical declaration.
 
 ## What the checks caught
 
-Neither of these was visible by eye, and the first was invisible to a text diff:
+None of these was visible by eye, and the first was invisible to a text diff.
 
 - **The strip's lead figure was white instead of green.** `PfStrip` passes
   `'big cl-lock'` as an *argument* and the cell helper renders
@@ -182,8 +252,39 @@ Neither of these was visible by eye, and the first was invisible to a text diff:
   `view-simple`; the v2.0 reference dropped it. Carrying it over fired every
   `.hide-s` rule at Ultra and hid `$3.71M-$5.29M`. Caught by the whole-shell
   text diff, in 4 of 40 combinations.
-- **Form controls rendered in the wrong face.** Tailwind's preflight sets
-  `font: inherit` on button and input; the reference lets them take the UA's
-  own, which is why its avatar initials are Arial at `line-height: normal`. Six
-  selectors differed until the trailing block in `dashboard-reference.css`
-  reverted them.
+
+Four more came out of the Production & Forecast pass, and every one of them is
+this app's own reset or the rescoping showing through — not a mistranscribed
+component. All four are fixed in `../dashboard-reference.css`, each with the
+measurement in a comment beside it.
+
+- **The all-leases table used the wrong padding at Professional, and so did
+  every other table.** The reference writes its tier rules as `body.view-pro
+  td`, which is one *element* heavier than `.pf2-tbl2 td` and therefore wins
+  outright. Rescoping both selectors through one class made them equal at
+  (0,2,1) and handed the decision to source order, which reversed it: `10px
+  12px` where the reference prints `7px 10px` / `6px 10px`. Fixed by giving all
+  94 `body.<gate>` rules a leading `html`, which matches everything and restores
+  exactly the one element `body` was contributing.
+- **The buttons the reference leaves uncoloured were the wrong colour.**
+  Preflight sets `color: inherit` on form controls, so they took this app's ink
+  (`#0d0e17`) where the reference's take the UA's `buttontext` (black) — the
+  boundary strip, the insight cards and the per-lease life bars. `color:
+  revert`.
+- **Every inline icon was a block, and one of them ate a space.** Preflight's
+  `img,svg,…{display:block}` turned the activity icon in the "What changed"
+  heading into a block, and the explicit `{' '}` after it then collapsed as a
+  leading space: the reference prints `" What changed between May 2026 and June
+  2026"` and this printed it without the space. Caught by the text diff, in 12
+  of 20 Dashboard combinations. `svg { display: revert }`.
+- **The neutraliser block itself was in the wrong place.** It sat at the *end*
+  of the stylesheet, where `.mv-ref-app input` ties on specificity with the
+  ported `input,select,textarea{font-size:16px}` from mvtaptargets.css and wins
+  on order — so it was overriding a real reference rule and printing the brush
+  handles at the UA's 13.3333px instead of 16px. Moved above the extract, where
+  every ported rule beats it and preflight still loses to it.
+
+Two earlier notes on the same block: `font: inherit` on controls is why the
+reference's avatar initials are Arial at `line-height: normal`, and preflight's
+`-webkit-appearance: button` differed from the reference's `auto` on all eleven
+shared controls until `appearance: revert` was added.

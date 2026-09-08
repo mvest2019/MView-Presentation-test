@@ -1,5 +1,5 @@
 /**
- * THE DASHBOARD AND WEEKLY REPORT STYLESHEET — the reference's, rescoped.
+ * THE PORTED ROUTES' STYLESHEET — the reference's, rescoped.
  *
  * EXTRACTED, NOT AUTHORED. Every declaration below is lifted from the reference
  * build's ten stylesheets, in the reference's own cascade order
@@ -10,8 +10,8 @@
  *
  * app.css is last there because it is "the delta over all of it", and it
  * CHANGES rules the older sheets set — so the order is preserved here rather
- * than the rules being merged or hand-picked. 759 of the reference's 2,039
- * rules matched the two ported routes.
+ * than the rules being merged or hand-picked. 956 of the reference's 2,263
+ * rules matched the three ported routes.
  *
  * THE SCOPE. `Portal` renders ONE root element carrying `mv-ref-app` plus the
  * gating classes the reference writes on `<body>` — `in-app`, `view-*`,
@@ -20,12 +20,23 @@
  * it:
  *
  *   :root · html · body            ->  .mv-ref-app        (tokens, font, ground)
- *   body.state-claimed X           ->  .mv-ref-app.state-claimed X
+ *   body.state-claimed X           ->  html .mv-ref-app.state-claimed X
  *   body.view-ultra:not(.no-claim) X
- *                                  ->  .mv-ref-app.view-ultra:not(.no-claim) X
- *   body.mv-sample X               ->  .mv-ref-app.no-claim X
+ *                                  ->  html .mv-ref-app.view-ultra:not(.no-claim) X
+ *   body.mv-sample X               ->  html .mv-ref-app.no-claim X
  *   * · *::before                  ->  .mv-ref-app * · .mv-ref-app *::before
  *   X                              ->  .mv-ref-app X
+ *
+ * WHY THE GATE RULES CARRY A LEADING `html`. `body.view-pro td` is one element
+ * heavier than `.pf2-tbl2 td`, so in the reference the tier rule wins outright.
+ * Rescoping every selector through one class turns both into (0,2,1) and hands
+ * the decision to source order instead, which reversed it: the all-leases table
+ * came out at `10px 12px` where the reference prints `7px 10px` / `6px 10px` at
+ * Professional. `html` is an ancestor of everything, so it changes nothing about
+ * WHICH elements match and restores the one element of specificity that `body`
+ * was contributing. It is applied to all 94 selectors the reference anchored on
+ * `body.<gate>`, not just the pair that showed the symptom, so the whole tier
+ * and funnel layer keeps the reference's own precedence.
  *
  * ONE WRAPPER, AND IT MATTERS. A stylesheet imported anywhere in a Next app is
  * global. Unscoped, `body{background:var(--bg)}` would repaint the marketing
@@ -44,7 +55,18 @@
  * every-lease grid, and `em, i, cite{font-style:normal;font-weight:600}` is why
  * "none" prints upright rather than italic.
  *
- * THE INVENTORY INCLUDES WHAT THE COMPONENTS BUILD RATHER THAN WRITE —
+ * THE INVENTORY IS BUILT FROM THE MARKUP AND THEN TOPPED UP, and both halves
+ * have caught real gaps. The scraper reads `className` — including template
+ * literals with their `${…}` interpolations stripped, because
+ * `className={`pf2-lifeone${picked ? ' on' : ''}`}` otherwise yields a token
+ * that matches nothing and `.pf2-lifeone` silently loses its selected state.
+ * What the scraper still cannot see is a class assembled in a VARIABLE:
+ * `Stat` does `const cls = `pf2-in${tone}`` and renders `className={cls}`,
+ * and `PfStrip` passes `'big cl-lock'` as an argument. Those are found by
+ * listing every string literal in the components that the reference
+ * stylesheets also style, and reviewing the short list by hand.
+ *
+ * THE INVENTORY ALSO INCLUDES WHAT THE COMPONENTS BUILD RATHER THAN WRITE —
  * `'dx dx-' + tone`, `'t-' + st.tone`, `'lb-fill ' + cls`, `'wc-fill ' + tone`,
  * `'wm-dot k-' + kind` — and both gating axes, which no component writes at
  * all. Leaving a gate class out is not a smaller sheet, it is a broken one: a
@@ -69,6 +91,62 @@
  * which is not in this repo. The recipe above is the whole of it, and the
  * checks that verify the result are in `_components/reference/README.md`.
  */
+
+/* ==========================================================================
+   WHAT THIS APP'S OWN RESET ADDS ON TOP OF THE REFERENCE
+
+   Not in the reference, and FIRST on purpose. Tailwind's preflight sets
+   `font: inherit` and `color: inherit` on button, input, select, textarea and
+   optgroup; the reference does not, so its form controls take the UA's own
+   face, `line-height: normal` and `buttontext`. `revert` drops back to the UA
+   stylesheet, which is exactly what the reference gets. Measured against the
+   running reference: six selectors on the Dashboard, and on Production &
+   Forecast the boundary strip, the insight cards and the per-lease life bars,
+   which are buttons the reference leaves uncoloured.
+
+   IT HAS TO SIT ABOVE THE EXTRACT, not below it. `.mv-ref-app input` is
+   (0,1,1) and so is the ported `input,select,textarea{font-size:16px}` from
+   mvtaptargets.css, so whichever comes last wins - and with this block last it
+   was overriding a real reference rule, printing the brush handles at the UA's
+   13.3333px where the reference gives them 16px. Above the extract, every
+   ported rule that DOES set a font or a colour on a control wins, and preflight
+   - one element, no class - still loses to this.
+   ========================================================================== */
+
+.mv-ref-app button,
+.mv-ref-app input,
+.mv-ref-app select,
+.mv-ref-app textarea,
+.mv-ref-app optgroup {
+  font-family: revert;
+  font-size: revert;
+  font-weight: revert;
+  font-style: revert;
+  line-height: normal;
+  color: revert;
+
+  /* And `appearance`. Preflight sets `-webkit-appearance: button` on button and
+     the three button-ish input types; the reference leaves them at the UA's
+     `auto`. Every control the two builds share measured `auto` against
+     `button` until this line. */
+  appearance: revert;
+  -webkit-appearance: revert;
+}
+
+/* And `svg`. Preflight's `img,svg,video,canvas,…{display:block;
+   vertical-align:middle}` turns every inline icon into a block, which is not
+   only a layout change - it swallowed the explicit `{' '}` after the activity
+   icon in the "What changed" heading, because a space that leads a line
+   collapses. The reference prints " What changed between May 2026 and June
+   2026" and this printed "What changed …". `svg` is the only element in that
+   preflight rule the ported tree renders. Any ported rule that DOES set a
+   display on an icon (`.mvi`, `.lc-svg`, the gauges) still wins - they are all
+   at least a class heavier than this. */
+
+.mv-ref-app svg {
+  display: revert;
+  vertical-align: revert;
+}
 
 /* ==========================================================================
    mineral-view-owner-full-site.css
@@ -153,7 +231,7 @@
 .mv-ref-app section[data-route="app-leases"] .tablewrap td.right.num,
 .mv-ref-app section[data-route="app-leases"] .tablewrap th.right {white-space:nowrap }
 .mv-ref-app .app-shell {display:none }
-.mv-ref-app.in-app .app-shell {display:grid;grid-template-columns:236px minmax(0,1fr);min-height:100vh }
+html .mv-ref-app.in-app .app-shell {display:grid;grid-template-columns:236px minmax(0,1fr);min-height:100vh }
 .mv-ref-app .app-side {background:var(--ink);color:#cbd5e1;padding:18px 14px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh;overflow-y:auto }
 .mv-ref-app .app-side a.nav-item {display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:#cbd5e1;font-size:13.5px;font-weight:600;text-decoration:none }
 .mv-ref-app .app-side a.nav-item:hover {background:#181a26;color:#fff }
@@ -177,6 +255,8 @@
 .mv-ref-app .kpi .k-sub {font-size:12px;color:var(--muted) }
 .mv-ref-app .delta-up {color:var(--green-deep);font-weight:700 }
 .mv-ref-app .delta-down {color:var(--red);font-weight:700 }
+.mv-ref-app .chartbox {background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:16px 18px 8px;box-shadow:var(--shadow) }
+.mv-ref-app .chartbox svg {width:100%;height:auto;display:block }
 .mv-ref-app .setrow {display:flex;justify-content:space-between;gap:16px;align-items:center;padding:14px 0;border-bottom:1px solid #f0f1f4;flex-wrap:wrap }
 .mv-ref-app .setrow:last-child {border-bottom:0 }
 .mv-ref-app .notice {border-radius:10px;padding:13px 16px;font-size:13.5px;display:flex;gap:10px;align-items:flex-start }
@@ -203,7 +283,7 @@
   .mv-ref-app .g2,
   .mv-ref-app .g3,
   .mv-ref-app .g4 {grid-template-columns:minmax(0,1fr) }
-  .mv-ref-app.in-app .app-shell {grid-template-columns:1fr }
+  html .mv-ref-app.in-app .app-shell {grid-template-columns:1fr }
   .mv-ref-app .app-side {display:none }
   .mv-ref-app .app-hamburger {display:block }
   .mv-ref-app .app-body {padding:18px 14px 180px }
@@ -220,18 +300,24 @@
 .mv-ref-app .leaselist .li:last-child {border-bottom:0 }
 .mv-ref-app .leaselist .li:hover {background:#fafcfb }
 @media (max-width:767px) {
+  .mv-ref-app section[data-route^="app-lease"] .chartbox > svg,
+  .mv-ref-app section[data-route="app-leases"] .chartbox > svg,
+  .mv-ref-app section[data-route="app"] .chartbox > svg {height:200px;width:auto;min-width:620px;display:block }
+  .mv-ref-app section[data-route^="app-lease"] .chartbox,
+  .mv-ref-app section[data-route="app-leases"] .chartbox,
+  .mv-ref-app section[data-route="app"] .chartbox {overflow-x:auto }
   .mv-ref-app section[data-route="app-briefing"] .wr-mini > svg {height:190px;width:auto;min-width:620px;display:block }
   .mv-ref-app section[data-route="app-briefing"] .wr-mini {overflow-x:auto }
 }
-.mv-ref-app:not(.view-simple) .tier-s {display:none !important }
-.mv-ref-app:not(.view-pro) .tier-p {display:none !important }
-.mv-ref-app:not(.view-detailed) .tier-d {display:none !important }
-.mv-ref-app.view-simple .hide-s {display:none !important }
-.mv-ref-app:not(.view-ultra) .tier-u {display:none !important }
-.mv-ref-app.view-ultra .hide-u {display:none !important }
-.mv-ref-app.view-ultra:not(.no-claim) section[data-route="app"] > :not(.tier-u):not(#mvStateCard) {display:none !important }
-.mv-ref-app.no-claim .tier-u:not(.nc-keep) {display:none !important }
-.mv-ref-app.view-ultra .tier-s {display:none !important }
+html .mv-ref-app:not(.view-simple) .tier-s {display:none !important }
+html .mv-ref-app:not(.view-pro) .tier-p {display:none !important }
+html .mv-ref-app:not(.view-detailed) .tier-d {display:none !important }
+html .mv-ref-app.view-simple .hide-s {display:none !important }
+html .mv-ref-app:not(.view-ultra) .tier-u {display:none !important }
+html .mv-ref-app.view-ultra .hide-u {display:none !important }
+html .mv-ref-app.view-ultra:not(.no-claim) section[data-route="app"] > :not(.tier-u):not(#mvStateCard) {display:none !important }
+html .mv-ref-app.no-claim .tier-u:not(.nc-keep) {display:none !important }
+html .mv-ref-app.view-ultra .tier-s {display:none !important }
 .mv-ref-app .ultra-hero {max-width:640px;margin:8vh auto 0;text-align:center;padding:56px 28px 48px;background:#fff;border-radius:22px;box-shadow:0 1px 2px rgba(13,14,23,.05),0 12px 40px rgba(13,14,23,.06) }
 .mv-ref-app .ultra-hero .u-dot {width:14px;height:14px;border-radius:50%;background:var(--green);margin:0 auto 22px;box-shadow:0 0 0 7px rgba(84,191,150,.18) }
 .mv-ref-app .ultra-hero .u-kicker {font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:#8a93a3;margin-bottom:14px }
@@ -244,29 +330,29 @@
   .mv-ref-app .ultra-hero .u-headline {font-size:32px }
   .mv-ref-app .ultra-hero .u-status {font-size:17px }
 }
-.mv-ref-app.view-ultra:not(.no-claim) section[data-route="app-leases"] > :not(.tier-u) {display:none !important }
-.mv-ref-app.view-ultra:not(.no-claim) section[data-route="app-briefing"] > :not(.tier-u) {display:none !important }
-.mv-ref-app.view-ultra:not(.no-claim) section[data-route="app-activities"] > :not(.tier-u) {display:none !important }
-.mv-ref-app.view-ultra:not(.no-claim) section[data-route="app-alerts"] > :not(.tier-u) {display:none !important }
-.mv-ref-app.view-ultra:not(.no-claim) section[data-route="app-groups"] > :not(.tier-u) {display:none !important }
-.mv-ref-app.view-ultra:not(.no-claim) section[data-route="app-dossier"] > :not(.tier-u) {display:none !important }
-.mv-ref-app.view-simple #dashcols {grid-template-columns:minmax(0,1fr) !important }
-.mv-ref-app.no-claim span.nc-only.nc-inline {display:inline !important }
+html .mv-ref-app.view-ultra:not(.no-claim) section[data-route="app-leases"] > :not(.tier-u) {display:none !important }
+html .mv-ref-app.view-ultra:not(.no-claim) section[data-route="app-briefing"] > :not(.tier-u) {display:none !important }
+html .mv-ref-app.view-ultra:not(.no-claim) section[data-route="app-activities"] > :not(.tier-u) {display:none !important }
+html .mv-ref-app.view-ultra:not(.no-claim) section[data-route="app-alerts"] > :not(.tier-u) {display:none !important }
+html .mv-ref-app.view-ultra:not(.no-claim) section[data-route="app-groups"] > :not(.tier-u) {display:none !important }
+html .mv-ref-app.view-ultra:not(.no-claim) section[data-route="app-dossier"] > :not(.tier-u) {display:none !important }
+html .mv-ref-app.view-simple #dashcols {grid-template-columns:minmax(0,1fr) !important }
+html .mv-ref-app.no-claim span.nc-only.nc-inline {display:inline !important }
 @media (max-width:767px) {
   .mv-ref-app .tablewrap {background:linear-gradient(90deg,#fff 30%,rgba(255,255,255,0)) 0 0,linear-gradient(270deg,#fff 30%,rgba(255,255,255,0)) 100% 0,radial-gradient(farthest-side at 0 50%,rgba(13,14,23,.22),transparent) 0 0,radial-gradient(farthest-side at 100% 50%,rgba(13,14,23,.22),transparent) 100% 0;background-repeat:no-repeat;background-size:44px 100%,44px 100%,16px 100%,16px 100%;background-attachment:local,local,scroll,scroll }
 }
 .mv-ref-app .smp-badge {display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fdf6e7;border:2px dashed #d9a441;border-radius:12px;padding:10px 14px;margin:0 0 14px }
 .mv-ref-app .smp-badge p {margin:0;font-size:13px;line-height:1.45;color:#7a5410;flex:1;min-width:220px }
-.mv-ref-app.view-pro .app-body {max-width:1340px }
-.mv-ref-app.view-pro .card-pad {padding:14px 16px }
-.mv-ref-app.view-pro .kpi {padding:10px 14px }
-.mv-ref-app.view-pro .kpi .k-val {font-size:21px }
-.mv-ref-app.view-pro td {padding:6px 10px;font-size:12.5px }
-.mv-ref-app.view-pro th {padding:7px 10px }
-.mv-ref-app.view-pro .stack {gap:12px }
-.mv-ref-app.view-pro .app-body .grid {gap:12px }
-.mv-ref-app.view-simple .app-body {max-width:920px }
-.mv-ref-app.view-simple .kpi .k-val {font-size:30px }
+html .mv-ref-app.view-pro .app-body {max-width:1340px }
+html .mv-ref-app.view-pro .card-pad {padding:14px 16px }
+html .mv-ref-app.view-pro .kpi {padding:10px 14px }
+html .mv-ref-app.view-pro .kpi .k-val {font-size:21px }
+html .mv-ref-app.view-pro td {padding:6px 10px;font-size:12.5px }
+html .mv-ref-app.view-pro th {padding:7px 10px }
+html .mv-ref-app.view-pro .stack {gap:12px }
+html .mv-ref-app.view-pro .app-body .grid {gap:12px }
+html .mv-ref-app.view-simple .app-body {max-width:920px }
+html .mv-ref-app.view-simple .kpi .k-val {font-size:30px }
 .mv-ref-app .simple-hero {border-left:4px solid var(--green);background:linear-gradient(160deg,#ffffff,#f0fbf7) }
 @media (max-width:767px) {
   .mv-ref-app .app-top {flex-wrap:wrap;height:auto;min-height:58px;padding:8px 14px;row-gap:6px }
@@ -286,7 +372,7 @@
   .mv-ref-app .app-top,
   .mv-ref-app #mvPinBar,
   .mv-ref-app .wr-noprint {display:none !important }
-  .mv-ref-app.in-app .app-shell {display:block }
+  html .mv-ref-app.in-app .app-shell {display:block }
   .mv-ref-app .app-body {max-width:none !important;padding:0 !important }
   .mv-ref-app {background:#fff }
   .mv-ref-app .wr-page {box-shadow:none;border:0;border-radius:0;max-width:none;margin:0;padding:0;break-after:page;page-break-after:always;font-size:12px;line-height:1.45 }
@@ -347,19 +433,21 @@
 .mv-ref-app select:focus-visible,
 .mv-ref-app [tabindex]:focus-visible {outline:2px solid var(--green);outline-offset:2px;border-radius:4px }
 .mv-ref-app .btn[disabled] {opacity:.45;cursor:not-allowed;pointer-events:none }
+.mv-ref-app .chartbox {position:relative }
 .mv-ref-app .wr-mini {position:relative }
 @media screen and (prefers-reduced-motion:no-preference) {
   .mv-ref-app section[data-route].active {animation:mvFadeUp .26s ease both }
   .mv-ref-app .card,
-  .mv-ref-app .kpi {transition:box-shadow .18s ease,transform .18s ease }
+  .mv-ref-app .kpi,
+  .mv-ref-app .chartbox {transition:box-shadow .18s ease,transform .18s ease }
   .mv-ref-app .kpi:hover {box-shadow:var(--shadow-lg);transform:translateY(-1px) }
   .mv-ref-app .btn {transition:filter .15s,background .15s,transform .12s ease }
   .mv-ref-app .btn-primary:active,
   .mv-ref-app .btn-mint:active {transform:scale(.97) }
 }
 .mv-ref-app .nc-only {display:none !important }
-.mv-ref-app.no-claim .nc-only {display:block !important }
-.mv-ref-app.no-claim section[data-route].active:has(> .nc-swap) > :not(.nc-only) {display:none !important }
+html .mv-ref-app.no-claim .nc-only {display:block !important }
+html .mv-ref-app.no-claim section[data-route].active:has(> .nc-swap) > :not(.nc-only) {display:none !important }
 .mv-ref-app .bellbtn {position:relative;border:1px solid var(--line);background:#fff;border-radius:10px;width:34px;height:34px;font-size:15px;cursor:pointer;line-height:1;flex:none }
 .mv-ref-app .bellbtn .bdg {position:absolute;top:-6px;right:-6px;background:var(--green);color:var(--green-ink);font-family:var(--sans);font-size:10px;font-weight:800;border-radius:999px;padding:1px 6px;border:2px solid #fff }
 .mv-ref-app .al-strip {display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:10px;margin:10px 0 2px }
@@ -387,11 +475,11 @@
   .mv-ref-app .al-strip,
   .mv-ref-app .bellbtn {display:none !important }
 }
-.mv-ref-app.no-claim .bellbtn .bdg {display:none }
+html .mv-ref-app.no-claim .bellbtn .bdg {display:none }
 .mv-ref-app .ctx-scrim {position:fixed;inset:0;background:rgba(4,35,26,.45);z-index:370;display:none }
-.mv-ref-app.ctx-open .ctx-scrim {display:block }
+html .mv-ref-app.ctx-open .ctx-scrim {display:block }
 .mv-ref-app .ctx-drawer {position:fixed;top:0;right:0;bottom:0;width:min(680px,100vw);background:var(--bg,#f6f8f7);z-index:371;box-shadow:-12px 0 40px rgba(0,0,0,.25);display:flex;flex-direction:column;overflow:hidden;transform:translateX(102%);transition:transform .28s ease;visibility:hidden }
-.mv-ref-app.ctx-open .ctx-drawer {transform:translateX(0);visibility:visible }
+html .mv-ref-app.ctx-open .ctx-drawer {transform:translateX(0);visibility:visible }
 @media (prefers-reduced-motion: reduce) {
   .mv-ref-app .ctx-drawer {transition:none }
 }
@@ -420,10 +508,10 @@
   .mv-ref-app .card,
   .mv-ref-app .card-pad {min-width:0;max-width:100% }
   .mv-ref-app .app-top {min-width:0;overflow:hidden }
-  .mv-ref-app.in-app .app-shell,
-  .mv-ref-app.in-app .app-main,
-  .mv-ref-app.in-app .app-top,
-  .mv-ref-app.in-app .app-body {width:100%!important;max-width:390px!important;margin-left:0!important;margin-right:0!important }
+  html .mv-ref-app.in-app .app-shell,
+  html .mv-ref-app.in-app .app-main,
+  html .mv-ref-app.in-app .app-top,
+  html .mv-ref-app.in-app .app-body {width:100%!important;max-width:390px!important;margin-left:0!important;margin-right:0!important }
   .mv-ref-app .app-body .grid,
   .mv-ref-app .app-body .g2,
   .mv-ref-app .app-body .g3,
@@ -431,6 +519,7 @@
   .mv-ref-app .app-body .card,
   .mv-ref-app .app-body .notice,
   .mv-ref-app .app-body .kpi,
+  .mv-ref-app .app-body .chartbox,
   .mv-ref-app .app-body .smp-badge,
   .mv-ref-app .app-body .al-strip,
   .mv-ref-app .app-body .simple-hero {min-width:0;max-width:100%;overflow-wrap:break-word }
@@ -450,10 +539,10 @@
   .mv-ref-app .mv-demochip {display:inline-flex }
   .mv-ref-app .app-body {padding:14px 14px calc(88px + env(safe-area-inset-bottom)) }
 }
-.mv-ref-app.view-simple:not(.no-claim) section[data-route="app-briefing"] .wr-page {display:none }
+html .mv-ref-app.view-simple:not(.no-claim) section[data-route="app-briefing"] .wr-page {display:none }
 .mv-ref-app #wrSimpleEvidence {display:none }
-.mv-ref-app.view-simple:not(.no-claim) #wrSimpleEvidence {display:block }
-.mv-ref-app.view-ultra:not(.no-claim) #wrSimpleEvidence {display:none !important }
+html .mv-ref-app.view-simple:not(.no-claim) #wrSimpleEvidence {display:block }
+html .mv-ref-app.view-ultra:not(.no-claim) #wrSimpleEvidence {display:none !important }
 @media print {
   .mv-ref-app section[data-route="app-briefing"] .wr-page {display:block !important }
   .mv-ref-app #wrSimpleEvidence {display:none !important }
@@ -477,7 +566,7 @@
 /* ==========================================================================
    v41css.css
    ========================================================================== */
-.mv-ref-app.view-ultra:not(.no-claim) section[data-route="app-invite"] > :not(.tier-u) {display:none !important }
+html .mv-ref-app.view-ultra:not(.no-claim) section[data-route="app-invite"] > :not(.tier-u) {display:none !important }
 .mv-ref-app .kpi-click {cursor:pointer }
 .mv-ref-app #mvPinBar {
   
@@ -501,9 +590,9 @@
 .mv-ref-app #mvPinBar .pin-tk .mv-spot-val {font-size:14px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;transition:color .4s }
 .mv-ref-app #mvPinBar .pin-tk .tk-chg {font-size:10.5px;font-weight:800 }
 .mv-ref-app #mvPinBar .pin-note {font-size:10px;color:#7a8592;white-space:nowrap;flex:none }
-.mv-ref-app.state-lapsed #mvPinBar .pin-val {filter:blur(7px);opacity:.5;user-select:none }
-.mv-ref-app.state-lapsed #mvPinBar .pin-val-wrap {cursor:default }
-.mv-ref-app.state-lapsed #mvPinBar .pin-sub.hide-s {display:none }
+html .mv-ref-app.state-lapsed #mvPinBar .pin-val {filter:blur(7px);opacity:.5;user-select:none }
+html .mv-ref-app.state-lapsed #mvPinBar .pin-val-wrap {cursor:default }
+html .mv-ref-app.state-lapsed #mvPinBar .pin-sub.hide-s {display:none }
 @media(max-width:1340px) {
   .mv-ref-app #mvPinBar .pin-sub.hide-s {display:none }
 }
@@ -525,9 +614,9 @@
   .mv-ref-app #mvPinBar .pin-tk[data-mv-spot="propane"],
   .mv-ref-app #mvPinBar .pin-tk[data-mv-spot="brent"] {display:inline-flex }
   .mv-ref-app #mvPinBar .pin-sub.hide-s {display:none }
-  .mv-ref-app.no-claim #mvPinBar {flex-wrap:wrap;padding:7px 14px }
+  html .mv-ref-app.no-claim #mvPinBar {flex-wrap:wrap;padding:7px 14px }
   .mv-ref-app #mvPinBar .pin-claim {font-size:12px;line-height:1.35 }
-  .mv-ref-app.no-claim #mvPinBar .pin-spot {flex:none;width:100% }
+  html .mv-ref-app.no-claim #mvPinBar .pin-spot {flex:none;width:100% }
 }
 
 /* ==========================================================================
@@ -571,21 +660,21 @@
    mvfunnelstates.css
    ========================================================================== */
 .mv-ref-app #mvFunnelBar {display:none }
-.mv-ref-app.state-claimed #mvFunnelBar,
-.mv-ref-app.state-trial #mvFunnelBar,
-.mv-ref-app.state-lapsed #mvFunnelBar {
+html .mv-ref-app.state-claimed #mvFunnelBar,
+html .mv-ref-app.state-trial #mvFunnelBar,
+html .mv-ref-app.state-lapsed #mvFunnelBar {
     display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;
     padding:11px 16px;margin:0;border-bottom:1px solid var(--line,#e3e8e6);
     font-size:13px;line-height:1.45; }
-.mv-ref-app.state-claimed #mvFunnelBar {background:#eef4fb;border-bottom-color:#c9dcf1;color:#1d4267 }
-.mv-ref-app.state-trial #mvFunnelBar {background:#eefaf4;border-bottom-color:#bfe6d5;color:#17513c }
-.mv-ref-app.state-lapsed #mvFunnelBar {background:#fdf6e7;border-bottom-color:#ecd9a8;color:#5c4413 }
+html .mv-ref-app.state-claimed #mvFunnelBar {background:#eef4fb;border-bottom-color:#c9dcf1;color:#1d4267 }
+html .mv-ref-app.state-trial #mvFunnelBar {background:#eefaf4;border-bottom-color:#bfe6d5;color:#17513c }
+html .mv-ref-app.state-lapsed #mvFunnelBar {background:#fdf6e7;border-bottom-color:#ecd9a8;color:#5c4413 }
 .mv-ref-app #mvFunnelBar .fb-tag {
     flex:none;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
     padding:3px 8px;border-radius:999px; }
-.mv-ref-app.state-claimed #mvFunnelBar .fb-tag {background:#2f6fb0;color:#fff }
-.mv-ref-app.state-trial #mvFunnelBar .fb-tag {background:#2e8f6d;color:#fff }
-.mv-ref-app.state-lapsed #mvFunnelBar .fb-tag {background:#a8791a;color:#fff }
+html .mv-ref-app.state-claimed #mvFunnelBar .fb-tag {background:#2f6fb0;color:#fff }
+html .mv-ref-app.state-trial #mvFunnelBar .fb-tag {background:#2e8f6d;color:#fff }
+html .mv-ref-app.state-lapsed #mvFunnelBar .fb-tag {background:#a8791a;color:#fff }
 .mv-ref-app #mvFunnelBar .fb-msg {flex:1 1 260px;min-width:0 }
 .mv-ref-app #mvFunnelBar .fb-msg b {font-weight:650 }
 .mv-ref-app #mvFunnelBar .fb-act {flex:none;display:flex;gap:8px;align-items:center;flex-wrap:wrap }
@@ -600,37 +689,37 @@
 .mv-ref-app #mvFunnelBar .fb-pips {display:inline-flex;gap:3px;vertical-align:middle;margin:0 2px }
 .mv-ref-app #mvFunnelBar .fb-pips i {width:7px;height:7px;border-radius:50%;background:#2e8f6d;display:block }
 .mv-ref-app #mvFunnelBar .fb-pips i.spent {background:#bfe6d5 }
-.mv-ref-app.state-lapsed .app-main .kpi .k-val,
-.mv-ref-app.state-lapsed .app-main .pf-val,
-.mv-ref-app.state-lapsed .app-main .u-headline strong {
+html .mv-ref-app.state-lapsed .app-main .kpi .k-val,
+html .mv-ref-app.state-lapsed .app-main .pf-val,
+html .mv-ref-app.state-lapsed .app-main .u-headline strong {
     filter:blur(6px);opacity:.5;user-select:none; }
-.mv-ref-app.state-lapsed #mvFunnelBar .k-val,
-.mv-ref-app.state-lapsed #mvFunnelBar .pf-val {filter:none;opacity:1 }
-.mv-ref-app.state-lapsed .app-main .kpi {position:relative }
-.mv-ref-app.state-lapsed .app-main .kpi::after {
+html .mv-ref-app.state-lapsed #mvFunnelBar .k-val,
+html .mv-ref-app.state-lapsed #mvFunnelBar .pf-val {filter:none;opacity:1 }
+html .mv-ref-app.state-lapsed .app-main .kpi {position:relative }
+html .mv-ref-app.state-lapsed .app-main .kpi::after {
     content:"Portfolio totals cover all 10 leases — Premium";
     position:absolute;left:0;right:0;bottom:6px;text-align:center;
     font-size:11px;font-weight:600;letter-spacing:.03em;color:#a8791a; }
-.mv-ref-app.state-claimed .cl-lock {filter:blur(6px);opacity:.55;user-select:none }
-.mv-ref-app.state-claimed #mvFunnelBar .cl-lock,
-.mv-ref-app.state-claimed #mvStateCard .cl-lock {filter:none;opacity:1 }
-.mv-ref-app.state-claimed .app-main .kpi:has(.cl-lock) {position:relative }
-.mv-ref-app.state-claimed .app-main .kpi:has(.cl-lock)::after {
+html .mv-ref-app.state-claimed .cl-lock {filter:blur(6px);opacity:.55;user-select:none }
+html .mv-ref-app.state-claimed #mvFunnelBar .cl-lock,
+html .mv-ref-app.state-claimed #mvStateCard .cl-lock {filter:none;opacity:1 }
+html .mv-ref-app.state-claimed .app-main .kpi:has(.cl-lock) {position:relative }
+html .mv-ref-app.state-claimed .app-main .kpi:has(.cl-lock)::after {
     content:"What it's worth unlocks with your free 7-day trial";
     position:absolute;left:0;right:0;bottom:6px;text-align:center;
     font-size:11px;font-weight:600;letter-spacing:.03em;color:#2f6fb0; }
-.mv-ref-app.state-claimed #mvPinBar .pin-val-wrap {cursor:default }
-.mv-ref-app.state-claimed #mvPinBar .pin-sub.hide-s {display:none }
+html .mv-ref-app.state-claimed #mvPinBar .pin-val-wrap {cursor:default }
+html .mv-ref-app.state-claimed #mvPinBar .pin-sub.hide-s {display:none }
 .mv-ref-app #mvStateCard {display:none;border-radius:12px;padding:14px 16px;margin:0 0 16px;font-size:13.5px;line-height:1.5 }
-.mv-ref-app.state-claimed #mvStateCard,
-.mv-ref-app.state-trial #mvStateCard,
-.mv-ref-app.state-lapsed #mvStateCard {display:block }
-.mv-ref-app.view-ultra #mvStateCard {max-width:640px;margin:0 auto 16px }
-.mv-ref-app.state-claimed #mvStateCard {background:#eef4fb;border:1px solid #c9dcf1;color:#1d4267 }
-.mv-ref-app.state-claimed #mvStateCard .sc-row a {background:#2f6fb0 }
-.mv-ref-app.state-claimed #mvStateCard .sc-row a.ghost {background:transparent }
-.mv-ref-app.state-trial #mvStateCard {background:#eefaf4;border:1px solid #bfe6d5;color:#17513c }
-.mv-ref-app.state-lapsed #mvStateCard {background:#fdf6e7;border:1px solid #ecd9a8;color:#5c4413 }
+html .mv-ref-app.state-claimed #mvStateCard,
+html .mv-ref-app.state-trial #mvStateCard,
+html .mv-ref-app.state-lapsed #mvStateCard {display:block }
+html .mv-ref-app.view-ultra #mvStateCard {max-width:640px;margin:0 auto 16px }
+html .mv-ref-app.state-claimed #mvStateCard {background:#eef4fb;border:1px solid #c9dcf1;color:#1d4267 }
+html .mv-ref-app.state-claimed #mvStateCard .sc-row a {background:#2f6fb0 }
+html .mv-ref-app.state-claimed #mvStateCard .sc-row a.ghost {background:transparent }
+html .mv-ref-app.state-trial #mvStateCard {background:#eefaf4;border:1px solid #bfe6d5;color:#17513c }
+html .mv-ref-app.state-lapsed #mvStateCard {background:#fdf6e7;border:1px solid #ecd9a8;color:#5c4413 }
 .mv-ref-app #mvStateCard h4 {margin:0 0 6px;font-size:15px;font-weight:650 }
 .mv-ref-app #mvStateCard .sc-row {display:flex;flex-wrap:wrap;gap:8px;margin-top:11px }
 .mv-ref-app #mvStateCard .sc-row a {
@@ -901,9 +990,9 @@
 .mv-ref-app .app-body {
   max-width: 1360px;
   padding-inline: clamp(18px, 2.6vw, 42px); }
-.mv-ref-app.view-simple .app-body { max-width: 1120px; }
-.mv-ref-app.view-ultra .app-body { max-width: 860px; }
-.mv-ref-app.view-pro .app-body { max-width: 1440px; }
+html .mv-ref-app.view-simple .app-body { max-width: 1120px; }
+html .mv-ref-app.view-ultra .app-body { max-width: 860px; }
+html .mv-ref-app.view-pro .app-body { max-width: 1440px; }
 .mv-ref-app .simple-hero > p,
 .mv-ref-app #mvStateCard > :not(.sc-row):not(h4),
 .mv-ref-app .smp-badge p,
@@ -941,8 +1030,8 @@
   gap: 8px; margin: 5px 0 0; font-size: 10px; color: var(--muted); }
 .mv-ref-app .lc-ax .lc-range { font-variant-numeric: tabular-nums; }
 .mv-ref-app .lc-foot { margin: 8px 0 0; font-size: 10.5px; line-height: 1.5; color: var(--muted); }
-.mv-ref-app.no-claim .ctx-body .lc-read .lc-val b,
-.mv-ref-app.no-claim .ctx-body .lc-ax .lc-range { color: transparent; text-shadow: 0 0 7px #7b869a; }
+html .mv-ref-app.no-claim .ctx-body .lc-read .lc-val b,
+html .mv-ref-app.no-claim .ctx-body .lc-ax .lc-range { color: transparent; text-shadow: 0 0 7px #7b869a; }
 .mv-ref-app .al-strip { display: flex !important; flex-wrap: wrap; gap: 10px; }
 .mv-ref-app .al-strip > * { flex: 1 1 205px; min-width: 0; }
 .mv-ref-app .grid.g4 { display: flex !important; flex-wrap: wrap; gap: 18px; }
@@ -1052,7 +1141,7 @@
   display: block; font-size: 9.5px; font-weight: 800; letter-spacing: .09em;
   text-transform: uppercase; color: var(--green-deep); margin: 0 0 4px; }
 .mv-ref-app .dx-do-t { margin: 0; font-size: 13px; line-height: 1.6; color: #2e6b52; }
-.mv-ref-app.no-claim .dx-v { color: transparent; text-shadow: 0 0 8px #7b869a; }
+html .mv-ref-app.no-claim .dx-v { color: transparent; text-shadow: 0 0 8px #7b869a; }
 @media (max-width: 560px) {
   .mv-ref-app .dx-band { padding: 11px 12px; }
   .mv-ref-app .dx-spark { flex-basis: 100%; }
@@ -1086,11 +1175,11 @@
 .mv-ref-app .mv-menu .mv-persona button.on {
   background: var(--green); color: #fff; border-color: var(--green);
   box-shadow: 0 2px 8px rgba(46, 143, 109, .28); }
-.mv-ref-app.no-claim .app-body .card,
-.mv-ref-app.no-claim .app-body .kpi,
-.mv-ref-app.no-claim .app-body .al-mini,
-.mv-ref-app.no-claim .app-body .mv-alsum { border-color: var(--mv-sample) !important; }
-.mv-ref-app.no-claim .app-body .pf-strip { box-shadow: 0 0 0 2px var(--mv-sample); }
+html .mv-ref-app.no-claim .app-body .card,
+html .mv-ref-app.no-claim .app-body .kpi,
+html .mv-ref-app.no-claim .app-body .al-mini,
+html .mv-ref-app.no-claim .app-body .mv-alsum { border-color: var(--mv-sample) !important; }
+html .mv-ref-app.no-claim .app-body .pf-strip { box-shadow: 0 0 0 2px var(--mv-sample); }
 .mv-ref-app .samp-tag {
   display: inline-block; font-size: 8.5px; font-weight: 800; letter-spacing: .07em;
   text-transform: uppercase; padding: 2px 6px; border-radius: 4px;
@@ -1160,7 +1249,7 @@
   .mv-ref-app section[data-route="app-briefing"] .wr-page .grid.g4 > *,
   .mv-ref-app section[data-route="app-briefing"] .wr-page .grid.g2 > * { flex-basis: 100%; }
 }
-.mv-ref-app.view-simple:not(.no-claim) section[data-route="app-briefing"] #wrPage1 { display: block; }
+html .mv-ref-app.view-simple:not(.no-claim) section[data-route="app-briefing"] #wrPage1 { display: block; }
 .mv-ref-app #wrSimpleEvidence .wse-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 0; }
 .mv-ref-app #wrSimpleEvidence .wse-list > span {
   flex: 1 1 160px; min-width: 0; padding: 8px 10px; border-radius: 9px;
@@ -1265,6 +1354,351 @@
   .mv-ref-app { background: #fff !important; }
   .mv-ref-app .wr-map { max-width: 300px; }
 }
+.mv-ref-app section[data-route="app-production"] h4 { margin: 0; }
+.mv-ref-app section[data-route="app-production"] .chartbox { padding: 16px 18px 14px; }
+.mv-ref-app .pf2-strip { display: flex; gap: 8px; align-items: stretch; }
+.mv-ref-app .pf2-seg {
+  flex: 1 1 0; min-width: 96px; text-align: left; cursor: pointer;
+  font: inherit; border-radius: 12px; padding: 12px 14px;
+  border: 1px solid #dde4ea; background: #fff;
+  transition: border-color .12s, box-shadow .12s, transform .12s;
+  display: flex; flex-direction: column; gap: 3px; }
+.mv-ref-app .pf2-seg:hover { border-color: var(--green-deep); box-shadow: var(--shadow); }
+.mv-ref-app .pf2-seg:active { transform: translateY(1px); }
+.mv-ref-app .pf2-seg:focus-visible { outline: 2px solid var(--green-deep); outline-offset: 2px; }
+.mv-ref-app .pf2-segn { font-size: 22px; font-weight: 800; line-height: 1.15;
+            font-variant-numeric: tabular-nums; }
+.mv-ref-app .pf2-segl { font-size: 11px; font-weight: 800; letter-spacing: .06em;
+            text-transform: uppercase; color: var(--slate); }
+.mv-ref-app .pf2-segd { font-size: 11.5px; color: var(--slate); opacity: .85; line-height: 1.5; }
+.mv-ref-app .pf2-seg.posted { background: #f7f9fa; }
+.mv-ref-app .pf2-seg.posted .pf2-segn { color: var(--ink); }
+.mv-ref-app .pf2-seg.blind { background: var(--amber-bg); border-color: #e6cf94; }
+.mv-ref-app .pf2-seg.blind .pf2-segn,
+.mv-ref-app .pf2-seg.blind .pf2-segl { color: var(--amber); }
+.mv-ref-app .pf2-seg.blind .pf2-segd { color: #8a6413; }
+.mv-ref-app .pf2-seg.proj { background: #f4fbf8; border-color: #cfe3da; }
+.mv-ref-app .pf2-seg.proj .pf2-segn { color: var(--green-deep); }
+.mv-ref-app .pf2-topvals { display: grid; grid-template-columns: repeat(auto-fit, minmax(212px, 1fr));
+               gap: 12px; margin: 0 0 14px; }
+.mv-ref-app .pf2-tv { border: 2px solid var(--green); border-radius: 14px; padding: 13px 16px;
+          background: #f8fdfb; }
+.mv-ref-app .pf2-tv .tvl { font-size: 10.5px; font-weight: 800; letter-spacing: .07em;
+               text-transform: uppercase; color: var(--slate); display: block; }
+.mv-ref-app .pf2-tv .tvv { font-size: 22px; font-weight: 800; line-height: 1.2; display: block;
+               margin-top: 5px; font-variant-numeric: tabular-nums; }
+.mv-ref-app .pf2-tv .tvs { font-size: 11.5px; color: var(--slate); line-height: 1.55; display: block;
+               margin-top: 6px; }
+.mv-ref-app .pf2-ins { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+           gap: 10px; margin: 0 0 16px; }
+@media (max-width: 940px) {
+  .mv-ref-app .pf2-ins { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .mv-ref-app .pf2-ins { grid-template-columns: 1fr; }
+}
+.mv-ref-app .pf2-in { background: #fff; border: 1px solid var(--line); border-radius: 12px;
+          padding: 12px 14px; box-shadow: var(--shadow);
+          display: flex; flex-direction: column; gap: 5px; }
+.mv-ref-app .pf2-inbtn { font: inherit; text-align: left; cursor: pointer; width: 100%;
+             transition: border-color .12s, box-shadow .12s, transform .12s; }
+.mv-ref-app .pf2-inbtn:hover { border-color: var(--green-deep); box-shadow: var(--shadow-lg); }
+.mv-ref-app .pf2-inbtn:active { transform: translateY(1px); }
+.mv-ref-app .pf2-inbtn:focus-visible { outline: 2px solid var(--green-deep); outline-offset: 2px; }
+.mv-ref-app .pf2-inmore { font-size: 10.5px; font-weight: 800; letter-spacing: .04em;
+              color: var(--green-deep); opacity: 0; transition: opacity .12s;
+              margin-top: 1px; }
+.mv-ref-app .pf2-inbtn:hover .pf2-inmore,
+.mv-ref-app .pf2-inbtn:focus-visible .pf2-inmore { opacity: 1; }
+.mv-ref-app .pf2-in.t-warn { border-left: 3px solid var(--amber); }
+.mv-ref-app .pf2-in.t-up { border-left: 3px solid var(--green-deep); }
+.mv-ref-app .pf2-inl { font-size: 10.5px; font-weight: 800; letter-spacing: .06em;
+           text-transform: uppercase; color: var(--slate); line-height: 1.4; }
+.mv-ref-app .pf2-inv { font-size: 17px; font-weight: 800; line-height: 1.25; color: var(--ink);
+           font-variant-numeric: tabular-nums; }
+.mv-ref-app .pf2-ins2 { font-size: 11.5px; color: var(--slate); line-height: 1.6; }
+.mv-ref-app .pf2-chead { display: flex; flex-wrap: wrap; gap: 10px 24px; align-items: flex-start;
+             justify-content: space-between; padding: 2px 2px 12px; }
+.mv-ref-app .pf2-sub { font-size: 12px; color: var(--slate); margin: 5px 0 0; line-height: 1.6;
+           letter-spacing: .01em; }
+.mv-ref-app .pf2-sub .pf2-dot { color: #c3ccd4; margin: 0 6px; }
+.mv-ref-app .pf2-legend { display: flex; gap: 8px 16px; flex-wrap: wrap; align-items: center;
+              font-size: 12px; font-weight: 700; color: var(--ink); padding-top: 3px; }
+.mv-ref-app .pf2-sw { display: inline-block; width: 20px; border-top: 3px solid var(--green-deep);
+          border-radius: 2px; vertical-align: middle; margin-right: 7px; }
+.mv-ref-app .pf2-sw.gas,
+.mv-ref-app .pf2-sw.oil { border-top-color: #b8892f; }
+.mv-ref-app .pf2-lgnote { font-size: 11px; font-weight: 600; color: var(--slate); opacity: .85;
+              border-left: 1px solid #e2e8f0; padding-left: 14px; }
+@media (max-width: 560px) {
+  .mv-ref-app .pf2-lgnote { border-left: none; padding-left: 0; }
+}
+.mv-ref-app .pf2-ctrls { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center;
+             padding: 0 2px 12px; }
+.mv-ref-app .pf2-sel { display: inline-flex; align-items: center; gap: 8px; font-size: 11px;
+           font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+           color: var(--slate); }
+.mv-ref-app .pf2-sel select { font: inherit; font-size: 12.5px; font-weight: 600; letter-spacing: 0;
+                  text-transform: none; color: var(--ink); background: #fff;
+                  border: 1px solid #dde4ea; border-radius: 9px; padding: 7px 10px;
+                  max-width: 300px; cursor: pointer; }
+.mv-ref-app .pf2-sel select:focus-visible { outline: 2px solid var(--green-deep); outline-offset: 1px; }
+.mv-ref-app .pf2-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.mv-ref-app .pf2-preset { font-family: inherit; font-size: 11px; font-weight: 700; color: var(--slate);
+              background: #fff; border: 1px solid #dde4ea; border-radius: 999px;
+              padding: 6px 13px; cursor: pointer; line-height: 1.15;
+              transition: border-color .12s, color .12s, background .12s; }
+.mv-ref-app .pf2-preset:hover { border-color: var(--green-deep); color: var(--green-deep); }
+.mv-ref-app .pf2-preset.on { background: var(--green-deep); border-color: var(--green-deep); color: #fff; }
+.mv-ref-app .pf2-preset:focus-visible { outline: 2px solid var(--green-deep); outline-offset: 2px; }
+.mv-ref-app section[data-route="app-production"] #pf2Svg { display: block; width: 100%; height: auto;
+  cursor: crosshair; touch-action: pan-y; }
+.mv-ref-app section[data-route="app-production"] #pf2Svg:focus-visible {
+  outline: 2px solid var(--green-deep); outline-offset: 3px; border-radius: 8px; }
+.mv-ref-app .pf2-brushrow { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
+                justify-content: space-between; padding: 12px 2px 8px; }
+.mv-ref-app .pf2-winlab { font-variant-numeric: tabular-nums; }
+.mv-ref-app .pf2-brush { position: relative; height: 36px; margin: 2px 2px 10px;
+             border: 1px solid #e5e7eb; border-radius: 9px; background: #fbfcfd; }
+.mv-ref-app .pf2-brush .pf2-ctx { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+                      border-radius: 8px; pointer-events: none; }
+.mv-ref-app .pf2-win { position: absolute; top: -1px; bottom: -1px; background: rgba(46, 143, 109, .09);
+           border-left: 2px solid var(--green-deep); border-right: 2px solid var(--green-deep);
+           pointer-events: none; }
+.mv-ref-app .pf2-brush input[type=range] { position: absolute; left: 0; top: 0; width: 100%; height: 36px;
+  margin: 0; -webkit-appearance: none; appearance: none; background: transparent;
+  pointer-events: none; outline: none; }
+.mv-ref-app .pf2-brush input[type=range]::-webkit-slider-runnable-track { height: 36px;
+  background: transparent; }
+.mv-ref-app .pf2-brush input[type=range]::-webkit-slider-thumb { -webkit-appearance: none;
+  appearance: none; pointer-events: auto; width: 15px; height: 24px; margin-top: 6px;
+  border-radius: 5px; background: #fff; border: 2px solid var(--green-deep);
+  box-shadow: 0 1px 4px rgba(15, 40, 30, .25); cursor: ew-resize; }
+.mv-ref-app .pf2-brush input[type=range]::-moz-range-track { height: 36px; background: transparent; }
+.mv-ref-app .pf2-brush input[type=range]::-moz-range-thumb { pointer-events: auto; width: 15px;
+  height: 24px; border-radius: 5px; background: #fff; border: 2px solid var(--green-deep);
+  box-shadow: 0 1px 4px rgba(15, 40, 30, .25); cursor: ew-resize; }
+.mv-ref-app .pf2-brush input[type=range]:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--amber); outline-offset: 1px; }
+.mv-ref-app .pf2-note { font-size: 11.5px; color: var(--slate); line-height: 1.65;
+            padding: 4px 2px 8px; margin: 0; }
+.mv-ref-app .pf2-note strong { color: var(--ink); font-weight: 700; }
+.mv-ref-app .pf2-note .pf2-preset { margin-left: 4px; vertical-align: 1px; }
+.mv-ref-app .pf2-duo { display: grid; grid-template-columns: minmax(238px, 310px) 1fr; gap: 16px;
+           margin-top: 16px; align-items: stretch; }
+@media (max-width: 900px) {
+  .mv-ref-app .pf2-duo { grid-template-columns: 1fr; }
+}
+.mv-ref-app .pf2-mapcard { display: flex; flex-direction: column; }
+.mv-ref-app .pf2-facts { margin: 12px 0 0; display: flex; flex-direction: column; flex: 1; }
+.mv-ref-app .pf2-facts > div { display: flex; gap: 12px; justify-content: space-between;
+                   align-items: baseline; padding: 8px 0; border-top: 1px solid #eef2f1; }
+.mv-ref-app .pf2-facts > div:first-child { border-top: 0; }
+.mv-ref-app .pf2-facts dt { font-size: 11px; font-weight: 800; letter-spacing: .05em;
+                text-transform: uppercase; color: var(--slate); flex: 0 0 auto; }
+.mv-ref-app .pf2-facts dd { margin: 0; font-size: 12.5px; font-weight: 700; color: var(--ink);
+                text-align: right; line-height: 1.45; }
+.mv-ref-app .pf2-mapsub { font-size: 11.5px; color: var(--slate); line-height: 1.65;
+              margin: 12px 0 2px; padding-top: 10px; border-top: 1px solid #eef2f1; }
+.mv-ref-app .pf2-kband { background: var(--ink); color: #fff; border: 1px solid var(--ink);
+             border-radius: 14px; overflow: hidden; box-shadow: var(--shadow);
+             display: flex; flex-direction: column; }
+.mv-ref-app .pf2-kt { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center;
+          justify-content: space-between; padding: 15px 20px 10px; }
+.mv-ref-app .pf2-kt h4 { font-size: 14.5px; font-weight: 800; color: #fff; margin: 0;
+             letter-spacing: .01em; }
+.mv-ref-app .pf2-int { display: inline-flex; align-items: baseline; gap: 6px; font-size: 11px;
+           font-weight: 800; color: #dfeae4; background: rgba(46, 143, 109, .22);
+           border: 1px solid rgba(120, 190, 160, .35); border-radius: 999px;
+           padding: 5px 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mv-ref-app .pf2-int em { font-style: normal; font-size: 9px; font-weight: 800; letter-spacing: .07em;
+              text-transform: uppercase; color: #e9c986; }
+.mv-ref-app .pf2-tbl { display: grid;
+  grid-template-columns:
+    minmax(118px, 1.35fr) minmax(78px, .95fr) minmax(70px, .85fr)
+    minmax(78px, .95fr) minmax(70px, .85fr);
+  padding: 0 20px 8px; flex: 1; align-content: start; }
+.mv-ref-app .pf2-c { padding: 9px 10px 9px 0; border-top: 1px solid rgba(255, 255, 255, .09);
+         font-size: 12px; display: flex; flex-direction: column; justify-content: center;
+         min-width: 0; }
+.mv-ref-app .pf2-c.sh { background: rgba(255, 255, 255, .04); padding-left: 10px; padding-right: 8px; }
+.mv-ref-app .pf2-c.gh { border-top: none; padding-top: 4px; padding-bottom: 2px; font-size: 10.5px;
+            font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.mv-ref-app .pf2-c.gh.o { color: #ecc07c; }
+.mv-ref-app .pf2-c.gh.g { color: #9fd3ba; }
+.mv-ref-app .pf2-c.shh { border-top: none; padding-top: 2px; padding-bottom: 7px; font-size: 9.5px;
+             font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
+             color: #8fa3ad; }
+.mv-ref-app .pf2-l { color: #b7c3cc; font-size: 11.5px; line-height: 1.45; }
+.mv-ref-app .pf2-est { display: block; font-size: 9px; font-weight: 700; letter-spacing: .05em;
+           text-transform: uppercase; color: #d9a441; margin-top: 4px; }
+.mv-ref-app .pf2-vo,
+.mv-ref-app .pf2-vg { font-variant-numeric: tabular-nums; font-weight: 800; font-size: 14px;
+                   line-height: 1.35; white-space: nowrap; }
+.mv-ref-app .pf2-vg { color: #9fd3ba; }
+.mv-ref-app .pf2-vo { color: #ecc07c; }
+.mv-ref-app .pf2-vs { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 12.5px;
+          line-height: 1.35; white-space: nowrap; }
+.mv-ref-app .pf2-vs.g { color: #d8ede3; }
+.mv-ref-app .pf2-vs.o { color: #e9d1a4; }
+.mv-ref-app .pf2-vs.na { color: #5f7482; font-weight: 600; }
+.mv-ref-app .pf2-u { font-size: 10px; font-weight: 700; color: #8fa3ad; margin-left: 3px; }
+.mv-ref-app .pf2-kstrip { display: flex; flex-wrap: wrap; gap: 6px 22px; padding: 11px 20px;
+              border-top: 1px solid rgba(255, 255, 255, .12); font-size: 11px;
+              color: #b7c3cc; }
+.mv-ref-app .pf2-kstrip strong { color: #fff; font-weight: 800; font-variant-numeric: tabular-nums;
+                     margin-right: 4px; }
+.mv-ref-app .pf2-kfoot { font-size: 10.5px; color: #8fa3ad; line-height: 1.75; padding: 10px 20px 14px;
+             margin: 0; border-top: 1px solid rgba(255, 255, 255, .08); }
+.mv-ref-app .pf2-tbl2 { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.mv-ref-app .pf2-tbl2 th { text-align: left; font-size: 10.5px; font-weight: 800; letter-spacing: .06em;
+               text-transform: uppercase; color: var(--slate); padding: 10px 12px;
+               border-bottom: 1px solid var(--line); background: #f8fafb;
+               white-space: nowrap; }
+.mv-ref-app .pf2-tbl2 th.right,
+.mv-ref-app .pf2-tbl2 td.right { text-align: right; }
+.mv-ref-app .pf2-tbl2 td { padding: 10px 12px; border-bottom: 1px solid #f1f4f6; vertical-align: top;
+               line-height: 1.5; }
+.mv-ref-app .pf2-tbl2 td.num,
+.mv-ref-app .pf2-tbl2 td .num { font-variant-numeric: tabular-nums; }
+.mv-ref-app .pf2-tbl2 tbody tr[role="button"] { cursor: pointer; }
+.mv-ref-app .pf2-tbl2 tbody tr[role="button"]:hover { background: #f4fbf8; }
+.mv-ref-app .pf2-tbl2 tbody tr[role="button"]:focus-visible { outline: 2px solid var(--green-deep);
+  outline-offset: -2px; }
+.mv-ref-app .pf2-tbl2 tbody tr.on { background: #eef8f4; box-shadow: inset 3px 0 0 var(--green-deep); }
+.mv-ref-app .pf2-tbl2 tbody tr.on td:first-child { font-weight: 800; }
+.mv-ref-app .pf2-flow { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch;
+            padding: 4px 2px 10px; }
+.mv-ref-app .pf2-fl { flex: 1 1 200px; border: 1px solid var(--line); border-radius: 12px;
+          padding: 12px 14px; background: #fff; display: flex; flex-direction: column;
+          gap: 5px; }
+.mv-ref-app .pf2-fl.warn { border-color: #e6cf94; background: #fffcf4; }
+.mv-ref-app .pf2-fl.good { border-color: #cfe3da; background: #f8fdfb; }
+.mv-ref-app .pf2-fll { font-size: 10.5px; font-weight: 800; letter-spacing: .06em;
+           text-transform: uppercase; color: var(--slate); }
+.mv-ref-app .pf2-flv { font-size: 19px; font-weight: 800; line-height: 1.25; color: var(--ink);
+           font-variant-numeric: tabular-nums; }
+.mv-ref-app .pf2-fl.warn .pf2-flv { color: var(--amber); }
+.mv-ref-app .pf2-fl.good .pf2-flv { color: var(--green-deep); }
+.mv-ref-app .pf2-fls { font-size: 11.5px; color: var(--slate); line-height: 1.6; }
+.mv-ref-app .pf2-flbar { height: 7px; border-radius: 4px; background: #eef2f1; margin-top: 6px;
+             overflow: hidden; }
+.mv-ref-app .pf2-flbar i { display: block; height: 100%; background: var(--ink); border-radius: 4px; }
+.mv-ref-app .pf2-flbar.warn i { background: var(--amber); }
+.mv-ref-app .pf2-flbar.good i { background: var(--green-deep); }
+.mv-ref-app .pf2-flarrow { flex: 0 0 auto; align-self: center; font-size: 20px; font-weight: 800;
+               color: #b9c4cc; padding: 0 2px; }
+@media (max-width: 700px) {
+  .mv-ref-app .pf2-flarrow { display: none; }
+}
+.mv-ref-app .pf2-mini { margin: 14px 0 2px; padding-top: 12px; border-top: 1px solid #eef2f1; }
+.mv-ref-app .pf2-minil { display: block; font-size: 10.5px; font-weight: 800; letter-spacing: .06em;
+             text-transform: uppercase; color: var(--slate); margin-bottom: 8px; }
+.mv-ref-app .pf2-minibars { display: flex; align-items: flex-end; gap: 2px; height: 56px;
+                padding: 0 2px; border-bottom: 1px solid #e2e8f0; }
+.mv-ref-app .pf2-minib { flex: 1 1 0; min-width: 3px; background: var(--amber); opacity: .7;
+             border-radius: 2px 2px 0 0; min-height: 1px; }
+.mv-ref-app .pf2-minib:hover { opacity: 1; }
+.mv-ref-app .pf2-minis { display: block; font-size: 11px; color: var(--slate); line-height: 1.6;
+             margin-top: 8px; }
+.mv-ref-app .pf2-finds { list-style: none; margin: 0; padding: 0; display: grid;
+             grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 22px; }
+@media (max-width: 780px) {
+  .mv-ref-app .pf2-finds { grid-template-columns: 1fr; }
+}
+.mv-ref-app .pf2-finds li { display: flex; flex-direction: column; gap: 3px; padding: 9px 0;
+                border-top: 1px solid #eef2f1; }
+.mv-ref-app .pf2-finds li strong { font-size: 12.5px; font-weight: 800; color: var(--ink);
+                       line-height: 1.45; }
+.mv-ref-app .pf2-finds li span { font-size: 12px; color: var(--slate); line-height: 1.65; }
+.mv-ref-app .pf2-ins.pf2-ins2row { margin-top: -6px; }
+.mv-ref-app .pf2-gauges { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+              gap: 12px 18px; padding: 2px 0 4px; }
+@media (max-width: 680px) {
+  .mv-ref-app .pf2-gauges { grid-template-columns: 1fr; }
+}
+.mv-ref-app .pf2-gauge { display: flex; align-items: center; gap: 16px; padding: 6px 2px; }
+.mv-ref-app .pf2-gauge + .pf2-gauge { border-left: 1px solid #eef2f1; padding-left: 20px; }
+@media (max-width: 680px) {
+  .mv-ref-app .pf2-gauge + .pf2-gauge { border-left: 0; padding-left: 2px;
+    border-top: 1px solid #eef2f1; padding-top: 12px; margin-top: 4px; }
+}
+.mv-ref-app .pf2-gauge svg { flex: 0 0 118px; width: 118px; height: auto; display: block; }
+.mv-ref-app .pf2-gaugefacts { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.mv-ref-app .pf2-gk { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+          margin-bottom: 2px; }
+.mv-ref-app .pf2-gk.gas { color: var(--green-deep); }
+.mv-ref-app .pf2-gk.oil { color: #a07a2c; }
+.mv-ref-app .pf2-gr { font-size: 12px; color: var(--slate); line-height: 1.5; }
+.mv-ref-app .pf2-gr em { font-style: normal; font-weight: 800; color: var(--ink);
+             font-variant-numeric: tabular-nums; }
+.mv-ref-app .pf2-gr.half { margin-top: 4px; padding-top: 6px; border-top: 1px dashed #dde4ea;
+               font-size: 11.5px; }
+.mv-ref-app .pf2-lifegrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 2px 26px; margin-top: 12px; padding-top: 10px;
+                border-top: 1px solid #eef2f1; }
+@media (max-width: 1040px) {
+  .mv-ref-app .pf2-lifegrid { grid-template-columns: 1fr; }
+}
+.mv-ref-app .pf2-lifeone { display: grid; grid-template-columns: minmax(0, 1fr) 72px 46px; gap: 12px;
+               align-items: center; padding: 7px 6px; border: 0; background: none;
+               font: inherit; text-align: left; cursor: pointer; border-radius: 8px; }
+.mv-ref-app .pf2-lifeone:hover { background: #f4fbf8; }
+.mv-ref-app .pf2-lifeone.on { background: #eef8f4; box-shadow: inset 2px 0 0 var(--green-deep); }
+.mv-ref-app .pf2-lifeone:focus-visible { outline: 2px solid var(--green-deep); outline-offset: -2px; }
+.mv-ref-app .pf2-lifename { font-size: 12px; font-weight: 700; color: var(--ink);
+                line-height: 1.35; min-width: 0; }
+.mv-ref-app .pf2-lifeminibar { height: 7px; border-radius: 5px; background: #eef2f1; overflow: hidden; }
+.mv-ref-app .pf2-lifeminibar i { display: block; height: 100%; background: #9cc3b3; }
+.mv-ref-app .pf2-lifeminibar i.late { background: var(--amber); }
+.mv-ref-app .pf2-lifeval { font-size: 12px; font-weight: 800; color: var(--slate); text-align: right;
+               font-variant-numeric: tabular-nums; }
+.mv-ref-app .pf2-dotk { display: inline-block; width: 9px; height: 9px; border-radius: 3px;
+            margin-right: 6px; vertical-align: 0; }
+.mv-ref-app .pf2-dotk.gas { background: var(--green-deep); }
+.mv-ref-app .pf2-dotk.oil { background: #b8892f; }
+.mv-ref-app .pf2-years { display: flex; align-items: flex-end; gap: 10px; height: 190px;
+             padding: 6px 2px 0; }
+.mv-ref-app .pf2-yr { flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column;
+          justify-content: flex-end; align-items: center; gap: 6px; }
+.mv-ref-app .pf2-yrv { font-size: 11.5px; font-weight: 800; color: var(--ink); white-space: nowrap;
+           font-variant-numeric: tabular-nums; }
+.mv-ref-app .pf2-yrbox { flex: 1 1 auto; min-height: 0; width: 100%; display: flex;
+             align-items: flex-end; justify-content: center; }
+.mv-ref-app .pf2-yrcol { width: 100%; max-width: 46px; flex: 0 0 auto; display: flex;
+             flex-direction: column; border-radius: 5px 5px 0 0; overflow: hidden;
+             min-height: 3px; }
+.mv-ref-app .pf2-yrcol i { display: block; width: 100%; }
+.mv-ref-app .pf2-yrcol i.gas { background: var(--green-deep); }
+.mv-ref-app .pf2-yrcol i.oil { background: #b8892f; }
+.mv-ref-app .pf2-yrl { font-size: 11px; font-weight: 700; color: var(--slate); white-space: nowrap;
+           font-variant-numeric: tabular-nums; }
+.mv-ref-app .pf2-yrl em { font-style: normal; font-size: 9px; font-weight: 800; color: var(--amber);
+              margin-left: 3px; }
+@media (max-width: 560px) {
+  .mv-ref-app .pf2-years { gap: 5px; height: 160px; }
+  .mv-ref-app .pf2-yrv { font-size: 9.5px; }
+  .mv-ref-app .pf2-yrl { font-size: 9.5px; }
+}
+@media (max-width: 640px) {
+  .mv-ref-app .pf2-strip { flex-direction: column; }
+  .mv-ref-app .pf2-seg { min-width: 0; }
+  .mv-ref-app .pf2-tv .tvv { font-size: 19px; }
+  .mv-ref-app .pf2-tbl { grid-template-columns:
+    minmax(96px, 1.2fr) minmax(62px, .95fr) minmax(56px, .85fr)
+    minmax(62px, .95fr) minmax(56px, .85fr); padding: 0 14px 8px; }
+  .mv-ref-app .pf2-vo,
+  .mv-ref-app .pf2-vg { font-size: 12.5px; }
+  .mv-ref-app .pf2-vs { font-size: 11px; }
+  .mv-ref-app .pf2-kt,
+  .mv-ref-app .pf2-kstrip,
+  .mv-ref-app .pf2-kfoot { padding-left: 14px; padding-right: 14px; }
+  .mv-ref-app .pf2-sel select { max-width: 100%; }
+}
+html .mv-ref-app.view-ultra:not(.no-claim) section[data-route="app-leases"] > .pf2-ins {
+  display: grid !important; }
+.mv-ref-app section[data-route="app-leases"] h4 { margin: 0; }
+.mv-ref-app section[data-route="app-leases"] .chartbox { padding: 16px 18px 14px; }
 .mv-ref-app .soon-tag {
   margin-left: auto; font-size: 8.5px; font-weight: 800; letter-spacing: .06em;
   text-transform: uppercase; padding: 2px 6px; border-radius: 999px;
@@ -1284,7 +1718,7 @@
 .mv-ref-app .mv-bottom a svg { width: 19px; height: 19px; stroke: currentColor; fill: none; stroke-width: 2; }
 @media (max-width: 860px) {
   .mv-ref-app .app-side { display: none !important; }
-  .mv-ref-app.in-app .app-shell { display: block; }
+  html .mv-ref-app.in-app .app-shell { display: block; }
   .mv-ref-app .app-top { padding-left: 14px; padding-right: 14px; }
   .mv-ref-app .app-body { padding: 0 14px 84px; }
   .mv-ref-app .mv-bottom { display: flex; }
@@ -1327,38 +1761,3 @@
 @keyframes mvFadeUp {from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @keyframes mvBounce {0%,80%,100%{transform:scale(.6);opacity:.45}40%{transform:scale(1);opacity:1}}
 @keyframes mvSpin {to{transform:rotate(360deg)}}
-/* ==========================================================================
-   WHAT THIS APP'S OWN RESET ADDS ON TOP OF THE REFERENCE
-
-   Everything above this line is the reference's, extracted. The block below is
-   NOT in the reference — it exists because this app declares something where
-   the reference declares nothing, and an extracted sheet can only override a
-   property the reference actually sets. Where the reference relies on the
-   BROWSER'S default, a host declaration in between wins by default and there
-   is nothing to extract that would stop it.
-
-   Tailwind's preflight sets `font: inherit` on button, input, select, textarea
-   and optgroup. The reference does not, so its form controls take the UA's own
-   font and `line-height: normal` — which is why its avatar initials render in
-   Arial and its `.al-mini`, `.as-cat` and `.sw-btn` buttons sit at `normal`
-   leading rather than the body's 1.55. Measured against the running reference,
-   that difference showed up on six selectors.
-
-   `revert` is the right tool: it drops back to the UA stylesheet, which is
-   exactly what the reference gets. Every ported rule that DOES set a font on a
-   control — `.btn`, `.as-cat`, `.mvlive-picker input` and the rest — still
-   wins on specificity, because those are two classes against this rule's one
-   class and one element.
-   ========================================================================== */
-
-.mv-ref-app button,
-.mv-ref-app input,
-.mv-ref-app select,
-.mv-ref-app textarea,
-.mv-ref-app optgroup {
-  font-family: revert;
-  font-size: revert;
-  font-weight: revert;
-  font-style: revert;
-  line-height: normal;
-}

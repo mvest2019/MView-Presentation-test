@@ -60,8 +60,10 @@ import Dashboard from './Dashboard';
 import WeeklyView from './WeeklyView';
 import DrawerPanel from './DrawerPanel';
 import Loader, { type Step } from './Loader';
+import ProductionView from './ProductionView';
 
-export type Route = 'dashboard' | 'alerts' | 'activities' | 'weekly';
+export type Route = 'dashboard' | 'alerts' | 'activities' | 'leases' | 'production'
+  | 'weekly';
 
 /** the five funnel states, in funnel order — the prototype's own sequence */
 export const FUNNEL = [
@@ -90,15 +92,17 @@ export const PERSONAS: { key: Tier; label: string; note: string }[] = [
 export const ROUTE_PATH: Record<Route, string> = {
   dashboard: '/mineralownersite',
   weekly: '/mineralownersite/briefing',
+  production: '/mineralownersite/production',
   alerts: '/mineralownersite/alerts',
   activities: '/mineralownersite/activities',
+  leases: '/mineralownersite/leases',
 };
 /** ADAPTED 2 · which routes this shell renders itself */
-const OWNED: Route[] = ['dashboard', 'weekly'];
+const OWNED: Route[] = ['dashboard', 'weekly', 'production'];
 
 export const ROUTE_TITLE: Record<Route, string> = {
   dashboard: 'Dashboard', alerts: 'Alerts', activities: 'Activities',
-  weekly: 'Weekly Report',
+  leases: 'My Leases', production: 'Production & Forecast', weekly: 'Weekly Report',
 };
 
 export interface OwnerRef {
@@ -206,7 +210,8 @@ export default function Portal({ route: initialRoute, initial }:
   useEffect(() => {
     const onPop = () => {
       const p = window.location.pathname.replace(/\/+$/, '') || '/';
-      setRoute(p === ROUTE_PATH.weekly ? 'weekly' : 'dashboard');
+      setRoute(p === ROUTE_PATH.weekly ? 'weekly'
+        : p === ROUTE_PATH.production ? 'production' : 'dashboard');
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
@@ -318,6 +323,8 @@ export default function Portal({ route: initialRoute, initial }:
     !data ? null
       : route === 'weekly'
         ? <WeeklyView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
+        : route === 'production'
+          ? <ProductionView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
         : (
           <Dashboard
             p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go}
