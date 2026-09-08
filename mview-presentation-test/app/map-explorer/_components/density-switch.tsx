@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, Lock, SlidersHorizontal } from "lucide-react";
+import { Check, ChevronDown, SlidersHorizontal } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -90,18 +90,9 @@ const DENSITY_NOTE: Record<Density, string> = {
 export function DensitySwitch({
   value,
   onChange,
-  ceiling = "pro",
 }: {
   value: Density;
   onChange: (density: Density) => void;
-  /**
-   * The furthest this account may read — see `FUNNEL_CEILING`.
-   *
-   * The modes past it are listed and locked rather than dropped: what a plan
-   * buys should be visible from inside the free view, and a menu whose length
-   * changes with the plan gives the reader nothing to compare.
-   */
-  ceiling?: Density;
 }) {
   const [open, setOpen] = useState(false);
   /*
@@ -214,60 +205,36 @@ export function DensitySwitch({
           >
             {DENSITIES.map((density) => {
               const selected = density === value;
-              /* Past what this account may read — listed, but not a choice. */
-              const locked = !showsAt(ceiling, density);
               return (
                 <button
                   key={density}
                   type="button"
                   role="option"
                   aria-selected={selected}
-                  aria-disabled={locked}
-                  title={locked ? "Premium" : DENSITY_HINT[density]}
+                  title={DENSITY_HINT[density]}
                   onClick={() => {
-                    if (locked) return;
                     onChange(density);
                     setOpen(false);
                   }}
-                  className={`flex w-full items-start gap-[8px] px-[12px] py-[9px] text-left transition-colors ${
-                    locked
-                      ? "cursor-not-allowed"
-                      : "cursor-pointer hover:bg-[#f2f8f5]"
-                  } ${selected ? "bg-[#f4faf6]" : ""}`}
+                  className={`flex w-full cursor-pointer items-start gap-[8px] px-[12px] py-[9px] text-left transition-colors hover:bg-[#f2f8f5] ${
+                    selected ? "bg-[#f4faf6]" : ""
+                  }`}
                 >
-                  {locked ? (
-                    <Lock
-                      size={13}
-                      strokeWidth={2.5}
-                      aria-hidden="true"
-                      className="mt-[2px] shrink-0 text-mv-muted"
-                    />
-                  ) : (
-                    <Check
-                      size={14}
-                      strokeWidth={3}
-                      aria-hidden="true"
-                      className={`mt-[2px] shrink-0 text-mv-green-deep ${
-                        selected ? "" : "invisible"
-                      }`}
-                    />
-                  )}
+                  <Check
+                    size={14}
+                    strokeWidth={3}
+                    aria-hidden="true"
+                    className={`mt-[2px] shrink-0 text-mv-green-deep ${
+                      selected ? "" : "invisible"
+                    }`}
+                  />
                   <span className="min-w-0">
                     <span
                       className={`block text-[13px] font-semibold leading-none ${
-                        locked
-                          ? "text-mv-muted"
-                          : selected
-                            ? "text-mv-green-deep"
-                            : "text-mv-ink"
+                        selected ? "text-mv-green-deep" : "text-mv-ink"
                       }`}
                     >
                       {DENSITY_LABEL[density]}
-                      {locked && (
-                        <span className="ml-[6px] rounded bg-mv-mint px-[5px] py-[2px] text-[9.5px] font-bold uppercase tracking-[.06em] text-mv-green-deep">
-                          Premium
-                        </span>
-                      )}
                     </span>
                     {/* What the mode actually gives you, so the choice is made
                       from the menu rather than by trying all four. */}

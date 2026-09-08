@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { BASEMAP_OPTIONS, BasemapGallery } from "./basemap-gallery";
+import { BasemapGallery } from "./basemap-gallery";
 import { FiltersPanel } from "./filters-panel";
 import { LegendsPanel } from "./legends-panel";
 import { getWellLookupMap, type MapWellLookup } from "@/lib/map-api";
@@ -68,8 +68,6 @@ type MapChromeProps = {
   /** How much of a well's record the Insights tab shows. */
   density: Density;
   onDensityChange: (density: Density) => void;
-  /** The furthest the demo's account state may read. */
-  ceiling: Density;
   /** The demo control: which kind of account the map is being shown as. */
   funnel: FunnelState;
   onFunnelChange: (state: FunnelState) => void;
@@ -170,18 +168,6 @@ function asApiNumber(typed: string): string {
   return `${digits.slice(0, 2)}-${digits.slice(2, 5)}-${digits.slice(5)}`;
 }
 
-/**
- * The view mode each basemap arrives at.
- *
- * Streets is the map the mock opens on and the one every reading in this app
- * is drawn against; Satellite is the other one people actually ask for. The
- * four after that are taste.
- */
-const BASEMAP_FROM: Record<string, Density> = {
-  streets: "ultra",
-  satellite: "simple",
-};
-
 const VIEW_TABS: { id: ViewTab; label: string; icon: typeof MapIcon }[] = [
   { id: "map", label: "Map", icon: MapIcon },
   { id: "table", label: "Table", icon: Table2 },
@@ -197,7 +183,6 @@ export function MapChrome({
   share,
   density,
   onDensityChange,
-  ceiling,
   funnel,
   onFunnelChange,
   basemap,
@@ -841,11 +826,7 @@ export function MapChrome({
           {/* The view mode, before the view switch: it decides what the map
               holds, and the tabs decide which part of it you are looking at.
               A menu rather than a second row of pills — see `DensitySwitch`. */}
-          <DensitySwitch
-            value={density}
-            onChange={onDensityChange}
-            ceiling={ceiling}
-          />
+          <DensitySwitch value={density} onChange={onDensityChange} />
 
           {/* The demo control, beside the mode it caps. */}
           <DemoStateMenu value={funnel} onChange={onFunnelChange} />
@@ -1257,11 +1238,10 @@ export function MapChrome({
         <div ref={basemapRef} className="relative">
           {basemapOpen && (
             <BasemapGallery
-              /* One at Ultra, two at Essentials, all six from Detailed: the
-                 rest are preference rather than information. */
-              options={BASEMAP_OPTIONS.filter((option) =>
-                showsAt(density, BASEMAP_FROM[option.id] ?? "detailed"),
-              )}
+              /* Every mode gets all six. They were trimmed to one and two in
+                 the simpler modes, and it was the wrong thing to take away:
+                 which map you read against is a preference, not a level of
+                 detail, and a reader on Ultra may still want the imagery. */
               selected={basemap}
               onSelect={(id) => {
                 onBasemapChange(id);

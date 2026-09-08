@@ -947,6 +947,14 @@ export function FiltersPanel({
    * tick later. The guard is a ref so a second list arriving does not tick
    * everything twice.
    */
+  /* The facets this view mode offers, counted as well as listed: a lone facet
+     is given the rail's height rather than a list box in a sea of white. */
+  const shownSections = useMemo(
+    () =>
+      sections.filter((section) => showsAt(density, section.from ?? "ultra")),
+    [sections, density],
+  );
+
   const openingApplied = useRef(false);
 
   useEffect(() => {
@@ -1448,28 +1456,29 @@ export function FiltersPanel({
         */}
 
         {/* ---------------- the checkbox sections ---------------- */}
-        {sections
-          .filter((section) => showsAt(density, section.from ?? "ultra"))
-          .map((section) => (
-            <CheckboxSection
-              key={`${section.id}-${sectionsResetAt}`}
-              section={section}
-              notice={notices[section.id]}
-              open={openSections.has(section.id)}
-              onToggle={() => toggleSection(section.id)}
-              checked={checked[section.id]}
-              onToggleItem={(name) => toggleItem(section.id, name)}
-              /* Operators are the one paged facet — see the loader above. */
-              {...(section.id === "operator"
-                ? {
-                    onFind: setOperatorFind,
-                    total: operatorsTotal,
-                    onMore: loadMoreOperators,
-                    loadingMore: operatorsMore,
-                  }
-                : null)}
-            />
-          ))}
+        {shownSections.map((section) => (
+          <CheckboxSection
+            key={`${section.id}-${sectionsResetAt}`}
+            section={section}
+            /* The rail's whole height, when this is the only facet in it —
+                 see `tall` on the section. */
+            tall={shownSections.length === 1}
+            notice={notices[section.id]}
+            open={openSections.has(section.id)}
+            onToggle={() => toggleSection(section.id)}
+            checked={checked[section.id]}
+            onToggleItem={(name) => toggleItem(section.id, name)}
+            /* Operators are the one paged facet — see the loader above. */
+            {...(section.id === "operator"
+              ? {
+                  onFind: setOperatorFind,
+                  total: operatorsTotal,
+                  onMore: loadMoreOperators,
+                  loadingMore: operatorsMore,
+                }
+              : null)}
+          />
+        ))}
 
         <div className="h-2" />
       </div>
@@ -1555,6 +1564,7 @@ function CheckboxSection({
   total,
   onMore,
   loadingMore,
+  tall = false,
 }: {
   section: FilterSection;
   open: boolean;
@@ -1574,6 +1584,8 @@ function CheckboxSection({
   onFind?: (query: string) => void;
   /** How many rows there are in all, where that is more than are loaded. */
   total?: number;
+  /** Lets the list run to the height of the rail — the only facet on show. */
+  tall?: boolean;
   /** Fetches the next page. */
   onMore?: () => void;
   loadingMore?: boolean;
@@ -1654,7 +1666,12 @@ function CheckboxSection({
         }
         className={
           visible.length > LONG_LIST
-            ? "mv-thin-scroll max-h-[248px] overflow-y-auto"
+            ? `mv-thin-scroll overflow-y-auto ${
+                /* A single facet has the rail to itself, and a 248px list in a
+                   700px panel is a short list with half a panel of white under
+                   it. Given the room, it takes it. */
+                tall ? "max-h-[min(60vh,560px)]" : "max-h-[248px]"
+              }`
             : ""
         }
       >

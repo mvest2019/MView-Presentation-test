@@ -9,23 +9,16 @@
  * imported, like the view modes beside it: that module is the portal's own
  * state, tied to its provider and its stylesheet.
  *
- * THE TWO AXES ARE NOT THE SAME THING, which is the portal's most-repeated
- * warning and holds here too:
- *
- *   FUNNEL STATE  what the account IS, and therefore what it MAY see.
- *   VIEW MODE     how much of that the reader WANTS to see.
- *
- * So this does not hide map features itself. It sets the ceiling on the view
- * modes — a free account cannot read the map at Pro — and the mode picker
- * shows the rest locked, which is the whole point of a demo control: to see
- * the map as each kind of account sees it.
+ * IT CHANGES NOTHING ON THE MAP. Deliberately: the two axes are separate —
+ * what the account IS, and how much the reader wants to see — and tying them
+ * together was tried and taken out again. The view modes work the same in
+ * every state, so this is the label and the menu and nothing else, ready for
+ * whatever the states are eventually made to mean.
  */
 
-import { Check, ChevronDown, Lock, UserRound } from "lucide-react";
+import { Check, ChevronDown, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-
-import { type Density } from "./density-switch";
 
 export const FUNNEL_STATES = [
   "unclaimed",
@@ -65,22 +58,6 @@ const FUNNEL_PLAN: Record<FunnelState, string> = {
   trial: "Premium trial · 4 days left",
   lapsed: "Free · trial ended",
   paid: "Premium plan",
-};
-
-/**
- * The furthest a state may read.
- *
- * Free accounts — before a claim, after one, and after a trial has run out —
- * get the two plain modes; a trial and a paid plan get all four. The mode
- * picker locks the rest rather than hiding them, so what a plan buys is
- * visible from inside the free view.
- */
-export const FUNNEL_CEILING: Record<FunnelState, Density> = {
-  unclaimed: "simple",
-  claimed: "simple",
-  trial: "pro",
-  lapsed: "simple",
-  paid: "pro",
 };
 
 const MENU_WIDTH = 244;
@@ -220,10 +197,7 @@ export function DemoStateMenu({
                     >
                       {FUNNEL_NAME[state]}
                     </span>
-                    <span className="mt-[4px] flex items-center gap-[5px] text-[11.5px] leading-tight text-mv-muted">
-                      {FUNNEL_CEILING[state] !== "pro" && (
-                        <Lock size={11} strokeWidth={2.5} aria-hidden="true" />
-                      )}
+                    <span className="mt-[4px] block text-[11.5px] leading-tight text-mv-muted">
                       {FUNNEL_PLAN[state]}
                     </span>
                   </span>

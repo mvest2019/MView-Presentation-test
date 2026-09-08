@@ -21,7 +21,6 @@ import {
 } from "./density-switch";
 import {
   DEFAULT_FUNNEL_STATE,
-  FUNNEL_CEILING,
   toFunnelState,
   type FunnelState,
 } from "./demo-state-menu";
@@ -789,7 +788,7 @@ export function MapExplorerView() {
    * map opens. Read in an effect rather than in the initialiser — the server
    * renders this page too, and it has no `localStorage` to read.
    */
-  const [chosenDensity, setDensity] = useState<Density>(DEFAULT_DENSITY);
+  const [density, setDensity] = useState<Density>(DEFAULT_DENSITY);
 
   useEffect(() => {
     const stored = toDensity(window.localStorage.getItem(DENSITY_KEY));
@@ -805,8 +804,9 @@ export function MapExplorerView() {
   /*
    * Which kind of account the map is being shown as — the demo control.
    *
-   * Remembered like the density, and for the same reason: someone showing the
-   * free view to three people in a row should not have to set it three times.
+   * It changes nothing on the map on purpose: the view modes are the reader's
+   * own choice in every state. Remembered like the density, so a demo does not
+   * have to be set up again on every visit.
    */
   const [funnel, setFunnel] = useState<FunnelState>(DEFAULT_FUNNEL_STATE);
 
@@ -815,18 +815,6 @@ export function MapExplorerView() {
     if (stored === DEFAULT_FUNNEL_STATE) return;
     queueMicrotask(() => setFunnel(stored));
   }, []);
-
-  /* What the account may read. A free one stops at Essentials. */
-  const ceiling = FUNNEL_CEILING[funnel];
-
-  /*
-   * The mode actually in force: the reader's choice, held to the ceiling.
-   *
-   * Derived rather than written back, so dropping to the free state and
-   * returning to a paid one gives the reader their own mode again instead of
-   * the one the demo left them on.
-   */
-  const density = showsAt(ceiling, chosenDensity) ? chosenDensity : ceiling;
 
   const chooseFunnel = useCallback((next: FunnelState) => {
     setFunnel(next);
@@ -4349,7 +4337,6 @@ export function MapExplorerView() {
                in the address any more. */
             density={density}
             onDensityChange={chooseDensity}
-            ceiling={ceiling}
             funnel={funnel}
             onFunnelChange={chooseFunnel}
             share={{

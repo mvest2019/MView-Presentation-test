@@ -181,10 +181,18 @@ const FACETS: {
   key: FacetKey;
   label: string;
   searchable?: boolean;
+  /**
+   * The least view mode that offers this filter.
+   *
+   * The same ladder the map's own rail uses — a table that hides the operator
+   * column but still offers an operator filter is two answers to one question.
+   * County is in every mode; omitting `from` says so.
+   */
+  from?: Density;
 }[] = [
-  { key: "operator", label: "Operator", searchable: true },
-  { key: "type", label: "Well type" },
-  { key: "status", label: "Status" },
+  { key: "operator", label: "Operator", searchable: true, from: "simple" },
+  { key: "type", label: "Well type", from: "simple" },
+  { key: "status", label: "Status", from: "simple" },
   { key: "county", label: "County", searchable: true },
 ];
 
@@ -838,42 +846,48 @@ export function WellsTable({
             className="mx-1 hidden h-5 w-px shrink-0 bg-mv-line lg:block"
           />
 
-          {FACETS.map((facet) => (
-            <FilterDropdown
-              key={facet.key}
-              label={facet.label}
-              options={facetItems[facet.key].map((item) => item.value)}
-              loading={facetsLoading}
-              searchable={facet.searchable}
-              chosen={facets[facet.key]}
-              open={openFacet === facet.key}
+          {FACETS.filter((facet) => shows(facet.from ?? "ultra")).map(
+            (facet) => (
+              <FilterDropdown
+                key={facet.key}
+                label={facet.label}
+                options={facetItems[facet.key].map((item) => item.value)}
+                loading={facetsLoading}
+                searchable={facet.searchable}
+                chosen={facets[facet.key]}
+                open={openFacet === facet.key}
+                disabled={loading}
+                onOpenChange={(next) => {
+                  setOpenFacet(next ? facet.key : null);
+                  if (next) setProductionOpen(false);
+                }}
+                onChange={(next) => updateFacet(facet.key, next)}
+                /* Only the operators run to tens of thousands. */
+                {...(facet.key === "operator"
+                  ? {
+                      onScrollEnd: loadMoreOperators,
+                      loadingMore: operatorMore,
+                      total: operatorTotal,
+                    }
+                  : null)}
+              />
+            ),
+          )}
+
+          {/* Pro, like the rail's own production range and the two columns of
+              figures it filters on. */}
+          {shows("pro") && (
+            <ProductionFilter
+              range={production}
+              open={productionOpen}
               disabled={loading}
               onOpenChange={(next) => {
-                setOpenFacet(next ? facet.key : null);
-                if (next) setProductionOpen(false);
+                setProductionOpen(next);
+                if (next) setOpenFacet(null);
               }}
-              onChange={(next) => updateFacet(facet.key, next)}
-              /* Only the operators run to tens of thousands. */
-              {...(facet.key === "operator"
-                ? {
-                    onScrollEnd: loadMoreOperators,
-                    loadingMore: operatorMore,
-                    total: operatorTotal,
-                  }
-                : null)}
+              onChange={setProduction}
             />
-          ))}
-
-          <ProductionFilter
-            range={production}
-            open={productionOpen}
-            disabled={loading}
-            onOpenChange={(next) => {
-              setProductionOpen(next);
-              if (next) setOpenFacet(null);
-            }}
-            onChange={setProduction}
-          />
+          )}
 
           {/* Apply and Clear at the end of the row, where the space is. */}
           <div className="flex shrink-0 items-center gap-2 lg:ml-auto">

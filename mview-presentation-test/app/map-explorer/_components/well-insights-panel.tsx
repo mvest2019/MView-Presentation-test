@@ -64,6 +64,38 @@ import { wellSummaryFields } from "./well-summary-fields";
  * response's own shape, so the cards keep their height and the page does not
  * jump when the figures arrive.
  */
+/**
+ * The record's cards: two even columns, and no odd one out.
+ *
+ * Rows, not masonry. A grid stretches the cards in a row to the same height,
+ * so every pair squares off top and bottom — which is what the panel is
+ * supposed to look like. Multi-column flow was tried instead and gave the
+ * opposite: cards of three different heights per column and two ragged
+ * bottoms.
+ *
+ * The one thing rows cannot do on their own is an odd number of cards, and
+ * every mode here has one — one card at Ultra, four at Essentials, seven at
+ * Detailed and Pro. A card left alone on the last row used to sit in half the
+ * panel with the other half empty; now the last card takes the whole row when
+ * the count is odd. Nothing about the mode is written here: the rule is the
+ * count, whatever the mode happens to show.
+ *
+ * Two columns rather than three. The record shares the window with the map,
+ * so the panel is around 800px — three columns cut every figure in a card to
+ * fit, and "11,014 ft" became "11,0…".
+ */
+const CARD_GRID = [
+  "grid gap-3 grid-cols-1 @2xl:grid-cols-2",
+  /* The odd card out takes the whole row rather than leaving half of one. */
+  "@2xl:[&>*:last-child:nth-child(odd)]:col-span-2",
+  /* And its rows split in two while it is that wide: a label at the left of
+     800px with its figure at the right is two things a reader has to join up
+     across a gap. */
+  "@2xl:[&>*:last-child:nth-child(odd)>dl]:grid",
+  "@2xl:[&>*:last-child:nth-child(odd)>dl]:grid-cols-2",
+  "@2xl:[&>*:last-child:nth-child(odd)>dl]:gap-x-8",
+].join(" ");
+
 /** The headline figures that are a projection rather than a reading. */
 const FORECAST_METRIC = /^(Next Month|Reserve)/i;
 
@@ -550,8 +582,16 @@ export function WellInsightsPanel({
                   ))}
               </div>
 
-              {/* ---------------- well · lease · operator ---------------- */}
-              <div className="mt-3 grid gap-3 @2xl:grid-cols-2 @4xl:grid-cols-3">
+              {/* ---------------- the record's cards ----------------
+          One grid, not two.
+
+          They used to be two rows of three, each with its own grid, and each
+          held its shape with column-spans written for the fullest mode. Once
+          the modes started dropping cards, the spans were wrong and the two
+          grids each ended a card short — a hole in the middle of the panel at
+          Detailed, beside the wellbore and beside the depths. Flowed through
+          one grid, whatever the mode leaves out simply closes up. */}
+              <div className={`mt-3 ${CARD_GRID}`}>
                 <Card icon={Info} title="Well Information">
                   <Rows
                     rows={fields?.wellInformation ?? blank(WELL_INFO_LABELS)}
@@ -571,10 +611,6 @@ export function WellInsightsPanel({
                     icon={Layers}
                     title="Wellbore"
                     badge={fields?.wellboreKind ?? WELLBORE.kind}
-                    /* Two columns is an odd number of cards short: at tablet
-                     width this one is the third of three, so it takes the row
-                     under the other two rather than half of one. */
-                    className="@2xl:col-span-2 @4xl:col-span-1"
                   >
                     {/* Drawn to the record's own profile: a vertical hole is not
                   illustrated with a mile of lateral. */}
@@ -586,11 +622,8 @@ export function WellInsightsPanel({
                     />
                   </Card>
                 )}
-              </div>
 
-              {/* ---------------- activity · location · wellbore ---------------- */}
-              {showsAt(density, "simple") && (
-                <div className="mt-3 grid gap-3 @2xl:grid-cols-2 @4xl:grid-cols-3">
+                {showsAt(density, "simple") && (
                   <Card
                     icon={FileText}
                     title="Latest Well Activity and Production"
@@ -599,56 +632,67 @@ export function WellInsightsPanel({
               "12-03…" and "0…", which is worse than a taller card. */}
                     <Rows rows={fields?.activity ?? blank(ACTIVITY_LABELS)} />
                   </Card>
+                )}
 
-                  {showsAt(density, "detailed") && (
-                    <Card
-                      icon={MapPin}
-                      title="Location"
-                      aside="Well latitude & longitude"
-                    >
-                      {/* The readings alone. The tile was a drawing rather than a
+                {showsAt(density, "detailed") && (
+                  <Card
+                    icon={MapPin}
+                    title="Location"
+                    aside="Well latitude & longitude"
+                  >
+                    {/* The readings alone. The tile was a drawing rather than a
                       map of anywhere — the streets were the same on every well
                       — and the chip over it named what the four rows below
                       already say. */}
-                      <div className="min-w-0">
-                        <dl className="mt-2">
-                          <PlaceRow
-                            icon={Globe}
-                            label="Latitude"
-                            value={locationRow(fields?.location, "Latitude")}
-                            copy
-                          />
-                          <PlaceRow
-                            icon={Globe}
-                            label="Longitude"
-                            value={locationRow(fields?.location, "Longitude")}
-                            copy
-                          />
-                          <PlaceRow
-                            icon={LocateFixed}
-                            label="Coordinate system"
-                            value={locationRow(
-                              fields?.place,
-                              "Coordinate system",
-                            )}
-                          />
-                          <PlaceRow
-                            icon={Map}
-                            label="Location"
-                            value={locationRow(fields?.place, "Location")}
-                          />
-                        </dl>
-                      </div>
-                    </Card>
-                  )}
+                    <div className="min-w-0">
+                      <dl className="mt-2">
+                        <PlaceRow
+                          icon={Globe}
+                          label="Latitude"
+                          value={locationRow(fields?.location, "Latitude")}
+                          copy
+                        />
+                        <PlaceRow
+                          icon={Globe}
+                          label="Longitude"
+                          value={locationRow(fields?.location, "Longitude")}
+                          copy
+                        />
+                        <PlaceRow
+                          icon={LocateFixed}
+                          label="Coordinate system"
+                          value={locationRow(
+                            fields?.place,
+                            "Coordinate system",
+                          )}
+                        />
+                        <PlaceRow
+                          icon={Map}
+                          label="Location"
+                          value={locationRow(fields?.place, "Location")}
+                        />
+                      </dl>
+                    </div>
+                  </Card>
+                )}
 
-                  <div
-                    /* One under the other in the third column where there are
-                     three, and side by side across the row at the width where
-                     there are two — stacked full width they were two short
-                     cards with a page of empty line beside each. */
-                    className="grid gap-3 @2xl:col-span-2 @2xl:grid-cols-2 @4xl:col-span-1 @4xl:grid-cols-1"
-                  >
+                {/*
+                  These two share a cell, one under the other.
+
+                  Both are short, and the card they sit beside — Location, with
+                  its four readings — is half as tall again as either. Left as
+                  separate cells, Operator Info took a row of its own with a
+                  card's worth of white beneath it and the depths were pushed
+                  to a full-width row below. Stacked, the pair comes out level
+                  with Location and the gap closes.
+                */}
+                {showsAt(density, "simple") && (
+                  /* Stretching, not `content-start`: with one card in it —
+                     Essentials, where the depths are not shown — the cell's
+                     spare height goes into the card rather than leaving white
+                     beside the tall card next to it. With two cards there is
+                     no spare height to give, so nothing moves. */
+                  <div className="grid gap-3">
                     <Card icon={Building2} title="Operator Info">
                       <div className="mt-[10px] flex items-baseline justify-between gap-3 text-[12px]">
                         <span className="shrink-0 text-mv-muted">Operator</span>
@@ -661,13 +705,13 @@ export function WellInsightsPanel({
                     {showsAt(density, "detailed") && (
                       <Card icon={Ruler} title="Depth & Geometry">
                         {/* One column, like the cards beside it: two columns cut
-                  every depth down to "11,4…". */}
+                    every depth down to "11,4…". */}
                         <Rows rows={fields?.depth ?? blank(DEPTH_LABELS)} />
                       </Card>
                     )}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
               {/* ---------------- production ---------------- */}
               {showsAt(density, "detailed") && (
