@@ -1,102 +1,109 @@
 "use client";
 
-import { Check, Info, LayoutGrid, UserPlus, Zap } from "lucide-react";
+import {
+  CalendarDays,
+  Check,
+  Eye,
+  FileText,
+  Info,
+  LayoutGrid,
+  Link2,
+  TriangleAlert,
+  UserPlus,
+  Zap,
+} from "lucide-react";
 import Link from "next/link";
+import type { ReactNode } from "react";
 
+import type { ClaimResult } from "../../_api/claim-api";
 import { Badge } from "../../../_components/ui/badge";
 import { PortalButtonLink } from "../../../_components/ui/button";
 import { PrototypeButton } from "../../../_components/ui/prototype-button";
-import { claimReference, ownerGroups, type DoneIcon } from "../../_lib/claim-done";
+import { byValueDesc, leaseKey, money } from "../../_lib/claim-format";
 import { freeVisibleLeases } from "../../_lib/claim-plans";
-import { claimCandidates } from "../../_lib/claim-records";
-import { claimTotals, leasesByValue } from "../../_lib/claim-totals";
-import { DoneIconTile } from "../done-icons";
+import type { OwnerLeaseSet, OwnerRecord } from "../../_lib/claim-types";
 
 /**
- * THE COMPLETION SCREEN — what the last button on step 5 lands on.
+ * THE COMPLETION SCREEN — the receipt for `POST /owners/claim`.
  *
- * ── IT IS A RECEIPT, NOT A CELEBRATION ──
+ * ── IT REPORTS WHAT THE ENDPOINT ACTUALLY DID ──
  *
- * The tick and the "100%" are two lines of it; the rest is a list of exactly
- * what was written and what it means. An owner who has just attached their name
- * to a public mineral record wants to read back what happened, in the same terms
- * the flow used to ask for it — which is why the five rows below mirror the five
- * steps rather than summarising them in prose.
- *
- * ── FIVE CARDS, NOT FIVE BULLETS ──
- *
- * Each line was a tick and two lines of text inside one bordered box. As
- * separate cards — glyph, title, detail, and a "Completed" chip — each one reads
- * as a thing that HAPPENED rather than a feature being listed at the reader.
- * The chip is the tick's job done more plainly.
- *
- * ── EVERY FIGURE IS DERIVED ──
- *
- * The record id, the owner name, the lease counts, the county list and the
- * visible lease all come from the claim the reader just made — nothing here is
- * typed twice. The visible lease in particular is whichever one they chose on
- * step 5, not a fixture: telling someone their free lease is X when they picked
- * Y is the one factual error this screen must not make.
+ * The claim response is per-owner, and partial success is normal: a claim of
+ * three names can come back with two filed and one refused
+ * (`OWNER_ALREADY_CLAIMED`, `LEASE_ALREADY_CLAIMED`). So this screen reads
+ * `successful_owners` and `failed_owners` rather than treating the call as
+ * pass/fail — a refusal shown as a success is the worst thing a receipt can do.
  *
  * ── THE OFF-ADDRESS RECORDS ARE REPORTED SEPARATELY ──
  *
  * Step 3 promised that a record whose mail goes elsewhere needs a posted code
- * before it attaches. If the reader ticked one, this screen has to say it is NOT
- * attached yet rather than folding it into the count — otherwise the flow made a
- * promise on one screen and broke it on the next. It is a NEUTRAL note, not an
- * amber warning: nothing has gone wrong, a letter is simply in the post.
+ * before it attaches. If one was ticked, this screen says it is NOT attached
+ * yet rather than folding it into the count.
  */
 export function StepDone({
-  confirmedIds,
-  visibleNumber,
+  record,
+  pending,
+  all,
+  visibleKey,
+  result,
 }: {
-  confirmedIds: string[];
-  visibleNumber: string;
+  record: OwnerRecord | null;
+  pending: OwnerRecord[];
+  all: OwnerLeaseSet | null;
+  visibleKey: string | null;
+  result: ClaimResult | null;
 }) {
-  const claimed = claimCandidates.filter(
-    (c) => confirmedIds.includes(c.id) && c.matchesMailing,
-  );
-  const pending = claimCandidates.filter(
-    (c) => confirmedIds.includes(c.id) && !c.matchesMailing,
-  );
-  const primary = claimed[0] ?? claimCandidates[0];
+  const leases = all?.leases ?? [];
+  const ordered = byValueDesc(leases);
+  const visible =
+    ordered.find((l) => leaseKey(l) === visibleKey) ?? ordered[0] ?? null;
+  const archived = Math.max(0, leases.length - freeVisibleLeases);
 
-  const visibleLease =
-    leasesByValue.find((l) => l.number === visibleNumber) ?? leasesByValue[0];
-  const archived = claimTotals.count - freeVisibleLeases;
+  const claimedLeases =
+    result?.successful_owners.reduce(
+      (sum, owner) => sum + owner.claimed_leases_count,
+      0,
+    ) ?? leases.length;
 
-  const rows: { icon: DoneIcon; title: string; detail: React.ReactNode }[] = [
+  const rows: { icon: typeof FileText; title: string; detail: ReactNode }[] = [
     {
-      icon: "record",
+      icon: FileText,
       title: "Record claimed",
-      detail: `${primary.name} · ${primary.id} · ${primary.mailCity}`,
+      detail: record
+        ? `${record.name} · ${record.county}${record.address ? ` · ${record.address}` : ""}`
+        : "—",
     },
     {
-      icon: "leases",
+      icon: Link2,
       title: "Leases attached",
-      detail: `${claimTotals.count} found — ${claimTotals.producing} producing, ${claimTotals.inactive} inactive · ${claimTotals.countyList} ${claimTotals.counties === 1 ? "county" : "counties"}`,
+      detail: `${claimedLeases} claimed${
+        all && all.countyCount > 1
+          ? ` across ${all.countyCount} counties · ${all.countyList}`
+          : all?.countyList
+            ? ` · ${all.countyList}`
+            : ""
+      }`,
     },
     {
-      icon: "visible",
+      icon: Eye,
       title: "Visible on your plan",
-      detail: (
+      detail: visible ? (
         <>
-          {freeVisibleLeases} lease in full —{" "}
-          <b className="font-semibold text-mv-ink">
-            {visibleLease.name} ({visibleLease.number})
-          </b>
-          . The other {archived} stay archived: listed, counted, values locked,
-          never deleted.
+          {Math.min(freeVisibleLeases, leases.length)} lease in full —{" "}
+          <b className="font-semibold text-mv-ink">{visible.name}</b>
+          {archived > 0 && (
+            <>
+              . The other {archived} stay archived: listed, counted, values
+              locked, never deleted.
+            </>
+          )}
         </>
+      ) : (
+        "No leases to show yet."
       ),
     },
     {
-      icon: "groups",
-      title: "Groups joined",
-      detail: `${ownerGroups.length} owner groups matched to your leases, county, operator and play.`,
-    },
-    {
-      icon: "briefing",
+      icon: CalendarDays,
       title: "Weekly briefing scheduled",
       detail: "Your first one lands this Saturday morning.",
     },
@@ -104,15 +111,6 @@ export function StepDone({
 
   return (
     <div className="grid gap-[14px]">
-      {/* THE TICK SITS BESIDE THE HEADING, not above it — the same pairing the
-          five steps use for their glyph and title (`step-intro.tsx`). Stacked,
-          the disc spent a whole line saying what the green "CLAIM COMPLETE"
-          underneath it already said, and pushed the receipt itself further down.
-
-          `items-start`, not `items-center`: this block runs to three lines and
-          the headline wraps to two on a narrow column, so centring a 36px disc
-          against it would leave the tick floating in the middle of the
-          paragraph instead of marking its start. */}
       <header className="flex items-start gap-3">
         <span className="mt-[1px] flex h-[36px] w-[36px] flex-none items-center justify-center rounded-full bg-mv-mint text-mv-green-deep">
           <Check aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={3} />
@@ -120,21 +118,23 @@ export function StepDone({
 
         <div className="min-w-0">
           <p className="text-[10.5px] font-bold tracking-[.12em] text-mv-green-deep uppercase">
-            Claim complete · 100%
+            Claim complete
           </p>
 
           <h2 className="mt-[4px] text-[clamp(18px,2.4vw,22px)] font-extrabold leading-[1.2] tracking-[-.015em] text-mv-ink">
-            Claim written · record {primary.id} · {claimTotals.count} leases
-            joined
+            Claim written · {record?.name ?? "your record"} · {claimedLeases}{" "}
+            lease{claimedLeases === 1 ? "" : "s"} joined
           </h2>
 
-          {/* Muted, with the reference itself the only dark thing in the line —
-              it is the one part a reader is being asked to copy down. */}
-          <p className="mt-[8px] text-[12px] leading-[1.6] text-mv-muted">
-            Claim reference{" "}
-            <b className="font-bold text-mv-ink">{claimReference}</b> — keep this
-            if you ever write to support; a confirmation email is on its way.
-          </p>
+          {result?.claimedAt && (
+            <p className="mt-[8px] text-[12px] leading-[1.6] text-mv-muted">
+              Filed{" "}
+              <b className="font-bold text-mv-ink">
+                {new Date(result.claimedAt).toLocaleString("en-US")}
+              </b>{" "}
+              — a confirmation email is on its way.
+            </p>
+          )}
         </div>
       </header>
 
@@ -144,7 +144,9 @@ export function StepDone({
             key={row.title}
             className="flex items-center gap-3 rounded-mv border border-mv-line bg-mv-card p-3"
           >
-            <DoneIconTile name={row.icon} />
+            <span className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-[9px] bg-mv-portal-wash text-mv-slate">
+              <row.icon aria-hidden="true" className="h-[15px] w-[15px]" />
+            </span>
             <div className="min-w-0 flex-1">
               <p className="text-[12.5px] font-bold text-mv-ink">{row.title}</p>
               <p className="mt-[2px] text-[11.5px] leading-[1.5] text-mv-muted">
@@ -158,17 +160,50 @@ export function StepDone({
         ))}
       </ul>
 
+      {/* PARTIAL SUCCESS. The endpoint refuses a name it has already filed, and
+          that refusal has to be visible — otherwise a reader believes they
+          claimed something they did not. */}
+      {result && result.failed_owners.length > 0 && (
+        <div
+          className="rounded-mv border border-mv-sand-line bg-mv-sand-tint px-4 py-3 text-[11.5px] leading-[1.55] text-mv-sand"
+          role="status"
+        >
+          <p className="flex items-start gap-[9px]">
+            <TriangleAlert
+              aria-hidden="true"
+              className="mt-[1px] h-[14px] w-[14px] flex-none"
+            />
+            <span>
+              <b className="font-bold">
+                {result.failed_owners.length} name
+                {result.failed_owners.length === 1 ? "" : "s"} were not filed.
+              </b>{" "}
+              Most often this means the record is already claimed.
+            </span>
+          </p>
+          <ul className="mt-[6px] grid gap-[3px] pl-[23px]">
+            {result.failed_owners.map((owner) => (
+              <li key={owner.ownername}>
+                <b className="font-semibold">{owner.ownername}</b> — {owner.error}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {pending.length > 0 && (
         <p className="flex items-start gap-[10px] rounded-mv border border-mv-line bg-mv-portal-wash/60 px-4 py-3 text-[11.5px] leading-[1.55] text-mv-slate">
-          <Info aria-hidden="true" className="mt-[1px] h-[14px] w-[14px] flex-none text-mv-muted" />
+          <Info
+            aria-hidden="true"
+            className="mt-[1px] h-[14px] w-[14px] flex-none text-mv-muted"
+          />
           <span>
             <b className="font-semibold text-mv-ink">
               {pending.length} more record{pending.length === 1 ? "" : "s"}{" "}
               awaiting a mailed code
             </b>{" "}
-            — {pending.map((c) => c.id).join(", ")}. Its leases join your account
-            once the code you post back is matched. Nothing else changes until
-            then.
+            — their leases join your account once the code you post back is
+            matched. Nothing else changes until then.
           </span>
         </p>
       )}
@@ -185,8 +220,7 @@ export function StepDone({
           </b>
           <br />
           Verifying your record and assembling your map, production history and
-          estimate takes up to 24 hours, usually much less. Your groups are open
-          right away.
+          estimate takes up to 24 hours, usually much less.
         </span>
       </p>
 
@@ -213,6 +247,13 @@ export function StepDone({
           </Link>
         </p>
       </div>
+
+      {visible && (
+        <p className="text-[11px] text-mv-muted">
+          Visible lease value {money(visible.value)} · appraised on the county
+          roll, not an appraisal of your interest.
+        </p>
+      )}
     </div>
   );
 }

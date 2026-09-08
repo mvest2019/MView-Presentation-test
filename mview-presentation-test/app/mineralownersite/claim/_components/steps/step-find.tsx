@@ -2,44 +2,62 @@
 
 import { Building2, CircleCheck, MapPin, Search, Tag, User } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 
 import { PortalButton } from "../../../_components/ui/button";
+import type { Async } from "../claim-wizard";
+import type { CountyIndex } from "../../_lib/claim-types";
 import { ClaimSelectField, ClaimTextField } from "../claim-field";
+import { FlowError, FlowLoading } from "../flow-state";
 import { GuideNote } from "../guide-note";
 import { StepIntro } from "../step-intro";
-
-/** The counties the demo index covers, plus the "all" default. */
-const COUNTIES = ["Bee", "Cass", "Hood", "Karnes", "Lampasas", "Panola"];
 
 /**
  * STEP 1 — search the public record.
  *
- * ── THE OPERATOR FIELD IS DISABLED AND STILL PRESENT ──
+ * ── THE COUNTY LIST IS LIVE ──
  *
- * "Not searchable yet" as its placeholder, greyed, not removed. Operator is the
- * one thing many owners know off the top of their head — it is printed on every
- * cheque stub — so someone who scans this form and does not see it concludes
- * the search is cruder than it is and goes looking for a different route. The
- * disabled field says the opposite: we know you have it, it is coming, use the
- * name for now.
+ * `GET /owners/counties` fills the dropdown and the owner tally in the intro.
+ * Three states, all of them real:
  *
- * It follows `portal-nav.ts`'s rule for unbuilt things — inert and labelled,
- * never a control that looks live and does nothing.
+ *   loading  the select is disabled and says so, rather than showing an empty
+ *            list that looks like "no counties exist"
+ *   error    the select still accepts "Any Texas county", because county is
+ *            OPTIONAL — a failed dropdown must not block a search that never
+ *            needed it
+ *   pending  the backend's cold start. The names are there and the counts are
+ *            zeros, so the counts are simply not printed. See `claim-api.ts`.
  *
- * ── NOTHING IS VALIDATED HERE ──
+ * ── THE OPERATOR FIELD IS DISABLED BECAUSE THE ENDPOINT REJECTS IT ──
  *
- * `onSearch` runs on submit and the step advances. The name field is `required`
- * so the browser enforces the one thing that is genuinely mandatory, and no
- * client-side rules stand between an owner and a search that costs nothing to
- * re-run — the design's own note is that this step writes no claim event.
+ * `/owners/search` answers 400 for `operator` — no roll carries one. The field
+ * stays on screen because operator is the one thing many owners know off the
+ * top of their head, and someone who does not see it concludes the search is
+ * cruder than it is. Inert and labelled beats absent, and beats a live control
+ * that would earn a 400.
  */
-export function StepFind({ onSearch }: { onSearch: () => void }) {
+export function StepFind({
+  counties,
+  onRetryCounties,
+  onSearch,
+}: {
+  counties: Async<CountyIndex>;
+  onRetryCounties: () => void;
+  onSearch: (query: { name: string; lease: string; county: string }) => void;
+}) {
+  const [name, setName] = useState("");
+  const [lease, setLease] = useState("");
+  const [county, setCounty] = useState("");
+
+  const index = counties.data;
+  const showCounts = index !== null && !index.pending;
+
   return (
     <form
       className="grid gap-[18px]"
       onSubmit={(event) => {
         event.preventDefault();
-        onSearch();
+        onSearch({ name, lease, county });
       }}
     >
       <StepIntro
@@ -50,19 +68,24 @@ export function StepFind({ onSearch }: { onSearch: () => void }) {
       >
         Claim is at owner-record level — joined leases inherit it. Name matching
         is fuzzy across RRC and county owner strings, so <em>Smith Gas D</em> and{" "}
-        <em>Smith Raymond E</em> both return. County is optional.
+        <em>Smith Raymond E</em> both return.{" "}
+        {showCounts ? (
+          <>
+            Searching{" "}
+            <b className="font-semibold text-mv-slate">
+              {index.totalOwners.toLocaleString("en-US")}
+            </b>{" "}
+            owners across {index.counties.length} Texas counties.
+          </>
+        ) : (
+          "County is optional."
+        )}
       </StepIntro>
 
-      {/* NO FILL ON THIS PANEL (requested) — the hairline and the padding are
-          what group the four fields, and they do it on their own. The wash it
-          used to carry put a second grey plane inside an already-nested card
-          (page ground → flow card → step card → this), and the inputs, which are
-          white, ended up the brightest thing on the screen by accident. */}
-      {/* A LITTLE MORE ROOM THAN THE REST OF THE STEP (requested). 20px of
-          padding and 20px between the rows, against 16px elsewhere. This is the
-          only panel on the flow someone has to type into, and it lost its fill
-          when the tint came off — the breathing room is now the only thing
-          separating the fields from the hairline that frames them. */}
+      {counties.error && (
+        <FlowError message={counties.error} onRetry={onRetryCounties} />
+      )}
+
       <div className="grid gap-5 rounded-mv border border-mv-line p-5 @[520px]:grid-cols-2">
         <ClaimTextField
           label="Owner name"
@@ -71,6 +94,8 @@ export function StepFind({ onSearch }: { onSearch: () => void }) {
           hint="Old rolls often carry initials or an entity name — try both."
           icon={User}
           name="ownerName"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Mineral Owner's Name"
           autoComplete="name"
         />
@@ -79,12 +104,18 @@ export function StepFind({ onSearch }: { onSearch: () => void }) {
           qualifier="narrow it down if you know it"
           icon={MapPin}
           name="county"
-          defaultValue=""
+          value={county}
+          onChange={(e) => setCounty(e.target.value)}
+          disabled={counties.loading}
         >
-          <option value="">Any Texas county</option>
-          {COUNTIES.map((county) => (
-            <option key={county} value={county}>
-              {county}
+          <option value="">
+            {counties.loading ? "Loading counties…" : "Any Texas county"}
+          </option>
+          {(index?.counties ?? []).map((c) => (
+            <option key={c.name} value={c.name}>
+              {showCounts
+                ? `${c.name} (${c.owners.toLocaleString("en-US")})`
+                : c.name}
             </option>
           ))}
         </ClaimSelectField>
@@ -93,6 +124,8 @@ export function StepFind({ onSearch }: { onSearch: () => void }) {
           qualifier="optional"
           icon={Tag}
           name="lease"
+          value={lease}
+          onChange={(e) => setLease(e.target.value)}
           placeholder="e.g. Smith Gas Unit"
         />
         <ClaimTextField
@@ -104,6 +137,8 @@ export function StepFind({ onSearch }: { onSearch: () => void }) {
           disabled
         />
       </div>
+
+      {counties.loading && <FlowLoading label="Loading the county list…" />}
 
       <GuideNote title="Why this step matters">
         Query runs against matched owner records (RRC + county appraisal

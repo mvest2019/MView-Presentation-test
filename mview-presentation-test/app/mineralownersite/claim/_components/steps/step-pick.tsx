@@ -3,66 +3,89 @@
 import { Lock, RefreshCw, Users } from "lucide-react";
 
 import { PortalButton } from "../../../_components/ui/button";
-import { claimCandidates } from "../../_lib/claim-records";
+import type { OwnerRecord } from "../../_lib/claim-types";
+import type { Async } from "../claim-wizard";
+import { FlowEmpty, FlowError, FlowLoading } from "../flow-state";
 import { GuideNote } from "../guide-note";
 import { StepIntro } from "../step-intro";
 import { CandidateCard } from "./candidate-card";
 
 /**
- * STEP 2 — pick the record that is yours.
+ * STEP 2 — pick the record that is yours, from `GET /owners/search`.
  *
- * ── THE THREE ARE NOT DUPLICATES, AND THE COPY HAS TO SAY SO ──
+ * ── FOUR OUTCOMES, NOT TWO ──
  *
- * "Records are never merged on name." Three parties share the owner string
- * RAYMOND SMITH; treating them as one person with three addresses is precisely
- * the mistake that would attach a stranger's minerals to this account. So they
- * are presented as distinct parties, and the guide box states the rule that
- * makes them distinct — address is the discriminator, name is not.
+ * Loading, failed, found-nothing and found-something are all normal here and
+ * each gets its own answer. The one that is easy to collapse into "error" is
+ * found-nothing, and it is the one a reader is most likely to hit: a search
+ * that matched nobody is not a fault, and dressing it in red sends someone
+ * hunting for a broken page instead of trying initials or a different county.
  *
- * ── PICKING DOES NOT COMMIT, AND SAYS SO TWICE ──
+ * ── THE HEADING COUNTS WHAT IS ON SCREEN ──
  *
- * Once in the caption bar above, once in the rail beside. Selecting a card here
- * only opens it for confirmation on step 3; the flow does not advance on its
- * own, so a mis-tap costs one more tap and nothing else.
+ * Not the backend's `total`, which can be larger than the page returned. A
+ * heading that says 281 above 50 cards is a heading the reader will try to
+ * scroll to the end of.
  */
 export function StepPick({
-  selectedId,
+  results,
+  pickedAddress,
   onChoose,
   onSearchAgain,
 }: {
+  results: Async<OwnerRecord[]>;
   /** Which record is already chosen — set when step 3 sends the reader back. */
-  selectedId: string | null;
-  /** The card's button — take that record on to step 3. */
-  onChoose: (id: string) => void;
+  pickedAddress: string | null;
+  onChoose: (record: OwnerRecord) => void;
   onSearchAgain: () => void;
 }) {
+  const records = results.data ?? [];
+
   return (
     <div className="grid gap-[18px]">
-      {/* NO BODY PARAGRAPH ON THIS STEP (requested). The heading and the one
-          bold instruction carry it: three records, pick the one that is you.
-          What the paragraph explained — that the three are separate parties and
-          are never merged on a shared name — is still stated below, in the
-          guide box, which is where the rest of the flow puts its mechanics. */}
       <StepIntro
         step={2}
         icon={Users}
-        title={`${claimCandidates.length} candidate owner records`}
-        lead="Choose the one that best matches you."
+        title={
+          results.loading
+            ? "Searching the public record…"
+            : `${records.length} candidate owner record${records.length === 1 ? "" : "s"}`
+        }
+        lead={
+          records.length > 0 ? "Choose the one that best matches you." : undefined
+        }
       />
 
-      <div className="grid gap-3">
-        {claimCandidates.map((candidate, i) => (
-          <CandidateCard
-            key={candidate.id}
-            candidate={candidate}
-            index={i + 1}
-            selected={candidate.id === selectedId}
-            onChoose={() => onChoose(candidate.id)}
-          />
-        ))}
-      </div>
+      {results.loading && (
+        <FlowLoading label="Searching every county appraisal roll…" />
+      )}
 
-      <GuideNote title="Why there are three">
+      {results.error && (
+        <FlowError message={results.error} onRetry={onSearchAgain} />
+      )}
+
+      {!results.loading && !results.error && records.length === 0 && (
+        <FlowEmpty
+          message="No records matched that search."
+          hint="Try initials, an entity name, or a different county — records often carry old spellings."
+        />
+      )}
+
+      {records.length > 0 && (
+        <div className="grid gap-3">
+          {records.map((record, i) => (
+            <CandidateCard
+              key={`${record.county}|${record.name}|${record.address}`}
+              record={record}
+              index={i + 1}
+              selected={record.address === pickedAddress}
+              onChoose={() => onChoose(record)}
+            />
+          ))}
+        </div>
+      )}
+
+      <GuideNote title="Why there may be several">
         Name-only matching is unsafe: identical owner strings recur across
         unrelated parties.
         <br />

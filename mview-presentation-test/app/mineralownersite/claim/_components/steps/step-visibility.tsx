@@ -6,8 +6,10 @@ import {
   PortalButton,
   PortalButtonLink,
 } from "../../../_components/ui/button";
-import { claimPlans, freeVisibleLeases, planPrice } from "../../_lib/claim-plans";
-import { claimTotals, leasesByValue } from "../../_lib/claim-totals";
+import { byValueDesc, leaseKey, money, planPrice } from "../../_lib/claim-format";
+import { claimPlans, freeVisibleLeases } from "../../_lib/claim-plans";
+import type { FlowLease } from "../../_lib/claim-types";
+import { FlowEmpty } from "../flow-state";
 import { GuideNote } from "../guide-note";
 import { StepIntro } from "../step-intro";
 import { VisibilityCard } from "./visibility-card";
@@ -15,54 +17,46 @@ import { VisibilityCard } from "./visibility-card";
 const [essentials, premium] = claimPlans;
 
 /**
- * STEP 5 — visibility allocation.
+ * STEP 5 — visibility allocation over the leases the claim took.
  *
  * ── THIS IS A PAYWALL, AND THE ONE THING IT MUST NOT IMPLY ──
  *
  * That an unseen lease is a lost lease. Every archived card says "still
- * counted", the guide box states what archiving retains (membership, decimal
- * interest, lease identity), and the caption bar promises the whole set stays
- * on the record either way. An owner who reads this screen as "pay or forfeit
- * nine leases" has been told something false about their own minerals, which is
- * a worse outcome than a missed upgrade.
+ * counted", the guide box states what archiving retains, and the caption bar
+ * promises the whole set stays on the record either way. An owner who reads
+ * this screen as "pay or forfeit the rest" has been told something false about
+ * their own minerals, which is a worse outcome than a missed upgrade.
  *
- * ── THE PRE-SELECTION IS A RULE, NOT A CHOICE WE MADE FOR THEM ──
+ * ── THE PRE-SELECTION IS A RULE, AND IT IS REVERSIBLE ──
  *
- * Highest MVestimate first — stated in the heading, implemented by
- * `leasesByValue`, and reversible: every archived card offers "Show this one
- * instead". A default that cannot be changed is an allocation; one that can is
- * a starting point, and the difference matters when the default is worth $10,259
- * and the lease they actually care about is not.
+ * Highest appraised value first, computed from the rows themselves. Every
+ * archived card offers "Show this one instead": a default that cannot be
+ * changed is an allocation; one that can is a starting point.
  *
- * ── THE UPGRADE PRICES ARE FULLY STATED ──
+ * ── THE PLAN CAPS ARE THE ONE THING HERE NO ENDPOINT SERVES ──
  *
- * Monthly AND annual, with the term and the auto-renewal position spelled out
- * ("12-month term, never auto-renewed"). A price shown without its term is the
- * part of a paywall people report as a surprise later.
+ * None of the six owners endpoints carries entitlements or pricing, so the caps
+ * and prices come from `claim-plans.ts`. They are product configuration rather
+ * than record data — but they are stated numbers, and when a billing endpoint
+ * exists this is the block to point at it.
  */
 export function StepVisibility({
-  visibleNumber,
+  leases,
+  visibleKey,
   onChoose,
   onFinish,
 }: {
-  /** The lease number currently occupying the single free slot. */
-  visibleNumber: string;
-  onChoose: (number: string) => void;
-  /** The last button in the flow — writes the visibility flag and completes. */
+  leases: FlowLease[];
+  visibleKey: string | null;
+  onChoose: (key: string) => void;
   onFinish: () => void;
 }) {
-  const visibleLease =
-    leasesByValue.find((lease) => lease.number === visibleNumber) ??
-    leasesByValue[0];
+  const ordered = byValueDesc(leases);
+  const visible =
+    ordered.find((lease) => leaseKey(lease) === visibleKey) ?? ordered[0] ?? null;
 
   return (
     <div className="grid gap-[18px]">
-      {/* NO BODY PARAGRAPH ON THIS STEP (requested). The heading already states
-          the rule the step runs on — highest MVestimate, pre-selected against
-          the plan cap — and the reassurance the paragraph carried is on screen
-          three more times: the caption bar above ("All your leases stay on your
-          record either way"), every archived card ("still counted"), and the
-          guide box at the foot ("Archived = joined and counted…"). */}
       <StepIntro
         step={5}
         icon={Eye}
@@ -71,45 +65,43 @@ export function StepVisibility({
           <>
             Visibility allocation ·{" "}
             <span className="underline decoration-mv-green decoration-2 underline-offset-4">
-              highest-MVestimate
+              highest-value
             </span>{" "}
             lease pre-selected against your plan cap
           </>
         }
       />
 
-      <p className="rounded-[10px] border border-mv-sand-line bg-mv-sand-tint px-4 py-[13px] text-[12.5px] leading-[1.55] text-mv-sand">
-        <b className="font-bold">
-          Want all {claimTotals.count} from day one?
-        </b>{" "}
-        {premium.name} shows up to {premium.visibleLeases} visible leases (
-        {planPrice(premium.monthly)}/mo or {planPrice(premium.yearly!)}/yr ·
-        12-month term, never auto-renewed). {essentials.name} shows up to{" "}
-        {essentials.visibleLeases} at {planPrice(essentials.monthly)}/mo.{" "}
-        <PortalButtonLink
-          href="/pricing"
-          variant="ghost"
-          size="sm"
-          className="!inline !border-0 !bg-transparent !p-0 !text-[12.5px] !text-mv-green-deep underline underline-offset-2"
-        >
-          Upgrade to see all {claimTotals.count} →
-        </PortalButtonLink>
-      </p>
+      {leases.length === 0 ? (
+        <FlowEmpty message="There are no leases to allocate yet." />
+      ) : (
+        <>
+          <p className="rounded-[10px] border border-mv-sand-line bg-mv-sand-tint px-4 py-[13px] text-[12.5px] leading-[1.55] text-mv-sand">
+            <b className="font-bold">
+              Want all {leases.length} from day one?
+            </b>{" "}
+            {premium.name} shows up to {premium.visibleLeases} visible leases (
+            {planPrice(premium.monthly)}/mo or {planPrice(premium.yearly!)}/yr ·
+            12-month term, never auto-renewed). {essentials.name} shows up to{" "}
+            {essentials.visibleLeases} at {planPrice(essentials.monthly)}/mo.
+          </p>
 
-      <div className="grid gap-3 @[560px]:grid-cols-2">
-        {leasesByValue.map((lease) => (
-          <VisibilityCard
-            key={lease.number}
-            lease={lease}
-            visible={lease.number === visibleLease.number}
-            onChoose={
-              lease.number === visibleLease.number
-                ? undefined
-                : () => onChoose(lease.number)
-            }
-          />
-        ))}
-      </div>
+          <div className="grid gap-3 @[560px]:grid-cols-2">
+            {ordered.map((lease) => {
+              const key = leaseKey(lease);
+              const isVisible = visible !== null && key === leaseKey(visible);
+              return (
+                <VisibilityCard
+                  key={key}
+                  lease={lease}
+                  visible={isVisible}
+                  onChoose={isVisible ? undefined : () => onChoose(key)}
+                />
+              );
+            })}
+          </div>
+        </>
+      )}
 
       <GuideNote title='What "archived" means'>
         Archived = joined and counted, value fields withheld at render.
@@ -118,21 +110,20 @@ export function StepVisibility({
       </GuideNote>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3 border-t border-mv-line pt-[18px]">
-        <p className="text-[11.5px] text-mv-muted">
-          Visible leases{" "}
-          <b className="font-bold text-mv-ink">
-            {freeVisibleLeases} of {claimTotals.count}
-          </b>{" "}
-          found — {visibleLease.name}
-        </p>
+        {visible && (
+          <p className="text-[11.5px] text-mv-muted">
+            Visible leases{" "}
+            <b className="font-bold text-mv-ink">
+              {Math.min(freeVisibleLeases, leases.length)} of {leases.length}
+            </b>{" "}
+            — {visible.name} · {money(visible.value)}
+          </p>
+        )}
         <PortalButton variant="primary" onClick={onFinish}>
           Finish — keep this lease visible →
         </PortalButton>
         <PortalButtonLink href="/pricing" variant="ghost" size="sm">
           Compare plans
-        </PortalButtonLink>
-        <PortalButtonLink href="/pricing" variant="ghost" size="sm">
-          Upgrade to see all {claimTotals.count}
         </PortalButtonLink>
       </div>
     </div>

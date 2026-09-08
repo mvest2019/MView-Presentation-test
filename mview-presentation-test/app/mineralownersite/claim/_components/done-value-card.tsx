@@ -1,95 +1,37 @@
-import { Badge } from "../../_components/ui/badge";
-import { unlockPreview } from "../_lib/claim-plans";
-import { money } from "../_lib/claim-totals";
+import { money } from "../_lib/claim-format";
 
 /**
- * "YOUR ESTIMATED YEARLY VALUE" — the completion screen's last rail card.
+ * "YOUR CLAIMED APPRAISED VALUE" — the completion screen's last rail card.
  *
- * ── IT IS NOT `UnlockCard`, AND THAT IS DELIBERATE ──
+ * ── IT PRINTS ONE REAL NUMBER AND NOTHING ELSE ──
  *
- * Same figures, different claim about them. Step 2's card is headed "What
- * you'll unlock" behind a padlock, because at that point the reader has
- * verified nothing and the number is a product illustration held away from
- * them. Here the record IS claimed, so the padlock and the "you'll unlock"
- * framing would be describing a gate that no longer exists — the heading is
- * simply what the figure is.
+ * This card used to carry a modelled yearly value, a modelled range and three
+ * invented sample leases. None of that is served by any owners endpoint: the
+ * rolls carry an APPRAISED value per lease and no forecast at all. So the card
+ * now shows the sum of the leases the claim actually took, labelled as what it
+ * is — a county appraisal total, not a valuation of the reader's interest.
  *
- * Reusing one component with a `tone` prop was the alternative and it would
- * have coupled the two. They share a ground now, but not a shape: step 2's card
- * opens with a padlock and a "What you'll unlock" heading in sentence case,
- * this one opens on the figure under an uppercase eyebrow like the rail cards
- * beside it. Two small components that share a data source beat one component
- * with a mode switch.
- *
- * ── THE SAND GROUND IS THE ESTIMATE TONE ──
- *
- * It was white, and is now the same sand as step 2's card (requested). That is
- * not only for the pair to match: sand/amber is already what this portal uses to
- * mark a figure as MODELLED — it is the ground under the "Estimate — not an
- * appraisal" badge in `ui/badge.tsx`. A card whose entire content is a modelled
- * estimate wearing that tone is carrying meaning rather than decoration, and it
- * separates the one uncertain number in the rail from the settled facts on the
- * white cards above it.
- *
- * ── THE HONESTY LABEL SURVIVES THE MOVE ──
- *
- * The modelled range and "estimates, not an appraisal" come with the number
- * wherever it goes. This screen is the one a reader screenshots.
+ * That distinction is the whole reason the sublabel exists. An appraised total
+ * is a public tax figure; what an owner's royalty is worth is a different
+ * number that this API cannot answer, and the two must never be confused on a
+ * screen someone screenshots.
  */
-export function DoneValueCard() {
+export function DoneValueCard({ total }: { total: number }) {
   return (
     <section
       className="rounded-mv border border-mv-sand-line bg-mv-sand-tint p-[18px]"
-      aria-label="Your estimated yearly value"
+      aria-label="Your claimed appraised value"
     >
       <h2 className="text-[10.5px] font-bold tracking-[.12em] text-mv-muted uppercase">
-        Your estimated yearly value
+        Claimed appraised value
       </h2>
       <p className="mt-[3px] text-[24px] font-extrabold tracking-[-.02em] text-mv-ink">
-        {money(unlockPreview.yearlyValue)}
+        {money(total)}
       </p>
       <p className="mt-[2px] text-[11px] leading-[1.45] text-mv-muted">
-        Modeled range {money(unlockPreview.rangeLow)} –{" "}
-        {money(unlockPreview.rangeHigh)} · estimates, not an appraisal.
+        Summed from the county appraisal rolls for every lease this claim took.
+        A tax appraisal of the property — not a valuation of your interest.
       </p>
-
-      <h3 className="mt-3 border-t border-mv-sand-line pt-3 text-[10.5px] font-bold tracking-[.12em] text-mv-muted uppercase">
-        Sample details
-      </h3>
-      <ul className="mt-[7px] grid gap-[5px]">
-        {unlockPreview.samples.map((sample) => (
-          <li
-            key={sample.name}
-            className="flex items-center justify-between gap-2 text-[12px] text-mv-slate"
-          >
-            <span className="truncate">{sample.name}</span>
-            <Badge
-              tone={sample.producing ? "mint" : "slate"}
-              size="xs"
-              className="flex-none"
-            >
-              {sample.producing ? "producing" : "inactive"}
-            </Badge>
-          </li>
-        ))}
-      </ul>
-
-      <h3 className="mt-3 border-t border-mv-sand-line pt-3 text-[10.5px] font-bold tracking-[.12em] text-mv-muted uppercase">
-        What arrives weekly
-      </h3>
-      <ul className="mt-[7px] grid gap-[4px]">
-        {unlockPreview.weekly.map((line) => (
-          <li
-            key={line}
-            className="flex items-start gap-2 text-[11.5px] leading-[1.45] text-mv-muted"
-          >
-            <span aria-hidden="true" className="text-mv-green-deep">
-              ✓
-            </span>
-            {line}
-          </li>
-        ))}
-      </ul>
     </section>
   );
 }

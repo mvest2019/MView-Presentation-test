@@ -7,12 +7,22 @@ import {
   PauseCircle,
   RotateCcw,
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import { claimReference } from "../_lib/claim-done";
-import { leasesByValue } from "../_lib/claim-totals";
+import {
+  fetchCounties,
+  fetchSameName,
+  postClaim,
+  searchOwners,
+  type ClaimResult,
+} from "../_api/claim-api";
+import { byValueDesc, leaseKey } from "../_lib/claim-format";
+import type {
+  CountyIndex,
+  OwnerRecord,
+  SameNameResult,
+} from "../_lib/claim-types";
 import { ClaimShell } from "./claim-shell";
-import { DoneGroups } from "./done-groups";
 import { DoneNextCard } from "./done-next-card";
 import { DoneValueCard } from "./done-value-card";
 import { ProgressRail } from "./progress-rail";
@@ -25,92 +35,183 @@ import { StepPick } from "./steps/step-pick";
 import { StepProve } from "./steps/step-prove";
 import { StepVisibility } from "./steps/step-visibility";
 
+/** One request: what it holds, whether it is in flight, and how it failed. */
+export interface Async<T> {
+  data: T | null;
+  loading: boolean;
+  error: string | null;
+}
+
+const idle = <T,>(): Async<T> => ({ data: null, loading: false, error: null });
+
+function message(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : "Something went wrong. Please try again.";
+}
+
 /**
- * THE FIVE-STEP CLAIM FLOW — the one client component in this module.
+ * THE FIVE-STEP CLAIM FLOW — the one client component in this module, and the
+ * only one that talks to the network.
  *
- * ── WHY THE STATE LIVES HERE AND NOWHERE ELSE ──
+ * ── WHY EVERY CALL LIVES HERE ──
  *
- * Four pieces of state, and three of them are read by a step OTHER than the one
- * that sets them: the candidate picked on step 2 is what step 3 ticks by
- * default, the records confirmed on step 3 are what step 4 describes, and the
- * lease chosen on step 5 is what its own footer names. A `useState` inside each
- * step would leave every one of those hand-offs to a prop drilled through the
- * shell anyway — so the state sits at the top and each step takes exactly the
- * slice it needs plus a callback.
+ * Endpoints feed more than one step. The `/same-name` answer alone drives step
+ * 3's record list, step 4's lease table and step 5's visibility grid; the
+ * search result is step 2's cards AND the input to that same-name call.
+ * Fetching inside each step would mean calling `/same-name` three times for one
+ * claim, and three chances for the three screens to disagree about what was
+ * claimed.
  *
- * The five step components stay presentational because of that, which is what
- * lets each of them be read on its own.
+ * So the steps stay presentational: each takes the slice of state it renders
+ * plus a callback, and none of them imports the API.
  *
- * ── THIS IS A PROTOTYPE, AND IT DOES NOT PRETEND OTHERWISE ──
+ * ── WHICH ENDPOINT RUNS WHERE ──
  *
- * No fetch, no persistence, no claim is written — the record is the fictional
- * one in `_lib/claim-records.ts`, like every other figure in this portal. The
- * terminal button is a `PrototypeButton` that says "(prototype)" when pressed,
- * which is the portal's established idiom for a control whose wiring is the
- * missing part rather than the design. When there is an API behind this, the
- * shape it needs is already here: one submit on step 1, one confirm on step 3,
- * one visibility write on step 5.
+ *   1  GET  /owners/counties           on mount — step 1's dropdown and tally
+ *   2  GET  /owners/search             step 1's submit → step 2's candidates
+ *   4  GET  /owners/same-name          step 2's pick → steps 3, 4 and 5
+ *   5  POST /owners/claim              step 3's Confirm — the write
+ *   6  POST /owners/address-correction step 3's "Something looks wrong"
  *
- * ── STEP 1 IS RE-ENTERED, NOT RESET ──
+ * `GET /owners/lease-owners` is the sixth and this flow never asks what it
+ * answers — "who else is on this lease" is the marketing finder's tick-a-lease
+ * interaction, wired there. `fetchLeaseOwners` is exported so the set of six is
+ * complete and a co-owner view on step 4 is one component away.
  *
- * "Search again" on step 2 goes back to step 1 and leaves the selection alone.
- * Someone refining a search has not changed their mind about which record is
- * theirs, and clearing it would make an idle back-and-forth destructive.
+ * ── THE API LAYER IS THIS MODULE'S OWN ──
+ *
+ * `_api/claim-api.ts` calls all six endpoints directly and imports nothing
+ * from `lib/claim-search`, which serves the marketing finder.
+ *
+ * ── THE CLAIM IS WRITTEN ON STEP 3, NOT AT THE END ──
+ *
+ * That is what every screen already promises: step 3's caption says "This is
+ * the step that commits", steps 1 and 2 say nothing is committed yet, and step
+ * 4's says "Claimed · one step left". Posting on step 5's Finish instead would
+ * make all four of those statements wrong.
  */
-export function ClaimWizard() {
+export function ClaimWizard({ memberId }: { memberId: number | null }) {
   const [step, setStep] = useState(1);
 
-  /** Step 2's choice — which candidate opens for confirmation on step 3. */
-  const [pickedId, setPickedId] = useState<string | null>(null);
+  const [counties, setCounties] = useState<Async<CountyIndex>>({
+    data: null,
+    loading: true,
+    error: null,
+  });
+  const [results, setResults] = useState<Async<OwnerRecord[]>>(idle());
+  const [picked, setPicked] = useState<OwnerRecord | null>(null);
+  const [sameName, setSameName] = useState<Async<SameNameResult>>(idle());
+  const [claim, setClaim] = useState<Async<ClaimResult>>(idle());
 
-  /**
-   * Step 3's ticks. Seeded from the pick rather than starting empty: the reader
-   * has already said which record is theirs, and making them say it again on
-   * the next screen reads as the flow not having listened.
-   */
-  const [confirmedIds, setConfirmedIds] = useState<string[]>([]);
+  /** Step 3's ticks, keyed by record address — seeded from the pick. */
+  const [confirmed, setConfirmed] = useState<string[]>([]);
   const [attested, setAttested] = useState(false);
 
-  /** Step 5's single free slot, pre-selected by descending MVestimate. */
-  const [visibleNumber, setVisibleNumber] = useState(leasesByValue[0].number);
-
-  /*
-   * THE FLOW IS OVER. A separate flag rather than a sixth step, because the
-   * completion screen is not a step: it has no stepper node, nothing after it,
-   * and no way back into the form. Modelling it as `step === 6` would have
-   * every `claimSteps[current - 1]` lookup in the shell reading past the end of
-   * a five-element array to find out.
-   */
+  /** Step 5's single free slot. Chosen once the lease set is known. */
+  const [visibleKey, setVisibleKey] = useState<string | null>(null);
   const [finished, setFinished] = useState(false);
 
   /*
-   * ONE ACTION on step 2 again, now that the per-card radio is gone: the card's
-   * button records the choice and moves to step 3 in the same gesture. It seeds
-   * step 3's tick as well as `pickedId`, so the reader is not asked which record
-   * is theirs twice in a row.
+   * A PROMISE CHAIN, NOT AN AWAITED CALL — the pattern `app/claim`'s finder
+   * already uses for its own mount fetch. Both settle the state in a callback
+   * rather than in the effect body, which is what `set-state-in-effect` is
+   * asking for: an awaited helper reads as a synchronous setState to the rule
+   * even when the write happens a tick later.
+   *
+   * The "loading" flag is the state's INITIAL value, so mounting never has to
+   * set it. Only the retry does, and that runs outside the effect.
    */
-  function pickCandidate(id: string) {
-    setPickedId(id);
-    setConfirmedIds([id]);
-    setStep(3);
+  const loadCounties = useCallback(() => {
+    fetchCounties()
+      .then((data) => setCounties({ data, loading: false, error: null }))
+      .catch((error) =>
+        setCounties({ data: null, loading: false, error: message(error) }),
+      );
+  }, []);
+
+  useEffect(loadCounties, [loadCounties]);
+
+  function retryCounties() {
+    setCounties({ data: null, loading: true, error: null });
+    loadCounties();
   }
 
-  function toggleConfirmed(id: string, checked: boolean) {
-    setConfirmedIds((current) =>
-      checked
-        ? [...new Set([...current, id])]
-        : current.filter((held) => held !== id),
-    );
+  async function runSearch(query: {
+    name: string;
+    lease: string;
+    county: string;
+  }) {
+    setResults({ data: null, loading: true, error: null });
+    setStep(2);
+    try {
+      const found = await searchOwners({ ...query, limit: 50 });
+      setResults({ data: found.owners, loading: false, error: null });
+    } catch (error) {
+      setResults({ data: null, loading: false, error: message(error) });
+    }
   }
+
+  /**
+   * Picking a record fetches everything the rest of the flow needs, then moves
+   * on. The step advances BEFORE the call resolves so step 3 opens on its own
+   * spinner rather than leaving the reader on step 2 wondering whether their
+   * tap registered.
+   */
+  async function pickRecord(record: OwnerRecord) {
+    setPicked(record);
+    setConfirmed([record.address]);
+    setSameName({ data: null, loading: true, error: null });
+    setStep(3);
+    try {
+      const found = await fetchSameName(record.name, record.address);
+      setSameName({ data: found, loading: false, error: null });
+      const first = byValueDesc(found.all.leases)[0];
+      setVisibleKey(first ? leaseKey(first) : null);
+    } catch (error) {
+      setSameName({ data: null, loading: false, error: message(error) });
+    }
+  }
+
+  /**
+   * THE WRITE. Owner NAMES are the unit of a claim — the backend resolves each
+   * name's leases itself, statewide — so the ticked records are reduced to
+   * their DISTINCT names. Two ticked records can carry the same name at two
+   * addresses, and sending it twice would be a wasted round trip and a spurious
+   * OWNER_ALREADY_CLAIMED in the results.
+   */
+  async function confirmClaim() {
+    if (memberId === null) return;
+    const records = [
+      ...(sameName.data?.selected ? [sameName.data.selected] : []),
+      ...(sameName.data?.others ?? []),
+    ].filter((r) => confirmed.includes(r.address));
+    const names = [...new Set(records.map((r) => r.name))];
+    if (names.length === 0) return;
+
+    setClaim({ data: null, loading: true, error: null });
+    try {
+      const result = await postClaim(memberId, names);
+      setClaim({ data: result, loading: false, error: null });
+      setStep(4);
+    } catch (error) {
+      setClaim({ data: null, loading: false, error: message(error) });
+    }
+  }
+
+  const leases = sameName.data?.all.leases ?? [];
 
   const rail = finished ? (
     <>
       <DoneNextCard />
-      <RailNote icon={BookmarkCheck} title="Keep your claim reference.">
-        <b className="font-semibold text-mv-green-deep">{claimReference}</b> —
-        quote it if you ever write to support about this record.
+      {/* No claim-reference card: `POST /owners/claim` returns `claimedAt` and
+          per-owner counts, and no reference id. The date it filed is on the
+          receipt itself, which is the thing support can actually look up. */}
+      <RailNote icon={BookmarkCheck} title="Your claim is on your account.">
+        Every lease it took is listed on your dashboard, and Settings can
+        unclaim it at any time.
       </RailNote>
-      <DoneValueCard />
+      <DoneValueCard total={sameName.data?.all.appraisedValue ?? 0} />
     </>
   ) : (
     <>
@@ -123,8 +224,6 @@ export function ClaimWizard() {
         </RailNote>
       )}
 
-      {/* Step 2's rail is the unlock preview alone — the "Still nothing
-          committed." note that sat above it has been removed (requested). */}
       {step === 2 && <UnlockCard />}
 
       {step === 3 && (
@@ -143,8 +242,8 @@ export function ClaimWizard() {
 
       {step === 5 && (
         <RailNote icon={PauseCircle} tone="amber" title="Inactive isn't lost.">
-          Where our model projects about $0 we show the county&rsquo;s appraised
-          value instead, labelled — so a lease you own never reads $0.
+          A lease with no appraised value on the roll is still yours, still
+          counted, and still joined to your record.
         </RailNote>
       )}
     </>
@@ -152,41 +251,75 @@ export function ClaimWizard() {
 
   if (finished) {
     return (
-      <ClaimShell current={step} done rail={rail} below={<DoneGroups />}>
-        <StepDone confirmedIds={confirmedIds} visibleNumber={visibleNumber} />
+      <ClaimShell current={step} done rail={rail}>
+        <StepDone
+          record={sameName.data?.selected ?? picked}
+          pending={(sameName.data?.others ?? []).filter((r) =>
+            confirmed.includes(r.address),
+          )}
+          all={sameName.data?.all ?? null}
+          visibleKey={visibleKey}
+          result={claim.data}
+        />
       </ClaimShell>
     );
   }
 
   return (
     <ClaimShell current={step} rail={rail}>
-      {step === 1 && <StepFind onSearch={() => setStep(2)} />}
+      {step === 1 && (
+        <StepFind
+          counties={counties}
+          onRetryCounties={retryCounties}
+          onSearch={runSearch}
+        />
+      )}
 
       {step === 2 && (
         <StepPick
-          selectedId={pickedId}
-          onChoose={pickCandidate}
+          results={results}
+          pickedAddress={picked?.address ?? null}
+          onChoose={pickRecord}
           onSearchAgain={() => setStep(1)}
         />
       )}
 
       {step === 3 && (
         <StepProve
-          selectedIds={confirmedIds}
-          onToggleRecord={toggleConfirmed}
+          sameName={sameName}
+          picked={picked}
+          memberId={memberId}
+          confirmed={confirmed}
+          onToggleRecord={(address, checked) =>
+            setConfirmed((current) =>
+              checked
+                ? [...new Set([...current, address])]
+                : current.filter((held) => held !== address),
+            )
+          }
           attested={attested}
           onAttest={setAttested}
-          onConfirm={() => setStep(4)}
+          claiming={claim.loading}
+          claimError={claim.error}
+          onConfirm={confirmClaim}
           onBack={() => setStep(2)}
         />
       )}
 
-      {step === 4 && <StepLeases onContinue={() => setStep(5)} />}
+      {step === 4 && (
+        <StepLeases
+          record={sameName.data?.selected ?? picked}
+          leases={leases}
+          all={sameName.data?.all ?? null}
+          onContinue={() => setStep(5)}
+        />
+      )}
 
       {step === 5 && (
         <StepVisibility
-          visibleNumber={visibleNumber}
-          onChoose={setVisibleNumber}
+          leases={leases}
+          visibleKey={visibleKey}
+          onChoose={setVisibleKey}
           onFinish={() => setFinished(true)}
         />
       )}

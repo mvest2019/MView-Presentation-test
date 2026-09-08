@@ -2,9 +2,9 @@
 
 import { Check } from "lucide-react";
 
-import { Badge, EstimateBadge } from "../../../_components/ui/badge";
-import type { ClaimLease } from "../../_lib/claim-records";
-import { decimalInterest, money } from "../../_lib/claim-totals";
+import { Badge } from "../../../_components/ui/badge";
+import { decimalInterest, money } from "../../_lib/claim-format";
+import type { FlowLease } from "../../_lib/claim-types";
 
 /**
  * ONE LEASE ON STEP 5 — either visible in full, or archived behind the cap.
@@ -12,15 +12,8 @@ import { decimalInterest, money } from "../../_lib/claim-totals";
  * ── WHY THE ARCHIVED VALUE IS BLURRED RATHER THAN ABSENT ──
  *
  * A missing figure reads as "we don't have this". A blurred one reads as "this
- * exists and you are not being shown it", which is the truth, and it is the same
- * device the portal already uses for a claimed-but-unpaid figure.
- *
- * IT IS NOT `portal.css`'s `cl-lock`, deliberately, even though that class does
- * exactly this paint job. `cl-lock` is driven by the portal's FUNNEL STATE —
- * blurred while claimed-and-unpaid, clear otherwise — and the gate here is a
- * different one: this lease is outside the plan's visibility cap, which is true
- * in every funnel state including paid. Borrowing the class would make the value
- * flicker clear for a paid demo account looking at a free-tier allocation.
+ * exists and you are not being shown it", which is the truth — the value came
+ * back from the roll with every other lease on the record.
  *
  * `aria-hidden` on the blurred figure with an `sr-only` explanation beside it:
  * a screen reader cannot see a blur, and reading out the exact number this
@@ -31,9 +24,9 @@ export function VisibilityCard({
   visible,
   onChoose,
 }: {
-  lease: ClaimLease;
+  lease: FlowLease;
   visible: boolean;
-  /** Absent when the card cannot be swapped — the free tier's single slot. */
+  /** Absent on the lease already occupying the free slot. */
   onChoose?: () => void;
 }) {
   return (
@@ -53,10 +46,11 @@ export function VisibilityCard({
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pr-6">
         <h3 className="text-[12.5px] font-bold text-mv-ink">
-          {lease.name} ({lease.number})
+          {lease.name}
+          {lease.number ? ` (${lease.number})` : ""}
         </h3>
         <Badge tone={lease.producing ? "mint" : "slate"} size="xs">
-          {lease.producing ? "Producing" : "Inactive"}
+          {lease.producing ? "Valued" : "No value"}
         </Badge>
       </div>
 
@@ -70,11 +64,8 @@ export function VisibilityCard({
           <p className="mt-[10px] text-[17px] font-extrabold text-mv-ink">
             {money(lease.value)}{" "}
             <span className="text-[11px] font-semibold text-mv-muted">
-              MVestimate
+              appraised
             </span>
-          </p>
-          <p className="mt-[6px]">
-            <EstimateBadge />
           </p>
           <p className="mt-[8px] text-[11.5px] font-semibold text-mv-green-deep">
             Your visible free lease ✓
@@ -91,14 +82,6 @@ export function VisibilityCard({
             </span>
             <span className="sr-only">
               Value withheld — this lease is archived until you upgrade.
-            </span>
-          </p>
-          <p className="mt-[6px]">
-            <span
-              aria-hidden="true"
-              className="inline-block rounded-full bg-mv-amber-bg px-2 py-[2px] text-[9.5px] font-semibold text-mv-amber blur-[3px] select-none"
-            >
-              Estimate — not an appraisal
             </span>
           </p>
           <p className="mt-[8px] text-[11.5px] font-semibold text-mv-amber">

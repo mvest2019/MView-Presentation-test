@@ -1,7 +1,22 @@
 import { ChevronRight } from "lucide-react";
 
-import { nextActions } from "../_lib/claim-done";
-import { DoneIconTile } from "./done-icons";
+
+/**
+ * PRODUCT GUIDANCE, not record data — no owners endpoint serves "what to do
+ * next", so these three stay declared here beside the component that draws
+ * them.
+ */
+const nextActions = [
+  { title: "Open your dashboard", detail: "Your record fills it automatically" },
+  {
+    title: "Upload a check stub",
+    detail: "It makes your numbers exact instead of modeled",
+  },
+  {
+    title: "Run your first Lease Audit",
+    detail: "See whether production and payments line up",
+  },
+];
 
 /**
  * "WHAT TO DO NEXT" — the completion screen's rail.
@@ -55,7 +70,6 @@ export function DoneNextCard() {
             <span className="flex h-[22px] w-[22px] flex-none items-center justify-center rounded-full bg-mv-green-deep text-[11px] font-bold text-white">
               {i + 1}
             </span>
-            <DoneIconTile name={action.icon} />
             <div className="min-w-0 flex-1">
               <p className="text-[12.5px] font-bold text-mv-ink">
                 {action.title}

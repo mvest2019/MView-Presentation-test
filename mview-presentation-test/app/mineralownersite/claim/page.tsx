@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { getSessionUser } from "@/lib/session";
+
 import { ClaimWizard } from "./_components/claim-wizard";
 import "./claim.css";
 
@@ -36,6 +38,13 @@ export const metadata: Metadata = {
     "Claim your mineral owner record in five steps — free, about two minutes, and it never changes who owns your minerals.",
 };
 
-export default function PortalClaimPage() {
-  return <ClaimWizard />;
+/**
+ * `member_id` IS READ ON THE SERVER AND PASSED DOWN. The session cookie is
+ * httpOnly, so page JavaScript cannot read the id itself — and
+ * `POST /owners/claim` rejects an anonymous claim with a 400, so the flow has
+ * to know whether it has one before it offers to file anything.
+ */
+export default async function PortalClaimPage() {
+  const user = await getSessionUser();
+  return <ClaimWizard memberId={user?.id ?? null} />;
 }
