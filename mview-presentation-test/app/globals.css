@@ -1,3 +1,40 @@
+/*
+ * CASCADE LAYER ORDER — this has to be the first thing in the first stylesheet.
+ *
+ * Layer order is fixed by where each name FIRST appears in the document, and
+ * `@import "tailwindcss"` establishes its own five the moment it is read. A
+ * later `@layer` statement can only append, so a name that has to sit in the
+ * MIDDLE of that list must be declared before the import. A `@layer` statement
+ * is one of the two things CSS allows above `@import`, which is why this is
+ * legal here and nowhere else.
+ *
+ * `properties`, `theme`, `base`, `components` and `utilities` are Tailwind v4's
+ * own, in its own order — restated, not chosen. Change one and Tailwind's
+ * `@property` fallbacks or its preflight land in the wrong place.
+ *
+ * `mv-reference` is the one addition, and it is placed deliberately:
+ *
+ *   AFTER `base`, so Tailwind's preflight cannot touch it. Preflight resets
+ *   headings to `font-size:inherit`, strips link colour and zeroes margins —
+ *   run over the reference sheet, it would flatten the whole Dashboard.
+ *
+ *   BEFORE `utilities`, so a Tailwind class CAN override it. That is the point.
+ *   `dashboard-reference.css` scopes ~600 rules to `.mv-ref-app`, and around
+ *   twenty of them name bare elements: `h1`-`h4`, `a`, `table`, `th`, `td`,
+ *   `input`, `select`, `button`, `img`. Unlayered, `.mv-ref-app h2` (0,1,1)
+ *   beat every utility in Tailwind — which are all inside `@layer utilities`,
+ *   and a layered declaration loses to an unlayered one whatever its
+ *   specificity. So the map at `/mineralownersite/map`, which wears the
+ *   reference chrome but is built in Tailwind, rendered a
+ *   `text-[14px] font-bold` panel heading at 30px in the reference serif.
+ *
+ * Nothing in the reference tree competes: `Chrome`, `Dashboard`, `WeeklyView`
+ * and the rest use the reference's own class names and not one Tailwind
+ * utility, so this changes how nothing on those pages renders. It only settles
+ * who wins where the two systems now meet.
+ */
+@layer properties, theme, base, mv-reference, components, utilities;
+
 @import "tailwindcss";
 
 /* ============================================================================

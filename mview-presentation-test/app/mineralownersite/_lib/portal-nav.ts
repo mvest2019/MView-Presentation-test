@@ -172,7 +172,16 @@ export const navSections: PortalNavSection[] = [
         href: "/mineralownersite/leases",
         navKey: "app-leases",
       },
-      { label: "Map", icon: "map", navKey: "app-map" },
+      // `app-map` landed. The map is not in `(portal)` — a full-viewport map
+      // cannot sit inside this shell's padded, scrolling body — so the row
+      // leaves the portal chrome behind, the way the top bar's `Map` slot
+      // always has. See `map/page.tsx`.
+      {
+        label: "Map",
+        icon: "map",
+        href: "/mineralownersite/map",
+        navKey: "app-map",
+      },
       {
         label: "Activities",
         icon: "activity",
@@ -252,7 +261,12 @@ export const tabBar: PortalNavItem[] = [
     href: "/mineralownersite/leases",
     navKey: "app-leases",
   },
-  { label: "Map", icon: "map", navKey: "app-map" },
+  {
+    label: "Map",
+    icon: "map",
+    href: "/mineralownersite/map",
+    navKey: "app-map",
+  },
   {
     label: "Activity",
     icon: "activity",

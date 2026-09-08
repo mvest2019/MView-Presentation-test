@@ -135,12 +135,15 @@ const SLIDE_MS = 3200;
 
 
 /**
- * What this map can do — the page `/map-explorer` serves when nobody is
- * signed in.
+ * What this map can do — the whole of `/map-explorer`, the map's landing page.
  *
- * It is the page itself now, not an overlay: there is no map behind it, no
- * button that opened it and nothing to close it onto. Signing in is what
- * replaces it, which the page decides on the server from the session cookie.
+ * It is the page itself, not an overlay: there is no map behind it, no button
+ * that opened it and nothing to close it onto. It also no longer depends on who
+ * is asking. This route used to serve the guide to visitors and the map to
+ * signed-in owners off one session check; the map now has its own address at
+ * `/mineralownersite/map`, so this one is a single public page and the check is
+ * gone. Signing in no longer replaces it — the sidebar's `Map` row is the way
+ * through to the map.
  */
 export function MapFeatureGuide() {
   /* Opened at the top. A visitor arriving from elsewhere on the site may be

@@ -58,8 +58,11 @@ export type MegaColumn = {
  * the word a data buyer is looking for. If Data Sales traffic drops, this is the
  * first place to look.
  *
- * `Map` is also gone from the bar, and appears in no menu or footer column, so
- * `/map-explorer` currently has no route into it at all.
+ * `Map` IS in the bar (see the note on its entry below) and points at
+ * `/map-explorer`, which is the map's landing page — what the map holds and
+ * what you can do with it — not the map. That is the right destination for a
+ * bar a visitor scans before deciding anything; the map itself lives at
+ * `/mineralownersite/map` and is reached from the owner site's sidebar.
  */
 export type BarItem =
   | { kind: "link"; label: string; href: string }
@@ -73,6 +76,10 @@ export const barNav: BarItem[] = [
   // after the data destinations, before Pricing. The design's reason for a
   // first-class slot still stands: the map is the only nav item a visitor can
   // use before deciding anything.
+  //
+  // STAYS ON `/map-explorer` now that the map moved to `/mineralownersite/map`.
+  // This slot is aimed at someone who has not signed in, and the landing page is
+  // what that person should meet.
   { kind: "link", label: "Map", href: "/map-explorer" },
   { kind: "link", label: "Pricing", href: "/pricing" },
   { kind: "menu", label: "Learn", menu: "learn" },

@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { DensitySwitch, showsAt, type Density } from "./density-switch";
+import { showsAt, type Density } from "./density";
 import { MapToast } from "./map-toast";
 import { usePanelPlacement } from "./panel-placement";
 import { downloadSheet, type SheetColumn } from "./xlsx";
@@ -109,9 +109,9 @@ type WellsTableProps = {
   activeTab: ViewTab;
   onTabChange: (tab: ViewTab) => void;
   onShowOnMap: (row: MapTableRow) => void;
-  /** How many columns to print — the switch beside the view tabs. */
+  /** How many columns to print. Set in the portal's avatar menu — the switch
+      that used to sit beside the view tabs is gone. */
   density: Density;
-  onDensityChange: (density: Density) => void;
 };
 
 /**
@@ -235,7 +235,6 @@ export function WellsTable({
   onTabChange,
   onShowOnMap,
   density,
-  onDensityChange,
 }: WellsTableProps) {
   const [page, setPage] = useState(1);
   /*
@@ -790,11 +789,10 @@ export function WellsTable({
               />
             </div>
 
-            {/* The same switch the map's toolbar carries, on the same choice:
-              here it decides how many columns the table prints. */}
-            <div className="flex-1 lg:flex-none">
-              <DensitySwitch value={density} onChange={onDensityChange} />
-            </div>
+            {/* The view-mode switch stood here, a second copy of the one in
+              the map's toolbar. Both are gone: the portal's avatar menu carries
+              the four density tabs now, and `density` — which still decides how
+              many columns this table prints — comes down from there. */}
 
             {shows("detailed") && (
               <ExportButton

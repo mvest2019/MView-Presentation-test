@@ -13,20 +13,15 @@ import { AreaSelectionBar } from "./area-selection";
 import { loadArcgisModules } from "./arcgis-loader";
 import { ClusterTooltip } from "./cluster-tooltip";
 import { SampleBanner } from "./sample-banner";
-import {
-  DEFAULT_DENSITY,
-  showsAt,
-  toDensity,
-  type Density,
-} from "./density-switch";
+import { DEFAULT_DENSITY, showsAt, type Density } from "./density";
 import {
   DEFAULT_FUNNEL_STATE,
   FUNNEL_CEILING,
-  toFunnelState,
   type FunnelState,
-} from "./demo-state-menu";
+} from "./funnel-state";
 import { WellInsightsPanel, type SelectedWell } from "./well-insights-panel";
 import { MapChrome, type ViewTab } from "./map-chrome";
+import { usePortalViewState } from "../../../_components/reference/view-state";
 import { MeasureAreaPanel, type AreaMeasurement } from "./measure-area-panel";
 import { ToolDemo, type DemoTool } from "./tool-demo";
 import { MapToast } from "./map-toast";
@@ -577,12 +572,6 @@ function rememberDemo(tool: DemoTool): void {
 
 const DEFAULT_BASEMAP = "streets";
 
-/** Where the chosen density is remembered between visits. */
-const DENSITY_KEY = "mvMapDensity";
-
-/** And the demo's account state, which decides how far that may go. */
-const FUNNEL_KEY = "mvMapFunnel";
-
 const SCREENSHOT_FILENAME = "mineral-view-map.png";
 
 /**
@@ -782,41 +771,31 @@ export function MapExplorerView() {
   const [viewTab, setViewTab] = useState<ViewTab>("map");
 
   /*
-   * How much of a well's record Insights prints.
+   * HOW MUCH DETAIL, AND FOR WHICH KIND OF ACCOUNT — BOTH COME FROM THE SHELL.
    *
-   * Remembered between visits, like the portal remembers its own: someone who
-   * reads wells at Professional does not want to say so again every time the
-   * map opens. Read in an effect rather than in the initialiser — the server
-   * renders this page too, and it has no `localStorage` to read.
-   */
-  const [chosenDensity, setDensity] = useState<Density>(DEFAULT_DENSITY);
-
-  useEffect(() => {
-    const stored = toDensity(window.localStorage.getItem(DENSITY_KEY));
-    if (stored === DEFAULT_DENSITY) return;
-    /* In a microtask rather than in the effect body: this is a setState from
-       an effect, which the compiler's rule forbids outright and which is fine
-       one tick later — the same way the filters panel applies a shared link's
-       ticks. Starting from the default and correcting keeps the server's
-       markup and the browser's first render identical. */
-    queueMicrotask(() => setDensity(stored));
-  }, []);
-
-  /*
-   * Which kind of account the map is being shown as — the demo control.
+   * The map used to own these: a view-mode menu and a demo-state menu in its
+   * own toolbar, each remembered under its own `localStorage` key. Once the map
+   * moved inside the owner portal that was the same two settings offered twice
+   * on one screen — the avatar menu's four density tabs and the top bar's
+   * account-state button say exactly the same things — and the two copies drifted
+   * apart the moment either was touched. The shell's are the ones that stayed,
+   * because they are on every route and this is one route.
    *
-   * Remembered like the density, and for the same reason: someone showing the
-   * free view to three people in a row should not have to set it three times.
+   * `usePortalViewState` is nullable by design: it answers `null` outside the
+   * portal. The map is only mounted inside it today, so that case is the
+   * product defaults rather than an error — the map is perfectly renderable
+   * without an account, and this is the shape it takes.
    */
-  const [funnel, setFunnel] = useState<FunnelState>(DEFAULT_FUNNEL_STATE);
+  const shellView = usePortalViewState();
+  const chosenDensity: Density = shellView?.tier ?? DEFAULT_DENSITY;
+  const funnel: FunnelState = shellView?.funnel ?? DEFAULT_FUNNEL_STATE;
 
-  useEffect(() => {
-    const stored = toFunnelState(window.localStorage.getItem(FUNNEL_KEY));
-    if (stored === DEFAULT_FUNNEL_STATE) return;
-    queueMicrotask(() => setFunnel(stored));
-  }, []);
+  /* What the account may read. A free one stops at Essentials.
 
-  /* What the account may read. A free one stops at Essentials. */
+     STILL THE MAP'S OWN RULE, applied to the shell's raw choice rather than to
+     a mode picked here. The shell has a different one — it forces Pro while
+     nothing is claimed, which suits a dashboard acting as a shop window — so
+     it hands over the choice and lets each surface cap it its own way. */
   const ceiling = FUNNEL_CEILING[funnel];
 
   /*
@@ -827,16 +806,6 @@ export function MapExplorerView() {
    * the one the demo left them on.
    */
   const density = showsAt(ceiling, chosenDensity) ? chosenDensity : ceiling;
-
-  const chooseFunnel = useCallback((next: FunnelState) => {
-    setFunnel(next);
-    try {
-      window.localStorage.setItem(FUNNEL_KEY, next);
-    } catch {
-      /* Private windows and blocked storage — the choice holds for this
-         visit, only remembering it fails. */
-    }
-  }, []);
 
   /*
    * The district and county lines are Essentials and up.
@@ -851,15 +820,6 @@ export function MapExplorerView() {
     for (const layer of countyLayersRef.current) layer.visible = on;
   }, [density]);
 
-  const chooseDensity = useCallback((next: Density) => {
-    setDensity(next);
-    try {
-      window.localStorage.setItem(DENSITY_KEY, next);
-    } catch {
-      /* Private windows and blocked storage. The choice still holds for this
-         visit; only remembering it fails. */
-    }
-  }, []);
   /* What is on screen, readable from a callback — the tab is set from half a
      dozen places and only one of them should leave a history step. */
   const viewTabRef = useRef<ViewTab>("map");
@@ -4348,10 +4308,6 @@ export function MapExplorerView() {
             /* Everything the Share menu puts in a link, since none of it is
                in the address any more. */
             density={density}
-            onDensityChange={chooseDensity}
-            ceiling={ceiling}
-            funnel={funnel}
-            onFunnelChange={chooseFunnel}
             share={{
               filters: shareFilters,
               tab: viewTab,
@@ -4525,7 +4481,6 @@ export function MapExplorerView() {
           onTabChange={changeViewTab}
           onShowOnMap={showRowOnMap}
           density={density}
-          onDensityChange={chooseDensity}
         />
       )}
     </div>

@@ -23,7 +23,7 @@ import {
   type MapFilterItem,
 } from "@/lib/map-api";
 
-import { DEFAULT_DENSITY, showsAt, type Density } from "./density-switch";
+import { DEFAULT_DENSITY, showsAt, type Density } from "./density";
 
 /*
  * The Search & filters panel that opens off the FILTERS edge tab.

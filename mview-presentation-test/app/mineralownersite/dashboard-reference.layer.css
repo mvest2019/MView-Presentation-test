@@ -1,0 +1,20 @@
+/*
+ * `dashboard-reference.css`, PUT IN A CASCADE LAYER.
+ *
+ * A one-line wrapper, and it exists because a CSS import from a JavaScript
+ * module cannot name a layer — only `@import` can, and only from inside CSS.
+ * `(reference)/layout.tsx` imports this file instead of the sheet.
+ *
+ * The sheet itself is left byte-for-byte as extracted. Wrapping its 622 rules
+ * in `@layer mv-reference { … }` in place would have re-indented every line of
+ * a file whose entire value is that it is a verbatim copy of the reference
+ * build's ten stylesheets — every future diff against that reference would
+ * have shown the whole file as changed.
+ *
+ * WHERE `mv-reference` SITS, and why, is documented in `app/globals.css`, which
+ * has to declare the order before Tailwind is imported. Short version: after
+ * Tailwind's preflight so preflight cannot flatten the reference, and before
+ * Tailwind's utilities so a utility class can override it — which is what lets
+ * the Tailwind-built map render correctly inside the reference chrome.
+ */
+@import "./dashboard-reference.css" layer(mv-reference);

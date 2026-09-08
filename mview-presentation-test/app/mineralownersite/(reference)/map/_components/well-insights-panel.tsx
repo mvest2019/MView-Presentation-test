@@ -29,7 +29,7 @@ import {
   type MapWellSummary,
 } from "@/lib/map-api";
 
-import { DEFAULT_DENSITY, showsAt, type Density } from "./density-switch";
+import { DEFAULT_DENSITY, showsAt, type Density } from "./density";
 import { copyText } from "./copy-text";
 import { declineRows, depletionBars, eurBars } from "./well-insights-fields";
 import { WELLBORE } from "./well-insights-data";

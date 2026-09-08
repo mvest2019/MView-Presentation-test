@@ -1,0 +1,90 @@
+/*
+ * THE MAP'S SHELL — the only place the portal's body fills instead of scrolls.
+ *
+ * WHY A STYLESHEET AND NOT UTILITIES. Every rule here names an element the map
+ * page does not render: `.app-shell`, `.app-main` and `.app-body` belong to
+ * `Chrome`, and they are ANCESTORS of what this route renders. There is nothing
+ * to hang a class on, so the page passes `shellClass="mv-ref-mapshell"` to
+ * `Portal`, which puts it on the root, and these rules reach down from there.
+ *
+ * WHY IT IS NOT IN `dashboard-reference.css`. That sheet is the reference
+ * build's own ten stylesheets, extracted and rescoped, and its value is that it
+ * is a COPY — a rule invented here would make it a fork. This file is this
+ * route's, it is imported by this route's page, and it is seven rules long.
+ *
+ * SPECIFICITY, NOT `!important`. `.mv-ref-app.mv-ref-mapshell` is two classes
+ * against the sheet's one, so these win over `.mv-ref-app .app-body` and over
+ * its media-query overrides at every width, in either order.
+ */
+
+/*
+ * The shell is `min-height:100vh` so a long dashboard can run past the fold.
+ * The map must not: a page-level scrollbar next to a map that scrolls itself
+ * is two scroll surfaces fighting over one wheel gesture. Pinned to the
+ * viewport, and `dvh` so a phone's collapsing address bar does not leave a
+ * strip of background under the map.
+ */
+.mv-ref-app.mv-ref-mapshell.in-app .app-shell {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/*
+ * `.app-main` is the flex column holding the picker, the top bar, the pinned
+ * value line and the body. Two properties, for two different widths:
+ *
+ *   `min-height:0` — flex items refuse to shrink below their content, which is
+ *   what would push the body past the viewport.
+ *
+ *   `flex:1` — below 860px `.app-shell` becomes a flex column (see the media
+ *   block at the foot) and a flex item takes its CONTENT height unless told to
+ *   grow. Without this the body measured 0 and the map never appeared on a
+ *   phone. It is inert at desktop width, where `.app-shell` is a grid and
+ *   `flex` on a grid item means nothing, so it is stated once here rather than
+ *   twice.
+ */
+.mv-ref-app.mv-ref-mapshell .app-main {
+  min-height: 0;
+  flex: 1;
+}
+
+/* The body itself: no 26px padding, no 1180px column, no centring — the map is
+   full-bleed and takes whatever height is left under the chrome. */
+.mv-ref-app.mv-ref-mapshell .app-body {
+  max-width: none;
+  padding: 0;
+  min-height: 0;
+  display: flex;
+}
+
+/* The slot the page renders around the map. `MapExplorerView` fills its parent
+   and has no height of its own, so this is the box. */
+.mv-ref-app.mv-ref-mapshell .mv-map-slot {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/*
+ * Below 860px the sheet drops `.app-shell` to `display:block`, which cannot
+ * stretch `.app-main` to the viewport — the map would collapse to nothing.
+ * The column goes back for this route only. `.app-side` is already
+ * `display:none !important` at this width, so the sidebar is not in it; the
+ * hamburger still opens it over the map, which is how every other route
+ * behaves here too.
+ */
+@media (max-width: 860px) {
+  .mv-ref-app.mv-ref-mapshell.in-app .app-shell {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* And the phone tab bar is `position:fixed` at the foot, so without this it
+     sits ON the map — over the scale bar and the zoom buttons, which live in
+     exactly that corner. The sheet's own answer for a scrolling body is
+     `padding-bottom:84px`; the same figure, on a body that does not scroll. */
+  .mv-ref-app.mv-ref-mapshell .app-body {
+    padding-bottom: 84px;
+  }
+}

@@ -44,8 +44,14 @@ import { LeaseCountyValueCell, LeaseEstimateCell } from "./lease-value-cell";
  *
  * `Open`, which works, and the design's ◈ "show on map" ghost button, which is
  * rendered inert because the OWNER map is not built. See the note at the cell
- * itself for why it is not pointed at `/map-explorer` instead. Give it an `href`
- * when `app-map` lands.
+ * itself for why it is not pointed at the map instead.
+ *
+ * `app-map` HAS LANDED — the map is `/mineralownersite/map` — and this button
+ * still does not point at it, because what the design asks for here is not "the
+ * map" but "this lease on the map", and the map takes no lease parameter.
+ * Linking it anyway would drop an owner on the default extent with no idea what
+ * they were supposed to be looking at. Give it an `href` when the map can be
+ * addressed by lease.
  */
 export function LeaseTableRow({
   lease,
@@ -150,8 +156,10 @@ export function LeaseTableRow({
         {/*
           THE SECOND, GHOST BUTTON — "show on map", enabled like the design's.
 
-          It points at the OWNER map, which is not built here, so it uses the
-          prototype's own acknowledgement idiom rather than rendering greyed —
+          It points at the OWNER map — this lease, framed — which is not built:
+          `/mineralownersite/map` opens at its own default extent and takes no
+          lease. So it uses the prototype's own acknowledgement idiom rather
+          than rendering greyed —
           see `PrototypeButton`. The glyph alone says nothing to a screen reader,
           hence the label naming the lease.
         */}

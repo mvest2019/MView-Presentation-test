@@ -65,6 +65,13 @@ const PLAN: Record<FunnelKey, string> = {
  * false statement, and the reference's own rule for this row is "give the row
  * its `href` when its page lands".
  *
+ * MAP IS A `key` ROW, NOT AN `href` ROW, and the difference matters. It used to
+ * point at `/map-explorer` — outside this shell, so the row could never light
+ * up and the top bar could never name it. The map is now `/mineralownersite/map`
+ * under this same route group, wearing this shell, so it is a `Route` like the
+ * other four: `ROUTE_PATH` supplies the destination, the row takes `.on` when
+ * it is the current one and the top bar reads "Map".
+ *
  * Nothing else moves: the labels, the icons, the order and the three section
  * headings are the reference's, and the rows that genuinely have no page here
  * keep its `soon` treatment exactly.
@@ -76,7 +83,7 @@ const NAV: {
   { key: 'alerts', label: 'Alerts', icon: 'mvi-bell' },
   { key: 'activities', label: 'Activities', icon: 'mvi-activity' },
   { key: null, label: 'My Leases', icon: 'mvi-leases', href: '/mineralownersite/leases' },
-  { key: null, label: 'Map', icon: 'mvi-map', href: '/map-explorer' },
+  { key: 'map', label: 'Map', icon: 'mvi-map' },
   { key: null, label: 'Production & Forecast', icon: 'mvi-trend' },
   { key: 'weekly', label: 'Weekly Report', icon: 'mvi-mail' },
   { sec: 'Services', key: null, label: 'Lease Audit', icon: 'mvi-audit' },

@@ -27,8 +27,7 @@ import { LegendsPanel } from "./legends-panel";
 import { getWellLookupMap, type MapWellLookup } from "@/lib/map-api";
 
 import { ApiResults } from "./api-results";
-import { DemoStateMenu, type FunnelState } from "./demo-state-menu";
-import { DensitySwitch, showsAt, type Density } from "./density-switch";
+import { showsAt, type Density } from "./density";
 import { shareUrl, type ShareState } from "./filter-url";
 import { ShareMenu } from "./share-menu";
 import { MAP_TOOLS, ToolsPanel } from "./tools-panel";
@@ -65,14 +64,9 @@ type MapChromeProps = {
   center: { longitude: number; latitude: number };
   /** What a shared link should carry — see `shareUrl`. */
   share: ShareState;
-  /** How much of a well's record the Insights tab shows. */
+  /** How much of a well's record the Insights tab shows. Set in the portal's
+      avatar menu, not here — see the note where the picker used to be. */
   density: Density;
-  onDensityChange: (density: Density) => void;
-  /** The furthest the demo's account state may read. */
-  ceiling: Density;
-  /** The demo control: which kind of account the map is being shown as. */
-  funnel: FunnelState;
-  onFunnelChange: (state: FunnelState) => void;
   /** Active basemap id, so the gallery can mark its tile. */
   basemap: string;
   onBasemapChange: (id: string) => void;
@@ -196,10 +190,6 @@ export function MapChrome({
   center,
   share,
   density,
-  onDensityChange,
-  ceiling,
-  funnel,
-  onFunnelChange,
   basemap,
   onBasemapChange,
   onSaveImage,
@@ -838,17 +828,21 @@ export function MapChrome({
         }`}
       >
         <div className="pointer-events-auto relative flex w-full max-w-full flex-col items-stretch gap-2 lg:w-auto lg:flex-row lg:flex-nowrap lg:items-center lg:gap-1 lg:overflow-x-auto lg:rounded-xl lg:border lg:border-mv-line lg:bg-white/97 lg:px-[6px] lg:py-[4px] lg:shadow-mv-lg lg:backdrop-blur-[6px]">
-          {/* The view mode, before the view switch: it decides what the map
-              holds, and the tabs decide which part of it you are looking at.
-              A menu rather than a second row of pills — see `DensitySwitch`. */}
-          <DensitySwitch
-            value={density}
-            onChange={onDensityChange}
-            ceiling={ceiling}
-          />
+          {/*
+            NO VIEW-MODE MENU AND NO DEMO-STATE MENU HERE ANY MORE.
 
-          {/* The demo control, beside the mode it caps. */}
-          <DemoStateMenu value={funnel} onChange={onFunnelChange} />
+            They stood in this slot, in this order — the mode, then the demo
+            state that caps it — and both are now the portal chrome's, one row
+            up: the four density tabs live under the avatar and the five account
+            states behind the top bar's state button. Offering the same two
+            settings twice on one screen meant they could disagree, and there
+            was no way to tell which of the two a reader had last touched.
+
+            `density` still arrives as a prop and still decides what this bar
+            shows; it comes from `usePortalViewState` now instead of from a
+            control here. `funnel` went with the menus — nothing else in this
+            file read it. See the note in `map-explorer-view.tsx`.
+          */}
 
           {/* A segmented control: the grey track groups the three views and
               makes the filled one read as the raised tab. */}

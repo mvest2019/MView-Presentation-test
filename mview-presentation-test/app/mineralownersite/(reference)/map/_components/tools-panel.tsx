@@ -13,7 +13,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { type Density } from "./density-switch";
+import { type Density } from "./density";
 
 /*
  * The Tools panel that opens off the TOOLS edge tab.

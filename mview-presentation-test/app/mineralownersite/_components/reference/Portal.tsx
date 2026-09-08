@@ -26,7 +26,7 @@
  * machine below — the five funnel states, the four densities, the forced
  * density while unclaimed, the sample transform, the trial stamp, the drawer,
  * the owner load, the body/root classes — is the reference's, comments
- * included. THREE ADAPTATIONS, each marked `ADAPTED` where it appears:
+ * included. FOUR ADAPTATIONS, each marked `ADAPTED` where it appears:
  *
  *   1  THE ROUTE TABLE. The reference serves `/`, `/alerts`, `/activities` and
  *      `/weekly`. Here the Dashboard is `/mineralownersite` and the Weekly
@@ -40,7 +40,13 @@
  *      label, icon, badge and position in the chrome is still the reference's;
  *      only the destination is this build's.
  *
- *   3  THE GATE CLASSES GO ON THE ROOT ELEMENT, not on `<body>`. The reference
+ *   3  A PAGE CAN BRING ITS OWN VIEW. `children`, plus `shellClass` for the
+ *      layout that view needs. The Map is the one caller: it is a route of its
+ *      own under this same group, so it gets this shell's sidebar, top bar,
+ *      owner picker and pinned value line without this file growing a third
+ *      surface. See the props.
+ *
+ *   4  THE GATE CLASSES GO ON THE ROOT ELEMENT, not on `<body>`. The reference
  *      writes `in-app`, `view-*`, `no-claim`/`mv-sample` and `state-*` to the
  *      document body, which is fine in an app that is nothing but this portal.
  *      Here the same document also carries the marketing site, so the classes
@@ -60,8 +66,9 @@ import Dashboard from './Dashboard';
 import WeeklyView from './WeeklyView';
 import DrawerPanel from './DrawerPanel';
 import Loader, { type Step } from './Loader';
+import { PortalViewStateProvider } from './view-state';
 
-export type Route = 'dashboard' | 'alerts' | 'activities' | 'weekly';
+export type Route = 'dashboard' | 'alerts' | 'activities' | 'weekly' | 'map';
 
 /** the five funnel states, in funnel order — the prototype's own sequence */
 export const FUNNEL = [
@@ -92,13 +99,14 @@ export const ROUTE_PATH: Record<Route, string> = {
   weekly: '/mineralownersite/briefing',
   alerts: '/mineralownersite/alerts',
   activities: '/mineralownersite/activities',
+  map: '/mineralownersite/map',
 };
 /** ADAPTED 2 · which routes this shell renders itself */
 const OWNED: Route[] = ['dashboard', 'weekly'];
 
 export const ROUTE_TITLE: Record<Route, string> = {
   dashboard: 'Dashboard', alerts: 'Alerts', activities: 'Activities',
-  weekly: 'Weekly Report',
+  weekly: 'Weekly Report', map: 'Map',
 };
 
 export interface OwnerRef {
@@ -116,8 +124,33 @@ const STEPS: Step[] = [
   { at: 8000, text: 'Still working — a first read scans the whole roll year' },
 ];
 
-export default function Portal({ route: initialRoute, initial }:
-{ route: Route; initial: Payload | null }) {
+export default function Portal({ route: initialRoute, initial, children, shellClass }:
+{
+  route: Route;
+  initial: Payload | null;
+  /**
+   * ADAPTED 3 · A PAGE'S OWN VIEW, rendered inside this shell instead of one of
+   * the two this file holds. Only the Map passes it — the map is 51 files and an
+   * ArcGIS runtime, so it stays a route of its own that renders itself and
+   * borrows the chrome, rather than becoming a third branch of `view` that the
+   * Dashboard and the Weekly Report would drag around with them.
+   *
+   * The owner payload is still loaded and still handed to `Chrome`, which is
+   * the whole point: the sidebar, the top bar, the owner picker and the pinned
+   * value line are the same ones `/mineralownersite` renders, from the same
+   * snapshot. Nothing about them is re-implemented for the map.
+   */
+  children?: React.ReactNode;
+  /**
+   * Extra class for the root element, for a page whose body fills the viewport
+   * rather than scrolling in the 1180px column. The Map passes
+   * `mv-ref-mapshell` and owns the three rules that name it — see
+   * `(reference)/map/map-shell.css`. It goes here because the element it has to
+   * reach, `.app-shell`, is an ANCESTOR of `children`, so the page cannot put
+   * the class on anything of its own.
+   */
+  shellClass?: string;
+}) {
   const [route, setRoute] = useState<Route>(initialRoute);
   const [live, setLive] = useState<Payload | null>(initial);
   const [busy, setBusy] = useState(false);
@@ -179,7 +212,7 @@ export default function Portal({ route: initialRoute, initial }:
   }, []);
 
   /* ------------------------------------------------------- the root classes */
-  /* ADAPTED 3 · the reference writes these to <body>; they go on this
+  /* ADAPTED 4 · the reference writes these to <body>; they go on this
      component's wrapper instead, and `dashboard-reference.css` is scoped to it.
      The class NAMES are the reference's, so every gate it ships still fires:
      `.hide-u`, `.hide-s`, `.tier-u`, `.nc-keep`, `.cl-lock`. */
@@ -199,14 +232,23 @@ export default function Portal({ route: initialRoute, initial }:
        it. Caught by the whole-shell text diff, in 4 of 40 combinations. */
     if (funnel === 'unclaimed') want.push('no-claim', 'mv-sample');
     else want.push('state-' + funnel);
+    /* A page that needs the shell laid out differently, appended last so it can
+       win on specificity without any `!important`. See the prop's own note. */
+    if (shellClass) want.push(shellClass);
     return want.join(' ');
-  }, [effTier, funnel]);
+  }, [effTier, funnel, shellClass]);
 
   /* --------------------------------------------------------------- the URL */
   useEffect(() => {
     const onPop = () => {
       const p = window.location.pathname.replace(/\/+$/, '') || '/';
-      setRoute(p === ROUTE_PATH.weekly ? 'weekly' : 'dashboard');
+      /* Resolved through the table rather than a weekly/dashboard ternary: with
+         the ternary, going Back from the Weekly Report onto the Map set the
+         route to `dashboard`, so the sidebar lit the wrong row and the top bar
+         read "Dashboard" over the map. Falling back to `dashboard` for an
+         unknown path is the old behaviour, kept. */
+      const hit = (Object.keys(ROUTE_PATH) as Route[]).find((r) => ROUTE_PATH[r] === p);
+      setRoute(hit ?? 'dashboard');
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
@@ -219,7 +261,12 @@ export default function Portal({ route: initialRoute, initial }:
        "a route change must not discard a snapshot that took seconds to build"
        — still applies to the two it does own, which is why those still switch
        without a request. */
-    if (!OWNED.includes(r)) {
+    /* AND A PAGE THAT BROUGHT ITS OWN VIEW OWNS NONE OF THEM. `children` wins
+       over `view` for as long as this shell is mounted, so switching `route` on
+       the Map would have pushed `/mineralownersite` into the address bar and
+       left the map on screen under a sidebar row saying Dashboard. From here
+       every row is a real navigation. */
+    if (children || !OWNED.includes(r)) {
       setDrawer(null);
       router.push(ROUTE_PATH[r]);
       return;
@@ -229,7 +276,7 @@ export default function Portal({ route: initialRoute, initial }:
     const q = window.location.search;
     window.history.pushState({ r }, '', ROUTE_PATH[r] + q);
     window.scrollTo({ top: 0, behavior: 'auto' });
-  }, [router]);
+  }, [router, children]);
 
   /* ----------------------------------------------------------- owner loads */
   const load = useCallback(async (o: OwnerRef) => {
@@ -315,7 +362,8 @@ export default function Portal({ route: initialRoute, initial }:
   }, [drawer]);
 
   const view = (
-    !data ? null
+    children ??
+    (!data ? null
       : route === 'weekly'
         ? <WeeklyView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
         : (
@@ -323,11 +371,15 @@ export default function Portal({ route: initialRoute, initial }:
             p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go}
             trialStarted={trialStarted} setFunnel={pickFunnel}
           />
-        )
+        ))
   );
 
   return (
     <div className={rootClass} ref={wrap}>
+      {/* The two axes, readable by anything under the chrome. `tier` and not
+          `effTier`: the raw choice, so a surface with its own ceiling rule can
+          apply it rather than inherit this one's. See `view-state.tsx`. */}
+      <PortalViewStateProvider tier={tier} funnel={funnel}>
       <Chrome
         p={data} route={route} go={go} tier={tier} setTier={pickTier}
         funnel={funnel} setFunnel={pickFunnel} sample={sample}
@@ -336,8 +388,14 @@ export default function Portal({ route: initialRoute, initial }:
       >
         {error ? <ErrorCard detail={error} /> : null}
         {view}
-        {!data && !error && !busy ? <ErrorCard detail="No owner is loaded yet. Search for a name above." /> : null}
+        {/* NOT WHEN THE PAGE BROUGHT ITS OWN VIEW. This card stands in for the
+            Dashboard and the Weekly Report, which are nothing without a
+            snapshot. The Map is not: it reads the whole public record, not one
+            owner, so it renders perfectly well before anybody is picked and the
+            card would be an error message under a working page. */}
+        {!children && !data && !error && !busy ? <ErrorCard detail="No owner is loaded yet. Search for a name above." /> : null}
       </Chrome>
+      </PortalViewStateProvider>
 
       <Loader on={busy} name={loadingName} steps={STEPS} />
 
