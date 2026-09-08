@@ -85,6 +85,27 @@ export interface SameNameResult {
   all: OwnerLeaseSet;
 }
 
+/**
+ * EVERYTHING THE READER PICKED, MERGED — the answer to a multi-record selection.
+ *
+ * Step 2 lets several records be ticked at once, so one `/same-name` answer is
+ * no longer enough. `claim-api.ts` calls the endpoint per picked record and
+ * merges the results into this: the records themselves, any same-name records
+ * found at OTHER addresses, and the union of every lease they hold.
+ *
+ * THE LEASE UNION IS DEDUPLICATED, and it has to be: `allLeases` is keyed on the
+ * owner NAME, so two picked records sharing a name come back with an identical
+ * lease set. Concatenating them would double every count on steps 4 and 5.
+ */
+export interface ClaimSet {
+  /** The picked records, address-verified by the endpoint. */
+  records: OwnerRecord[];
+  /** Same name, other addresses — each needs a mailed code to attach. */
+  others: OwnerRecord[];
+  /** Every lease the picked names hold, statewide, once each. */
+  all: OwnerLeaseSet;
+}
+
 /** `GET /owners/counties`, with the cold-start case surfaced. */
 export interface CountyIndex {
   totalOwners: number;

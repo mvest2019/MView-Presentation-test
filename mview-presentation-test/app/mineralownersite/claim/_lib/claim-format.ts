@@ -1,4 +1,4 @@
-import type { FlowLease } from "./claim-types";
+import type { FlowLease, OwnerRecord } from "./claim-types";
 
 /**
  * FORMATTING AND DERIVATION, in one place.
@@ -72,6 +72,57 @@ export function leaseKey(lease: FlowLease): string {
 }
 
 /**
+ * A ROLL RECORD'S IDENTITY — county, name AND address, all three.
+ *
+ * NOT THE ADDRESS ALONE, which is what step 3's ticks used to be keyed on. Two
+ * different owner names genuinely share one address: "RAYMOND SMITH" and
+ * "SMITH RAYMOND E" are two records at 1200 Ranch Rd, and they are two separate
+ * claims. Keyed on address, ticking one silently ticked the other.
+ */
+export function recordKey(record: OwnerRecord): string {
+  return `${record.county}|${record.name}|${record.address}`;
+}
+
+/**
+ * ONE MAILING ADDRESS, SPELLED ANY OF THE WAYS THE ROLLS SPELL IT.
+ *
+ * Each county types its own roll, so the same doorstep arrives twice:
+ *
+ *   Bee       "8800 S HARLEM AVE TRLR 1111, BRIDGEVIEW, IL 60455"
+ *   Live Oak  "8800 S HARLEM AVE TRLR 1111 BRIDGEVIEW IL 60455 1995"
+ *
+ * Same place. One has commas, the other has the ZIP+4 run on without its
+ * hyphen. Step 3 drew them as two rows, and — because only one of them was the
+ * address that was searched — badged the second "different address, we post a
+ * code", which told the reader their own address was somebody else's.
+ *
+ * TWO NORMALISATIONS, BOTH NARROW:
+ *
+ *   punctuation  case and separators are typography, never identity
+ *   ZIP+4        a trailing 4-digit group after a 5-digit ZIP is the +4 written
+ *                without its hyphen
+ *
+ * The ZIP rule is anchored at the END and requires a 5-digit ZIP in front of
+ * it, which is what keeps it from eating a unit number: "100 MAIN ST APT 5" and
+ * "100 MAIN ST APT 9" are different homes and stay different keys. Verified
+ * against the roll — it collapses Aasen Ryan R's two spellings to one and
+ * leaves Smith Raymond's two genuinely different addresses as two.
+ *
+ * Deliberately NOT a general address parser. Street-type synonyms (AVE/AVENUE),
+ * directionals and misspellings are left alone: merging two rows that are not
+ * the same place would hide a record the reader needs to see, which is the
+ * worse failure of the two.
+ */
+export function addressKey(address: string): string {
+  return address
+    .toUpperCase()
+    .replace(/[^A-Z0-9 ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b(\d{5}) \d{4}$/, "$1");
+}
+
+/**
  * "Lampasas, TX" out of a roll address — or `null` when it cannot be found.
  *
  * ── WHY THIS RETURNS `null` INSTEAD OF GUESSING ──
@@ -96,7 +147,9 @@ export function mailCity(address: string): string | null {
     .filter(Boolean);
   if (parts.length < 3) return null;
 
-  const state = parts[parts.length - 1].replace(/\s+\d{5}(-\d{4})?$/, "").trim();
+  const state = parts[parts.length - 1]
+    .replace(/\s+\d{5}(-\d{4})?$/, "")
+    .trim();
   const city = parts[parts.length - 2];
   return state ? `${city}, ${state}` : city;
 }

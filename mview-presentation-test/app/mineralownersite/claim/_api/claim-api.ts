@@ -1,4 +1,5 @@
 import type {
+  ClaimSet,
   CountyIndex,
   FlowLease,
   OwnerLeaseSet,
@@ -544,4 +545,78 @@ export function postAddressCorrection(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...body, ...identity }),
   }).catch(() => {});
+}
+
+/* ============================================================================
+   4b · SEVERAL RECORDS AT ONCE — `/same-name` per pick, merged
+   ============================================================================ */
+
+/**
+ * Step 2 allows more than one record to be ticked, so this resolves the whole
+ * selection in one call from the flow's point of view.
+ *
+ * ── ONE REQUEST PER RECORD, IN PARALLEL ──
+ *
+ * `/same-name` is keyed on name AND address — the address is what makes it
+ * return `selected` and the statewide totals — so a set of records cannot be
+ * asked for in a single request. They go together with `Promise.all` rather
+ * than in sequence: at ~4s each, five picks in series is twenty seconds of
+ * staring at a spinner.
+ *
+ * ── EVERYTHING IS DEDUPLICATED ON THE WAY OUT ──
+ *
+ * `allLeases` is keyed on the owner NAME, so two picked records that share a
+ * name return the SAME lease set. Concatenating would double every figure on
+ * steps 4 and 5. Leases are keyed county+name (a lease number is null outside
+ * the record's own county and is not unique across counties either), and the
+ * "other address" records are keyed county+name+address.
+ *
+ * A record the reader already picked is never also listed as an "other": it is
+ * theirs by selection, not a candidate to consider.
+ */
+export async function fetchClaimSet(
+  picked: OwnerRecord[],
+): Promise<ClaimSet> {
+  if (picked.length === 0) throw new Error("Pick at least one record.");
+
+  const answers = await Promise.all(
+    picked.map((r) => fetchSameName(r.name, r.address)),
+  );
+
+  /* The endpoint's own view of each pick where it has one; the row the reader
+     ticked otherwise, so a record never silently disappears from the list. */
+  const records = answers.map((a, i) => a.selected ?? picked[i]);
+
+  const pickedKeys = new Set(
+    records.map((r) => `${r.county}|${r.name}|${r.address}`),
+  );
+  const others = new Map<string, OwnerRecord>();
+  for (const answer of answers) {
+    for (const other of answer.others) {
+      const key = `${other.county}|${other.name}|${other.address}`;
+      if (!pickedKeys.has(key)) others.set(key, other);
+    }
+  }
+
+  const leases = new Map<string, FlowLease>();
+  for (const answer of answers) {
+    for (const lease of answer.all.leases) {
+      leases.set(`${lease.county}|${lease.name}`, lease);
+    }
+  }
+
+  const unique = [...leases.values()];
+  const countyNames = [...new Set(unique.map((l) => l.county).filter(Boolean))];
+
+  return {
+    records,
+    others: [...others.values()],
+    all: {
+      leases: unique,
+      leaseCount: unique.length,
+      appraisedValue: unique.reduce((sum, l) => sum + l.value, 0),
+      countyCount: countyNames.length,
+      countyList: countyNames.join(", "),
+    },
+  };
 }

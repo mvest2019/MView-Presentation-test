@@ -1,33 +1,24 @@
 "use client";
 
-import {
-  BookmarkCheck,
-  CircleAlert,
-  Lock,
-  PauseCircle,
-  RotateCcw,
-} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import {
+  fetchClaimSet,
   fetchCounties,
-  fetchSameName,
   postClaim,
   searchOwners,
   type ClaimResult,
 } from "../_api/claim-api";
-import { byValueDesc, leaseKey } from "../_lib/claim-format";
+import { byValueDesc, leaseKey, recordKey } from "../_lib/claim-format";
 import type {
+  ClaimSet,
   CountyIndex,
   OwnerRecord,
-  SameNameResult,
 } from "../_lib/claim-types";
 import { ClaimShell } from "./claim-shell";
+import { emptyQuery, type ClaimQuery } from "./search-fields";
 import { DoneNextCard } from "./done-next-card";
 import { DoneValueCard } from "./done-value-card";
-import { ProgressRail } from "./progress-rail";
-import { RailNote } from "./rail-note";
-import { UnlockCard } from "./unlock-card";
 import { StepDone } from "./steps/step-done";
 import { StepFind } from "./steps/step-find";
 import { StepLeases } from "./steps/step-leases";
@@ -99,12 +90,24 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
     loading: true,
     error: null,
   });
+  /*
+   * THE QUERY LIVES HERE because BOTH step 1 and step 2 render the fields —
+   * step 2 so a thousand-row result can be narrowed without losing it. Local
+   * state in either step would be discarded the moment that step unmounted, and
+   * the reader would find the filter bar blank on the results they just ran.
+   */
+  const [query, setQuery] = useState<ClaimQuery>(emptyQuery);
   const [results, setResults] = useState<Async<OwnerRecord[]>>(idle());
-  const [picked, setPicked] = useState<OwnerRecord | null>(null);
-  const [sameName, setSameName] = useState<Async<SameNameResult>>(idle());
+  /*
+   * SEVERAL RECORDS, not one. An owner is often on the roll more than once, and
+   * `/owners/claim` takes up to 25 names in a single transaction — so step 2
+   * ticks a set and the whole set moves forward together.
+   */
+  const [picked, setPicked] = useState<OwnerRecord[]>([]);
+  const [claimSet, setClaimSet] = useState<Async<ClaimSet>>(idle());
   const [claim, setClaim] = useState<Async<ClaimResult>>(idle());
 
-  /** Step 3's ticks, keyed by record address — seeded from the pick. */
+  /** Step 3's ticks, keyed by county|name|address — seeded from the pick. */
   const [confirmed, setConfirmed] = useState<string[]>([]);
   const [attested, setAttested] = useState(false);
 
@@ -137,39 +140,50 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
     loadCounties();
   }
 
-  async function runSearch(query: {
-    name: string;
-    lease: string;
-    county: string;
-  }) {
+  async function runSearch() {
     setResults({ data: null, loading: true, error: null });
     setStep(2);
     try {
-      const found = await searchOwners({ ...query, limit: 50 });
+      /* NO `limit` — paging on this endpoint is opt-in, and omitting it returns
+         the whole result set. Sending one silently truncated the answer: step
+         2's heading counts the cards on screen, so a capped response made it
+         report fewer candidate records than the search actually matched. */
+      const found = await searchOwners(query);
       setResults({ data: found.owners, loading: false, error: null });
     } catch (error) {
       setResults({ data: null, loading: false, error: message(error) });
     }
   }
 
+  function toggleRecord(record: OwnerRecord, checked: boolean) {
+    setPicked((current) =>
+      checked
+        ? [...current, record]
+        : current.filter((r) => recordKey(r) !== recordKey(record)),
+    );
+  }
+
   /**
-   * Picking a record fetches everything the rest of the flow needs, then moves
-   * on. The step advances BEFORE the call resolves so step 3 opens on its own
-   * spinner rather than leaving the reader on step 2 wondering whether their
-   * tap registered.
+   * Confirming the selection resolves every picked record against
+   * `/same-name` — in parallel, merged and deduplicated — and that one answer
+   * feeds steps 3, 4 and 5.
+   *
+   * The step advances BEFORE the calls resolve so step 3 opens on its own
+   * spinner, rather than leaving the reader on a list of a thousand rows
+   * wondering whether the button registered.
    */
-  async function pickRecord(record: OwnerRecord) {
-    setPicked(record);
-    setConfirmed([record.address]);
-    setSameName({ data: null, loading: true, error: null });
+  async function resolveSelection() {
+    if (picked.length === 0) return;
+    setClaimSet({ data: null, loading: true, error: null });
     setStep(3);
     try {
-      const found = await fetchSameName(record.name, record.address);
-      setSameName({ data: found, loading: false, error: null });
-      const first = byValueDesc(found.all.leases)[0];
+      const set = await fetchClaimSet(picked);
+      setClaimSet({ data: set, loading: false, error: null });
+      setConfirmed(set.records.map(recordKey));
+      const first = byValueDesc(set.all.leases)[0];
       setVisibleKey(first ? leaseKey(first) : null);
     } catch (error) {
-      setSameName({ data: null, loading: false, error: message(error) });
+      setClaimSet({ data: null, loading: false, error: message(error) });
     }
   }
 
@@ -183,9 +197,9 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
   async function confirmClaim() {
     if (memberId === null) return;
     const records = [
-      ...(sameName.data?.selected ? [sameName.data.selected] : []),
-      ...(sameName.data?.others ?? []),
-    ].filter((r) => confirmed.includes(r.address));
+      ...(claimSet.data?.records ?? []),
+      ...(claimSet.data?.others ?? []),
+    ].filter((r) => confirmed.includes(recordKey(r)));
     const names = [...new Set(records.map((r) => r.name))];
     if (names.length === 0) return;
 
@@ -199,65 +213,34 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
     }
   }
 
-  const leases = sameName.data?.all.leases ?? [];
+  const leases = claimSet.data?.all.leases ?? [];
 
-  const rail = finished ? (
-    <>
+  /*
+   * THE COMPLETION SCREEN'S TWO EXTRA BLOCKS, FULL WIDTH BELOW THE RECEIPT.
+   *
+   * They used to sit in the side rail, which is gone. They did not go with it
+   * because they are not asides: "what to do next" is the only thing on a
+   * finished screen asking the reader to act, and the claimed value is the
+   * figure the claim just produced. The per-step reassurance notes and the
+   * vertical progress list DID go — the first were asides, and the second
+   * repeated the stepper at the top of the card.
+   */
+  const doneExtras = (
+    <div className="grid gap-3 @[720px]:grid-cols-2">
       <DoneNextCard />
-      {/* No claim-reference card: `POST /owners/claim` returns `claimedAt` and
-          per-owner counts, and no reference id. The date it filed is on the
-          receipt itself, which is the thing support can actually look up. */}
-      <RailNote icon={BookmarkCheck} title="Your claim is on your account.">
-        Every lease it took is listed on your dashboard, and Settings can
-        unclaim it at any time.
-      </RailNote>
-      <DoneValueCard total={sameName.data?.all.appraisedValue ?? 0} />
-    </>
-  ) : (
-    <>
-      <ProgressRail current={step} />
-
-      {step === 1 && (
-        <RailNote icon={Lock} title="You can't break anything.">
-          Nothing is committed until you confirm on step 3. You can stop at any
-          point, and a claim can be undone from Settings at any time.
-        </RailNote>
-      )}
-
-      {step === 2 && <UnlockCard />}
-
-      {step === 3 && (
-        <RailNote icon={RotateCcw} tone="amber" title="Claimed by mistake?">
-          You can unclaim anytime in Settings. It never changes legal ownership,
-          and it never costs anything.
-        </RailNote>
-      )}
-
-      {step === 4 && (
-        <RailNote icon={CircleAlert} title="Nothing to fill in on this screen.">
-          It&rsquo;s a read-through — check the list looks like yours, then
-          continue.
-        </RailNote>
-      )}
-
-      {step === 5 && (
-        <RailNote icon={PauseCircle} tone="amber" title="Inactive isn't lost.">
-          A lease with no appraised value on the roll is still yours, still
-          counted, and still joined to your record.
-        </RailNote>
-      )}
-    </>
+      <DoneValueCard total={claimSet.data?.all.appraisedValue ?? 0} />
+    </div>
   );
 
   if (finished) {
     return (
-      <ClaimShell current={step} done rail={rail}>
+      <ClaimShell current={step} done below={doneExtras}>
         <StepDone
-          record={sameName.data?.selected ?? picked}
-          pending={(sameName.data?.others ?? []).filter((r) =>
-            confirmed.includes(r.address),
+          records={claimSet.data?.records ?? picked}
+          pending={(claimSet.data?.others ?? []).filter((r) =>
+            confirmed.includes(recordKey(r)),
           )}
-          all={sameName.data?.all ?? null}
+          all={claimSet.data?.all ?? null}
           visibleKey={visibleKey}
           result={claim.data}
         />
@@ -266,9 +249,11 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
   }
 
   return (
-    <ClaimShell current={step} rail={rail}>
+    <ClaimShell current={step}>
       {step === 1 && (
         <StepFind
+          query={query}
+          onQueryChange={setQuery}
           counties={counties}
           onRetryCounties={retryCounties}
           onSearch={runSearch}
@@ -278,23 +263,27 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
       {step === 2 && (
         <StepPick
           results={results}
-          pickedAddress={picked?.address ?? null}
-          onChoose={pickRecord}
-          onSearchAgain={() => setStep(1)}
+          query={query}
+          onQueryChange={setQuery}
+          counties={counties}
+          selected={picked.map(recordKey)}
+          onToggle={toggleRecord}
+          onContinue={resolveSelection}
+          resolving={claimSet.loading}
+          onSearch={runSearch}
         />
       )}
 
       {step === 3 && (
         <StepProve
-          sameName={sameName}
-          picked={picked}
+          claimSet={claimSet}
           memberId={memberId}
           confirmed={confirmed}
-          onToggleRecord={(address, checked) =>
+          onToggleRecord={(key, checked) =>
             setConfirmed((current) =>
               checked
-                ? [...new Set([...current, address])]
-                : current.filter((held) => held !== address),
+                ? [...new Set([...current, key])]
+                : current.filter((held) => held !== key),
             )
           }
           attested={attested}
@@ -308,9 +297,9 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
 
       {step === 4 && (
         <StepLeases
-          record={sameName.data?.selected ?? picked}
+          records={claimSet.data?.records ?? picked}
           leases={leases}
-          all={sameName.data?.all ?? null}
+          all={claimSet.data?.all ?? null}
           onContinue={() => setStep(5)}
         />
       )}
