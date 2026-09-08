@@ -30,7 +30,7 @@
  * not merged behind one flag.
  */
 
-import { alertCounts } from "../alerts/_lib/alert-counts";
+import { alertCounts } from "../(portal)/alerts/_lib/alert-counts";
 import type { FunnelState } from "./portal-state";
 
 /** The icons the portal uses, by the reference's own `mvi-*` sprite ids. */

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { alertCounts } from "../alerts/_lib/alert-counts";
+import { alertCounts } from "../(portal)/alerts/_lib/alert-counts";
 import { PortalDemoStateMenu } from "./portal-demo-state-menu";
 import { PortalIcon } from "./portal-icon";
 import { PortalProfileMenu } from "./portal-profile-menu";
