@@ -31,9 +31,9 @@
 import {
   actionRecommended,
   alertCounts,
-} from "../alerts/_lib/alert-counts";
-import { alertFilters } from "../alerts/_lib/alert-filters";
-import { alertRecords } from "../alerts/_lib/alert-records";
+} from "../(portal)/alerts/_lib/alert-counts";
+import { alertFilters } from "../(portal)/alerts/_lib/alert-filters";
+import { alertRecords } from "../(portal)/alerts/_lib/alert-records";
 
 /* ============================================================================
    THE SIGNED-IN OWNER  (the claimed / trial / lapsed / paid states)
