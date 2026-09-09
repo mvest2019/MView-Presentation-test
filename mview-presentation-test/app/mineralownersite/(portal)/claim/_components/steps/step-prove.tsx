@@ -1,6 +1,13 @@
 "use client";
 
-import { ShieldCheck } from "lucide-react";
+import {
+  Check,
+  Circle,
+  CircleCheck,
+  House,
+  MapPin,
+  ShieldCheck,
+} from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -22,6 +29,13 @@ interface AddressRow {
   matches: boolean;
   /** Not `selected`, but the same doorstep as one that is. */
   sameDoorstep: boolean;
+  /**
+   * For a `sameDoorstep` row, the county whose roll holds the twin. It is the
+   * OTHER roll by definition — this row's own county is printed beside it — so
+   * the chip reads "Live Oak roll" on a Bee County row and names the second
+   * source that agrees, which is the whole reason the row is not a stranger.
+   */
+  twinCounty: string | null;
 }
 
 /**
@@ -116,22 +130,32 @@ export function StepProve({
   ]) {
     groups.set(record.name, [
       ...(groups.get(record.name) ?? []),
-      { record, matches, sameDoorstep: false },
+      { record, matches, sameDoorstep: false, twinCounty: null },
     ]);
   }
 
-  /* A row shares a doorstep with a VERIFIED one under the same name. */
+  /* A row shares a doorstep with a VERIFIED one under the same name — and the
+     verified row's COUNTY is kept, not just the fact of the match, because that
+     is what the "…roll" chip names. */
   for (const [name, rows] of groups) {
-    const verified = new Set(
-      rows.filter((r) => r.matches).map((r) => addressKey(r.record.address)),
+    const verified = new Map(
+      rows
+        .filter((r) => r.matches)
+        .map((r) => [addressKey(r.record.address), r.record.county] as const),
     );
     groups.set(
       name,
-      rows.map((row) => ({
-        ...row,
-        sameDoorstep:
-          !row.matches && verified.has(addressKey(row.record.address)),
-      })),
+      rows.map((row) => {
+        const twin = row.matches
+          ? undefined
+          : verified.get(addressKey(row.record.address));
+
+        return {
+          ...row,
+          sameDoorstep: twin !== undefined,
+          twinCounty: twin ?? null,
+        };
+      }),
     );
   }
 
@@ -178,102 +202,196 @@ export function StepProve({
         <FlowError message={claimSet.error} onRetry={onBack} />
       )}
 
+      {/*
+        ONE CARD PER OWNER NAME, WITH ITS OWN HEADED BAND.
+
+        The groups used to be bands inside a single bordered list, separated by
+        a hairline. That read as one long table with subheadings — the reader
+        could not tell where one name's addresses ended and the next began, and
+        the verified state of a name had nowhere to live.
+
+        Each name is now its own card: a header that says what the reader is
+        being asked to do and whether they have done it, and the addresses as
+        separate tiles beneath. `divide-y` is gone with it, because a tile that
+        can be ticked should be bounded on all four sides — that is what makes
+        the tick look like it belongs to something.
+      */}
       {groups.size > 0 && (
-        <div className="divide-y divide-mv-line overflow-hidden rounded-mv border border-mv-line">
+        <div className="grid gap-[14px]">
           {[...groups.entries()].map(([name, rows]) => {
             const picked = rows.filter((r) =>
               confirmed.includes(recordKey(r.record)),
             ).length;
 
             return (
-              <section key={name}>
-                <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 bg-mv-portal-wash/60 px-4 py-[10px]">
-                  <h3 className="text-[12.5px] font-extrabold tracking-[.04em] text-mv-ink uppercase">
-                    {name}
-                  </h3>
-                  <p className="text-[11.5px] text-mv-muted">
-                    {picked} of {rows.length} address
-                    {rows.length === 1 ? "" : "es"} selected
-                  </p>
+              <section
+                key={name}
+                className="overflow-hidden rounded-mv border border-mv-line bg-mv-card"
+              >
+                <header className="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-mv-line bg-linear-to-r from-mv-portal-wash/55 to-mv-card px-4 py-[14px]">
+                  <span className="flex h-[36px] w-[36px] flex-none items-center justify-center rounded-full bg-mv-deep text-mv-on-deep">
+                    <House aria-hidden="true" className="h-[17px] w-[17px]" />
+                  </span>
+
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-[15px] leading-[1.3] font-bold text-mv-ink">
+                      {name}
+                    </h3>
+                    {/* THE COUNT IS THE SUBTITLE WHEN THERE IS ONE TO GIVE.
+                        A single address has nothing to choose between, so it
+                        gets the instruction; several get the tally, which is
+                        the question this step is actually asking. */}
+                    <p className="mt-[3px] text-[12px] leading-[1.45] text-mv-muted">
+                      {rows.length === 1
+                        ? "Verify the address associated with the owner record."
+                        : `Verify which of these ${rows.length} addresses are yours — ${picked} selected.`}
+                    </p>
+                  </div>
+
+                  {/*
+                    THE PILL REPORTS, IT DOES NOT DECORATE.
+
+                    "Address verified" is only true once the reader has ticked
+                    something under this name — printing it on an untouched
+                    group would tell them a step is done that they have not
+                    taken, and the button below would still be grey with no
+                    visible reason why.
+                  */}
+                  {picked > 0 ? (
+                    <span className="flex flex-none items-center gap-[6px] rounded-full border border-mv-mint-line bg-mv-mint px-[11px] py-[5px] text-[11.5px] font-semibold text-mv-green-ink">
+                      <CircleCheck
+                        aria-hidden="true"
+                        className="h-[13px] w-[13px]"
+                      />
+                      Address verified
+                    </span>
+                  ) : (
+                    <span className="flex flex-none items-center gap-[6px] rounded-full border border-mv-line bg-mv-card px-[11px] py-[5px] text-[11.5px] font-semibold text-mv-muted">
+                      <Circle
+                        aria-hidden="true"
+                        className="h-[13px] w-[13px]"
+                      />
+                      Not verified yet
+                    </span>
+                  )}
                 </header>
 
-                <div className="divide-y divide-mv-line border-t border-mv-line">
-                  {rows.map(({ record, matches, sameDoorstep }) => {
+                <div className="grid gap-[10px] p-[12px]">
+                  {rows.map(({ record, matches, sameDoorstep, twinCounty }) => {
                     const key = recordKey(record);
                     const ticked = confirmed.includes(key);
 
+                    /* WHAT THIS ROW IS, IN THE ENDPOINT'S TERMS. `null` for a
+                       plain other-address row, which then leads with its own
+                       county instead. */
+                    const lead = matches
+                      ? "Address you searched"
+                      : sameDoorstep
+                        ? "Same address"
+                        : null;
+
                     return (
-                      <div key={key}>
-                        {/*
-                          A TICKED ROW LOOKS TICKED FROM ACROSS THE PAGE.
-                          Selection used to live entirely in a 15px checkbox, so
-                          a group of four rows gave no sense of what was taken
-                          without reading each box. The mint wash and the green
-                          edge say it at a glance; the checkbox stays as the
-                          control and the accessible state.
-                        */}
+                      <div
+                        key={key}
+                        className={`rounded-mv border transition-colors ${
+                          ticked
+                            ? "border-mv-mint-line bg-mv-mint/60"
+                            : "border-mv-line bg-mv-card"
+                        }`}
+                      >
                         <label
-                          className={`flex cursor-pointer items-center gap-3 border-l-[3px] px-4 py-[12px] transition-colors ${
-                            ticked
-                              ? "border-mv-green-deep bg-mv-mint/30"
-                              : "border-transparent hover:bg-mv-hover"
+                          className={`flex cursor-pointer items-center gap-3 rounded-mv px-[14px] py-[12px] ${
+                            ticked ? "" : "hover:bg-mv-hover"
                           }`}
                         >
+                          {/*
+                            THE BOX IS DRAWN, NOT ACCENTED.
+
+                            `accent-color` gives the platform's own checkbox,
+                            which is a different shape and a different green on
+                            every OS — and at 15px it was the one part of a
+                            ticked row you could not see from a foot away. The
+                            input stays as the control and the accessible
+                            state; the square beside it is what the reader
+                            actually looks at.
+                          */}
                           <input
                             type="checkbox"
                             checked={ticked}
                             onChange={(e) =>
                               onToggleRecord(key, e.target.checked)
                             }
-                            className="h-[15px] w-[15px] flex-none cursor-pointer accent-mv-green-deep outline-none focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.28)]"
+                            className="peer sr-only"
                           />
+                          <span
+                            aria-hidden="true"
+                            className={`flex h-[20px] w-[20px] flex-none items-center justify-center rounded-[6px] border transition-colors peer-focus-visible:ring-[3px] peer-focus-visible:ring-[rgba(84,191,150,.28)] ${
+                              ticked
+                                ? "border-mv-green-deep bg-mv-green-deep"
+                                : "border-mv-line-strong bg-mv-card"
+                            }`}
+                          >
+                            {ticked && (
+                              <Check
+                                strokeWidth={3}
+                                className="h-[13px] w-[13px] text-white"
+                              />
+                            )}
+                          </span>
 
-                          {/* THE ADDRESS AND WHAT IT IS — the column that
-                              answers "is this me". */}
+                          {/* THE ADDRESS AND WHERE IT CAME FROM — the column
+                              that answers "is this me". */}
                           <div className="min-w-0 flex-1">
-                            <p className="text-[13px] leading-[1.4] font-bold text-mv-ink">
+                            <p className="text-[13px] leading-[1.4] font-bold text-mv-green-deep">
                               {record.address || "No address on file"}
                             </p>
 
-                            {/* WHERE THE ROW CAME FROM, NOT A PROMISE ABOUT IT.
-                                These said "verifies instantly" and "we post a
-                                code before it joins" — neither is something
-                                this system does. They now name which part of
-                                the `/same-name` answer the row is. */}
-                            <p className="mt-[6px] flex flex-wrap items-center gap-2">
-                              {matches ? (
-                                <Badge tone="mint" size="xs">
-                                  Address you searched
-                                </Badge>
-                              ) : sameDoorstep ? (
-                                <Badge tone="mint" size="xs">
-                                  Same address · {record.county} roll
-                                </Badge>
-                              ) : (
-                                <Badge tone="slate" size="xs">
-                                  Other address on file
-                                </Badge>
-                              )}
-                              <span className="text-[11.5px] text-mv-muted">
-                                {record.county} County · RRC + {record.county}{" "}
-                                CAD
+                            {/* THE SOURCE LINE NAMES ROLLS, IT DOES NOT
+                                PROMISE A MECHANISM. These once read "verifies
+                                instantly" and "we post a code before it
+                                joins"; neither is something this system does.
+                                Every part of the line now comes off the record
+                                itself. */}
+                            <p className="mt-[6px] flex flex-wrap items-center gap-x-[7px] gap-y-1 text-[11.5px] text-mv-muted">
+                              <span className="flex items-center gap-[4px]">
+                                <MapPin
+                                  aria-hidden="true"
+                                  className="h-[12px] w-[12px] flex-none"
+                                />
+                                {lead ?? `${record.county} County`}
                               </span>
+
+                              {twinCounty && (
+                                <>
+                                  <span aria-hidden="true">·</span>
+                                  <Badge tone="slate" size="xs">
+                                    {twinCounty} roll
+                                  </Badge>
+                                </>
+                              )}
+
+                              {lead && (
+                                <>
+                                  <span aria-hidden="true">·</span>
+                                  <span>{record.county} County</span>
+                                </>
+                              )}
+
+                              <span aria-hidden="true">·</span>
+                              <span>RRC + {record.county} CAD</span>
                             </p>
                           </div>
 
-                          {/* THE NUMBERS, RIGHT-ALIGNED IN THEIR OWN COLUMN.
-                              They were the tail of a wrapping meta line, so the
-                              value started at a different x on every row and
-                              the group could not be read down. Ranged right on
-                              a fixed column, four rows compare at a glance —
-                              which is the actual question a list of addresses
-                              under one name is asking. */}
+                          {/* THE NUMBERS, RIGHT-ALIGNED IN THEIR OWN COLUMN,
+                              so four rows under one name compare down the page
+                              instead of starting at a different x each time.
+
+                              Masked on step 2, shown from here on: that list
+                              is every name matching a search, and printing a
+                              figure against a stranger's record is the one
+                              thing this flow promised not to do. Picking the
+                              record is the confirmation it waited for. */}
                           <div className="flex-none text-right">
-                            {/* Masked on step 2, shown from here on: that list
-                                is every name matching a search, and printing a
-                                figure against a stranger's record is the one
-                                thing this flow promised not to do. Picking the
-                                record is the confirmation it waited for. */}
                             <p className="text-[13px] font-bold text-mv-ink tabular-nums">
                               {money(record.appraisedValue)}
                             </p>
@@ -286,27 +404,19 @@ export function StepProve({
                           </div>
 
                           {/* THE TRIGGER IS IN THE ROW, ON ONE LINE WITH
-                              EVERYTHING ELSE. It used to sit under the row,
-                              which cost each record a third line and left a
-                              band of empty space above it — a list of four
-                              addresses ran to nearly four hundred pixels for
-                              eight lines of text. */}
+                              everything else — under the row it cost each
+                              record a third line and a band of empty space
+                              above it. */}
                           <AddressEditButton
                             reported={reported.includes(key)}
                             onOpen={() => setEditingKey(key)}
                           />
                         </label>
 
-                        {/* The panel opens BELOW, where it has the full width
-                            the field needs. */}
+                        {/* The panel opens BELOW, inside the same tile, where
+                            it has the full width the field needs. */}
                         {editingKey === key && (
-                          <div
-                            className={`border-l-[3px] px-4 pb-[13px] ${
-                              ticked
-                                ? "border-mv-green-deep bg-mv-mint/30"
-                                : "border-transparent"
-                            }`}
-                          >
+                          <div className="px-[14px] pb-[13px]">
                             <AddressEditPanel
                               owner={record.name}
                               county={record.county}
@@ -371,7 +481,9 @@ export function StepProve({
           className={canConfirm ? undefined : "cursor-not-allowed opacity-50"}
           title={blocked ?? undefined}
         >
-          {`Continue with ${confirmed.length} address${confirmed.length === 1 ? "" : "es"} →`}
+          {/* The count lives in each group's "N of M addresses selected", so
+              the button is free to say where it goes instead of repeating it. */}
+          Review leases →
         </PortalButton>
       </div>
     </div>
