@@ -1698,3 +1698,70 @@ body .mv-ref-app.view-simple:not(.no-claim) section[data-route="app-briefing"] #
   display: revert;
   vertical-align: revert;
 }
+
+/* ==========================================================================
+   DELIBERATE FIXES TO REFERENCE DEFECTS
+
+   Everything above this point is either the reference's own CSS or the block
+   that undoes Tailwind's preflight. What follows is neither: it CHANGES what
+   the reference renders, because the reference renders it wrong. Each one was
+   reproduced in the reference build running side by side before it was written,
+   so "the zip does this too" is a measurement here, not an assumption.
+
+   Kept in its own section, at the end, so the extracted region stays a
+   verbatim copy and every deviation is one place to read.
+   ========================================================================== */
+
+/* THE KIND-CARD SPARKLINE SAT ON ITS OWN CAPTION.
+   `.spark{margin-top:6px}` (full-site sheet) is the generic rule, and the 6px
+   is right where a spark follows a KPI value. Inside an activity kind card the
+   spacing is already owned by `.mk-spark`, which sets `margin:3px 0 1px` and a
+   fixed `height:22px` — so the inner svg's own 6px pushed it out of that 22px
+   box and onto the "none on your leases · … · newest …" line below it.
+   `.mk-spark svg` sets width, height and display but never margin, so nothing
+   overrode it. Measured in the reference at 1600px: the svg's top sat 6px below
+   its container's, overflowing it by the same 6.
+   Only the card sparks are touched; `.spark` keeps its 6px everywhere else. */
+body .mv-ref-app .mk-spark svg { margin-top: 0; }
+
+/* THE CHART SPILLED ONTO THE PAGE INSTEAD OF BEING CUT AT ITS EDGE.
+   `.lc-svg` sets `overflow:visible`, which overrides the SVG default of
+   `hidden` on a root `<svg>`. That is why the mispositioned bar above did not
+   simply vanish at the plot boundary — it drew ~85px to the LEFT of the card,
+   over the page background and the sidebar gutter. The coordinates are fixed
+   in `LineChart.tsx`, so nothing is out of range today; this is the second
+   half of the same fault, so that a future out-of-range mark is a clipped
+   chart rather than ink on the page.
+
+   Checked before changing it: every child of every `.lc-svg` was measured
+   against its own viewBox across the six date ranges with the crosshair
+   active, and on the Dashboard and the Weekly Report — nothing draws outside
+   0..600 x 0..150, so this clips none of the marks the charts actually make.
+   The focus ring is an `outline` on the element and is unaffected. */
+body .mv-ref-app .lc-svg { overflow: hidden; }
+
+/* THE READING TEXT WAS SMALLER THAN THE REST OF THE APP.
+   Measured, not guessed: on this app's own portal pages the dominant prose
+   size is 15px with a 12.5-13.5px secondary band and 10-11px reserved for
+   micro-labels. The reference build brought its own, tighter scale — card
+   descriptions and chart footnotes at 10.5px, timeline body at 11.5px — so the
+   two ported screens read noticeably smaller than My Leases or Settings
+   sitting one click away.
+
+   Only READING TEXT moves, into that secondary band. The uppercase kickers,
+   chips, stat keys and table headers stay where they are: the app puts its own
+   micro-labels at 10-11px too, so they already match, and they are labels
+   rather than sentences. Card titles and figures are untouched.
+
+   Overrides rather than edits, so the extracted region above stays a verbatim
+   copy; `body .mv-ref-app X` outranks the `.mv-ref-app X` it replaces. */
+body .mv-ref-app .mk-mean   { font-size: 13px; }
+body .mv-ref-app .mk-sub    { font-size: 12px; }
+body .mv-ref-app .mk-act    { font-size: 12px; }
+body .mv-ref-app .ac-note   { font-size: 12.5px; }
+body .mv-ref-app .ac-sum    { font-size: 12.5px; }
+body .mv-ref-app .lc-foot   { font-size: 12.5px; }
+body .mv-ref-app .rp-note   { font-size: 12.5px; }
+body .mv-ref-app .tl-body-t { font-size: 13px; }
+body .mv-ref-app .al-note   { font-size: 12.5px; }
+body .mv-ref-app .aw-cap    { font-size: 13px; }

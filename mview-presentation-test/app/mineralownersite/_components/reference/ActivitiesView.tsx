@@ -41,7 +41,7 @@ import type { EventKind, TimelineEvent, RingKey } from '../../_lib/reference/pay
 import { n0, nShort, plural, pctS, MCF, BBL } from '../../_lib/reference/fmt';
 import { Band, Spark, ProductPair } from './bits';
 import { Charts } from './LineChart';
-import { COLOURS, type ChartSpec } from '../../_lib/reference/chart';
+import { type ChartSpec } from '../../_lib/reference/chart';
 import type { ViewProps } from './Dashboard';
 
 const KIND_ICON: Record<EventKind, string> = {
@@ -79,8 +79,8 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
 
   /* THE PAGE OPENS ON HER OWN LEASES.
      It used to open on 'all', and for this owner that is 890 rows of which
-     133 are hers — so the first screen was her neighbours' permits and her own
-     production was pages down. The neighbourhood still matters and is one
+     133 are hers — so the first screen was her neighbors' permits and her own
+     production was pages down. The neighborhood still matters and is one
      click away, but a page about your minerals should lead with your
      minerals. */
   const [kind, setKind] = useState<EventKind | 'all' | 'mine'>('mine');
@@ -221,8 +221,8 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
       return `${m[Number(c.slice(4, 6)) - 1] ?? c.slice(4, 6)} ${c.slice(0, 4)}`;
     };
     const series = [
-      { name: 'Permits', colour: COLOURS.oil, points: perm },
-      { name: 'Completions', colour: COLOURS.gas, points: comp },
+      { name: 'Permits', colour: FILINGS_COLOUR.permit, points: perm },
+      { name: 'Completions', colour: FILINGS_COLOUR.completion, points: comp },
     ];
     return [{
       key: 'act:filings',
@@ -262,7 +262,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
   /* the neighbourhood curve — what the leases inside the ring produce */
   /* THE NEIGHBOURHOOD CURVE, ONE PANEL PER PRODUCT.
      This was a single BOE line. BOE is a blend nobody is paid in, and it
-     hides which product the neighbourhood actually makes — so it goes through
+     hides which product the neighborhood actually makes — so it goes through
      the same builder the owner's own months use, which gives gas its MCF
      panel and oil its BBL panel and drops a product that never produced
      rather than drawing it as a flat zero. */
@@ -294,7 +294,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                 <span className="cr-kicker">Your one next step</span>
                 <strong className="cr-head">Claim your mineral owner record</strong>
                 <span className="cr-sub">
-                  The neighbouring filings below are the real public record. What is missing is
+                  The neighboring filings below are the real public record. What is missing is
                   the half that is <strong>yours</strong> — your own production, your operator
                   changes, your rings. Claiming is <strong>free</strong> and never changes who
                   owns your minerals.
@@ -309,7 +309,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
             </div>
             <p className="cr-key">
               <span><span className="cr-sw cr-sw-green" aria-hidden="true" /><b>Green</b> — live, watched daily</span>
-              <span><span className="cr-sw cr-sw-amber" aria-hidden="true" /><b>Amber</b> — a labelled example, not yours yet</span>
+              <span><span className="cr-sw cr-sw-amber" aria-hidden="true" /><b>Amber</b> — a labeled example, not yours yet</span>
               <span className="cr-key-end">Claiming turns the amber into your green.</span>
             </p>
           </div>
@@ -337,7 +337,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
           </p>
           <div>
             <button className="btn btn-primary btn-lg" type="button" onClick={() => open('permits')}>
-              Why neighbours matter
+              Why neighbors matter
             </button>
           </div>
           <p className="u-note">
@@ -371,7 +371,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
             <div className="smp-badge">
               <span className="smp-tag">Sample preview</span>
               <p>
-                <strong>The neighbouring filings here are real.</strong> Permits, completions,
+                <strong>The neighboring filings here are real.</strong> Permits, completions,
                 well-status changes and the measured distances are public record and shown as
                 filed. The rows marked as yours — production, operator changes and your rings —
                 belong to a sample owner until you claim.{' '}
@@ -523,7 +523,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
           <Pulse
             label={`Within ${ring.radius_mi} ${ring.radius_mi === 1 ? 'mile' : 'miles'}`}
             value={n0(ring.neighbour_leases) ?? '0'}
-            sub={`neighbouring ${plural(ring.neighbour_leases, 'lease')} · `
+            sub={`neighboring ${plural(ring.neighbour_leases, 'lease')} · `
               + `${ring.producing} producing`}
           />
         </div>
@@ -664,7 +664,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
 
             <div className="rp-kpis">
               <RingKpi
-                label="Neighbouring leases" value={n0(ring.neighbour_leases) ?? '0'}
+                label="Neighboring leases" value={n0(ring.neighbour_leases) ?? '0'}
                 sub={ring.in_production_record
                   ? `${ring.in_production_record} of them are in the production record`
                   : 'none of them are in the production record'}
@@ -695,7 +695,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                 value={ring.last_oil ? `${nShort(ring.last_oil)} ${BBL}` : 'none filed'}
                 sub={ring.last_oil
                   ? 'whole-lease volume next door — never your share'
-                  : 'these neighbours file gas only'}
+                  : 'these neighbors file gas only'}
               />
               <RingKpi
                 label="Operators in the ring" value={n0(ring.measured.operators) ?? '0'}
@@ -714,11 +714,11 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                       subject={`the leases within ${ring.radius_mi} `
                         + `${ring.radius_mi === 1 ? 'mile' : 'miles'}`}
                       opts={{
-                        gasName: `Gas the neighbours within ${ring.radius_mi} `
+                        gasName: `Gas the neighbors within ${ring.radius_mi} `
                           + `${ring.radius_mi === 1 ? 'mile' : 'miles'} filed`,
-                        oilName: `Oil the neighbours within ${ring.radius_mi} `
+                        oilName: `Oil the neighbors within ${ring.radius_mi} `
                           + `${ring.radius_mi === 1 ? 'mile' : 'miles'} filed`,
-                        sub: `${ring.in_production_record} neighbouring `
+                        sub: `${ring.in_production_record} neighboring `
                           + `${plural(ring.in_production_record, 'lease')} · whole-lease volume, `
                           + 'never your share',
                         keyPrefix: 'ring' + ring.key,
@@ -736,7 +736,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                   <table className="rp-tbl">
                     <thead>
                       <tr>
-                        <th>Neighbouring lease</th>
+                        <th>Neighboring lease</th>
                         <th className="hide-s">Operator</th>
                         <th>Status</th>
                         <th className="num">Last filed month</th>
@@ -751,7 +751,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                           <td>
                             <strong>{nb.lease_name ?? nb.lease_id}</strong>
                             {/* the lease id is shown because four of this owner's
-                                neighbours genuinely share one name */}
+                                neighbors genuinely share one name */}
                             <span className="rp-id">{nb.lease_id}</span>
                           </td>
                           <td className="hide-s">{nb.operator_name ?? '—'}</td>
@@ -775,7 +775,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                   {ring.neighbours.length > (tier === 'pro' ? 20 : 8)
                     ? (
                       <p className="tiny muted" style={{ margin: '8px 0 0' }}>
-                        {ring.neighbours.length - (tier === 'pro' ? 20 : 8)} more neighbouring{' '}
+                        {ring.neighbours.length - (tier === 'pro' ? 20 : 8)} more neighboring{' '}
                         {plural(ring.neighbours.length - (tier === 'pro' ? 20 : 8), 'lease')} in
                         this ring, ordered by the month they last filed.
                       </p>
@@ -786,11 +786,11 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
               : (
                 <p className="al-note">
                   {rg.rings[ring.key].neighbour_leases
-                    ? 'The radius survey names neighbouring leases in this ring, but none of them '
+                    ? 'The radius survey names neighboring leases in this ring, but none of them '
                       + 'is in the production record — so there is nothing to say about what they '
                       + 'produce. A lease with no production record is usually one that never '
                       + 'produced.'
-                    : 'No neighbouring lease sits in this ring. Widen the distance and the ones '
+                    : 'No neighboring lease sits in this ring. Widen the distance and the ones '
                       + 'further out appear.'}
                 </p>
               )}
@@ -801,7 +801,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
               {rg.capped
                 ? (
                   <p className="rp-note">
-                    The rings name more neighbouring leases than are looked up in the production
+                    The rings name more neighboring leases than are looked up in the production
                     record: the first {rg.looked_up} are read, in a fixed order, so the figures do
                     not change between builds.
                   </p>
@@ -816,9 +816,9 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
           The timeline
           <span className="ab-hint">
             {kind === 'all'
-              ? 'your leases and your neighbours together, newest first'
+              ? 'your leases and your neighbors together, newest first'
               : kind === 'mine'
-                ? 'your leases only — press “everything” for the neighbourhood'
+                ? 'your leases only — press “everything” for the neighborhood'
                 : `filtered to ${tl.kinds.find((k) => k.kind === kind)?.label.toLowerCase()}`}
           </span>
         </div>
@@ -837,7 +837,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
             aria-pressed={kind === 'all'}
             title="Your rows plus everything filed around you in the same counties"
           >
-            Everything, including your neighbours ·{' '}
+            Everything, including your neighbors ·{' '}
             <span className="alf-n">{n0(scoped.length)}</span>
           </button>
           {tl.kinds.filter((k) => scopedCount(k.kind)).map((k) => (
@@ -926,8 +926,8 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
         <Band tier={tier} from="detailed">
           <p className="tiny muted" style={{ marginTop: 14 }}>
             A permit in the dated feed carries no lease number and no coordinates, so it is matched
-            to your area by county, is never labelled as being on a lease you hold, and can never
-            answer a mile button — only the rows from the well map carry a location. The neighbour
+            to your area by county, is never labeled as being on a lease you hold, and can never
+            answer a mile button — only the rows from the well map carry a location. The neighbor
             rows come from the standing radius survey, so they are dated by that survey rather
             than by an event, and a date range therefore never removes them.
           </p>
@@ -936,6 +936,33 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
     </section>
   );
 }
+
+/**
+ * THE FILINGS CHART'S OWN TWO COLOURS — one hue, two depths.
+ *
+ * WHY IT DOES NOT USE `SPARK_COLOUR`. It used to, and before that it used
+ * `COLOURS.oil`/`COLOURS.gas` — the OIL and GAS COMMODITY colours, which is
+ * what the reference shipped and which meant the permit bar was drawn in the
+ * colour "oil" everywhere else in this app. Matching the kind palette instead
+ * (gold #d9a441 against green) was correct by consistency and wrong by eye:
+ * two saturated, similarly-dark hues fighting for the same axis.
+ *
+ * These two are a SEQUENTIAL pair, not a categorical one, which is the right
+ * choice for what this chart actually compares — the same measure (a monthly
+ * count of filings) at two stages of the same process. Depth carries the
+ * reading: the pale bar is intent to drill, the deep one is a well finished.
+ * That is the caption's own argument — "when the green bars grow against the
+ * [other], wells are being finished rather than planned" — and it survives
+ * greyscale and every common form of colour blindness, which gold-on-green
+ * did not.
+ *
+ * THE COST, ACCEPTED: the permit bar no longer matches the gold permit card
+ * and timeline chip. The kind palette below is unchanged and still governs
+ * every other permit mark on the page; only this one chart departs from it.
+ * The legend swatches in `.lc-head` follow automatically — they render from
+ * `series[].colour`.
+ */
+const FILINGS_COLOUR = { permit: '#9fd8c0', completion: '#1f7f60' };
 
 const SPARK_COLOUR: Record<EventKind, string> = {
   permit: '#d9a441',

@@ -133,7 +133,7 @@ export default function AlertsView({ p, tier, funnel, sample, open, go }: ViewPr
             </div>
             <p className="cr-key">
               <span><span className="cr-sw cr-sw-green" aria-hidden="true" /><b>Green</b> — live, watched daily</span>
-              <span><span className="cr-sw cr-sw-amber" aria-hidden="true" /><b>Amber</b> — a labelled example, not yours yet</span>
+              <span><span className="cr-sw cr-sw-amber" aria-hidden="true" /><b>Amber</b> — a labeled example, not yours yet</span>
               <span className="cr-key-end">Claiming turns the amber into your green.</span>
             </p>
           </div>
@@ -208,7 +208,7 @@ export default function AlertsView({ p, tier, funnel, sample, open, go }: ViewPr
               <p>
                 <strong>This is what your alert inbox looks like once you claim your record.</strong>{' '}
                 Every finding below is measured from the real public record — the dates, the
-                counties and the neighbouring filings are all live — but the names and amounts
+                counties and the neighboring filings are all live — but the names and amounts
                 belong to a sample owner rather than to you. Each one opens the evidence it was
                 built from. <strong>Free, no-obligation account.</strong>
               </p>
@@ -230,7 +230,7 @@ export default function AlertsView({ p, tier, funnel, sample, open, go }: ViewPr
                       ? <>, and <strong>{al.action_count === 1 ? 'one asks' : `${al.action_count} ask`} something of you</strong>: <strong>{action?.title}</strong></>
                       : <>, and none of them asks anything of you</>}
                     . The {al.count === 1 ? 'rest' : `other ${al.count - al.action_count}`} are good
-                    news, neighbours at work, or context.
+                    news, neighbors at work, or context.
                   </>
                 )}
             </p>
@@ -279,7 +279,7 @@ export default function AlertsView({ p, tier, funnel, sample, open, go }: ViewPr
                 </span>
                 <span className="aw-cap">
                   Yours, plus the <strong className="num">{n0(lg.adjacent_leases)}</strong>{' '}
-                  neighbouring {plural(lg.adjacent_leases, 'lease')} and{' '}
+                  neighboring {plural(lg.adjacent_leases, 'lease')} and{' '}
                   <strong className="num">{n0(lg.standing_permits)}</strong> standing{' '}
                   {plural(lg.standing_permits, 'permit')} within about a mile of them.
                 </span>
@@ -298,7 +298,7 @@ export default function AlertsView({ p, tier, funnel, sample, open, go }: ViewPr
                   {plural(lg.alerts, 'Alert')} raised {al.window_label}.{' '}
                   {lg.action_count
                     ? <><strong>{lg.action_count}</strong> {lg.action_count === 1 ? 'asks' : 'ask'} something of you; the other{' '}
-                      {lg.rest_count} {lg.rest_count === 1 ? 'is' : 'are'} good news, neighbours at
+                      {lg.rest_count} {lg.rest_count === 1 ? 'is' : 'are'} good news, neighbors at
                       work, or context.</>
                     : <>None asks anything of you.</>}
                 </span>
