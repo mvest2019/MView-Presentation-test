@@ -563,3 +563,50 @@
   opacity: 0.6;
   cursor: default;
 }
+
+/* ----------------------------------------------------------------------------
+   5 · SPACE BETWEEN THE CHROME ROW AND THE FIRST BLOCK ON THE PAGE
+
+   THE DEFECT. `.app-body` carries NO top padding — `dashboard-reference.css`
+   sets `padding: 0 26px 26px` deliberately, because the Dashboard's greeting
+   supplies its own (`.mv-greet { margin: 16px 0 10px }`). Nothing else does. So
+   every route whose first block is a plain one sat 6px under the black chrome
+   row, reading as touching it. Measured at 1440px:
+
+     Dashboard, claimed, Essentials/Detailed/Pro   .mv-greet      16px →  22px
+     Any route at Ultra                            .ultra-hero    72px →  78px
+     Activities · Alerts · Weekly · Production     .between        0   →   6px  ✗
+     All five routes while UNCLAIMED               .mv-claimrail   0   →   6px  ✗
+
+   The claim rail is the worst of them: a bordered green panel butting straight
+   into the black row with no seam, and the page heading pressed against its
+   bottom edge.
+
+   THE FIX IS 16px ON THE FIRST BLOCK, NOT PADDING ON `.app-body`. Padding there
+   would stack on top of the two elements that already declare their own and
+   push the Dashboard to 38px and Ultra to 94px — changing two screens that were
+   never wrong to fix four that were. 16px is the greeting's own figure, so every
+   route now opens with the same 22px the Dashboard has always had, and the
+   Dashboard's own measurement is provably unchanged because the value it
+   already had is the value being set.
+
+   `:not(.mv-greet):not(.ultra-hero)` RATHER THAN NAMING THE FLUSH ELEMENTS.
+   Exempting the two that carry their own spacing covers whatever a later route
+   puts first — a rule listing `.mv-claimrail, .between` would leave the next one
+   flush again. The two `:not()`s also carry the specificity that beats
+   `.mv-ref-app .mv-claimrail`'s own `margin: 0 0 14px`.
+
+   Ultra is exempt for a reason worth stating: its 72px is the calm view's air
+   around one headline, not an accident, and shrinking it to 16px would be the
+   one density change this file has no business making. Ultra never coincides
+   with the claim rail anyway — `Portal` forces the density to `pro` while
+   nothing is claimed.
+
+   Scoped to `section[data-route] >`, so it reaches only a route's own first
+   block. The Map and the coming-soon pages render through `children` with no
+   such section: the Map keeps its `padding: 0` (`map-shell.css` owns that) and
+   the soon card keeps its 26px.
+   ---------------------------------------------------------------------------- */
+.mv-ref-app .app-body > section[data-route] > :first-child:not(.mv-greet):not(.ultra-hero) {
+  margin-top: 16px;
+}
