@@ -1,81 +1,35 @@
 "use client";
 
-import { LoaderCircle, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
 
 import { Badge } from "../../../_components/ui/badge";
 import { PortalButton } from "../../../_components/ui/button";
-import { postAddressCorrection } from "../../_api/claim-api";
-import { addressKey, recordKey } from "../../_lib/claim-format";
+import { addressKey, money, recordKey } from "../../_lib/claim-format";
 import type { ClaimSet, OwnerRecord } from "../../_lib/claim-types";
 import type { Async } from "../claim-wizard";
 import { FlowError, FlowLoading } from "../flow-state";
 import { GuideNote } from "../guide-note";
 import { StepIntro } from "../step-intro";
+import { AddressEdit } from "./address-edit";
 import { ClaimCheckbox } from "./claim-checkbox";
 
-/**
- * ONE ADDRESS under an owner name — which may be several county records that
- * all name the same doorstep. See `addressKey`.
- */
+/** One record the endpoint returned, and how it should be badged. */
 interface AddressRow {
-  /** The record the tick is keyed on: the verifying one where there is one. */
   record: OwnerRecord;
+  /** The endpoint put this at the address that was searched — `selected`. */
   matches: boolean;
-  /** Every county whose roll carries this name at this address. */
-  counties: string[];
-  /** Summed across those counties — they hold different leases. */
-  leaseCount: number;
-  /** Distinct operators across them, not a sum of per-county counts. */
-  operatorCount: number;
+  /** Not `selected`, but the same doorstep as one that is. */
+  sameDoorstep: boolean;
 }
 
 /**
- * Fold a name's county records into one row per real address.
+ * STEP 3 — address-verify. NOTHING IS WRITTEN HERE.
  *
- * THE VERIFYING RECORD WINS THE ROW. When one spelling matched the address
- * that was searched and another did not, the address IS verified — badging the
- * merged row "different address, we post a code" would be false.
- *
- * Nothing is dropped by merging: a claim is filed on the owner NAME and the
- * backend takes every lease that name holds statewide, so the folded-away
- * county's leases come along either way. The row states them so the count on
- * screen still adds up.
- */
-function foldAddresses(rows: AddressRow[]): AddressRow[] {
-  const byAddress = new Map<string, AddressRow>();
-
-  for (const row of rows) {
-    const key = addressKey(row.record.address);
-    const seen = byAddress.get(key);
-
-    if (!seen) {
-      byAddress.set(key, row);
-      continue;
-    }
-
-    const operators = new Set(
-      [...seen.record.leases, ...row.record.leases]
-        .map((l) => l.operator)
-        .filter((o): o is string => o !== null && o !== ""),
-    );
-
-    byAddress.set(key, {
-      /* The verifying spelling is the one the reader ticks and reads. */
-      record: seen.matches ? seen.record : row.record,
-      matches: seen.matches || row.matches,
-      counties: [...new Set([...seen.counties, ...row.counties])],
-      leaseCount: seen.leaseCount + row.leaseCount,
-      operatorCount: operators.size,
-    });
-  }
-
-  return [...byAddress.values()];
-}
-
-/**
- * STEP 3 — address-verify, then the claim is written.
+ * The claim used to be posted by this step's Confirm, which asked the reader to
+ * file before seeing the lease set it would take. The write now happens on step
+ * 4, under the list of leases it covers; this step only settles which owner
+ * names the claim will name.
  *
  * ── GROUPED BY OWNER NAME, ADDRESSES UNDERNEATH ──
  *
@@ -97,11 +51,12 @@ function foldAddresses(rows: AddressRow[]): AddressRow[] {
  * address verification: the first verifies instantly, the rest need a posted
  * code before they attach.
  *
- * ── THREE GATES, AND ALL OF THEM ARE REAL ──
+ * ── TWO GATES ──
  *
- * At least one address, the good-faith attestation, AND a member id — the
- * endpoint rejects an anonymous claim with a 400, so a signed-out reader is
- * told to sign in rather than being allowed to press a button that cannot work.
+ * At least one address, and the good-faith attestation. Being signed in is
+ * required to FILE, which is step 4 — this step warns about it but does not
+ * block on it, because a step that writes nothing has no business demanding an
+ * account.
  */
 export function StepProve({
   claimSet,
@@ -110,11 +65,8 @@ export function StepProve({
   onToggleRecord,
   attested,
   onAttest,
-  claiming,
-  claimError,
   onConfirm,
   onBack,
-  alreadyClaimed,
 }: {
   claimSet: Async<ClaimSet>;
   memberId: number | null;
@@ -123,62 +75,77 @@ export function StepProve({
   onToggleRecord: (key: string, checked: boolean) => void;
   attested: boolean;
   onAttest: (value: boolean) => void;
-  claiming: boolean;
-  claimError: string | null;
   onConfirm: () => void;
   onBack: () => void;
-  /** The claim is already filed and step 4 sent the reader back to review it. */
-  alreadyClaimed: boolean;
 }) {
   const records = claimSet.data?.records ?? [];
   const others = claimSet.data?.others ?? [];
-  const primary = records[0] ?? null;
-
-  /* Grouped by owner name, verified addresses first within each group, then
-     folded so one doorstep is one row however many counties spell it. */
-  const collected = new Map<string, AddressRow[]>();
-  const add = (record: OwnerRecord, matches: boolean) =>
-    collected.set(record.name, [
-      ...(collected.get(record.name) ?? []),
-      {
-        record,
-        matches,
-        counties: [record.county],
-        leaseCount: record.leaseCount,
-        operatorCount: record.operatorCount,
-      },
-    ]);
-
-  for (const record of records) add(record, true);
-  for (const record of others) add(record, false);
-
-  const groups = new Map(
-    [...collected.entries()].map(([name, rows]) => [name, foldAddresses(rows)]),
-  );
 
   /*
-   * WHY IT IS DISABLED, IN THE BUTTON'S OWN WORDS.
+   * ONE ROW PER RECORD THE ENDPOINT RETURNED — `selected` plus every entry in
+   * `records[]` — grouped under the owner name they share.
    *
-   * This used to be one boolean with one fixed tooltip — "tick an address and
-   * the good-faith statement" — which read as a lie the moment BOTH were
-   * ticked and the button stayed grey. The third gate, being signed out, was
-   * stated only in a note further up the page that a reader aiming at the
-   * button never looks at.
+   * NOTHING IS FOLDED AWAY. These rows were briefly merged when two county
+   * rolls spelled one doorstep differently, which showed one row where the API
+   * had sent two. Hiding a record the endpoint returned is the wrong trade:
+   * the reader cannot tick what they cannot see, and the row count no longer
+   * matched the answer it came from.
    *
-   * So the gates are named one at a time, in the order the reader can act on
-   * them, and the unmet one is the tooltip.
+   * `sameDoorstep` is what the merge was really for. Bee's
+   * "8800 S HARLEM AVE TRLR 1111, BRIDGEVIEW, IL 60455" and Live Oak's
+   * "…60455 1995" normalise identically, and badging the second "different
+   * address, we post a code" told the reader their own address belonged to
+   * somebody else. Both rows stay; only the badge changes.
    */
-  const blocked = alreadyClaimed
-    ? /* Nothing left to gate — the write is done. */ null
-    : confirmed.length === 0
+  const groups = new Map<string, AddressRow[]>();
+  for (const [record, matches] of [
+    ...records.map((r) => [r, true] as const),
+    ...others.map((r) => [r, false] as const),
+  ]) {
+    groups.set(record.name, [
+      ...(groups.get(record.name) ?? []),
+      { record, matches, sameDoorstep: false },
+    ]);
+  }
+
+  /* A row shares a doorstep with a VERIFIED one under the same name. */
+  for (const [name, rows] of groups) {
+    const verified = new Set(
+      rows.filter((r) => r.matches).map((r) => addressKey(r.record.address)),
+    );
+    groups.set(
+      name,
+      rows.map((row) => ({
+        ...row,
+        sameDoorstep:
+          !row.matches && verified.has(addressKey(row.record.address)),
+      })),
+    );
+  }
+
+  /*
+   * WHY IT IS DISABLED, IN THE BUTTON'S OWN WORDS — and there are two gates
+   * now, not three.
+   *
+   * The gates are named one at a time, in the order the reader can act on
+   * them, and the unmet one is both the tooltip and the line beside the
+   * button. A single fixed message read as a lie the moment one of the two was
+   * satisfied and the button stayed grey.
+   *
+   * Being signed out no longer blocks this button. This step files nothing —
+   * it settles which addresses are yours and moves on — and a step that writes
+   * nothing has no business demanding an account. The sign-in requirement
+   * belongs to step 4, which is where the claim is actually posted, so that is
+   * where it stops the reader. The note below still warns early.
+   */
+  const blocked =
+    confirmed.length === 0
       ? "Tick at least one address above."
       : !attested
         ? "Tick the good-faith statement above."
-        : memberId === null
-          ? "Sign in first — a claim has to belong to an account."
-          : null;
+        : null;
 
-  const canConfirm = blocked === null && !claiming;
+  const canConfirm = blocked === null;
 
   return (
     <div className="grid gap-[18px]">
@@ -186,7 +153,9 @@ export function StepProve({
         step={3}
         icon={ShieldCheck}
         eyebrow="Step 3 of 5 · Prove it's yours"
-        title="Address-verify the owner record before the claim is written"
+        onBack={onBack}
+        backLabel="Back to the records"
+        title="Address-verify the owner record before you file the claim"
       />
 
       {claimSet.loading && (
@@ -217,66 +186,92 @@ export function StepProve({
                 </header>
 
                 <div className="divide-y divide-mv-line border-t border-mv-line">
-                  {rows.map(
-                    ({
-                      record,
-                      matches,
-                      counties,
-                      leaseCount,
-                      operatorCount,
-                    }) => {
-                      const key = recordKey(record);
-                      return (
-                        <label
-                          key={key}
-                          className="flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors hover:bg-mv-hover"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={confirmed.includes(key)}
-                            onChange={(e) =>
-                              onToggleRecord(key, e.target.checked)
-                            }
-                            className="mt-[2px] h-[15px] w-[15px] flex-none cursor-pointer accent-mv-green-deep outline-none focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.28)]"
-                          />
+                  {rows.map(({ record, matches, sameDoorstep }) => {
+                    const key = recordKey(record);
+                    return (
+                      <label
+                        key={key}
+                        className="flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors hover:bg-mv-hover"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={confirmed.includes(key)}
+                          onChange={(e) =>
+                            onToggleRecord(key, e.target.checked)
+                          }
+                          className="mt-[2px] h-[15px] w-[15px] flex-none cursor-pointer accent-mv-green-deep outline-none focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.28)]"
+                        />
 
-                          <div className="min-w-0 flex-1">
-                            <p className="text-[13px] font-bold text-mv-ink">
-                              {record.address || "No address on file"}
-                            </p>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13px] font-bold text-mv-ink">
+                            {record.address || "No address on file"}
+                          </p>
 
-                            <p className="mt-[5px]">
-                              {matches ? (
-                                <Badge tone="mint" size="xs">
-                                  Matches your address · verifies instantly
-                                </Badge>
-                              ) : (
-                                <Badge tone="estimate" size="xs">
-                                  Different address · we post a code before it
-                                  joins
-                                </Badge>
-                              )}
-                            </p>
+                          {/* THREE BADGES, NOT TWO. The third is the reason
+                                these rows are no longer merged: a row that is
+                                the SAME doorstep as a verified one, written
+                                differently by another county's roll, is not a
+                                "different address" and must not be told it
+                                needs a posted code. */}
+                          <p className="mt-[5px]">
+                            {matches ? (
+                              <Badge tone="mint" size="xs">
+                                Matches your address · verifies instantly
+                              </Badge>
+                            ) : sameDoorstep ? (
+                              <Badge tone="mint" size="xs">
+                                Same address on the {record.county} roll ·
+                                verifies instantly
+                              </Badge>
+                            ) : (
+                              <Badge tone="estimate" size="xs">
+                                Different address · we post a code before it
+                                joins
+                              </Badge>
+                            )}
+                          </p>
 
-                            <p className="mt-[6px] flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-mv-muted">
-                              <span>
-                                {leaseCount} lease{leaseCount === 1 ? "" : "s"}
-                              </span>
-                              <span>
-                                {counties.join(" & ")}{" "}
-                                {counties.length === 1 ? "County" : "counties"}
-                                {operatorCount > 0 &&
-                                  ` · ${operatorCount} operator${operatorCount === 1 ? "" : "s"}`}
-                              </span>
-                              {/* The sources step 1 already names — one CAD per
-                                county that carries this address. */}
-                              <span>RRC + {counties.join(", ")} CAD</span>
-                            </p>
-                          </div>
-                        </label>
-                      );
-                    },
-                  )}
+                          <p className="mt-[6px] flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-mv-muted">
+                            {/* THE APPRAISED VALUE IS SHOWN HERE, AND ONLY
+                                HERE ONWARDS. Step 2 masks it — "$•,•••, shown
+                                once confirmed" — because that list is every
+                                name matching a search, and printing a figure
+                                against records belonging to strangers is the
+                                one thing this flow promised not to do. By this
+                                step the reader has picked the record, which is
+                                the confirmation that promise was waiting on. */}
+                            <span className="font-semibold text-mv-ink">
+                              {money(record.appraisedValue)}
+                            </span>
+                            <span>
+                              {record.leaseCount} lease
+                              {record.leaseCount === 1 ? "" : "s"}
+                            </span>
+                            <span>
+                              {record.county} County
+                              {record.operatorCount > 0 &&
+                                ` · ${record.operatorCount} operator${record.operatorCount === 1 ? "" : "s"}`}
+                            </span>
+                            {/* The sources step 1 already names. */}
+                            <span>RRC + {record.county} CAD</span>
+                          </p>
+
+                          {/* WRONG ADDRESS ON THE ROLL? Report it here, against
+                              the row it belongs to, rather than from one button
+                              at the foot of the step that could only ever mean
+                              the first record. */}
+                          <span className="mt-[8px] flex">
+                            <AddressEdit
+                              owner={record.name}
+                              county={record.county}
+                              address={record.address}
+                              memberId={memberId}
+                            />
+                          </span>
+                        </div>
+                      </label>
+                    );
+                  })}
                 </div>
               </section>
             );
@@ -294,13 +289,16 @@ export function StepProve({
         </ClaimCheckbox>
       )}
 
-      <GuideNote title="What confirming does">
-        Confirm claims every lease these owner names hold, statewide — not only
-        the ones in the county you searched. The records join your account in
-        one transaction. Zero public-record mutation; reversible via Settings —
-        unclaim.
+      <GuideNote title="What happens next">
+        These addresses settle WHICH owner names the claim covers. Nothing is
+        filed here — the next step shows every lease those names hold statewide,
+        and the button under that list is what commits. Zero public-record
+        mutation; reversible via Settings — unclaim.
       </GuideNote>
 
+      {/* A HEADS-UP, NOT A BARRIER. Step 4 is where signing in actually stops
+          the reader, but finding that out one screen earlier is worth the
+          line — nobody wants to pick addresses and then be sent to a login. */}
       {memberId === null && (
         <p className="rounded-mv border border-mv-sand-line bg-mv-sand-tint px-4 py-3 text-[12px] leading-[1.55] text-mv-sand">
           <b className="font-bold">A claim needs an account to belong to.</b>{" "}
@@ -310,22 +308,9 @@ export function StepProve({
           >
             Sign in
           </Link>{" "}
-          and this step will file it — nothing you have entered is lost.
+          before the last step files it — nothing you have entered is lost.
         </p>
       )}
-
-      {/* WHY THIS SCREEN LOOKS DIFFERENT ON THE WAY BACK. Without it, a reader
-          who steps back from their leases finds a confirm screen and reasonably
-          assumes nothing has been filed yet. */}
-      {alreadyClaimed && (
-        <p className="rounded-mv border border-mv-mint-line bg-mv-mint px-4 py-3 text-[12px] leading-[1.55] text-mv-green-ink">
-          <b className="font-bold">This claim is already filed.</b> You are
-          looking at what was claimed — nothing here will be sent again. Unclaim
-          any of it later from Settings.
-        </p>
-      )}
-
-      {claimError && <FlowError message={claimError} onRetry={onConfirm} />}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3 border-t border-mv-line pt-[18px]">
         <PortalButton
@@ -335,89 +320,15 @@ export function StepProve({
           className={canConfirm ? undefined : "cursor-not-allowed opacity-50"}
           title={blocked ?? undefined}
         >
-          {claiming && (
-            <LoaderCircle
-              aria-hidden="true"
-              className="h-[15px] w-[15px] animate-spin"
-            />
-          )}
-          {claiming
-            ? "Filing your claim…"
-            : alreadyClaimed
-              ? /* A claim is not filed twice, so the label stops promising to
-                   file one. It moves the reader on instead. */
-                "Back to your leases →"
-              : `Confirm ${confirmed.length} address${confirmed.length === 1 ? "" : "es"} & continue →`}
+          {`Continue with ${confirmed.length} address${confirmed.length === 1 ? "" : "es"} →`}
         </PortalButton>
 
         {/* The same reason as the tooltip, said where a touch reader can read
             it — there is no hover on a phone. */}
-        {blocked && !claiming && (
+        {blocked && (
           <p className="text-[12px] font-semibold text-mv-sand">{blocked}</p>
         )}
-
-        <AddressCorrection
-          owner={primary?.name ?? ""}
-          county={primary?.county ?? ""}
-          oldAddress={primary?.address ?? ""}
-          memberId={memberId}
-        />
-
-        <button
-          type="button"
-          onClick={onBack}
-          className="ml-auto cursor-pointer text-[12px] font-semibold text-mv-green-deep underline underline-offset-2"
-        >
-          ← Back to the records
-        </button>
       </div>
     </div>
-  );
-}
-
-/**
- * "SOMETHING LOOKS WRONG" → `POST /owners/address-correction`.
- *
- * IT ASKS FOR THE NEW ADDRESS BEFORE IT SENDS. The endpoint requires
- * `newAddress`, so a button that fired on click could only ever post an empty
- * correction. Cancel sends nothing.
- *
- * The POST is fire-and-forget by contract — it returns no state the flow acts
- * on — so the control acknowledges in place instead of waiting on a response.
- */
-function AddressCorrection({
-  owner,
-  county,
-  oldAddress,
-  memberId,
-}: {
-  owner: string;
-  county: string;
-  oldAddress: string;
-  memberId: number | null;
-}) {
-  const [sent, setSent] = useState(false);
-
-  return (
-    <PortalButton
-      variant="ghost"
-      size="sm"
-      disabled={sent || !owner}
-      title="Tell us the mailing address on this record is out of date"
-      onClick={() => {
-        const newAddress = window.prompt(
-          "What is the correct mailing address for this record?",
-          oldAddress,
-        );
-        if (!newAddress || newAddress.trim() === oldAddress.trim()) return;
-        postAddressCorrection(
-          { owner, county, oldAddress, newAddress: newAddress.trim() },
-          memberId,
-        );
-        setSent(true);
-      }}
-    >
-      {sent ? "Correction sent ✓" : "Something looks wrong"}
-    </PortalButton>
   );
 }

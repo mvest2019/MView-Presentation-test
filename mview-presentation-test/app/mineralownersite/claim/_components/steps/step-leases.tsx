@@ -1,6 +1,7 @@
 "use client";
 
-import { FileText, ListTree } from "lucide-react";
+import { FileText, ListTree, LoaderCircle } from "lucide-react";
+import Link from "next/link";
 
 import { Badge } from "../../../_components/ui/badge";
 import { PortalButton } from "../../../_components/ui/button";
@@ -13,19 +14,25 @@ import {
   TableRow,
   TableScroll,
 } from "../../../_components/ui/table";
-import { decimalInterest, money } from "../../_lib/claim-format";
-import type {
-  FlowLease,
-  OwnerLeaseSet,
-  OwnerRecord,
-} from "../../_lib/claim-types";
-import { FlowEmpty } from "../flow-state";
+import { decimalInterest } from "../../_lib/claim-format";
+import type { FlowLease, OwnerRecord } from "../../_lib/claim-types";
+import { FlowEmpty, FlowError } from "../flow-state";
 import { GuideNote } from "../guide-note";
 import { StepIntro } from "../step-intro";
 import { LeaseStatStrip } from "./lease-stat-strip";
 
 /**
- * STEP 4 — the lease set the claim actually took.
+ * STEP 4 — the lease set the claim will take, AND THE STEP THAT FILES IT.
+ *
+ * ── THE WRITE LIVES HERE, NOT ON STEP 3 ──
+ *
+ * `POST /owners/claim` used to fire on step 3's Confirm, which meant the reader
+ * committed before ever seeing what the claim covered — this screen arrived
+ * afterwards and could only be a receipt for a decision already made. Now the
+ * leases are on the table first and the button beneath them is the commit, so
+ * "see your leases" is something the reader acts on rather than reads.
+ *
+ * Going back from here is therefore free: nothing has been filed yet.
  *
  * ── IT READS `allLeases`, NOT THE PICKED RECORD ──
  *
@@ -42,29 +49,56 @@ import { LeaseStatStrip } from "./lease-stat-strip";
  * honest cell here — a zero would read as "no interest", which is a different
  * and false claim.
  *
- * ── NOTHING TO FILL IN ──
+ * ── NOTHING TO FILL IN, ONE THING TO DECIDE ──
  *
- * The only step of the five that asks for no input. It exists because the claim
- * has just been written and the owner has not yet seen what it attached: the
- * moment to check "is this my lease set" is before the visibility choice, not
- * after.
+ * No field to complete: the reader's whole job here is to read the table and
+ * agree that this lease set is theirs. That is the last moment the answer can
+ * still be changed, which is exactly why the write waits for it.
  */
 export function StepLeases({
   records,
   leases,
-  all,
+  ownerCount,
+  memberId,
+  claiming,
+  claimError,
+  alreadyClaimed,
   onContinue,
   onBack,
 }: {
   records: OwnerRecord[];
   leases: FlowLease[];
-  all: OwnerLeaseSet | null;
+  /** Owner names the claim will name — the unit `/owners/claim` takes. */
+  ownerCount: number;
+  memberId: number | null;
+  claiming: boolean;
+  claimError: string | null;
+  /** Filed already; the button moves on instead of posting a second time. */
+  alreadyClaimed: boolean;
   onContinue: () => void;
   onBack: () => void;
 }) {
-  const counties = all?.countyList || records[0]?.county || "";
+  /*
+   * THE GATES ON THE WRITE, NAMED ONE AT A TIME.
+   *
+   * Already filed is not a blocker — the button moves the reader on instead of
+   * posting a second claim the backend would answer with OWNER_ALREADY_CLAIMED.
+   */
+  const blocked = alreadyClaimed
+    ? null
+    : ownerCount === 0
+      ? "Go back and tick at least one address."
+      : memberId === null
+        ? "Sign in first — a claim has to belong to an account."
+        : null;
+
+  const canFile = blocked === null && !claiming;
+
   /* One name if they took one record, a count if they took several — the
-     heading has to describe the whole claim, not just its first row. */
+     heading has to describe the whole claim, not just its first row. The
+     county list and the "every lease statewide" paragraph that used to sit
+     under it are gone: the table below names a county on every row, so both
+     were describing what the reader is already looking at. */
   const who =
     records.length === 1 ? records[0].name : `${records.length} owner records`;
 
@@ -74,24 +108,10 @@ export function StepLeases({
         step={4}
         icon={ListTree}
         eyebrow="Step 4 of 5 · See your leases"
-        title={
-          <>
-            {who} · {leases.length} joined lease
-            {leases.length === 1 ? "" : "s"}
-            {counties && (
-              <span className="block text-[15px] font-bold text-mv-slate">
-                {all && all.countyCount > 1
-                  ? `${all.countyCount} counties · ${counties}`
-                  : counties}
-              </span>
-            )}
-          </>
-        }
-      >
-        Every lease this owner name holds, statewide — not only the county you
-        searched. Set membership is plan-independent; your plan governs
-        visibility only.
-      </StepIntro>
+        onBack={onBack}
+        backLabel="Back to the addresses"
+        title={`${who} · ${leases.length} joined lease${leases.length === 1 ? "" : "s"}`}
+      />
 
       {leases.length === 0 ? (
         <FlowEmpty
@@ -101,14 +121,15 @@ export function StepLeases({
       ) : (
         <>
           <TableScroll>
-            <Table minWidth={640}>
+            <Table minWidth={760}>
               <TableHead>
                 <TableRow>
                   <TableHeaderCell>Lease (no.)</TableHeaderCell>
                   <TableHeaderCell>Operator</TableHeaderCell>
                   <TableHeaderCell>County</TableHeaderCell>
-                  <TableHeaderCell numeric>Value</TableHeaderCell>
-                  <TableHeaderCell numeric>Decimal</TableHeaderCell>
+                  <TableHeaderCell>Play</TableHeaderCell>
+                  <TableHeaderCell numeric>Decimal interest</TableHeaderCell>
+                  <TableHeaderCell>Status</TableHeaderCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -132,21 +153,24 @@ export function StepLeases({
                     <TableCell className="text-mv-slate">
                       {lease.county}
                     </TableCell>
-                    <TableCell numeric>
-                      <span className="flex items-center justify-end gap-[6px]">
-                        <span className="font-semibold text-mv-ink">
-                          {money(lease.value)}
-                        </span>
-                        <Badge
-                          tone={lease.producing ? "mint" : "slate"}
-                          size="xs"
-                        >
-                          {lease.producing ? "Valued" : "No value"}
-                        </Badge>
-                      </span>
-                    </TableCell>
+                    {/* PLAY IS NOT SERVED. No owners endpoint carries a play,
+                        formation or basin — the record has `leases`,
+                        `leaseValues`, `leaseNumbers`, `interestValues` and
+                        `operators`, and nothing else. The column is here as
+                        asked and prints an em dash, the same as the other
+                        columns the roll cannot answer; a guessed play would be
+                        indistinguishable from a filed one. */}
+                    <TableCell className="text-mv-slate">—</TableCell>
                     <TableCell numeric className="text-mv-slate">
                       {decimalInterest(lease.decimal)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        tone={lease.producing ? "mint" : "slate"}
+                        size="xs"
+                      >
+                        {lease.producing ? "Valued" : "No value"}
+                      </Badge>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -165,21 +189,49 @@ export function StepLeases({
         rather than a guess.
       </GuideNote>
 
+      {/* SIGNING IN IS ENFORCED HERE, because this is the step that posts.
+          `/owners/claim` rejects an anonymous claim with a 400, so a signed-out
+          reader is told rather than handed a button that cannot work. */}
+      {memberId === null && !alreadyClaimed && (
+        <p className="rounded-mv border border-mv-sand-line bg-mv-sand-tint px-4 py-3 text-[12px] leading-[1.55] text-mv-sand">
+          <b className="font-bold">A claim needs an account to belong to.</b>{" "}
+          <Link
+            href="/login?next=/mineralownersite/claim"
+            className="font-semibold underline underline-offset-2"
+          >
+            Sign in
+          </Link>{" "}
+          and this step will file it — nothing you have entered is lost.
+        </p>
+      )}
+
+      {claimError && <FlowError message={claimError} onRetry={onContinue} />}
+
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-mv-line pt-[18px]">
-        <PortalButton variant="primary" onClick={onContinue}>
-          Continue → step 5, choose what you see
+        <PortalButton
+          variant="primary"
+          onClick={onContinue}
+          disabled={!canFile}
+          className={canFile ? undefined : "cursor-not-allowed opacity-50"}
+          title={blocked ?? undefined}
+        >
+          {claiming && (
+            <LoaderCircle
+              aria-hidden="true"
+              className="h-[15px] w-[15px] animate-spin"
+            />
+          )}
+          {claiming
+            ? "Filing your claim…"
+            : alreadyClaimed
+              ? "Continue → step 5"
+              : `Claim ${leases.length} lease${leases.length === 1 ? "" : "s"} → step 5`}
         </PortalButton>
 
-        {/* BACK GOES TO THE RECEIPT, NOT TO A SECOND CLAIM. Step 3 is where
-            the write happened, so returning to it is a review of what was
-            filed — it says so, and its confirm button will not post again. */}
-        <button
-          type="button"
-          onClick={onBack}
-          className="ml-auto cursor-pointer text-[12px] font-semibold text-mv-green-deep underline underline-offset-2"
-        >
-          ← Back to what you claimed
-        </button>
+        {/* The tooltip's text, where a touch reader can reach it. */}
+        {blocked && !claiming && (
+          <p className="text-[12px] font-semibold text-mv-sand">{blocked}</p>
+        )}
       </div>
     </div>
   );

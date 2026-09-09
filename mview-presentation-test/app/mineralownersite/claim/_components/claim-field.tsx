@@ -12,11 +12,18 @@ import type { ComponentProps, ReactNode } from "react";
  * both have to survive the moment someone types — a placeholder does not. They
  * are rendered lighter than the label so the field still scans as one word.
  *
- * ── `required` DRAWS THE ASTERISK AND SETS THE ATTRIBUTE ──
+ * ── NO FIELD HERE IS REQUIRED, AND NONE MAY CLAIM TO BE ──
  *
- * One prop, both jobs. A red asterisk with no `required` on the input is a
- * decoration; `required` with no asterisk is a trap the reader walks into at
- * submit time.
+ * There was a `required` prop that drew a red asterisk on Owner name and set
+ * the attribute on the input. Both are now wrong: `isSearchable` runs a search
+ * on a county, an address or a lease name with no owner name at all, and the
+ * endpoint answers them — `address=HARLEM` alone returns 19 owners. The
+ * asterisk said a name was needed and the attribute made that true, blocking
+ * searches the backend supports.
+ *
+ * The prop is gone rather than the asterisk alone: a marker without the
+ * attribute is decoration, and the attribute without the marker is a trap
+ * sprung at submit time.
  *
  * `FIELD_BASE` is copied in spirit from `_components/ui/form-controls.tsx` — the
  * portal's filter controls — but not imported from it: those are a compact
@@ -45,14 +52,12 @@ const LABEL_ROW =
 export function FieldFrame({
   label,
   qualifier,
-  required,
   htmlFor,
   children,
 }: {
   label: string;
   /** The lighter half of the label — "(optional)", "(street or city)". */
   qualifier?: string;
-  required?: boolean;
   htmlFor?: string;
   children: ReactNode;
 }) {
@@ -61,11 +66,6 @@ export function FieldFrame({
       {label}
       {qualifier && (
         <span className="font-normal text-mv-muted">({qualifier})</span>
-      )}
-      {required && (
-        <span aria-hidden="true" className="text-mv-required">
-          *
-        </span>
       )}
     </>
   );
@@ -92,22 +92,20 @@ export function FieldFrame({
 export function ClaimTextField({
   label,
   qualifier,
-  required,
   icon: Icon,
   ...props
 }: {
   label: string;
   qualifier?: string;
-  required?: boolean;
   icon: LucideIcon;
 } & ComponentProps<"input">) {
   return (
-    <FieldFrame label={label} qualifier={qualifier} required={required}>
+    <FieldFrame label={label} qualifier={qualifier}>
       <Icon
         aria-hidden="true"
         className="pointer-events-none absolute top-1/2 left-3 h-[14px] w-[14px] -translate-y-1/2 text-mv-muted"
       />
-      <input className={FIELD_BASE} required={required} {...props} />
+      <input className={FIELD_BASE} {...props} />
     </FieldFrame>
   );
 }

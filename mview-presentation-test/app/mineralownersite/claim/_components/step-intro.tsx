@@ -1,4 +1,4 @@
-import type { LucideIcon } from "lucide-react";
+import { ArrowLeft, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { TOTAL_STEPS } from "../_lib/claim-steps";
@@ -26,6 +26,8 @@ export function StepIntro({
   eyebrow,
   title,
   lead,
+  onBack,
+  backLabel,
   children,
 }: {
   step: number;
@@ -33,10 +35,32 @@ export function StepIntro({
   eyebrow?: string;
   title: ReactNode;
   lead?: ReactNode;
+  /**
+   * A way back, at the TOP of the card.
+   *
+   * Steps 3 and 4 already end with one, and on step 4 that is under a table
+   * sixteen rows long — a control you can only reach by scrolling past the
+   * thing you decided against. This one sits above the heading, where the eye
+   * already is on arrival, and the footer keeps its own for anyone who reads to
+   * the bottom before changing their mind.
+   */
+  onBack?: () => void;
+  backLabel?: string;
   children?: ReactNode;
 }) {
   return (
     <header>
+      {onBack && (
+        <button
+          type="button"
+          onClick={onBack}
+          className="mb-[10px] flex cursor-pointer items-center gap-[5px] text-[12px] font-semibold text-mv-green-deep hover:underline hover:underline-offset-2"
+        >
+          <ArrowLeft aria-hidden="true" className="h-[13px] w-[13px]" />
+          {backLabel ?? "Back"}
+        </button>
+      )}
+
       {/* THE GLYPH SITS BESIDE THE TITLE, not above it. Stacked, the tile spent
           a whole line of vertical space saying what the heading underneath it
           already said, and pushed the step's first real sentence further down
@@ -59,7 +83,14 @@ export function StepIntro({
             {eyebrow ?? `Step ${step} of ${TOTAL_STEPS}`}
           </p>
 
-          <h2 className="mt-[3px] text-[clamp(19px,2.6vw,23px)] font-extrabold leading-[1.2] tracking-[-.015em] text-mv-ink">
+          {/* WEIGHT 700 ON SLATE, NOT 800 ON INK.
+              `mv-ink` is #0d0e17 — near-black — and extrabold at 19–23px on top
+              of it made every step open with a heading heavier than anything
+              else on the page, including the portal's own chrome. Nothing was
+              competing with it for attention, so the emphasis was spent on a
+              contest that was not happening. Bold on `mv-slate` (#1e293b) is
+              still unmistakably the heading and stops it reading as shouted. */}
+          <h2 className="mt-[3px] text-[clamp(19px,2.6vw,23px)] font-bold leading-[1.25] tracking-[-.01em] text-mv-slate">
             {title}
           </h2>
         </div>
@@ -68,8 +99,14 @@ export function StepIntro({
       {/* The lead and the body stay at the FULL width of the column, flush with
           the tile's left edge — indenting them to line up under the heading
           would cost the paragraph 48px on a phone to no benefit. */}
+      {/* The instruction is a step DOWN from the heading, not level with it. At
+          bold-on-ink it was the same colour and nearly the same weight as the
+          h2 above, so the two read as one heavy block rather than a title and
+          the sentence that follows it. */}
       {lead && (
-        <p className="mt-[14px] text-[14px] font-bold text-mv-ink">{lead}</p>
+        <p className="mt-[14px] text-[14px] font-semibold text-mv-slate">
+          {lead}
+        </p>
       )}
 
       {/* FULL COLUMN WIDTH — the 68ch reading measure that used to cap this is

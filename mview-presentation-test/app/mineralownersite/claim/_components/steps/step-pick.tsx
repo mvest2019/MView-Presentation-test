@@ -268,7 +268,7 @@ export function StepPick({
                 index={index}
                 record={record}
                 selected={selected.includes(recordKey(record))}
-                onToggle={(checked) => onToggle(record, checked)}
+                onToggle={onToggle}
               />
             ))}
           </div>

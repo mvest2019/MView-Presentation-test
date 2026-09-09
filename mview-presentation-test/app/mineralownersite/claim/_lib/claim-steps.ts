@@ -2,16 +2,26 @@
  * THE FIVE STEPS, DECLARED ONCE.
  *
  * Every piece of chrome around the flow reads from this list — the numbered
- * stepper across the top, the "Step N of 5 — …" caption bar beneath it, and the
- * YOUR PROGRESS rail on the right. Those three said the same thing three times
- * in the design, which is three places for them to disagree about what step 3
- * is called.
+ * stepper across the top and the "Step N of 5 — …" caption bar beneath it. They
+ * said the same thing twice over in the design, which is two places for them to
+ * disagree about what step 3 is called.
  *
  * `aside` is the line on the RIGHT of the caption bar, and it is the step's
- * promise to the reader: steps 1 and 2 say nothing is committed, step 3 says
- * plainly that it commits, steps 4 and 5 say the claim is already made. It
- * changes per step because the reassurance that is TRUE changes per step, and a
- * standing "nothing is committed" would become a lie at step 3.
+ * promise to the reader: steps 1 to 3 say nothing is committed, step 4 says
+ * plainly that it commits, step 5 says it is done. It changes per step because
+ * the reassurance that is TRUE changes per step, and a standing "nothing is
+ * committed" would become a lie at step 4.
+ *
+ * ── STEP 5 IS A CONFIRMATION, NOT A CHOICE ──
+ *
+ * It used to be the visibility allocation — a grid asking which single lease
+ * the plan should show in full, with a full receipt behind it. Both are gone.
+ * Step 4 files the claim and step 5 says it landed, with one way on: the
+ * dashboard, where the claimed record actually is.
+ *
+ * `TOTAL_STEPS` is this array's length, so the stepper, the caption bar and
+ * every step intro follow the list rather than a number written down in four
+ * places.
  */
 
 /** Which lucide glyph the rail draws. Mapped to components in `progress-rail`. */
@@ -37,7 +47,7 @@ export const claimSteps: ClaimStep[] = [
   {
     n: 1,
     label: "Find your record",
-    railSub: "Search by name and county",
+    railSub: "Locate the record you own",
     caption: "Search the public record",
     aside: "Nothing here changes who owns anything.",
     icon: "search",
@@ -45,7 +55,7 @@ export const claimSteps: ClaimStep[] = [
   {
     n: 2,
     label: "Pick your record",
-    railSub: "Select the correct match",
+    railSub: "Select from the available records",
     caption: "Pick the record that's yours",
     aside: "Values stay hidden until you're confirmed",
     asideLock: true,
@@ -54,25 +64,25 @@ export const claimSteps: ClaimStep[] = [
   {
     n: 3,
     label: "Prove it's yours",
-    railSub: "Match the mailing address on file",
-    caption: "Confirm the address, then the claim is made",
-    aside: "This is the step that commits",
+    railSub: "Verify your ownership",
+    caption: "Confirm the address on the record",
+    aside: "Still nothing filed — the next step commits",
     icon: "shield",
   },
   {
     n: 4,
     label: "See your leases",
-    railSub: "Everything tied to the record",
-    caption: "The leases that came with your record",
-    aside: "Claimed · one step left",
+    railSub: "Review your lease details",
+    caption: "The leases this claim will take",
+    aside: "This is the step that commits",
     icon: "leases",
   },
   {
     n: 5,
-    label: "Choose what you see",
-    railSub: "Your plan sets how many show in full",
-    caption: "The last one",
-    aside: "All your leases stay on your record either way",
+    label: "You're claimed",
+    railSub: "Your record is now verified",
+    caption: "Claim filed",
+    aside: "All your leases stay on your record",
     icon: "eye",
   },
 ];

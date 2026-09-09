@@ -18,26 +18,15 @@ import type { FlowLease } from "../../_lib/claim-types";
 export function LeaseStatStrip({ leases }: { leases: FlowLease[] }) {
   const totals = leaseTotals(leases);
 
+  /* TWO LINES PER TILE, NOT THREE. Each carried a third caption — "joined",
+     "on the roll", "still owned", "on record" — that only restated its label in
+     other words, and at 10.5px under a 15px figure it read as an artefact
+     rather than a sentence. The figure and its name are the whole tile. */
   const tiles = [
-    { icon: FileText, value: totals.count, label: "Total leases", sub: "joined" },
-    {
-      icon: Droplet,
-      value: totals.producing,
-      label: "With value",
-      sub: "on the roll",
-    },
-    {
-      icon: PauseCircle,
-      value: totals.inactive,
-      label: "No value",
-      sub: "still owned",
-    },
-    {
-      icon: Building2,
-      value: totals.operators,
-      label: "Operators",
-      sub: totals.operators === 0 ? "not served here" : "on record",
-    },
+    { icon: FileText, value: totals.count, label: "Total leases" },
+    { icon: Droplet, value: totals.producing, label: "With value" },
+    { icon: PauseCircle, value: totals.inactive, label: "No value" },
+    { icon: Building2, value: totals.operators, label: "Operators" },
   ];
 
   return (
@@ -57,9 +46,6 @@ export function LeaseStatStrip({ leases }: { leases: FlowLease[] }) {
             </p>
             <p className="mt-[2px] text-[11px] font-semibold text-mv-slate">
               {tile.label}
-            </p>
-            <p className="text-[10.5px] leading-[1.3] text-mv-muted">
-              {tile.sub}
             </p>
           </div>
         ))}

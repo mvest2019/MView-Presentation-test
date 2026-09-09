@@ -18,22 +18,22 @@ export function money(amount: number): string {
   });
 }
 
-/** Plan prices DO carry cents, unlike lease values. */
-export function planPrice(amount: number): string {
-  return amount.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-  });
-}
-
 /**
- * `0.00376000` — decimal interest is shown to eight places, as filed.
- * `null` where the endpoint did not serve one; the table prints an em dash
- * rather than a fabricated zero, which would read as "no interest".
+ * DECIMAL INTEREST EXACTLY AS SERVED — `0.78125`, not `0.78125000`.
+ *
+ * This used to be `toFixed(8)`, on the reasoning that division orders quote
+ * interest to eight places. That is true of the documents and false of this
+ * response: the endpoint sends `0.78125`, `0.012419`, `0.195413`, and padding
+ * them wrote three zeros the roll never filed. On a figure whose whole job is
+ * to be precise, invented digits are the one thing that must not be there —
+ * and a reader comparing this column against a check stub cannot tell a served
+ * zero from a printed one.
+ *
+ * `null` where the endpoint served nothing; the table prints an em dash rather
+ * than a fabricated zero, which would read as "no interest".
  */
 export function decimalInterest(value: number | null): string {
-  return value === null ? "—" : value.toFixed(8);
+  return value === null ? "—" : String(value);
 }
 
 /** The summary figures steps 4 and 5 print, derived from the rows themselves. */
