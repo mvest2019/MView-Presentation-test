@@ -59,9 +59,6 @@ export function StepFind({
   onRetryCounties: () => void;
   onSearch: () => void;
 }) {
-  const index = counties.data;
-  const showCounts = index !== null && !index.pending;
-
   /*
    * THE BUTTON IS DEAD UNTIL A FILTER MEANS SOMETHING.
    *
@@ -89,22 +86,7 @@ export function StepFind({
         icon={Search}
         title="Find your record"
         lead="Search the public record to find the owner record you want to claim."
-      >
-        Claim is at owner-record level — joined leases inherit it. Name matching
-        is fuzzy across RRC and county owner strings, so <em>Smith Gas D</em>{" "}
-        and <em>Smith Raymond E</em> both return.{" "}
-        {showCounts ? (
-          <>
-            Searching{" "}
-            <b className="font-semibold text-mv-slate">
-              {index.totalOwners.toLocaleString("en-US")}
-            </b>{" "}
-            owners across {index.counties.length} Texas counties.
-          </>
-        ) : (
-          "County is optional."
-        )}
-      </StepIntro>
+      />
 
       {counties.error && (
         <FlowError message={counties.error} onRetry={onRetryCounties} />

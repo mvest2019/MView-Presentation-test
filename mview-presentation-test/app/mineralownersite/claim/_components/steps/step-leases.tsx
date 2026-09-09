@@ -120,7 +120,25 @@ export function StepLeases({
         />
       ) : (
         <>
-          <TableScroll>
+          {/*
+            THE TABLE SCROLLS ITSELF INSTEAD OF THE PAGE.
+
+            A claim of six owner records is 20 leases and a claim of a dozen is
+            far more, so the table grew without limit and pushed the thing it
+            exists to justify — the button that files the claim — off the bottom
+            of a screen nobody had reason to keep scrolling. Capped, the whole
+            step fits: table, totals, and the commit.
+
+            THE HEADER STICKS, which is the half that makes the cap usable. Six
+            columns of bare numbers twelve rows down mean nothing without their
+            names. `bg-mv-card` on the cells is not decoration — `thead` has no
+            background of its own, so the body rows would otherwise scroll
+            straight through the header text.
+
+            `overscroll-contain` stops a flick inside the table carrying on into
+            the page once it bottoms out.
+          */}
+          <TableScroll className="max-h-[440px] overflow-y-auto overscroll-contain [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-10 [&_thead_th]:bg-mv-card">
             <Table minWidth={760}>
               <TableHead>
                 <TableRow>
@@ -227,11 +245,6 @@ export function StepLeases({
               ? "Continue → step 5"
               : `Claim ${leases.length} lease${leases.length === 1 ? "" : "s"} → step 5`}
         </PortalButton>
-
-        {/* The tooltip's text, where a touch reader can reach it. */}
-        {blocked && !claiming && (
-          <p className="text-[12px] font-semibold text-mv-sand">{blocked}</p>
-        )}
       </div>
     </div>
   );

@@ -2,17 +2,14 @@
 
 import {
   Check,
-  ChevronRight,
   CircleAlert,
   FileText,
   LayoutGrid,
-  Mail,
   MapPin,
   MapPinOff,
   RotateCcw,
   UserPlus,
 } from "lucide-react";
-import { useState } from "react";
 
 import type { ClaimAddressOutcome, ClaimResult } from "../../_api/claim-api";
 import { PortalButtonLink } from "../../../_components/ui/button";
@@ -73,6 +70,8 @@ function SuccessBurst() {
 interface OwnerRow {
   name: string;
   filed: boolean;
+  /** "Claimed" / "Already claimed" / "Not claimed" — from the error code. */
+  statusLabel: string;
   /** The owner's addresses as the endpoint reported them. */
   addresses: ClaimAddressOutcome[];
   /** "1 lease" / "13 already yours" — the count that is actually true here. */
@@ -94,12 +93,11 @@ interface OwnerRow {
  * every name was already claimed comes back 201 with zero leases, and
  * "Successfully claimed 0 leases" is the worst sentence this screen could show.
  *
- * ── ONE ROW PER OWNER, EXPANDABLE TO ITS ADDRESSES ──
+ * ── ONE ROW PER OWNER, EVERYTHING VISIBLE ──
  *
- * The row carries the verdict at a glance — name, address, status, lease count.
- * The per-address detail the endpoint returns sits behind the chevron rather
- * than in the row, because an owner claimed at one address is the common case
- * and does not need a second line to say so.
+ * The row carries the whole verdict: name, every address the endpoint reported,
+ * the status and the lease count. There is no disclosure — the chevron that
+ * used to hide the per-address detail is gone, so nothing may be behind it.
  */
 export function StepSuccess({
   result,
@@ -122,12 +120,25 @@ export function StepSuccess({
     ...filed.map((owner) => ({
       name: owner.ownername,
       filed: true,
+      statusLabel: "Claimed",
       addresses: owner.addresses ?? [],
       countNote: `${owner.claimed_leases_count} lease${owner.claimed_leases_count === 1 ? "" : "s"}`,
     })),
     ...refused.map((owner) => ({
       name: owner.ownername,
       filed: false,
+      /*
+       * THE PILL READS THE ERROR CODE, IT DOES NOT ASSUME.
+       *
+       * It used to print "Already claimed" for every refusal. Only one code
+       * means that: a name refused as OWNER_ADDRESS_NOT_FOUND has NOT been
+       * claimed by anybody, and telling its owner it had would send them
+       * looking for a claim that does not exist.
+       */
+      statusLabel:
+        owner.error_code === "OWNER_ALREADY_CLAIMED"
+          ? "Already claimed"
+          : "Not claimed",
       addresses: owner.addresses ?? [],
       countNote:
         owner.failed_lease_count > 0
@@ -139,8 +150,25 @@ export function StepSuccess({
 
   return (
     <div className="grid gap-[18px]">
-      {/* CARD ONE — the outcome and the ways on. */}
-      <section className="grid justify-items-center gap-[18px] rounded-mv border border-mv-line bg-mv-card px-6 py-[34px] text-center">
+      {/*
+        CARD ONE — the outcome and the ways on.
+
+        THE WASH IS THE OUTCOME, SO IT FOLLOWS THE OUTCOME. A success gets a
+        mint gradient; a claim where every name was already taken gets a sand
+        one. On plain white this card looked the same whether the claim had
+        landed or not, and the tick was carrying the whole message on its own.
+
+        It fades to `mv-card` rather than sitting flat, so the buttons at the
+        bottom keep a neutral ground to stand on — a filled green button on a
+        green field loses its edge.
+      */}
+      <section
+        className={`grid justify-items-center gap-[18px] rounded-mv border px-6 py-[34px] text-center ${
+          nothingFiled
+            ? "border-mv-sand-line bg-gradient-to-b from-mv-sand-tint to-mv-card"
+            : "border-mv-mint-line bg-gradient-to-b from-mv-mint/60 to-mv-card"
+        }`}
+      >
         {/* THE BURST IS PART OF THE MESSAGE, not decoration for its own sake.
             A filing that went through is the one moment in this flow worth
             marking, and the marks are what separate "the request completed"
@@ -242,14 +270,6 @@ export function StepSuccess({
               <OwnerRowItem key={row.name} row={row} />
             ))}
           </ul>
-
-          {result?.claimedAt && (
-            <p className="flex items-center justify-center gap-[7px] border-t border-mv-line px-4 py-[11px] text-[11.5px] text-mv-muted">
-              <Mail aria-hidden="true" className="h-[13px] w-[13px]" />
-              Filed {new Date(result.claimedAt).toLocaleString("en-US")} — a
-              confirmation email is on its way.
-            </p>
-          )}
         </section>
       )}
     </div>
@@ -257,107 +277,83 @@ export function StepSuccess({
 }
 
 /**
- * One owner in the receipt.
+ * ONE OWNER IN THE RECEIPT — a plain row, not a disclosure.
  *
- * THE CHEVRON IS REAL. It opens the per-address detail the endpoint returns —
- * each address with its own status and lease counts — which is the answer to
- * the question step 3 asked and is worth having, but not worth a second line
- * on every row when most owners have one address.
+ * It was a button with a chevron that opened the per-address detail. The
+ * chevron is gone, so nothing may hide behind it: every address the endpoint
+ * reported is printed in the row, and a refusal prints the backend's own
+ * sentence underneath. A row that silently dropped an address would be worse
+ * than the disclosure it replaced.
  */
 function OwnerRowItem({ row }: { row: OwnerRow }) {
-  const [open, setOpen] = useState(false);
-  const first = row.addresses[0];
-  const extra = Math.max(0, row.addresses.length - 1);
-
   return (
-    <li>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="flex w-full cursor-pointer items-center gap-3 px-4 py-[13px] text-left transition-colors hover:bg-mv-hover"
+    <li className="flex items-center gap-3 px-4 py-[13px]">
+      <span
+        className={`flex h-[34px] w-[34px] flex-none items-center justify-center rounded-full ${
+          row.filed
+            ? "bg-mv-green-deep text-white"
+            : "bg-mv-portal-wash text-mv-muted"
+        }`}
       >
-        <span
-          className={`flex h-[34px] w-[34px] flex-none items-center justify-center rounded-full ${
-            row.filed
-              ? "bg-mv-green-deep text-white"
-              : "bg-mv-portal-wash text-mv-muted"
-          }`}
-        >
-          {row.filed ? (
-            <MapPin aria-hidden="true" className="h-[16px] w-[16px]" />
-          ) : (
-            <MapPinOff aria-hidden="true" className="h-[16px] w-[16px]" />
-          )}
-        </span>
+        {row.filed ? (
+          <MapPin aria-hidden="true" className="h-[16px] w-[16px]" />
+        ) : (
+          <MapPinOff aria-hidden="true" className="h-[16px] w-[16px]" />
+        )}
+      </span>
 
-        <span className="min-w-0 flex-1">
-          <span className="block text-[13px] font-bold tracking-[.01em] text-mv-ink uppercase">
-            {row.name}
-          </span>
-          <span className="mt-[3px] flex items-center gap-[5px] text-[12px] text-mv-muted">
-            <MapPin
-              aria-hidden="true"
-              className="h-[12px] w-[12px] flex-none"
-            />
-            <span className="min-w-0 truncate">
-              {first?.address ?? "No address sent"}
-              {extra > 0 && ` +${extra} more`}
-            </span>
-          </span>
-        </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-bold tracking-[.01em] text-mv-ink uppercase">
+          {row.name}
+        </p>
 
-        <StatusPill filed={row.filed} />
-
-        <span className="flex-none text-[11.5px] text-mv-muted tabular-nums">
-          {row.countNote}
-        </span>
-
-        <ChevronRight
-          aria-hidden="true"
-          className={`h-[16px] w-[16px] flex-none text-mv-muted transition-transform ${open ? "rotate-90" : ""}`}
-        />
-      </button>
-
-      {open && (
-        <div className="border-t border-mv-line bg-mv-portal-wash/40 px-4 py-[10px]">
-          {row.error && (
-            <p className="mb-[8px] text-[11.5px] leading-[1.5] text-mv-sand">
-              {row.error}
+        {row.addresses.length === 0 ? (
+          <p className="mt-[3px] text-[12px] text-mv-muted">
+            No address sent for this name
+          </p>
+        ) : (
+          row.addresses.map((entry) => (
+            <p
+              key={entry.address}
+              className="mt-[3px] flex items-center gap-[5px] text-[12px] text-mv-muted"
+            >
+              <MapPin
+                aria-hidden="true"
+                className="h-[12px] w-[12px] flex-none"
+              />
+              <span className="min-w-0 truncate">{entry.address}</span>
+              {/* Per-address verdicts only when there is more than one to tell
+                  apart — on a single address the pill already said it. */}
+              {row.addresses.length > 1 && (
+                <span className="flex-none text-[11px]">
+                  · {statusWord(entry.status)} · {leaseNote(entry)}
+                </span>
+              )}
             </p>
-          )}
-          {row.addresses.length === 0 ? (
-            <p className="text-[11.5px] text-mv-muted">
-              No addresses were sent for this name.
-            </p>
-          ) : (
-            <ul className="grid gap-[6px]">
-              {row.addresses.map((entry) => (
-                <li
-                  key={entry.address}
-                  className="flex flex-wrap items-center gap-x-3 gap-y-[3px] text-[11.5px]"
-                >
-                  <span className="min-w-0 flex-1 text-mv-slate">
-                    {entry.address}
-                  </span>
-                  <span className="text-mv-muted">
-                    {statusWord(entry.status)}
-                  </span>
-                  <span className="text-mv-muted tabular-nums">
-                    {leaseNote(entry)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+          ))
+        )}
+
+        {/* WHY A NAME WAS REFUSED, in the backend's own words. Without the
+            chevron this is the only place it can be said, and "Not claimed"
+            alone does not tell anybody what to do about it. */}
+        {row.error && (
+          <p className="mt-[4px] text-[11.5px] leading-[1.5] text-mv-sand">
+            {row.error}
+          </p>
+        )}
+      </div>
+
+      <StatusPill filed={row.filed} label={row.statusLabel} />
+
+      <span className="flex-none text-[11.5px] text-mv-muted tabular-nums">
+        {row.countNote}
+      </span>
     </li>
   );
 }
 
-/** Green for filed, red for refused — the mock's two states. */
-function StatusPill({ filed }: { filed: boolean }) {
+/** Green for filed, red for refused — the label comes from the error code. */
+function StatusPill({ filed, label }: { filed: boolean; label: string }) {
   return (
     <span
       className={`flex flex-none items-center gap-[5px] rounded-full px-[10px] py-[4px] text-[11.5px] font-semibold ${
@@ -373,7 +369,7 @@ function StatusPill({ filed }: { filed: boolean }) {
       ) : (
         <CircleAlert aria-hidden="true" className="h-[12px] w-[12px]" />
       )}
-      {filed ? "Claimed" : "Already claimed"}
+      {label}
     </span>
   );
 }

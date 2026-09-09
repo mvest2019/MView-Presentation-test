@@ -1,6 +1,13 @@
 "use client";
 
-import { ListFilter, LoaderCircle, Lock, Users, X } from "lucide-react";
+import {
+  ListFilter,
+  LoaderCircle,
+  Lock,
+  RotateCcw,
+  Users,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 
 import { PortalButton } from "../../../_components/ui/button";
@@ -13,7 +20,11 @@ import {
 import type { Async } from "../claim-wizard";
 import { FlowEmpty, FlowError, FlowLoading } from "../flow-state";
 import { GuideNote } from "../guide-note";
-import { ClaimSearchFields, type ClaimQuery } from "../search-fields";
+import {
+  ClaimSearchFields,
+  emptyQuery,
+  type ClaimQuery,
+} from "../search-fields";
 import { StepIntro } from "../step-intro";
 import { CandidateCard } from "./candidate-card";
 
@@ -106,6 +117,11 @@ export function StepPick({
   const [filter, setFilter] = useState("");
   const needle = filter.trim().toLowerCase();
 
+  /** Anything set in either filter — the search fields or the narrow-down box. */
+  const anyFilter = Boolean(
+    query.name || query.county || query.lease || query.address || filter,
+  );
+
   /* Numbered ONCE, against the full answer, so a card keeps its place in the
      1,153 while the filter hides the rows above it — and so finding that place
      is not a scan of the whole array per row. */
@@ -148,6 +164,32 @@ export function StepPick({
           counties={counties}
           compact
         />
+
+        {/* RESET CLEARS BOTH FILTERS, because there are two and the reader is
+            not tracking which is which: the four search fields that go back to
+            the API, and the narrow-down box over the rows already loaded. A
+            reset that emptied the fields and left "smith" narrowing the list
+            would look broken — the search says everything, the page shows
+            almost nothing.
+
+            It appears only when there IS something to clear. A permanently
+            visible Reset on an empty form is a control that does nothing, and
+            it takes a line of the card to say so. */}
+        {anyFilter && (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                onQueryChange(emptyQuery);
+                setFilter("");
+              }}
+              className="flex cursor-pointer items-center gap-[5px] text-[12px] font-semibold text-mv-green-deep hover:underline hover:underline-offset-2"
+            >
+              <RotateCcw aria-hidden="true" className="h-[13px] w-[13px]" />
+              Reset filters
+            </button>
+          </div>
+        )}
       </form>
 
       {/* CARD TWO — the answer to whatever the filter last asked. */}
@@ -194,8 +236,12 @@ export function StepPick({
             reserves it. Once rows exist, replacing them with that slab on every
             pause in typing is a flash between two full-height layouts — the
             rows stay and the heading says it is refreshing instead. */}
+        {/* THE LABEL DOES NOT SAY "SEARCHING" AGAIN. The heading directly above
+            already says "Searching the public record…", so repeating it filled
+            the block with the one thing the reader had just read. This says
+            what the heading cannot: why it is taking a moment. */}
         {firstLoad && (
-          <FlowLoading label="Searching every county appraisal roll…" />
+          <FlowLoading label="A common name can match a thousand records — this takes a few seconds." />
         )}
 
         {results.error && (

@@ -107,12 +107,8 @@ export function ClaimStepper({ current }: { current: number }) {
                   · `inset-x-1` matches the label's own `px-1`, so the mark is
                     exactly as wide as the word above it — the width the border
                     used to have. */}
-            {/* THE LABEL CARRIES ITS ONE-LINE DESCRIPTION. Five words under
-                each node say what the step is FOR — "Locate the record you
-                own" against a bare "Find your record" — which is what turns
-                the rail from a position indicator into a map of the flow. */}
             <span
-              className={`relative flex flex-1 flex-col items-center gap-[3px] px-2 pb-[11px] text-center ${
+              className={`relative flex-1 px-1 pb-[11px] text-center text-[12.5px] leading-[1.3] ${
                 active
                   ? "font-bold text-mv-ink"
                   : done
@@ -120,14 +116,7 @@ export function ClaimStepper({ current }: { current: number }) {
                     : "text-mv-muted"
               }`}
             >
-              <span className="text-[12.5px] leading-[1.3]">{step.label}</span>
-              <span
-                className={`text-[10.5px] leading-[1.35] font-normal ${
-                  active ? "text-mv-slate" : "text-mv-muted"
-                }`}
-              >
-                {step.railSub}
-              </span>
+              {step.label}
               {active && (
                 <span
                   aria-hidden="true"

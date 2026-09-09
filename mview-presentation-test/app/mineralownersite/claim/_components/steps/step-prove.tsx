@@ -2,6 +2,7 @@
 
 import { ShieldCheck } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 
 import { Badge } from "../../../_components/ui/badge";
 import { PortalButton } from "../../../_components/ui/button";
@@ -11,7 +12,7 @@ import type { Async } from "../claim-wizard";
 import { FlowError, FlowLoading } from "../flow-state";
 import { GuideNote } from "../guide-note";
 import { StepIntro } from "../step-intro";
-import { AddressEdit } from "./address-edit";
+import { AddressEditButton, AddressEditPanel } from "./address-edit";
 import { ClaimCheckbox } from "./claim-checkbox";
 
 /** One record the endpoint returned, and how it should be badged. */
@@ -47,9 +48,14 @@ interface AddressRow {
  * ── THE ENDPOINT DOES THE DISCRIMINATING, NOT A FLAG WE SET ──
  *
  * `/same-name` answers, per record picked on step 2, with the record at that
- * exact address and with the same name at OTHER addresses. That split IS the
- * address verification: the first verifies instantly, the rest need a posted
- * code before they attach.
+ * exact address (`selected`) and with the same name at OTHER addresses
+ * (`records[]`). The badges name that split and nothing more.
+ *
+ * They used to promise a mechanism instead — "verifies instantly" against "we
+ * post a code before it joins" — which this system does not have. There is no
+ * code-posting step among the six owners endpoints, and `/owners/claim`
+ * resolves every address in one call: `claimed`, `already_claimed` or
+ * `not_found`, with no pending state for a code to later clear.
  *
  * ── TWO GATES ──
  *
@@ -80,6 +86,12 @@ export function StepProve({
 }) {
   const records = claimSet.data?.records ?? [];
   const others = claimSet.data?.others ?? [];
+
+  /* Which row has its correction panel open, and which have been reported.
+     Held here rather than per-row so only one panel is open at a time — two
+     open editors on one screen is two half-finished corrections. */
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [reported, setReported] = useState<string[]>([]);
 
   /*
    * ONE ROW PER RECORD THE ENDPOINT RETURNED — `selected` plus every entry in
@@ -188,88 +200,127 @@ export function StepProve({
                 <div className="divide-y divide-mv-line border-t border-mv-line">
                   {rows.map(({ record, matches, sameDoorstep }) => {
                     const key = recordKey(record);
+                    const ticked = confirmed.includes(key);
+
                     return (
-                      <label
-                        key={key}
-                        className="flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors hover:bg-mv-hover"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={confirmed.includes(key)}
-                          onChange={(e) =>
-                            onToggleRecord(key, e.target.checked)
-                          }
-                          className="mt-[2px] h-[15px] w-[15px] flex-none cursor-pointer accent-mv-green-deep outline-none focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.28)]"
-                        />
+                      <div key={key}>
+                        {/*
+                          A TICKED ROW LOOKS TICKED FROM ACROSS THE PAGE.
+                          Selection used to live entirely in a 15px checkbox, so
+                          a group of four rows gave no sense of what was taken
+                          without reading each box. The mint wash and the green
+                          edge say it at a glance; the checkbox stays as the
+                          control and the accessible state.
+                        */}
+                        <label
+                          className={`flex cursor-pointer items-center gap-3 border-l-[3px] px-4 py-[12px] transition-colors ${
+                            ticked
+                              ? "border-mv-green-deep bg-mv-mint/30"
+                              : "border-transparent hover:bg-mv-hover"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={ticked}
+                            onChange={(e) =>
+                              onToggleRecord(key, e.target.checked)
+                            }
+                            className="h-[15px] w-[15px] flex-none cursor-pointer accent-mv-green-deep outline-none focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.28)]"
+                          />
 
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[13px] font-bold text-mv-ink">
-                            {record.address || "No address on file"}
-                          </p>
+                          {/* THE ADDRESS AND WHAT IT IS — the column that
+                              answers "is this me". */}
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[13px] leading-[1.4] font-bold text-mv-ink">
+                              {record.address || "No address on file"}
+                            </p>
 
-                          {/* THREE BADGES, NOT TWO. The third is the reason
-                                these rows are no longer merged: a row that is
-                                the SAME doorstep as a verified one, written
-                                differently by another county's roll, is not a
-                                "different address" and must not be told it
-                                needs a posted code. */}
-                          <p className="mt-[5px]">
-                            {matches ? (
-                              <Badge tone="mint" size="xs">
-                                Matches your address · verifies instantly
-                              </Badge>
-                            ) : sameDoorstep ? (
-                              <Badge tone="mint" size="xs">
-                                Same address on the {record.county} roll ·
-                                verifies instantly
-                              </Badge>
-                            ) : (
-                              <Badge tone="estimate" size="xs">
-                                Different address · we post a code before it
-                                joins
-                              </Badge>
-                            )}
-                          </p>
+                            {/* WHERE THE ROW CAME FROM, NOT A PROMISE ABOUT IT.
+                                These said "verifies instantly" and "we post a
+                                code before it joins" — neither is something
+                                this system does. They now name which part of
+                                the `/same-name` answer the row is. */}
+                            <p className="mt-[6px] flex flex-wrap items-center gap-2">
+                              {matches ? (
+                                <Badge tone="mint" size="xs">
+                                  Address you searched
+                                </Badge>
+                              ) : sameDoorstep ? (
+                                <Badge tone="mint" size="xs">
+                                  Same address · {record.county} roll
+                                </Badge>
+                              ) : (
+                                <Badge tone="slate" size="xs">
+                                  Other address on file
+                                </Badge>
+                              )}
+                              <span className="text-[11.5px] text-mv-muted">
+                                {record.county} County · RRC + {record.county}{" "}
+                                CAD
+                              </span>
+                            </p>
+                          </div>
 
-                          <p className="mt-[6px] flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-mv-muted">
-                            {/* THE APPRAISED VALUE IS SHOWN HERE, AND ONLY
-                                HERE ONWARDS. Step 2 masks it — "$•,•••, shown
-                                once confirmed" — because that list is every
-                                name matching a search, and printing a figure
-                                against records belonging to strangers is the
-                                one thing this flow promised not to do. By this
-                                step the reader has picked the record, which is
-                                the confirmation that promise was waiting on. */}
-                            <span className="font-semibold text-mv-ink">
+                          {/* THE NUMBERS, RIGHT-ALIGNED IN THEIR OWN COLUMN.
+                              They were the tail of a wrapping meta line, so the
+                              value started at a different x on every row and
+                              the group could not be read down. Ranged right on
+                              a fixed column, four rows compare at a glance —
+                              which is the actual question a list of addresses
+                              under one name is asking. */}
+                          <div className="flex-none text-right">
+                            {/* Masked on step 2, shown from here on: that list
+                                is every name matching a search, and printing a
+                                figure against a stranger's record is the one
+                                thing this flow promised not to do. Picking the
+                                record is the confirmation it waited for. */}
+                            <p className="text-[13px] font-bold text-mv-ink tabular-nums">
                               {money(record.appraisedValue)}
-                            </span>
-                            <span>
+                            </p>
+                            <p className="mt-[3px] text-[11.5px] text-mv-muted">
                               {record.leaseCount} lease
                               {record.leaseCount === 1 ? "" : "s"}
-                            </span>
-                            <span>
-                              {record.county} County
                               {record.operatorCount > 0 &&
                                 ` · ${record.operatorCount} operator${record.operatorCount === 1 ? "" : "s"}`}
-                            </span>
-                            {/* The sources step 1 already names. */}
-                            <span>RRC + {record.county} CAD</span>
-                          </p>
+                            </p>
+                          </div>
 
-                          {/* WRONG ADDRESS ON THE ROLL? Report it here, against
-                              the row it belongs to, rather than from one button
-                              at the foot of the step that could only ever mean
-                              the first record. */}
-                          <span className="mt-[8px] flex">
-                            <AddressEdit
+                          {/* THE TRIGGER IS IN THE ROW, ON ONE LINE WITH
+                              EVERYTHING ELSE. It used to sit under the row,
+                              which cost each record a third line and left a
+                              band of empty space above it — a list of four
+                              addresses ran to nearly four hundred pixels for
+                              eight lines of text. */}
+                          <AddressEditButton
+                            reported={reported.includes(key)}
+                            onOpen={() => setEditingKey(key)}
+                          />
+                        </label>
+
+                        {/* The panel opens BELOW, where it has the full width
+                            the field needs. */}
+                        {editingKey === key && (
+                          <div
+                            className={`border-l-[3px] px-4 pb-[13px] ${
+                              ticked
+                                ? "border-mv-green-deep bg-mv-mint/30"
+                                : "border-transparent"
+                            }`}
+                          >
+                            <AddressEditPanel
                               owner={record.name}
                               county={record.county}
                               address={record.address}
                               memberId={memberId}
+                              onReported={() => {
+                                setReported((keys) => [...keys, key]);
+                                setEditingKey(null);
+                              }}
+                              onCancel={() => setEditingKey(null)}
                             />
-                          </span>
-                        </div>
-                      </label>
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
@@ -322,12 +373,6 @@ export function StepProve({
         >
           {`Continue with ${confirmed.length} address${confirmed.length === 1 ? "" : "es"} →`}
         </PortalButton>
-
-        {/* The same reason as the tooltip, said where a touch reader can read
-            it — there is no hover on a phone. */}
-        {blocked && (
-          <p className="text-[12px] font-semibold text-mv-sand">{blocked}</p>
-        )}
       </div>
     </div>
   );
