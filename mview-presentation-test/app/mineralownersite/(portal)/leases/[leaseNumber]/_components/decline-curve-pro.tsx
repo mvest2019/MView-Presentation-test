@@ -106,7 +106,7 @@ export function DeclineCurvePro({ curve }: { curve: DeclineCurveRecord }) {
         </strong>{" "}
         Accepting a model is refused until an engineer is named and gives a
         reservoir reason, and the record keeps the EUR and fit error{" "}
-        <em>before and after</em> — so the size of the judgement is reviewable,
+        <em>before and after</em> — so the size of the judgment is reviewable,
         not just its label. Reverting is recorded too, which is the part that used
         to vanish. Entries are hash-chained, so an edited or deleted one is
         detectable, and the log exports as JSON or CSV.{" "}

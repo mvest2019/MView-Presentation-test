@@ -1023,7 +1023,7 @@ function NearMap({ p }: { p: ViewProps['p'] }) {
       </div>
       <svg viewBox="0 0 300 300" className="wr-map" role="img"
         aria-label={`A map of ${rows.length} records within five miles of this owner's wells: `
-          + `${own.length} on her own leases and ${near.length} belonging to neighbours.`}
+          + `${own.length} on her own leases and ${near.length} belonging to neighbors.`}
       >
         {[1, 3, 5].map((mi) => (
           <g key={mi}>
@@ -1061,7 +1061,7 @@ function NearMap({ p }: { p: ViewProps['p'] }) {
       </p>
       <p className="tiny muted" style={{ margin: '6px 0 0' }}>
         {rows.length} records inside five miles, each plotted at its own measured offset from the
-        centre of your wells. {p.nearby.note}
+        center of your wells. {p.nearby.note}
       </p>
     </div>
   );

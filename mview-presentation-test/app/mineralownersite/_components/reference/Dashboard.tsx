@@ -354,7 +354,7 @@ export default function Dashboard(
                   <Watched p={p} open={open} />
                   {tier === 'pro' ? <PriceDeck p={p} open={open} /> : null}
                   <Reserves p={p} open={open} />
-                  <Neighbours p={p} open={open} go={go} />
+                  <Neighbors p={p} open={open} go={go} />
                   <Wells p={p} open={open} />
                   <ValueMix p={p} open={open} />
                   <Provenance p={p} open={open} />
@@ -574,8 +574,8 @@ function KpiGrid({ p, sample, open }: { p: Payload; sample: boolean; open: (k: s
         null, `model run ${a.decline_run_label ?? '—'}`, 'reserves', 'What a reserve is', false, 'cl-lock')}
 
       {kpi('Permits within 1 mile', n0(rad?.permit_count) ?? '0',
-        `${rad?.neighbour_lease_count ?? 0} neighbouring ${plural(rad?.neighbour_lease_count ?? 0, 'lease')} inside the ring`,
-        null, `survey rebuilt ${a.radius_rebuild_label ?? '—'}`, 'permits', 'Why neighbours matter', false)}
+        `${rad?.neighbour_lease_count ?? 0} neighboring ${plural(rad?.neighbour_lease_count ?? 0, 'lease')} inside the ring`,
+        null, `survey rebuilt ${a.radius_rebuild_label ?? '—'}`, 'permits', 'Why neighbors matter', false)}
     </div>
   );
 }
@@ -829,7 +829,7 @@ function AroundYou(
                 ['Permits filed', ac.counts.permits, 'intent to drill — not a well yet', 'permits'],
                 ['Wells completed', ac.counts.completions, 'finished and reported — production usually follows', 'completions'],
                 ['Standing permits within 1 mile', p.radius['1']?.permit_count ?? 0,
-                  `${p.radius['1']?.neighbour_lease_count ?? 0} neighbouring ${plural(p.radius['1']?.neighbour_lease_count ?? 0, 'lease')}`, 'permits'],
+                  `${p.radius['1']?.neighbour_lease_count ?? 0} neighboring ${plural(p.radius['1']?.neighbour_lease_count ?? 0, 'lease')}`, 'permits'],
                 ['On leases you hold', ac.counts.mine,
                   ac.counts.mine ? 'filed against one of your own lease numbers'
                     : 'a permit carries no lease number, so only completions can be matched to you',
@@ -1275,14 +1275,14 @@ function Reserves({ p, open }: { p: Payload; open: (k: string) => void }) {
 }
 
 /* ========================================================== neighbours */
-function Neighbours(
+function Neighbors(
   { p, open, go }: { p: Payload; open: (k: string) => void; go: (r: Route) => void },
 ) {
   const rad = p.radius;
   const ac = p.activities;
   return (
     <div className="card card-pad" id="radCard">
-      <h4>Neighbours &amp; standing permits</h4>
+      <h4>Neighbors &amp; standing permits</h4>
       <p className="tiny muted" style={{ margin: '4px 0 8px' }}>
         These are STANDING permits. The survey behind them was rebuilt {p.radius_stamp ?? '—'}, and
         that date stamps the survey, not any one filing.
@@ -1300,7 +1300,7 @@ function Neighbours(
               <div style={{ minWidth: 0 }}>
                 <strong className="small">Within {b} {plural(Number(b), 'mile')}</strong>
                 <div className="tiny muted">
-                  {r.neighbour_lease_count} neighbouring {plural(r.neighbour_lease_count, 'lease')}{' '}
+                  {r.neighbour_lease_count} neighboring {plural(r.neighbour_lease_count, 'lease')}{' '}
                   — your own {plural(p.totals.lease_count, 'lease')} excluded
                 </div>
               </div>

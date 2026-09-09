@@ -304,7 +304,7 @@ export function UnitOutlinePanel() {
           ({stations.toLocaleString("en-US")} digitised stations) and{" "}
           {record.wells.length - measured} are drawn as straight
           surface-to-bottom-hole estimates until their surveys are digitised.
-          Neighbouring wells: {record.nbr.length} real RRC wellbores around the
+          Neighboring wells: {record.nbr.length} real RRC wellbores around the
           unit (zoom out to see them).
         </p>
 

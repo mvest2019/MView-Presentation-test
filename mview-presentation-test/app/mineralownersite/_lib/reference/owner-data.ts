@@ -1,3 +1,4 @@
+import { americanize } from './american';
 import type { Alert, Drawer, Payload } from './payload';
 import raw from './owner-payload.json';
 import { apiBase, fetchOwnerLiveBlocks, OwnerApiError } from './owner-api';
@@ -88,7 +89,16 @@ export interface OwnerSelection {
  * the way that actually matters, by twelve components compiling against
  * `Payload` and reading this object.
  */
-const FIXTURE = raw as unknown as Payload;
+/*
+ * AMERICANIZED ONCE, HERE, and not per request. The capture is the reference
+ * build's own output and it spells British — "Neighbours" as a card label,
+ * "Neighbouring leases" as a stat, "neighbourhood" and "colour" in the prose.
+ * `american.ts` records why that is fixed at this seam rather than in the
+ * components or by rewriting the 2 MB file, and why it rewrites values but
+ * never keys. This is a module-level constant, so the walk over 2 MB runs at
+ * import and every request reads the result.
+ */
+const FIXTURE = americanize(raw as unknown as Payload);
 
 /** what a caller is willing to wait for */
 export interface PayloadOptions {
@@ -166,12 +176,16 @@ export async function getOwnerPayload(
     });
   }
 
-  const live = await fetchOwnerLiveBlocks(base, {
+  /* THE LIVE BLOCKS GET THE SAME TREATMENT, and they have to: they come from
+     `mineralview-api`, which is not ours to change, and they carry the same
+     spellings the capture does. Four blocks rather than the whole 2 MB, so this
+     is the only part of the normalization that costs anything per request. */
+  const live = americanize(await fetchOwnerLiveBlocks(base, {
     owner,
     num: sel?.num ?? (isDefault ? FIXTURE.owner.ownernumber : null),
     dist: sel?.dist ?? (isDefault ? FIXTURE.owner.districtcode : null),
     year: sel?.year ?? null,
-  });
+  }));
 
   /* `live` is four whole blocks, each already checked against its `Payload`
      member by `owner-api.ts`, so this is a replace and not a deep merge. A

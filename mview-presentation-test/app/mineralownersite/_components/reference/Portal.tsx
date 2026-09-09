@@ -474,8 +474,12 @@ function ErrorCard({ detail }: { detail: string }) {
       <h3 style={{ margin: '0 0 6px' }}>That did not load</h3>
       <p className="small" style={{ margin: 0 }}>{detail}</p>
       <p className="tiny muted" style={{ margin: '8px 0 0' }}>
-        Nothing is cached from a failed read, so nothing stale is being shown. Try the search box
-        above, or open <code>/api/health</code> to see which source did not answer.
+        {/* NOT "try the search box above" any more — that band was removed (see
+            `Chrome`), so this was pointing at a control the reader cannot find.
+            This card also serves the `detail` failures, which is why it says
+            reload rather than naming any one cause. */}
+        Nothing is cached from a failed read, so nothing stale is being shown. Reload the page, or
+        open <code>/api/health</code> to see which source did not answer.
       </p>
     </div>
   );

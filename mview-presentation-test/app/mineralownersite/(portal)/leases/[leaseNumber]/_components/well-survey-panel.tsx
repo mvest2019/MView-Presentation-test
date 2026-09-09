@@ -75,7 +75,7 @@ export function WellSurveyPanel({
         <p className="mt-1.5 text-[11px] text-mv-muted">
           Where a survey does exist we plot the filed stations and say how far the
           survey lands from the Railroad Commission&rsquo;s own bottom-hole
-          coordinate. A well we cannot verify is labelled, never straightened into
+          coordinate. A well we cannot verify is labeled, never straightened into
           a plausible-looking path.
         </p>
       </Notice>
@@ -120,7 +120,7 @@ export function WellSurveyPanel({
           <strong>
             Read the three together and a wrong survey shows itself.
           </strong>{" "}
-          A column swapped at import — north for east, feet for metres — produces
+          A column swapped at import — north for east, feet for meters — produces
           a path that is visibly wrong here before anyone reads a number off it.
           That is most of what these are for.
         </p>

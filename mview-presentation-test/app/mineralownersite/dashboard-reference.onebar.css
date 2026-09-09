@@ -610,3 +610,511 @@
 .mv-ref-app .app-body > section[data-route] > :first-child:not(.mv-greet):not(.ultra-hero) {
   margin-top: 16px;
 }
+
+/* ----------------------------------------------------------------------------
+   6 · THE SAMPLE STATE NO LONGER SMEARS ITS OWN FIGURES
+
+   THE DEFECT. `dashboard-reference.css` carries
+
+       body .mv-ref-app.no-claim .tl-row.mine .tl-v,
+       body .mv-ref-app.no-claim .mv-kind .mk-n { color: transparent;
+                                                  text-shadow: 0 0 7px #7b869a; }
+
+   so while nothing is claimed, the six kind-card counts and the timeline's own
+   stat values were drawn as a grey smear — `color: rgba(0,0,0,0)` with a 7px
+   shadow standing in for the glyphs. Measured on Activities: `.mk-n` reading
+   "120" was transparent with a `rgb(123,134,154) 0 0 7px` shadow.
+
+   WHY IT IS WRONG HERE, in the words of the design's own rule for the claimed
+   state: every lease, volume and permit stays in the clear, and what Premium
+   adds is what they are WORTH. These are not worth — they are counts of public
+   filings (120 production months, 253 completions, 433 permits). Nothing about
+   an unclaimed record makes a count of public record confidential, and the
+   band directly above the cards already says what they are: "What the record
+   produced — sample figures, real dates". A smear over a labeled sample buys no
+   privacy and costs the page the one thing the cards exist to show.
+
+   The timeline's `.tl-v` was worse than pointless: `sample.ts` has ALREADY
+   replaced those volumes with bullets, so the rule was blurring "••• MCF" —
+   obfuscating an obfuscation, and the reader could not tell the bullets were
+   deliberate rather than a rendering fault.
+
+   The money figures are untouched. `.cl-lock` — the estimate and its band — is
+   a different rule for a different state (`state-claimed`, `state-lapsed`) and
+   it still blurs, because that IS the paid feature.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app.no-claim .mv-kind .mk-n {
+  color: var(--green-ink);
+  text-shadow: none;
+}
+
+body .mv-ref-app.no-claim .tl-row.mine .tl-v {
+  color: var(--ink);
+  text-shadow: none;
+}
+
+/* The two tone variants the reference gives `.tl-v` keep their own colors — the
+   rule above would otherwise flatten an up/down reading to plain ink. */
+body .mv-ref-app.no-claim .tl-row.mine .tl-v.t-up {
+  color: var(--green-deep);
+}
+
+body .mv-ref-app.no-claim .tl-row.mine .tl-v.t-down {
+  color: #b3261e;
+}
+
+body .mv-ref-app.no-claim .tl-row.mine .tl-v.t-warn {
+  color: #8a6420;
+}
+
+/* ----------------------------------------------------------------------------
+   7 · THE TYPE SCALE, RAISED TO MATCH THE REST OF THE PORTAL
+
+   THE DEFECT, MEASURED. The reference shell runs its own, much tighter type
+   scale than the portal shell next door. Counting every element that holds its
+   own text, at 1440px:
+
+     /mineralownersite/activities  (reference shell)   69% under 12px, 773 nodes
+                                                       most common size:  9px
+     /mineralownersite/leases      (portal shell)      34% under 12px, 547 nodes
+                                                       most common size: 13.5px
+
+   Both trees set the same 15px base (`dashboard-reference.css` line 215 and the
+   root layout), so this is not an inherited difference — it is 173 explicit
+   sub-12px declarations in the reference sheet. On Activities that meant body
+   copy at 10.5px (`.mk-mean`, the card explanations), section headings at 9.5px
+   (`.act-band`), filter labels and timeline keys at 9px, and event tags at
+   8.5px. The portal shell's equivalents are 13.5px, 12.5px and 11px.
+
+   THE REMAP. One step per tier, capped so nothing overtakes the portal shell's
+   13.5px body size:
+
+     8px, 8.5px  ->  11px      micro tags        (.tl-kind, .tl-mine, .pp-tag)
+     9px         ->  11.5px    keys and labels   (.tl-k, .ac-lab, .ap-k)
+     9.5px       ->  12px      section bands     (.act-band, .rp-id, th)
+     10px        ->  12.5px    sub-lines, links  (.mk-act, .tl-s, .lc-hint)
+     10.5px      ->  13px      body copy         (.mk-sub, .mk-mean, .tl-when)
+     11px        ->  13px
+     11.5px      ->  13.5px    prose             (.tl-body-t, .al-note)
+
+   173 declarations, 11 groups — 167 selectors at base and 6 inside four of the
+   sheet's own media queries.
+
+   WHY THIS IS AN OVERRIDE AND NOT AN EDIT TO THE NUMBERS THEMSELVES. Exactly
+   the reason at the top of this sheet: `dashboard-reference.css` is a
+   byte-for-byte copy, and a local design decision written into it is silently
+   reverted by the next extraction. Here it would be 173 reverted numbers.
+
+   THE MEDIA-QUERY GROUPS BELOW ARE NOT OPTIONAL. This sheet loads after the
+   copy in the SAME layer, so at equal specificity a base override here would
+   win even inside the copy's own `@media` blocks and flatten its responsive
+   step-downs. Each of the four queries that steps a small size down is
+   therefore mirrored, so the relationship survives. Checked before writing
+   this: no selector has a small base size AND a >=12px media re-declaration, so
+   there is no third case to handle.
+
+   REGENERATING IT, if the copy is re-extracted: the block is mechanical — every
+   rule in `dashboard-reference.css` whose `font-size` is under 12px, grouped by
+   its remapped value, with `@media print` skipped (print wants the small scale).
+   ---------------------------------------------------------------------------- */
+.mv-ref-app .pp-tag,
+.mv-ref-app .samp-tag,
+.mv-ref-app .soon-tag,
+.mv-ref-app .tl-dist,
+.mv-ref-app .tl-kind,
+.mv-ref-app .tl-mine,
+.mv-ref-app .tl-scope,
+.mv-ref-app .tl-standing,
+.mv-ref-app .wm-ringlab {
+  font-size: 11px;
+}
+
+.mv-ref-app .ac-lab,
+.mv-ref-app .alx-k,
+.mv-ref-app .alx-sparkcap,
+.mv-ref-app .ap-k,
+.mv-ref-app .dx-k,
+.mv-ref-app .dx-kind,
+.mv-ref-app .pf2-est,
+.mv-ref-app .pf2-int em,
+.mv-ref-app .pf2-yrl em,
+.mv-ref-app .rk-k,
+.mv-ref-app .rp-tbl th,
+.mv-ref-app .tl-k,
+.mv-ref-app .wc-tick {
+  font-size: 11.5px;
+}
+
+.mv-ref-app #mvPinBar .pin-tk .sym,
+.mv-ref-app .act-band,
+.mv-ref-app .al-sev,
+.mv-ref-app .dx-do-k,
+.mv-ref-app .dx-sparkcap,
+.mv-ref-app .mcax,
+.mv-ref-app .mk-of,
+.mv-ref-app .mv-alsum .as-top .as-act-tag,
+.mv-ref-app .mv-demochip,
+.mv-ref-app .mv-menu .mv-menu-sec,
+.mv-ref-app .mv-statehead,
+.mv-ref-app .pf2-c.shh,
+.mv-ref-app .ps-ax,
+.mv-ref-app .rp-id,
+.mv-ref-app .rp-st,
+.mv-ref-app .wc-lab i,
+.mv-ref-app .wm-lab,
+.mv-ref-app .wmap-note,
+.mv-ref-app table.tbl th {
+  font-size: 12px;
+}
+
+.mv-ref-app #mvPinBar .pin-label,
+.mv-ref-app #mvPinBar .pin-note,
+.mv-ref-app .ac-sel > span,
+.mv-ref-app .act-band .ab-hint,
+.mv-ref-app .alx-s,
+.mv-ref-app .ap-s,
+.mv-ref-app .bellbtn .bdg,
+.mv-ref-app .ctx-hint,
+.mv-ref-app .dx-note,
+.mv-ref-app .freshness,
+.mv-ref-app .lc-ax,
+.mv-ref-app .lc-read .lc-hint,
+.mv-ref-app .mk-act,
+.mv-ref-app .mv-alsum .as-kicker,
+.mv-ref-app .mv-bottom a,
+.mv-ref-app .mv-claimrail .cr-kicker,
+.mv-ref-app .mvlive-tag,
+.mv-ref-app .pf2-u,
+.mv-ref-app .rk-s,
+.mv-ref-app .tl-s,
+.mv-ref-app .tl-sep,
+.mv-ref-app .wm-key,
+.mv-ref-app .wr-pageno,
+.mv-ref-app section[data-route="app-alerts"] .mv-alwatch .aw-kicker,
+.mv-ref-app section[data-route="app-briefing"] .wr-est-cap,
+.mv-ref-app section[data-route="app-briefing"] .wr-rail .rl-s {
+  font-size: 12.5px;
+}
+
+.mv-ref-app #mvFunnelBar .fb-tag,
+.mv-ref-app #mvPinBar .pin-sub,
+.mv-ref-app #mvPinBar .pin-tk .sym,
+.mv-ref-app #mvPinBar .pin-tk .tk-chg,
+.mv-ref-app #mvPinBar .pin-tk .tk-na,
+.mv-ref-app #wrSimpleEvidence .wse-list > span,
+.mv-ref-app .ac-clear,
+.mv-ref-app .ac-lag,
+.mv-ref-app .ac-note,
+.mv-ref-app .ac-sum,
+.mv-ref-app .al-row .ctx-hint,
+.mv-ref-app .app-side .navsec,
+.mv-ref-app .ctx-head .ctx-sub,
+.mv-ref-app .dx-n,
+.mv-ref-app .dx-s,
+.mv-ref-app .kpi .k-label,
+.mv-ref-app .lbar .lb-zero,
+.mv-ref-app .lc-foot,
+.mv-ref-app .lc-head span,
+.mv-ref-app .lc-read .lc-val b u,
+.mv-ref-app .lc-read .lc-val em,
+.mv-ref-app .lc-read .lc-when,
+.mv-ref-app .mk-mean,
+.mv-ref-app .mk-sub,
+.mv-ref-app .mv-claimrail .cr-note,
+.mv-ref-app .mv-menu .mv-persona button,
+.mv-ref-app .mv-statemenu button span,
+.mv-ref-app .nodata,
+.mv-ref-app .owner-chip .sw-btn,
+.mv-ref-app .pf-strip .pf-label,
+.mv-ref-app .pf-strip .pf-sub,
+.mv-ref-app .pf2-c.gh,
+.mv-ref-app .pf2-facts dt,
+.mv-ref-app .pf2-fll,
+.mv-ref-app .pf2-gk,
+.mv-ref-app .pf2-inl,
+.mv-ref-app .pf2-inmore,
+.mv-ref-app .pf2-int,
+.mv-ref-app .pf2-kfoot,
+.mv-ref-app .pf2-kstrip,
+.mv-ref-app .pf2-lgnote,
+.mv-ref-app .pf2-minil,
+.mv-ref-app .pf2-minis,
+.mv-ref-app .pf2-preset,
+.mv-ref-app .pf2-segl,
+.mv-ref-app .pf2-sel,
+.mv-ref-app .pf2-tbl2 th,
+.mv-ref-app .pf2-tv .tvl,
+.mv-ref-app .pf2-yrl,
+.mv-ref-app .plan-pill,
+.mv-ref-app .pp-none p,
+.mv-ref-app .rp-note,
+.mv-ref-app .smp-badge .smp-tag,
+.mv-ref-app .src-chip,
+.mv-ref-app .srcrow .s-fresh,
+.mv-ref-app .srcrow .s-gives,
+.mv-ref-app .tl-when,
+.mv-ref-app .unread,
+.mv-ref-app .wm-pre,
+.mv-ref-app section[data-route="app-briefing"] .wr-rail .rl-n,
+.mv-ref-app section[data-route="operators"] .grid.g3 > a.card > .grid.g3 .tiny,
+.mv-ref-app th,
+body .mv-ref-app.state-claimed .app-main .kpi:has(.cl-lock)::after,
+body .mv-ref-app.state-lapsed .app-main .kpi::after {
+  font-size: 13px;
+}
+
+.mv-ref-app #mvFunnelBar .fb-2nd,
+.mv-ref-app .ac-seg button,
+.mv-ref-app .al-mini .al-s,
+.mv-ref-app .al-note,
+.mv-ref-app .app-side .side-foot,
+.mv-ref-app .chart-insight,
+.mv-ref-app .chip,
+.mv-ref-app .explain summary,
+.mv-ref-app .gloss::after,
+.mv-ref-app .lbar .lb-name,
+.mv-ref-app .lbar .lb-val,
+.mv-ref-app .lc-read,
+.mv-ref-app .mv-alsum .as-cat,
+.mv-ref-app .mv-claimrail .cr-key,
+.mv-ref-app .mv-menu-head span,
+.mv-ref-app .mvlive-note,
+.mv-ref-app .mvlive-row .r-meta,
+.mv-ref-app .mvlive-who,
+.mv-ref-app .pf2-fls,
+.mv-ref-app .pf2-gr.half,
+.mv-ref-app .pf2-ins2,
+.mv-ref-app .pf2-l,
+.mv-ref-app .pf2-mapsub,
+.mv-ref-app .pf2-note,
+.mv-ref-app .pf2-segd,
+.mv-ref-app .pf2-tv .tvs,
+.mv-ref-app .pf2-yrv,
+.mv-ref-app .section-label,
+.mv-ref-app .srcrow .s-name,
+.mv-ref-app .tl-body-t,
+.mv-ref-app .wc-lab,
+.mv-ref-app section[data-route="app-alerts"] .mv-alwatch .aw-cap,
+.mv-ref-app td .sub {
+  font-size: 13.5px;
+}
+
+@media (max-width:640px) {
+  .mv-ref-app .mv-claimrail .cr-key {
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 700px) {
+  .mv-ref-app .ac-seg button {
+    font-size: 13px;
+  }
+
+  .mv-ref-app .wc-val {
+    font-size: 13.5px;
+  }
+}
+
+@media (max-width: 560px) {
+  .mv-ref-app .pf2-yrl,
+  .mv-ref-app .pf2-yrv {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 640px) {
+  .mv-ref-app .pf2-vs {
+    font-size: 13px;
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   8 · `.act-band` WRAPS ON A PHONE
+
+   The one regression §7's remap caused, and it was already a bug at the
+   original size. `.act-band` is a `nowrap` flex row — heading, a hairline that
+   grows, and `.ab-hint` (`white-space: nowrap; flex: none`) held to the right.
+   At 375px "What the record produced — sample figures, real dates" plus "click
+   a card to filter the timeline" does not fit: measured 374px of content in a
+   347px row BEFORE §7, and 464px after it.
+
+   So the row is allowed to wrap below 560px and the hint takes its own line.
+   `order: 3` keeps it after the hairline, which is what puts it on the second
+   line rather than between the heading and the rule. Above 560px nothing
+   changes — there the row fits at the new size, measured.
+   ---------------------------------------------------------------------------- */
+@media (max-width: 560px) {
+  .mv-ref-app .act-band {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  /* `flex: none` keeps it from stretching; `100%` gives it the second line
+     outright rather than leaving it to share one with the hairline. */
+  .mv-ref-app .act-band .ab-hint {
+    flex: 1 0 100%;
+    white-space: normal;
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   9 · THE REST OF THE SAMPLE-STATE SMEAR
+
+   §6 took it off the kind-card counts and the timeline values. The reference
+   sheet has three more of the same rule, and Alerts is the one that shows most:
+
+     .alx-v (+ .t-up/.t-down/.t-warn)   the alert stat strips — "9 of 10",
+                                        "148 MCF · no oil", the operator name,
+                                        the newest date. Measured: `.alx-v`
+                                        reading "9 of 10" was
+                                        `rgba(0,0,0,0)` with a
+                                        `rgb(123,134,154) 0 0 7px` shadow.
+     .dx-v                              the Dashboard's "what changed" values.
+     .ctx-body .lc-read .lc-val b,      the lease chart inside a drawer.
+     .ctx-body .lc-ax .lc-range
+
+   Same argument as §6, and the reference states it itself above that rule: "in
+   the sample view the figures are withheld like every other amount, but the
+   SHAPE stays — it is the product being demonstrated". The shape is exactly
+   what a smear destroys — an operator's name and a filing date are not amounts,
+   and `sample.ts` has already substituted them. The page is labeled a sample
+   three times over (the claim rail, the "Sample preview" badge, and from §10
+   below the dashed frame on every panel), so the smear adds no disclosure and
+   costs the reader the demonstration.
+
+   THE COLORS HAVE TO BE RESTATED, tone variants included. The offending rule
+   sets `color: transparent` in the same declaration block as the shadow, and
+   CSS cannot un-set one declaration — so each family's resting color is written
+   again here. They are the reference's own values, copied from the `.alx-v` /
+   `.dx-v` blocks a few lines above each smear rule, not new choices.
+
+   `.cl-lock` is still untouched: the estimate and its band are the paid
+   feature and they still blur in `state-claimed` / `state-lapsed`.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app.no-claim .alx-v {
+  color: var(--ink);
+  text-shadow: none;
+}
+
+body .mv-ref-app.no-claim .alx-v.t-up {
+  color: var(--green-deep);
+  text-shadow: none;
+}
+
+body .mv-ref-app.no-claim .alx-v.t-down {
+  color: #b3261e;
+  text-shadow: none;
+}
+
+body .mv-ref-app.no-claim .alx-v.t-warn {
+  color: #8a6420;
+  text-shadow: none;
+}
+
+body .mv-ref-app.no-claim .alx-v.t-flat {
+  color: var(--slate);
+  text-shadow: none;
+}
+
+body .mv-ref-app.no-claim .dx-v {
+  color: var(--green-ink);
+  text-shadow: none;
+}
+
+body .mv-ref-app.no-claim .dx-v.t-up {
+  color: var(--green-deep);
+  text-shadow: none;
+}
+
+body .mv-ref-app.no-claim .dx-v.t-down {
+  color: #b3261e;
+  text-shadow: none;
+}
+
+body .mv-ref-app.no-claim .dx-v.t-warn {
+  color: #8a6420;
+  text-shadow: none;
+}
+
+body .mv-ref-app.no-claim .dx-v.t-flat {
+  color: var(--slate);
+  text-shadow: none;
+}
+
+/* The drawer's lease chart. Both inherit their color, so `currentColor` is the
+   honest reset — `.lc-val b` from the reading row, `.lc-range` from `.lc-ax`
+   (`var(--muted)`). */
+body .mv-ref-app.no-claim .ctx-body .lc-read .lc-val b,
+body .mv-ref-app.no-claim .ctx-body .lc-ax .lc-range {
+  color: currentColor;
+  text-shadow: none;
+}
+
+/* ----------------------------------------------------------------------------
+   10 · THE AMBER DASHED SAMPLE FRAME, ON ACTIVITIES AND ALERTS
+
+   THE TREATMENT IS THE REFERENCE'S OWN, and it is already on both of these
+   pages — `.smp-badge`, the "Sample preview" notice at the top, is
+   `2px dashed #d9a441` on `#fdf6e7`. Its source comment (v24 · #1) calls it
+   "the amber dashed 'SAMPLE' language from the claim-results teaser, reused
+   across every no-claim page", and the reference ships a `.smp-wrap` that
+   frames sample CONTENT the same way — defined in
+   `mineral-view-owner-full-site.css`, but never rendered by any of its
+   components. So the language exists and the panels never got it.
+
+   WHAT THEY GOT INSTEAD was a solid recolor: `no-claim .app-body .card, .kpi,
+   .al-mini, .mv-alsum { border-color: var(--mv-sample) !important }`. On these
+   two routes that reached almost nothing — Alerts has one `.card` and
+   Activities two, so measured in the sample state the six kind cards, the five
+   timeline rows and their stat strips, the pulse cells, the alert rows and the
+   alert stat strips all still wore the ordinary grey `--line` border. A reader
+   scrolling past the badge had nothing telling them the panels below it were
+   the same sample.
+
+   `#d9a441` AND NOT `--mv-sample` (#b8892f), which is the one deliberate
+   departure. Both are amber, and two ambers on one screen read as a mistake
+   rather than a system — so this matches the badge these frames are being tied
+   to, and `.card` needs `!important` only because the solid rule above carries
+   one.
+
+   WHAT IS NOT FRAMED, on purpose: `.act-ctl` and `.al-filter`. Those are the
+   date/distance/search controls, not sample content — a dashed frame on a
+   control says "this filter is illustrative", which is false, the filters work.
+   The frame marks figures, not furniture.
+
+   THE SEVERITY EDGE SURVIVES. `.al-row` and `.tl-body` carry
+   `border-width: 1px 1px 1px 4px` with the left edge colored by severity or
+   kind, and that edge is how the list is read at a glance. Dashing all four
+   sides would take it out, so only top, right and bottom are dashed and the
+   left is left exactly as it was.
+
+   SCOPED TO THESE TWO ROUTES, as asked. The Dashboard, Weekly Report and
+   Production & Forecast still show the solid `--mv-sample` recolor on their
+   `.card`s; widening this is a matter of adding their `data-route` values to
+   the two selector lists below.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app.no-claim section[data-route="app-activities"] .mv-kind,
+body .mv-ref-app.no-claim section[data-route="app-activities"] .ap-cell,
+body .mv-ref-app.no-claim section[data-route="app-activities"] .tl-stats,
+body .mv-ref-app.no-claim section[data-route="app-alerts"] .alx-stats {
+  border-width: 2px;
+  border-style: dashed;
+  border-color: #d9a441;
+}
+
+/* `!important` beats the solid recolor's own `!important`, and nothing less
+   would — see the note above. */
+body .mv-ref-app.no-claim section[data-route="app-activities"] .card,
+body .mv-ref-app.no-claim section[data-route="app-alerts"] .card {
+  border-width: 2px;
+  border-style: dashed;
+  border-color: #d9a441 !important;
+}
+
+/* Three sides only. The 4px left edge is the severity / kind signal. */
+body .mv-ref-app.no-claim section[data-route="app-activities"] .tl-body,
+body .mv-ref-app.no-claim section[data-route="app-alerts"] .al-row {
+  border-top: 2px dashed #d9a441;
+  border-right: 2px dashed #d9a441;
+  border-bottom: 2px dashed #d9a441;
+}
