@@ -1,7 +1,6 @@
 "use client";
 
 import { FileText, ListTree, LoaderCircle } from "lucide-react";
-import Link from "next/link";
 
 import { Badge } from "../../../../_components/ui/badge";
 import { PortalButton } from "../../../../_components/ui/button";
@@ -112,7 +111,6 @@ export function StepLeases({
         backLabel="Back to the addresses"
         title={`${who} · ${leases.length} joined lease${leases.length === 1 ? "" : "s"}`}
       />
-
       {leases.length === 0 ? (
         <FlowEmpty
           message="No leases came back for this record."
@@ -199,32 +197,26 @@ export function StepLeases({
           <LeaseStatStrip leases={leases} />
         </>
       )}
-
       <GuideNote title="Why some rows are thinner">
         Lease number, operator and decimal interest are served for the record
         you verified. Leases this name holds in other counties come back with a
         name and an appraised value only, so those columns show an em dash
         rather than a guess.
       </GuideNote>
+      {/*
+        THE SIGN-IN BANNER IS GONE, AND THE GATE IS NOT.
 
-      {/* SIGNING IN IS ENFORCED HERE, because this is the step that posts.
-          `/owners/claim` rejects an anonymous claim with a 400, so a signed-out
-          reader is told rather than handed a button that cannot work. */}
-      {memberId === null && !alreadyClaimed && (
-        <p className="rounded-mv border border-mv-sand-line bg-mv-sand-tint px-4 py-3 text-[12px] leading-[1.55] text-mv-sand">
-          <b className="font-bold">A claim needs an account to belong to.</b>{" "}
-          <Link
-            href="/login?next=/mineralownersite/claim"
-            className="font-semibold underline underline-offset-2"
-          >
-            Sign in
-          </Link>{" "}
-          and this step will file it — nothing you have entered is lost.
-        </p>
-      )}
+        A sand-tinted paragraph sat here whenever `memberId` was null, saying a
+        claim needs an account. Step 3 already says exactly that, one screen
+        earlier and before the reader has spent any time on this table — so the
+        second copy told them something they had just been told, and pushed the
+        button it was about further down the page.
 
+        The button still refuses to file without a member id (see `blocked`
+        above) and still says why in its own tooltip. What was removed is the
+        duplicate announcement, not the rule.
+      */}
       {claimError && <FlowError message={claimError} onRetry={onContinue} />}
-
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-mv-line pt-[18px]">
         <PortalButton
           variant="primary"

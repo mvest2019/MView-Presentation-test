@@ -295,7 +295,7 @@ export function StepProve({
                         key={key}
                         className={`rounded-mv border transition-colors ${
                           ticked
-                            ? "border-mv-mint-line bg-mv-mint/60"
+                            ? "border-mv-mint-edge bg-mv-mint/35"
                             : "border-mv-line bg-mv-card"
                         }`}
                       >
