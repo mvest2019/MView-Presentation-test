@@ -7,9 +7,10 @@ import {
   fetchCounties,
   postClaim,
   searchOwners,
+  type ClaimOwner,
   type ClaimResult,
 } from "../_api/claim-api";
-import { byValueDesc, leaseKey, recordKey } from "../_lib/claim-format";
+import { recordKey } from "../_lib/claim-format";
 import type { ClaimSet, CountyIndex, OwnerRecord } from "../_lib/claim-types";
 import { ClaimShell } from "./claim-shell";
 import {
@@ -18,14 +19,11 @@ import {
   isSearchable,
   type ClaimQuery,
 } from "./search-fields";
-import { DoneNextCard } from "./done-next-card";
-import { DoneValueCard } from "./done-value-card";
-import { StepDone } from "./steps/step-done";
 import { StepFind } from "./steps/step-find";
 import { StepLeases } from "./steps/step-leases";
 import { StepPick } from "./steps/step-pick";
 import { StepProve } from "./steps/step-prove";
-import { StepVisibility } from "./steps/step-visibility";
+import { StepSuccess } from "./steps/step-success";
 
 /** One request: what it holds, whether it is in flight, and how it failed. */
 export interface Async<T> {
@@ -49,8 +47,8 @@ function message(error: unknown): string {
  * ── WHY EVERY CALL LIVES HERE ──
  *
  * Endpoints feed more than one step. The `/same-name` answer alone drives step
- * 3's record list, step 4's lease table and step 5's visibility grid; the
- * search result is step 2's cards AND the input to that same-name call.
+ * 3's record list and step 4's lease table; the search result is step 2's cards
+ * AND the input to that same-name call.
  * Fetching inside each step would mean calling `/same-name` three times for one
  * claim, and three chances for the three screens to disagree about what was
  * claimed.
@@ -62,26 +60,41 @@ function message(error: unknown): string {
  *
  *   1  GET  /owners/counties           on mount — step 1's dropdown and tally
  *   2  GET  /owners/search             step 1's submit → step 2's candidates
- *   4  GET  /owners/same-name          step 2's pick → steps 3, 4 and 5
- *   5  POST /owners/claim              step 3's Confirm — the write
- *   6  POST /owners/address-correction step 3's "Something looks wrong"
+ *   4  GET  /owners/same-name          step 2's pick → steps 3 and 4
+ *   5  POST /owners/claim              step 4's Claim button — the write
  *
- * `GET /owners/lease-owners` is the sixth and this flow never asks what it
- * answers — "who else is on this lease" is the marketing finder's tick-a-lease
- * interaction, wired there. `fetchLeaseOwners` is exported so the set of six is
- * complete and a co-owner view on step 4 is one component away.
+ * Two of the six are exported but unused HERE. `/owners/lease-owners` answers
+ * "who else is on this lease", which is the marketing finder's tick-a-lease
+ * interaction; `/owners/address-correction` backed step 3's "Something looks
+ * wrong", removed on request. Both stay in `_api/claim-api.ts` so the set of
+ * six is complete and either is one component away from being wired back.
+ *
+ * ── THE CLAIM CARRIES ADDRESSES, NOT JUST NAMES ──
+ *
+ * `mineralOwners` entries are `{ownername, addresses?}`. Step 3 already asks
+ * which addresses under a name are yours; the post now sends that answer
+ * instead of discarding it, so a claim is as narrow as the reader said.
  *
  * ── THE API LAYER IS THIS MODULE'S OWN ──
  *
  * `_api/claim-api.ts` calls all six endpoints directly and imports nothing
  * from `lib/claim-search`, which serves the marketing finder.
  *
- * ── THE CLAIM IS WRITTEN ON STEP 3, NOT AT THE END ──
+ * ── STEP 4 WRITES THE CLAIM; STEP 5 CONFIRMS IT ──
  *
- * That is what every screen already promises: step 3's caption says "This is
- * the step that commits", steps 1 and 2 say nothing is committed yet, and step
- * 4's says "Claimed · one step left". Posting on step 5's Finish instead would
- * make all four of those statements wrong.
+ * The post fired on step 3 first, which asked the reader to commit before
+ * seeing the lease set the claim would take; step 4 then arrived as a receipt
+ * for a decision already made. Filing under the lease table makes that screen
+ * the decision instead.
+ *
+ * Step 5 is what follows the write and nothing else: it says the claim landed,
+ * reports any per-owner refusal, and offers the dashboard. It replaced a
+ * visibility-allocation grid and a four-row receipt, neither of which asked the
+ * reader for anything they had not already decided.
+ *
+ * Every caption in `claim-steps.ts` follows: steps 1 to 3 say nothing is
+ * committed, step 4 says plainly that it commits, step 5 says it is done.
+ * Posting anywhere else would make one of those a lie.
  */
 export function ClaimWizard({ memberId }: { memberId: number | null }) {
   const [step, setStep] = useState(1);
@@ -112,10 +125,6 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
   const [confirmed, setConfirmed] = useState<string[]>([]);
   const [attested, setAttested] = useState(false);
 
-  /** Step 5's single free slot. Chosen once the lease set is known. */
-  const [visibleKey, setVisibleKey] = useState<string | null>(null);
-  const [finished, setFinished] = useState(false);
-
   /*
    * A PROMISE CHAIN, NOT AN AWAITED CALL — the pattern `app/claim`'s finder
    * already uses for its own mount fetch. Both settle the state in a callback
@@ -139,6 +148,31 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
   function retryCounties() {
     setCounties({ data: null, loading: true, error: null });
     loadCounties();
+  }
+
+  /*
+   * BACK TO STEP 1 FOR A DIFFERENT RECORD — and EVERY piece of the last claim
+   * has to go with it.
+   *
+   * `setStep(1)` alone would leave the finished claim in state, and `claim.data`
+   * is what tells step 4 the write already happened: the reader would search a
+   * brand new owner, reach step 4, and find a button reading "Continue → step 5"
+   * that files nothing and hands them the PREVIOUS claim's receipt.
+   *
+   * The county list is deliberately kept. It is 204 rows that have not changed,
+   * and re-fetching them would make starting over slower than arriving.
+   */
+  function startOver() {
+    searchRef.current?.abort();
+    searchedRef.current = "";
+    setStep(1);
+    setQuery(emptyQuery);
+    setResults(idle());
+    setPicked([]);
+    setClaimSet(idle());
+    setClaim(idle());
+    setConfirmed([]);
+    setAttested(false);
   }
 
   /*
@@ -216,13 +250,17 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
   /* Nothing in flight should outlive the flow. */
   useEffect(() => () => searchRef.current?.abort(), []);
 
-  function toggleRecord(record: OwnerRecord, checked: boolean) {
+  /* STABLE ACROSS RENDERS, so `CandidateCard`'s `memo` can actually skip.
+     A plain function here would be a new prop on all 1,153 cards on every
+     render, which is exactly the identity check memo performs — the wrapper
+     would then cost a comparison per card and save nothing. */
+  const toggleRecord = useCallback((record: OwnerRecord, checked: boolean) => {
     setPicked((current) =>
       checked
         ? [...current, record]
         : current.filter((r) => recordKey(r) !== recordKey(record)),
     );
-  }
+  }, []);
 
   /**
    * Confirming the selection resolves every picked record against
@@ -241,8 +279,6 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
       const set = await fetchClaimSet(picked);
       setClaimSet({ data: set, loading: false, error: null });
       setConfirmed(set.records.map(recordKey));
-      const first = byValueDesc(set.all.leases)[0];
-      setVisibleKey(first ? leaseKey(first) : null);
     } catch (error) {
       setClaimSet({ data: null, loading: false, error: message(error) });
     }
@@ -255,74 +291,98 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
    * addresses, and sending it twice would be a wasted round trip and a spurious
    * OWNER_ALREADY_CLAIMED in the results.
    */
-  async function confirmClaim() {
-    if (memberId === null) return;
-
+  /**
+   * WHAT STEP 3'S TICKS RESOLVE TO — one entry per owner NAME, carrying the
+   * addresses ticked under it.
+   *
+   * This used to be a bare list of distinct names, and the addresses the reader
+   * had just gone through step 3 to confirm were thrown away. `/owners/claim`
+   * now takes them, so a name is claimed at exactly the doorsteps that were
+   * ticked rather than at every roll row that happens to carry the string —
+   * which matters precisely because one owner string can belong to two
+   * unrelated parties, the thing step 3 exists to sort out.
+   *
+   * Grouped, not one entry per record: two ticked addresses under one name are
+   * ONE owner with two addresses, not two owners. Sending the name twice would
+   * be a wasted round trip and a spurious OWNER_ALREADY_CLAIMED on the second.
+   *
+   * A record with no address on file contributes its name and no address, and
+   * `postClaim` then omits the key entirely for that owner.
+   */
+  const claimOwners: ClaimOwner[] = (() => {
     /*
-     * ALREADY FILED — GO FORWARD, DO NOT POST AGAIN.
+     * ONE ENTRY PER OWNER NAME, carrying every address ticked under it.
      *
-     * Step 4 can now come back here, and step 3 is the step that writes. Left
-     * unguarded, "Back" then "Confirm" would post the same owner names twice:
-     * the backend answers the second with OWNER_ALREADY_CLAIMED per name, so
-     * the receipt the reader lands on would list their own successful claim as
-     * a row of failures. Returning here is a review, so the button moves on.
+     * Step 3 now draws one row per record the endpoint returned, so a tick IS
+     * an address — no merged row to unpack. Two ticked rows under one name are
+     * still ONE owner with two addresses, not two owners: sending the name
+     * twice would be a wasted round trip and a spurious OWNER_ALREADY_CLAIMED
+     * on the second.
      */
-    if (claim.data) {
-      setStep(4);
-      return;
-    }
-
-    const records = [
+    const byName = new Map<string, Set<string>>();
+    for (const record of [
       ...(claimSet.data?.records ?? []),
       ...(claimSet.data?.others ?? []),
-    ].filter((r) => confirmed.includes(recordKey(r)));
-    const names = [...new Set(records.map((r) => r.name))];
-    if (names.length === 0) return;
+    ]) {
+      if (!confirmed.includes(recordKey(record))) continue;
+      const addresses = byName.get(record.name) ?? new Set<string>();
+      if (record.address) addresses.add(record.address);
+      byName.set(record.name, addresses);
+    }
+
+    /* `addresses` is omitted, not empty, when the roll carries none for a
+       ticked record — the contract treats the key as absent-or-array. */
+    return [...byName.entries()].map(([ownername, addresses]) => ({
+      ownername,
+      ...(addresses.size > 0 ? { addresses: [...addresses] } : {}),
+    }));
+  })();
+
+  /**
+   * STEP 3 — no longer the write. It settles which addresses are yours and
+   * carries that forward; step 4 is where the claim is actually filed.
+   */
+  function reviewLeases() {
+    setStep(4);
+  }
+
+  /**
+   * STEP 4 — THE WRITE.
+   *
+   * ── WHY IT MOVED OFF STEP 3 ──
+   *
+   * The claim used to fire on step 3's Confirm, which meant the reader filed it
+   * before ever seeing the lease set it would take: "See your leases" landed
+   * after the fact and could only report what had already happened. With the
+   * post here, that screen is the decision — the leases are on the table and
+   * the button beneath them commits.
+   *
+   * ── ALREADY FILED, GO FORWARD ──
+   *
+   * A claim is not filed twice. The backend answers a repeat with
+   * OWNER_ALREADY_CLAIMED per name, so a second press would turn the reader's
+   * own successful claim into a page of failures.
+   */
+  async function fileClaim() {
+    if (claim.data) {
+      setStep(5);
+      return;
+    }
+    if (memberId === null || claimOwners.length === 0) return;
 
     setClaim({ data: null, loading: true, error: null });
     try {
-      const result = await postClaim(memberId, names);
+      const result = await postClaim(memberId, claimOwners);
       setClaim({ data: result, loading: false, error: null });
-      setStep(4);
+      /* Step 5 reads the response — including a partial refusal, which is the
+         one thing it must not round up into "successfully claimed". */
+      setStep(5);
     } catch (error) {
       setClaim({ data: null, loading: false, error: message(error) });
     }
   }
 
   const leases = claimSet.data?.all.leases ?? [];
-
-  /*
-   * THE COMPLETION SCREEN'S TWO EXTRA BLOCKS, FULL WIDTH BELOW THE RECEIPT.
-   *
-   * They used to sit in the side rail, which is gone. They did not go with it
-   * because they are not asides: "what to do next" is the only thing on a
-   * finished screen asking the reader to act, and the claimed value is the
-   * figure the claim just produced. The per-step reassurance notes and the
-   * vertical progress list DID go — the first were asides, and the second
-   * repeated the stepper at the top of the card.
-   */
-  const doneExtras = (
-    <div className="grid gap-3 @[720px]:grid-cols-2">
-      <DoneNextCard />
-      <DoneValueCard total={claimSet.data?.all.appraisedValue ?? 0} />
-    </div>
-  );
-
-  if (finished) {
-    return (
-      <ClaimShell current={step} done below={doneExtras}>
-        <StepDone
-          records={claimSet.data?.records ?? picked}
-          pending={(claimSet.data?.others ?? []).filter((r) =>
-            confirmed.includes(recordKey(r)),
-          )}
-          all={claimSet.data?.all ?? null}
-          visibleKey={visibleKey}
-          result={claim.data}
-        />
-      </ClaimShell>
-    );
-  }
 
   return (
     <ClaimShell current={step}>
@@ -367,11 +427,8 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
           }
           attested={attested}
           onAttest={setAttested}
-          claiming={claim.loading}
-          claimError={claim.error}
-          onConfirm={confirmClaim}
+          onConfirm={reviewLeases}
           onBack={() => setStep(2)}
-          alreadyClaimed={claim.data !== null}
         />
       )}
 
@@ -379,19 +436,18 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
         <StepLeases
           records={claimSet.data?.records ?? picked}
           leases={leases}
-          all={claimSet.data?.all ?? null}
-          onContinue={() => setStep(5)}
+          ownerCount={claimOwners.length}
+          memberId={memberId}
+          claiming={claim.loading}
+          claimError={claim.error}
+          alreadyClaimed={claim.data !== null}
+          onContinue={fileClaim}
           onBack={() => setStep(3)}
         />
       )}
 
       {step === 5 && (
-        <StepVisibility
-          leases={leases}
-          visibleKey={visibleKey}
-          onChoose={setVisibleKey}
-          onFinish={() => setFinished(true)}
-        />
+        <StepSuccess result={claim.data} onStartOver={startOver} />
       )}
     </ClaimShell>
   );

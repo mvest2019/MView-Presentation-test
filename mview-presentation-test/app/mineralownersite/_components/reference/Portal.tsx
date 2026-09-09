@@ -153,14 +153,33 @@ const STEPS: Step[] = [
 
 export default function Portal({ route: initialRoute, initial, children, shellClass }:
 {
-  route: Route;
+  /**
+   * WHICH SIDEBAR ROW IS THE CURRENT ONE — or `null` for a page that is not one
+   * of them.
+   *
+   * ADAPTED 5 · `null` EXISTS FOR THE COMING-SOON PAGES. `/soon/[slug]` is a
+   * real page behind five sidebar rows, and none of those five IS a `Route`:
+   * `Route` is the set of places `go` can navigate to, and adding a member for
+   * a page nothing navigates to would hand every `go(r)` call site a
+   * destination with no path. So the page passes `null`, which says exactly
+   * what is true — the shell is here, and nothing in it is current. Every
+   * `route ===` test in this file and in `Chrome` then simply misses, which is
+   * the behaviour those tests already have for any row that is not the one
+   * being rendered: no `.on` class in the sidebar, no `aria-current`, no lit
+   * tab in the phone bottom bar. The top bar prints no page name at all (see
+   * `Chrome`), so there is nothing there to be wrong either.
+   */
+  route: Route | null;
   initial: Payload | null;
   /**
    * ADAPTED 3 · A PAGE'S OWN VIEW, rendered inside this shell instead of one of
-   * the two this file holds. Only the Map passes it — the map is 51 files and an
+   * the two this file holds. The Map passes it — the map is 51 files and an
    * ArcGIS runtime, so it stays a route of its own that renders itself and
    * borrows the chrome, rather than becoming a third branch of `view` that the
-   * Dashboard and the Weekly Report would drag around with them.
+   * Dashboard and the Weekly Report would drag around with them. The
+   * coming-soon pages pass it too, with `route={null}`: a card is not worth a
+   * branch here either, and a page reached from the sidebar should keep the
+   * sidebar.
    *
    * The owner payload is still loaded and still handed to `Chrome`, which is
    * the whole point: the sidebar, the top bar, the owner picker and the pinned
@@ -178,7 +197,7 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
    */
   shellClass?: string;
 }) {
-  const [route, setRoute] = useState<Route>(initialRoute);
+  const [route, setRoute] = useState<Route | null>(initialRoute);
   const [live, setLive] = useState<Payload | null>(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -294,14 +313,19 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
       /* Resolved through the table rather than a weekly/dashboard ternary: with
          the ternary, going Back from the Weekly Report onto the Map set the
          route to `dashboard`, so the sidebar lit the wrong row and the top bar
-         read "Dashboard" over the map. Falling back to `dashboard` for an
-         unknown path is the old behaviour, kept. */
+         read "Dashboard" over the map. */
+      /* AND AN UNKNOWN PATH FALLS BACK TO THE ROUTE THIS PAGE DECLARED, not to
+         `dashboard`. `/soon/[slug]` is not in the table — it is not a `Route`
+         — so the old fallback lit the Dashboard row on a coming-soon page the
+         moment anything popped the history. Restoring `initialRoute` is right
+         for every entry point: it is `dashboard` for the page that fell back
+         to `dashboard` before, and `null` here. */
       const hit = (Object.keys(ROUTE_PATH) as Route[]).find((r) => ROUTE_PATH[r] === p);
-      setRoute(hit ?? 'dashboard');
+      setRoute(hit ?? initialRoute);
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, []);
+  }, [initialRoute]);
 
   const go = useCallback((r: Route) => {
     /* THE FOUR ROUTES THIS SHELL OWNS SWITCH WITHOUT A REQUEST — the
@@ -313,9 +337,14 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
        the Map would have pushed `/mineralownersite` into the address bar and
        left the map on screen under a sidebar row saying Dashboard. From here
        every row is a real navigation. */
+    /* AND IT CARRIES THE QUERY STRING, which the branch below has always done
+       and this one did not: the owner is in the query, so leaving the Map or a
+       coming-soon page by any sidebar row silently reset the shell to the
+       default owner. One `go`, one rule — the destination keeps whoever you
+       were looking at. */
     if (children || !OWNED.includes(r)) {
       setDrawer(null);
-      router.push(ROUTE_PATH[r]);
+      router.push(ROUTE_PATH[r] + window.location.search);
       return;
     }
     setRoute(r);
@@ -433,10 +462,15 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
           `effTier`: the raw choice, so a surface with its own ceiling rule can
           apply it rather than inherit this one's. See `view-state.tsx`. */}
       <PortalViewStateProvider tier={tier} funnel={funnel}>
+      {/* `onOwner` AND `busy` NO LONGER GO TO THE CHROME. The owner-search band
+          was their only consumer and it has been removed (see `Chrome`); `load`
+          and `busy` are still owned here — `load` for the URL-driven read in the
+          effect above, `busy` for the `Loader` below — so nothing about the
+          owner read changed, only who is told about it. */}
       <Chrome
         p={data} route={route} go={go} tier={tier} setTier={pickTier}
         funnel={funnel} setFunnel={pickFunnel} sample={sample}
-        onOwner={load} busy={busy} open={openDrawer}
+        open={openDrawer}
         sampleNote={shown?.note ?? null} trialStarted={trialStarted}
       >
         {error ? <ErrorCard detail={error} /> : null}
@@ -446,7 +480,10 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
             snapshot. The Map is not: it reads the whole public record, not one
             owner, so it renders perfectly well before anybody is picked and the
             card would be an error message under a working page. */}
-        {!children && !data && !error && !busy ? <ErrorCard detail="No owner is loaded yet. Search for a name above." /> : null}
+        {/* The copy no longer says "search for a name above" — there is no
+            search box above it any more. The owner comes from the URL or from
+            the default read, so a reload is the honest suggestion. */}
+        {!children && !data && !error && !busy ? <ErrorCard detail="No owner is loaded yet. Reload the page, or open a link that names one." /> : null}
       </Chrome>
       </PortalViewStateProvider>
 

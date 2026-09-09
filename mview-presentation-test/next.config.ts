@@ -105,6 +105,27 @@ const nextConfig: NextConfig = {
       process.env.NEXT_PUBLIC_CLAIM_API_BASE_URL ||
       "https://mview-dev-api.mineralview.com",
 
+    // Owner Alerts & Activity API host — the backend's `/api/v1/alerts*` and
+    // `/api/v1/activity*` endpoints (contract in `OWNER-ALERTS-ACTIVITY-API.md`).
+    // The `/api/v1` prefix belongs to `_lib/reference/owner-api.ts`, so pointing
+    // at another environment is a host swap and nothing more.
+    //
+    // DECLARED HERE FOR THE SAME REASON EVERY OTHER HOST IS: a default in this
+    // block is inlined at build time, so the variable is always set — on a
+    // laptop with no `.env.local`, and on a deployment with nothing configured.
+    // It was read straight from `process.env` with no default at first, which
+    // made Alerts and Activity the only two screens in the app that needed an
+    // environment variable set before they would call their backend at all.
+    // Unset, they silently served the committed capture instead, and the
+    // deployed site did exactly that.
+    //
+    // Deliberately NOT `NEXT_PUBLIC_`: `owner-api.ts` is `server-only`, so the
+    // browser never sees this host and the API's CORS allowlist never needs a
+    // browser origin.
+    MINERALVIEW_API_BASE_URL:
+      process.env.MINERALVIEW_API_BASE_URL ||
+      "https://mview-dev-api.mineralview.com",
+
     /*
      * WHERE THIS DEPLOYMENT LIVES. Two jobs:
      *

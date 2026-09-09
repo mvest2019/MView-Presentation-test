@@ -56,7 +56,12 @@ export type PortalIconName =
      component and its map is keyed off these names. */
   | "flag"
   | "price"
-  | "chat";
+  | "chat"
+  /* Added by the account menu's Log out row. The reference build has no sign-out
+     control anywhere — it is a click-through prototype with no session to end —
+     so this is the one icon here with no `mvi-*` counterpart. Feather `log-out`,
+     which is the family every other icon in this union comes from. */
+  | "logout";
 
 export interface PortalNavItem {
   /** The visible label. Literal text — never an icon-only row. */

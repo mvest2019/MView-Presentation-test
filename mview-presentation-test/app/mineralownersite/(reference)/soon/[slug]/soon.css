@@ -1,0 +1,123 @@
+/*
+ * THE COMING-SOON CARD'S STYLESHEET.
+ *
+ * WHY THIS FILE EXISTS AT ALL. The page renders `Portal`, so the card sits
+ * inside `.app-body` under the shell's `.mv-ref-app` root and the reference's
+ * own `.card`, `.card-pad`, `.btn` and `.mv-soon` rules all reach it — that is
+ * what fixed the unstyled page, and it is the shell's doing, not this file's.
+ * What is left over is the handful of things the reference has no equivalent
+ * for: the icon medallion, the eyebrow pill, the rule above the buttons.
+ *
+ * WHY IT IS NOT IN `dashboard-reference.css`. That sheet is the reference
+ * build's own ten stylesheets, extracted and rescoped, and its value is that it
+ * is a COPY — a rule invented here would make it a fork. Same argument as
+ * `map/map-shell.css`, and the same arrangement: this route's sheet, imported
+ * by this route's page.
+ *
+ * SPECIFICITY. These rules are unlayered and the reference's are in the
+ * `mv-reference` layer (see `dashboard-reference.layer.css`), so an unlayered
+ * rule wins over a layered one whatever the selectors say. `.mv-soon-card` is
+ * this page's own class rather than a second use of `.mv-soon`, so nothing here
+ * can reach the reference's other `.mv-soon` users.
+ */
+
+/*
+ * THE CARD SITS IN THE MIDDLE OF THE BODY, not at the top of it.
+ *
+ * `.app-body` is a 1180px column that starts under the chrome and runs to the
+ * bottom of the shell — it already takes the whole remaining height (`flex:1`
+ * inside `.app-main`), so a 360px card at the top of it left ~400px of empty
+ * ground underneath and read as a page that had failed to load the rest of
+ * itself. Three properties, and the height was already there.
+ *
+ * REACHED THROUGH `shellClass`, because `.app-body` is an ANCESTOR of what this
+ * page renders: the page passes `mv-ref-soonshell` to `Portal`, which puts it
+ * on the root. The Map's `map-shell.css` does the same thing for the opposite
+ * reason — it needs the body to FILL rather than scroll.
+ *
+ * `align-items:center` CANNOT CLIP THE CARD. `.app-body` is a flex item with
+ * `min-height:auto`, so its automatic minimum size is its content: a card
+ * taller than the space grows the body and the page scrolls, instead of being
+ * centred past the top edge where nothing can reach it. The reference's own
+ * `.mv-soon{margin:26px auto}` survives as the gap it keeps from the chrome in
+ * that case.
+ */
+.mv-ref-app.mv-ref-soonshell .app-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* the reference's `.mv-soon` is `max-width:620px;padding:48px 28px` — a little
+   narrower and a little shorter reads as a card rather than a page, now that
+   there is a real page around it */
+.mv-soon-card {
+  max-width: 560px;
+  padding: 36px 32px;
+}
+
+/* the section's own sidebar icon, at the size a page can carry it */
+.mv-soon-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 18px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: var(--mint);
+  border: 1px solid #bfe9d8;
+}
+/* the sprite's `<symbol>`s carry paths and nothing else — every stroke
+   property comes from the CSS of whatever renders them, as with `.mvi` */
+.mv-soon-icon svg {
+  width: 26px;
+  height: 26px;
+  stroke: var(--green-deep);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+/* the same word the sidebar row carries, so the page confirms the tag that
+   sent the reader here rather than introducing a second vocabulary */
+.mv-soon-eyebrow {
+  display: inline-block;
+  margin: 0 0 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--mint);
+  color: var(--green-deep);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.mv-soon-card h1 {
+  margin: 0 0 10px;
+  font-size: 26px;
+}
+
+.mv-soon-what { color: var(--slate); }
+.mv-soon-note { color: var(--muted); }
+
+/* a hairline above the buttons — the copy above it is about the module, the row
+   below it is about leaving the page */
+.mv-soon-card .mv-soon-actions {
+  margin: 22px 0 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: none;
+}
+
+/* on a phone the three buttons stack rather than wrapping two-and-one */
+@media (max-width: 460px) {
+  .mv-soon-card { padding: 28px 20px; }
+  .mv-soon-card .mv-soon-actions { flex-direction: column; }
+  .mv-soon-card .mv-soon-actions .btn { width: 100%; }
+}

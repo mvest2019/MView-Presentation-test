@@ -61,11 +61,24 @@ import type { Payload } from './payload';
 /* ------------------------------------------------------------- the address */
 
 /**
- * WHERE THE API IS, and it is OFF BY DEFAULT.
+ * WHERE THE API IS, and it is ON BY DEFAULT.
  *
- * Unset, the seam keeps reading the committed capture exactly as it did before
- * this client existed — no request, no failure, no change. Set it, and the
- * four blocks come from the service. One variable is the whole switch.
+ * `next.config.ts` declares `MINERALVIEW_API_BASE_URL` with the dev host as its
+ * default, exactly as it does for `OPERATOR_API_BASE_URL`, `MAP_BASE_URL`,
+ * `AUTH_API_URL` and the rest. Next inlines that at build time, so the variable
+ * is always set: a fresh checkout with no `.env.local` calls the service, and so
+ * does a deployment with nothing configured. Setting the variable overrides the
+ * host; it is not a switch that turns the backend on.
+ *
+ * IT USED TO BE A SWITCH, AND THAT WAS THE BUG. Reading `process.env` here with
+ * no default made these two screens the only ones in the app that needed an
+ * environment variable before they would call their backend. Unset, the seam
+ * served the committed capture and said nothing — which is what the deployed
+ * site did for days while looking perfectly healthy.
+ *
+ * `null` is still possible, because the variable can be set to an empty string
+ * to force the capture deliberately (useful offline, and in tests). That is now
+ * an explicit choice rather than the default state.
  *
  * NOT `NEXT_PUBLIC_`, and it must not become it: this is read here, in
  * `server-only` code, so the browser never learns the address and the CORS

@@ -97,7 +97,7 @@ export function ClaimSearchFields({
   query: ClaimQuery;
   onChange: (next: ClaimQuery) => void;
   counties: Async<CountyIndex>;
-  /** Step 2's filter card: tighter gaps, and the name is not `required` there. */
+  /** Step 2's filter card: tighter gaps between the fields. */
   compact?: boolean;
 }) {
   return (
@@ -108,7 +108,6 @@ export function ClaimSearchFields({
       <ClaimTextField
         label="Owner name"
         qualifier="as it appears on checks or mail"
-        required={!compact}
         icon={User}
         name="ownerName"
         value={query.name}

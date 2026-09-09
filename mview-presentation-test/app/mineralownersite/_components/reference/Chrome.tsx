@@ -1,39 +1,36 @@
 'use client';
-/* eslint-disable react-hooks/set-state-in-effect --
- * THE EFFECTS BELOW ARE THE REFERENCE'S, AND EACH ONE SYNCHRONISES WITH AN
- * EXTERNAL SYSTEM, which is what an effect is for. This rule fires on the
- * `setState` that carries the outside world's answer back into React, and the
- * alternatives are worse than the warning:
+/* THE FILE-LEVEL `react-hooks/set-state-in-effect` DISABLE IS GONE, and its
+ * absence is the evidence rather than an oversight: the one effect here that
+ * tripped the rule was the owner search's 450ms debounce, and that component has
+ * been removed (see the note where it used to render). What is left — two
+ * outside-click/Escape listeners — sets state from an event handler, which the
+ * rule has never objected to. ESLint now reports an UNUSED disable directive if
+ * one is put back, so this cannot rot silently.
  *
- *   · reading `localStorage` on mount — the reference's own note says why it is
- *     an effect and not initial state: "so the server and the first client
- *     render agree". Moving it into `useState` reintroduces the hydration
- *     mismatch it was written to avoid.
- *   · the retry when the server sent no payload — a fetch, reported through
- *     state, which is the documented pattern for exactly that.
- *   · the loader's step ticker and the search box's 450ms debounce — a timer is
- *     an external system, and its callback is where the `setState` belongs.
- *
- * Rewriting them would make these files forks of the reference rather than
- * copies, and this port's whole value is that they are copies. The rule stays
- * on everywhere else in the app.
+ * The argument for the ported effects that do still need it, and why rewriting
+ * them would fork the reference rather than copy it, is at the top of
+ * `Portal.tsx`, where those effects live.
  */
 /**
- * The chrome: owner picker, sidebar, top bar, pinned value + price bar,
- * profile menu, and the phone bottom bar.
+ * The chrome: sidebar, top bar, pinned value + price bar, profile menu, and
+ * the phone bottom bar.
  *
- * Structure and class names are v1's (`.mvlive-picker`, `.app-shell`,
- * `.app-side`, `.app-top`, `#mvPinBar`, `.pin-spot`), so the prototype sheets
- * and `live.css` style it directly rather than being re-implemented.
+ * Structure and class names are v1's (`.app-shell`, `.app-side`, `.app-top`,
+ * `#mvPinBar`, `.pin-spot`), so the prototype sheets and `live.css` style it
+ * directly rather than being re-implemented.
  *
- * TWO DELIBERATE CHANGES FROM v1, and only these:
+ * THREE DELIBERATE CHANGES FROM v1, and only these:
  *
  * 1. THE FOUR PERSONAS AND THE FIVE FUNNEL STATES MOVED INTO THE PROFILE MENU.
  *    v1 had the density switch and a state cycler side by side on the top bar,
  *    which is two demo controls competing with the page. They now live behind
  *    the avatar, which is where people look for "how do I want this to look".
  *
- * 2. THE PINNED PRICE STRIP IS FOUR LIVE SETTLEMENTS. v1 put the value model's
+ * 2. THE OWNER-SEARCH BAND IS GONE (requested). v1 put a full-width name
+ *    search above this row. See the note where it used to render for what went
+ *    with it and what did not.
+ *
+ * 3. THE PINNED PRICE STRIP IS FOUR LIVE SETTLEMENTS. v1 put the value model's
  *    own two deck prices here, which is a different number from a market price
  *    — it is the path the estimate is calculated on. The deck moved to its own
  *    labelled card on the dashboard, and this strip now carries WTI, natural
@@ -41,11 +38,16 @@
  *    date. A series that failed shows "n/a", never a last-known value.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { PortalAvatar } from '../portal-avatar';
+import { PortalLogout } from '../portal-logout';
+import { usePortalMember } from '../portal-session';
 import type { Payload } from '../../_lib/reference/payload';
-import { usd, usdShort, pctS, plural, productWord } from '../../_lib/reference/fmt';
+import { usd, usdShort, pctS, productWord } from '../../_lib/reference/fmt';
 import {
-  FUNNEL, PERSONAS, ROUTE_PATH, ROUTE_TITLE, type FunnelKey, type OwnerRef, type Route,
+  FUNNEL, PERSONAS, ROUTE_PATH, ROUTE_TITLE, type FunnelKey, type Route,
 } from './Portal';
 import type { Tier } from './bits';
 import { FunnelBar } from './funnel';
@@ -53,6 +55,52 @@ import { FunnelBar } from './funnel';
 const PLAN: Record<FunnelKey, string> = {
   unclaimed: 'Not claimed', claimed: 'Free', trial: 'Trial', lapsed: 'Lapsed', paid: 'Premium plan',
 };
+
+/**
+ * THE REAL LOGO, on both of this shell's dark surfaces.
+ *
+ * WHAT THIS REPLACED. The sidebar's wordmark was HAND-DRAWN IN TEXT —
+ * `Mineral<span style={{color:'var(--green)'}}>View</span>` at weight 800 — so
+ * the portal's only branding was a two-tone approximation of the logo in
+ * whatever face the page happened to load. `site-nav.ts` has a standing
+ * instruction against exactly that ("Never hand-recreate either as SVG", and
+ * "every hand-drawn reproduction of this logo has been wrong"), and the top bar
+ * carried no mark at all.
+ *
+ * THE DARK-GROUND PAIR, because both surfaces here are `--ink`: the sidebar
+ * (`dashboard-reference.css`) and, since the rows were merged, `.app-top` too
+ * (`dashboard-reference.onebar.css` §1). `icons/mineralview-logo.png` is green
+ * "MINERAL" plus WHITE "VIEW", which is what makes it read on black — and
+ * exactly what makes it fail on the white bar the OTHER portal shell has, where
+ * `graphics/mview-logo.png` is used instead. The pairs are not interchangeable;
+ * `site-nav.ts` sets out the whole distinction, and swapping them is a bug that
+ * has been rediscovered several times.
+ *
+ * `icons/logo.jpg.jpg` is the square icon mark, the same file the marketing
+ * header takes at phone width. Its black tile is baked in (a JPG has no
+ * transparency), which is why it wants a circular crop — and why it sits so well
+ * on `--ink`: the tile disappears into the row and the mark's green ring is what
+ * reads.
+ *
+ * NO CLOUDINARY TRANSFORM ON EITHER — a standing instruction (Ryan, 2026-08-13,
+ * confirmed after seeing the rendered result). A colour swap is never the fix
+ * for a logo that does not read; pick the pair drawn for the ground.
+ *
+ * Sizes are the files' real intrinsic ones, which `next/image` needs for the
+ * aspect ratio; the rendered size comes from the stylesheet.
+ */
+const LOGO = {
+  wordmark: {
+    src: 'https://res.cloudinary.com/mview/image/upload/icons/mineralview-logo.png',
+    width: 577,
+    height: 132,
+  },
+  mark: {
+    src: 'https://res.cloudinary.com/mview/image/upload/icons/logo.jpg.jpg',
+    width: 63,
+    height: 63,
+  },
+} as const;
 
 /**
  * The sidebar, in the reference's own order, with its own labels and icons.
@@ -110,25 +158,63 @@ function Icon({ id }: { id: string }) {
 
 export interface ChromeProps {
   p: Payload | null;
-  route: Route;
+  /** the current row, or `null` on a page that is not one of the routes — see
+   *  the prop's own note on `Portal`. Every `route ===` test below misses on
+   *  `null`, which lights nothing and marks nothing `aria-current`. */
+  route: Route | null;
   go: (r: Route) => void;
   tier: Tier; setTier: (t: Tier) => void;
   funnel: FunnelKey; setFunnel: (f: FunnelKey) => void;
   sample: boolean;
   sampleNote: string | null;
   trialStarted: string | null;
-  onOwner: (o: OwnerRef) => void;
-  busy: boolean;
+  /* `onOwner` AND `busy` ARE GONE from this interface along with the owner
+     search that was their only consumer — see the note where it used to
+     render. `Portal` still owns both (`load` for the URL-driven read on mount,
+     `busy` for the Loader); they simply no longer reach the chrome. */
   open: (key: string) => void;
   children: React.ReactNode;
 }
 
 export default function Chrome(c: ChromeProps) {
+  /* WHO IS SIGNED IN — the member, which is NOT the owner record.
+     `c.p.owner` is the mineral owner record on screen (its name, its initials,
+     its owner number); this is the person logged in. The avatar and the menu
+     head printed the record for both jobs, so a signed-in member saw the
+     record's initials where their own account should be. Read from the session
+     cookie on the server in `(reference)/layout.tsx` — see `portal-session.tsx`
+     for why it arrives as a context rather than a prop. Null when signed out,
+     and every use below falls back to what it printed before. */
+  const member = usePortalMember();
   const [menu, setMenu] = useState(false);
   const [stateMenu, setStateMenu] = useState(false);
   const [nav, setNav] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const stateRef = useRef<HTMLDivElement | null>(null);
+  const router = useRouter();
+
+  /**
+   * A COMING-SOON ROW CARRIES THE OWNER ACROSS WITH IT.
+   *
+   * Those pages render this same shell now, and the shell reads the owner off
+   * the query string — so a bare `href="/mineralownersite/soon/lease-audit"`
+   * arrived with no owner and the sidebar foot, the picker and the pinned value
+   * line came back holding the DEFAULT owner. Clicking a greyed-out row is not
+   * a request to change who you are looking at, and the shell silently
+   * swapping owners underneath the click is worse than the missing sidebar it
+   * replaced.
+   *
+   * `pathname` off the anchor rather than the string it was built from, so this
+   * one handler serves the sidebar rows, the account rows and the plan pill
+   * without any of them repeating their own href.
+   */
+  const goSoon = useCallback((e: React.MouseEvent<HTMLAnchorElement>) => {
+    /* a modified or middle click is the reader asking the BROWSER for a new tab
+       — it is not ours to intercept, and the href it follows is already right */
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    router.push(e.currentTarget.pathname + window.location.search);
+  }, [router]);
 
   /* a menu that does not close on an outside click stays open behind whatever
      the reader does next */
@@ -167,14 +253,29 @@ export default function Chrome(c: ChromeProps) {
   const unread = c.p?.alerts.items.filter((a) => a.unread).length ?? 0;
   const state = FUNNEL.find((s) => s.key === c.funnel)!;
   const persona = PERSONAS.find((x) => x.key === c.tier)!;
+  /* The avatar is the MEMBER when there is one. Its old value — the owner
+     record's initials, or `Me` while nothing is claimed — stays as the fallback
+     for a signed-out reader, so the demo walkthrough is unchanged. */
+  const avatarName = member?.name ?? (c.sample ? 'No record claimed yet' : o?.ownername ?? 'Account');
+  const avatarInitials = member?.initials ?? (c.sample ? 'Me' : o?.initials ?? '··');
 
   return (
     <div className="app-shell" id="appShell">
       {/* ------------------------------------------------------------ side */}
       <aside className={'app-side' + (nav ? ' open' : '')} role="navigation" aria-label="Portal navigation">
-        <div style={{ margin: '4px 8px 16px', fontWeight: 800, fontSize: 17, color: '#eaf6f0' }}>
-          Mineral<span style={{ color: 'var(--green)' }}>View</span>
-        </div>
+        {/* THE REAL WORDMARK, not the two-tone text that used to be here — see
+            `LOGO` above. `height: 30px; width: auto` is what the reference build
+            renders this same file at on this same rail
+            (`owner/src/shell/chunk-004.html`), and the margins are the ones the
+            text carried, so nothing below it moves. */}
+        <Image
+          src={LOGO.wordmark.src}
+          alt="Mineral View"
+          width={LOGO.wordmark.width}
+          height={LOGO.wordmark.height}
+          priority
+          className="mv-side-logo"
+        />
 
         {/*
           IT OPENS THE CLAIM FLOW, NOT THE EXPLAINER.
@@ -231,7 +332,8 @@ export default function Chrome(c: ChromeProps) {
                 : (
                   <a
                     className="nav-item soon" href={'/mineralownersite/soon/' + slug(item.label)}
-                    title={item.label + ' — not in this build'}
+                    title={item.label + ' — coming soon'}
+                    onClick={(e) => { setNav(false); goSoon(e); }}
                   >
                     <span className="nav-ico"><Icon id={item.icon} /></span> {item.label}
                     <span className="soon-tag">soon</span>
@@ -253,18 +355,167 @@ export default function Chrome(c: ChromeProps) {
 
       {/* ------------------------------------------------------------ main */}
       <div className="app-main">
-        <OwnerPicker
-          onOwner={c.onOwner} busy={c.busy} p={c.p} sample={c.sample}
-        />
+        {/* NO OWNER-SEARCH BAND ABOVE THIS ROW (requested).
 
+            `.mvlive-picker` used to sit here: a full-width "MINERAL OWNER"
+            strip with a name search, a Search button and a "Showing <owner> ·
+            10 leases · DE WITT · roll 2025" summary. It is gone, and with it
+            the last piece of chrome that read as a data-browsing tool rather
+            than one owner's portal — an owner has no reason to search the
+            appraisal roll for other people's names, and it cost every screen a
+            band of height above the chrome (OW-30: "I don't want to have so
+            much at the top that you bury everything below it").
+
+            WHAT WENT WITH IT, so this is not discovered later by surprise:
+
+              · SWITCHING OWNERS FROM THE UI. Nothing on screen changes who is
+                loaded any more. The shell still reads `?owner=`, `?num=`,
+                `?dist=` and `?year=` from the URL and `Portal`'s `load` is
+                untouched, so a deep link still selects an owner and the
+                Loader still names its steps — see `(reference)/page.tsx`.
+              · The roll year and lease count that strip restated. Both are
+                already on the page: the sidebar foot carries "roll year …·
+                live from the public record" and the dashboard's own subhead
+                counts the leases.
+
+            `OwnerPicker` itself is deleted rather than left unrendered —
+            unreachable code is how a component stops being maintained, and git
+            has it if the search is wanted back. */}
         <div className="app-top">
           <button className="app-hamburger" onClick={() => setNav((v) => !v)} aria-label="Menu">☰</button>
-          <span className="pagename">{ROUTE_TITLE[c.route]}</span>
+
+          {/* THE LOGO ON THE CHROME ROW, which had none.
+
+              The rail carries the wordmark, and the rail is `display: none`
+              below 860px — so on a phone this portal showed no Mineral View
+              mark anywhere. Both files are in the markup and the stylesheet
+              picks: the compact icon mark from 861px up, where the rail's
+              wordmark is already on screen and this row is measured to the
+              pixel (see `dashboard-reference.onebar.css` §3 — the row is
+              always exactly full and drops content in a defined order), and the
+              full wordmark below that, where the rail is gone and the row has
+              wrapped the pinned group onto its own line.
+
+              CSS AND NOT JAVASCRIPT, for the reason the marketing header
+              records: choosing in JS would send one from the server and pop the
+              other in after hydration.
+
+              `alt` on the wordmark and `alt=""` on the mark, so the link is
+              announced once rather than twice. A real `Link`, not `c.go`: it
+              points at the shell's own home route and `c.go('dashboard')` would
+              be the same destination without a working middle-click. */}
+          <Link
+            className="app-brand"
+            href={ROUTE_PATH.dashboard}
+            aria-label="Mineral View — portal home"
+            onClick={(e) => {
+              /* Inside this shell the Dashboard switches without a request —
+                 that is `go`'s whole point (see `Portal`), and a full
+                 navigation here would throw away a snapshot that took seconds
+                 to build. A modified or middle click is left to the browser,
+                 which is what the `href` is for. */
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+              e.preventDefault();
+              setNav(false);
+              c.go('dashboard');
+            }}
+          >
+            <Image
+              src={LOGO.wordmark.src}
+              alt="Mineral View"
+              width={LOGO.wordmark.width}
+              height={LOGO.wordmark.height}
+              priority
+              className="app-brand-word"
+            />
+            <Image
+              src={LOGO.mark.src}
+              alt=""
+              width={LOGO.mark.width}
+              height={LOGO.mark.height}
+              priority
+              className="app-brand-mark"
+            />
+          </Link>
+          {/* NO PAGE NAME. It used to sit here and it was the third thing on
+              screen saying the same word: the sidebar row is already marked
+              `aria-current="page"` and painted green, and the page's own `<h1>`
+              names the route immediately below. On the merged row it was also
+              84px of the width the settlements now want.
+
+              `ROUTE_TITLE` stays — the phone bottom bar labels its five tabs
+              from it. */}
           {c.sample
             ? <span className="mv-demochip" title="Nothing claimed — every amount is illustrative">
                 Sample data
               </span>
             : null}
+          {/* THE VALUE AND THE SETTLEMENTS, ON THE CHROME ROW ITSELF.
+
+              They were a second sticky band under this one (`#mvPinBar` at
+              `top:58px`). Two bands cost 106px of every screen before any
+              page content, and OW-30 — "I don't want to have so much at the
+              top that you bury everything below it" — is an argument against
+              the stack, not just against a tall bar. One row honours it
+              better than two slim ones do.
+
+              `#mvPinBar` IS KEPT AS THE WRAPPER, not unwrapped into loose
+              children, because every rule that styles this content is scoped
+              to that id — `#mvPinBar .pin-val`, `#mvPinBar .pin-tk .sym`,
+              the lapsed blur, the whole width ladder. Nested here it keeps
+              all of them and only sheds its own bar chrome (its background,
+              its border, its sticky position), which the overrides sheet
+              does. Unwrapping would have meant re-homing ~20 rules.
+
+              IT SITS BEFORE `.spacer`, so the reading order is page name →
+              value → prices → account controls, and the controls stay hard
+              right where they have always been. */}
+          {/* ------------------------------- the pinned value, INLINE */}
+          <div id="mvPinBar" role="group" aria-label="Your portfolio value and the commodity settlements">
+            {c.sample
+              ? (
+                <span className="nc-inline pin-claim">
+                  Claim your mineral owner record to see what it is worth —{' '}
+                  <a href="#claim" onClick={(e) => { e.preventDefault(); c.open('value'); }}>
+                    what the estimate is →
+                  </a>
+                </span>
+              )
+              : (
+                <div
+                  className="pin-val-wrap" role="button" tabIndex={0}
+                  onClick={() => c.open('value')}
+                  onKeyDown={(e) => { if (e.key === 'Enter') c.open('value'); }}
+                  title="Your value estimate — an estimate, not an appraisal. Click for how it is worked out."
+                >
+                  <span className="pin-label">Your minerals</span>
+                  <span className="pin-val num cl-lock">{usd(c.p?.totals.owner_value) ?? '—'}</span>
+                  {/* Short on purpose. This is ONE slim line that also carries four
+                      settlements; the full range and the re-run date are in the
+                      drawer this whole block opens. Measured: the longer wording
+                      put the bar 64px over its width and clipped the first price. */}
+                  <span className="pin-sub hide-s">
+                    {c.funnel === 'lapsed'
+                      ? 'on hold — Premium'
+                      : t
+                        ? `${usdShort(t.owner_value_low)}–${usdShort(t.owner_value_high)}`
+                        : 'estimate, not an appraisal'}
+                  </span>
+                </div>
+              )}
+
+            <PriceStrip ticker={c.p?.ticker ?? null} open={c.open} />
+
+            {c.p
+              ? (
+                <span className="pin-note">
+                  {productWord(c.p.totals.has_gas, c.p.totals.has_oil)} through{' '}
+                  {c.p.as_of.data_month_label ?? '—'}
+                </span>
+              )
+              : null}
+          </div>
+
           <span className="spacer" />
 
           {/* ACCOUNT STATE — on the bar, not in the profile menu.
@@ -301,6 +552,7 @@ export default function Chrome(c: ChromeProps) {
 
           <Link
             className="plan-pill" href="/mineralownersite/soon/billing-and-plan"
+            onClick={goSoon}
             style={{ textDecoration: 'none' }}
           >
             {PLAN[c.funnel]}
@@ -319,22 +571,50 @@ export default function Chrome(c: ChromeProps) {
           {/* ------------------------------------------- the profile menu */}
           <div className="mv-menuwrap" ref={menuRef}>
             <button
-              className="avatar" onClick={() => setMenu((v) => !v)}
+              /* `.mv-avbtn` adds only what a tile holding a photograph needs
+                 and a tile holding two letters does not — `overflow: hidden`
+                 and a padding reset. The `.avatar` circle itself is untouched. */
+              className="avatar mv-avbtn" onClick={() => setMenu((v) => !v)}
               aria-haspopup="menu" aria-expanded={menu}
-              title={c.sample ? 'No record claimed yet' : `${o?.ownername ?? 'Account'} — account menu`}
+              title={`${avatarName} — account menu`}
+              aria-label={`${avatarName} — open account menu`}
               style={{ border: 0, cursor: 'pointer' }}
             >
-              {c.sample ? 'Me' : o?.initials ?? '··'}
+              <PortalAvatar
+                image={member?.image ?? null}
+                initials={avatarInitials}
+                className="mv-avfill"
+              />
             </button>
 
             <div className="mv-menu" role="menu" aria-label="Account menu" hidden={!menu}>
+              {/* THE MEMBER FIRST, THE RECORD UNDER IT. Both are here because
+                  they are two different things and the menu was only ever
+                  showing the second: the head named the owner RECORD, so a
+                  signed-in member looking for their own account found the
+                  appraisal-roll name they happened to be viewing.
+
+                  Signed out — or on a page with no session — it falls back to
+                  exactly what it printed before, so nothing about the demo
+                  walkthrough changes. */}
               <div className="mv-menu-head">
-                <strong>{c.sample ? 'No record claimed' : o?.ownername ?? '—'}</strong>
-                <span>
-                  {PLAN[c.funnel]}
-                  {!c.sample && o?.city ? ` · ${o.city}` : ''}
-                  {!c.sample && o?.ownernumber != null ? ` · owner ${o.ownernumber}` : ''}
-                </span>
+                <PortalAvatar
+                  image={member?.image ?? null}
+                  initials={avatarInitials}
+                  className="avatar mv-menu-pic"
+                />
+                <div className="mv-menu-who">
+                  <strong>
+                    {member?.name ?? (c.sample ? 'No record claimed' : o?.ownername ?? '—')}
+                  </strong>
+                  {member?.email ? <span className="mv-menu-mail">{member.email}</span> : null}
+                  <span>
+                    {PLAN[c.funnel]}
+                    {!c.sample && o?.ownername && member ? ` · ${o.ownername}` : ''}
+                    {!c.sample && o?.city ? ` · ${o.city}` : ''}
+                    {!c.sample && o?.ownernumber != null ? ` · owner ${o.ownernumber}` : ''}
+                  </span>
+                </div>
               </div>
 
               {/* THE FOUR PERSONAS — the redesign's density tiers, moved here */}
@@ -363,7 +643,7 @@ export default function Chrome(c: ChromeProps) {
                 <a
                   key={x.label} role="menuitem"
                   href={x.href ?? '/mineralownersite/soon/' + slug(x.label)}
-                  onClick={() => setMenu(false)}
+                  onClick={(e) => { setMenu(false); if (!x.href) goSoon(e); }}
                 >
                   <Icon id="mvi-user" /> {x.label}
                   {x.href
@@ -374,64 +654,46 @@ export default function Chrome(c: ChromeProps) {
               <button className="mi" onClick={() => { setMenu(false); c.open('identity'); }}>
                 <Icon id="mvi-audit" /> How this record was identified
               </button>
+
+              {/* LOG OUT — last, behind its own rule. Bottom of the menu and
+                  separated is where a signed-in product puts it, and it keeps
+                  the one destructive item away from the rows a pointer sweeps
+                  through on its way to Settings.
+
+                  `PortalLogout` calls the SAME `signOutAction` the marketing
+                  header calls. There is one sign-out path in this app and this
+                  is it — nothing about the auth flow is re-implemented here.
+
+                  Signed out the slot is the way IN instead: a menu offering Log
+                  out to someone who is not logged in is worse than one offering
+                  nothing. */}
+              <div className="mv-menu-foot">
+                {member
+                  ? <PortalLogout className="mi mv-logout" onDone={() => setMenu(false)} />
+                  : (
+                    <Link
+                      role="menuitem" href="/login"
+                      className="mv-logout mv-logout-in"
+                      onClick={() => setMenu(false)}
+                    >
+                      <Icon id="mvi-user" /> Sign in
+                    </Link>
+                  )}
+              </div>
             </div>
           </div>
         </div>
 
-        {/* THE PLAN BANNER — between the top bar and the pinned value, which
-            is where the redesign puts it. `#mvFunnelBar` is display:none by
-            default and revealed per state by mvfunnelstates.css, so `paid`
-            correctly shows nothing at all. */}
+        {/* THE PLAN BANNER — directly under the chrome row, which is still
+            where the redesign puts it: the row above now carries the pinned
+            value too, so "between the top bar and the pinned value" is one
+            position rather than two and this is it. `#mvFunnelBar` is
+            display:none by default and revealed per state by
+            mvfunnelstates.css, so `paid` correctly shows nothing at all. */}
         <FunnelBar
           p={c.p} funnel={c.funnel} trialStarted={c.trialStarted}
           setFunnel={c.setFunnel} go={c.go} open={c.open}
         />
-
-        {/* --------------------------------------------- pinned value line */}
-        <div id="mvPinBar" role="group" aria-label="Your portfolio value and the commodity settlements">
-          {c.sample
-            ? (
-              <span className="nc-inline pin-claim">
-                Claim your mineral owner record to see what it is worth —{' '}
-                <a href="#claim" onClick={(e) => { e.preventDefault(); c.open('value'); }}>
-                  what the estimate is →
-                </a>
-              </span>
-            )
-            : (
-              <div
-                className="pin-val-wrap" role="button" tabIndex={0}
-                onClick={() => c.open('value')}
-                onKeyDown={(e) => { if (e.key === 'Enter') c.open('value'); }}
-                title="Your value estimate — an estimate, not an appraisal. Click for how it is worked out."
-              >
-                <span className="pin-label">Your minerals</span>
-                <span className="pin-val num cl-lock">{usd(c.p?.totals.owner_value) ?? '—'}</span>
-                {/* Short on purpose. This is ONE slim line that also carries four
-                    settlements; the full range and the re-run date are in the
-                    drawer this whole block opens. Measured: the longer wording
-                    put the bar 64px over its width and clipped the first price. */}
-                <span className="pin-sub hide-s">
-                  {c.funnel === 'lapsed'
-                    ? 'on hold — Premium'
-                    : t
-                      ? `${usdShort(t.owner_value_low)}–${usdShort(t.owner_value_high)}`
-                      : 'estimate, not an appraisal'}
-                </span>
-              </div>
-            )}
-
-          <PriceStrip ticker={c.p?.ticker ?? null} open={c.open} />
-
-          {c.p
-            ? (
-              <span className="pin-note">
-                {productWord(c.p.totals.has_gas, c.p.totals.has_oil)} through{' '}
-                {c.p.as_of.data_month_label ?? '—'}
-              </span>
-            )
-            : null}
-        </div>
 
         <div className="app-body">
           {c.children}
@@ -491,11 +753,18 @@ function PriceStrip({ ticker, open }: { ticker: Payload['ticker']; open: (k: str
           {q.display
             ? <span className="mv-spot-val">{q.display}</span>
             : <span className="tk-na">n/a</span>}
+          {/* THE DELTA CARRIES A CLASS, NOT AN INLINE `style`. Its two colours
+              were literals here — `#7fe3bd` and `#ff9a8b`, both picked to sit
+              on the dark pinned bar. An inline style is unreachable from a
+              stylesheet without `!important`, so when the bar's background
+              changed these were the one pair of colours that could not follow
+              it, and a pale mint arrow on white is invisible. The sheet owns
+              them now: `.tk-up` / `.tk-dn` in
+              `dashboard-reference.onebar.css`. */}
           {q.change_pct != null && Math.abs(q.change_pct) >= 0.005
             ? (
               <span
-                className="tk-chg"
-                style={{ color: q.change_pct >= 0 ? '#7fe3bd' : '#ff9a8b' }}
+                className={'tk-chg ' + (q.change_pct >= 0 ? 'tk-up' : 'tk-dn')}
               >
                 {q.change_pct > 0 ? '▲' : '▼'}{Math.abs(q.change_pct).toFixed(1)}%
               </span>
@@ -505,145 +774,6 @@ function PriceStrip({ ticker, open }: { ticker: Payload['ticker']; open: (k: str
       ))}
     </div>
   );
-}
-
-/* ========================================================== owner picker */
-/**
- * Search the appraisal roll by name.
- *
- * Debounced at 450ms and only from three characters, because each miss is a
- * scan of the roll year — there is no index on the owner name. An exact single
- * hit loads on Enter; anything else lists, because picking the wrong Smith is
- * worse than one extra click.
- */
-function OwnerPicker(
-  { onOwner, busy, p, sample }:
-  { onOwner: (o: OwnerRef) => void; busy: boolean; p: Payload | null; sample: boolean },
-) {
-  const [q, setQ] = useState('');
-  const [rows, setRows] = useState<OwnerHit[] | null>(null);
-  const [note, setNote] = useState<string | null>(null);
-  const [searching, setSearching] = useState(false);
-  const seq = useRef(0);
-  const box = useRef<HTMLDivElement | null>(null);
-
-  const run = useCallback(async (text: string) => {
-    const my = ++seq.current;
-    setSearching(true);
-    try {
-      const res = await fetch('/api/owners/search?q=' + encodeURIComponent(text), { cache: 'no-store' });
-      const d = await res.json();
-      if (my !== seq.current) return;
-      setRows(d.results ?? []);
-      setNote(d.note
-        ?? (d.widened_to_prefix
-          ? `No exact match for “${text}”, so these are names that start with it — roll year ${d.year}.`
-          : d.count
-            ? `${d.count} ${d.count === 1 ? 'match' : 'matches'} on the ${d.year} appraisal roll.`
-            : `Nothing on the ${d.year} roll matches “${text}”. The roll carries the name as the county recorded it — surname first — so try a surname on its own.`));
-    } catch (e) {
-      if (my === seq.current) {
-        setRows([]);
-        setNote('The search did not answer: ' + (e instanceof Error ? e.message : String(e)));
-      }
-    } finally {
-      if (my === seq.current) setSearching(false);
-    }
-  }, []);
-
-  /* debounce — every keystroke would otherwise start a roll scan */
-  useEffect(() => {
-    const text = q.trim();
-    if (text.length < 3) { setRows(null); setNote(null); return; }
-    const id = window.setTimeout(() => void run(text), 450);
-    return () => window.clearTimeout(id);
-  }, [q, run]);
-
-  useEffect(() => {
-    const onDoc = (e: MouseEvent) => {
-      if (!box.current?.contains(e.target as Node)) { setRows(null); setNote(null); }
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, []);
-
-  const pick = (r: OwnerHit) => {
-    setRows(null); setNote(null); setQ('');
-    onOwner({
-      ownername: r.ownername, ownernumber: r.ownernumber,
-      districtcode: r.districtcode, year: r.year,
-    });
-  };
-  const single = rows?.length === 1 ? rows[0] : null;
-
-  return (
-    <div className="mvlive-picker" ref={box}>
-      <div className="mvlive-picker-in">
-        <span className="mvlive-tag">Mineral owner</span>
-        <form
-          autoComplete="off" role="search"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (single) pick(single);
-            else if (q.trim().length >= 3) void run(q.trim());
-          }}
-        >
-          <input
-            type="search" value={q} onChange={(e) => setQ(e.target.value)}
-            placeholder="Search a mineral owner by name — e.g. Platis Sydney Kay"
-            aria-label="Search a mineral owner by name"
-            autoComplete="off" spellCheck={false} disabled={busy}
-          />
-          <button className="btn btn-primary btn-sm" type="submit" disabled={busy || q.trim().length < 3}>
-            {searching ? 'Searching…' : 'Search'}
-          </button>
-        </form>
-        <span className="mvlive-who">
-          {busy
-            ? <><span className="mv-inline-spin" aria-hidden="true" />loading</>
-            : p
-              ? (
-                <>
-                  Showing <b>{sample ? 'a sample of this record' : p.owner.ownername}</b> ·{' '}
-                  {p.totals.lease_count} {plural(p.totals.lease_count, 'lease')} ·{' '}
-                  {p.totals.counties.join(', ')} · roll {p.owner.roll_year}
-                </>
-              )
-              : 'no owner loaded'}
-        </span>
-      </div>
-
-      {rows
-        ? (
-          <div className="mvlive-results" role="listbox" aria-label="Owner search results">
-            {note ? <div className="mvlive-note">{note}</div> : null}
-            {rows.length
-              ? rows.map((r) => (
-                <button
-                  key={`${r.ownernumber}:${r.districtcode}:${r.ownername}`}
-                  className="mvlive-row" role="option" aria-selected={false}
-                  onClick={() => pick(r)} type="button"
-                >
-                  <b>{r.ownername}</b>
-                  <span className="r-meta">
-                    owner {r.ownernumber} · district {r.districtcode}
-                    {r.city ? ` · ${r.city}` : ''} · {r.lease_count}{' '}
-                    {plural(r.lease_count, 'lease')}
-                  </span>
-                  <span className="r-val">{usdShort(r.appraised_total) ?? '—'}</span>
-                </button>
-              ))
-              : <div className="mvlive-empty">{note}</div>}
-          </div>
-        )
-        : null}
-    </div>
-  );
-}
-
-interface OwnerHit {
-  ownername: string; ownernumber: string | number; districtcode: string;
-  city: string | null; lease_count: number; appraised_total: number; year: number;
 }
 
 const slug = (s: string) =>

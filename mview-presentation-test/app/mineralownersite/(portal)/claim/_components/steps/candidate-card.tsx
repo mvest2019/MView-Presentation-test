@@ -1,9 +1,10 @@
 "use client";
 
 import { Check, EyeOff } from "lucide-react";
+import { memo } from "react";
 
 import { Badge } from "../../../../_components/ui/badge";
-import { mailCity, maskedAddress } from "../../_lib/claim-format";
+import { mailCity } from "../../_lib/claim-format";
 import type { OwnerRecord } from "../../_lib/claim-types";
 
 /**
@@ -37,7 +38,7 @@ import type { OwnerRecord } from "../../_lib/claim-types";
  * a stranger's doorstep. The full street line appears on step 3, and only for
  * the records you actually took.
  */
-export function CandidateCard({
+export const CandidateCard = memo(function CandidateCard({
   record,
   index,
   selected,
@@ -47,8 +48,22 @@ export function CandidateCard({
   /** 1-based, so the card matches the "N candidate records" count above. */
   index: number;
   selected: boolean;
-  onToggle: (checked: boolean) => void;
+  /**
+   * TAKES THE RECORD BACK, rather than the caller closing over it.
+   *
+   * `onToggle={(checked) => onToggle(record, checked)}` reads more naturally
+   * at the call site and is what made `memo` useless: a fresh arrow per card
+   * per render is a changed prop on all 1,153 of them, so every one re-rendered
+   * on every tick. Handing the record back keeps the prop identical between
+   * renders, which is the whole condition for skipping the work.
+   */
+  onToggle: (record: OwnerRecord, checked: boolean) => void;
 }) {
+  /* ONCE, NOT THREE TIMES. This was called in the condition, again in the
+     badge, and a third time inside `maskedAddress` — three string splits per
+     card, 3,459 of them across the list, for one answer. */
+  const city = mailCity(record.address);
+
   return (
     <label
       className={`flex cursor-pointer items-start gap-3 rounded-mv border p-4 transition-colors ${
@@ -61,7 +76,7 @@ export function CandidateCard({
         <input
           type="checkbox"
           checked={selected}
-          onChange={(e) => onToggle(e.target.checked)}
+          onChange={(e) => onToggle(record, e.target.checked)}
           className="h-[15px] w-[15px] cursor-pointer accent-mv-green-deep outline-none focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.28)]"
         />
         <span className="text-[12px] font-bold text-mv-muted">{index}</span>
@@ -72,21 +87,25 @@ export function CandidateCard({
           <h3 className="text-[13.5px] font-extrabold tracking-[.01em] text-mv-ink">
             {record.name}
           </h3>
-          {mailCity(record.address) && (
+          {city && (
             <Badge tone="mint" size="xs">
-              Mail goes to: {mailCity(record.address)}
+              Mail goes to: {city}
             </Badge>
           )}
         </div>
 
         <p className="mt-[5px] text-[12px] text-mv-muted">
-          {record.address ? maskedAddress(record.address) : "No address on file"}
+          {!record.address
+            ? "No address on file"
+            : city
+              ? `•••• ${city}`
+              : record.address}
         </p>
 
         <div className="mt-[10px] flex flex-wrap gap-[6px]">
           <Badge tone="mint" size="xs">
-            {record.leaseCount} lease{record.leaseCount === 1 ? "" : "s"} tied to
-            record
+            {record.leaseCount} lease{record.leaseCount === 1 ? "" : "s"} tied
+            to record
           </Badge>
           <Badge tone="slate" size="xs">
             {record.county}
@@ -119,4 +138,4 @@ export function CandidateCard({
       )}
     </label>
   );
-}
+});

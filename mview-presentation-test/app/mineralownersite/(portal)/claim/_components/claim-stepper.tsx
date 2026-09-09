@@ -52,7 +52,12 @@ export function ClaimStepper({ current }: { current: number }) {
         return (
           <li
             key={step.n}
-            className="relative flex min-w-[92px] flex-1 flex-col items-center gap-2"
+            /* The current step's cell is tinted, so the rail says where you
+               are twice — by the mark under the label and by the panel behind
+               it. On a five-node rail the underline alone is easy to lose. */
+            className={`relative flex min-w-[92px] flex-1 flex-col items-center gap-2 rounded-t-[10px] pt-[2px] ${
+              active ? "bg-mv-mint/45" : ""
+            }`}
             aria-current={active ? "step" : undefined}
           >
             {/* The joining rule. Absolute so it can sit behind the disc and
@@ -77,7 +82,11 @@ export function ClaimStepper({ current }: { current: number }) {
               }`}
             >
               {done ? (
-                <Check aria-hidden="true" className="h-[14px] w-[14px]" strokeWidth={3} />
+                <Check
+                  aria-hidden="true"
+                  className="h-[14px] w-[14px]"
+                  strokeWidth={3}
+                />
               ) : (
                 step.n
               )}
