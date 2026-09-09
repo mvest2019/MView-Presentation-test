@@ -70,7 +70,20 @@ export default function LineChart(
     const n = spec.x.length;
     const x = (i: number) => PAD.l + (n <= 1 ? innerW / 2 : (i / (n - 1)) * innerW);
     const y = (v: number) => PAD.t + (1 - (v - y0) / (y1 - y0 || 1)) * innerH;
-    return { lo, hi, y0, y1, x, y, innerW, innerH, isVolume };
+    /* FIXED · A BAR OWNS A BAND, A POINT OWNS A POSITION.
+       `x()` above is the LINE scale: it puts point 0 exactly on the left edge
+       and point n-1 exactly on the right, which is right for a line and wrong
+       for a bar, because a bar is drawn AROUND its x rather than at it. The
+       bars were centred on `x(i)` and so hung half a slot over both ends. At
+       24 months that is ~2px and invisible; at two months the slot is 182px
+       wide and the first bar was drawn at x=-85 in a 600-wide viewBox — off
+       the canvas entirely, which is what a 30-day range showed.
+       `band()` gives each period an equal slice and centres it, so the first
+       and last bars sit inside the plot at every n. Used by the bars, the
+       highlight and the pointer, and by nothing a line chart draws. */
+    const band = innerW / Math.max(n, 1);
+    const bandC = (i: number) => PAD.l + (i + 0.5) * band;
+    return { lo, hi, y0, y1, x, y, band, bandC, innerW, innerH, isVolume };
   }, [spec]);
 
   /* Snap to the nearest real index — never interpolate a reading.
@@ -78,19 +91,28 @@ export default function LineChart(
      mousemove can arrive while the SVG still measures 0px wide. Dividing by
      that produced NaN, and `NaN ?? lastIdx` is NaN — nullish coalescing does
      not catch it — so the readout rendered "not filed" and "NaN of 24". */
-  const onMove = useCallback((clientX: number) => {
+  /* FIXED · the pointer has to read the same scale the marks are drawn on, or
+     the highlight lands on the neighbour of the bar under the cursor. */
+  const indexAt = useCallback((clientX: number): number | null => {
     const el = svgRef.current;
     const n = spec.x.length;
-    if (!el || n < 2) return;
+    if (!el || n < 2) return null;
     const r = el.getBoundingClientRect();
-    if (!(r.width > 0)) return;
+    if (!(r.width > 0)) return null;
     const frac = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
     /* invert the viewBox padding, so the ends of the plot map to the ends */
     const inner = (frac * VB_W - PAD.l) / (VB_W - PAD.l - PAD.r);
-    const idx = Math.round(inner * (n - 1));
-    if (!Number.isFinite(idx)) return;
-    setHover(Math.min(n - 1, Math.max(0, idx)));
-  }, [spec.x.length]);
+    const idx = spec.kind === 'bars'
+      ? Math.floor(inner * n)          // which band the cursor is over
+      : Math.round(inner * (n - 1));   // which point it is nearest
+    if (!Number.isFinite(idx)) return null;
+    return Math.min(n - 1, Math.max(0, idx));
+  }, [spec.x.length, spec.kind]);
+
+  const onMove = useCallback((clientX: number) => {
+    const idx = indexAt(clientX);
+    if (idx != null) setHover(idx);
+  }, [indexAt]);
 
   const onKey = useCallback((e: React.KeyboardEvent) => {
     if ((e.key === 'Enter' || e.key === ' ') && onPick) {
@@ -179,13 +201,10 @@ export default function LineChart(
         }
         style={onPick ? { cursor: 'pointer' } : undefined}
         onClick={onPick
-          ? (e) => { onMove(e.clientX); const el = svgRef.current; if (!el) return;
-            const r = el.getBoundingClientRect();
-            if (!(r.width > 0)) return;
-            const frac = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-            const inner = (frac * VB_W - PAD.l) / (VB_W - PAD.l - PAD.r);
-            const i = Math.round(inner * (n - 1));
-            if (Number.isFinite(i)) onPick(Math.min(n - 1, Math.max(0, i)));
+          ? (e) => {
+            onMove(e.clientX);
+            const i = indexAt(e.clientX);
+            if (i != null) onPick(i);
           }
           : undefined}
         onMouseMove={(e) => onMove(e.clientX)}
@@ -215,8 +234,8 @@ export default function LineChart(
         {spec.kind === 'bars' && showCursor
           ? (
             <rect
-              x={x(readIdx) - (geom.innerW / Math.max(n, 1)) / 2} y={PAD.t}
-              width={geom.innerW / Math.max(n, 1)} height={VB_H - PAD.t - PAD.b}
+              x={PAD.l + readIdx * geom.band} y={PAD.t}
+              width={geom.band} height={VB_H - PAD.t - PAD.b}
               fill="#0d1a15" opacity="0.05"
             />
           )
@@ -234,13 +253,13 @@ export default function LineChart(
             const groups = spec.series.length;
             /* the slot each period owns, then the share of it this series
                takes; 0.62 leaves a real gap between one month and the next */
-            const slot = (geom.innerW / Math.max(n, 1)) * 0.62;
+            const slot = geom.band * 0.62;
             const bw = Math.max(1.4, slot / groups);
             return (
               <g key={s.name}>
                 {s.points.map((v, i) => {
                   if (v == null || !(v > 0)) return null;
-                  const cx = x(i) - slot / 2 + si * bw;
+                  const cx = geom.bandC(i) - slot / 2 + si * bw;
                   const top = y(v);
                   return (
                     <rect
@@ -303,7 +322,8 @@ export default function LineChart(
         {showCursor && spec.kind === 'bars'
           ? (
             <line
-              x1={x(readIdx)} x2={x(readIdx)} y1={PAD.t} y2={VB_H - PAD.b}
+              x1={geom.bandC(readIdx)} x2={geom.bandC(readIdx)}
+              y1={PAD.t} y2={VB_H - PAD.b}
               stroke="#8a94a6" strokeWidth="1" strokeDasharray="2 2"
             />
           )

@@ -2090,3 +2090,54 @@ body .mv-ref-app.view-ultra:not(.no-claim) section[data-route="app-leases"] > .p
 @keyframes mvFadeUp {from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @keyframes mvBounce {0%,80%,100%{transform:scale(.6);opacity:.45}40%{transform:scale(1);opacity:1}}
 @keyframes mvSpin {to{transform:rotate(360deg)}}
+/* ==========================================================================
+   WHAT THIS APP'S OWN RESET ADDS ON TOP OF THE REFERENCE
+
+   Everything above this line is the reference's, extracted. The block below is
+   NOT in the reference — it exists because this app declares something where
+   the reference declares nothing, and an extracted sheet can only override a
+   property the reference actually sets. Where the reference relies on the
+   BROWSER'S default, a host declaration in between wins by default and there
+   is nothing to extract that would stop it.
+
+   Tailwind's preflight sets `font: inherit` on button, input, select, textarea
+   and optgroup. The reference does not, so its form controls take the UA's own
+   font and `line-height: normal` — which is why its avatar initials render in
+   Arial and its `.al-mini`, `.as-cat` and `.sw-btn` buttons sit at `normal`
+   leading rather than the body's 1.55. Measured against the running reference,
+   that difference showed up on six selectors.
+
+   Preflight also sets `color: inherit` on those same controls, and
+   `display: block; vertical-align: middle` on `svg`. The reference sets
+   neither, so its unstyled buttons and inputs take the UA's black and its
+   `.mvi-inline` icons stay INLINE. The icon one is the visible half: an inline
+   15px glyph that becomes a block box takes a line of its own, and the
+   reference's own `vertical-align: -2px` on `.mvi-inline` is written for an
+   inline box. Inside a flex parent — `.al-ico`, `.mk-ico` — display is
+   blockified anyway and nothing showed, which is why this survived the first
+   pass: the Dashboard is the only surface that puts one in running text.
+
+   `revert` is the right tool: it drops back to the UA stylesheet, which is
+   exactly what the reference gets. Every ported rule that DOES set one of
+   these — `.btn`, `.as-cat`, `.mvlive-picker input`, `.alx-svg`, `.lc-svg`,
+   `.mvi-inline`'s own `vertical-align` — still wins on specificity, because
+   those are two classes against this rule's one class and one element.
+   ========================================================================== */
+
+.mv-ref-app button,
+.mv-ref-app input,
+.mv-ref-app select,
+.mv-ref-app textarea,
+.mv-ref-app optgroup {
+  font-family: revert;
+  font-size: revert;
+  font-weight: revert;
+  font-style: revert;
+  line-height: normal;
+  color: revert;
+}
+
+.mv-ref-app svg {
+  display: revert;
+  vertical-align: revert;
+}
