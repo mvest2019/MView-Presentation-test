@@ -156,12 +156,27 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
    *
    * `setStep(1)` alone would leave the finished claim in state, and `claim.data`
    * is what tells step 4 the write already happened: the reader would search a
-   * brand new owner, reach step 4, and find a button reading "Continue → step 5"
+   * brand new owner, reach step 4, and find a button reading "View your claim →"
    * that files nothing and hands them the PREVIOUS claim's receipt.
    *
    * The county list is deliberately kept. It is 204 rows that have not changed,
    * and re-fetching them would make starting over slower than arriving.
    */
+  /*
+   * RESET ON STEP 2 — empty the fields AND drop the answer they produced.
+   *
+   * A named function rather than an inline arrow in the JSX. It makes the same
+   * ref writes `startOver` does, but `react-hooks/immutability` rejects them
+   * written inline at the call site — it reads a ref assignment inside a JSX
+   * prop as a modification of something already handed to a hook.
+   */
+  function resetSearch() {
+    searchRef.current?.abort();
+    searchedRef.current = "";
+    setQuery(emptyQuery);
+    setResults(idle());
+  }
+
   function startOver() {
     searchRef.current?.abort();
     searchedRef.current = "";
@@ -410,6 +425,7 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
           onSearch={() => runSearch(query)}
           tooShort={!isSearchable(query)}
           onClearSelection={() => setPicked([])}
+          onReset={resetSearch}
         />
       )}
 

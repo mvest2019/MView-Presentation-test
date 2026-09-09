@@ -10,7 +10,6 @@ import { FlowError, FlowLoading } from "../flow-state";
 import { GuideNote } from "../guide-note";
 import {
   ClaimSearchFields,
-  MIN_QUERY_CHARS,
   isSearchable,
   type ClaimQuery,
 } from "../search-fields";
@@ -22,7 +21,8 @@ import { StepIntro } from "../step-intro";
  * explains itself, and the button greys and un-greys as you type, which is
  * the answer for anyone watching it.
  */
-const NEEDS_A_FILTER = `Enter a name, address or lease (${MIN_QUERY_CHARS}+ characters), or pick a county.`;
+const NEEDS_A_FILTER =
+  "Enter an owner name, address or lease — or pick a county.";
 
 /**
  * STEP 1 — search the public record.
@@ -119,7 +119,7 @@ export function StepFind({
           title={canSearch ? undefined : NEEDS_A_FILTER}
         >
           <Search aria-hidden="true" className="h-[15px] w-[15px]" />
-          Search public records →
+          Search records →
         </PortalButton>
 
         <p className="flex items-center gap-[6px] text-[12px] text-mv-muted">
