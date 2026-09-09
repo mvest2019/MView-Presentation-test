@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 
+import { PortalSessionProvider } from "../_components/portal-session";
 import { Sprite } from "../_components/reference/Sprite";
+import { getSessionUser } from "@/lib/session";
 import "../dashboard-reference.layer.css";
 
 /**
@@ -46,6 +48,21 @@ import "../dashboard-reference.layer.css";
  *     `<use href="#mvi-home">` to resolve, and it is rendered here so a route
  *     change does not re-mount it.
  *
+ *   · WHO IS SIGNED IN. `getSessionUser()` is awaited here and the value is put
+ *     into `PortalSessionProvider`, so `Chrome`'s account menu prints the
+ *     member's own name, email and picture rather than the owner RECORD's
+ *     initials, and can offer them a way out.
+ *
+ *     HERE AND NOT IN THE SEVEN PAGES, and not as a prop through `Portal`. The
+ *     cookie is httpOnly, so only a server component can read it — and `Portal`
+ *     is a deliberate copy of the reference build's own file, which would have
+ *     to be forked to carry a value it never uses. One read in this layout, one
+ *     context, `Portal.tsx` untouched. See `portal-session.tsx`.
+ *
+ *     READING IS NOT GATING. Nothing is redirected on a null: this layout is no
+ *     more an auth boundary than the other group's, and a signed-out visitor
+ *     still gets the whole shell.
+ *
  *   · nothing else. The shell is `Chrome`, and `Chrome` is rendered by
  *     `Portal`, which each page renders with its own `route` prop. That is the
  *     reference's own arrangement: one client shell holding the state both
@@ -69,15 +86,17 @@ export const metadata: Metadata = {
   },
 };
 
-export default function ReferencePortalLayout({
+export default async function ReferencePortalLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const user = await getSessionUser();
+
   return (
     <>
       <Sprite />
-      {children}
+      <PortalSessionProvider user={user}>{children}</PortalSessionProvider>
     </>
   );
 }

@@ -35,6 +35,38 @@ export interface SessionUser {
   firstName: string;
   lastName: string;
   email: string;
+  /**
+   * The member's own `profile_pic`, when the record carries a usable one.
+   *
+   * OPTIONAL, AND EVERY READER MUST COPE WITHOUT IT. The field is absent from
+   * the login response for most accounts, absent from every cookie written
+   * before this was added, and the URL it names can 404 — so the avatar that
+   * uses it falls back to initials rather than treating it as present.
+   *
+   * A URL and not the bytes, so this costs the cookie a hundred-odd characters
+   * and stays nowhere near the 4KB limit the note above is about.
+   */
+  profileImage?: string;
+}
+
+/**
+ * `profile_pic` as something an `<img>` may be pointed at, or null.
+ *
+ * The API sends this field free-form — absent, empty, an absolute URL, or a
+ * path on our own origin — and the portal avatar hands it straight to `src`.
+ * Only `http(s)` and root-relative paths pass, so a stray `javascript:` or
+ * `data:` value in the record cannot reach the DOM. A protocol-relative `//host`
+ * is refused too: it is a URL to somewhere else wearing a path's clothes.
+ *
+ * Applied on write AND on read. The cookie is not signed — see the warning at
+ * the top of this file — so what comes back out of it is checked again.
+ */
+function safeImageUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const raw = value.trim();
+  if (!raw || raw.startsWith("//")) return null;
+  if (raw.startsWith("/") || /^https?:\/\//i.test(raw)) return raw;
+  return null;
 }
 
 /**
@@ -47,11 +79,15 @@ export async function startSession(
   user: AuthUser,
   remember = false,
 ): Promise<void> {
+  const image = safeImageUrl(user.profile_pic);
   const value: SessionUser = {
     id: user.member_id,
     firstName: user.f_name ?? "",
     lastName: user.l_name ?? "",
     email: user.email_id ?? "",
+    // Spread rather than `profileImage: image ?? undefined`, so an account with
+    // no picture writes no key at all instead of `"profileImage":null`.
+    ...(image ? { profileImage: image } : {}),
   };
 
   (await cookies()).set(COOKIE, JSON.stringify(value), {
@@ -74,7 +110,12 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as SessionUser;
-    return typeof parsed?.email === "string" ? parsed : null;
+    if (typeof parsed?.email !== "string") return null;
+    /* Re-checked on the way out, for the reason `safeImageUrl` records: this
+       value ends up in an `<img src>` and the cookie carrying it is not
+       signed. */
+    const image = safeImageUrl(parsed.profileImage);
+    return { ...parsed, profileImage: image ?? undefined };
   } catch {
     // A truncated or hand-edited cookie reads as signed out rather than 500ing
     // every page that asks.

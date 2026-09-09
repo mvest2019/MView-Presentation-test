@@ -27,6 +27,14 @@ import { showsFunnelBar } from "../_lib/portal-page-furniture";
  * for, and it is what makes the gating cheap: a state or density change swaps a
  * class on the portal root and re-renders nothing else.
  *
+ * THE SIGNED-IN MEMBER DOES NOT COME THROUGH HERE. The two surfaces that print
+ * it — the top bar's account menu and the drawer's identity block — read it from
+ * `usePortalMember()`, whose provider the layout above wraps this in. It is a
+ * context and not a prop because the portal's OTHER shell needs the same value
+ * four levels down through a file that is a deliberate copy of the reference
+ * build's; see `portal-session.tsx`. The read itself is still on the server, in
+ * the layout — the cookie is httpOnly.
+ *
  * THE LAYOUT ORDER MATTERS and is the design's:
  *
  *   .app-shell            the 236px sidebar + main grid

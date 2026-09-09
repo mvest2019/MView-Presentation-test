@@ -322,3 +322,244 @@
     padding: 0;
   }
 }
+
+/* ----------------------------------------------------------------------------
+   4 · THE LOGO, THE MEMBER'S AVATAR, AND LOG OUT
+
+   Added with the three changes `Chrome.tsx` documents at each call site: the
+   real logo in place of the hand-drawn text wordmark, the signed-in member in
+   place of the owner record's initials, and a way out of the account.
+
+   THEY ARE HERE AND NOT IN `dashboard-reference.css` for the reason at the top
+   of this sheet: that file is a byte-for-byte copy of the reference build's own
+   stylesheets, and a local decision inside it is silently reverted by the next
+   extraction. This sheet loads after it in the same layer, so these win on
+   source order without needing extra specificity.
+   ---------------------------------------------------------------------------- */
+
+/* THE SIDEBAR WORDMARK. `height: 30px; width: auto` is what the reference
+   renders this same file at on this same rail (`owner/src/shell/chunk-004.html`
+   — "height:30px;width:auto;display:block"), and the margins are the ones the
+   text element it replaced carried, so nothing below it moved.
+
+   NO PLATE, NO RADIUS, NO PADDING: this is the DARK-ground asset on the dark
+   rail, which is the ground it was drawn for. A white tile behind it would be
+   the mistake the other shell's sidebar note warns about. */
+.mv-ref-app .app-side .mv-side-logo {
+  display: block;
+  height: 30px;
+  width: auto;
+  margin: 4px 8px 16px;
+}
+
+/* THE BRAND SLOT ON THE CHROME ROW.
+
+   `flex: none` is not optional here. Section 1 makes `#mvPinBar` the row's one
+   elastic element and every account control `flex: none`, precisely so the row
+   gives in one place; a shrinkable logo would be a second, and a half-width
+   wordmark is not a smaller wordmark. */
+.mv-ref-app .app-top .app-brand {
+  display: flex;
+  align-items: center;
+  flex: none;
+  line-height: 0;
+  text-decoration: none;
+}
+
+/* The square mark, from 861px up — the rail's wordmark is already on screen at
+   those widths, and this row is measured to the pixel (§3). 26px is the
+   smallest of the row's controls, so it adds a brand anchor without taking a
+   settlement's width.
+
+   Its black tile is baked into the JPG, so it needs the circular crop that
+   bounds the mark's inscribed ring. On `--ink` the tile all but disappears and
+   the green ring is what reads, which is why no plate is needed. */
+.mv-ref-app .app-top .app-brand .app-brand-mark {
+  display: block;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+}
+
+/* The wordmark is the phone case, so it is off by default. */
+.mv-ref-app .app-top .app-brand .app-brand-word {
+  display: none;
+  height: 24px;
+  width: auto;
+}
+
+/* AT THE RAIL'S OWN BREAKPOINT. 860px is where `dashboard-reference.css` sets
+   `.app-side { display: none !important }` and the phone bottom bar appears, so
+   it is exactly where the wordmark stops being on screen and this row has to
+   carry it. By this width §3 has already given the pinned group its own line,
+   so the control row has the room. */
+@media (max-width: 860px) {
+  .mv-ref-app .app-top .app-brand .app-brand-mark {
+    display: none;
+  }
+
+  .mv-ref-app .app-top .app-brand .app-brand-word {
+    display: block;
+  }
+}
+
+/* AND BACK TO THE MARK ON A PHONE — measured, not a guess.
+
+   §1's `flex-wrap: nowrap` is off by this width, so an overfull control row no
+   longer clips: it drops whatever is last, which is the avatar, alone, onto a
+   line of its own. That is the exact failure §1 describes at 1600px, and the
+   105px wordmark reproduced it at 375px: hamburger 44 + wordmark 105 + spacer +
+   state 70 + bell 34 + avatar 44, plus five 16px gaps, is 407px of content in
+   347px of row.
+
+   The 26px mark is 298px of the same row and leaves 49px spare, so the controls
+   stay on one line. 480px is where the wordmark's 407px fits with margin — the
+   band above it keeps the wordmark, which is the width the rail has just
+   vacated.
+
+   This is also the marketing header's own arrangement, for the same reason:
+   `logo.mobile` there is this very file, swapped in below 767px so the bar keeps
+   its room for the burger and the CTA. */
+@media (max-width: 480px) {
+  .mv-ref-app .app-top .app-brand .app-brand-mark {
+    display: block;
+  }
+
+  .mv-ref-app .app-top .app-brand .app-brand-word {
+    display: none;
+  }
+}
+
+/* THE AVATAR MAY NOW HOLD A PICTURE. Two rules, and the `.avatar` circle itself
+   is untouched — the image is clipped inside it and fills it, rather than being
+   laid out at its intrinsic size and bursting the row. A `<button>`'s UA padding
+   would inset the photograph inside its own circle, hence the reset. */
+.mv-ref-app .app-top .mv-avbtn {
+  overflow: hidden;
+  padding: 0;
+}
+
+.mv-ref-app .mv-avfill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+/* THE MENU HEAD IS A ROW: the member's picture beside their name, address and
+   plan. It was a bare block of two lines. `flex-start` and not `center` because
+   the text block is two or three lines depending on the session and the funnel
+   state, and a centred tile would drift down it as it grows. */
+.mv-ref-app .mv-menu .mv-menu-head {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+/* THE WHITE PANEL SETS ITS OWN INK, and this fixes a defect that predates the
+   avatar: `.app-top` is `color: #d7efe3` (§1, for the black row) and the menu is
+   a DESCENDANT of it, so everything in the panel with no colour of its own
+   inherited pale mint — on white. The reference's `.mv-menu-head strong` sets no
+   colour, so the head's name has always rendered as washed-out mint that is
+   almost unreadable; the rows below only escaped it because
+   `.mv-menu a, .mv-menu button.mi` declare `var(--ink)` each.
+
+   Declared once on the panel rather than per element, so nothing added to this
+   menu later inherits the row's colour again. `.mv-menu-head span` still wins
+   for the two grey sub-lines, which is what it is for. */
+.mv-ref-app .app-top .mv-menu {
+  color: var(--ink);
+}
+
+/* THE TILE HAS TO BEAT `.mv-menu-head span`, and that is the whole reason this
+   block is longer than a width and a height.
+
+   The reference has `.mv-menu-head span { display: block; font-size: 11.5px;
+   color: var(--muted); margin-top: 2px }` for the plan sub-line — and
+   `PortalAvatar` renders a `<span>`, sitting right there in the head. That
+   selector is (0,2,1) against `.avatar`'s (0,2,0), so it won `display` and
+   `color`: the tile went `display: block`, which killed the centring, and
+   `--muted`, which greyed the initials. Measured result — pale, small initials
+   crammed into the top-left corner of an otherwise empty green circle.
+
+   So `display`, the two centring properties, `color` and `margin-top` are all
+   restated here at (0,4,0). None of them is redundant; each one is a property
+   `.avatar` sets and that selector was overriding. */
+.mv-ref-app .mv-menu .mv-menu-head .mv-menu-pic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  margin-top: 0;
+  font-size: 15px;
+  color: var(--green-ink);
+  overflow: hidden;
+}
+
+/* `min-width: 0` is load-bearing: the panel is `min(320px, 92vw)` and without
+   it a long address refuses to wrap and widens the panel instead. */
+.mv-ref-app .mv-menu .mv-menu-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* The reference's own `.mv-menu-head strong` is 16px, which is right for a name
+   but wraps a long one across three lines in a 320px panel beside a 40px tile.
+   15px and a tighter leading fit it. */
+.mv-ref-app .mv-menu .mv-menu-who > strong {
+  font-size: 15px;
+  line-height: 1.25;
+  /* Explicit, and not left to the panel's `color` above: the name is the one
+     line in this menu that must never be mistaken for a grey sub-line. */
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* `anywhere`, not `break-word`: the long run in an address has no spaces in it
+   for `break-word` to prefer. */
+.mv-ref-app .mv-menu .mv-menu-who .mv-menu-mail {
+  overflow-wrap: anywhere;
+}
+
+/* LOG OUT — the menu's last row, behind its own rule. The row itself is the
+   menu's own `.mi` geometry; only the hover colour differs, because an action
+   that ends the session should not look identical to one that opens a page.
+
+   THE RED IS THE DESIGN'S OWN: `#b91c1c` on `#fee2e2` is the reference build's
+   `--red` / `--red-bg` pair, already declared at the top of
+   `dashboard-reference.css`. Nothing is added to the palette. Resting state
+   stays the menu's `--ink`, so it is not shouting at a reader who came for
+   Settings. */
+.mv-ref-app .mv-menu .mv-menu-foot {
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
+/* The `<button>` takes `.mi` and needs nothing structural; the signed-out `<a>`
+   takes the menu's own `a` rule for the same reason. This block is the hover
+   and the pending state only. */
+.mv-ref-app .mv-menu .mv-logout:hover {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+/* Signed out the slot is the way IN, so it keeps the menu's own green hover. */
+.mv-ref-app .mv-menu .mv-logout-in:hover {
+  background: #f2fdf8;
+  color: var(--ink);
+}
+
+/* While the action is in flight. `default` rather than `not-allowed`: the row is
+   not refusing the click, it is already doing it. */
+.mv-ref-app .mv-menu .mv-logout:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

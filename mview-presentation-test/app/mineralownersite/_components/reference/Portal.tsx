@@ -433,10 +433,15 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
           `effTier`: the raw choice, so a surface with its own ceiling rule can
           apply it rather than inherit this one's. See `view-state.tsx`. */}
       <PortalViewStateProvider tier={tier} funnel={funnel}>
+      {/* `onOwner` AND `busy` NO LONGER GO TO THE CHROME. The owner-search band
+          was their only consumer and it has been removed (see `Chrome`); `load`
+          and `busy` are still owned here — `load` for the URL-driven read in the
+          effect above, `busy` for the `Loader` below — so nothing about the
+          owner read changed, only who is told about it. */}
       <Chrome
         p={data} route={route} go={go} tier={tier} setTier={pickTier}
         funnel={funnel} setFunnel={pickFunnel} sample={sample}
-        onOwner={load} busy={busy} open={openDrawer}
+        open={openDrawer}
         sampleNote={shown?.note ?? null} trialStarted={trialStarted}
       >
         {error ? <ErrorCard detail={error} /> : null}
@@ -446,7 +451,10 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
             snapshot. The Map is not: it reads the whole public record, not one
             owner, so it renders perfectly well before anybody is picked and the
             card would be an error message under a working page. */}
-        {!children && !data && !error && !busy ? <ErrorCard detail="No owner is loaded yet. Search for a name above." /> : null}
+        {/* The copy no longer says "search for a name above" — there is no
+            search box above it any more. The owner comes from the URL or from
+            the default read, so a reload is the honest suggestion. */}
+        {!children && !data && !error && !busy ? <ErrorCard detail="No owner is loaded yet. Reload the page, or open a link that names one." /> : null}
       </Chrome>
       </PortalViewStateProvider>
 
