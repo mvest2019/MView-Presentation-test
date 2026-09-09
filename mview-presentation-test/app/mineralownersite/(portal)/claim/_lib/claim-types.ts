@@ -8,6 +8,16 @@
  * have to get the alignment right. `claim-api.ts` zips them once, here.
  */
 
+/**
+ * THE MOST OWNER NAMES ONE CLAIM CAN CARRY — the backend's ceiling.
+ *
+ * It lives here rather than in `claim-api.ts` so step 2 can stop a reader
+ * ticking a 26th record without importing the API layer, which the steps
+ * deliberately never do. `postClaim` reads the same constant, so the button
+ * that refuses and the call that would refuse cannot drift apart.
+ */
+export const MAX_CLAIM_OWNERS = 25;
+
 /** One lease, zipped out of the backend's parallel arrays. */
 export interface FlowLease {
   /** Lease or unit name as the roll spells it. */
