@@ -1,6 +1,12 @@
 import type { Alert, Drawer, Payload } from './payload';
 import raw from './owner-payload.json';
 import { apiBase, fetchOwnerLiveBlocks, OwnerApiError } from './owner-api';
+import { getSessionUser } from '@/lib/session';
+
+import {
+  fetchDashboard, fetchDrawers, fetchWeekly, memberApiBase, searchRoll,
+} from './member-api';
+import { leaseAndWellDrawers } from './member-drawers';
 
 /**
  * THE DATA SEAM — the only module in the Dashboard/Weekly Report tree that
@@ -140,6 +146,13 @@ export async function getOwnerPayload(
   const base = apiBase();
   if (!base || opts?.live === false) return FIXTURE;
 
+  /* THE MEMBER-KEYED PATH TAKES PRECEDENCE, because it is the whole record and
+     the owner-keyed path below is four blocks of it. For a signed-in member,
+     `/dashboard` and `/weekly` serve the Dashboard and the Weekly Report
+     outright and the capture is not read at all. */
+  const member = await currentMemberTarget();
+  if (member) return buildMemberPayload(member.base, member.member);
+
   /* THE CONTRACT HAS NO DEFAULT OWNER — "omitting `owner` is a 400" — but this
      app does, and it is the owner the capture holds. Entering
      `/mineralownersite/alerts` with no query string has to work, so the
@@ -182,6 +195,246 @@ export async function getOwnerPayload(
     ...live,
     activities: { ...live.activities, nearby: trimNearby(live.activities.nearby) },
     drawers: withAlertDrawers(FIXTURE.drawers, live.alerts.items),
+  };
+}
+
+/**
+ * WHO IS ASKING — read from the session, once, here.
+ *
+ * `member_id` IS THE SIGNED-IN MEMBER'S, AND NOTHING ELSE'S. The login
+ * response carries it (`AuthUser.member_id`), `startSession` puts it in the
+ * httpOnly `mv_user` cookie as `SessionUser.id`, and this reads it back. The
+ * cookie is httpOnly on purpose, so the id never reaches page JavaScript —
+ * which is also why this is the right layer to read it: the Dashboard and the
+ * Weekly Report are built on the SERVER, so the identity is resolved where the
+ * request already is and never has to travel to the browser and back.
+ *
+ * IT IS READ HERE AND NOWHERE ELSE, which is the same rule that makes this
+ * module the data seam. One place knows where a figure comes from; one place
+ * knows whose figure it is. The four call sites — both route pages,
+ * `/api/portfolio` and the two `/api/weekly*` handlers — pass nothing and
+ * cannot pass the wrong thing.
+ *
+ * NOT SIGNED IN IS NOT AN ERROR HERE. It falls through to the owner-keyed path
+ * below and, with no API configured at all, to the capture — the state this app
+ * shipped in. A page that needs to refuse an anonymous visitor should say so
+ * itself; this function's job is to report the identity, not to police it.
+ *
+ * `getSessionUser` reads `cookies()`, so it needs a request scope. Every
+ * caller is a server page or a route handler, which have one. The `try` is for
+ * the case where that stops being true: a build-time or worker call gets
+ * "nobody is signed in" rather than a thrown page.
+ */
+export async function currentMemberTarget(): Promise<
+  { base: string; member: string } | null
+> {
+  const base = memberApiBase();
+  if (!base) return null;
+  try {
+    const user = await getSessionUser();
+    return user ? { base, member: String(user.id) } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * THE DASHBOARD AND THE WEEKLY REPORT, FROM THE MEMBER-KEYED ENDPOINTS.
+ *
+ * WHAT COMES FROM WHERE. `/dashboard` carries seventeen of the record's
+ * twenty-four blocks and the Dashboard reads fifteen of them, all present.
+ * `/weekly` carries every one of `WeeklyReport`'s thirty-nine fields. Neither
+ * needs a mapper: each response is assigned straight into the block it fills,
+ * so `tsc` checks the shape at the assignment and a renamed field stops the
+ * build instead of reaching a card.
+ *
+ * THE OWNER FOR THE DRAWERS IS TAKEN FROM THE DASHBOARD'S OWN ANSWER, and that
+ * is not a detail. This member claims THREE roll owners — Bridwell Oil Co
+ * (Wi), Hilcorp Energy Company, Jla Resources Company — and the drawer
+ * endpoint's `owner` parameter picks between them:
+ *
+ *     /dashboard?member_id=4785                     Bridwell, 21 leases, $32,403,527
+ *     /dashboard/drawers/value?...                  Bridwell, the same $32,403,527
+ *     /dashboard/drawers/value?...&owner=Jla...     Jla,      12 leases, $51,832,044
+ *     /dashboard/drawers/value?...&owner=Hilcorp... 502
+ *
+ * Pinning a name here would put one owner's figure on the strip and another
+ * owner's inside the panel that explains that strip — $32.4M on the card,
+ * $51.8M in its own explainer. Reading it off `dash.owner.ownername` makes the
+ * card and its panel the same owner by construction, whichever owner the
+ * member's dashboard resolves to.
+ *
+ * WHAT THIS DOES NOT SERVE, and why the capture still does. `forecast` and
+ * `my_leases` have no endpoint at all, and `timeline` and `rings` are the
+ * owner-keyed half of the API rather than this one. None of the four is read
+ * by the Dashboard or the Weekly Report — they belong to Production &
+ * Forecast, My Leases and Activities, which are outside this work — so they
+ * are left exactly as they were rather than being quietly re-pointed. See
+ * `.env.example` for what that means for those three routes.
+ */
+async function buildMemberPayload(base: string, member: string): Promise<Payload> {
+  /* `/dashboard` is the long read — 648 KB, eight seconds cold — so `/weekly`
+     runs beside it rather than after it. The drawers cannot start until the
+     dashboard names its owner, which is the whole reason for two rounds. */
+  const [dash, weekly] = await Promise.all([
+    fetchDashboard(base, member),
+    fetchWeekly(base, member),
+  ]);
+
+  /* THE THREE FAMILIES OF EXPLAINER, and only one of them is fetched.
+     `drawer_keys` advertises 205 keys; the endpoint serves the eleven flat ones
+     and five of the nine `alert:*`. `lease:*` and `well:*` — 89 keys — all
+     answer DASHBOARD_DRAWER_NOT_FOUND. Asking for a key that is known to 404
+     costs a request to be told nothing, so the flat keys are read and the other
+     two families are built from the rows they describe, which is what the
+     reference does with them anyway. */
+  const flatKeys = dash.drawer_keys.filter((k) => !k.includes(':'));
+  /* ALL ELEVEN, ON EVERY SURFACE, AND THAT IS DELIBERATE — it was measured the
+     other way round first. The Weekly Report opens exactly one of them
+     (`identity`, from the claim button on its cover), so fetching one instead
+     of eleven took a `/briefing` load from 12.5s to 2.6s. It also broke the
+     Dashboard: `OWNED` holds both routes, so the sidebar switches between them
+     WITHOUT a new request, and a reader who entered at `/briefing` and then
+     clicked Dashboard got a page whose payload carried a single explainer —
+     ten of its "expand →" controls did nothing at all, silently, because
+     `DrawerPanel` hides itself when its copy is null.
+
+     One shared payload is the reference's own arrangement and the reason a
+     route change is instant; the price is that it has to be complete enough
+     for every route sharing it. Ten saved requests against ten dead controls
+     is not a trade worth making, so the scoping was reverted. */
+  const served = await fetchDrawers(base, member, dash.owner.ownername, flatKeys);
+
+  return {
+    /* explicit rather than `...FIXTURE, ...dash`: if `Payload` ever gains a
+       block, this has to fail to compile rather than silently serve a capture
+       of somebody else's minerals for it */
+    ...dash,
+    owner: { ...dash.owner, ...OWNER_GAPS },
+    alerts: { ...dash.alerts, ledger: dash.alerts.ledger ?? EMPTY_LEDGER },
+    weekly,
+    nearby: NO_NEARBY,
+    activities: {
+      ...dash.activities,
+      ...ACTIVITY_GAPS,
+      nearby: trimNearby(dash.activities.nearby),
+      counts: { ...dash.activities.counts, production: dash.activities.counts.production ?? 0 },
+    },
+    drawers: {
+      ...served,
+      ...leaseAndWellDrawers(dash.leases, dash.totals, dash.as_of),
+      /* all nine, from the live findings — the same argument as the
+         owner-keyed path below, and here it also covers the four the endpoint
+         404s: filed-<YYYYMM>, handover-<lease>, trend-<lease> */
+      ...withAlertDrawers({}, dash.alerts.items),
+    },
+    timeline: FIXTURE.timeline,
+    rings: FIXTURE.rings,
+    forecast: FIXTURE.forecast,
+    my_leases: FIXTURE.my_leases,
+  };
+}
+
+/**
+ * THE SEVEN FIELDS `/dashboard` OMITS, and why each one is filled here.
+ *
+ * `tsc` cannot catch these. The response is parsed as JSON and cast, so the
+ * `Omit<Payload, …>` on `DashboardResponse` checks that the BLOCKS line up and
+ * says nothing about a field missing inside one of them. Two of these were
+ * found the only way they can be — by running the pages and reading the
+ * exception:
+ *
+ *   activities.kpis_mine        `sample.ts` lines 479, 482 and 497 map over all
+ *   activities.kpis_nearby      three, so the not-claimed state threw
+ *   activities.production       "Cannot read properties of undefined (reading
+ *                               'map')" the moment the funnel was set to
+ *                               "Not claimed" — on EVERY route, because the
+ *                               transform runs before any of them render.
+ *   alerts.ledger               `AlertsView` line 83 does `const lg =
+ *                               al.ledger` and then reads `lg.leases`, so the
+ *                               Alerts route threw "reading 'leases'".
+ *
+ * The other three are quieter. `owner.districtcode` is read by `Chrome`'s owner
+ * picker, `Portal` and the Weekly Report's own query string, and is
+ * `string | null` in the contract — so `null` is not a stand-in, it is the
+ * declared way to say the roll district is not known. `identities_matched` and
+ * `activities.counts.production` have no reader in this build at all.
+ *
+ * WHY EMPTIES AND NOT THE CAPTURE. Every one of these belongs to a block that
+ * is otherwise LIVE, so borrowing the capture's value would put one owner's
+ * ledger figures inside another owner's alert block — the mixing this seam
+ * refuses everywhere else, and harder to spot here because it would be a
+ * plausible number in a real panel. An empty says "not served", which is true.
+ *
+ * WHAT IS AFFECTED, precisely: the Alerts page's watch-ledger panel reads zero,
+ * and the not-claimed demo's activity KPI cards and production feed are empty.
+ * Both are outside the Dashboard and the Weekly Report, and neither reads any
+ * of these fields in a claimed state. If Alerts is brought onto this endpoint,
+ * these are the fields to ask the service for.
+ */
+const OWNER_GAPS = {
+  districtcode: null,
+  identities_matched: 0,
+} satisfies Partial<Payload['owner']>;
+
+const ACTIVITY_GAPS = {
+  kpis_mine: [],
+  kpis_nearby: [],
+  production: [],
+} satisfies Partial<Payload['activities']>;
+
+const EMPTY_LEDGER: Payload['alerts']['ledger'] = {
+  leases: 0, counties: 0, adjacent_leases: 0, standing_permits: 0,
+  production_filings: 0, lease_months_read: 0, alerts: 0, action_count: 0,
+  rest_count: 0, operators: 0, wells: 0, nearby_filings: 0,
+  since_label: null, last_read_label: null,
+  price_month: '', price_annual: '', price_weekly: '', price_weekly_annual: '',
+};
+
+/**
+ * THE FIVE-MILE MAP HAS NO SOURCE, AND SAYS SO IN THE REFERENCE'S OWN WORDS.
+ *
+ * `nearby` is the one block the Weekly Report reads that nothing serves.
+ * Searched for, not assumed: `dashboard/nearby`, `nearby`, `weekly/nearby` and
+ * `activity/nearby` all 404; `/dashboard` carries `activities.nearby`, which is
+ * 232 rows of the county filing feed with no coordinates on them, and `radius`,
+ * which is counts per band; `/activity/rings` carries `neighbours` with no
+ * coordinates either. The map plots `dx_mi`/`dy_mi` per row, and no endpoint
+ * returns them.
+ *
+ * `NearMap` already has a path for exactly this: with no rows it renders a
+ * `notice` carrying `nearby.unavailable`, and falls back to its own sentence
+ * when that is null. So the honest bind is an empty `rows` and a truthful
+ * `unavailable`, which produces the reference's own component in the reference's
+ * own state — not a redesign, not an invented neighbour, and not another owner's
+ * map borrowed from the capture.
+ *
+ * `bands`, `anchors` and `read_rows` are zeroed because nothing reads them once
+ * `rows` is empty, and a count copied from a different source would be the
+ * beginning of exactly the mixing this seam refuses everywhere else.
+ */
+const NO_NEARBY: Payload['nearby'] = {
+  rows: [],
+  bands: {
+    '1': band(1), '3': band(3), '5': band(5),
+  },
+  anchors: 0,
+  unavailable: 'The five-mile map is not available for this account yet: the service that '
+    + 'serves this dashboard has no endpoint carrying the well coordinates the map is drawn '
+    + 'from. Every figure elsewhere in this report is live; this one panel is the only thing '
+    + 'waiting on a source.',
+  note: 'Distance is measured from the nearest of your own well surface locations to the row '
+    + 'itself, as a straight line.',
+  read_rows: 0,
+  capped: false,
+};
+
+function band(n: 1 | 3 | 5): Payload['nearby']['bands']['1'] {
+  return {
+    band: n,
+    rows: 0, permits: 0, completions: 0, wellbores: 0, producing: 0, operators: 0,
+    nearest_mi: null, nearest_name: null, newest_iso: null, newest_label: null,
+    last_month_gas: 0, last_month_oil: 0,
   };
 }
 
@@ -320,17 +573,41 @@ export interface OwnerSearchResult {
  * surname-first. The picker renders those sentences, so they are produced here
  * verbatim rather than reworded.
  *
- * What differs is only the corpus: the reference scans 4.5M appraisal-roll rows
- * and this holds one owner, so a query either matches that owner or misses.
- * The MATCHING RULE is the reference's — exact on the whole name first, then
- * the prefix widen.
+ * THE CORPUS IS NOW THE REAL ROLL. This used to search the committed capture,
+ * which held exactly one owner — so the picker could only ever find Platis
+ * Sydney Kay, whoever was signed in. `GET /api/v1/owners/search` answers with
+ * the whole roll (111 rows for "bridwell"), and that is what it reads now. The
+ * capture is still the corpus when no API is configured, which keeps this app
+ * working offline exactly as it did.
+ *
+ * TWO FIELDS THE SERVICE DOES NOT SEND, and the picker prints both.
+ *
+ * A row carries `name`, `county`, `leaseCount`, `appraisedValue`, `address` and
+ * `workingInterest` — and no `ownernumber`, no `districtcode`, no roll `year`.
+ * The reference's picker renders "owner N · district D" beneath each name and
+ * hands all three to the payload read, because an owner number is a county
+ * appraisal key and is REUSED — `owner-api.ts` sets out why name alone is an
+ * ambiguous identity.
+ *
+ * So they are sent as EMPTY rather than guessed, and the row prints without
+ * them. Guessing either one would be worse than leaving it blank: the wrong
+ * district is a different person's minerals, and this seam refuses a mixed
+ * record everywhere else. `county` fills `city` because it is the only place
+ * the row's location can go and it is labelled by the picker, not by this
+ * function.
+ *
+ * WHAT SELECTING A ROW DOES TODAY. On the member-keyed path the record is the
+ * signed-in member's, so `getOwnerPayload` will not load a different owner over
+ * it — it answers `OWNER_NOT_AVAILABLE` and the shell says so. Making the
+ * picker switch between the member's OWN claimed owners is the next piece of
+ * work, and `/dashboard` already returns them in `owner.claimed_owners`.
  */
 export async function searchOwners(
   query: string, limit = 25,
 ): Promise<OwnerSearchResult> {
   const q = query.trim();
-  const o = FIXTURE.owner;
-  const year = o.roll_year;
+  const base = memberApiBase();
+  const year = FIXTURE.owner.roll_year;
 
   if (q.length < 3) {
     return {
@@ -339,6 +616,37 @@ export async function searchOwners(
     };
   }
 
+  if (base) {
+    const res = await searchRoll(base, q, limit);
+    const results: OwnerHit[] = res.owners.map((r) => ({
+      ownername: r.name,
+      /* not sent by the service — see the note above */
+      ownernumber: '',
+      districtcode: '',
+      city: r.county,
+      lease_count: r.leaseCount ?? 0,
+      appraised_total: r.appraisedValue ?? 0,
+      year,
+    }));
+    return {
+      query: q,
+      /* the service ranks by its own `score` rather than reporting an exact/
+         prefix mode, and it does not widen; saying "exact" would be a claim
+         about a matching rule this endpoint does not describe */
+      mode: 'starts',
+      widened_to_prefix: false,
+      year,
+      count: res.total,
+      results,
+      ...(res.truncated
+        ? { note: `Showing ${results.length} of ${res.total} — narrow the name to see the rest.` }
+        : {}),
+    };
+  }
+
+  /* NO API CONFIGURED: the capture's single owner, matched the reference's own
+     way — exact on the whole name first, then the one prefix widen. */
+  const o = FIXTURE.owner;
   const hit: OwnerHit = {
     ownername: o.ownername,
     ownernumber: o.ownernumber ?? '',
@@ -348,15 +656,12 @@ export async function searchOwners(
     appraised_total: FIXTURE.totals.appraised_value,
     year,
   };
-
   const name = o.ownername.toLowerCase();
   const needle = q.toLowerCase();
 
   if (name === needle) {
     return { query: q, mode: 'exact', widened_to_prefix: false, year, count: 1, results: [hit] };
   }
-  /* the reference's single widen: an exact miss retries as a prefix and the
-     note says that is what happened */
   if (name.startsWith(needle)) {
     return {
       query: q, mode: 'starts', widened_to_prefix: true, year, count: 1,

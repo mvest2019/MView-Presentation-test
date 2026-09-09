@@ -38,6 +38,12 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 
 import {
+  fetchWeeklyEmailCapability,
+  fetchWeeklyEmailPreview,
+  sendWeeklyEmail,
+} from "@/app/mineralownersite/_lib/reference/member-api";
+import {
+  currentMemberTarget,
   getOwnerPayload,
   selectionFrom,
 } from "@/app/mineralownersite/_lib/reference/owner-data";
@@ -87,7 +93,60 @@ function validAddress(v: string): boolean {
   return /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(v.trim()) && v.trim().length <= 254;
 }
 
+/**
+ * WHO IS ASKED WHETHER THIS CAN SEND.
+ *
+ * With the service configured it is the service's question to answer, because
+ * the transport is the service's: `GET /api/v1/weekly/email` reports
+ * `{transport:"smtp", can_send:true, note}`.
+ *
+ * `transport` IS TRANSLATED, AND IT HAS TO BE. `WeeklyView` reads this
+ * response and does `d.transport === 'webhook' ? 'webhook' : 'none'` — the
+ * reference's own two-valued vocabulary for "this build can put it on the
+ * wire" and "this build renders it for your own mail client". Passing `smtp`
+ * straight through would land in the `'none'` branch and show the reader the
+ * cannot-send flow while the service was standing by to send, which is the
+ * error this whole route exists to avoid in the other direction. So
+ * `can_send` decides the word, and the service's own `note` is passed through
+ * unchanged to be printed under the button.
+ */
+async function liveCapability(base: string): Promise<Response> {
+  const cap = await fetchWeeklyEmailCapability(base);
+  return NextResponse.json(
+    {
+      transport: cap.can_send ? "webhook" : "none",
+      upstream_transport: cap.transport,
+      can_send: cap.can_send,
+      note: cap.note,
+    },
+    { headers: { "Cache-Control": "no-store" } },
+  );
+}
+
 export async function GET() {
+  const member = await currentMemberTarget();
+  if (member) {
+    try {
+      return await liveCapability(member.base);
+    } catch (e) {
+      /* the button labels itself off this answer, so a service that cannot be
+         asked is reported as "cannot send" rather than as an error page — the
+         reader still gets the render-and-hand-over flow, which works */
+      return NextResponse.json(
+        {
+          transport: "none",
+          can_send: false,
+          note:
+            "The report service could not be asked whether it can send just now (" +
+            (e instanceof Error ? e.message : String(e)) +
+            "), so this build renders the message for your own mail client instead of " +
+            "claiming to have sent it.",
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+  }
+
   const m = mailConfig();
   return NextResponse.json(
     {
@@ -138,6 +197,53 @@ export async function POST(req: Request) {
   if (body.owner) url.searchParams.set("owner", body.owner);
   if (body.num) url.searchParams.set("num", body.num);
   if (body.dist) url.searchParams.set("dist", body.dist);
+
+  /* THE SERVICE SENDS IT, AND THE ANSWER IS TRANSLATED, NOT INVENTED.
+     `POST /api/v1/weekly/email {member_id, to}` is the transport; the preview
+     is read alongside it so the reader sees the subject and body of what went,
+     which is what `WeeklyView` renders from `result`. `sent` is reported only
+     on a 2xx from the service — the rule this route was written around is that
+     it must never claim a send it cannot prove.
+
+     `?sample=1` stays local: a sample is this app's transform of the payload
+     and the service has no notion of it, so the not-claimed form must keep
+     rendering here rather than mailing a real report labelled as a sample. */
+  const member = await currentMemberTarget();
+  if (member && !body.sample) {
+    try {
+      const [answer, preview] = await Promise.all([
+        sendWeeklyEmail(member.base, member.member, to),
+        fetchWeeklyEmailPreview(member.base, member.member).catch(() => null),
+      ]);
+      const a = (answer ?? {}) as Record<string, unknown>;
+      return NextResponse.json(
+        {
+          sent: typeof a.sent === "boolean" ? a.sent : true,
+          transport: "webhook",
+          to,
+          subject: preview?.subject ?? (a.subject as string | undefined),
+          text: preview?.text,
+          detail:
+            (a.detail as string | undefined) ??
+            (a.message as string | undefined) ??
+            "The report service accepted the message and sent it.",
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      return NextResponse.json(
+        {
+          sent: false,
+          transport: "webhook",
+          reason: "transport_refused",
+          to,
+          detail: `Nothing was sent: the report service refused the message. ${detail}`,
+        },
+        { status: 502, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+  }
 
   try {
     /* `live: false` — the message is rendered from `payload.weekly` alone;

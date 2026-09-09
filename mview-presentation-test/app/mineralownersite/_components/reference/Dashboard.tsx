@@ -146,7 +146,11 @@ export default function Dashboard(
               </p>
             </div>
             <span className="owner-chip">
-              Owner: <strong>{p.owner.ownername}</strong>
+              {/* ADAPTED · the reference says "Owner:"; this build says
+                  "Mineral Owner:", which is the term the rest of this app uses
+                  for the same thing — the sidebar heading, the owner search and
+                  the claim flow all say mineral owner. */}
+              Mineral Owner: <strong>{p.owner.ownername}</strong>
               {p.owner.city ? ' · ' + p.owner.city : ''}{' '}
               <button type="button" className="sw-btn" onClick={() => open('identity')}>
                 How we matched this
@@ -641,7 +645,12 @@ function LeaseChart(
       </p>
 
       <div id="leaseChart">
-        {leases.map((l) => {
+        {/* ADAPTED · TOP TEN ONLY. The reference draws a bar for every lease the
+            record holds; a live account can carry far more than fits the card,
+            so the render is capped at ten. `leases` itself is NOT capped — the
+            total, the maximum and the "half your value" count above are facts
+            about the whole portfolio and are still computed over all of it. */}
+        {leases.slice(0, 10).map((l) => {
           const v = num(l[conf.key]);
           const w = max > 0 ? Math.max((v / max) * 100, v > 0 ? 1.5 : 0) : 0;
           return (
@@ -805,7 +814,6 @@ function AroundYou(
 ) {
   const ac = p.activities;
   const cmp = ac.compare_90;
-  const rows = ac.nearby.slice(0, tier === 'pro' ? 8 : 5);
 
   return (
     <div className="card card-pad" id="marketCard">
@@ -848,35 +856,21 @@ function AroundYou(
                 </div>
               ))}
 
-              {/* the neighbouring filings themselves */}
-              <div className="act-list" style={{ marginTop: 10 }}>
-                {rows.map((i) => (
-                  <div
-                    className={'act-item' + (i.is_mine ? ' mine' : '')} key={i.id}
-                    role="button" tabIndex={0}
-                    onClick={() => open(ctxForKind(i.kind))}
-                    onKeyDown={(e) => { if (e.key === 'Enter') open(ctxForKind(i.kind)); }}
-                  >
-                    <span className={'act-kind ' + i.kind}>{i.type_label}</span>
-                    <span className="act-main">
-                      <span className="act-name">
-                        {i.lease_name ?? 'unnamed lease'}
-                        {i.well_number ? ` · well ${i.well_number}` : ''}
-                        {i.is_mine
-                          ? <span className="samp-tag" style={{ background: 'var(--green)' }}>yours</span>
-                          : null}
-                      </span>
-                      <span className="act-sub">
-                        {[i.operator_name, i.county ? i.county + ' Co.' : null, i.field_name,
-                          i.profile, i.purpose, i.well_status].filter(Boolean).join(' · ')
-                          || 'no further detail on the filing'}
-                      </span>
-                    </span>
-                    <span className="act-when">{i.event_label ?? i.seen_label ?? '—'}</span>
-                  </div>
-                ))}
-              </div>
+              {/* ADAPTED · THE PER-FILING LIST IS NOT RENDERED. The reference
+                  prints the neighbouring permits and completions one by one
+                  here. It was removed at the owner's request: the counts above
+                  and the 90-day comparison below already say what the card is
+                  for, and the row-by-row feed repeated on the Activities page,
+                  which is where the whole list belongs. Nothing else in the
+                  card changed, and `activities.nearby` is still read for
+                  `counts.nearby` and the "See all N filings" link.
 
+                  `ctxForKind` and this component's `tier` prop fed only that
+                  list and are now unreferenced. They are LEFT IN PLACE, beside
+                  the reference's own unused declarations, so restoring the list
+                  is a matter of putting the block back rather than rebuilding
+                  its plumbing. ESLint reports them as two warnings, not
+                  errors. */}
               <div className="chart-insight">
                 <span className="ci-dot" aria-hidden="true" />
                 {cmp.change_pct != null

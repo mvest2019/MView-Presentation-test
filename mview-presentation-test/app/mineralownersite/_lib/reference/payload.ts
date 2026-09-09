@@ -117,6 +117,17 @@ export interface Payload {
     ownername: string;
     ownernumber: number | string;
     districtcode: string | null;
+    /**
+     * The roll owners this MEMBER has claimed.
+     *
+     * OPTIONAL BECAUSE ONLY ONE SOURCE SENDS IT. `/api/v1/dashboard` returns
+     * it and the committed capture has no such field, so anything reading it
+     * has to cope with `undefined` — which is also the honest reading: absent
+     * is "this source does not say", not "nothing is claimed". `Portal` seeds
+     * the funnel state off an EMPTY array only, and leaves the default alone
+     * when the field is missing.
+     */
+    claimed_owners?: string[];
     roll_year: number;
     city: string | null;
     initials: string;

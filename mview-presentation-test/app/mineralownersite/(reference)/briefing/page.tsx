@@ -88,9 +88,15 @@ export default async function WeeklyReportPage({
   let initial: Payload | null = null;
   try {
     initial = await getOwnerPayload(sel);
-  } catch {
-    /* the client shell retries on mount when it receives no payload, so a
-       failed read shows the named loader rather than an error page */
+  } catch (e) {
+    /* THE REASON IS LOGGED, NOT DISCARDED. The client shell retries on mount
+       when it receives no payload, so a failed read still shows the named
+       loader rather than an error page — but a bare `catch` left the cause
+       nowhere at all: not in the browser, because this read is server-side,
+       and not in the terminal either. That is what made "the API call is not
+       appearing" impossible to diagnose from the outside. */
+    console.error('[weekly-report] the owner payload could not be read:',
+      e instanceof Error ? e.message : e);
     initial = null;
   }
 
