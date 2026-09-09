@@ -1,5 +1,5 @@
 /**
- * THE DASHBOARD AND WEEKLY REPORT STYLESHEET — the reference's, rescoped.
+ * THE PORTED ROUTES' STYLESHEET — the reference's, rescoped.
  *
  * EXTRACTED, NOT AUTHORED. Every declaration below is lifted from the reference
  * build's ten stylesheets, in the reference's own cascade order
@@ -10,8 +10,8 @@
  *
  * app.css is last there because it is "the delta over all of it", and it
  * CHANGES rules the older sheets set — so the order is preserved here rather
- * than the rules being merged or hand-picked. 759 of the reference's 2,039
- * rules matched the two ported routes.
+ * than the rules being merged or hand-picked. 956 of the reference's 2,263
+ * rules matched the three ported routes.
  *
  * THE SCOPE. `Portal` renders ONE root element carrying `mv-ref-app` plus the
  * gating classes the reference writes on `<body>` — `in-app`, `view-*`,
@@ -48,6 +48,11 @@
  * on 136 elements against the reference build running side by side; it is
  * invisible to a text diff and to the eye.
  *
+ * The same fold hit Production & Forecast's all-leases table independently, on
+ * exactly the same pair of rules with `.pf2-tbl2 td` in the panel's place, and
+ * was found the same way — which is the argument for prefixing every one of
+ * the 96 gate rules rather than the two that happened to show a symptom.
+ *
  * ONE WRAPPER, AND IT MATTERS. A stylesheet imported anywhere in a Next app is
  * global. Unscoped, `body{background:var(--bg)}` would repaint the marketing
  * site and `.card{padding:22px}` would restyle Alerts, My Leases, Activities
@@ -71,7 +76,18 @@
  * every-lease grid, and `em, i, cite{font-style:normal;font-weight:600}` is why
  * "none" prints upright rather than italic.
  *
- * THE INVENTORY INCLUDES WHAT THE COMPONENTS BUILD RATHER THAN WRITE —
+ * THE INVENTORY IS BUILT FROM THE MARKUP AND THEN TOPPED UP, and both halves
+ * have caught real gaps. The scraper reads `className` — including template
+ * literals with their `${…}` interpolations stripped, because
+ * `className={`pf2-lifeone${picked ? ' on' : ''}`}` otherwise yields a token
+ * that matches nothing and `.pf2-lifeone` silently loses its selected state.
+ * What the scraper still cannot see is a class assembled in a VARIABLE:
+ * `Stat` does `const cls = `pf2-in${tone}`` and renders `className={cls}`,
+ * and `PfStrip` passes `'big cl-lock'` as an argument. Those are found by
+ * listing every string literal in the components that the reference
+ * stylesheets also style, and reviewing the short list by hand.
+ *
+ * THE INVENTORY ALSO INCLUDES WHAT THE COMPONENTS BUILD RATHER THAN WRITE —
  * `'dx dx-' + tone`, `'t-' + st.tone`, `'lb-fill ' + cls`, `'wc-fill ' + tone`,
  * `'wm-dot k-' + kind` — and both gating axes, which no component writes at
  * all. Leaving a gate class out is not a smaller sheet, it is a broken one: a
@@ -96,6 +112,77 @@
  * which is not in this repo. The recipe above is the whole of it, and the
  * checks that verify the result are in `_components/reference/README.md`.
  */
+
+/* ==========================================================================
+   WHAT THIS APP'S OWN RESET ADDS ON TOP OF THE REFERENCE
+
+   Everything below the next banner is the reference's, extracted. THIS block is
+   NOT in the reference — it exists because this app declares something where
+   the reference declares nothing, and an extracted sheet can only override a
+   property the reference actually sets. Where the reference relies on the
+   BROWSER'S default, a host declaration in between wins by default and there is
+   nothing to extract that would stop it.
+
+   Tailwind's preflight sets `font: inherit` on button, input, select, textarea
+   and optgroup. The reference does not, so its form controls take the UA's own
+   font and `line-height: normal` — which is why its avatar initials render in
+   Arial and its `.al-mini`, `.as-cat` and `.sw-btn` buttons sit at `normal`
+   leading rather than the body's 1.55. Measured against the running reference,
+   that difference showed up on six selectors.
+
+   Preflight also sets `color: inherit` on those same controls,
+   `-webkit-appearance: button` on the button-ish ones, and
+   `display: block; vertical-align: middle` on `svg`. The reference sets none of
+   them, so its unstyled buttons and inputs take the UA's black and its `auto`
+   appearance, and its `.mvi-inline` icons stay INLINE.
+
+   The icon one is the visible half: an inline 15px glyph that becomes a block
+   box takes a line of its own, and the reference's own `vertical-align: -2px`
+   on `.mvi-inline` is written for an inline box. Worse, a block also swallowed
+   the explicit `{' '}` after the activity icon in the "What changed" heading,
+   because a space that leads a line collapses — the reference prints
+   " What changed between May 2026 and June 2026" and this printed it without
+   the space, in 12 of 20 Dashboard combinations. Inside a flex parent
+   (`.al-ico`, `.mk-ico`) display is blockified anyway and nothing showed, which
+   is why it survived the first pass: the Dashboard is the only surface that
+   puts one in running text. `svg` is the only element in that preflight rule
+   the ported tree renders.
+
+   `revert` is the right tool: it drops back to the UA stylesheet, which is
+   exactly what the reference gets. Every ported rule that DOES set one of these
+   — `.btn`, `.as-cat`, `.mvlive-picker input`, `.alx-svg`, `.lc-svg`,
+   `.mvi-inline`'s own `vertical-align`, the arc gauges — still wins on
+   specificity, because those are two classes against this rule's one class and
+   one element.
+
+   AND IT HAS TO SIT HERE, ABOVE THE EXTRACT, NOT BELOW IT. `.mv-ref-app input`
+   is (0,1,1) and so is the ported `input,select,textarea{font-size:16px}` from
+   mvtaptargets.css, so whichever comes last wins. With this block last it was
+   beating that real reference rule and printing Production & Forecast's brush
+   handles at the UA's 13.3333px where the reference gives them 16px. Above the
+   extract, every ported rule that sets one of these properties wins, and
+   preflight — one element, no class — still loses to this.
+   ========================================================================== */
+
+.mv-ref-app button,
+.mv-ref-app input,
+.mv-ref-app select,
+.mv-ref-app textarea,
+.mv-ref-app optgroup {
+  font-family: revert;
+  font-size: revert;
+  font-weight: revert;
+  font-style: revert;
+  line-height: normal;
+  color: revert;
+  appearance: revert;
+  -webkit-appearance: revert;
+}
+
+.mv-ref-app svg {
+  display: revert;
+  vertical-align: revert;
+}
 
 /* ==========================================================================
    mineral-view-owner-full-site.css
@@ -211,6 +298,8 @@ body .mv-ref-app.in-app .app-shell {display:grid;grid-template-columns:236px min
 .mv-ref-app .kpi .k-sub {font-size:12px;color:var(--muted) }
 .mv-ref-app .delta-up {color:var(--green-deep);font-weight:700 }
 .mv-ref-app .delta-down {color:var(--red);font-weight:700 }
+.mv-ref-app .chartbox {background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:16px 18px 8px;box-shadow:var(--shadow) }
+.mv-ref-app .chartbox svg {width:100%;height:auto;display:block }
 .mv-ref-app .setrow {display:flex;justify-content:space-between;gap:16px;align-items:center;padding:14px 0;border-bottom:1px solid #f0f1f4;flex-wrap:wrap }
 .mv-ref-app .setrow:last-child {border-bottom:0 }
 .mv-ref-app .notice {border-radius:10px;padding:13px 16px;font-size:13.5px;display:flex;gap:10px;align-items:flex-start }
@@ -254,6 +343,12 @@ body .mv-ref-app.in-app .app-shell {display:grid;grid-template-columns:236px min
 .mv-ref-app .leaselist .li:last-child {border-bottom:0 }
 .mv-ref-app .leaselist .li:hover {background:#fafcfb }
 @media (max-width:767px) {
+  .mv-ref-app section[data-route^="app-lease"] .chartbox > svg,
+  .mv-ref-app section[data-route="app-leases"] .chartbox > svg,
+  .mv-ref-app section[data-route="app"] .chartbox > svg {height:200px;width:auto;min-width:620px;display:block }
+  .mv-ref-app section[data-route^="app-lease"] .chartbox,
+  .mv-ref-app section[data-route="app-leases"] .chartbox,
+  .mv-ref-app section[data-route="app"] .chartbox {overflow-x:auto }
   .mv-ref-app section[data-route="app-briefing"] .wr-mini > svg {height:190px;width:auto;min-width:620px;display:block }
   .mv-ref-app section[data-route="app-briefing"] .wr-mini {overflow-x:auto }
 }
@@ -383,11 +478,13 @@ body .mv-ref-app.view-simple .kpi .k-val {font-size:30px }
 .mv-ref-app select:focus-visible,
 .mv-ref-app [tabindex]:focus-visible {outline:2px solid var(--green);outline-offset:2px;border-radius:4px }
 .mv-ref-app .btn[disabled] {opacity:.45;cursor:not-allowed;pointer-events:none }
+.mv-ref-app .chartbox {position:relative }
 .mv-ref-app .wr-mini {position:relative }
 @media screen and (prefers-reduced-motion:no-preference) {
   .mv-ref-app section[data-route].active {animation:mvFadeUp .26s ease both }
   .mv-ref-app .card,
-  .mv-ref-app .kpi {transition:box-shadow .18s ease,transform .18s ease }
+  .mv-ref-app .kpi,
+  .mv-ref-app .chartbox {transition:box-shadow .18s ease,transform .18s ease }
   .mv-ref-app .kpi:hover {box-shadow:var(--shadow-lg);transform:translateY(-1px) }
   .mv-ref-app .btn {transition:filter .15s,background .15s,transform .12s ease }
   .mv-ref-app .btn-primary:active,
@@ -489,6 +586,7 @@ body .mv-ref-app.ctx-open .ctx-drawer {transform:translateX(0);visibility:visibl
   .mv-ref-app .app-body .card,
   .mv-ref-app .app-body .notice,
   .mv-ref-app .app-body .kpi,
+  .mv-ref-app .app-body .chartbox,
   .mv-ref-app .app-body .smp-badge,
   .mv-ref-app .app-body .al-strip,
   .mv-ref-app .app-body .simple-hero {min-width:0;max-width:100%;overflow-wrap:break-word }
@@ -1584,6 +1682,351 @@ body .mv-ref-app.view-simple:not(.no-claim) section[data-route="app-briefing"] #
   .mv-ref-app { background: #fff !important; }
   .mv-ref-app .wr-map { max-width: 300px; }
 }
+.mv-ref-app section[data-route="app-production"] h4 { margin: 0; }
+.mv-ref-app section[data-route="app-production"] .chartbox { padding: 16px 18px 14px; }
+.mv-ref-app .pf2-strip { display: flex; gap: 8px; align-items: stretch; }
+.mv-ref-app .pf2-seg {
+  flex: 1 1 0; min-width: 96px; text-align: left; cursor: pointer;
+  font: inherit; border-radius: 12px; padding: 12px 14px;
+  border: 1px solid #dde4ea; background: #fff;
+  transition: border-color .12s, box-shadow .12s, transform .12s;
+  display: flex; flex-direction: column; gap: 3px; }
+.mv-ref-app .pf2-seg:hover { border-color: var(--green-deep); box-shadow: var(--shadow); }
+.mv-ref-app .pf2-seg:active { transform: translateY(1px); }
+.mv-ref-app .pf2-seg:focus-visible { outline: 2px solid var(--green-deep); outline-offset: 2px; }
+.mv-ref-app .pf2-segn { font-size: 22px; font-weight: 800; line-height: 1.15;
+            font-variant-numeric: tabular-nums; }
+.mv-ref-app .pf2-segl { font-size: 11px; font-weight: 800; letter-spacing: .06em;
+            text-transform: uppercase; color: var(--slate); }
+.mv-ref-app .pf2-segd { font-size: 11.5px; color: var(--slate); opacity: .85; line-height: 1.5; }
+.mv-ref-app .pf2-seg.posted { background: #f7f9fa; }
+.mv-ref-app .pf2-seg.posted .pf2-segn { color: var(--ink); }
+.mv-ref-app .pf2-seg.blind { background: var(--amber-bg); border-color: #e6cf94; }
+.mv-ref-app .pf2-seg.blind .pf2-segn,
+.mv-ref-app .pf2-seg.blind .pf2-segl { color: var(--amber); }
+.mv-ref-app .pf2-seg.blind .pf2-segd { color: #8a6413; }
+.mv-ref-app .pf2-seg.proj { background: #f4fbf8; border-color: #cfe3da; }
+.mv-ref-app .pf2-seg.proj .pf2-segn { color: var(--green-deep); }
+.mv-ref-app .pf2-topvals { display: grid; grid-template-columns: repeat(auto-fit, minmax(212px, 1fr));
+               gap: 12px; margin: 0 0 14px; }
+.mv-ref-app .pf2-tv { border: 2px solid var(--green); border-radius: 14px; padding: 13px 16px;
+          background: #f8fdfb; }
+.mv-ref-app .pf2-tv .tvl { font-size: 10.5px; font-weight: 800; letter-spacing: .07em;
+               text-transform: uppercase; color: var(--slate); display: block; }
+.mv-ref-app .pf2-tv .tvv { font-size: 22px; font-weight: 800; line-height: 1.2; display: block;
+               margin-top: 5px; font-variant-numeric: tabular-nums; }
+.mv-ref-app .pf2-tv .tvs { font-size: 11.5px; color: var(--slate); line-height: 1.55; display: block;
+               margin-top: 6px; }
+.mv-ref-app .pf2-ins { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+           gap: 10px; margin: 0 0 16px; }
+@media (max-width: 940px) {
+  .mv-ref-app .pf2-ins { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .mv-ref-app .pf2-ins { grid-template-columns: 1fr; }
+}
+.mv-ref-app .pf2-in { background: #fff; border: 1px solid var(--line); border-radius: 12px;
+          padding: 12px 14px; box-shadow: var(--shadow);
+          display: flex; flex-direction: column; gap: 5px; }
+.mv-ref-app .pf2-inbtn { font: inherit; text-align: left; cursor: pointer; width: 100%;
+             transition: border-color .12s, box-shadow .12s, transform .12s; }
+.mv-ref-app .pf2-inbtn:hover { border-color: var(--green-deep); box-shadow: var(--shadow-lg); }
+.mv-ref-app .pf2-inbtn:active { transform: translateY(1px); }
+.mv-ref-app .pf2-inbtn:focus-visible { outline: 2px solid var(--green-deep); outline-offset: 2px; }
+.mv-ref-app .pf2-inmore { font-size: 10.5px; font-weight: 800; letter-spacing: .04em;
+              color: var(--green-deep); opacity: 0; transition: opacity .12s;
+              margin-top: 1px; }
+.mv-ref-app .pf2-inbtn:hover .pf2-inmore,
+.mv-ref-app .pf2-inbtn:focus-visible .pf2-inmore { opacity: 1; }
+.mv-ref-app .pf2-in.t-warn { border-left: 3px solid var(--amber); }
+.mv-ref-app .pf2-in.t-up { border-left: 3px solid var(--green-deep); }
+.mv-ref-app .pf2-inl { font-size: 10.5px; font-weight: 800; letter-spacing: .06em;
+           text-transform: uppercase; color: var(--slate); line-height: 1.4; }
+.mv-ref-app .pf2-inv { font-size: 17px; font-weight: 800; line-height: 1.25; color: var(--ink);
+           font-variant-numeric: tabular-nums; }
+.mv-ref-app .pf2-ins2 { font-size: 11.5px; color: var(--slate); line-height: 1.6; }
+.mv-ref-app .pf2-chead { display: flex; flex-wrap: wrap; gap: 10px 24px; align-items: flex-start;
+             justify-content: space-between; padding: 2px 2px 12px; }
+.mv-ref-app .pf2-sub { font-size: 12px; color: var(--slate); margin: 5px 0 0; line-height: 1.6;
+           letter-spacing: .01em; }
+.mv-ref-app .pf2-sub .pf2-dot { color: #c3ccd4; margin: 0 6px; }
+.mv-ref-app .pf2-legend { display: flex; gap: 8px 16px; flex-wrap: wrap; align-items: center;
+              font-size: 12px; font-weight: 700; color: var(--ink); padding-top: 3px; }
+.mv-ref-app .pf2-sw { display: inline-block; width: 20px; border-top: 3px solid var(--green-deep);
+          border-radius: 2px; vertical-align: middle; margin-right: 7px; }
+.mv-ref-app .pf2-sw.gas,
+.mv-ref-app .pf2-sw.oil { border-top-color: #b8892f; }
+.mv-ref-app .pf2-lgnote { font-size: 11px; font-weight: 600; color: var(--slate); opacity: .85;
+              border-left: 1px solid #e2e8f0; padding-left: 14px; }
+@media (max-width: 560px) {
+  .mv-ref-app .pf2-lgnote { border-left: none; padding-left: 0; }
+}
+.mv-ref-app .pf2-ctrls { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center;
+             padding: 0 2px 12px; }
+.mv-ref-app .pf2-sel { display: inline-flex; align-items: center; gap: 8px; font-size: 11px;
+           font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+           color: var(--slate); }
+.mv-ref-app .pf2-sel select { font: inherit; font-size: 12.5px; font-weight: 600; letter-spacing: 0;
+                  text-transform: none; color: var(--ink); background: #fff;
+                  border: 1px solid #dde4ea; border-radius: 9px; padding: 7px 10px;
+                  max-width: 300px; cursor: pointer; }
+.mv-ref-app .pf2-sel select:focus-visible { outline: 2px solid var(--green-deep); outline-offset: 1px; }
+.mv-ref-app .pf2-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.mv-ref-app .pf2-preset { font-family: inherit; font-size: 11px; font-weight: 700; color: var(--slate);
+              background: #fff; border: 1px solid #dde4ea; border-radius: 999px;
+              padding: 6px 13px; cursor: pointer; line-height: 1.15;
+              transition: border-color .12s, color .12s, background .12s; }
+.mv-ref-app .pf2-preset:hover { border-color: var(--green-deep); color: var(--green-deep); }
+.mv-ref-app .pf2-preset.on { background: var(--green-deep); border-color: var(--green-deep); color: #fff; }
+.mv-ref-app .pf2-preset:focus-visible { outline: 2px solid var(--green-deep); outline-offset: 2px; }
+.mv-ref-app section[data-route="app-production"] #pf2Svg { display: block; width: 100%; height: auto;
+  cursor: crosshair; touch-action: pan-y; }
+.mv-ref-app section[data-route="app-production"] #pf2Svg:focus-visible {
+  outline: 2px solid var(--green-deep); outline-offset: 3px; border-radius: 8px; }
+.mv-ref-app .pf2-brushrow { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
+                justify-content: space-between; padding: 12px 2px 8px; }
+.mv-ref-app .pf2-winlab { font-variant-numeric: tabular-nums; }
+.mv-ref-app .pf2-brush { position: relative; height: 36px; margin: 2px 2px 10px;
+             border: 1px solid #e5e7eb; border-radius: 9px; background: #fbfcfd; }
+.mv-ref-app .pf2-brush .pf2-ctx { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+                      border-radius: 8px; pointer-events: none; }
+.mv-ref-app .pf2-win { position: absolute; top: -1px; bottom: -1px; background: rgba(46, 143, 109, .09);
+           border-left: 2px solid var(--green-deep); border-right: 2px solid var(--green-deep);
+           pointer-events: none; }
+.mv-ref-app .pf2-brush input[type=range] { position: absolute; left: 0; top: 0; width: 100%; height: 36px;
+  margin: 0; -webkit-appearance: none; appearance: none; background: transparent;
+  pointer-events: none; outline: none; }
+.mv-ref-app .pf2-brush input[type=range]::-webkit-slider-runnable-track { height: 36px;
+  background: transparent; }
+.mv-ref-app .pf2-brush input[type=range]::-webkit-slider-thumb { -webkit-appearance: none;
+  appearance: none; pointer-events: auto; width: 15px; height: 24px; margin-top: 6px;
+  border-radius: 5px; background: #fff; border: 2px solid var(--green-deep);
+  box-shadow: 0 1px 4px rgba(15, 40, 30, .25); cursor: ew-resize; }
+.mv-ref-app .pf2-brush input[type=range]::-moz-range-track { height: 36px; background: transparent; }
+.mv-ref-app .pf2-brush input[type=range]::-moz-range-thumb { pointer-events: auto; width: 15px;
+  height: 24px; border-radius: 5px; background: #fff; border: 2px solid var(--green-deep);
+  box-shadow: 0 1px 4px rgba(15, 40, 30, .25); cursor: ew-resize; }
+.mv-ref-app .pf2-brush input[type=range]:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--amber); outline-offset: 1px; }
+.mv-ref-app .pf2-note { font-size: 11.5px; color: var(--slate); line-height: 1.65;
+            padding: 4px 2px 8px; margin: 0; }
+.mv-ref-app .pf2-note strong { color: var(--ink); font-weight: 700; }
+.mv-ref-app .pf2-note .pf2-preset { margin-left: 4px; vertical-align: 1px; }
+.mv-ref-app .pf2-duo { display: grid; grid-template-columns: minmax(238px, 310px) 1fr; gap: 16px;
+           margin-top: 16px; align-items: stretch; }
+@media (max-width: 900px) {
+  .mv-ref-app .pf2-duo { grid-template-columns: 1fr; }
+}
+.mv-ref-app .pf2-mapcard { display: flex; flex-direction: column; }
+.mv-ref-app .pf2-facts { margin: 12px 0 0; display: flex; flex-direction: column; flex: 1; }
+.mv-ref-app .pf2-facts > div { display: flex; gap: 12px; justify-content: space-between;
+                   align-items: baseline; padding: 8px 0; border-top: 1px solid #eef2f1; }
+.mv-ref-app .pf2-facts > div:first-child { border-top: 0; }
+.mv-ref-app .pf2-facts dt { font-size: 11px; font-weight: 800; letter-spacing: .05em;
+                text-transform: uppercase; color: var(--slate); flex: 0 0 auto; }
+.mv-ref-app .pf2-facts dd { margin: 0; font-size: 12.5px; font-weight: 700; color: var(--ink);
+                text-align: right; line-height: 1.45; }
+.mv-ref-app .pf2-mapsub { font-size: 11.5px; color: var(--slate); line-height: 1.65;
+              margin: 12px 0 2px; padding-top: 10px; border-top: 1px solid #eef2f1; }
+.mv-ref-app .pf2-kband { background: var(--ink); color: #fff; border: 1px solid var(--ink);
+             border-radius: 14px; overflow: hidden; box-shadow: var(--shadow);
+             display: flex; flex-direction: column; }
+.mv-ref-app .pf2-kt { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center;
+          justify-content: space-between; padding: 15px 20px 10px; }
+.mv-ref-app .pf2-kt h4 { font-size: 14.5px; font-weight: 800; color: #fff; margin: 0;
+             letter-spacing: .01em; }
+.mv-ref-app .pf2-int { display: inline-flex; align-items: baseline; gap: 6px; font-size: 11px;
+           font-weight: 800; color: #dfeae4; background: rgba(46, 143, 109, .22);
+           border: 1px solid rgba(120, 190, 160, .35); border-radius: 999px;
+           padding: 5px 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mv-ref-app .pf2-int em { font-style: normal; font-size: 9px; font-weight: 800; letter-spacing: .07em;
+              text-transform: uppercase; color: #e9c986; }
+.mv-ref-app .pf2-tbl { display: grid;
+  grid-template-columns:
+    minmax(118px, 1.35fr) minmax(78px, .95fr) minmax(70px, .85fr)
+    minmax(78px, .95fr) minmax(70px, .85fr);
+  padding: 0 20px 8px; flex: 1; align-content: start; }
+.mv-ref-app .pf2-c { padding: 9px 10px 9px 0; border-top: 1px solid rgba(255, 255, 255, .09);
+         font-size: 12px; display: flex; flex-direction: column; justify-content: center;
+         min-width: 0; }
+.mv-ref-app .pf2-c.sh { background: rgba(255, 255, 255, .04); padding-left: 10px; padding-right: 8px; }
+.mv-ref-app .pf2-c.gh { border-top: none; padding-top: 4px; padding-bottom: 2px; font-size: 10.5px;
+            font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.mv-ref-app .pf2-c.gh.o { color: #ecc07c; }
+.mv-ref-app .pf2-c.gh.g { color: #9fd3ba; }
+.mv-ref-app .pf2-c.shh { border-top: none; padding-top: 2px; padding-bottom: 7px; font-size: 9.5px;
+             font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
+             color: #8fa3ad; }
+.mv-ref-app .pf2-l { color: #b7c3cc; font-size: 11.5px; line-height: 1.45; }
+.mv-ref-app .pf2-est { display: block; font-size: 9px; font-weight: 700; letter-spacing: .05em;
+           text-transform: uppercase; color: #d9a441; margin-top: 4px; }
+.mv-ref-app .pf2-vo,
+.mv-ref-app .pf2-vg { font-variant-numeric: tabular-nums; font-weight: 800; font-size: 14px;
+                   line-height: 1.35; white-space: nowrap; }
+.mv-ref-app .pf2-vg { color: #9fd3ba; }
+.mv-ref-app .pf2-vo { color: #ecc07c; }
+.mv-ref-app .pf2-vs { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 12.5px;
+          line-height: 1.35; white-space: nowrap; }
+.mv-ref-app .pf2-vs.g { color: #d8ede3; }
+.mv-ref-app .pf2-vs.o { color: #e9d1a4; }
+.mv-ref-app .pf2-vs.na { color: #5f7482; font-weight: 600; }
+.mv-ref-app .pf2-u { font-size: 10px; font-weight: 700; color: #8fa3ad; margin-left: 3px; }
+.mv-ref-app .pf2-kstrip { display: flex; flex-wrap: wrap; gap: 6px 22px; padding: 11px 20px;
+              border-top: 1px solid rgba(255, 255, 255, .12); font-size: 11px;
+              color: #b7c3cc; }
+.mv-ref-app .pf2-kstrip strong { color: #fff; font-weight: 800; font-variant-numeric: tabular-nums;
+                     margin-right: 4px; }
+.mv-ref-app .pf2-kfoot { font-size: 10.5px; color: #8fa3ad; line-height: 1.75; padding: 10px 20px 14px;
+             margin: 0; border-top: 1px solid rgba(255, 255, 255, .08); }
+.mv-ref-app .pf2-tbl2 { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.mv-ref-app .pf2-tbl2 th { text-align: left; font-size: 10.5px; font-weight: 800; letter-spacing: .06em;
+               text-transform: uppercase; color: var(--slate); padding: 10px 12px;
+               border-bottom: 1px solid var(--line); background: #f8fafb;
+               white-space: nowrap; }
+.mv-ref-app .pf2-tbl2 th.right,
+.mv-ref-app .pf2-tbl2 td.right { text-align: right; }
+.mv-ref-app .pf2-tbl2 td { padding: 10px 12px; border-bottom: 1px solid #f1f4f6; vertical-align: top;
+               line-height: 1.5; }
+.mv-ref-app .pf2-tbl2 td.num,
+.mv-ref-app .pf2-tbl2 td .num { font-variant-numeric: tabular-nums; }
+.mv-ref-app .pf2-tbl2 tbody tr[role="button"] { cursor: pointer; }
+.mv-ref-app .pf2-tbl2 tbody tr[role="button"]:hover { background: #f4fbf8; }
+.mv-ref-app .pf2-tbl2 tbody tr[role="button"]:focus-visible { outline: 2px solid var(--green-deep);
+  outline-offset: -2px; }
+.mv-ref-app .pf2-tbl2 tbody tr.on { background: #eef8f4; box-shadow: inset 3px 0 0 var(--green-deep); }
+.mv-ref-app .pf2-tbl2 tbody tr.on td:first-child { font-weight: 800; }
+.mv-ref-app .pf2-flow { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch;
+            padding: 4px 2px 10px; }
+.mv-ref-app .pf2-fl { flex: 1 1 200px; border: 1px solid var(--line); border-radius: 12px;
+          padding: 12px 14px; background: #fff; display: flex; flex-direction: column;
+          gap: 5px; }
+.mv-ref-app .pf2-fl.warn { border-color: #e6cf94; background: #fffcf4; }
+.mv-ref-app .pf2-fl.good { border-color: #cfe3da; background: #f8fdfb; }
+.mv-ref-app .pf2-fll { font-size: 10.5px; font-weight: 800; letter-spacing: .06em;
+           text-transform: uppercase; color: var(--slate); }
+.mv-ref-app .pf2-flv { font-size: 19px; font-weight: 800; line-height: 1.25; color: var(--ink);
+           font-variant-numeric: tabular-nums; }
+.mv-ref-app .pf2-fl.warn .pf2-flv { color: var(--amber); }
+.mv-ref-app .pf2-fl.good .pf2-flv { color: var(--green-deep); }
+.mv-ref-app .pf2-fls { font-size: 11.5px; color: var(--slate); line-height: 1.6; }
+.mv-ref-app .pf2-flbar { height: 7px; border-radius: 4px; background: #eef2f1; margin-top: 6px;
+             overflow: hidden; }
+.mv-ref-app .pf2-flbar i { display: block; height: 100%; background: var(--ink); border-radius: 4px; }
+.mv-ref-app .pf2-flbar.warn i { background: var(--amber); }
+.mv-ref-app .pf2-flbar.good i { background: var(--green-deep); }
+.mv-ref-app .pf2-flarrow { flex: 0 0 auto; align-self: center; font-size: 20px; font-weight: 800;
+               color: #b9c4cc; padding: 0 2px; }
+@media (max-width: 700px) {
+  .mv-ref-app .pf2-flarrow { display: none; }
+}
+.mv-ref-app .pf2-mini { margin: 14px 0 2px; padding-top: 12px; border-top: 1px solid #eef2f1; }
+.mv-ref-app .pf2-minil { display: block; font-size: 10.5px; font-weight: 800; letter-spacing: .06em;
+             text-transform: uppercase; color: var(--slate); margin-bottom: 8px; }
+.mv-ref-app .pf2-minibars { display: flex; align-items: flex-end; gap: 2px; height: 56px;
+                padding: 0 2px; border-bottom: 1px solid #e2e8f0; }
+.mv-ref-app .pf2-minib { flex: 1 1 0; min-width: 3px; background: var(--amber); opacity: .7;
+             border-radius: 2px 2px 0 0; min-height: 1px; }
+.mv-ref-app .pf2-minib:hover { opacity: 1; }
+.mv-ref-app .pf2-minis { display: block; font-size: 11px; color: var(--slate); line-height: 1.6;
+             margin-top: 8px; }
+.mv-ref-app .pf2-finds { list-style: none; margin: 0; padding: 0; display: grid;
+             grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 22px; }
+@media (max-width: 780px) {
+  .mv-ref-app .pf2-finds { grid-template-columns: 1fr; }
+}
+.mv-ref-app .pf2-finds li { display: flex; flex-direction: column; gap: 3px; padding: 9px 0;
+                border-top: 1px solid #eef2f1; }
+.mv-ref-app .pf2-finds li strong { font-size: 12.5px; font-weight: 800; color: var(--ink);
+                       line-height: 1.45; }
+.mv-ref-app .pf2-finds li span { font-size: 12px; color: var(--slate); line-height: 1.65; }
+.mv-ref-app .pf2-ins.pf2-ins2row { margin-top: -6px; }
+.mv-ref-app .pf2-gauges { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+              gap: 12px 18px; padding: 2px 0 4px; }
+@media (max-width: 680px) {
+  .mv-ref-app .pf2-gauges { grid-template-columns: 1fr; }
+}
+.mv-ref-app .pf2-gauge { display: flex; align-items: center; gap: 16px; padding: 6px 2px; }
+.mv-ref-app .pf2-gauge + .pf2-gauge { border-left: 1px solid #eef2f1; padding-left: 20px; }
+@media (max-width: 680px) {
+  .mv-ref-app .pf2-gauge + .pf2-gauge { border-left: 0; padding-left: 2px;
+    border-top: 1px solid #eef2f1; padding-top: 12px; margin-top: 4px; }
+}
+.mv-ref-app .pf2-gauge svg { flex: 0 0 118px; width: 118px; height: auto; display: block; }
+.mv-ref-app .pf2-gaugefacts { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.mv-ref-app .pf2-gk { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+          margin-bottom: 2px; }
+.mv-ref-app .pf2-gk.gas { color: var(--green-deep); }
+.mv-ref-app .pf2-gk.oil { color: #a07a2c; }
+.mv-ref-app .pf2-gr { font-size: 12px; color: var(--slate); line-height: 1.5; }
+.mv-ref-app .pf2-gr em { font-style: normal; font-weight: 800; color: var(--ink);
+             font-variant-numeric: tabular-nums; }
+.mv-ref-app .pf2-gr.half { margin-top: 4px; padding-top: 6px; border-top: 1px dashed #dde4ea;
+               font-size: 11.5px; }
+.mv-ref-app .pf2-lifegrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 2px 26px; margin-top: 12px; padding-top: 10px;
+                border-top: 1px solid #eef2f1; }
+@media (max-width: 1040px) {
+  .mv-ref-app .pf2-lifegrid { grid-template-columns: 1fr; }
+}
+.mv-ref-app .pf2-lifeone { display: grid; grid-template-columns: minmax(0, 1fr) 72px 46px; gap: 12px;
+               align-items: center; padding: 7px 6px; border: 0; background: none;
+               font: inherit; text-align: left; cursor: pointer; border-radius: 8px; }
+.mv-ref-app .pf2-lifeone:hover { background: #f4fbf8; }
+.mv-ref-app .pf2-lifeone.on { background: #eef8f4; box-shadow: inset 2px 0 0 var(--green-deep); }
+.mv-ref-app .pf2-lifeone:focus-visible { outline: 2px solid var(--green-deep); outline-offset: -2px; }
+.mv-ref-app .pf2-lifename { font-size: 12px; font-weight: 700; color: var(--ink);
+                line-height: 1.35; min-width: 0; }
+.mv-ref-app .pf2-lifeminibar { height: 7px; border-radius: 5px; background: #eef2f1; overflow: hidden; }
+.mv-ref-app .pf2-lifeminibar i { display: block; height: 100%; background: #9cc3b3; }
+.mv-ref-app .pf2-lifeminibar i.late { background: var(--amber); }
+.mv-ref-app .pf2-lifeval { font-size: 12px; font-weight: 800; color: var(--slate); text-align: right;
+               font-variant-numeric: tabular-nums; }
+.mv-ref-app .pf2-dotk { display: inline-block; width: 9px; height: 9px; border-radius: 3px;
+            margin-right: 6px; vertical-align: 0; }
+.mv-ref-app .pf2-dotk.gas { background: var(--green-deep); }
+.mv-ref-app .pf2-dotk.oil { background: #b8892f; }
+.mv-ref-app .pf2-years { display: flex; align-items: flex-end; gap: 10px; height: 190px;
+             padding: 6px 2px 0; }
+.mv-ref-app .pf2-yr { flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column;
+          justify-content: flex-end; align-items: center; gap: 6px; }
+.mv-ref-app .pf2-yrv { font-size: 11.5px; font-weight: 800; color: var(--ink); white-space: nowrap;
+           font-variant-numeric: tabular-nums; }
+.mv-ref-app .pf2-yrbox { flex: 1 1 auto; min-height: 0; width: 100%; display: flex;
+             align-items: flex-end; justify-content: center; }
+.mv-ref-app .pf2-yrcol { width: 100%; max-width: 46px; flex: 0 0 auto; display: flex;
+             flex-direction: column; border-radius: 5px 5px 0 0; overflow: hidden;
+             min-height: 3px; }
+.mv-ref-app .pf2-yrcol i { display: block; width: 100%; }
+.mv-ref-app .pf2-yrcol i.gas { background: var(--green-deep); }
+.mv-ref-app .pf2-yrcol i.oil { background: #b8892f; }
+.mv-ref-app .pf2-yrl { font-size: 11px; font-weight: 700; color: var(--slate); white-space: nowrap;
+           font-variant-numeric: tabular-nums; }
+.mv-ref-app .pf2-yrl em { font-style: normal; font-size: 9px; font-weight: 800; color: var(--amber);
+              margin-left: 3px; }
+@media (max-width: 560px) {
+  .mv-ref-app .pf2-years { gap: 5px; height: 160px; }
+  .mv-ref-app .pf2-yrv { font-size: 9.5px; }
+  .mv-ref-app .pf2-yrl { font-size: 9.5px; }
+}
+@media (max-width: 640px) {
+  .mv-ref-app .pf2-strip { flex-direction: column; }
+  .mv-ref-app .pf2-seg { min-width: 0; }
+  .mv-ref-app .pf2-tv .tvv { font-size: 19px; }
+  .mv-ref-app .pf2-tbl { grid-template-columns:
+    minmax(96px, 1.2fr) minmax(62px, .95fr) minmax(56px, .85fr)
+    minmax(62px, .95fr) minmax(56px, .85fr); padding: 0 14px 8px; }
+  .mv-ref-app .pf2-vo,
+  .mv-ref-app .pf2-vg { font-size: 12.5px; }
+  .mv-ref-app .pf2-vs { font-size: 11px; }
+  .mv-ref-app .pf2-kt,
+  .mv-ref-app .pf2-kstrip,
+  .mv-ref-app .pf2-kfoot { padding-left: 14px; padding-right: 14px; }
+  .mv-ref-app .pf2-sel select { max-width: 100%; }
+}
+body .mv-ref-app.view-ultra:not(.no-claim) section[data-route="app-leases"] > .pf2-ins {
+  display: grid !important; }
+.mv-ref-app section[data-route="app-leases"] h4 { margin: 0; }
+.mv-ref-app section[data-route="app-leases"] .chartbox { padding: 16px 18px 14px; }
 .mv-ref-app .soon-tag {
   margin-left: auto; font-size: 8.5px; font-weight: 800; letter-spacing: .06em;
   text-transform: uppercase; padding: 2px 6px; border-radius: 999px;
@@ -1647,54 +2090,3 @@ body .mv-ref-app.view-simple:not(.no-claim) section[data-route="app-briefing"] #
 @keyframes mvFadeUp {from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @keyframes mvBounce {0%,80%,100%{transform:scale(.6);opacity:.45}40%{transform:scale(1);opacity:1}}
 @keyframes mvSpin {to{transform:rotate(360deg)}}
-/* ==========================================================================
-   WHAT THIS APP'S OWN RESET ADDS ON TOP OF THE REFERENCE
-
-   Everything above this line is the reference's, extracted. The block below is
-   NOT in the reference — it exists because this app declares something where
-   the reference declares nothing, and an extracted sheet can only override a
-   property the reference actually sets. Where the reference relies on the
-   BROWSER'S default, a host declaration in between wins by default and there
-   is nothing to extract that would stop it.
-
-   Tailwind's preflight sets `font: inherit` on button, input, select, textarea
-   and optgroup. The reference does not, so its form controls take the UA's own
-   font and `line-height: normal` — which is why its avatar initials render in
-   Arial and its `.al-mini`, `.as-cat` and `.sw-btn` buttons sit at `normal`
-   leading rather than the body's 1.55. Measured against the running reference,
-   that difference showed up on six selectors.
-
-   Preflight also sets `color: inherit` on those same controls, and
-   `display: block; vertical-align: middle` on `svg`. The reference sets
-   neither, so its unstyled buttons and inputs take the UA's black and its
-   `.mvi-inline` icons stay INLINE. The icon one is the visible half: an inline
-   15px glyph that becomes a block box takes a line of its own, and the
-   reference's own `vertical-align: -2px` on `.mvi-inline` is written for an
-   inline box. Inside a flex parent — `.al-ico`, `.mk-ico` — display is
-   blockified anyway and nothing showed, which is why this survived the first
-   pass: the Dashboard is the only surface that puts one in running text.
-
-   `revert` is the right tool: it drops back to the UA stylesheet, which is
-   exactly what the reference gets. Every ported rule that DOES set one of
-   these — `.btn`, `.as-cat`, `.mvlive-picker input`, `.alx-svg`, `.lc-svg`,
-   `.mvi-inline`'s own `vertical-align` — still wins on specificity, because
-   those are two classes against this rule's one class and one element.
-   ========================================================================== */
-
-.mv-ref-app button,
-.mv-ref-app input,
-.mv-ref-app select,
-.mv-ref-app textarea,
-.mv-ref-app optgroup {
-  font-family: revert;
-  font-size: revert;
-  font-weight: revert;
-  font-style: revert;
-  line-height: normal;
-  color: revert;
-}
-
-.mv-ref-app svg {
-  display: revert;
-  vertical-align: revert;
-}

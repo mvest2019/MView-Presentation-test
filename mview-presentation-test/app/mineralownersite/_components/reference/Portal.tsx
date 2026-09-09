@@ -67,9 +67,11 @@ import AlertsView from './AlertsView';
 import ActivitiesView from './ActivitiesView';
 import DrawerPanel from './DrawerPanel';
 import Loader, { type Step } from './Loader';
+import ProductionView from './ProductionView';
 import { PortalViewStateProvider } from './view-state';
 
-export type Route = 'dashboard' | 'alerts' | 'activities' | 'weekly' | 'map';
+export type Route = 'dashboard' | 'alerts' | 'activities' | 'leases'
+  | 'production' | 'weekly' | 'map';
 
 /** the five funnel states, in funnel order — the prototype's own sequence */
 export const FUNNEL = [
@@ -98,27 +100,32 @@ export const PERSONAS: { key: Tier; label: string; note: string }[] = [
 export const ROUTE_PATH: Record<Route, string> = {
   dashboard: '/mineralownersite',
   weekly: '/mineralownersite/briefing',
+  production: '/mineralownersite/production',
   alerts: '/mineralownersite/alerts',
   activities: '/mineralownersite/activities',
+  leases: '/mineralownersite/leases',
   map: '/mineralownersite/map',
 };
 /**
- * WHICH ROUTES THIS SHELL RENDERS ITSELF — the reference's four, all of them.
+ * WHICH ROUTES THIS SHELL RENDERS ITSELF — the reference's five, all of them.
  *
  * They switch without a request, which is the reference's own arrangement and
  * its own reason: a route change must not discard a snapshot that took seconds
- * to build, and the four surfaces read ONE payload, so the bell badge, the
- * alert list, the activity feed and the dashboard's rollup cannot disagree.
- * Each still has a real server page, which is what makes a cold entry or a
- * shared link work.
+ * to build, and the five surfaces read ONE payload, so the bell badge, the
+ * alert list, the activity feed, Production & Forecast and the dashboard's
+ * rollup cannot disagree. Each still has a real server page, which is what
+ * makes a cold entry or a shared link work.
  *
  * The Map is absent deliberately: it is 51 files and an ArcGIS runtime, and it
- * borrows this shell through `children` instead — see adaptation 3.
+ * borrows this shell through `children` instead — see adaptation 3. My Leases
+ * is absent too: that page is this app's own, outside this work, so
+ * `go('leases')` navigates to it rather than rendering it here.
  */
-const OWNED: Route[] = ['dashboard', 'weekly', 'alerts', 'activities'];
+const OWNED: Route[] = ['dashboard', 'weekly', 'alerts', 'activities', 'production'];
 
 export const ROUTE_TITLE: Record<Route, string> = {
   dashboard: 'Dashboard', alerts: 'Alerts', activities: 'Activities',
+  leases: 'My Leases', production: 'Production & Forecast',
   weekly: 'Weekly Report', map: 'Map',
 };
 
@@ -381,12 +388,14 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
           ? <AlertsView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
           : route === 'activities'
             ? <ActivitiesView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
-            : (
-              <Dashboard
-                p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go}
-                trialStarted={trialStarted} setFunnel={pickFunnel}
-              />
-            ))
+            : route === 'production'
+              ? <ProductionView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
+              : (
+                <Dashboard
+                  p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go}
+                  trialStarted={trialStarted} setFunnel={pickFunnel}
+                />
+              ))
   );
 
   return (

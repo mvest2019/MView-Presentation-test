@@ -28,7 +28,7 @@
  *      happens to fill would otherwise be typed as never-null. 212 property
  *      lines were corrected this way.
  *
- *   3  SPLICE the three shapes inference cannot express: `weekly` is the
+ *   3  SPLICE the shapes inference cannot express: `weekly` is the
  *      reference's `WeeklyReport` (its sixteen declarations copied verbatim
  *      into ./weekly), `drawers` is a Record keyed by data
  *      (`lease:02_290271`), and the arrays that are empty on this record are
@@ -40,6 +40,7 @@
  * reads the same fields the reference component read.
  */
 import type { WeeklyReport } from './weekly';
+import type { ForecastPayload } from './forecast';
 import type { ChartSpec } from './chart';
 
 /* ---------------------------------------------------------------- alerts.ts */
@@ -109,7 +110,7 @@ export interface Drawer {
   charts?: ChartSpec[];
 }
 
-export type { WeeklyReport };
+export type { WeeklyReport, ForecastPayload };
 
 export interface Payload {
   owner: {
@@ -168,7 +169,7 @@ export interface Payload {
     prev_oil_net: number;
     prev_boe_net: number;
     gas_change_pct: number;
-    oil_change_pct: number | null;
+    oil_change_pct: number;
     boe_change_pct: number;
     has_gas: boolean;
     has_oil: boolean;
@@ -277,7 +278,7 @@ export interface Payload {
     })[];
     wells: ({
       lease_id: string;
-      api14: string | null;
+      api14: string;
       well_number: string | null;
       well_name: string | null;
       completion_operator: string | null;
@@ -288,8 +289,8 @@ export interface Payload {
       spud_label: string | null;
       depth_ft: number | null;
       depth_basis: string | null;
-      lat: number | null;
-      lon: number | null;
+      lat: number;
+      lon: number;
       field_name: string | null;
       play: string | null;
       last_month_boe: number;
@@ -996,6 +997,327 @@ export interface Payload {
   /** the Saturday report — the reference's own `WeeklyReport`, whose sixteen
    *  type declarations are copied verbatim into ./weekly */
   weekly: WeeklyReport;
+  /** Production and Forecast: the whole payload the route renders. The
+   *  reference own `ForecastPayload`, nine declarations copied verbatim
+   *  into ./forecast -- 261 months, ten leases with their own series,
+   *  the boundary, the disposition, and the figures the page explains. */
+  forecast: ForecastPayload;
+  my_leases: {
+    picker: ({
+      lease_id: string;
+      label: string;
+      county: string | null;
+      operator_name: string | null;
+      wells: number;
+      reservoirs: string[];
+      owner_value: number;
+    })[];
+    leases: ({
+      lease_id: string;
+      label: string;
+      lease_name: string | null;
+      lease_number: string | null;
+      district_code: string | null;
+      county: string | null;
+      operator_name: string | null;
+      field_name: string | null;
+      field_stem: string | null;
+      acres: number | null;
+      lease_status: string | null;
+      interest: number;
+      interest_label: string | null;
+      owner_value: number;
+      reservoirs: ({
+        name: string;
+        wells: number;
+        basis: string;
+      })[];
+      well_apis: string[];
+      well_count: number;
+      first_prod_label: string | null;
+      last_posted_label: string | null;
+      months_posted: number;
+      gas_to_date: number;
+      oil_to_date: number;
+      gas_to_date_share: number;
+      oil_to_date_share: number;
+      reserves_gas_share: number;
+      depth_min: number | null;
+      depth_max: number | null;
+      deviated_count: number;
+      stats: ({
+        label: string;
+        value: string;
+        sub: string;
+      })[];
+      map: {
+        wells: ({
+          api14: string;
+          label: string;
+          well_number: string | null;
+          lease_id: string;
+          lease_label: string;
+          reservoir: string | null;
+          profile: string | null;
+          lat: number;
+          lon: number;
+          bh_lat: number | null;
+          bh_lon: number | null;
+          deviated: boolean;
+          lateral_ft: number | null;
+          bearing_deg: number | null;
+          bearing_compass: string | null;
+          depth_ft: number | null;
+          active: boolean;
+        })[];
+        min_lat: number;
+        max_lat: number;
+        min_lon: number;
+        max_lon: number;
+        span_ns_mi: number;
+        span_ew_mi: number;
+        deviated_count: number;
+        note: string;
+      } | null;
+      note: string | null;
+    })[];
+    reservoirs: ({
+      key: string;
+      name: string;
+      basis: string;
+      basis_note: string;
+      lease_ids: string[];
+      well_apis: string[];
+      lease_count: number;
+      well_count: number;
+      gas_to_date: number;
+      oil_to_date: number;
+      gas_forecast: number;
+      oil_forecast: number;
+      first_cycle_label: string | null;
+      last_cycle_label: string | null;
+      depth_min: number | null;
+      depth_max: number | null;
+      depth_avg: number | null;
+      profiles: ({
+        name: string;
+        wells: number;
+      })[];
+      deviated_count: number;
+      avg_lateral_ft: number | null;
+      months: ({
+        cycle: string;
+        label: string;
+        gas: number;
+        oil: number;
+      })[];
+      share_of_portfolio_gas: number | null;
+      stats: ({
+        label: string;
+        value: string;
+        sub: string;
+      })[];
+      map: {
+        wells: ({
+          api14: string;
+          label: string;
+          well_number: string | null;
+          lease_id: string;
+          lease_label: string;
+          reservoir: string | null;
+          profile: string | null;
+          lat: number;
+          lon: number;
+          bh_lat: number | null;
+          bh_lon: number | null;
+          deviated: boolean;
+          lateral_ft: number | null;
+          bearing_deg: number | null;
+          bearing_compass: string | null;
+          depth_ft: number | null;
+          active: boolean;
+        })[];
+        min_lat: number;
+        max_lat: number;
+        min_lon: number;
+        max_lon: number;
+        span_ns_mi: number;
+        span_ew_mi: number;
+        deviated_count: number;
+        note: string;
+      } | null;
+    })[];
+    wells: ({
+      api14: string;
+      api10: string | null;
+      well_number: string | null;
+      well_name: string | null;
+      label: string;
+      lease_id: string;
+      lease_label: string;
+      reservoir_key: string;
+      reservoir: string | null;
+      reservoir_basis: 'column' | 'field name' | null;
+      county: string | null;
+      field_name: string | null;
+      well_type: string | null;
+      status: string | null;
+      profile: string | null;
+      completion_operator: string | null;
+      operator_name: string | null;
+      depth_ft: number | null;
+      depth_basis: string | null;
+      tvd_ft: number | null;
+      md_ft: number | null;
+      deviation_ft: number | null;
+      lateral_ft: number | null;
+      bearing_compass: string | null;
+      bearing_deg: number | null;
+      elevation_ft: number | null;
+      spud_label: string | null;
+      first_prod_label: string | null;
+      age_years: number | null;
+      completions: ({
+        api14: string;
+        spud_iso: string | null;
+        spud_label: string | null;
+        permit_iso: string | null;
+        permit_label: string | null;
+        permit_type: string | null;
+        permit_number: string | null;
+        drilled_iso: string | null;
+        drilled_label: string | null;
+        recompleted_iso: string | null;
+        recompleted_label: string | null;
+        first_prod_iso: string | null;
+        first_prod_label: string | null;
+        filing_purpose: string | null;
+        filing_welltype: string | null;
+        perf_top: number | null;
+        perf_bottom: number | null;
+        fracced: boolean | null;
+        casing_size: string | null;
+        tubing_size: string | null;
+        test24_gas: number | null;
+        test24_oil: number | null;
+        test24_water: number | null;
+        test24_label: string | null;
+        reservoir: string | null;
+      })[];
+      completion_count: number;
+      months: ({
+        cycle: string;
+        label: string;
+        gas: number;
+        oil: number;
+      })[];
+      filed_months: number;
+      projected_months: number;
+      gas_filed: number;
+      oil_filed: number;
+      gas_projected: number;
+      oil_projected: number;
+      last_filed_label: string | null;
+      peak_gas: number | null;
+      peak_gas_label: string | null;
+      share_of_lease_gas: number | null;
+      active: boolean;
+      stats: ({
+        label: string;
+        value: string;
+        sub: string;
+      })[];
+      map: {
+        wells: ({
+          api14: string;
+          label: string;
+          well_number: string | null;
+          lease_id: string;
+          lease_label: string;
+          reservoir: string | null;
+          profile: string | null;
+          lat: number;
+          lon: number;
+          bh_lat: number | null;
+          bh_lon: number | null;
+          deviated: boolean;
+          lateral_ft: number | null;
+          bearing_deg: number | null;
+          bearing_compass: string | null;
+          depth_ft: number | null;
+          active: boolean;
+        })[];
+        min_lat: number;
+        max_lat: number;
+        min_lon: number;
+        max_lon: number;
+        span_ns_mi: number;
+        span_ew_mi: number;
+        deviated_count: number;
+        note: string;
+      } | null;
+      note: string | null;
+    })[];
+    map: {
+      wells: ({
+        api14: string;
+        label: string;
+        well_number: string | null;
+        lease_id: string;
+        lease_label: string;
+        reservoir: string | null;
+        profile: string | null;
+        lat: number;
+        lon: number;
+        bh_lat: number | null;
+        bh_lon: number | null;
+        deviated: boolean;
+        lateral_ft: number | null;
+        bearing_deg: number | null;
+        bearing_compass: string | null;
+        depth_ft: number | null;
+        active: boolean;
+      })[];
+      min_lat: number;
+      max_lat: number;
+      min_lon: number;
+      max_lon: number;
+      span_ns_mi: number;
+      span_ew_mi: number;
+      deviated_count: number;
+      note: string;
+    } | null;
+    totals: {
+      lease_count: number;
+      well_count: number;
+      reservoir_count: number;
+      counties: number;
+      operators: number;
+      deviated_count: number;
+      gas_to_date: number;
+      oil_to_date: number;
+      owner_value: number;
+      depth_min: number | null;
+      depth_max: number | null;
+      roster_note: string;
+    };
+    history_end: string | null;
+    history_end_label: string | null;
+    stats: ({
+      label: string;
+      value: string;
+      sub: string;
+    })[];
+    findings: ({
+      label: string;
+      text: string;
+    })[];
+    provenance: ({
+      name: string;
+      gives: string;
+      fresh: string | null;
+    })[];
+  };
   /** the explainer copy behind every card, keyed by the string `open()` is
    *  called with — `value`, `permits`, `lease:<id>`, `well:<api14>`,
    *  `alert:<id>`. A Record, because the lease and well keys are data. */

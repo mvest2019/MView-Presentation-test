@@ -57,20 +57,25 @@ const PLAN: Record<FunnelKey, string> = {
 /**
  * The sidebar, in the reference's own order, with its own labels and icons.
  *
- * ADAPTED — `href`. In the reference every row that is not one of its four
- * routes carries `key: null` and renders as a `soon` link, because those
- * modules are not in that build. Two of them ARE in this one, so they get a
- * real destination and lose the `soon` tag: telling a reader that My Leases is
- * "not in this build" while `/mineralownersite/leases` sits there would be a
- * false statement, and the reference's own rule for this row is "give the row
- * its `href` when its page lands".
+ * The reference promotes My Leases and Production & Forecast to real routes in
+ * this version, so both are `key:` rows here as they are there.
  *
- * MAP IS A `key` ROW, NOT AN `href` ROW, and the difference matters. It used to
- * point at `/map-explorer` — outside this shell, so the row could never light
- * up and the top bar could never name it. The map is now `/mineralownersite/map`
- * under this same route group, wearing this shell, so it is a `Route` like the
- * other four: `ROUTE_PATH` supplies the destination, the row takes `.on` when
- * it is the current one and the top bar reads "Map".
+ * ADAPTED — `Map` is a row the reference marks `soon`, because that module is
+ * not in that build. It IS in this one, so it loses the tag and becomes a real
+ * destination: telling a reader that Map is "not in this build" while the page
+ * sits one click away would be a false statement.
+ *
+ * AND MAP IS A `key` ROW, NOT AN `href` ROW, which is the difference that
+ * matters. It used to point at `/map-explorer` — outside this shell, so the row
+ * could never light up and the top bar could never name it. The map is now
+ * `/mineralownersite/map` under this same route group, wearing this shell, so it
+ * is a `Route` like the others: `ROUTE_PATH` supplies the destination, the row
+ * takes `.on` when it is the current one and the top bar reads "Map".
+ *
+ * ADAPTED — `leases` is a route this shell does NOT own. My Leases is outside
+ * this work, so `go('leases')` navigates to the page this app already has (see
+ * OWNED in Portal). The row is the reference's in every other respect, `.on`
+ * highlighting included.
  *
  * Nothing else moves: the labels, the icons, the order and the three section
  * headings are the reference's, and the rows that genuinely have no page here
@@ -82,9 +87,9 @@ const NAV: {
   { sec: 'My Minerals', key: 'dashboard', label: 'Dashboard', icon: 'mvi-home' },
   { key: 'alerts', label: 'Alerts', icon: 'mvi-bell' },
   { key: 'activities', label: 'Activities', icon: 'mvi-activity' },
-  { key: null, label: 'My Leases', icon: 'mvi-leases', href: '/mineralownersite/leases' },
+  { key: 'leases', label: 'My Leases', icon: 'mvi-leases' },
   { key: 'map', label: 'Map', icon: 'mvi-map' },
-  { key: null, label: 'Production & Forecast', icon: 'mvi-trend' },
+  { key: 'production', label: 'Production & Forecast', icon: 'mvi-trend' },
   { key: 'weekly', label: 'Weekly Report', icon: 'mvi-mail' },
   { sec: 'Services', key: null, label: 'Lease Audit', icon: 'mvi-audit' },
   { sec: 'Community', key: null, label: 'Groups', icon: 'mvi-groups' },
@@ -423,9 +428,10 @@ export default function Chrome(c: ChromeProps) {
 
       {/* --------------------------------- phone bottom bar (CSS-gated) */}
       <nav className="mv-bottom" aria-label="Sections">
-        {/* four now: the weekly report is a route rather than a "soon" page,
-            and on a phone it is the one people open on a Saturday */}
-        {(['dashboard', 'alerts', 'activities', 'weekly'] as Route[]).map((r) => (
+        {/* five now: the weekly report is a route rather than a "soon" page and
+            on a phone it is the one people open on a Saturday, and Production &
+            Forecast is the one they open when a statement looks light */}
+        {(['dashboard', 'alerts', 'leases', 'production', 'weekly'] as Route[]).map((r) => (
           <a
             key={r} href={ROUTE_PATH[r]}
             className={c.route === r ? 'on' : ''}
@@ -434,8 +440,11 @@ export default function Chrome(c: ChromeProps) {
           >
             <Icon id={r === 'dashboard' ? 'mvi-home'
               : r === 'alerts' ? 'mvi-bell'
-                : r === 'activities' ? 'mvi-activity' : 'mvi-mail'} />
-            {r === 'weekly' ? 'Weekly' : ROUTE_TITLE[r]}
+                : r === 'activities' ? 'mvi-activity'
+                  : r === 'leases' ? 'mvi-leases'
+                    : r === 'production' ? 'mvi-trend' : 'mvi-mail'} />
+            {r === 'weekly' ? 'Weekly' : r === 'production' ? 'Production'
+              : r === 'leases' ? 'Leases' : ROUTE_TITLE[r]}
           </a>
         ))}
       </nav>
