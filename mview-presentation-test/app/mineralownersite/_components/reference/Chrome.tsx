@@ -42,6 +42,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { Payload } from '../../_lib/reference/payload';
 import { usd, usdShort, pctS, plural, productWord } from '../../_lib/reference/fmt';
 import {
@@ -110,7 +111,10 @@ function Icon({ id }: { id: string }) {
 
 export interface ChromeProps {
   p: Payload | null;
-  route: Route;
+  /** the current row, or `null` on a page that is not one of the routes — see
+   *  the prop's own note on `Portal`. Every `route ===` test below misses on
+   *  `null`, which lights nothing and marks nothing `aria-current`. */
+  route: Route | null;
   go: (r: Route) => void;
   tier: Tier; setTier: (t: Tier) => void;
   funnel: FunnelKey; setFunnel: (f: FunnelKey) => void;
@@ -129,6 +133,30 @@ export default function Chrome(c: ChromeProps) {
   const [nav, setNav] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const stateRef = useRef<HTMLDivElement | null>(null);
+  const router = useRouter();
+
+  /**
+   * A COMING-SOON ROW CARRIES THE OWNER ACROSS WITH IT.
+   *
+   * Those pages render this same shell now, and the shell reads the owner off
+   * the query string — so a bare `href="/mineralownersite/soon/lease-audit"`
+   * arrived with no owner and the sidebar foot, the picker and the pinned value
+   * line came back holding the DEFAULT owner. Clicking a greyed-out row is not
+   * a request to change who you are looking at, and the shell silently
+   * swapping owners underneath the click is worse than the missing sidebar it
+   * replaced.
+   *
+   * `pathname` off the anchor rather than the string it was built from, so this
+   * one handler serves the sidebar rows, the account rows and the plan pill
+   * without any of them repeating their own href.
+   */
+  const goSoon = useCallback((e: React.MouseEvent<HTMLAnchorElement>) => {
+    /* a modified or middle click is the reader asking the BROWSER for a new tab
+       — it is not ours to intercept, and the href it follows is already right */
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    router.push(e.currentTarget.pathname + window.location.search);
+  }, [router]);
 
   /* a menu that does not close on an outside click stays open behind whatever
      the reader does next */
@@ -231,7 +259,8 @@ export default function Chrome(c: ChromeProps) {
                 : (
                   <a
                     className="nav-item soon" href={'/mineralownersite/soon/' + slug(item.label)}
-                    title={item.label + ' — not in this build'}
+                    title={item.label + ' — coming soon'}
+                    onClick={(e) => { setNav(false); goSoon(e); }}
                   >
                     <span className="nav-ico"><Icon id={item.icon} /></span> {item.label}
                     <span className="soon-tag">soon</span>
@@ -374,6 +403,7 @@ export default function Chrome(c: ChromeProps) {
 
           <Link
             className="plan-pill" href="/mineralownersite/soon/billing-and-plan"
+            onClick={goSoon}
             style={{ textDecoration: 'none' }}
           >
             {PLAN[c.funnel]}
@@ -436,7 +466,7 @@ export default function Chrome(c: ChromeProps) {
                 <a
                   key={x.label} role="menuitem"
                   href={x.href ?? '/mineralownersite/soon/' + slug(x.label)}
-                  onClick={() => setMenu(false)}
+                  onClick={(e) => { setMenu(false); if (!x.href) goSoon(e); }}
                 >
                   <Icon id="mvi-user" /> {x.label}
                   {x.href

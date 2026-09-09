@@ -146,14 +146,33 @@ const STEPS: Step[] = [
 
 export default function Portal({ route: initialRoute, initial, children, shellClass }:
 {
-  route: Route;
+  /**
+   * WHICH SIDEBAR ROW IS THE CURRENT ONE — or `null` for a page that is not one
+   * of them.
+   *
+   * ADAPTED 5 · `null` EXISTS FOR THE COMING-SOON PAGES. `/soon/[slug]` is a
+   * real page behind five sidebar rows, and none of those five IS a `Route`:
+   * `Route` is the set of places `go` can navigate to, and adding a member for
+   * a page nothing navigates to would hand every `go(r)` call site a
+   * destination with no path. So the page passes `null`, which says exactly
+   * what is true — the shell is here, and nothing in it is current. Every
+   * `route ===` test in this file and in `Chrome` then simply misses, which is
+   * the behaviour those tests already have for any row that is not the one
+   * being rendered: no `.on` class in the sidebar, no `aria-current`, no lit
+   * tab in the phone bottom bar. The top bar prints no page name at all (see
+   * `Chrome`), so there is nothing there to be wrong either.
+   */
+  route: Route | null;
   initial: Payload | null;
   /**
    * ADAPTED 3 · A PAGE'S OWN VIEW, rendered inside this shell instead of one of
-   * the two this file holds. Only the Map passes it — the map is 51 files and an
+   * the two this file holds. The Map passes it — the map is 51 files and an
    * ArcGIS runtime, so it stays a route of its own that renders itself and
    * borrows the chrome, rather than becoming a third branch of `view` that the
-   * Dashboard and the Weekly Report would drag around with them.
+   * Dashboard and the Weekly Report would drag around with them. The
+   * coming-soon pages pass it too, with `route={null}`: a card is not worth a
+   * branch here either, and a page reached from the sidebar should keep the
+   * sidebar.
    *
    * The owner payload is still loaded and still handed to `Chrome`, which is
    * the whole point: the sidebar, the top bar, the owner picker and the pinned
@@ -171,7 +190,7 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
    */
   shellClass?: string;
 }) {
-  const [route, setRoute] = useState<Route>(initialRoute);
+  const [route, setRoute] = useState<Route | null>(initialRoute);
   const [live, setLive] = useState<Payload | null>(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -265,14 +284,19 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
       /* Resolved through the table rather than a weekly/dashboard ternary: with
          the ternary, going Back from the Weekly Report onto the Map set the
          route to `dashboard`, so the sidebar lit the wrong row and the top bar
-         read "Dashboard" over the map. Falling back to `dashboard` for an
-         unknown path is the old behaviour, kept. */
+         read "Dashboard" over the map. */
+      /* AND AN UNKNOWN PATH FALLS BACK TO THE ROUTE THIS PAGE DECLARED, not to
+         `dashboard`. `/soon/[slug]` is not in the table — it is not a `Route`
+         — so the old fallback lit the Dashboard row on a coming-soon page the
+         moment anything popped the history. Restoring `initialRoute` is right
+         for every entry point: it is `dashboard` for the page that fell back
+         to `dashboard` before, and `null` here. */
       const hit = (Object.keys(ROUTE_PATH) as Route[]).find((r) => ROUTE_PATH[r] === p);
-      setRoute(hit ?? 'dashboard');
+      setRoute(hit ?? initialRoute);
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, []);
+  }, [initialRoute]);
 
   const go = useCallback((r: Route) => {
     /* THE FOUR ROUTES THIS SHELL OWNS SWITCH WITHOUT A REQUEST — the
@@ -284,9 +308,14 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
        the Map would have pushed `/mineralownersite` into the address bar and
        left the map on screen under a sidebar row saying Dashboard. From here
        every row is a real navigation. */
+    /* AND IT CARRIES THE QUERY STRING, which the branch below has always done
+       and this one did not: the owner is in the query, so leaving the Map or a
+       coming-soon page by any sidebar row silently reset the shell to the
+       default owner. One `go`, one rule — the destination keeps whoever you
+       were looking at. */
     if (children || !OWNED.includes(r)) {
       setDrawer(null);
-      router.push(ROUTE_PATH[r]);
+      router.push(ROUTE_PATH[r] + window.location.search);
       return;
     }
     setRoute(r);
