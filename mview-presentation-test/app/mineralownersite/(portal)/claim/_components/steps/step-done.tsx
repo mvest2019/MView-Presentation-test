@@ -41,13 +41,13 @@ import type { OwnerLeaseSet, OwnerRecord } from "../../_lib/claim-types";
  * yet rather than folding it into the count.
  */
 export function StepDone({
-  record,
+  records,
   pending,
   all,
   visibleKey,
   result,
 }: {
-  record: OwnerRecord | null;
+  records: OwnerRecord[];
   pending: OwnerRecord[];
   all: OwnerLeaseSet | null;
   visibleKey: string | null;
@@ -68,10 +68,16 @@ export function StepDone({
   const rows: { icon: typeof FileText; title: string; detail: ReactNode }[] = [
     {
       icon: FileText,
-      title: "Record claimed",
-      detail: record
-        ? `${record.name} · ${record.county}${record.address ? ` · ${record.address}` : ""}`
-        : "—",
+      title: records.length === 1 ? "Record claimed" : `${records.length} records claimed`,
+      detail:
+        records.length === 0
+          ? "—"
+          : records
+              .map(
+                (r) =>
+                  `${r.name} · ${r.county}${r.address ? ` · ${r.address}` : ""}`,
+              )
+              .join("  ·  "),
     },
     {
       icon: Link2,
@@ -122,8 +128,8 @@ export function StepDone({
           </p>
 
           <h2 className="mt-[4px] text-[clamp(18px,2.4vw,22px)] font-extrabold leading-[1.2] tracking-[-.015em] text-mv-ink">
-            Claim written · {record?.name ?? "your record"} · {claimedLeases}{" "}
-            lease{claimedLeases === 1 ? "" : "s"} joined
+            Claim written · {records.length === 1 ? records[0].name : `${records.length} records`} ·{" "}
+            {claimedLeases} lease{claimedLeases === 1 ? "" : "s"} joined
           </h2>
 
           {result?.claimedAt && (

@@ -7,26 +7,19 @@ import Link from "next/link";
  * its reason: "They are real routes rather than dead links, because a
  * navigation item that does nothing when clicked reads as a bug."
  *
- * ADAPTED — WHICH SECTIONS APPEAR, and the copy for two of them. The reference
- * lists eleven, including My Leases, Map and Settings. Those three ARE in this
- * app, so their sidebar rows point at the real pages and never reach here;
- * keeping the reference's "not in this build" copy for them would have printed
- * a false statement about a page sitting one click away. The four that
- * genuinely do not exist here keep the reference's own wording, verbatim, and
- * the two account rows keep theirs. The back buttons point at this app's paths.
+ * ADAPTED — WHICH SECTIONS APPEAR. My Leases, Map, Settings, the Weekly Report
+ * and now Production & Forecast ARE in this app, so their sidebar rows point at
+ * the real pages and never reach here; keeping a "not in this build" page for
+ * one of them would print a false statement about a page sitting one click
+ * away. Production & Forecast had an entry here until that page was ported, and
+ * it was removed then rather than left to contradict the sidebar. The three
+ * that genuinely do not exist here — Lease Audit, Groups, Invite Co-Owners —
+ * keep the reference's own wording, verbatim, and the two account rows keep
+ * theirs. The back buttons point at this app's paths.
  */
 export const dynamic = "force-static";
 
 const SECTIONS: Record<string, { title: string; what: string; when: string }> = {
-  "production-and-forecast": {
-    title: "Production & Forecast",
-    what:
-      "The full monthly history per lease against the decline model, with the forecast out to " +
-      "the model horizon.",
-    when:
-      "The 24-month history and the reserves figures are on the Dashboard now; this page is " +
-      "where the per-lease curves and the forecast tail will live.",
-  },
   "lease-audit": {
     title: "Lease Audit",
     what:

@@ -50,17 +50,23 @@ import { LeaseStatStrip } from "./lease-stat-strip";
  * after.
  */
 export function StepLeases({
-  record,
+  records,
   leases,
   all,
   onContinue,
+  onBack,
 }: {
-  record: OwnerRecord | null;
+  records: OwnerRecord[];
   leases: FlowLease[];
   all: OwnerLeaseSet | null;
   onContinue: () => void;
+  onBack: () => void;
 }) {
-  const counties = all?.countyList || record?.county || "";
+  const counties = all?.countyList || records[0]?.county || "";
+  /* One name if they took one record, a count if they took several — the
+     heading has to describe the whole claim, not just its first row. */
+  const who =
+    records.length === 1 ? records[0].name : `${records.length} owner records`;
 
   return (
     <div className="grid gap-[18px]">
@@ -70,7 +76,7 @@ export function StepLeases({
         eyebrow="Step 4 of 5 · See your leases"
         title={
           <>
-            {record?.name ?? "Your record"} · {leases.length} joined lease
+            {who} · {leases.length} joined lease
             {leases.length === 1 ? "" : "s"}
             {counties && (
               <span className="block text-[15px] font-bold text-mv-slate">
@@ -163,6 +169,17 @@ export function StepLeases({
         <PortalButton variant="primary" onClick={onContinue}>
           Continue → step 5, choose what you see
         </PortalButton>
+
+        {/* BACK GOES TO THE RECEIPT, NOT TO A SECOND CLAIM. Step 3 is where
+            the write happened, so returning to it is a review of what was
+            filed — it says so, and its confirm button will not post again. */}
+        <button
+          type="button"
+          onClick={onBack}
+          className="ml-auto cursor-pointer text-[12px] font-semibold text-mv-green-deep underline underline-offset-2"
+        >
+          ← Back to what you claimed
+        </button>
       </div>
     </div>
   );

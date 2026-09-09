@@ -60,6 +60,18 @@ export function pctS(v: number | null | undefined, dp = 1): string | null {
   return (v >= 0 ? '+' : '') + v.toFixed(dp) + '%';
 }
 
+/**
+ * A percentage that is a SHARE, not a change.
+ *
+ * `pctS` signs every value, which is right for "gas moved +7.6% against last
+ * month" and wrong for "7.6% of the gas never reached the meter" — that read
+ * as "+7.6%" and invited the reader to look for what it had risen from.
+ */
+export function pct1(v: number | null | undefined, dp = 1): string | null {
+  if (v == null || !Number.isFinite(v)) return null;
+  return v.toFixed(dp) + '%';
+}
+
 export function pct0(v: number | null | undefined): string | null {
   if (v == null || !Number.isFinite(v)) return null;
   return v.toFixed(0) + '%';

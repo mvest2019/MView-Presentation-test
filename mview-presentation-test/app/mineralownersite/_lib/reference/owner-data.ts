@@ -28,16 +28,16 @@ import { apiBase, fetchOwnerLiveBlocks, OwnerApiError } from './owner-api';
  * `config.json` names (Platis Sydney Kay, owner number 715109, district 02).
  * The reference assembles it from ten Mongo reads and ships no fixture of its
  * own — even its `selftest` and `leakcheck` open the database — so this is the
- * reference's own output, not a transcription of it. Every figure on both
- * routes was computed by the reference: the six-year estimate and its band,
+ * reference's own output, not a transcription of it. Every figure on every
+ * route was computed by the reference: the six-year estimate and its band,
  * the June 2026 volumes, the nine findings, the ring counts, the price-deck
- * history, the well coordinates, the whole Saturday report and all forty
- * drawer explainers.
+ * history, the well coordinates, the 261-month forecast and its 189-month
+ * posted seam, the whole Saturday report and all fifty-two drawer explainers.
  *
- * WHAT WAS TRIMMED, and why it is invisible on the four routes. The captured
- * payload is 1.8 MB. Two arrays that none of them renders were shortened;
- * every key survives, because `sample.ts` maps over them verbatim and a
- * missing key would throw in the not-claimed state:
+ * WHAT WAS TRIMMED, and why it is invisible on the five routes. The captured
+ * payload is 2.7 MB and this one is 2.0 MB. Two arrays that no route renders
+ * were shortened; every key survives, because `sample.ts` maps over them
+ * verbatim and a missing key would throw in the not-claimed state:
  *
  *   activities.nearby        the dashboard card slices at most 8
  *                            (Professional), and `ActivitiesView` reads only
@@ -63,6 +63,14 @@ import { apiBase, fetchOwnerLiveBlocks, OwnerApiError } from './owner-api';
  * five-mile map plots every single row at its own measured offset, so trimming
  * that array would quietly empty the map. An earlier fixture did trim it, and
  * that is the kind of mistake a text diff cannot see.
+ *
+ * `forecast` is kept IN FULL too — 707 KB, 555 KB of it in
+ * `forecast.leases[*].months`. Production & Forecast IS that series: the chart
+ * draws the portfolio's 261 months and, the moment a lease is picked from the
+ * select, the table or a life bar, it draws that lease's own 102 to 279. There
+ * is nothing to shorten there without changing what a click does. `my_leases`
+ * (169 KB) is kept whole for the same reason `sample.ts` forces on everything
+ * else: that transform walks every one of its arrays.
  */
 
 /** what the caller may ask for — the reference's own `OwnerSelection` */

@@ -125,6 +125,17 @@ export function sampleize(real: Payload): SampleResult {
   real.leases.forEach((l, i) => {
     leaseName.set(l.lease_id, nm(i));
     if (l.lease_name) leaseName.set(l.lease_name, nm(i));
+    /* THE FIRST WORD TOO, because not every surface uses the whole name.
+       MEASURED LEAK: a per-well drawer titles itself "MCCABE · well 1R" — the
+       lease name cut at its first space — and `names()` replaces exact keys,
+       so the full "MCCABE ETAL GU" never matched and the fragment survived on
+       the not-claimed page. Registered only when the fragment is long enough
+       to be a name and is not the whole name already; the match is
+       case-sensitive, so an ordinary lower-case word cannot collide with it. */
+    const head = l.lease_name?.split(/\s+/)[0];
+    if (head && head.length > 3 && head !== l.lease_name && !leaseName.has(head)) {
+      leaseName.set(head, nm(i));
+    }
   });
   /* A SAMPLE ID FOR A REAL LEASE ID — see `names()`.
      Lettered, not numbered: `scrub()` masks every digit in a sentence, so
@@ -679,6 +690,363 @@ export function sampleize(real: Payload): SampleResult {
         : publicRow(e))),
     },
 
+    /* ------------------------------------------------- production & forecast
+       WHAT LEAKS OUT OF THIS SECTION IF IT IS NOT HANDLED, in the order the
+       live leak check finds it:
+
+         · `leases[].label`, which is a lease name plus its id;
+         · `leases[].operator_name`, `county`, `field_name`, `lease_number`;
+         · `insights` — two of the six quote a lease BY LABEL, and one quotes
+           the steepest and the gentlest curve by label as well;
+         · `paras` and the two disposition sentences, which carry counts and
+           county names inside prose.
+
+       THE NUMERIC SERIES IS SCALED, NOT MASKED. `months[]` is what the chart
+       draws, and a masked series is an empty chart — the not-claimed page
+       would show the shape of the product with no shape in it. Every figure
+       that appears as TEXT is masked instead, so no reader can recover a
+       volume from the picture.
+
+       THE DECIMAL INTEREST IS NEITHER SCALED NOR MASKED, IT IS REPLACED. An
+       interest is an identity in this record: it is the one number that, with
+       a county, finds the owner on a public roll. Scaling it by the portfolio
+       factor would leave a number that still reads as this owner's, so it
+       becomes a fixed sample interest and the label says so. */
+    forecast: (() => {
+      const SAMPLE_INTEREST = 0.0125;
+      const num = (v: number | null): number | null => (v == null ? null : s(v));
+      const mon = <T extends {
+        gas_gross: number; gas_net: number; oil_gross: number; oil_net: number;
+        gas_share: number; oil_share: number; value_share: number;
+        value_share_low: number; value_share_high: number; removed: number | null;
+      }>(m: T): T => ({
+        ...m,
+        gas_gross: s(m.gas_gross), gas_net: s(m.gas_net),
+        oil_gross: s(m.oil_gross), oil_net: s(m.oil_net),
+        gas_share: s(m.gas_share), oil_share: s(m.oil_share),
+        value_share: s(m.value_share),
+        value_share_low: s(m.value_share_low), value_share_high: s(m.value_share_high),
+        removed: num(m.removed),
+      });
+      const rf = real.forecast;
+      const rt = rf.totals;
+      return {
+        ...rf,
+        boundary: {
+          ...rf.boundary,
+          note: prose(rf.boundary.note),
+          blind_note: prose(rf.boundary.blind_note),
+        },
+        months: rf.months.map(mon),
+        leases: rf.leases.map((l, i) => ({
+          ...l,
+          label: leaseName.get(l.lease_id) ?? nm(i),
+          lease_name: leaseName.get(l.lease_id) ?? nm(i),
+          lease_number: leaseRef.get(l.lease_id) ?? 'SMPL',
+          county: 'Sample',
+          operator_name: subOp(l.operator_name),
+          field_name: l.field_name ? 'SAMPLE FIELD' : null,
+          interest: SAMPLE_INTEREST,
+          interest_label: '0.01250 · 1.2500% (sample)',
+          gas_to_date: s(l.gas_to_date),
+          oil_to_date: s(l.oil_to_date),
+          gas_to_date_share: s(l.gas_to_date_share),
+          oil_to_date_share: s(l.oil_to_date_share),
+          last_gas: s(l.last_gas),
+          last_gas_net: s(l.last_gas_net),
+          last_oil: s(l.last_oil),
+          last_gas_share: s(l.last_gas_share),
+          last_oil_share: s(l.last_oil_share),
+          rate_gas: num(l.rate_gas),
+          rate_gas_net: num(l.rate_gas_net),
+          rate_oil: num(l.rate_oil),
+          rate_gas_share: num(l.rate_gas_share),
+          rate_oil_share: num(l.rate_oil_share),
+          year_gas: num(l.year_gas),
+          year_oil: num(l.year_oil),
+          year_gas_share: num(l.year_gas_share),
+          year_oil_share: num(l.year_oil_share),
+          year_value_share: num(l.year_value_share),
+          reserves_gas: num(l.reserves_gas),
+          reserves_oil: num(l.reserves_oil),
+          reserves_gas_share: num(l.reserves_gas_share),
+          reserves_oil_share: num(l.reserves_oil_share),
+          eur_gas: num(l.eur_gas),
+          eur_oil: num(l.eur_oil),
+          reserves_gas_model: num(l.reserves_gas_model),
+          eur_gas_model: num(l.eur_gas_model),
+          eur_oil_model: num(l.eur_oil_model),
+          next_month_low: num(l.next_month_low),
+          next_month_high: num(l.next_month_high),
+          next_month_mid: num(l.next_month_mid),
+          quarter_low: num(l.quarter_low),
+          quarter_high: num(l.quarter_high),
+          quarter_mid: num(l.quarter_mid),
+          six_year: s(l.six_year),
+          removed_total: num(l.removed_total),
+          months: l.months.map(mon),
+          /* the life share is a share, not a volume: scaling it would put a bar
+             at a different length from the percentage printed beside it */
+          note: l.note ? prose(l.note) : l.note,
+        })),
+        totals: {
+          ...rt,
+          gas_to_date: s(rt.gas_to_date),
+          oil_to_date: s(rt.oil_to_date),
+          gas_to_date_share: s(rt.gas_to_date_share),
+          oil_to_date_share: s(rt.oil_to_date_share),
+          last_gas: s(rt.last_gas),
+          last_oil: s(rt.last_oil),
+          rate_gas: s(rt.rate_gas),
+          rate_oil: s(rt.rate_oil),
+          year_gas: s(rt.year_gas),
+          year_oil: s(rt.year_oil),
+          year_gas_share: s(rt.year_gas_share),
+          year_oil_share: s(rt.year_oil_share),
+          reserves_gas: s(rt.reserves_gas),
+          reserves_oil: s(rt.reserves_oil),
+          reserves_gas_share: s(rt.reserves_gas_share),
+          reserves_oil_share: s(rt.reserves_oil_share),
+          eur_gas: s(rt.eur_gas),
+          eur_oil: s(rt.eur_oil),
+          next_month_low: s(rt.next_month_low),
+          next_month_high: s(rt.next_month_high),
+          next_month_mid: s(rt.next_month_mid),
+          quarter_low: s(rt.quarter_low),
+          quarter_high: s(rt.quarter_high),
+          quarter_mid: s(rt.quarter_mid),
+          six_year: s(rt.six_year),
+        },
+        cards: rf.cards.map((c) => ({ ...c, value: scrub(c.value), sub: prose(c.sub) })),
+        disposition: {
+          ...rf.disposition,
+          accounted: s(rf.disposition.accounted),
+          removed: s(rf.disposition.removed),
+          net: s(rf.disposition.net),
+          oil_sold: s(rf.disposition.oil_sold),
+          oil_total: s(rf.disposition.oil_total),
+          routes: rf.disposition.routes.map((r) => ({
+            ...r, volume: s(r.volume), removed: s(r.removed),
+          })),
+          months: rf.disposition.months.map((m) => ({
+            ...m, accounted: s(m.accounted), removed: s(m.removed),
+          })),
+          note: prose(rf.disposition.note),
+          why: prose(rf.disposition.why),
+        },
+        insights: rf.insights.map((st) => ({
+          ...st,
+          value: /^[\d$.,+-]/.test(st.value) ? scrub(st.value) : prose(st.value),
+          sub: st.sub ? prose(st.sub) : st.sub,
+        })),
+        stats: rf.stats.map((st) => ({
+          ...st,
+          value: /^[\d$.,+-]/.test(st.value) ? scrub(st.value) : prose(st.value),
+          sub: st.sub ? prose(st.sub) : st.sub,
+        })),
+        /* the year columns are a SHAPE as well as a figure, so the money is
+           scaled rather than masked — a masked column has no height and the
+           chart becomes an empty frame */
+        annual: rf.annual.map((y) => ({
+          ...y,
+          gas_value_share: s(y.gas_value_share),
+          oil_value_share: s(y.oil_value_share),
+          value_share: s(y.value_share),
+          gas_vol: s(y.gas_vol),
+          oil_vol: s(y.oil_vol),
+        })),
+        depletion: {
+          ...rf.depletion,
+          gas_produced: s(rf.depletion.gas_produced),
+          gas_remaining: s(rf.depletion.gas_remaining),
+          gas_eur: s(rf.depletion.gas_eur),
+          oil_produced: s(rf.depletion.oil_produced),
+          oil_remaining: s(rf.depletion.oil_remaining),
+          oil_eur: s(rf.depletion.oil_eur),
+          /* THE PERCENTAGES AND THE DATE STAY. A share of a life and the month
+             half the remainder arrives are facts about a decline curve, not
+             about this owner — and scaling them would make the bars disagree
+             with the number printed beside them. */
+          note: prose(rf.depletion.note),
+        },
+        /* the price deck is the model's published path, not an identity */
+        deck: rf.deck ? { ...rf.deck, note: prose(rf.deck.note) } : null,
+        peak: rf.peak ? { ...rf.peak, gas: s(rf.peak.gas) } : null,
+        mix: rf.mix ? { ...rf.mix, note: prose(rf.mix.note) } : null,
+        findings: rf.findings.map((f) => ({
+          label: prose(f.label), text: prose(f.text),
+        })),
+        charts: rf.charts.map((c) => ({
+          ...c,
+          sub: prose(c.sub),
+          footnote: c.footnote ? prose(c.footnote) : c.footnote,
+          series: c.series.map((sr) => ({
+            ...sr, points: sr.points.map((v) => (v == null ? null : s(v))),
+          })),
+        })),
+        provenance: rf.provenance.map((x) => ({ ...x, gives: prose(x.gives) })),
+      };
+    })(),
+
+    /* ---------------------------------------------------------- my leases
+       THE DENSEST IDENTITY SURFACE IN THE APP, and three things it needs that
+       nothing else does:
+
+       1. THE API NUMBER IS REPLACED, NOT MASKED. `scrub` masks digits, but
+          "42-•••-•••••-••••" still leaks the county (42-123 is DE WITT) and
+          the well count. A synthetic number keeps the shape without the key.
+       2. COORDINATES ARE MOVED, NOT MASKED. Fifteen decimal places of
+          latitude is a pin on the exact wellhead — the most identifying field
+          in the whole payload. The set is TRANSLATED to a neutral origin, so
+          every distance, bearing and lateral length stays exactly right (the
+          map is the product) and the record sits nowhere real.
+       3. RESERVOIR NAMES STAY. EDWARDS and WILCOX are public formations under
+          a third of Texas. Masking them would empty the reservoir report to
+          protect information that is not this owner's. */
+    my_leases: (() => {
+      const rl = real.my_leases;
+      /* a neutral origin in open country west of Abilene, chosen because it
+         is nowhere near this owner and on land rather than in the Gulf */
+      const OX = 32.0;
+      const OY = -100.0;
+      const dLat = rl.map ? OX - rl.map.min_lat : 0;
+      const dLon = rl.map ? OY - rl.map.min_lon : 0;
+
+      const apiOf = new Map<string, string>();
+      let ai = 0;
+      const subApi = (a: string | null): string => {
+        if (!a) return '42-000-00000-0000';
+        let v = apiOf.get(a);
+        if (!v) {
+          ai += 1;
+          /* district 42-999 does not exist, so the number cannot resolve */
+          v = `42-999-${String(10000 + ai).padStart(5, '0')}-0000`;
+          apiOf.set(a, v);
+        }
+        return v;
+      };
+
+      const moveWell = <T extends { api14: string; label: string; lease_id: string;
+        lease_label: string; lat: number; lon: number; bh_lat: number | null;
+        bh_lon: number | null; well_number: string | null }>(w: T): T => ({
+          ...w,
+          api14: subApi(w.api14),
+          label: prose(w.label),
+          lease_label: prose(w.lease_label),
+          lat: Math.round((w.lat + dLat) * 1e6) / 1e6,
+          lon: Math.round((w.lon + dLon) * 1e6) / 1e6,
+          bh_lat: w.bh_lat == null ? null : Math.round((w.bh_lat + dLat) * 1e6) / 1e6,
+          bh_lon: w.bh_lon == null ? null : Math.round((w.bh_lon + dLon) * 1e6) / 1e6,
+        });
+
+      const moveMap = (mp: typeof rl.map): typeof rl.map => (mp ? {
+        ...mp,
+        wells: mp.wells.map(moveWell),
+        min_lat: Math.round((mp.min_lat + dLat) * 1e6) / 1e6,
+        max_lat: Math.round((mp.max_lat + dLat) * 1e6) / 1e6,
+        min_lon: Math.round((mp.min_lon + dLon) * 1e6) / 1e6,
+        max_lon: Math.round((mp.max_lon + dLon) * 1e6) / 1e6,
+        /* THE SPANS ARE NOT SCALED. A translation does not change a distance,
+           and scaling them would make the note disagree with the picture. */
+        note: prose(mp.note),
+      } : null);
+
+      const subStat = <T extends { label: string; value: string; sub: string | null }>(
+        st: T,
+      ): T => ({
+        ...st,
+        value: /^[\d$.,+-]/.test(st.value) ? scrub(st.value) : prose(st.value),
+        sub: st.sub ? prose(st.sub) : st.sub,
+      });
+
+      const months = <T extends { gas: number; oil: number }>(ms: T[]): T[] =>
+        ms.map((m) => ({ ...m, gas: s(m.gas), oil: s(m.oil) }));
+
+      return {
+        ...rl,
+        picker: rl.picker.map((l, i) => ({
+          ...l,
+          label: leaseName.get(l.lease_id) ?? nm(i),
+          county: 'Sample',
+          operator_name: subOp(l.operator_name),
+          owner_value: s(l.owner_value),
+        })),
+        leases: rl.leases.map((l, i) => ({
+          ...l,
+          label: leaseName.get(l.lease_id) ?? nm(i),
+          lease_name: leaseName.get(l.lease_id) ?? nm(i),
+          lease_number: leaseRef.get(l.lease_id) ?? 'SMPL',
+          county: 'Sample',
+          operator_name: subOp(l.operator_name),
+          field_name: l.field_name ? 'SAMPLE FIELD' : null,
+          field_stem: l.field_stem ? 'SAMPLE' : null,
+          interest: 0.0125,
+          interest_label: '0.01250 · 1.2500% (sample)',
+          owner_value: s(l.owner_value),
+          well_apis: l.well_apis.map(subApi),
+          gas_to_date: s(l.gas_to_date),
+          oil_to_date: s(l.oil_to_date),
+          gas_to_date_share: s(l.gas_to_date_share),
+          oil_to_date_share: s(l.oil_to_date_share),
+          reserves_gas_share: s(l.reserves_gas_share),
+          stats: l.stats.map(subStat),
+          map: moveMap(l.map),
+          note: l.note ? prose(l.note) : l.note,
+        })),
+        reservoirs: rl.reservoirs.map((r) => ({
+          ...r,
+          lease_ids: r.lease_ids,
+          well_apis: r.well_apis.map(subApi),
+          gas_to_date: s(r.gas_to_date),
+          oil_to_date: s(r.oil_to_date),
+          gas_forecast: s(r.gas_forecast),
+          oil_forecast: s(r.oil_forecast),
+          months: months(r.months),
+          stats: r.stats.map(subStat),
+          map: moveMap(r.map),
+        })),
+        wells: rl.wells.map((w) => ({
+          ...w,
+          api14: subApi(w.api14),
+          api10: w.api10 ? subApi(w.api10).slice(0, 13) : null,
+          label: prose(w.label),
+          /* MEASURED LEAK, caught by the live check. `completions.ts` builds
+             `well_name` as "{lease_name} {well_number}", so it carried the
+             real lease name into eight of the ten well reports while every
+             label beside it was substituted. */
+          well_name: w.well_name ? prose(w.well_name) : w.well_name,
+          lease_label: prose(w.lease_label),
+          county: 'Sample',
+          field_name: w.field_name ? 'SAMPLE FIELD' : null,
+          completion_operator: subOp(w.completion_operator),
+          operator_name: subOp(w.operator_name),
+          completions: w.completions.map((c) => ({ ...c, api14: subApi(c.api14) })),
+          months: months(w.months),
+          gas_filed: s(w.gas_filed),
+          oil_filed: s(w.oil_filed),
+          gas_projected: s(w.gas_projected),
+          oil_projected: s(w.oil_projected),
+          peak_gas: w.peak_gas == null ? null : s(w.peak_gas),
+          stats: w.stats.map(subStat),
+          map: moveMap(w.map),
+          note: w.note ? prose(w.note) : w.note,
+        })),
+        map: moveMap(rl.map),
+        totals: {
+          ...rl.totals,
+          gas_to_date: s(rl.totals.gas_to_date),
+          oil_to_date: s(rl.totals.oil_to_date),
+          owner_value: s(rl.totals.owner_value),
+          roster_note: prose(rl.totals.roster_note),
+        },
+        stats: rl.stats.map(subStat),
+        findings: rl.findings.map((f) => ({
+          label: prose(f.label), text: prose(f.text),
+        })),
+        provenance: rl.provenance.map((x) => ({ ...x, gives: prose(x.gives) })),
+      };
+    })(),
+
     /* ----------------------------------------------------------- timeline */
     /* MEASURED LEAK: adding the timeline to the payload without extending this
        transform put the owner's REAL lease names on the not-claimed page —
@@ -720,6 +1088,13 @@ export function sampleize(real: Payload): SampleResult {
       means: prose(d.means),
       evidence: d.evidence.map(prose),
       next: prose(d.next),
+      /* THE STAT BAND WAS RIDING THROUGH UNMASKED on `...d`. It carries lease
+         names as values in the new production panels, so it goes through the
+         same masker as every other stat on the site. */
+      stats: d.stats?.map(sampleStat),
+      /* and the spark caption, which names the lease the series belongs to —
+         the third field found riding through untouched on the spread */
+      spark_label: d.spark_label ? prose(d.spark_label) : d.spark_label,
       chips: ['Sample view', ...d.chips],
       /* The chart POINTS are scaled by the same portfolio factor as every
          other figure, so the shape the reader is being shown is real while the

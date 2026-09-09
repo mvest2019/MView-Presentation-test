@@ -1,15 +1,14 @@
 "use client";
 
-import { Building2, CircleCheck, MapPin, Search, Tag, User } from "lucide-react";
+import { CircleCheck, Search } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
 
 import { PortalButton } from "../../../../_components/ui/button";
-import type { Async } from "../claim-wizard";
 import type { CountyIndex } from "../../_lib/claim-types";
-import { ClaimSelectField, ClaimTextField } from "../claim-field";
+import type { Async } from "../claim-wizard";
 import { FlowError, FlowLoading } from "../flow-state";
 import { GuideNote } from "../guide-note";
+import { ClaimSearchFields, type ClaimQuery } from "../search-fields";
 import { StepIntro } from "../step-intro";
 
 /**
@@ -26,29 +25,27 @@ import { StepIntro } from "../step-intro";
  *            OPTIONAL — a failed dropdown must not block a search that never
  *            needed it
  *   pending  the backend's cold start. The names are there and the counts are
- *            zeros, so the counts are simply not printed. See `claim-api.ts`.
+ *            zeros, so the counts are simply not printed.
  *
- * ── THE OPERATOR FIELD IS DISABLED BECAUSE THE ENDPOINT REJECTS IT ──
+ * ── THE QUERY LIVES IN THE WIZARD, NOT HERE ──
  *
- * `/owners/search` answers 400 for `operator` — no roll carries one. The field
- * stays on screen because operator is the one thing many owners know off the
- * top of their head, and someone who does not see it concludes the search is
- * cruder than it is. Inert and labelled beats absent, and beats a live control
- * that would earn a 400.
+ * Step 2 shows the same fields so a search can be refined without coming back,
+ * and it has to open with what was actually searched. Local state here would be
+ * thrown away the moment this step unmounts.
  */
 export function StepFind({
+  query,
+  onQueryChange,
   counties,
   onRetryCounties,
   onSearch,
 }: {
+  query: ClaimQuery;
+  onQueryChange: (next: ClaimQuery) => void;
   counties: Async<CountyIndex>;
   onRetryCounties: () => void;
-  onSearch: (query: { name: string; lease: string; county: string }) => void;
+  onSearch: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [lease, setLease] = useState("");
-  const [county, setCounty] = useState("");
-
   const index = counties.data;
   const showCounts = index !== null && !index.pending;
 
@@ -57,7 +54,7 @@ export function StepFind({
       className="grid gap-[18px]"
       onSubmit={(event) => {
         event.preventDefault();
-        onSearch({ name, lease, county });
+        onSearch();
       }}
     >
       <StepIntro
@@ -67,8 +64,8 @@ export function StepFind({
         lead="Search the public record to find the owner record you want to claim."
       >
         Claim is at owner-record level — joined leases inherit it. Name matching
-        is fuzzy across RRC and county owner strings, so <em>Smith Gas D</em> and{" "}
-        <em>Smith Raymond E</em> both return.{" "}
+        is fuzzy across RRC and county owner strings, so <em>Smith Gas D</em>{" "}
+        and <em>Smith Raymond E</em> both return.{" "}
         {showCounts ? (
           <>
             Searching{" "}
@@ -86,59 +83,17 @@ export function StepFind({
         <FlowError message={counties.error} onRetry={onRetryCounties} />
       )}
 
-      <div className="grid gap-5 rounded-mv border border-mv-line p-5 @[520px]:grid-cols-2">
-        <ClaimTextField
-          label="Owner name"
-          qualifier="as it appears on checks or mail"
-          required
-          hint="Old rolls often carry initials or an entity name — try both."
-          icon={User}
-          name="ownerName"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Mineral Owner's Name"
-          autoComplete="name"
-        />
-        <ClaimSelectField
-          label="County"
-          qualifier="narrow it down if you know it"
-          icon={MapPin}
-          name="county"
-          value={county}
-          onChange={(e) => setCounty(e.target.value)}
-          disabled={counties.loading}
-        >
-          <option value="">
-            {counties.loading ? "Loading counties…" : "Any Texas county"}
-          </option>
-          {(index?.counties ?? []).map((c) => (
-            <option key={c.name} value={c.name}>
-              {showCounts
-                ? `${c.name} (${c.owners.toLocaleString("en-US")})`
-                : c.name}
-            </option>
-          ))}
-        </ClaimSelectField>
-        <ClaimTextField
-          label="Lease or unit name"
-          qualifier="optional"
-          icon={Tag}
-          name="lease"
-          value={lease}
-          onChange={(e) => setLease(e.target.value)}
-          placeholder="e.g. Smith Gas Unit"
-        />
-        <ClaimTextField
-          label="Operator"
-          qualifier="optional"
-          icon={Building2}
-          name="operator"
-          placeholder="Not searchable yet"
-          disabled
+      <div className="rounded-mv border border-mv-line p-5">
+        <ClaimSearchFields
+          query={query}
+          onChange={onQueryChange}
+          counties={counties}
         />
       </div>
 
-      {counties.loading && <FlowLoading label="Loading the county list…" />}
+      {counties.loading && (
+        <FlowLoading label="Loading the county list…" compact />
+      )}
 
       <GuideNote title="Why this step matters">
         Query runs against matched owner records (RRC + county appraisal
