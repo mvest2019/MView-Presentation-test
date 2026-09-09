@@ -3,7 +3,7 @@
 import { Check, EyeOff } from "lucide-react";
 import { memo } from "react";
 
-import { Badge } from "../../../_components/ui/badge";
+import { Badge } from "../../../../_components/ui/badge";
 import { mailCity } from "../../_lib/claim-format";
 import type { OwnerRecord } from "../../_lib/claim-types";
 

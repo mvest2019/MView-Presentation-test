@@ -3,8 +3,8 @@
 import { FileText, ListTree, LoaderCircle } from "lucide-react";
 import Link from "next/link";
 
-import { Badge } from "../../../_components/ui/badge";
-import { PortalButton } from "../../../_components/ui/button";
+import { Badge } from "../../../../_components/ui/badge";
+import { PortalButton } from "../../../../_components/ui/button";
 import {
   Table,
   TableBody,
@@ -13,7 +13,7 @@ import {
   TableHeaderCell,
   TableRow,
   TableScroll,
-} from "../../../_components/ui/table";
+} from "../../../../_components/ui/table";
 import { decimalInterest } from "../../_lib/claim-format";
 import type { FlowLease, OwnerRecord } from "../../_lib/claim-types";
 import { FlowEmpty, FlowError } from "../flow-state";

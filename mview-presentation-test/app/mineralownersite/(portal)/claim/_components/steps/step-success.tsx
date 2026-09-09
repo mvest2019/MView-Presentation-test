@@ -12,8 +12,8 @@ import {
 } from "lucide-react";
 
 import type { ClaimAddressOutcome, ClaimResult } from "../../_api/claim-api";
-import { PortalButtonLink } from "../../../_components/ui/button";
-import { PrototypeButton } from "../../../_components/ui/prototype-button";
+import { PortalButtonLink } from "../../../../_components/ui/button";
+import { PrototypeButton } from "../../../../_components/ui/prototype-button";
 
 /**
  * THE CELEBRATION MARKS around the tick — eight short strokes radiating out.

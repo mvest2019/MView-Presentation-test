@@ -4,8 +4,8 @@ import { ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
-import { Badge } from "../../../_components/ui/badge";
-import { PortalButton } from "../../../_components/ui/button";
+import { Badge } from "../../../../_components/ui/badge";
+import { PortalButton } from "../../../../_components/ui/button";
 import { addressKey, money, recordKey } from "../../_lib/claim-format";
 import type { ClaimSet, OwnerRecord } from "../../_lib/claim-types";
 import type { Async } from "../claim-wizard";

@@ -3,7 +3,7 @@
 import { Check, Pencil, X } from "lucide-react";
 import { useState } from "react";
 
-import { PortalButton } from "../../../_components/ui/button";
+import { PortalButton } from "../../../../_components/ui/button";
 import { postAddressCorrection } from "../../_api/claim-api";
 
 /**
