@@ -875,10 +875,10 @@ export interface Payload {
     status_note: string | null;
     monthly: ({
       cycle: string;
-      label: string;
+      label: string | null;
       permits: number;
       completions: number;
-      status: string | null;
+      status: number;
     })[];
     compare_90: {
       days: number;
@@ -919,7 +919,7 @@ export interface Payload {
       production: number;
       permits: number;
       completions: number;
-      status: string | null;
+      status: number;
     };
     newest_label: string | null;
   };
@@ -959,14 +959,7 @@ export interface Payload {
       newest: string | null;
       spark: number[];
     })[];
-    counts: {
-      permit: number;
-      completion: number;
-      production: number;
-      adjacent: number;
-      status: string | null;
-      operator: number;
-    };
+    counts: Record<EventKind, number>;
     mine_count: number;
     ring_count: number;
     county_count: number;

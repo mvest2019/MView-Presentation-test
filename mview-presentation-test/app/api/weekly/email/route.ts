@@ -140,7 +140,9 @@ export async function POST(req: Request) {
   if (body.dist) url.searchParams.set("dist", body.dist);
 
   try {
-    const live = await getOwnerPayload(selectionFrom(url));
+    /* `live: false` — the message is rendered from `payload.weekly` alone;
+       see the same note in ../route.ts. */
+    const live = await getOwnerPayload(selectionFrom(url), { live: false });
     const payload = body.sample ? sampleize(live).payload : live;
     const msg = render.email(payload.weekly, { sample: Boolean(body.sample) });
 
