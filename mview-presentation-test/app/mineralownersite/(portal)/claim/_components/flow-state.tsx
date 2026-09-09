@@ -65,7 +65,11 @@ export function FlowLoading({
 
   return (
     <div
-      className="flex min-h-[220px] flex-col items-center justify-center gap-[14px] rounded-mv border border-mv-line bg-mv-portal-wash/50 px-6 py-10 text-center"
+      /* NO FILL. The tinted panel read as a card in its own right — a grey slab
+         inside the white results card, which is one surface too many for
+         something that exists only to hold a space open. The border alone
+         reserves the height and reads as a placeholder rather than content. */
+      className="flex min-h-[220px] flex-col items-center justify-center gap-[14px] rounded-mv border border-mv-line px-6 py-10 text-center"
       role="status"
     >
       <LoaderCircle

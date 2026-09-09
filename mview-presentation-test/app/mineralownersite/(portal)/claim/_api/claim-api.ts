@@ -169,31 +169,58 @@ interface WireAllLeases {
 }
 
 /**
+ * What one ADDRESS in a claim did — the endpoint reports per address now that
+ * the request carries them.
+ *
+ * `status` is left as a string rather than a union: it is the backend's
+ * vocabulary, observed as `claimed`, `already_claimed` and `not_found`, and a
+ * closed union here would make a value we have not seen yet a type error
+ * instead of a row the receipt can still print.
+ */
+export interface ClaimAddressOutcome {
+  address: string;
+  status: string;
+  claimed_leases_count: number;
+  already_claimed_leases_count: number;
+  failed_leases_count?: number;
+}
+
+/**
  * `POST /owners/claim`.
  *
  * PARTIAL SUCCESS IS NORMAL: the endpoint reports each name separately, so a
  * claim of three owners can come back with two filed and one rejected (most
  * often `OWNER_ALREADY_CLAIMED`). The receipt has to show both halves rather
  * than treating the call as pass/fail.
+ *
+ * `addresses` is optional on both halves because it is only returned for
+ * owners that were SENT with addresses — a name-only entry gets none back.
+ *
+ * `claimedAt` IS NULL WHEN NOTHING WAS FILED. Observed on a claim where every
+ * name failed; typing it as a plain string had the receipt formatting `null`
+ * as a date.
  */
 export interface ClaimResult {
   successful_owners: {
     ownername: string;
     claimed_leases_count: number;
     failed_leases_count: number;
+    already_claimed_leases_count?: number;
+    addresses?: ClaimAddressOutcome[];
   }[];
   failed_owners: {
     ownername: string;
     error: string;
     error_code: string;
     failed_lease_count: number;
+    addresses?: ClaimAddressOutcome[];
   }[];
   summary: {
     total_owners_processed: number;
     total_successful_owners: number;
     total_failed_owners: number;
   };
-  claimedAt: string;
+  claimedAt: string | null;
 }
 
 /* ============================================================================
@@ -483,14 +510,43 @@ export async function fetchSameName(
    ============================================================================ */
 
 /**
+ * One owner in a claim: the name, and OPTIONALLY the addresses it was ticked at.
+ *
+ * `addresses` is omitted rather than sent empty — the contract treats the key
+ * as absent-or-array, and an empty array would ask the backend to match a name
+ * at no address at all.
+ */
+export interface ClaimOwner {
+  ownername: string;
+  addresses?: string[];
+}
+
+/**
  * MEMBERS ONLY: the endpoint rejects a visitor id with a 400, so an anonymous
- * reader must sign in first. Step 3 disables Confirm and says so rather than
- * offering a button that cannot work.
+ * reader must sign in first. Step 4 disables the claim button and says so
+ * rather than offering one that cannot work.
  *
  * OWNER NAMES ARE THE UNIT OF A CLAIM. The backend resolves each name's leases
  * itself and takes every one it holds STATEWIDE — not just the county that was
  * searched — writing `membersclaimedleases` and `claimed_owners` in one
  * transaction. Up to 25 names per call.
+ *
+ * ── `addresses` NARROWS A NAME TO THE ROWS THE READER ACTUALLY TICKED ──
+ *
+ * A name alone claims every roll record carrying it. Step 3 asks which
+ * addresses are yours precisely because one owner string can belong to two
+ * unrelated parties, and until now that answer was collected and then thrown
+ * away — the post sent bare names. Sending the addresses makes the claim as
+ * narrow as the reader said it was.
+ *
+ * It also changes how a miss is reported, verified against the live endpoint:
+ *
+ *   bare name, no match       404 OWNERS_RECORD_NOT_FOUND — the whole call fails
+ *   with addresses, no match  201, and the name comes back in `failed_owners`
+ *                             as OWNER_ADDRESS_NOT_FOUND
+ *
+ * The second is strictly better: one bad name in a claim of five no longer
+ * takes the other four down with it.
  *
  * IT RETURNS THE BODY RATHER THAN FIRING AND FORGETTING, because partial
  * success is normal: each name comes back filed or refused, and a refusal shown
@@ -498,12 +554,12 @@ export async function fetchSameName(
  */
 export async function postClaim(
   memberId: number,
-  ownerNames: string[],
+  owners: ClaimOwner[],
 ): Promise<ClaimResult> {
-  if (ownerNames.length === 0) {
+  if (owners.length === 0) {
     throw new Error("Pick at least one record to claim.");
   }
-  if (ownerNames.length > MAX_CLAIM_OWNERS) {
+  if (owners.length > MAX_CLAIM_OWNERS) {
     throw new Error(
       `A single claim can cover at most ${MAX_CLAIM_OWNERS} owner records.`,
     );
@@ -516,7 +572,11 @@ export async function postClaim(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         member_id: memberId,
-        mineralOwners: ownerNames.map((ownername) => ({ ownername })),
+        mineralOwners: owners.map(({ ownername, addresses }) =>
+          addresses && addresses.length > 0
+            ? { ownername, addresses }
+            : { ownername },
+        ),
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
