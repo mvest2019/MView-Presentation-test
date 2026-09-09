@@ -242,8 +242,13 @@ export function StepLeases({
           {claiming
             ? "Filing your claim…"
             : alreadyClaimed
-              ? "Continue → step 5"
-              : `Claim ${leases.length} lease${leases.length === 1 ? "" : "s"} → step 5`}
+              ? /* Already filed — this only moves to the receipt. */
+                "View your claim →"
+              : /* NO ARROW, AND NO STEP NUMBER. Every other button in the flow
+                   advances a screen; this one WRITES the claim, and an arrow
+                   would file it under the same gesture as "next". The count
+                   stays because it is what the reader is committing to. */
+                `Claim ${leases.length} lease${leases.length === 1 ? "" : "s"}`}
         </PortalButton>
       </div>
     </div>

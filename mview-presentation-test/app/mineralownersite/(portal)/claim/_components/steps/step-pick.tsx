@@ -20,11 +20,7 @@ import {
 import type { Async } from "../claim-wizard";
 import { FlowEmpty, FlowError, FlowLoading } from "../flow-state";
 import { GuideNote } from "../guide-note";
-import {
-  ClaimSearchFields,
-  emptyQuery,
-  type ClaimQuery,
-} from "../search-fields";
+import { ClaimSearchFields, type ClaimQuery } from "../search-fields";
 import { StepIntro } from "../step-intro";
 import { CandidateCard } from "./candidate-card";
 
@@ -68,6 +64,7 @@ export function StepPick({
   onSearch,
   tooShort,
   onClearSelection,
+  onReset,
 }: {
   results: Async<OwnerRecord[]>;
   query: ClaimQuery;
@@ -84,6 +81,8 @@ export function StepPick({
   tooShort: boolean;
   /** Untick everything — the only way back from a selection made up-list. */
   onClearSelection: () => void;
+  /** Empty the search fields AND drop the results they produced. */
+  onReset: () => void;
 }) {
   const records = results.data ?? [];
   const count = selected.length;
@@ -179,8 +178,13 @@ export function StepPick({
           <div className="flex justify-end">
             <button
               type="button"
+              /* RESET CLEARS THE ANSWER TOO, not just the question. Emptying
+                 the fields while leaving 1,153 rows underneath is a page that
+                 says it is not searching for anything and then lists what it
+                 found — `onReset` drops the results in the wizard, so the step
+                 goes back to the state it opens in. */
               onClick={() => {
-                onQueryChange(emptyQuery);
+                onReset();
                 setFilter("");
               }}
               className="flex cursor-pointer items-center gap-[5px] text-[12px] font-semibold text-mv-green-deep hover:underline hover:underline-offset-2"
@@ -201,10 +205,15 @@ export function StepPick({
              record tally, so a 502 rendered "0 candidate owner records" above
              the error — telling the reader their name matched nothing, which is
              a different and false answer to the one they asked. */
+          /* `tooShort` no longer suppresses the count on its own — with rows
+             still on screen it produced a bare "Pick your record" heading over
+             a list of 1,153, which reads as a page that has lost track of what
+             it is showing. The count is suppressed only when there is nothing
+             to count. */
           title={
             results.loading
               ? "Searching the public record…"
-              : results.error || tooShort
+              : results.error || records.length === 0
                 ? "Pick your record"
                 : `${records.length} candidate owner record${records.length === 1 ? "" : "s"}`
           }
@@ -248,9 +257,20 @@ export function StepPick({
           <FlowError message={results.error} onRetry={onSearch} />
         )}
 
-        {tooShort && !results.loading && (
+        {/* ONLY WHEN THERE IS NOTHING BELOW IT.
+            This used to render on `tooShort` alone, so deleting a character
+            put "Type at least 3 characters to search" directly above 1,153
+            results — the page telling the reader it had not searched, over the
+            answer to a search. The rows are still the last answer given; the
+            prompt belongs only where there is no answer at all. */}
+        {tooShort && !results.loading && records.length === 0 && (
           <FlowEmpty
-            message="Type at least 3 characters to search."
+            /* NO CHARACTER COUNT. "Type at least 3 characters" states a rule
+               the reader is not breaking — they have typed nothing — and makes
+               a threshold sound like something to satisfy rather than a detail
+               of how the search paces itself. The fields simply search when
+               there is enough to search on. */
+            message="Start typing to search the public record."
             hint="The results update on their own as you type — or pick a county, which searches on its own."
           />
         )}
@@ -325,7 +345,7 @@ export function StepPick({
         {records.length > 0 && shown.length === 0 && (
           <FlowEmpty
             message={`Nothing on this page matches "${filter.trim()}".`}
-            hint="This filters the results already loaded. Clear it to see all of them, or use Search again above to ask the record for a different name."
+            hint="This filters the results already loaded. Clear it to see all of them, or change the search fields at the top of this step to ask the record for a different name."
           />
         )}
       </div>
@@ -406,7 +426,10 @@ export function StepPick({
                   className="h-[14px] w-[14px] animate-spin"
                 />
               )}
-              {resolving ? "Checking these records…" : "Continue →"}
+              {/* NAMES THE NEXT SCREEN, not the act of moving. "Continue" is
+                  true of every button in a wizard and tells the reader nothing
+                  about what they are about to be asked. */}
+              {resolving ? "Checking these records…" : "Review addresses →"}
             </PortalButton>
           </div>
         </div>
