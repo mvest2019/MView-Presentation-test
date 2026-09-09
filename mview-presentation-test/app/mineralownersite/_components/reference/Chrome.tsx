@@ -176,14 +176,26 @@ export default function Chrome(c: ChromeProps) {
           Mineral<span style={{ color: 'var(--green)' }}>View</span>
         </div>
 
+        {/*
+          IT OPENS THE CLAIM FLOW, NOT THE EXPLAINER.
+
+          This used to `preventDefault` and open the `identity` drawer — "How
+          this record was identified as yours". That drawer explains why a
+          SAMPLE record is being shown; it does not claim anything, so the one
+          control in the whole sidebar labelled "Claim Mineral Owner" never led
+          to claiming. The five-step flow lives at /mineralownersite/claim.
+
+          A REAL NAVIGATION, not the reference's own `c.go`. That router only
+          moves between routes inside this (reference) group; the claim flow is
+          under (portal), with a different layout, so it has to be a genuine
+          route change. The explainer keeps its other triggers — the dashboard,
+          alerts, activities and the account menu all still open it.
+        */}
         {c.sample
           ? (
-            <a
-              className="nav-item" href="#claim"
-              onClick={(e) => { e.preventDefault(); c.open('identity'); }}
-            >
+            <Link className="nav-item" href="/mineralownersite/claim">
               <span className="nav-ico"><Icon id="mvi-claim" /></span> Claim Mineral Owner
-            </a>
+            </Link>
           )
           : null}
 
