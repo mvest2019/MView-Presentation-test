@@ -1,14 +1,14 @@
 "use client";
 
-import { Building2, Check, LoaderCircle, ShieldCheck } from "lucide-react";
+import { LoaderCircle, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
 import { Badge } from "../../../../_components/ui/badge";
 import { PortalButton } from "../../../../_components/ui/button";
 import { postAddressCorrection } from "../../_api/claim-api";
-import { mailCity } from "../../_lib/claim-format";
-import type { OwnerRecord, SameNameResult } from "../../_lib/claim-types";
+import { addressKey, recordKey } from "../../_lib/claim-format";
+import type { ClaimSet, OwnerRecord } from "../../_lib/claim-types";
 import type { Async } from "../claim-wizard";
 import { FlowError, FlowLoading } from "../flow-state";
 import { GuideNote } from "../guide-note";
@@ -16,31 +16,95 @@ import { StepIntro } from "../step-intro";
 import { ClaimCheckbox } from "./claim-checkbox";
 
 /**
+ * ONE ADDRESS under an owner name — which may be several county records that
+ * all name the same doorstep. See `addressKey`.
+ */
+interface AddressRow {
+  /** The record the tick is keyed on: the verifying one where there is one. */
+  record: OwnerRecord;
+  matches: boolean;
+  /** Every county whose roll carries this name at this address. */
+  counties: string[];
+  /** Summed across those counties — they hold different leases. */
+  leaseCount: number;
+  /** Distinct operators across them, not a sum of per-county counts. */
+  operatorCount: number;
+}
+
+/**
+ * Fold a name's county records into one row per real address.
+ *
+ * THE VERIFYING RECORD WINS THE ROW. When one spelling matched the address
+ * that was searched and another did not, the address IS verified — badging the
+ * merged row "different address, we post a code" would be false.
+ *
+ * Nothing is dropped by merging: a claim is filed on the owner NAME and the
+ * backend takes every lease that name holds statewide, so the folded-away
+ * county's leases come along either way. The row states them so the count on
+ * screen still adds up.
+ */
+function foldAddresses(rows: AddressRow[]): AddressRow[] {
+  const byAddress = new Map<string, AddressRow>();
+
+  for (const row of rows) {
+    const key = addressKey(row.record.address);
+    const seen = byAddress.get(key);
+
+    if (!seen) {
+      byAddress.set(key, row);
+      continue;
+    }
+
+    const operators = new Set(
+      [...seen.record.leases, ...row.record.leases]
+        .map((l) => l.operator)
+        .filter((o): o is string => o !== null && o !== ""),
+    );
+
+    byAddress.set(key, {
+      /* The verifying spelling is the one the reader ticks and reads. */
+      record: seen.matches ? seen.record : row.record,
+      matches: seen.matches || row.matches,
+      counties: [...new Set([...seen.counties, ...row.counties])],
+      leaseCount: seen.leaseCount + row.leaseCount,
+      operatorCount: operators.size,
+    });
+  }
+
+  return [...byAddress.values()];
+}
+
+/**
  * STEP 3 — address-verify, then the claim is written.
+ *
+ * ── GROUPED BY OWNER NAME, ADDRESSES UNDERNEATH ──
+ *
+ * The roll spells one person several ways — "RAYMOND SMITH" and "SMITH RAYMOND
+ * E" are the same human — and each spelling carries its own set of addresses.
+ * A flat list of cards buried that: the reader saw five boxes and no way to see
+ * that they were two names with three and two addresses.
+ *
+ * The name is the unit the CLAIM works in — `/owners/claim` takes owner names,
+ * and each name brings every lease it holds statewide — so the name is the
+ * heading and the addresses are what gets ticked beneath it. Each group counts
+ * its own selection, because "0 of 3 addresses selected" is the question this
+ * step is actually asking.
  *
  * ── THE ENDPOINT DOES THE DISCRIMINATING, NOT A FLAG WE SET ──
  *
- * `GET /owners/same-name` answers with `selected` — the record at the address
- * that was picked — and `records`, the same name at OTHER addresses. That split
- * IS the address verification: the first is the reader's record, the rest need
- * a mailed code before they can attach. Nothing here decides which is which.
- *
- * ── THE ONE STEP THAT COMMITS, AND EVERY AFFORDANCE SAYS SO ──
- *
- * Confirm posts `/owners/claim`. The caption bar above reads "This is the step
- * that commits", the guide box says what the call writes, and the button counts
- * what it is about to send. Steps 1 and 2 promised nothing was committed; this
- * is where that stops being true.
+ * `/same-name` answers, per record picked on step 2, with the record at that
+ * exact address and with the same name at OTHER addresses. That split IS the
+ * address verification: the first verifies instantly, the rest need a posted
+ * code before they attach.
  *
  * ── THREE GATES, AND ALL OF THEM ARE REAL ──
  *
- * At least one record, the good-faith attestation, AND a member id — the
+ * At least one address, the good-faith attestation, AND a member id — the
  * endpoint rejects an anonymous claim with a 400, so a signed-out reader is
  * told to sign in rather than being allowed to press a button that cannot work.
  */
 export function StepProve({
-  sameName,
-  picked,
+  claimSet,
   memberId,
   confirmed,
   onToggleRecord,
@@ -51,12 +115,11 @@ export function StepProve({
   onConfirm,
   onBack,
 }: {
-  sameName: Async<SameNameResult>;
-  /** The step-2 pick, so the address on file can be shown while same-name loads. */
-  picked: OwnerRecord | null;
+  claimSet: Async<ClaimSet>;
   memberId: number | null;
+  /** Ticked record keys — county|name|address, never the address alone. */
   confirmed: string[];
-  onToggleRecord: (address: string, checked: boolean) => void;
+  onToggleRecord: (key: string, checked: boolean) => void;
   attested: boolean;
   onAttest: (value: boolean) => void;
   claiming: boolean;
@@ -64,12 +127,54 @@ export function StepProve({
   onConfirm: () => void;
   onBack: () => void;
 }) {
-  const selected = sameName.data?.selected ?? null;
-  const others = sameName.data?.others ?? [];
-  const onFile = selected?.address ?? picked?.address ?? "";
+  const records = claimSet.data?.records ?? [];
+  const others = claimSet.data?.others ?? [];
+  const primary = records[0] ?? null;
 
-  const canConfirm =
-    confirmed.length > 0 && attested && memberId !== null && !claiming;
+  /* Grouped by owner name, verified addresses first within each group, then
+     folded so one doorstep is one row however many counties spell it. */
+  const collected = new Map<string, AddressRow[]>();
+  const add = (record: OwnerRecord, matches: boolean) =>
+    collected.set(record.name, [
+      ...(collected.get(record.name) ?? []),
+      {
+        record,
+        matches,
+        counties: [record.county],
+        leaseCount: record.leaseCount,
+        operatorCount: record.operatorCount,
+      },
+    ]);
+
+  for (const record of records) add(record, true);
+  for (const record of others) add(record, false);
+
+  const groups = new Map(
+    [...collected.entries()].map(([name, rows]) => [name, foldAddresses(rows)]),
+  );
+
+  /*
+   * WHY IT IS DISABLED, IN THE BUTTON'S OWN WORDS.
+   *
+   * This used to be one boolean with one fixed tooltip — "tick an address and
+   * the good-faith statement" — which read as a lie the moment BOTH were
+   * ticked and the button stayed grey. The third gate, being signed out, was
+   * stated only in a note further up the page that a reader aiming at the
+   * button never looks at.
+   *
+   * So the gates are named one at a time, in the order the reader can act on
+   * them, and the unmet one is the tooltip.
+   */
+  const blocked =
+    confirmed.length === 0
+      ? "Tick at least one address above."
+      : !attested
+        ? "Tick the good-faith statement above."
+        : memberId === null
+          ? "Sign in first — a claim has to belong to an account."
+          : null;
+
+  const canConfirm = blocked === null && !claiming;
 
   return (
     <div className="grid gap-[18px]">
@@ -80,32 +185,102 @@ export function StepProve({
         title="Address-verify the owner record before the claim is written"
       />
 
-      {sameName.loading && (
-        <FlowLoading label="Checking this name against every county roll…" />
+      {claimSet.loading && (
+        <FlowLoading label="Checking these names against every county roll…" />
       )}
 
-      {sameName.error && <FlowError message={sameName.error} onRetry={onBack} />}
-
-      {selected && (
-        <RecordCard
-          record={selected}
-          matches
-          checked={confirmed.includes(selected.address)}
-          onToggle={(v) => onToggleRecord(selected.address, v)}
-        />
+      {claimSet.error && (
+        <FlowError message={claimSet.error} onRetry={onBack} />
       )}
 
-      {others.map((record) => (
-        <RecordCard
-          key={`${record.county}|${record.address}`}
-          record={record}
-          matches={false}
-          checked={confirmed.includes(record.address)}
-          onToggle={(v) => onToggleRecord(record.address, v)}
-        />
-      ))}
+      {groups.size > 0 && (
+        <div className="divide-y divide-mv-line overflow-hidden rounded-mv border border-mv-line">
+          {[...groups.entries()].map(([name, rows]) => {
+            const picked = rows.filter((r) =>
+              confirmed.includes(recordKey(r.record)),
+            ).length;
 
-      {!sameName.loading && !sameName.error && (
+            return (
+              <section key={name}>
+                <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 bg-mv-portal-wash/60 px-4 py-[10px]">
+                  <h3 className="text-[12.5px] font-extrabold tracking-[.04em] text-mv-ink uppercase">
+                    {name}
+                  </h3>
+                  <p className="text-[11.5px] text-mv-muted">
+                    {picked} of {rows.length} address
+                    {rows.length === 1 ? "" : "es"} selected
+                  </p>
+                </header>
+
+                <div className="divide-y divide-mv-line border-t border-mv-line">
+                  {rows.map(
+                    ({
+                      record,
+                      matches,
+                      counties,
+                      leaseCount,
+                      operatorCount,
+                    }) => {
+                      const key = recordKey(record);
+                      return (
+                        <label
+                          key={key}
+                          className="flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors hover:bg-mv-hover"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={confirmed.includes(key)}
+                            onChange={(e) =>
+                              onToggleRecord(key, e.target.checked)
+                            }
+                            className="mt-[2px] h-[15px] w-[15px] flex-none cursor-pointer accent-mv-green-deep outline-none focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.28)]"
+                          />
+
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[13px] font-bold text-mv-ink">
+                              {record.address || "No address on file"}
+                            </p>
+
+                            <p className="mt-[5px]">
+                              {matches ? (
+                                <Badge tone="mint" size="xs">
+                                  Matches your address · verifies instantly
+                                </Badge>
+                              ) : (
+                                <Badge tone="estimate" size="xs">
+                                  Different address · we post a code before it
+                                  joins
+                                </Badge>
+                              )}
+                            </p>
+
+                            <p className="mt-[6px] flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-mv-muted">
+                              <span>
+                                {leaseCount} lease{leaseCount === 1 ? "" : "s"}
+                              </span>
+                              <span>
+                                {counties.join(" & ")}{" "}
+                                {counties.length === 1 ? "County" : "counties"}
+                                {operatorCount > 0 &&
+                                  ` · ${operatorCount} operator${operatorCount === 1 ? "" : "s"}`}
+                              </span>
+                              {/* The sources step 1 already names — one CAD per
+                                county that carries this address. */}
+                              <span>RRC + {counties.join(", ")} CAD</span>
+                            </p>
+                          </div>
+                        </label>
+                      );
+                    },
+                  )}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
+
+      {!claimSet.loading && !claimSet.error && (
         <ClaimCheckbox checked={attested} onChange={onAttest}>
           <b className="font-semibold text-mv-ink">
             I have a good-faith basis and authority to claim this record
@@ -116,8 +291,8 @@ export function StepProve({
       )}
 
       <GuideNote title="What confirming does">
-        Confirm claims every lease this owner name holds, statewide — not only
-        the ones in the county you searched. The record joins your account in
+        Confirm claims every lease these owner names hold, statewide — not only
+        the ones in the county you searched. The records join your account in
         one transaction. Zero public-record mutation; reversible via Settings —
         unclaim.
       </GuideNote>
@@ -143,11 +318,7 @@ export function StepProve({
           onClick={onConfirm}
           disabled={!canConfirm}
           className={canConfirm ? undefined : "cursor-not-allowed opacity-50"}
-          title={
-            canConfirm
-              ? undefined
-              : "Tick the record that is yours and the good-faith statement above"
-          }
+          title={blocked ?? undefined}
         >
           {claiming && (
             <LoaderCircle
@@ -157,13 +328,19 @@ export function StepProve({
           )}
           {claiming
             ? "Filing your claim…"
-            : `Confirm ${confirmed.length} record${confirmed.length === 1 ? "" : "s"} & continue →`}
+            : `Confirm ${confirmed.length} address${confirmed.length === 1 ? "" : "es"} & continue →`}
         </PortalButton>
 
+        {/* The same reason as the tooltip, said where a touch reader can read
+            it — there is no hover on a phone. */}
+        {blocked && !claiming && (
+          <p className="text-[12px] font-semibold text-mv-sand">{blocked}</p>
+        )}
+
         <AddressCorrection
-          owner={selected?.name ?? picked?.name ?? ""}
-          county={selected?.county ?? picked?.county ?? ""}
-          oldAddress={onFile}
+          owner={primary?.name ?? ""}
+          county={primary?.county ?? ""}
+          oldAddress={primary?.address ?? ""}
           memberId={memberId}
         />
 
@@ -179,105 +356,12 @@ export function StepProve({
   );
 }
 
-/** One candidate record, with the tick that decides whether it is claimed. */
-function RecordCard({
-  record,
-  matches,
-  checked,
-  onToggle,
-}: {
-  record: OwnerRecord;
-  matches: boolean;
-  checked: boolean;
-  onToggle: (checked: boolean) => void;
-}) {
-  const operators = [...new Set(record.leases.map((l) => l.operator).filter(Boolean))];
-
-  return (
-    <article
-      className={`relative overflow-hidden rounded-mv border p-4 ${
-        matches ? "border-mv-green bg-mv-mint/40" : "border-mv-line bg-mv-card"
-      }`}
-    >
-      {matches && (
-        <span
-          aria-hidden="true"
-          className="absolute top-0 right-0 flex h-[26px] w-[30px] items-center justify-center rounded-bl-[10px] bg-mv-green-deep text-white"
-        >
-          <Check className="h-[14px] w-[14px]" strokeWidth={3} />
-        </span>
-      )}
-
-      <div className="flex items-start gap-[10px]">
-        <span className="mt-[1px] flex h-[22px] w-[22px] flex-none items-center justify-center rounded-md bg-mv-portal-wash text-mv-muted">
-          <Building2 aria-hidden="true" className="h-[13px] w-[13px]" />
-        </span>
-
-        <div className="min-w-0 flex-1 pr-6">
-          <div className="flex flex-wrap items-center gap-x-[10px] gap-y-1">
-            <h3 className="text-[12.5px] font-bold text-mv-ink">
-              {record.name} · {record.county}
-            </h3>
-            {matches ? (
-              <Badge tone="mint" size="xs">
-                Matches your mailing address
-              </Badge>
-            ) : (
-              <Badge tone="slate" size="xs">
-                Different address
-              </Badge>
-            )}
-          </div>
-
-          <p className="mt-[6px] text-[12px] text-mv-slate">
-            {matches ? (
-              <>
-                <b className="font-semibold">{record.address}</b> ·{" "}
-                {record.leaseCount} lease{record.leaseCount === 1 ? "" : "s"} ·{" "}
-                {record.county} county
-              </>
-            ) : (
-              <>
-                {mailCity(record.address) ?? record.address} · mail for this record goes elsewhere.
-                Likely a different {record.name}.
-              </>
-            )}
-          </p>
-
-          {matches && operators.length > 0 && (
-            <p className="mt-[6px] text-[11.5px] text-mv-placeholder">
-              {operators.join(" · ")}
-            </p>
-          )}
-
-          <div className="mt-[10px]">
-            <ClaimCheckbox checked={checked} onChange={onToggle}>
-              {matches ? (
-                <b className="font-semibold text-mv-ink">
-                  This is me — claim this record
-                </b>
-              ) : (
-                <>
-                  <b className="font-semibold text-mv-ink">This is also mine</b>{" "}
-                  (moved or family address? — we&rsquo;ll verify with a mailed
-                  code before it joins your account)
-                </>
-              )}
-            </ClaimCheckbox>
-          </div>
-        </div>
-      </div>
-    </article>
-  );
-}
-
 /**
  * "SOMETHING LOOKS WRONG" → `POST /owners/address-correction`.
  *
  * IT ASKS FOR THE NEW ADDRESS BEFORE IT SENDS. The endpoint requires
  * `newAddress`, so a button that fired on click could only ever post an empty
- * correction. One `prompt` is the whole interaction the design has room for
- * here, and it is honest: cancel sends nothing.
+ * correction. Cancel sends nothing.
  *
  * The POST is fire-and-forget by contract — it returns no state the flow acts
  * on — so the control acknowledges in place instead of waiting on a response.

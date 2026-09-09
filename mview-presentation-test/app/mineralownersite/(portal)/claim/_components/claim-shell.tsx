@@ -25,24 +25,14 @@ const STICKY_OFFSET = 112;
  * whether this screen commits anything. Both halves come from `claim-steps.ts`
  * so the stepper above cannot disagree with them.
  *
- * ── THE COLUMNS SPLIT ON THE CONTAINER, NOT THE VIEWPORT ──
+ * ── ONE COLUMN, FULL WIDTH ──
  *
- * `@container` plus `@[920px]:grid-cols-[1fr_320px]`. The space this flow gets
- * is not the window's width — the portal's sidebar takes a fixed slice of it
- * and `.app-body` caps what is left — so a `lg:` breakpoint is measuring the
- * wrong thing. It measured 1024px of window and split into two columns while
- * the body cap left the form 486px, which is not enough for a five-column lease
- * table and pushed step 4 into a sideways scroll on a wide monitor.
+ * There was a 320px rail beside the step card and there is not any more
+ * (requested). The step now owns the whole measure, which is what step 4's
+ * five-column lease table and step 5's card grid wanted all along.
  *
- * `claim.css` now pins that cap to one value for this route, so the DENSITY
- * switch no longer moves this boundary — but the container query is still what
- * makes the split correct, and it is what keeps it correct on a narrow window
- * and on a phone. It also means this component never has to know what a
- * density is.
- *
- * When it does collapse, main content comes FIRST: the rail carries progress
- * and reassurance, both secondary to the step itself, and putting it on top
- * would push the actual form below the fold.
+ * `claim.css` still pins `.app-body` to one width for this route, so the
+ * portal's density switch cannot change how wide this flow renders.
  *
  * ── IT RETURNS YOU TO THE TOP WHEN THE STEP CHANGES ──
  *
@@ -54,7 +44,6 @@ const STICKY_OFFSET = 112;
 export function ClaimShell({
   current,
   done = false,
-  rail,
   below,
   children,
 }: {
@@ -65,12 +54,9 @@ export function ClaimShell({
    * that no longer exists — and the caption bar says so instead.
    */
   done?: boolean;
-  /** The step-specific rail cards, under the standing two. */
-  rail: ReactNode;
   /**
-   * Full width, BELOW both columns. Only the completion screen uses it, for the
-   * groups footer — see `done-groups.tsx` for why that is not main-column
-   * content.
+   * Full width, BELOW the step card. The completion screen uses it for the
+   * blocks that used to sit in the rail.
    */
   below?: ReactNode;
   children: ReactNode;
@@ -191,17 +177,17 @@ export function ClaimShell({
         )}
       </div>
 
-      <div className="grid items-start gap-[18px] @[920px]:grid-cols-[1fr_320px]">
-        {/* A container in its own right, so the grids INSIDE a step (step 1's
-            field pairs, step 4's stat tiles, step 5's lease cards) measure the
-            column they actually live in rather than the window — the same
-            reasoning as the split above, one level down. */}
-        <div className="@container min-w-0 rounded-mv border border-mv-line bg-mv-card p-[22px] max-[767px]:p-4">
-          {children}
-        </div>
-        <aside className="grid gap-3" aria-label="Claim guidance">
-          {rail}
-        </aside>
+      {/* FULL WIDTH — there is no side rail any more (requested). It carried the
+          vertical progress list, a reassurance note per step and, on the
+          completion screen, the next-steps and value cards; the first duplicated
+          the stepper above, and what was worth keeping moved into `below`.
+
+          Still `@container`: the grids INSIDE a step (step 1's field pairs,
+          step 4's stat tiles, step 5's lease cards) measure the column they live
+          in rather than the window, which is what keeps them right in all four
+          portal densities. Dropping the rail simply makes that column wider. */}
+      <div className="@container rounded-mv border border-mv-line bg-mv-card p-[22px] max-[767px]:p-4">
+        {children}
       </div>
 
       {below && <div className="mt-[18px]">{below}</div>}

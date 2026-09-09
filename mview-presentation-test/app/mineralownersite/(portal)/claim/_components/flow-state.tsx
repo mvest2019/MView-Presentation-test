@@ -20,18 +20,62 @@ import { PortalButton } from "../../../_components/ui/button";
  * starting the claim again from step 1, which is what they would otherwise do.
  */
 
-export function FlowLoading({ label }: { label: string }) {
+/**
+ * WAITING ON A CALL — a block that holds the space the answer will fill.
+ *
+ * ── WHY IT HAS HEIGHT ──
+ *
+ * This used to be a single 45px-tall line of text. On step 2 that read as the
+ * answer rather than the wait: a thin strip under "Searching the public
+ * record…", with the whole card collapsed around it, looks like a search that
+ * came back with one small thing to say. Then 1,153 records land and the page
+ * jumps.
+ *
+ * So it reserves a slab of the height the results will take and centres the
+ * spinner and the sentence in it. The wait now looks like a wait, and the
+ * arrival is a fill rather than a jolt.
+ *
+ * ── `compact` IS FOR A SUBORDINATE WAIT ──
+ *
+ * Step 1's county dropdown is one field on a form that is otherwise ready to
+ * use — the reader can type a name while it loads. A 220px slab for that would
+ * claim the step is blocked when it is not, so that one stays a line.
+ */
+export function FlowLoading({
+  label,
+  compact = false,
+}: {
+  label: string;
+  compact?: boolean;
+}) {
+  if (compact) {
+    return (
+      <p
+        className="flex items-center gap-[9px] rounded-mv border border-mv-line bg-mv-card px-4 py-[14px] text-[12.5px] text-mv-muted"
+        role="status"
+      >
+        <LoaderCircle
+          aria-hidden="true"
+          className="h-[15px] w-[15px] flex-none animate-spin text-mv-green-deep"
+        />
+        {label}
+      </p>
+    );
+  }
+
   return (
-    <p
-      className="flex items-center gap-[9px] rounded-mv border border-mv-line bg-mv-card px-4 py-[14px] text-[12.5px] text-mv-muted"
+    <div
+      className="flex min-h-[220px] flex-col items-center justify-center gap-[14px] rounded-mv border border-mv-line bg-mv-portal-wash/50 px-6 py-10 text-center"
       role="status"
     >
       <LoaderCircle
         aria-hidden="true"
-        className="h-[15px] w-[15px] flex-none animate-spin text-mv-green-deep"
+        className="h-[30px] w-[30px] animate-spin text-mv-green-deep"
       />
-      {label}
-    </p>
+      <p className="max-w-[42ch] text-[13px] leading-[1.55] font-semibold text-mv-ink">
+        {label}
+      </p>
+    </div>
   );
 }
 
@@ -81,7 +125,9 @@ export function FlowEmpty({
     <div className="rounded-mv border border-mv-line bg-mv-portal-wash/60 px-4 py-[14px]">
       <p className="text-[12.5px] font-semibold text-mv-ink">{message}</p>
       {hint && (
-        <p className="mt-[3px] text-[12px] leading-[1.5] text-mv-muted">{hint}</p>
+        <p className="mt-[3px] text-[12px] leading-[1.5] text-mv-muted">
+          {hint}
+        </p>
       )}
     </div>
   );
