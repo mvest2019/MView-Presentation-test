@@ -18,3 +18,7 @@
  * the Tailwind-built map render correctly inside the reference chrome.
  */
 @import "./dashboard-reference.css" layer(mv-reference);
+/* The local overrides, in the SAME layer and AFTER the copy, so they win on
+   source order without needing extra specificity — and so a Tailwind utility
+   still beats both. See that sheet's header for why the copy is not edited. */
+@import "./dashboard-reference.onebar.css" layer(mv-reference);

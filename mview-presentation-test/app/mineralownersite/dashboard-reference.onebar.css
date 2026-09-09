@@ -1,0 +1,324 @@
+/*
+ * ONE CHROME ROW — the top bar and the pinned value bar, combined.
+ *
+ * WHY THIS IS A SEPARATE SHEET. `dashboard-reference.css` is a byte-for-byte
+ * copy of the reference build's ten stylesheets, and its whole value is that a
+ * future diff against that reference shows only what the reference changed.
+ * Editing its `.app-top` and `#mvPinBar` blocks in place would have put a
+ * local design decision inside the verbatim copy, where the next extraction
+ * would silently revert it. So the copy is left alone and this sheet overrides
+ * it — imported after it, in the SAME `mv-reference` layer, so a Tailwind
+ * utility still wins over both. See `dashboard-reference.layer.css`.
+ *
+ * WHAT MOVED. `Chrome.tsx` now renders `#mvPinBar` INSIDE `.app-top`, before
+ * `.spacer`. Nothing about the pinned bar's contents changed; this sheet does
+ * three things:
+ *
+ *   1 · strips `#mvPinBar` of its own bar chrome — background, border, sticky
+ *       position, padding, min-height — because it is no longer a bar, and
+ *       paints the merged row black.
+ *   2 · recolours the account controls, which were designed for a white bar.
+ *   3 · rebuilds how the row absorbs a narrow window — section 3.
+ *
+ * THE ROW IS BLACK — `--ink`, WHICH IS THE SIDEBAR'S OWN BLACK, not `#000`
+ * and not the pinned bar's old gradient. Both alternatives were wrong for a
+ * specific reason:
+ *
+ *   `#000` would sit one shade off the `#0d0e17` sidebar it runs into, which
+ *   reads as a mistake rather than a choice. `--ink` is the palette's black
+ *   and the sidebar is already flat `--ink`, so the two meet seamlessly and
+ *   the chrome reads as one continuous black frame around the page.
+ *
+ *   THE GRADIENT IS TAKEN. `.mvlive-picker`, the owner search directly above
+ *   this row, carries `linear-gradient(160deg, #0d0e17, #16342a)` — the exact
+ *   gradient the pinned bar used to have. Repeating it here would have put two
+ *   near-identical gradient bands in contact, each restarting the ramp, which
+ *   shows as a seam. Flat under gradient is a deliberate edge; gradient under
+ *   gradient is a rendering artefact.
+ *
+ * WHY THE PINNED CONTENT NEEDS NO REPAINTING. Every colour in that group —
+ * `--green` for the figure, `#fff` for the settlements, the pale greys for the
+ * labels — was chosen by the reference against `#0d0e17`. On a black row they
+ * are simply back where they were designed to be, so section 2 below is about
+ * the four ACCOUNT CONTROLS only, which are the ones now out of place.
+ *
+ * THE ONE EXCEPTION IS THE DELTA ARROWS. Their two colours used to be inline
+ * `style` attributes in `Chrome.tsx`, unreachable from any stylesheet without
+ * `!important`. They are `.tk-up` / `.tk-dn` classes now, so this sheet has to
+ * supply what the inline styles used to — see the end of section 2.
+ */
+
+/* ----------------------------------------------------------------------------
+   1 · THE MERGED ROW
+   ---------------------------------------------------------------------------- */
+
+/* `flex-wrap: nowrap` IS LOAD-BEARING, not tidying. The reference sets
+   `flex-wrap: wrap` on `.app-top` (v40css) so its four controls could drop a
+   line on a phone. With the pinned group in the row that is no longer a
+   graceful fallback but the failure mode: the group is elastic, so the row is
+   always exactly full, and the first sub-pixel rounding error drops whatever
+   is last — measured at 1600px in the `paid` state, the avatar alone on a
+   second line under everything else. Wrapping is re-enabled deliberately at
+   the bottom breakpoint, where it is the intended behaviour.
+
+   `height: auto` + `min-height` because the 26px figure, not a constant, now
+   sets how tall this is.
+
+   THE BOTTOM BORDER GOES TO BLACK rather than being removed. The reference's
+   `1px solid var(--line)` is a #e5e7eb hairline that would glow across the
+   foot of a black row, but dropping the border outright would shift every
+   pixel below it up by one. Same box, no seam. */
+.mv-ref-app .app-top {
+  background: var(--ink);
+  border-bottom-color: var(--ink);
+  color: #d7efe3;
+  height: auto;
+  min-height: 58px;
+  gap: 8px 16px;
+  flex-wrap: nowrap;
+  /* `.app-top` was 50 and `#mvPinBar` was 49. One row, one value — kept at the
+     higher of the two, so nothing that used to pass under the pinned bar now
+     passes over the merged one. */
+  z-index: 50;
+}
+
+/* `#mvPinBar` IS NOW A FLEX CHILD, not a bar. Most of this is an undo of its
+   own chrome; its descendant rules are untouched and still apply — including
+   every colour in it, which is the point of the row being dark.
+
+   It is the row's ELASTIC element — `flex: 1 1 auto; min-width: 0` — so it is
+   the thing that gives when the window narrows. The account controls are
+   `flex: none` in the reference and stay that way: they must never shrink,
+   because a half-width avatar is not a smaller avatar, it is a broken one. */
+.mv-ref-app .app-top #mvPinBar {
+  position: static;
+  top: auto;
+  z-index: auto;
+  background: none;
+  border-bottom: 0;
+  padding: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 6px 14px;
+  flex-wrap: nowrap;
+}
+
+/* `.spacer` was the top bar's only way to push the controls right. `#mvPinBar`
+   grows into that job now, so a second growing element would just compete with
+   it for the same pixels. It comes back at the bottom breakpoint. */
+.mv-ref-app .app-top .spacer {
+  display: none;
+}
+
+/* THE FIGURE NEVER SHRINKS. It is the reason the bar is pinned; it is not a
+   candidate for the space the prices need. */
+.mv-ref-app .app-top #mvPinBar .pin-val-wrap {
+  flex: none;
+}
+
+/* AND THE PRICE STRIP ABSORBS EVERYTHING — this is the mechanism that makes
+   one row survive a narrow window, and it replaced a six-step breakpoint
+   ladder that hid one price at a time.
+
+   The ladder did not work. Each threshold had to be derived from the measured
+   width of the tile it dropped, every state changed those widths (`Premium
+   plan` is 48px wider a pill than `Lapsed`), and the arithmetic left steps
+   with four pixels of margin — a layout that survives on four pixels does not
+   survive a font swap. Worse, it was the wrong trade: a hidden price is gone,
+   and the reader has no way to know it existed.
+
+   `flex: 1 1 auto; min-width: 0` + `overflow-x: auto` instead. The strip takes
+   the slack when there is any and scrolls when there is not, so no width
+   clips a price and every settlement stays reachable at every width. The
+   reference already does exactly this at 767px; it is its own answer, applied
+   at all widths because the merged row needs it at all widths.
+
+   `justify-content: flex-start` AND `margin-left: 0` GO TOGETHER. The
+   reference right-aligns this strip, and right-aligned content that outgrows
+   its box overflows off the LEADING edge — where `overflow-x: auto` cannot
+   scroll back to it, because there is no scrollable area in that direction.
+   `portal.css` documents the same fix and the measurement behind it. */
+.mv-ref-app .app-top #mvPinBar .pin-spot {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 0;
+  justify-content: flex-start;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+/* A scrollbar would sit across the numbers on a 58px row. */
+.mv-ref-app .app-top #mvPinBar .pin-spot::-webkit-scrollbar {
+  display: none;
+}
+
+/* The provenance note is last in the group, so with slack it lands hard against
+   the account controls — which reads as a fifth control. Pushed back to the
+   prices it belongs to. */
+.mv-ref-app .app-top #mvPinBar .pin-note {
+  flex: none;
+  margin-right: 2px;
+}
+
+/* THE ONE CONTROL THE REFERENCE LEFT SHRINKABLE. `.mv-statewrap`, `.bellbtn`
+   and `.mv-menuwrap` are all `flex: none` there, but `.plan-pill` is a bare
+   span at the default `0 1 auto` — which never mattered while `.spacer` sat
+   between it and the content, absorbing every pixel of squeeze before it could
+   reach the controls.
+
+   `#mvPinBar` grows into that space now, so the pill is reachable by the
+   shrink algorithm for the first time, and it does not shrink gracefully: at
+   1280px in the `paid` state "PREMIUM PLAN" wrapped inside its own pill and
+   took the row to two lines of text. `flex: none` keeps it out of the
+   negotiation and `nowrap` means a future longer plan name cannot reopen it. */
+.mv-ref-app .app-top .plan-pill {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* ----------------------------------------------------------------------------
+   2 · THE ACCOUNT CONTROLS, REPAINTED FOR A BLACK ROW
+
+   `.plan-pill` (mint on green ink) and `.avatar` (green on green ink) already
+   read correctly against black and are deliberately absent from this section —
+   they were designed as the bright things on the bar and that is still exactly
+   what they are. The two with white fills and grey borders are not.
+   ---------------------------------------------------------------------------- */
+
+/* The state button. `.btn-ghost` sets `color` with `!important`, so beating it
+   needs one too — this is not belt-and-braces, it is the only way in. */
+.mv-ref-app .app-top .btn-ghost {
+  background: rgba(255, 255, 255, 0.08);
+  color: #d7efe3 !important;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.mv-ref-app .app-top .btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.mv-ref-app .app-top .bellbtn {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #d7efe3;
+}
+
+.mv-ref-app .app-top .bellbtn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* The badge's ring was `2px solid #fff` — invisible on a white bar, a bullseye
+   on this one. It matches the row it sits on instead. */
+.mv-ref-app .app-top .bellbtn .bdg {
+  border-color: var(--ink);
+}
+
+.mv-ref-app .app-top .app-hamburger {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* THE DELTA ARROWS. These two are the only pinned-content colours this sheet
+   has to state, because they were inline `style` attributes in `Chrome.tsx`
+   until they became classes and no stylesheet ever owned them. The values are
+   the ones that were inline — the pair the reference picked for this dark
+   ground — so nothing about the arrows changes, only where the colour lives. */
+.mv-ref-app .app-top #mvPinBar .pin-tk .tk-chg.tk-up {
+  color: #7fe3bd;
+}
+
+.mv-ref-app .app-top #mvPinBar .pin-tk .tk-chg.tk-dn {
+  color: #ff9a8b;
+}
+
+/* ----------------------------------------------------------------------------
+   3 · WHAT GOES, AND IN WHAT ORDER
+
+   Section 1 means the row cannot clip and cannot wrap, so nothing below is
+   required — every rule here only buys the price strip room before it has to
+   start scrolling, and each drops something whose fact is available elsewhere.
+
+   ORDER OF SACRIFICE: the provenance note (the same date is in the drawer the
+   figure opens), then the value's range (likewise), then the "YOUR MINERALS"
+   label (a 26px green figure in the chrome does not need to be told what it
+   is). The figure itself, the four settlements and every account control never
+   go — they either fit or they scroll.
+
+   The reference's own `#mvPinBar` ladder (propane at 1180, Brent at 1020) is
+   left to fire underneath this. Those two are the least-watched of the four,
+   and by that width the strip is scrolling anyway.
+   ---------------------------------------------------------------------------- */
+
+@media (max-width: 1700px) {
+  .mv-ref-app .app-top #mvPinBar .pin-note {
+    display: none;
+  }
+}
+
+/* `.pin-sub` also carries the `lapsed` state's "on hold — Premium", which is
+   said again by the plan pill two elements to its right — so this drops a
+   duplicate there rather than a fact. */
+@media (max-width: 1500px) {
+  .mv-ref-app .app-top #mvPinBar .pin-sub {
+    display: none;
+  }
+}
+
+@media (max-width: 1300px) {
+  .mv-ref-app .app-top #mvPinBar .pin-label {
+    display: none;
+  }
+}
+
+/* THE ONE PLACE THE ROW BECOMES TWO AGAIN, and here that is the right answer
+   rather than a failure: below this the account controls alone are most of the
+   width, and a scrolling strip with 60px of visible runway shows one price at
+   a time. So the pinned group takes a full second line — which is what the
+   reference does at 767px, for the same reason, and roughly what this looked
+   like before it was merged.
+
+   `order: 1` puts that line UNDER the controls, so the account controls stay
+   on the line that is always visible. `.spacer` comes back to push them right
+   up there.
+
+   ONLY THE LABEL COMES BACK, and this was measured rather than assumed. A
+   full-width second line sounds like room for everything section 3 dropped,
+   and the first version of this block restored all three on that reasoning.
+   It is not room: at 1024px the line is 721px against ~1100px of content, so
+   restoring the note and the range just spent 230px of the strip's runway and
+   cut it off mid-way through NAT GAS — two of the four settlements behind a
+   scroll to buy back a date that is in the drawer. The label is 100px and it
+   is what tells the reader the green figure is theirs, so it earns its width
+   where the other two do not. */
+@media (max-width: 1024px) {
+  .mv-ref-app .app-top {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    padding-bottom: 6px;
+  }
+
+  .mv-ref-app .app-top .spacer {
+    display: block;
+  }
+
+  .mv-ref-app .app-top #mvPinBar {
+    order: 1;
+    flex: 1 0 100%;
+    width: 100%;
+  }
+
+  .mv-ref-app .app-top #mvPinBar .pin-label {
+    display: inline;
+  }
+}
+
+/* The reference's own phone rules for `#mvPinBar` assume it is a bar. Most are
+   already undone by section 1, but its `padding: 5px 14px` is set inside the
+   767px query and would put the group out of line with the row above it. */
+@media (max-width: 767px) {
+  .mv-ref-app .app-top #mvPinBar {
+    padding: 0;
+  }
+}

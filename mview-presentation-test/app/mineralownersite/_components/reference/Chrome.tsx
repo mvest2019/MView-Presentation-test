@@ -259,12 +259,85 @@ export default function Chrome(c: ChromeProps) {
 
         <div className="app-top">
           <button className="app-hamburger" onClick={() => setNav((v) => !v)} aria-label="Menu">☰</button>
-          <span className="pagename">{ROUTE_TITLE[c.route]}</span>
+          {/* NO PAGE NAME. It used to sit here and it was the third thing on
+              screen saying the same word: the sidebar row is already marked
+              `aria-current="page"` and painted green, and the page's own `<h1>`
+              names the route immediately below. On the merged row it was also
+              84px of the width the settlements now want.
+
+              `ROUTE_TITLE` stays — the phone bottom bar labels its five tabs
+              from it. */}
           {c.sample
             ? <span className="mv-demochip" title="Nothing claimed — every amount is illustrative">
                 Sample data
               </span>
             : null}
+          {/* THE VALUE AND THE SETTLEMENTS, ON THE CHROME ROW ITSELF.
+
+              They were a second sticky band under this one (`#mvPinBar` at
+              `top:58px`). Two bands cost 106px of every screen before any
+              page content, and OW-30 — "I don't want to have so much at the
+              top that you bury everything below it" — is an argument against
+              the stack, not just against a tall bar. One row honours it
+              better than two slim ones do.
+
+              `#mvPinBar` IS KEPT AS THE WRAPPER, not unwrapped into loose
+              children, because every rule that styles this content is scoped
+              to that id — `#mvPinBar .pin-val`, `#mvPinBar .pin-tk .sym`,
+              the lapsed blur, the whole width ladder. Nested here it keeps
+              all of them and only sheds its own bar chrome (its background,
+              its border, its sticky position), which the overrides sheet
+              does. Unwrapping would have meant re-homing ~20 rules.
+
+              IT SITS BEFORE `.spacer`, so the reading order is page name →
+              value → prices → account controls, and the controls stay hard
+              right where they have always been. */}
+          {/* ------------------------------- the pinned value, INLINE */}
+          <div id="mvPinBar" role="group" aria-label="Your portfolio value and the commodity settlements">
+            {c.sample
+              ? (
+                <span className="nc-inline pin-claim">
+                  Claim your mineral owner record to see what it is worth —{' '}
+                  <a href="#claim" onClick={(e) => { e.preventDefault(); c.open('value'); }}>
+                    what the estimate is →
+                  </a>
+                </span>
+              )
+              : (
+                <div
+                  className="pin-val-wrap" role="button" tabIndex={0}
+                  onClick={() => c.open('value')}
+                  onKeyDown={(e) => { if (e.key === 'Enter') c.open('value'); }}
+                  title="Your value estimate — an estimate, not an appraisal. Click for how it is worked out."
+                >
+                  <span className="pin-label">Your minerals</span>
+                  <span className="pin-val num cl-lock">{usd(c.p?.totals.owner_value) ?? '—'}</span>
+                  {/* Short on purpose. This is ONE slim line that also carries four
+                      settlements; the full range and the re-run date are in the
+                      drawer this whole block opens. Measured: the longer wording
+                      put the bar 64px over its width and clipped the first price. */}
+                  <span className="pin-sub hide-s">
+                    {c.funnel === 'lapsed'
+                      ? 'on hold — Premium'
+                      : t
+                        ? `${usdShort(t.owner_value_low)}–${usdShort(t.owner_value_high)}`
+                        : 'estimate, not an appraisal'}
+                  </span>
+                </div>
+              )}
+
+            <PriceStrip ticker={c.p?.ticker ?? null} open={c.open} />
+
+            {c.p
+              ? (
+                <span className="pin-note">
+                  {productWord(c.p.totals.has_gas, c.p.totals.has_oil)} through{' '}
+                  {c.p.as_of.data_month_label ?? '—'}
+                </span>
+              )
+              : null}
+          </div>
+
           <span className="spacer" />
 
           {/* ACCOUNT STATE — on the bar, not in the profile menu.
@@ -378,60 +451,16 @@ export default function Chrome(c: ChromeProps) {
           </div>
         </div>
 
-        {/* THE PLAN BANNER — between the top bar and the pinned value, which
-            is where the redesign puts it. `#mvFunnelBar` is display:none by
-            default and revealed per state by mvfunnelstates.css, so `paid`
-            correctly shows nothing at all. */}
+        {/* THE PLAN BANNER — directly under the chrome row, which is still
+            where the redesign puts it: the row above now carries the pinned
+            value too, so "between the top bar and the pinned value" is one
+            position rather than two and this is it. `#mvFunnelBar` is
+            display:none by default and revealed per state by
+            mvfunnelstates.css, so `paid` correctly shows nothing at all. */}
         <FunnelBar
           p={c.p} funnel={c.funnel} trialStarted={c.trialStarted}
           setFunnel={c.setFunnel} go={c.go} open={c.open}
         />
-
-        {/* --------------------------------------------- pinned value line */}
-        <div id="mvPinBar" role="group" aria-label="Your portfolio value and the commodity settlements">
-          {c.sample
-            ? (
-              <span className="nc-inline pin-claim">
-                Claim your mineral owner record to see what it is worth —{' '}
-                <a href="#claim" onClick={(e) => { e.preventDefault(); c.open('value'); }}>
-                  what the estimate is →
-                </a>
-              </span>
-            )
-            : (
-              <div
-                className="pin-val-wrap" role="button" tabIndex={0}
-                onClick={() => c.open('value')}
-                onKeyDown={(e) => { if (e.key === 'Enter') c.open('value'); }}
-                title="Your value estimate — an estimate, not an appraisal. Click for how it is worked out."
-              >
-                <span className="pin-label">Your minerals</span>
-                <span className="pin-val num cl-lock">{usd(c.p?.totals.owner_value) ?? '—'}</span>
-                {/* Short on purpose. This is ONE slim line that also carries four
-                    settlements; the full range and the re-run date are in the
-                    drawer this whole block opens. Measured: the longer wording
-                    put the bar 64px over its width and clipped the first price. */}
-                <span className="pin-sub hide-s">
-                  {c.funnel === 'lapsed'
-                    ? 'on hold — Premium'
-                    : t
-                      ? `${usdShort(t.owner_value_low)}–${usdShort(t.owner_value_high)}`
-                      : 'estimate, not an appraisal'}
-                </span>
-              </div>
-            )}
-
-          <PriceStrip ticker={c.p?.ticker ?? null} open={c.open} />
-
-          {c.p
-            ? (
-              <span className="pin-note">
-                {productWord(c.p.totals.has_gas, c.p.totals.has_oil)} through{' '}
-                {c.p.as_of.data_month_label ?? '—'}
-              </span>
-            )
-            : null}
-        </div>
 
         <div className="app-body">
           {c.children}
@@ -491,11 +520,18 @@ function PriceStrip({ ticker, open }: { ticker: Payload['ticker']; open: (k: str
           {q.display
             ? <span className="mv-spot-val">{q.display}</span>
             : <span className="tk-na">n/a</span>}
+          {/* THE DELTA CARRIES A CLASS, NOT AN INLINE `style`. Its two colours
+              were literals here — `#7fe3bd` and `#ff9a8b`, both picked to sit
+              on the dark pinned bar. An inline style is unreachable from a
+              stylesheet without `!important`, so when the bar's background
+              changed these were the one pair of colours that could not follow
+              it, and a pale mint arrow on white is invisible. The sheet owns
+              them now: `.tk-up` / `.tk-dn` in
+              `dashboard-reference.onebar.css`. */}
           {q.change_pct != null && Math.abs(q.change_pct) >= 0.005
             ? (
               <span
-                className="tk-chg"
-                style={{ color: q.change_pct >= 0 ? '#7fe3bd' : '#ff9a8b' }}
+                className={'tk-chg ' + (q.change_pct >= 0 ? 'tk-up' : 'tk-dn')}
               >
                 {q.change_pct > 0 ? '▲' : '▼'}{Math.abs(q.change_pct).toFixed(1)}%
               </span>
