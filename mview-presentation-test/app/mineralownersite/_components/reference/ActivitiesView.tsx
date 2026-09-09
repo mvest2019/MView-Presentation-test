@@ -356,7 +356,12 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
               {unclaimed ? 'This record' : 'Your leases'} first — production filed, operator
               changes and your rings — then everything filed around{' '}
               {unclaimed ? 'it' : 'you'}: permits, completions and well-status changes in your{' '}
-              {plural(p.totals.counties.length, 'county', 'counties')}
+              {/* FROM THE API, not the capture. `/activity/summary` returns
+                  `counties` for exactly this sentence; `p.totals.counties` is
+                  portfolio data with no endpoint in the Alerts/Activity
+                  contract, so reading it here quietly pinned one word of a
+                  live page to a committed fixture. */}
+              {plural(ac.counties.length, 'county', 'counties')}
             </p>
           </div>
           <div className="flex" style={{ flexWrap: 'wrap', gap: 6 }}>
