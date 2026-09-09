@@ -114,6 +114,7 @@ export function StepProve({
   claimError,
   onConfirm,
   onBack,
+  alreadyClaimed,
 }: {
   claimSet: Async<ClaimSet>;
   memberId: number | null;
@@ -126,6 +127,8 @@ export function StepProve({
   claimError: string | null;
   onConfirm: () => void;
   onBack: () => void;
+  /** The claim is already filed and step 4 sent the reader back to review it. */
+  alreadyClaimed: boolean;
 }) {
   const records = claimSet.data?.records ?? [];
   const others = claimSet.data?.others ?? [];
@@ -165,8 +168,9 @@ export function StepProve({
    * So the gates are named one at a time, in the order the reader can act on
    * them, and the unmet one is the tooltip.
    */
-  const blocked =
-    confirmed.length === 0
+  const blocked = alreadyClaimed
+    ? /* Nothing left to gate — the write is done. */ null
+    : confirmed.length === 0
       ? "Tick at least one address above."
       : !attested
         ? "Tick the good-faith statement above."
@@ -310,6 +314,17 @@ export function StepProve({
         </p>
       )}
 
+      {/* WHY THIS SCREEN LOOKS DIFFERENT ON THE WAY BACK. Without it, a reader
+          who steps back from their leases finds a confirm screen and reasonably
+          assumes nothing has been filed yet. */}
+      {alreadyClaimed && (
+        <p className="rounded-mv border border-mv-mint-line bg-mv-mint px-4 py-3 text-[12px] leading-[1.55] text-mv-green-ink">
+          <b className="font-bold">This claim is already filed.</b> You are
+          looking at what was claimed — nothing here will be sent again. Unclaim
+          any of it later from Settings.
+        </p>
+      )}
+
       {claimError && <FlowError message={claimError} onRetry={onConfirm} />}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3 border-t border-mv-line pt-[18px]">
@@ -328,7 +343,11 @@ export function StepProve({
           )}
           {claiming
             ? "Filing your claim…"
-            : `Confirm ${confirmed.length} address${confirmed.length === 1 ? "" : "es"} & continue →`}
+            : alreadyClaimed
+              ? /* A claim is not filed twice, so the label stops promising to
+                   file one. It moves the reader on instead. */
+                "Back to your leases →"
+              : `Confirm ${confirmed.length} address${confirmed.length === 1 ? "" : "es"} & continue →`}
         </PortalButton>
 
         {/* The same reason as the tooltip, said where a touch reader can read

@@ -6,6 +6,7 @@ import type {
   OwnerRecord,
   SameNameResult,
 } from "../_lib/claim-types";
+import { MAX_CLAIM_OWNERS } from "../_lib/claim-types";
 
 /**
  * THE CLAIM FLOW'S ENTIRE API LAYER — all six `/api/v1/owners/*` endpoints, in
@@ -66,14 +67,32 @@ const OWNERS = `${BASE}/api/v1/owners`;
 /** 20s: the counties tally is computed in the background and can be slow warm. */
 const TIMEOUT_MS = 20_000;
 
-async function getJson<T>(url: string, what: string): Promise<T> {
+/**
+ * `signal` LETS A CALLER CANCEL — it is combined with the timeout rather than
+ * replacing it, so a cancellable request still gives up after 20s on its own.
+ *
+ * An aborted fetch lands in the same catch as a dead network, and the two mean
+ * opposite things: one is "we gave up on purpose", the other is "tell the
+ * reader something broke". Callers pass their own signal and check
+ * `signal.aborted` before writing any state — see the debounced search.
+ */
+async function getJson<T>(
+  url: string,
+  what: string,
+  signal?: AbortSignal,
+): Promise<T> {
+  const timeout = AbortSignal.timeout(TIMEOUT_MS);
   let res: Response;
   try {
-    res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+    res = await fetch(url, {
+      signal: signal ? AbortSignal.any([timeout, signal]) : timeout,
+    });
   } catch (cause) {
     /* A network failure and a timeout arrive here identically, and the reader
        can do the same thing about both, so they get the same sentence. */
-    throw new Error(`Could not reach the records service to ${what}.`, { cause });
+    throw new Error(`Could not reach the records service to ${what}.`, {
+      cause,
+    });
   }
   if (!res.ok) {
     throw new Error(`The records service could not ${what} (${res.status}).`);
@@ -246,7 +265,8 @@ function toLeaseSet(
   const leases: FlowLease[] = counties.flatMap((c) =>
     (c.leases ?? []).map((name, i) => {
       const value = c.leaseValues?.[i] ?? 0;
-      const known = c.county === selected?.county ? detail.get(name) : undefined;
+      const known =
+        c.county === selected?.county ? detail.get(name) : undefined;
       return {
         name,
         number: known?.number ?? null,
@@ -331,18 +351,22 @@ export interface OwnerSearchResult {
  * STATEWIDE IS THE ABSENCE OF `county`, never a literal "*": the backend 404s
  * on that.
  */
-export async function searchOwners(query: {
-  q?: string;
-  name?: string;
-  lease?: string;
-  county?: string;
-  address?: string;
-  street?: string;
-  city?: string;
-  zip?: string;
-  page?: number;
-  limit?: number;
-}): Promise<OwnerSearchResult> {
+export async function searchOwners(
+  query: {
+    q?: string;
+    name?: string;
+    lease?: string;
+    county?: string;
+    address?: string;
+    street?: string;
+    city?: string;
+    zip?: string;
+    page?: number;
+    limit?: number;
+  },
+  /** Abort this search when a newer keystroke supersedes it. */
+  signal?: AbortSignal,
+): Promise<OwnerSearchResult> {
   const p = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
     const v = typeof value === "number" ? String(value) : value?.trim();
@@ -356,7 +380,7 @@ export async function searchOwners(query: {
     owners?: WireOwner[];
     total?: number;
     truncated?: boolean;
-  }>(`${OWNERS}/search?${p}`, "run that search");
+  }>(`${OWNERS}/search?${p}`, "run that search", signal);
 
   if (!Array.isArray(data.owners)) {
     throw new Error(
@@ -479,8 +503,10 @@ export async function postClaim(
   if (ownerNames.length === 0) {
     throw new Error("Pick at least one record to claim.");
   }
-  if (ownerNames.length > 25) {
-    throw new Error("A single claim can cover at most 25 owner records.");
+  if (ownerNames.length > MAX_CLAIM_OWNERS) {
+    throw new Error(
+      `A single claim can cover at most ${MAX_CLAIM_OWNERS} owner records.`,
+    );
   }
 
   let res: Response;
@@ -574,9 +600,7 @@ export function postAddressCorrection(
  * A record the reader already picked is never also listed as an "other": it is
  * theirs by selection, not a candidate to consider.
  */
-export async function fetchClaimSet(
-  picked: OwnerRecord[],
-): Promise<ClaimSet> {
+export async function fetchClaimSet(picked: OwnerRecord[]): Promise<ClaimSet> {
   if (picked.length === 0) throw new Error("Pick at least one record.");
 
   const answers = await Promise.all(

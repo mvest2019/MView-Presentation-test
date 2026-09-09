@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   fetchClaimSet,
@@ -10,13 +10,14 @@ import {
   type ClaimResult,
 } from "../_api/claim-api";
 import { byValueDesc, leaseKey, recordKey } from "../_lib/claim-format";
-import type {
-  ClaimSet,
-  CountyIndex,
-  OwnerRecord,
-} from "../_lib/claim-types";
+import type { ClaimSet, CountyIndex, OwnerRecord } from "../_lib/claim-types";
 import { ClaimShell } from "./claim-shell";
-import { emptyQuery, type ClaimQuery } from "./search-fields";
+import {
+  SEARCH_DEBOUNCE_MS,
+  emptyQuery,
+  isSearchable,
+  type ClaimQuery,
+} from "./search-fields";
 import { DoneNextCard } from "./done-next-card";
 import { DoneValueCard } from "./done-value-card";
 import { StepDone } from "./steps/step-done";
@@ -140,20 +141,80 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
     loadCounties();
   }
 
-  async function runSearch() {
-    setResults({ data: null, loading: true, error: null });
+  /*
+   * ONE SEARCH AT A TIME, AND THE LATEST ONE WINS.
+   *
+   * Without this the flow has a race it loses silently. Type "poo", then
+   * "pooja"; "poo" matches thousands and takes longer to come back, so it
+   * lands AFTER "pooja" and overwrites five specific results with three
+   * thousand vague ones — under a search box that says "pooja". The bug looks
+   * like the API returning nonsense.
+   *
+   * So each new search aborts the one before it, and the response is thrown
+   * away unless its own controller is still the live one. Aborting also stops
+   * the browser holding open requests nobody is waiting for.
+   */
+  const searchRef = useRef<AbortController | null>(null);
+
+  /* Serialised copy of the last query actually sent, so arriving on step 2
+     does not immediately re-run the search step 1 just fired. */
+  const searchedRef = useRef<string>("");
+
+  const runSearch = useCallback((next: ClaimQuery) => {
+    searchRef.current?.abort();
+    const controller = new AbortController();
+    searchRef.current = controller;
+    searchedRef.current = JSON.stringify(next);
+
+    /* KEEP THE ROWS THAT ARE ALREADY THERE. Blanking the list on every
+       keystroke made the page flash between a full result and a loading slab;
+       the old rows stay put and step 2 marks them as refreshing instead. */
+    setResults((prev) => ({ data: prev.data, loading: true, error: null }));
+
+    /* NO `limit` — paging on this endpoint is opt-in, and omitting it returns
+       the whole result set. Sending one silently truncated the answer: step
+       2's heading counts the cards on screen, so a capped response made it
+       report fewer candidate records than the search actually matched. */
+    searchOwners(next, controller.signal)
+      .then((found) => {
+        if (controller.signal.aborted) return;
+        setResults({ data: found.owners, loading: false, error: null });
+      })
+      .catch((error) => {
+        /* A superseded search is not a failure — it aborts into this catch
+           exactly like a dead network would, and showing the reader an error
+           for a request we cancelled ourselves would be a lie. */
+        if (controller.signal.aborted) return;
+        setResults({ data: null, loading: false, error: message(error) });
+      });
+  }, []);
+
+  /** Step 1's button: go to the results and search at once, no debounce. */
+  function startSearch() {
     setStep(2);
-    try {
-      /* NO `limit` — paging on this endpoint is opt-in, and omitting it returns
-         the whole result set. Sending one silently truncated the answer: step
-         2's heading counts the cards on screen, so a capped response made it
-         report fewer candidate records than the search actually matched. */
-      const found = await searchOwners(query);
-      setResults({ data: found.owners, loading: false, error: null });
-    } catch (error) {
-      setResults({ data: null, loading: false, error: message(error) });
-    }
+    if (isSearchable(query)) runSearch(query);
   }
+
+  /*
+   * THE DEBOUNCE — one request per pause, not one per keystroke.
+   *
+   * Only on step 2, because that is the only step showing results to update.
+   * The timer is cleared on every change, so the request goes out 400ms after
+   * typing STOPS rather than 400ms after it starts.
+   *
+   * The `searchedRef` guard is what stops this firing a second, identical
+   * search the moment step 1 hands over — the button already sent that exact
+   * query.
+   */
+  useEffect(() => {
+    if (step !== 2 || !isSearchable(query)) return;
+    if (JSON.stringify(query) === searchedRef.current) return;
+    const timer = setTimeout(() => runSearch(query), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [step, query, runSearch]);
+
+  /* Nothing in flight should outlive the flow. */
+  useEffect(() => () => searchRef.current?.abort(), []);
 
   function toggleRecord(record: OwnerRecord, checked: boolean) {
     setPicked((current) =>
@@ -196,6 +257,21 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
    */
   async function confirmClaim() {
     if (memberId === null) return;
+
+    /*
+     * ALREADY FILED — GO FORWARD, DO NOT POST AGAIN.
+     *
+     * Step 4 can now come back here, and step 3 is the step that writes. Left
+     * unguarded, "Back" then "Confirm" would post the same owner names twice:
+     * the backend answers the second with OWNER_ALREADY_CLAIMED per name, so
+     * the receipt the reader lands on would list their own successful claim as
+     * a row of failures. Returning here is a review, so the button moves on.
+     */
+    if (claim.data) {
+      setStep(4);
+      return;
+    }
+
     const records = [
       ...(claimSet.data?.records ?? []),
       ...(claimSet.data?.others ?? []),
@@ -256,7 +332,7 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
           onQueryChange={setQuery}
           counties={counties}
           onRetryCounties={retryCounties}
-          onSearch={runSearch}
+          onSearch={startSearch}
         />
       )}
 
@@ -270,7 +346,10 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
           onToggle={toggleRecord}
           onContinue={resolveSelection}
           resolving={claimSet.loading}
-          onSearch={runSearch}
+          /* Enter skips the debounce — the reader has clearly finished. */
+          onSearch={() => runSearch(query)}
+          tooShort={!isSearchable(query)}
+          onClearSelection={() => setPicked([])}
         />
       )}
 
@@ -292,6 +371,7 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
           claimError={claim.error}
           onConfirm={confirmClaim}
           onBack={() => setStep(2)}
+          alreadyClaimed={claim.data !== null}
         />
       )}
 
@@ -301,6 +381,7 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
           leases={leases}
           all={claimSet.data?.all ?? null}
           onContinue={() => setStep(5)}
+          onBack={() => setStep(3)}
         />
       )}
 

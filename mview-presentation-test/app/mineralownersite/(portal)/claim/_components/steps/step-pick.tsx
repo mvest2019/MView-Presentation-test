@@ -1,11 +1,15 @@
 "use client";
 
-import { ListFilter, LoaderCircle, Lock, Search, Users, X } from "lucide-react";
+import { ListFilter, LoaderCircle, Lock, Users, X } from "lucide-react";
 import { useState } from "react";
 
 import { PortalButton } from "../../../../_components/ui/button";
 import { recordKey } from "../../_lib/claim-format";
-import type { CountyIndex, OwnerRecord } from "../../_lib/claim-types";
+import {
+  MAX_CLAIM_OWNERS as MAX_CLAIM,
+  type CountyIndex,
+  type OwnerRecord,
+} from "../../_lib/claim-types";
 import type { Async } from "../claim-wizard";
 import { FlowEmpty, FlowError, FlowLoading } from "../flow-state";
 import { GuideNote } from "../guide-note";
@@ -23,13 +27,13 @@ import { CandidateCard } from "./candidate-card";
  * together, because `/owners/claim` takes up to 25 owner names in one
  * transaction — running the flow once per spelling was never the intent.
  *
- * ── THE CONFIRM BUTTON IS STICKY, AND THAT IS THE WHOLE POINT ──
+ * ── THE SELECTION BAR IS STICKY, AND THAT IS THE WHOLE POINT ──
  *
  * This list can be 1,153 records long. A button at the foot of it is a button
  * nobody reaches: you tick a record near the top and then scroll for a minute
  * to act on it. Pinned to the bottom of the viewport it is always one click
- * away, and it doubles as the running count of what is ticked — the only place
- * that number can be seen without scrolling back up.
+ * away, and it carries the running count — the only place that number can be
+ * seen without scrolling back up.
  *
  * It clears the portal's fixed mobile tab bar below 1024px, where the two would
  * otherwise occupy the same strip.
@@ -51,6 +55,8 @@ export function StepPick({
   onContinue,
   resolving,
   onSearch,
+  tooShort,
+  onClearSelection,
 }: {
   results: Async<OwnerRecord[]>;
   query: ClaimQuery;
@@ -63,9 +69,20 @@ export function StepPick({
   /** The `/same-name` calls for the selection are in flight. */
   resolving: boolean;
   onSearch: () => void;
+  /** Every filter is under the 3-character floor, so nothing is being asked. */
+  tooShort: boolean;
+  /** Untick everything — the only way back from a selection made up-list. */
+  onClearSelection: () => void;
 }) {
   const records = results.data ?? [];
   const count = selected.length;
+
+  /** No rows yet — the slab. Rows already on screen — keep them, mark stale. */
+  const firstLoad = results.loading && records.length === 0;
+  const refreshing = results.loading && records.length > 0;
+
+  /** `postClaim` throws above this, so the bar refuses to go on. */
+  const overLimit = count > MAX_CLAIM;
 
   /*
    * THE NARROW-DOWN BOX — a filter over the rows already on the page.
@@ -110,7 +127,14 @@ export function StepPick({
   return (
     <div className="grid gap-[18px]">
       {/* CARD ONE — the filter. Its own surface, because it is a control panel
-          and not part of the answer. */}
+          and not part of the answer.
+
+          NO SEARCH BUTTON. The fields search themselves: 400ms after typing
+          stops, and only once a filter is 3 characters long. A button here was
+          a second thing to remember after editing a field, and the results
+          below it are the feedback — pressing it changed nothing that had not
+          already happened. Enter still submits for anyone who reaches for it,
+          and skips the wait. */}
       <form
         className="grid gap-3 rounded-mv border border-mv-line bg-mv-card p-4"
         onSubmit={(event) => {
@@ -124,15 +148,6 @@ export function StepPick({
           counties={counties}
           compact
         />
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <PortalButton variant="primary" size="sm" type="submit">
-            <Search aria-hidden="true" className="h-[14px] w-[14px]" />
-            Search again
-          </PortalButton>
-          <p className="text-[11.5px] text-mv-muted">
-            Too many matches? Add a county or a lease name to narrow them down.
-          </p>
-        </div>
       </form>
 
       {/* CARD TWO — the answer to whatever the filter last asked. */}
@@ -147,18 +162,39 @@ export function StepPick({
           title={
             results.loading
               ? "Searching the public record…"
-              : results.error
+              : results.error || tooShort
                 ? "Pick your record"
                 : `${records.length} candidate owner record${records.length === 1 ? "" : "s"}`
           }
           lead={
-            records.length > 0
+            records.length > 0 && !refreshing
               ? "Tick every record that is you — you can take more than one."
               : undefined
           }
         />
 
-        {results.loading && (
+        {/* The rows below are the PREVIOUS answer while this runs, so it says
+            so — a count that silently belongs to an older query is worse than
+            no count. */}
+        {refreshing && (
+          <p
+            role="status"
+            className="flex items-center gap-2 text-[12px] text-mv-muted"
+          >
+            <LoaderCircle
+              aria-hidden="true"
+              className="h-[13px] w-[13px] animate-spin text-mv-green-deep"
+            />
+            Updating results…
+          </p>
+        )}
+
+        {/* THE FIRST SEARCH GETS THE BIG BLOCK, A RE-SEARCH DOES NOT. There is
+            nothing to hold the reader's place on the first one, so the slab
+            reserves it. Once rows exist, replacing them with that slab on every
+            pause in typing is a flash between two full-height layouts — the
+            rows stay and the heading says it is refreshing instead. */}
+        {firstLoad && (
           <FlowLoading label="Searching every county appraisal roll…" />
         )}
 
@@ -166,12 +202,22 @@ export function StepPick({
           <FlowError message={results.error} onRetry={onSearch} />
         )}
 
-        {!results.loading && !results.error && records.length === 0 && (
+        {tooShort && !results.loading && (
           <FlowEmpty
-            message="No records matched that search."
-            hint="Try initials, an entity name, or a different county — records often carry old spellings."
+            message="Type at least 3 characters to search."
+            hint="The results update on their own as you type — or pick a county, which searches on its own."
           />
         )}
+
+        {!results.loading &&
+          !results.error &&
+          !tooShort &&
+          records.length === 0 && (
+            <FlowEmpty
+              message="No records matched that search."
+              hint="Try initials, an entity name, or a different county — records often carry old spellings."
+            />
+          )}
 
         {records.length > 0 && (
           <div className="grid gap-2">
@@ -238,30 +284,85 @@ export function StepPick({
         )}
       </div>
 
-      {/* THE STICKY ACTION BAR. Only once something is ticked — an empty bar
-          pinned over a list the reader is still reading is just lost height. */}
+      {/*
+        THE SELECTION BAR — a floating pill, not a full-width panel.
+
+        ── IT USED TO COVER THE LIST IT BELONGS TO ──
+
+        A white card the full width of the results, pinned to the bottom, sits
+        ON the two rows you are scrolling past — an opaque band through the
+        middle of the answer. Sticky positioning guarantees an overlap somewhere
+        in the scroll; the only question is how much it hides. Centred and only
+        as wide as its contents, the rows either side stay readable, and the
+        wrapper is `pointer-events-none` so the bar never eats a click meant
+        for a card beside it.
+
+        ── DARK, BECAUSE IT IS NOT PART OF THE PAGE ──
+
+        `mv-deep` is the portal's own dark surface — the value band at the top
+        of this very screen. White-on-white needed a border to prove it was
+        floating; this reads as an overlay on sight, and the green button gains
+        contrast it never had against a white card.
+
+        ── THE COUNT IS SAID ONCE ──
+
+        It was "1 record selected" beside a button reading "Confirm 1 record →
+        step 3" — the same number twice, in a bar whose whole job is to be
+        glanceable. The chip carries it; the button just moves you on.
+
+        ── 25 IS A REAL CEILING, AND THIS IS THE ONLY PLACE TO SAY SO ──
+
+        `/owners/claim` refuses more than 25 owner names in one call. Finding
+        that out on step 3, after picking 30 records and attesting to them, is a
+        dead end two screens deep — so the bar stops it here, where the ticks
+        are.
+      */}
       {count > 0 && (
-        <div className="sticky bottom-3 z-30 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-mv border border-mv-green bg-mv-card p-3 shadow-mv-lg max-[1024px]:bottom-[76px]">
-          <p className="text-[12.5px] font-semibold text-mv-ink">
-            {count} record{count === 1 ? "" : "s"} selected
-          </p>
-          <PortalButton
-            variant="primary"
-            size="sm"
-            className="ml-auto"
-            onClick={onContinue}
-            disabled={resolving}
-          >
-            {resolving && (
-              <LoaderCircle
-                aria-hidden="true"
-                className="h-[14px] w-[14px] animate-spin"
-              />
+        <div className="pointer-events-none sticky bottom-4 z-30 flex justify-center max-[1024px]:bottom-[84px]">
+          <div className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-full border border-white/10 bg-mv-deep py-2 pr-2 pl-3 shadow-mv-lg">
+            <span className="flex items-center gap-2 text-[12.5px] font-semibold text-mv-on-deep">
+              <span
+                className={`flex h-[22px] min-w-[22px] items-center justify-center rounded-full px-[6px] text-[11.5px] font-bold tabular-nums ${
+                  overLimit
+                    ? "bg-mv-red text-white"
+                    : "bg-mv-on-deep-accent text-mv-deep-ink"
+                }`}
+              >
+                {count}
+              </span>
+              selected
+            </span>
+
+            {overLimit ? (
+              <span className="text-[11.5px] text-mv-on-deep-soft">
+                25 is the most one claim can take — untick {count - MAX_CLAIM}.
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={onClearSelection}
+                className="cursor-pointer text-[11.5px] font-semibold text-mv-on-deep-soft underline underline-offset-2 hover:text-mv-on-deep"
+              >
+                Clear
+              </button>
             )}
-            {resolving
-              ? "Checking these records…"
-              : `Confirm ${count} record${count === 1 ? "" : "s"} → step 3`}
-          </PortalButton>
+
+            <PortalButton
+              variant="primary"
+              size="sm"
+              className="rounded-full"
+              onClick={onContinue}
+              disabled={resolving || overLimit}
+            >
+              {resolving && (
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="h-[14px] w-[14px] animate-spin"
+                />
+              )}
+              {resolving ? "Checking these records…" : "Continue →"}
+            </PortalButton>
+          </div>
         </div>
       )}
 
