@@ -1,4 +1,4 @@
-import { ChevronDown, type LucideIcon } from "lucide-react";
+import { ChevronDown, X, type LucideIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 
 /**
@@ -89,23 +89,86 @@ export function FieldFrame({
   );
 }
 
+/**
+ * THE X THAT EMPTIES ONE FIELD.
+ *
+ * ── WHY PER FIELD, WHEN THERE IS ALREADY A RESET ──
+ *
+ * "Reset filters" clears all four and drops the results with them. That is the
+ * wrong tool for the common case: someone searches a name, adds a county to
+ * narrow it, and then wants the county gone and the name kept. Reset means
+ * retyping the name; the only alternative was select-all-and-delete inside a
+ * box, which is a fiddly thing to ask for on a phone.
+ *
+ * ── IT ONLY EXISTS WHEN THERE IS SOMETHING TO CLEAR ──
+ *
+ * An X on an empty field is a control that does nothing, drawn on every field
+ * of an untouched form — four of them, all inert. It appears with the first
+ * character and goes with the last.
+ *
+ * ── AND CLEARING RE-RUNS THE SEARCH ──
+ *
+ * It goes through the same `onChange` as typing, so the wizard's debounce sees
+ * an ordinary edit and asks the API for the narrower query. Nothing about this
+ * button is a special path.
+ */
+export function FieldClear({
+  onClick,
+  label,
+  className = "right-[8px]",
+}: {
+  onClick: () => void;
+  /** Says WHICH field — "Clear owner name", not "Clear". */
+  label: string;
+  /** Where it sits, for a field that already has a glyph on its right edge. */
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={`absolute top-1/2 z-10 flex h-[20px] w-[20px] -translate-y-1/2 cursor-pointer items-center justify-center rounded-full text-mv-muted transition-colors hover:bg-mv-hover hover:text-mv-ink ${className}`}
+    >
+      <X aria-hidden="true" className="h-[13px] w-[13px]" />
+    </button>
+  );
+}
+
 export function ClaimTextField({
   label,
   qualifier,
   icon: Icon,
+  onClear,
   ...props
 }: {
   label: string;
   qualifier?: string;
   icon: LucideIcon;
+  /** Supplied by the caller that owns the value — see `FieldClear`. */
+  onClear?: () => void;
 } & ComponentProps<"input">) {
+  const filled = String(props.value ?? "") !== "";
+
   return (
     <FieldFrame label={label} qualifier={qualifier}>
       <Icon
         aria-hidden="true"
         className="pointer-events-none absolute top-1/2 left-3 h-[14px] w-[14px] -translate-y-1/2 text-mv-muted"
       />
-      <input className={FIELD_BASE} {...props} />
+      {/* The right padding grows only while the X is there, so an empty field
+          keeps the full width for its placeholder. */}
+      <input
+        className={`${FIELD_BASE} ${onClear && filled ? "!pr-9" : ""}`}
+        {...props}
+      />
+      {/* A `<button>` inside the wrapping `<label>` is interactive content, so
+          the label does not forward the click to the input — the X clears, and
+          does not also focus. */}
+      {onClear && filled && (
+        <FieldClear onClick={onClear} label={`Clear ${label.toLowerCase()}`} />
+      )}
     </FieldFrame>
   );
 }

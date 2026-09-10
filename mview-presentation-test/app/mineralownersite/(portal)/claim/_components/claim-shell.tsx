@@ -45,6 +45,7 @@ export function ClaimShell({
   current,
   done = false,
   below,
+  scrollOnChange = true,
   children,
 }: {
   current: number;
@@ -59,6 +60,16 @@ export function ClaimShell({
    * blocks that used to sit in the rail.
    */
   below?: ReactNode;
+  /**
+   * RETURN TO THE TOP WHEN THE STEP CHANGES. True on the real flow, where each
+   * step's button is at the bottom of a long screen.
+   *
+   * The sample walkthrough turns it OFF. It renders this shell inside a modal
+   * that advances itself every few seconds, and the scroll it would fire moves
+   * the PAGE BEHIND the dialog — a page the reader cannot see and did not ask
+   * to move, left somewhere else when the popup closes.
+   */
+  scrollOnChange?: boolean;
   children: ReactNode;
 }) {
   const step = claimSteps[current - 1];
@@ -66,6 +77,8 @@ export function ClaimShell({
   const mounted = useRef(false);
 
   useEffect(() => {
+    if (!scrollOnChange) return;
+
     if (!mounted.current) {
       mounted.current = true;
       return;
@@ -109,7 +122,7 @@ export function ClaimShell({
       window.scrollTo({ top: Math.max(0, target), behavior: "instant" });
     });
     return () => cancelAnimationFrame(frame);
-  }, [current, done]);
+  }, [current, done, scrollOnChange]);
 
   return (
     <div
@@ -120,7 +133,10 @@ export function ClaimShell({
       className="mv-claim-flow @container rounded-mv border border-mv-line bg-mv-card p-5 shadow-mv max-[767px]:p-3"
     >
       <header className="mb-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
-        <h1 className="flex items-center gap-[9px] text-[17px] font-extrabold tracking-[-.01em] text-mv-ink">
+        <h1
+          data-claim="heading"
+          className="flex items-center gap-[9px] text-[17px] font-extrabold tracking-[-.01em] text-mv-ink"
+        >
           <ShieldCheck
             aria-hidden="true"
             className="h-[19px] w-[19px] text-mv-green-deep"
@@ -186,7 +202,10 @@ export function ClaimShell({
           step 4's stat tiles, step 5's lease cards) measure the column they live
           in rather than the window, which is what keeps them right in all four
           portal densities. Dropping the rail simply makes that column wider. */}
-      <div className="@container rounded-mv border border-mv-line bg-mv-card p-[22px] max-[767px]:p-4">
+      <div
+        data-claim="panel"
+        className="@container rounded-mv border border-mv-line bg-mv-card p-[22px] max-[767px]:p-4"
+      >
         {children}
       </div>
 

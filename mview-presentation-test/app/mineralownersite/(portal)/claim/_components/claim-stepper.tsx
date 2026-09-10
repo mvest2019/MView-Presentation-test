@@ -40,7 +40,10 @@ import { claimSteps } from "../_lib/claim-steps";
  */
 export function ClaimStepper({ current }: { current: number }) {
   return (
-    <ol className="flex gap-0 overflow-x-auto rounded-mv border border-mv-line bg-mv-card px-4 pt-[14px]">
+    <ol
+      data-claim="stepper"
+      className="flex gap-0 overflow-x-auto rounded-mv border border-mv-line bg-mv-card px-4 pt-[14px]"
+    >
       {claimSteps.map((step) => {
         const done = step.n < current;
         const active = step.n === current;
@@ -65,6 +68,7 @@ export function ClaimStepper({ current }: { current: number }) {
             {step.n > 1 && (
               <span
                 aria-hidden="true"
+                data-claim="step-line"
                 className="absolute top-[13px] right-1/2 left-[-50%] h-[2px] bg-mv-line"
               >
                 <span
@@ -75,6 +79,7 @@ export function ClaimStepper({ current }: { current: number }) {
             )}
 
             <span
+              data-claim="step-dot"
               className={`relative z-[1] flex h-[26px] w-[26px] flex-none items-center justify-center rounded-full text-[12px] font-bold ${
                 done || active
                   ? "bg-mv-green-deep text-white"
@@ -108,6 +113,7 @@ export function ClaimStepper({ current }: { current: number }) {
                     exactly as wide as the word above it — the width the border
                     used to have. */}
             <span
+              data-claim="step-label"
               className={`relative flex-1 px-1 pb-[11px] text-center text-[12.5px] leading-[1.3] ${
                 active
                   ? "font-bold text-mv-ink"

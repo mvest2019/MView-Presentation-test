@@ -1,10 +1,15 @@
 "use client";
 
-import { FileText, ListTree, LoaderCircle } from "lucide-react";
-import Link from "next/link";
+import {
+  ArrowRight,
+  CircleCheck,
+  FileText,
+  ListTree,
+  LoaderCircle,
+} from "lucide-react";
+import { useMemo, useState } from "react";
 
 import { Badge } from "../../../../_components/ui/badge";
-import { PortalButton } from "../../../../_components/ui/button";
 import {
   Table,
   TableBody,
@@ -20,6 +25,104 @@ import { FlowEmpty, FlowError } from "../flow-state";
 import { GuideNote } from "../guide-note";
 import { StepIntro } from "../step-intro";
 import { LeaseStatStrip } from "./lease-stat-strip";
+
+/** The six columns, and how each one orders. */
+type SortKey = "lease" | "operator" | "county" | "decimal" | "status";
+
+interface Sort {
+  key: SortKey;
+  dir: "asc" | "desc";
+}
+
+/**
+ * ORDERING THE ROWS.
+ *
+ * ── EMPTY CELLS SINK, WHICHEVER WAY THE COLUMN IS POINTED ──
+ *
+ * Operator and decimal interest are `null` on every lease outside the record's
+ * own county — the endpoint does not serve them — so a naive comparator puts a
+ * block of em dashes at the top of the table the first time anybody sorts by
+ * either. Sorting is for finding a row, and no reader is looking for the rows
+ * that have nothing in them. Missing values go last in both directions.
+ *
+ * ── THERE IS NO `play` KEY, BECAUSE THERE IS NO PLAY COLUMN ──
+ *
+ * It was here as drawn and printed an em dash on every row: no owners endpoint
+ * carries a play, formation or basin — the record has `leases`, `leaseValues`,
+ * `leaseNumbers`, `interestValues` and `operators`, and nothing else. A column
+ * that can only ever be empty is width spent on nothing, so it is gone
+ * (requested) and the five that can be answered have the room.
+ */
+function compare(a: FlowLease, b: FlowLease, key: SortKey): number {
+  if (key === "lease") return a.name.localeCompare(b.name);
+  if (key === "county") return a.county.localeCompare(b.county);
+  if (key === "status") return Number(a.producing) - Number(b.producing);
+  if (key === "operator") {
+    if (a.operator === b.operator) return 0;
+    if (!a.operator) return 1;
+    if (!b.operator) return -1;
+    return a.operator.localeCompare(b.operator);
+  }
+
+  if (a.decimal === b.decimal) return 0;
+  if (a.decimal === null) return 1;
+  if (b.decimal === null) return -1;
+  return a.decimal - b.decimal;
+}
+
+/**
+ * A COLUMN HEADING THAT SORTS.
+ *
+ * ── NO GLYPH (requested) ──
+ *
+ * It carried two facing chevrons at rest and a single arrow when active. Both
+ * are gone, so the state is carried by WEIGHT AND COLOUR instead: the column
+ * being sorted is near-black, the others are slate. That is a weaker signal
+ * than an arrow and it is the trade that was asked for — five glyphs across a
+ * header band is a lot of furniture for a table of six rows.
+ *
+ * `aria-sort` is unaffected and still names the column and its direction, so a
+ * screen reader is told exactly what the arrow used to say.
+ *
+ * The button fills the cell rather than sitting inside it, so the whole heading
+ * is the target and the cursor change covers the width of the column.
+ */
+function SortHeader({
+  label,
+  column,
+  sort,
+  onSort,
+  numeric = false,
+}: {
+  label: string;
+  column: SortKey;
+  sort: Sort;
+  onSort: (key: SortKey) => void;
+  numeric?: boolean;
+}) {
+  const active = sort.key === column;
+
+  return (
+    <TableHeaderCell
+      numeric={numeric}
+      aria-sort={
+        active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"
+      }
+      className="!p-0"
+    >
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        title={`Sort by ${label.toLowerCase()}`}
+        className={`flex w-full cursor-pointer items-center gap-[5px] border-0 bg-transparent px-[14px] py-[9px] text-[11px] font-bold tracking-[0.06em] uppercase transition-colors hover:text-mv-green-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-mv-green-deep ${
+          numeric ? "justify-end" : "justify-start"
+        } ${active ? "text-mv-green-ink" : "text-mv-slate"}`}
+      >
+        {label}
+      </button>
+    </TableHeaderCell>
+  );
+}
 
 /**
  * STEP 4 — the lease set the claim will take, AND THE STEP THAT FILES IT.
@@ -78,6 +181,26 @@ export function StepLeases({
   onContinue: () => void;
   onBack: () => void;
 }) {
+  /* THE TABLE OPENS IN THE ORDER THE ENDPOINT GAVE, which groups a name's
+     leases together; sorting is something the reader asks for. Lease-ascending
+     is the first thing they get, because the name is the column they read. */
+  const [sort, setSort] = useState<Sort>({ key: "lease", dir: "asc" });
+
+  const sorted = useMemo(() => {
+    const direction = sort.dir === "asc" ? 1 : -1;
+    /* A COPY. `leases` is the wizard's state, and `Array.prototype.sort`
+       mutates — sorting the prop in place would reorder what step 5 counts. */
+    return [...leases].sort((a, b) => compare(a, b, sort.key) * direction);
+  }, [leases, sort]);
+
+  function sortBy(key: SortKey) {
+    setSort((current) =>
+      current.key === key
+        ? { key, dir: current.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: "asc" },
+    );
+  }
+
   /*
    * THE GATES ON THE WRITE, NAMED ONE AT A TIME.
    *
@@ -120,6 +243,12 @@ export function StepLeases({
         />
       ) : (
         <>
+          {/* THE TALLY FRAMES THE TABLE. It answers "how big is this claim",
+              which is a question the reader has before the first row rather
+              than after the last — and under a capped, self-scrolling table it
+              was easy to never reach at all. */}
+          <LeaseStatStrip leases={leases} />
+
           {/*
             THE TABLE SCROLLS ITSELF INSTEAD OF THE PAGE.
 
@@ -131,27 +260,76 @@ export function StepLeases({
 
             THE HEADER STICKS, which is the half that makes the cap usable. Six
             columns of bare numbers twelve rows down mean nothing without their
-            names. `bg-mv-card` on the cells is not decoration — `thead` has no
-            background of its own, so the body rows would otherwise scroll
-            straight through the header text.
+            names, and the header is now also the sort control — scrolled away,
+            re-ordering the table would mean scrolling back up first.
+            THE TINT NEEDS `!`, AND THAT IS NOT A SHORTCUT. `portal.css` styles
+            `.mv-portal th` with `background: #fafbfc` and `padding: 10px 14px`
+            from a bare element selector, and it is UNLAYERED — so it beats a
+            Tailwind utility whatever the specificity. Without the bang the
+            header kept the portal's own near-white and the cell kept 10px of
+            padding on top of the sort button's own, which is where the extra
+            height came from. The background is load-bearing besides: `thead`
+            has none of its own, so body rows would scroll straight through the
+            header text.
 
             `overscroll-contain` stops a flick inside the table carrying on into
             the page once it bottoms out.
+
+            `!rounded-lg` OVERRIDES `TableScroll`'s OWN `rounded-mv` (requested:
+            8px, not 12). The bang is doing real work — both are single classes,
+            so which one wins is decided by Tailwind's output order rather than
+            by which is written later in the attribute, and without it the
+            result would be luck.
+
+            THE SCROLLBAR IS STYLED TWICE, ON PURPOSE. `scrollbar-width` and
+            `scrollbar-color` are the standard properties and are what Firefox
+            reads; the `::-webkit-scrollbar` rules are what older WebKit builds
+            read, and a browser that understands both simply takes the standard
+            pair. Writing only one leaves the OS default — a 17px grey slab —
+            in half the browsers this portal is opened in.
+
+            `thin` rather than a width in the standard property because that is
+            all it accepts; the 6px is for the WebKit side.
           */}
-          <TableScroll className="max-h-[440px] overflow-y-auto overscroll-contain [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-10 [&_thead_th]:bg-mv-card">
-            <Table minWidth={760}>
+          <TableScroll className="!rounded-lg max-h-[440px] overflow-y-auto overscroll-contain [scrollbar-color:var(--color-mv-ink)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-[6px] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-mv-ink [&::-webkit-scrollbar-track]:bg-transparent [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-10 [&_thead_th]:!bg-mv-line-strong">
+            <Table minWidth={680}>
               <TableHead>
                 <TableRow>
-                  <TableHeaderCell>Lease (no.)</TableHeaderCell>
-                  <TableHeaderCell>Operator</TableHeaderCell>
-                  <TableHeaderCell>County</TableHeaderCell>
-                  <TableHeaderCell>Play</TableHeaderCell>
-                  <TableHeaderCell numeric>Decimal interest</TableHeaderCell>
-                  <TableHeaderCell>Status</TableHeaderCell>
+                  <SortHeader
+                    label="Lease (no.)"
+                    column="lease"
+                    sort={sort}
+                    onSort={sortBy}
+                  />
+                  <SortHeader
+                    label="Operator"
+                    column="operator"
+                    sort={sort}
+                    onSort={sortBy}
+                  />
+                  <SortHeader
+                    label="County"
+                    column="county"
+                    sort={sort}
+                    onSort={sortBy}
+                  />
+                  <SortHeader
+                    label="Decimal interest"
+                    column="decimal"
+                    sort={sort}
+                    onSort={sortBy}
+                    numeric
+                  />
+                  <SortHeader
+                    label="Status"
+                    column="status"
+                    sort={sort}
+                    onSort={sortBy}
+                  />
                 </TableRow>
               </TableHead>
               <TableBody>
-                {leases.map((lease) => (
+                {sorted.map((lease) => (
                   <TableRow key={`${lease.county}|${lease.name}`}>
                     <TableCell>
                       <span className="flex items-start gap-[6px] font-semibold text-mv-green-deep">
@@ -171,14 +349,6 @@ export function StepLeases({
                     <TableCell className="text-mv-slate">
                       {lease.county}
                     </TableCell>
-                    {/* PLAY IS NOT SERVED. No owners endpoint carries a play,
-                        formation or basin — the record has `leases`,
-                        `leaseValues`, `leaseNumbers`, `interestValues` and
-                        `operators`, and nothing else. The column is here as
-                        asked and prints an em dash, the same as the other
-                        columns the roll cannot answer; a guessed play would be
-                        indistinguishable from a filed one. */}
-                    <TableCell className="text-mv-slate">—</TableCell>
                     <TableCell numeric className="text-mv-slate">
                       {decimalInterest(lease.decimal)}
                     </TableCell>
@@ -195,8 +365,6 @@ export function StepLeases({
               </TableBody>
             </Table>
           </TableScroll>
-
-          <LeaseStatStrip leases={leases} />
         </>
       )}
 
@@ -207,49 +375,73 @@ export function StepLeases({
         rather than a guess.
       </GuideNote>
 
-      {/* SIGNING IN IS ENFORCED HERE, because this is the step that posts.
-          `/owners/claim` rejects an anonymous claim with a 400, so a signed-out
-          reader is told rather than handed a button that cannot work. */}
-      {memberId === null && !alreadyClaimed && (
-        <p className="rounded-mv border border-mv-sand-line bg-mv-sand-tint px-4 py-3 text-[12px] leading-[1.55] text-mv-sand">
-          <b className="font-bold">A claim needs an account to belong to.</b>{" "}
-          <Link
-            href="/login?next=/mineralownersite/claim"
-            className="font-semibold underline underline-offset-2"
-          >
-            Sign in
-          </Link>{" "}
-          and this step will file it — nothing you have entered is lost.
-        </p>
-      )}
+      {/*
+        THE SIGN-IN BANNER IS GONE, AND THE GATE IS NOT.
+
+        A sand-tinted paragraph sat here whenever `memberId` was null, saying a
+        claim needs an account. Step 3 already says exactly that, one screen
+        earlier and before the reader has spent any time on this table — so the
+        second copy told them something they had just been told, and pushed the
+        button it was about further down the page.
+
+        The button still refuses to file without a member id (see `blocked`
+        above) and still says why in its own tooltip. What was removed is the
+        duplicate announcement, not the rule.
+      */}
 
       {claimError && <FlowError message={claimError} onRetry={onContinue} />}
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-mv-line pt-[18px]">
-        <PortalButton
-          variant="primary"
+      {/*
+        THE FOOTER IS A TALLY AND A COMMIT, RANGED APART.
+
+        What the reader is agreeing to is a number, and it now sits on the left
+        as a number with its own caption rather than being carried only by the
+        button's label. The button keeps the count too — it is the last thing
+        read before the claim is filed, and "Claim" alone would leave the reader
+        to look back up the page for how many.
+      */}
+      <div
+        data-claim="step-actions"
+        className="flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-mv-line pt-[18px]"
+      >
+        <div>
+          <p className="text-[11px] font-semibold text-mv-muted">
+            Total records
+          </p>
+          <p className="mt-[2px] text-[15px] font-bold text-mv-ink">
+            {leases.length} joined lease{leases.length === 1 ? "" : "s"}
+          </p>
+        </div>
+
+        <button
+          type="button"
           onClick={onContinue}
           disabled={!canFile}
-          className={canFile ? undefined : "cursor-not-allowed opacity-50"}
           title={blocked ?? undefined}
+          className={`ml-auto inline-flex items-center gap-[9px] rounded-full bg-mv-green-deep px-[22px] py-[12px] text-[14px] font-semibold text-white shadow-[0_6px_16px_rgba(46,143,109,.28)] transition-[filter,opacity] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep ${
+            canFile
+              ? "cursor-pointer hover:brightness-110"
+              : "cursor-not-allowed opacity-50"
+          }`}
         >
-          {claiming && (
+          {claiming ? (
             <LoaderCircle
               aria-hidden="true"
-              className="h-[15px] w-[15px] animate-spin"
+              className="h-[17px] w-[17px] animate-spin"
             />
+          ) : (
+            <CircleCheck aria-hidden="true" className="h-[17px] w-[17px]" />
           )}
+
           {claiming
             ? "Filing your claim…"
             : alreadyClaimed
               ? /* Already filed — this only moves to the receipt. */
-                "View your claim →"
-              : /* NO ARROW, AND NO STEP NUMBER. Every other button in the flow
-                   advances a screen; this one WRITES the claim, and an arrow
-                   would file it under the same gesture as "next". The count
-                   stays because it is what the reader is committing to. */
-                `Claim ${leases.length} lease${leases.length === 1 ? "" : "s"}`}
-        </PortalButton>
+                "View your claim"
+              : `Claim ${leases.length} lease${leases.length === 1 ? "" : "s"}`}
+
+          <ArrowRight aria-hidden="true" className="h-[16px] w-[16px]" />
+        </button>
       </div>
     </div>
   );

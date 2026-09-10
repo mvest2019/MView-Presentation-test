@@ -28,6 +28,7 @@ export function StepIntro({
   lead,
   onBack,
   backLabel,
+  aside,
   children,
 }: {
   step: number;
@@ -46,6 +47,19 @@ export function StepIntro({
    */
   onBack?: () => void;
   backLabel?: string;
+  /**
+   * ONE CONTROL, RANGED RIGHT ON THE HEADING LINE.
+   *
+   * For the thing that is ABOUT this step rather than a move within it — step
+   * 1's "Watch a sample claim". The footer holds the way forward; the top-right
+   * corner is where a reader looks for the way to understand what they are
+   * being asked, and it is on screen before the form rather than after it.
+   *
+   * It is deliberately not a general slot for buttons: anything that acts on
+   * the step's own data belongs in the footer with Search, where the reader is
+   * already deciding.
+   */
+  aside?: ReactNode;
   children?: ReactNode;
 }) {
   return (
@@ -69,7 +83,7 @@ export function StepIntro({
 
           `items-center` against the two-line block, so the 34px tile centres on
           the eyebrow-plus-heading rather than hanging off the top of it. */}
-      <div className="flex items-center gap-[14px]">
+      <div className="flex flex-wrap items-center gap-[14px]">
         <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px] bg-mv-mint text-mv-green-deep">
           <Icon
             aria-hidden="true"
@@ -90,10 +104,19 @@ export function StepIntro({
               competing with it for attention, so the emphasis was spent on a
               contest that was not happening. Bold on `mv-slate` (#1e293b) is
               still unmistakably the heading and stops it reading as shouted. */}
-          <h2 className="mt-[3px] text-[clamp(19px,2.6vw,23px)] font-bold leading-[1.25] tracking-[-.01em] text-mv-slate">
+          <h2
+            data-claim="step-title"
+            className="mt-[3px] text-[clamp(19px,2.6vw,23px)] font-bold leading-[1.25] tracking-[-.01em] text-mv-slate"
+          >
             {title}
           </h2>
         </div>
+
+        {/* `ml-auto` rather than `justify-between`, so the corner is empty on
+            the four steps that pass nothing and the heading keeps its place.
+            It wraps under the heading on a narrow card instead of squeezing
+            it — the row is `flex-wrap` for that reason alone. */}
+        {aside && <div className="ml-auto flex-none">{aside}</div>}
       </div>
 
       {/* The lead and the body stay at the FULL width of the column, flush with
@@ -104,7 +127,10 @@ export function StepIntro({
           h2 above, so the two read as one heavy block rather than a title and
           the sentence that follows it. */}
       {lead && (
-        <p className="mt-[14px] text-[14px] font-semibold text-mv-slate">
+        <p
+          data-claim="step-lead"
+          className="mt-[14px] text-[14px] font-semibold text-mv-slate"
+        >
           {lead}
         </p>
       )}

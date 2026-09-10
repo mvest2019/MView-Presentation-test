@@ -49,9 +49,27 @@ export function AddressEditButton({
   reported: boolean;
   onOpen: () => void;
 }) {
+  /*
+   * IT LOOKS LIKE A BUTTON AT REST, NOT ONLY ON HOVER.
+   *
+   * It was borderless with a transparent edge that only appeared under the
+   * pointer, so on a card of three addresses the three triggers read as three
+   * grey labels — and a reader who does not happen to sweep the mouse across
+   * them never learns the address can be corrected at all. A resting border and
+   * a card background make it a control; the hover then only has to say "this
+   * one", which it does in the brand green.
+   *
+   * The two states are built to the same measurements so the row does not
+   * reflow when one becomes the other.
+   */
+  const shell =
+    "flex flex-none items-center gap-[6px] rounded-lg border px-[11px] py-[6px] text-[11.5px] font-semibold";
+
   if (reported) {
     return (
-      <span className="flex flex-none items-center gap-[5px] text-[11.5px] font-semibold text-mv-green-deep">
+      <span
+        className={`${shell} border-mv-mint-edge bg-mv-mint text-mv-green-deep`}
+      >
         <Check aria-hidden="true" className="h-[13px] w-[13px]" />
         Reported
       </span>
@@ -66,7 +84,7 @@ export function AddressEditButton({
         onOpen();
       }}
       title="Tell us the mailing address on this record is wrong"
-      className="flex flex-none items-center gap-[5px] rounded-[7px] border border-transparent px-[8px] py-[5px] text-[11.5px] font-semibold text-mv-muted transition-colors hover:border-mv-line hover:bg-mv-card hover:text-mv-green-deep"
+      className={`${shell} cursor-pointer border-mv-line bg-mv-card text-mv-slate transition-colors hover:border-mv-green-deep hover:bg-mv-mint/50 hover:text-mv-green-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep`}
     >
       <Pencil aria-hidden="true" className="h-[12px] w-[12px]" />
       Edit
