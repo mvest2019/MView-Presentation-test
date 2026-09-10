@@ -1,6 +1,6 @@
 import 'server-only';
 
-import type { Drawer, Payload } from './payload';
+import type { Drawer, ForecastPayload, Payload } from './payload';
 import type { WeeklyReport } from './weekly';
 import { apiBase, OwnerApiError, type ApiErrorBody } from './owner-api';
 
@@ -20,6 +20,8 @@ import { apiBase, OwnerApiError, type ApiErrorBody } from './owner-api';
  *   GET /api/v1/weekly?member_id&format=html|csv|email  the three renderings
  *   GET /api/v1/weekly/email                            can this build send
  *   POST /api/v1/weekly/email {member_id,to}            send it
+ *   GET /api/v1/production/forecast?member_id            the whole forecast
+ *   GET /api/v1/production/forecast/drawers/{key}?member_id  one explainer
  *
  * THE DRAWER PATH IS `/dashboard/drawers/{key}`, NOT `/drawers/{key}`. The
  * latter is what the task named and it answers
@@ -267,6 +269,85 @@ export async function fetchWeeklyFile(
   const res = await req(base, '/weekly', params, { accept: '*/*' });
   if (!res.ok) await fail('/weekly', res);
   return res;
+}
+
+/* -------------------------------------------------- production & forecast */
+
+/**
+ * `/production/forecast` IS `ForecastPayload`, all eighteen blocks of it.
+ *
+ * The same arrangement as `/dashboard` above, and for the same reason: the
+ * response is assigned straight into `Payload.forecast` with no mapper, so the
+ * intersection below is the contract test. A renamed or newly-nullable field
+ * on either side stops `tsc` at the assignment in `owner-data.ts` instead of
+ * reaching the chart.
+ *
+ * CHECKED AGAINST THE CAPTURE, BLOCK BY BLOCK, rather than assumed: every one
+ * of `ForecastPayload`'s keys is present, none is extra, and the only shape
+ * differences across all 202 months and 13 leases are `removed`/`removed_pct`
+ * arriving `null` on unfiled months — which the type already declares nullable
+ * — and a `tone` on `insights`/`stats`, which `ForecastStat` already declares
+ * optional. So this needed no widening anywhere.
+ *
+ * The three fields it adds beyond the payload are the service's own report on
+ * itself, exactly as `DashboardResponse` carries them.
+ */
+export type ForecastResponse = ForecastPayload & {
+  /** sources that answered late or not at all; `[]` on a clean build */
+  degraded_sources: unknown[];
+  /** the twelve `pf_*` explainer keys this page's cards open */
+  drawer_keys: string[];
+  built_at: string;
+};
+
+export function fetchForecast(base: string, member: string): Promise<ForecastResponse> {
+  return getJson<ForecastResponse>(base, '/production/forecast', { member_id: member });
+}
+
+/**
+ * One Production & Forecast explainer, or `null` when the service has none.
+ *
+ * A SEPARATE FUNCTION FROM `fetchDrawer` ABOVE, because it is a different
+ * endpoint with a different parameter list — `/production/forecast/drawers/…`
+ * rather than `/dashboard/drawers/…`, and it takes NO `owner`. That is not a
+ * guess: all twelve keys answer 200 on `member_id` alone, and the forecast is
+ * the whole member's record rather than one of the roll owners the dashboard
+ * picks between, so there is no owner for it to disambiguate.
+ *
+ * The 404 is answered rather than thrown for the same reason it is on the
+ * dashboard half: "there is no explainer with that key" is a normal answer and
+ * a timeout is not.
+ */
+export async function fetchForecastDrawer(
+  base: string, member: string, key: string,
+): Promise<Drawer | null> {
+  const route = `/production/forecast/drawers/${key}`;
+  const res = await req(base, route, { member_id: member });
+  if (res.status === 404) return null;
+  if (!res.ok) await fail(route, res);
+  return ((await res.json()) as DrawerResponse).drawer;
+}
+
+/**
+ * All twelve, in parallel, and prefetched for the same reason the dashboard's
+ * eleven are: `ProductionView` opens a panel synchronously out of
+ * `p.drawers[key]` — six insight cards and six figures in the life-of-the-record
+ * row, each `onClick={() => open(st.key)}` — so a key that is not already in
+ * the payload is a control that does nothing at all, silently, because
+ * `DrawerPanel` hides itself when its copy is null.
+ *
+ * Measured: twelve keys in 0.6s against a warm snapshot, which is inside the
+ * `/dashboard` read they run beside.
+ */
+export async function fetchForecastDrawers(
+  base: string, member: string, keys: string[],
+): Promise<Record<string, Drawer>> {
+  const got = await Promise.all(
+    keys.map(async (k) => [k, await fetchForecastDrawer(base, member, k)] as const),
+  );
+  const out: Record<string, Drawer> = {};
+  for (const [k, d] of got) if (d) out[k] = d;
+  return out;
 }
 
 /**

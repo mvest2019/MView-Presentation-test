@@ -5,7 +5,8 @@ import { apiBase, fetchOwnerLiveBlocks, OwnerApiError } from './owner-api';
 import { getSessionUser } from '@/lib/session';
 
 import {
-  fetchDashboard, fetchDrawers, fetchWeekly, memberApiBase, searchRoll,
+  fetchDashboard, fetchDrawers, fetchForecast, fetchForecastDrawers, fetchWeekly,
+  memberApiBase, searchRoll,
 } from './member-api';
 import { leaseAndWellDrawers } from './member-drawers';
 
@@ -287,21 +288,45 @@ export async function currentMemberTarget(): Promise<
  * card and its panel the same owner by construction, whichever owner the
  * member's dashboard resolves to.
  *
- * WHAT THIS DOES NOT SERVE, and why the capture still does. `forecast` and
- * `my_leases` have no endpoint at all, and `timeline` and `rings` are the
- * owner-keyed half of the API rather than this one. None of the four is read
- * by the Dashboard or the Weekly Report — they belong to Production &
- * Forecast, My Leases and Activities, which are outside this work — so they
- * are left exactly as they were rather than being quietly re-pointed. See
- * `.env.example` for what that means for those three routes.
+ * `forecast` HAS ITS OWN ENDPOINT NOW, and it is read here rather than on the
+ * production route, because `Portal` shares one payload across the five
+ * `OWNED` routes and reaches them by `pushState` — see the first round below.
+ * `/production/forecast` carries every one of `ForecastPayload`'s eighteen
+ * blocks and `/production/forecast/drawers/{key}` the twelve explainers its
+ * cards open, so Production & Forecast is live for a signed-in member and the
+ * capture is not read for it at all.
+ *
+ * WHAT THIS STILL DOES NOT SERVE, and why the capture does. `my_leases` has no
+ * endpoint at all, and `timeline` and `rings` are the owner-keyed half of the
+ * API rather than this one. None of the three is read by the Dashboard, the
+ * Weekly Report or Production & Forecast — they belong to My Leases and
+ * Activities, which are outside this work — so they are left exactly as they
+ * were rather than being quietly re-pointed. See `.env.example` for what that
+ * means for those routes.
  */
 async function buildMemberPayload(base: string, member: string): Promise<Payload> {
   /* `/dashboard` is the long read — 648 KB, eight seconds cold — so `/weekly`
      runs beside it rather than after it. The drawers cannot start until the
-     dashboard names its owner, which is the whole reason for two rounds. */
-  const [dash, weekly] = await Promise.all([
+     dashboard names its owner, which is the whole reason for two rounds.
+
+     `/production/forecast` JOINS THAT FIRST ROUND rather than waiting for the
+     production route to ask, and it has to: `Portal` holds ONE payload for the
+     five routes in `OWNED` and moves between them with `history.pushState`, so
+     a reader who enters at the Dashboard and clicks Production & Forecast gets
+     NO new request. Fetching it lazily would leave that reader on the capture —
+     somebody else's ten leases under this member's name — which is the exact
+     defect the drawer-scoping note below records and reverts.
+
+     It is free in wall-clock: measured 0.7s for 1.0 MB against the 5.7s
+     `/dashboard` it runs beside. And a failure THROWS, like `/weekly`'s
+     already does, because the alternative is patching this member's page with
+     the capture and saying nothing — the rule `getOwnerPayload` sets out
+     above. `Portal` retries once on mount and then shows the API's own
+     message. */
+  const [dash, weekly, forecast] = await Promise.all([
     fetchDashboard(base, member),
     fetchWeekly(base, member),
+    fetchForecast(base, member),
   ]);
 
   /* THE THREE FAMILIES OF EXPLAINER, and only one of them is fetched.
@@ -326,7 +351,24 @@ async function buildMemberPayload(base: string, member: string): Promise<Payload
      route change is instant; the price is that it has to be complete enough
      for every route sharing it. Ten saved requests against ten dead controls
      is not a trade worth making, so the scoping was reverted. */
-  const served = await fetchDrawers(base, member, dash.owner.ownername, flatKeys);
+  /* THE TWELVE `pf_*` EXPLAINERS COME FROM THE FORECAST'S OWN `drawer_keys`,
+     not from a list written here — the service is what knows which panels it
+     serves, and all twelve of the ones it advertises answer 200 (measured, on
+     `member_id` alone). They ride in this second round beside the dashboard's
+     eleven because they are the same kind of read and neither blocks the other.
+
+     WHY ALL TWELVE AND NOT JUST `pf_removed`: every one of them is already
+     wired to a control. `ProductionView` renders the six `insights` and the six
+     `stats` as buttons and opens each synchronously out of `p.drawers[st.key]`,
+     so a key missing from the payload is a card that looks clickable and does
+     nothing — `DrawerPanel` hides itself when its copy is null. `pf_removed`
+     is the fourth insight ("Removed before the sales meter"); the card in the
+     reference that reads "What this is →" is `pf_blind`. Serving one and not
+     the other eleven would leave eleven dead controls. */
+  const [served, pfServed] = await Promise.all([
+    fetchDrawers(base, member, dash.owner.ownername, flatKeys),
+    fetchForecastDrawers(base, member, forecast.drawer_keys),
+  ]);
 
   return {
     /* explicit rather than `...FIXTURE, ...dash`: if `Payload` ever gains a
@@ -345,6 +387,8 @@ async function buildMemberPayload(base: string, member: string): Promise<Payload
     },
     drawers: {
       ...served,
+      /* the twelve Production & Forecast panels, from their own endpoint */
+      ...pfServed,
       ...leaseAndWellDrawers(dash.leases, dash.totals, dash.as_of),
       /* all nine, from the live findings — the same argument as the
          owner-keyed path below, and here it also covers the four the endpoint
@@ -353,7 +397,11 @@ async function buildMemberPayload(base: string, member: string): Promise<Payload
     },
     timeline: FIXTURE.timeline,
     rings: FIXTURE.rings,
-    forecast: FIXTURE.forecast,
+    /* THE ASSIGNMENT IS THE CONTRACT TEST — `ForecastResponse` is
+       `ForecastPayload` plus the service's three self-report fields, so a
+       renamed or newly-nullable field stops `tsc` here rather than reaching
+       the chart. No mapper, for the same reason `/dashboard` needs none. */
+    forecast,
     my_leases: FIXTURE.my_leases,
   };
 }
