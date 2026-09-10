@@ -13,6 +13,7 @@ import {
   isSearchable,
   type ClaimQuery,
 } from "../search-fields";
+import { SampleFlowButton } from "../sample-flow/sample-flow-dialog";
 import { StepIntro } from "../step-intro";
 
 /**
@@ -75,24 +76,35 @@ export function StepFind({
 
   return (
     <form
+      data-claim="find-form"
       className="grid gap-[18px]"
       onSubmit={(event) => {
         event.preventDefault();
         onSearch();
       }}
     >
+      {/* THE SAMPLE MOVED TO THE HEADING LINE (requested).
+          Beside Search in the footer it read as the second of two ways to
+          submit the form, which it is not — it files nothing and takes no
+          input. In the card's top-right corner it is what it actually is: the
+          way to see what this screen leads to, offered BEFORE the form rather
+          than after the reader has already worked out what to type. */}
       <StepIntro
         step={1}
         icon={Search}
         title="Find your record"
         lead="Search the public record to find the owner record you want to claim."
+        aside={<SampleFlowButton />}
       />
 
       {counties.error && (
         <FlowError message={counties.error} onRetry={onRetryCounties} />
       )}
 
-      <div className="rounded-mv border border-mv-line p-5">
+      <div
+        data-claim="find-fields"
+        className="rounded-mv border border-mv-line p-5"
+      >
         <ClaimSearchFields
           query={query}
           onChange={onQueryChange}
@@ -110,7 +122,10 @@ export function StepFind({
         on this step — search only.
       </GuideNote>
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-mv-line pt-[18px]">
+      <div
+        data-claim="step-actions"
+        className="flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-mv-line pt-[18px]"
+      >
         <PortalButton
           variant="primary"
           type="submit"

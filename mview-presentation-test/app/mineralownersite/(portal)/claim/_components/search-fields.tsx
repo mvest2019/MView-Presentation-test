@@ -112,6 +112,7 @@ export function ClaimSearchFields({
         name="ownerName"
         value={query.name}
         onChange={(e) => onChange({ ...query, name: e.target.value })}
+        onClear={() => onChange({ ...query, name: "" })}
         placeholder="e.g. Mineral Owner's Name"
         autoComplete="name"
       />
@@ -129,6 +130,7 @@ export function ClaimSearchFields({
         name="lease"
         value={query.lease}
         onChange={(e) => onChange({ ...query, lease: e.target.value })}
+        onClear={() => onChange({ ...query, lease: "" })}
         placeholder="e.g. Smith Gas Unit"
       />
 
@@ -139,6 +141,7 @@ export function ClaimSearchFields({
         name="address"
         value={query.address}
         onChange={(e) => onChange({ ...query, address: e.target.value })}
+        onClear={() => onChange({ ...query, address: "" })}
         placeholder="e.g. Houston, or 8800 S Harlem"
       />
     </div>

@@ -482,15 +482,35 @@ export async function fetchLeaseOwners(params: {
  * own example is a name showing 19 leases in Archer that holds 22 across two
  * counties, and a claim takes all 22.
  *
- * `county` is accepted by the endpoint and ignored, so it is not sent.
+ * ── THE ADDRESS GOES OUT VERBATIM ──
+ *
+ * `PO BOX 9465, DENVER, CO 80209` — the record's own string, commas, city,
+ * state and ZIP included. Not a street-only or city-only form: the endpoint
+ * matches on the whole thing, and it is the address the reader ticked.
+ *
+ * ── AND SO DOES THE COUNTY ──
+ *
+ * It is sent to match the contract's shape (`?county&name&address`), not
+ * because it narrows anything. Measured against the live API on one record:
+ * with `county=Reeves`, with a deliberately wrong `county=Harris`, and with no
+ * county at all, the three answers differ in exactly one field — `county`
+ * itself, echoed back. `selected`, `records` and `allLeases` (13 leases, same
+ * appraised value, same county list) are identical in all three.
+ *
+ * That is why the statewide totals survive it. A county that FILTERED here
+ * would under-report the claim — the backend's own example is a name showing
+ * 19 leases in Archer that holds 22 across two counties — so if this call ever
+ * starts returning county-sized figures, this parameter is the first suspect.
  */
 export async function fetchSameName(
+  county: string,
   name: string,
   address: string,
 ): Promise<SameNameResult> {
   if (!name.trim()) throw new Error("An owner name is required.");
 
   const p = new URLSearchParams({ name });
+  if (county) p.set("county", county);
   if (address) p.set("address", address);
 
   const data = await getJson<{
@@ -664,7 +684,7 @@ export async function fetchClaimSet(picked: OwnerRecord[]): Promise<ClaimSet> {
   if (picked.length === 0) throw new Error("Pick at least one record.");
 
   const answers = await Promise.all(
-    picked.map((r) => fetchSameName(r.name, r.address)),
+    picked.map((r) => fetchSameName(r.county, r.name, r.address)),
   );
 
   /* The endpoint's own view of each pick where it has one; the row the reader

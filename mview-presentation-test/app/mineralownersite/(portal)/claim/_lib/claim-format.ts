@@ -123,35 +123,118 @@ export function addressKey(address: string): string {
 }
 
 /**
+ * Tokens that mean "still in the street half". Walking back from the state
+ * code, the first of these ends the city — everything before it is address, not
+ * place name.
+ *
+ * A DIGIT IS THE OTHER STOPPER, and between them they cover the roll's shapes:
+ * "PO BOX 446 OLNEY" stops on `446`, "8800 S HARLEM AVE TRLR 1111 BRIDGEVIEW"
+ * stops on `1111`, "399 MESA DR VAL VERDE" stops on `DR` and keeps both words
+ * of the city.
+ */
+const STREET_WORDS = new Set([
+  "ST",
+  "STREET",
+  "RD",
+  "ROAD",
+  "DR",
+  "DRIVE",
+  "AVE",
+  "AVENUE",
+  "BLVD",
+  "LN",
+  "LANE",
+  "HWY",
+  "HIGHWAY",
+  "PKWY",
+  "CT",
+  "COURT",
+  "CIR",
+  "CIRCLE",
+  "TRL",
+  "TRAIL",
+  "WAY",
+  "PL",
+  "PLACE",
+  "LOOP",
+  "RUN",
+  "PASS",
+  "BEND",
+  "TRLR",
+  "APT",
+  "STE",
+  "SUITE",
+  "UNIT",
+  "BOX",
+  "PO",
+  "RR",
+  "FM",
+  "CR",
+  "N",
+  "S",
+  "E",
+  "W",
+  "NE",
+  "NW",
+  "SE",
+  "SW",
+]);
+
+/**
  * "Lampasas, TX" out of a roll address — or `null` when it cannot be found.
  *
- * ── WHY THIS RETURNS `null` INSTEAD OF GUESSING ──
+ * ── IT READS FROM THE END, NOT FROM THE COMMAS ──
  *
  * Roll addresses are one unstructured string and they arrive in three shapes,
  * all of them real in the live data:
  *
  *   3 parts  "%J & NANCY HOLLIMAN TSTEES 8833 TRADEWAY ST, SAN ANTONIO, TX 78217"
  *   2 parts  "PO BOX 446 OLNEY, TX 76374-0446"      ← street and city mashed
- *   1 part   no commas at all
+ *   1 part   "8800 S HARLEM AVE TRLR 1111 BRIDGEVIEW IL 60455 1995"
  *
- * Only the three-part form separates the city with a comma. Treating the
- * two-part form the same way makes the whole of "PO BOX 446 OLNEY" the city —
- * which is how the masked version of that address ended up printing the box
- * number it was supposed to be hiding. There is no reliable way to split
- * "STREET CITY" without a gazetteer, so this says so rather than inventing one.
+ * This used to require the three-part form and return `null` for the other two,
+ * on the grounds that "STREET CITY" cannot be split without a gazetteer. The
+ * cost of that was worse than the risk it avoided: `maskedAddress` falls back
+ * to printing the address UNCHANGED, so step 2's list showed a couple of
+ * records masked to a city and every other one with its full street line — the
+ * exact doorsteps the mask exists to keep off a list of 1,153 strangers, and a
+ * list that looked broken besides.
+ *
+ * The tail is structured even when the head is not: ZIP, then a two-letter
+ * state, then the city. So it strips the ZIP, takes the state, and walks back
+ * word by word until it meets a digit or a street word — which is where the
+ * city begins. No gazetteer, and it does not have to guess where the STREET
+ * starts, only where it stops.
+ *
+ * ── IT STILL RETURNS `null` RATHER THAN GUESSING ──
+ *
+ * No two-letter state at the end means no anchor to walk back from, and an
+ * "UNKNOWN" or a bare name is exactly that. `maskedAddress` prints those as
+ * they are, which for a string with no street in it is the honest answer.
  */
 export function mailCity(address: string): string | null {
-  const parts = address
-    .split(",")
-    .map((p) => p.trim())
+  /* THE COMMAS ARE THROWN AWAY, not parsed. They are the part that varies
+     between the three shapes; the tail is the part that does not. */
+  const words = address
+    .toUpperCase()
+    .replace(/,/g, " ")
+    /* ZIP, ZIP+4, and the run-on "60455 1995" the rolls also produce. */
+    .replace(/\b\d{5}(-\d{4})?( \d{4})?\s*$/, "")
+    .split(/\s+/)
     .filter(Boolean);
-  if (parts.length < 3) return null;
 
-  const state = parts[parts.length - 1]
-    .replace(/\s+\d{5}(-\d{4})?$/, "")
-    .trim();
-  const city = parts[parts.length - 2];
-  return state ? `${city}, ${state}` : city;
+  const state = words[words.length - 1];
+  if (!state || !/^[A-Z]{2}$/.test(state)) return null;
+
+  const city: string[] = [];
+  for (let i = words.length - 2; i >= 0 && city.length < 3; i--) {
+    const word = words[i];
+    if (/\d/.test(word) || STREET_WORDS.has(word)) break;
+    city.unshift(word);
+  }
+
+  if (city.length === 0) return null;
+  return `${city.join(" ")}, ${state}`;
 }
 
 /**

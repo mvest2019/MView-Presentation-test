@@ -5,7 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 
 import type { CountyIndex } from "../_lib/claim-types";
 import type { Async } from "./claim-wizard";
-import { FIELD_BASE, FieldFrame } from "./claim-field";
+import { FIELD_BASE, FieldClear, FieldFrame } from "./claim-field";
 
 /**
  * THE COUNTY PICKER — type to filter, 204 counties.
@@ -64,6 +64,9 @@ export function CountyCombobox({
   const all = index?.counties ?? [];
   const showCounts = index !== null && !index.pending;
   const disabled = counties.loading || all.length === 0;
+
+  /** A county is set AND the box is showing it rather than a typed filter. */
+  const chosen = value !== "" && !open && !disabled;
 
   const needle = query.trim().toLowerCase();
   const matches = needle
@@ -195,8 +198,30 @@ export function CountyCombobox({
           onFocus={show}
           onClick={show}
           onKeyDown={onKeyDown}
-          className={`${FIELD_BASE} cursor-pointer !pr-9 font-medium`}
+          className={`${FIELD_BASE} cursor-pointer font-medium ${
+            chosen ? "!pr-[52px]" : "!pr-9"
+          }`}
         />
+
+        {/* CLEARING A COUNTY IS "ANY TEXAS COUNTY" AGAIN, and until now the only
+            way to say that was to open 204 options and find the first row. The
+            X sits inboard of the chevron because the chevron is still the way
+            in — this removes a filter, it does not replace the picker.
+
+            It is hidden while the list is open: the box then holds what is
+            being TYPED, not the county that is chosen, and an X over a search
+            term that clears something else is a trap. */}
+        {chosen && (
+          <FieldClear
+            className="right-[30px]"
+            label="Clear the county filter"
+            onClick={() => {
+              onChange("");
+              setOpen(false);
+              setQuery("");
+            }}
+          />
+        )}
 
         <ChevronDown
           aria-hidden="true"
