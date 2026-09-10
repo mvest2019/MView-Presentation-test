@@ -1119,7 +1119,7 @@ export function sampleize(real: Payload): SampleResult {
     payload,
     factor: Math.round(f * 1000) / 1000,
     note:
-      'Sample view. The dates, the commodity settlements and the neighbouring public filings are ' +
+      'Sample view. The dates, the commodity settlements and the neighboring public filings are ' +
       'real; the names, amounts and volumes are illustrative. Claim your interests to see your own.',
   };
 }

@@ -1813,7 +1813,7 @@ export const sampleIssue: {
     {
       label: "Page 3 · Activity around you",
       body:
-        "0 permits, 0 completions on your land. 1 new permit and 14 standing permits within a mile; 9 neighbor tracts at work. A labelled mini-map for every lease that changed.",
+        "0 permits, 0 completions on your land. 1 new permit and 14 standing permits within a mile; 9 neighbor tracts at work. A labeled mini-map for every lease that changed.",
     },
     {
       label: "Page 4 · Prices & the world",

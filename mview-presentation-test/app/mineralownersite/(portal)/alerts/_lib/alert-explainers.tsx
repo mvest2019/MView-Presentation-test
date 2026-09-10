@@ -195,7 +195,7 @@ export const alertExplainers: Record<string, AlertExplainer> = {
           is drilling moving toward your lease, and is any of it your own
           operator?
         </strong>{" "}
-        Neighbour permitting de-risks your area without touching your acreage;
+        Neighbor permitting de-risks your area without touching your acreage;
         your operator filing nearby is the pattern that most often precedes
         activity on your units. An interest signal, not income.
       </>
@@ -204,12 +204,12 @@ export const alertExplainers: Record<string, AlertExplainer> = {
       <>
         <li>
           Standing picture: <strong>11 permits within 1 mi of Ledbetter</strong>{" "}
-          (real count) · filings skew to neighbour tracts.
+          (real count) · filings skew to neighbor tracts.
         </li>
         <li>
           Operator split:{" "}
-          <strong>1 your operator (Caddo Pine) · 10 neighbours</strong> — split
-          labelled illustrative until the permit-detail join wires.{" "}
+          <strong>1 your operator (Caddo Pine) · 10 neighbors</strong> — split
+          labeled illustrative until the permit-detail join wires.{" "}
           <Badge tone="blue" size="xs">
             Trend data not available yet
           </Badge>
@@ -217,7 +217,7 @@ export const alertExplainers: Record<string, AlertExplainer> = {
       </>
     ),
     deeper: [
-      { label: "The trend view — windows · direction · month-coloured map →" },
+      { label: "The trend view — windows · direction · month-colored map →" },
     ],
     next: (
       <>
@@ -341,7 +341,7 @@ export const alertExplainers: Record<string, AlertExplainer> = {
           your private group
         </strong>{" "}
         &ldquo;Smith Gas Unit — Owners&rdquo; about two hours ago. This is a
-        message from a neighbour-owner, not from Mineral View and not from the
+        message from a neighbor-owner, not from Mineral View and not from the
         operator.
       </>
     ),

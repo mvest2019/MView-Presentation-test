@@ -187,9 +187,11 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
             </p>
           </div>
           <div className="flex" style={{ flexWrap: 'wrap', gap: 6 }}>
-            <button className="btn btn-primary btn-sm" type="button" onClick={() => window.print()}>
-              Print / Save as PDF
-            </button>
+            {/* ADAPTED · "Print / Save as PDF" and "The filings (CSV)" were
+                removed at the owner's request. "Download the report" still
+                serves the same standalone HTML the print button rendered, and
+                `/api/weekly?format=csv` is untouched — only the two controls
+                are gone, not the routes behind them. */}
             <button
               className="btn btn-ghost btn-sm" type="button"
               onClick={() => setMail((m) => ({ ...m, open: !m.open }))}
@@ -199,9 +201,6 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
             </button>
             <a className="btn btn-ghost btn-sm" href={`/api/weekly?format=html&dl=1&${qs}`}>
               Download the report
-            </a>
-            <a className="btn btn-ghost btn-sm" href={`/api/weekly?format=csv&${qs}`}>
-              The filings (CSV)
             </a>
           </div>
         </div>
@@ -490,7 +489,12 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
                 </div>
 
                 <div className="section-label">The same months at your interest</div>
-                <Tables page={{ tables: pageOf(2)!.tables.slice(1) }} />
+                {/* ADAPTED · TEN ROWS A PAGE. This is the only paged table —
+                    the API returns one row per lease and a large account runs
+                    to twenty-odd, which is a long scroll inside a report page.
+                    `pageSize` is opt-in, so every other `Tables` call renders
+                    exactly as the reference does. */}
+                <Tables page={{ tables: pageOf(2)!.tables.slice(1) }} pageSize={10} />
               </Band>
 
               {r.volume_bars.length
@@ -498,15 +502,27 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
                   <BarChart
                     title="Posted volumes by lease — the last month each one filed"
                     chip="Gross, as filed"
-                    rows={r.volume_bars}
+                    /* ADAPTED · top ten only, in the order the service ranks
+                       them; the API sends every lease that filed. */
+                    rows={r.volume_bars.slice(0, 10)}
                     tone="gas"
                     note="Gross lease volumes as posted to the state, not your share."
                   />
                 )
                 : null}
 
+              {/* ADAPTED · FULL WIDTH. The reference holds these paragraphs to a
+                  reading measure TWICE — an inline `maxWidth: '74ch'` here, and
+                  `.wr-page .small { max-width: 84ch }` in the stylesheet, which
+                  is the one that was actually winning at 84ch. Dropping the
+                  inline value alone left them at 663px inside an 808px card, so
+                  this sets `none` explicitly to beat the class rule.
+
+                  ONLY THIS BLOCK. The shared rule is left alone, so every other
+                  paragraph in every report page keeps its measure — editing the
+                  stylesheet would have widened all of them. */}
               {pageOf(2)!.paras.map((t, i) => (
-                <p className="small" key={i} style={{ maxWidth: '74ch' }}>{t}</p>
+                <p className="small" key={i} style={{ maxWidth: 'none' }}>{t}</p>
               ))}
 
               <div className="notice mint">
@@ -636,7 +652,8 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
                   <BarChart
                     title="Where your estimate lives — by lease"
                     chip="Estimate — not an appraisal"
-                    rows={r.value_bars}
+                    /* ADAPTED · top ten only, as above. */
+                    rows={r.value_bars.slice(0, 10)}
                     tone="value"
                     money
                     note={`Your share of the model's six-year projection, lease by lease — `
@@ -869,46 +886,106 @@ function Explain({ e }: { e: { summary: string; paras: string[] } | null }) {
   );
 }
 
+interface WeeklyTable {
+  head: string[];
+  rows: { key: string; cells: string[]; mine?: boolean }[];
+  empty?: string | null;
+  note?: string;
+}
+
 function Tables(
-  { page }: {
-    page: {
-      tables: {
-        head: string[];
-        rows: { key: string; cells: string[]; mine?: boolean }[];
-        empty?: string | null; note?: string;
-      }[];
-    };
-  },
+  { page, pageSize }: { page: { tables: WeeklyTable[] }; pageSize?: number },
 ) {
   return (
     <>
       {page.tables.map((tb, i) => (
-        <React.Fragment key={i}>
-          {tb.rows.length
-            ? (
-              <div className="tablewrap">
-                <table>
-                  <thead><tr>{tb.head.map((h) => <th key={h}>{h}</th>)}</tr></thead>
-                  <tbody>
-                    {tb.rows.map((row) => (
-                      <tr key={row.key} className={row.key === 'total' ? 'wr-total' : undefined}>
-                        {row.cells.map((c, k) => (
-                          <td key={k}>{k === 0 ? <strong>{c}</strong> : c}</td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )
-            : tb.empty
-              ? <div className="notice"><div>{tb.empty}</div></div>
-              : null}
-          {tb.note && tb.rows.length
-            ? <p className="tiny muted" style={{ margin: '6px 0 0' }}>{tb.note}</p>
-            : null}
-        </React.Fragment>
+        <OneTable key={i} tb={tb} pageSize={pageSize} />
       ))}
+    </>
+  );
+}
+
+/**
+ * One report table, optionally ten rows at a time.
+ *
+ * ITS OWN COMPONENT BECAUSE PAGING NEEDS ITS OWN STATE, and a page can hold
+ * more than one table — a hook cannot live inside the `map` that renders them.
+ *
+ * A `total` ROW IS NEVER PAGED AWAY. The first table on page 2 carries one, and
+ * a totals row that disappears on page 2 of 3 would read as a different total
+ * rather than a hidden one. It is pulled out, the rest is paged, and it is put
+ * back at the bottom of whichever page is showing.
+ *
+ * The pager reuses the sheet's own `btn`/`between`/`tiny muted` classes so it
+ * needs no new CSS, and carries `wr-noprint` because a printed report has no
+ * next page to go to — which is also why printing shows every row.
+ */
+function OneTable({ tb, pageSize }: { tb: WeeklyTable; pageSize?: number }) {
+  const [pageNo, setPageNo] = React.useState(0);
+
+  const totals = tb.rows.filter((r) => r.key === 'total');
+  const body = tb.rows.filter((r) => r.key !== 'total');
+  const paged = Boolean(pageSize && body.length > pageSize);
+  const count = paged ? Math.ceil(body.length / (pageSize as number)) : 1;
+  const at = Math.min(pageNo, count - 1);
+  const from = paged ? at * (pageSize as number) : 0;
+  const shown = paged ? body.slice(from, from + (pageSize as number)) : body;
+  const rows = [...shown, ...totals];
+
+  return (
+    <>
+      {tb.rows.length
+        ? (
+          <>
+            <div className="tablewrap">
+              <table>
+                <thead><tr>{tb.head.map((h) => <th key={h}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr key={row.key} className={row.key === 'total' ? 'wr-total' : undefined}>
+                      {row.cells.map((c, k) => (
+                        <td key={k}>{k === 0 ? <strong>{c}</strong> : c}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {paged
+              ? (
+                <div
+                  className="between wr-noprint"
+                  style={{ margin: '8px 0 0', flexWrap: 'wrap', gap: 8 }}
+                >
+                  <span className="tiny muted">
+                    {from + 1}–{from + shown.length} of {body.length} leases
+                  </span>
+                  <span className="flex" style={{ gap: 6, alignItems: 'center' }}>
+                    <button
+                      className="btn btn-ghost btn-sm" type="button"
+                      disabled={at === 0} onClick={() => setPageNo(at - 1)}
+                    >
+                      Previous
+                    </button>
+                    <span className="tiny muted">Page {at + 1} of {count}</span>
+                    <button
+                      className="btn btn-ghost btn-sm" type="button"
+                      disabled={at >= count - 1} onClick={() => setPageNo(at + 1)}
+                    >
+                      Next
+                    </button>
+                  </span>
+                </div>
+              )
+              : null}
+          </>
+        )
+        : tb.empty
+          ? <div className="notice"><div>{tb.empty}</div></div>
+          : null}
+      {tb.note && tb.rows.length
+        ? <p className="tiny muted" style={{ margin: '6px 0 0' }}>{tb.note}</p>
+        : null}
     </>
   );
 }
@@ -1023,7 +1100,7 @@ function NearMap({ p }: { p: ViewProps['p'] }) {
       </div>
       <svg viewBox="0 0 300 300" className="wr-map" role="img"
         aria-label={`A map of ${rows.length} records within five miles of this owner's wells: `
-          + `${own.length} on her own leases and ${near.length} belonging to neighbours.`}
+          + `${own.length} on her own leases and ${near.length} belonging to neighbors.`}
       >
         {[1, 3, 5].map((mi) => (
           <g key={mi}>
@@ -1061,7 +1138,7 @@ function NearMap({ p }: { p: ViewProps['p'] }) {
       </p>
       <p className="tiny muted" style={{ margin: '6px 0 0' }}>
         {rows.length} records inside five miles, each plotted at its own measured offset from the
-        centre of your wells. {p.nearby.note}
+        center of your wells. {p.nearby.note}
       </p>
     </div>
   );

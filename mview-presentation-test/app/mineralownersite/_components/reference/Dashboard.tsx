@@ -146,7 +146,11 @@ export default function Dashboard(
               </p>
             </div>
             <span className="owner-chip">
-              Owner: <strong>{p.owner.ownername}</strong>
+              {/* ADAPTED · the reference says "Owner:"; this build says
+                  "Mineral Owner:", which is the term the rest of this app uses
+                  for the same thing — the sidebar heading, the owner search and
+                  the claim flow all say mineral owner. */}
+              Mineral Owner: <strong>{p.owner.ownername}</strong>
               {p.owner.city ? ' · ' + p.owner.city : ''}{' '}
               <button type="button" className="sw-btn" onClick={() => open('identity')}>
                 How we matched this
@@ -354,7 +358,7 @@ export default function Dashboard(
                   <Watched p={p} open={open} />
                   {tier === 'pro' ? <PriceDeck p={p} open={open} /> : null}
                   <Reserves p={p} open={open} />
-                  <Neighbours p={p} open={open} go={go} />
+                  <Neighbors p={p} open={open} go={go} />
                   <Wells p={p} open={open} />
                   <ValueMix p={p} open={open} />
                   <Provenance p={p} open={open} />
@@ -574,8 +578,8 @@ function KpiGrid({ p, sample, open }: { p: Payload; sample: boolean; open: (k: s
         null, `model run ${a.decline_run_label ?? '—'}`, 'reserves', 'What a reserve is', false, 'cl-lock')}
 
       {kpi('Permits within 1 mile', n0(rad?.permit_count) ?? '0',
-        `${rad?.neighbour_lease_count ?? 0} neighbouring ${plural(rad?.neighbour_lease_count ?? 0, 'lease')} inside the ring`,
-        null, `survey rebuilt ${a.radius_rebuild_label ?? '—'}`, 'permits', 'Why neighbours matter', false)}
+        `${rad?.neighbour_lease_count ?? 0} neighboring ${plural(rad?.neighbour_lease_count ?? 0, 'lease')} inside the ring`,
+        null, `survey rebuilt ${a.radius_rebuild_label ?? '—'}`, 'permits', 'Why neighbors matter', false)}
     </div>
   );
 }
@@ -641,7 +645,12 @@ function LeaseChart(
       </p>
 
       <div id="leaseChart">
-        {leases.map((l) => {
+        {/* ADAPTED · TOP TEN ONLY. The reference draws a bar for every lease the
+            record holds; a live account can carry far more than fits the card,
+            so the render is capped at ten. `leases` itself is NOT capped — the
+            total, the maximum and the "half your value" count above are facts
+            about the whole portfolio and are still computed over all of it. */}
+        {leases.slice(0, 10).map((l) => {
           const v = num(l[conf.key]);
           const w = max > 0 ? Math.max((v / max) * 100, v > 0 ? 1.5 : 0) : 0;
           return (
@@ -805,7 +814,6 @@ function AroundYou(
 ) {
   const ac = p.activities;
   const cmp = ac.compare_90;
-  const rows = ac.nearby.slice(0, tier === 'pro' ? 8 : 5);
 
   return (
     <div className="card card-pad" id="marketCard">
@@ -829,7 +837,7 @@ function AroundYou(
                 ['Permits filed', ac.counts.permits, 'intent to drill — not a well yet', 'permits'],
                 ['Wells completed', ac.counts.completions, 'finished and reported — production usually follows', 'completions'],
                 ['Standing permits within 1 mile', p.radius['1']?.permit_count ?? 0,
-                  `${p.radius['1']?.neighbour_lease_count ?? 0} neighbouring ${plural(p.radius['1']?.neighbour_lease_count ?? 0, 'lease')}`, 'permits'],
+                  `${p.radius['1']?.neighbour_lease_count ?? 0} neighboring ${plural(p.radius['1']?.neighbour_lease_count ?? 0, 'lease')}`, 'permits'],
                 ['On leases you hold', ac.counts.mine,
                   ac.counts.mine ? 'filed against one of your own lease numbers'
                     : 'a permit carries no lease number, so only completions can be matched to you',
@@ -848,35 +856,21 @@ function AroundYou(
                 </div>
               ))}
 
-              {/* the neighbouring filings themselves */}
-              <div className="act-list" style={{ marginTop: 10 }}>
-                {rows.map((i) => (
-                  <div
-                    className={'act-item' + (i.is_mine ? ' mine' : '')} key={i.id}
-                    role="button" tabIndex={0}
-                    onClick={() => open(ctxForKind(i.kind))}
-                    onKeyDown={(e) => { if (e.key === 'Enter') open(ctxForKind(i.kind)); }}
-                  >
-                    <span className={'act-kind ' + i.kind}>{i.type_label}</span>
-                    <span className="act-main">
-                      <span className="act-name">
-                        {i.lease_name ?? 'unnamed lease'}
-                        {i.well_number ? ` · well ${i.well_number}` : ''}
-                        {i.is_mine
-                          ? <span className="samp-tag" style={{ background: 'var(--green)' }}>yours</span>
-                          : null}
-                      </span>
-                      <span className="act-sub">
-                        {[i.operator_name, i.county ? i.county + ' Co.' : null, i.field_name,
-                          i.profile, i.purpose, i.well_status].filter(Boolean).join(' · ')
-                          || 'no further detail on the filing'}
-                      </span>
-                    </span>
-                    <span className="act-when">{i.event_label ?? i.seen_label ?? '—'}</span>
-                  </div>
-                ))}
-              </div>
+              {/* ADAPTED · THE PER-FILING LIST IS NOT RENDERED. The reference
+                  prints the neighbouring permits and completions one by one
+                  here. It was removed at the owner's request: the counts above
+                  and the 90-day comparison below already say what the card is
+                  for, and the row-by-row feed repeated on the Activities page,
+                  which is where the whole list belongs. Nothing else in the
+                  card changed, and `activities.nearby` is still read for
+                  `counts.nearby` and the "See all N filings" link.
 
+                  `ctxForKind` and this component's `tier` prop fed only that
+                  list and are now unreferenced. They are LEFT IN PLACE, beside
+                  the reference's own unused declarations, so restoring the list
+                  is a matter of putting the block back rather than rebuilding
+                  its plumbing. ESLint reports them as two warnings, not
+                  errors. */}
               <div className="chart-insight">
                 <span className="ci-dot" aria-hidden="true" />
                 {cmp.change_pct != null
@@ -1275,14 +1269,14 @@ function Reserves({ p, open }: { p: Payload; open: (k: string) => void }) {
 }
 
 /* ========================================================== neighbours */
-function Neighbours(
+function Neighbors(
   { p, open, go }: { p: Payload; open: (k: string) => void; go: (r: Route) => void },
 ) {
   const rad = p.radius;
   const ac = p.activities;
   return (
     <div className="card card-pad" id="radCard">
-      <h4>Neighbours &amp; standing permits</h4>
+      <h4>Neighbors &amp; standing permits</h4>
       <p className="tiny muted" style={{ margin: '4px 0 8px' }}>
         These are STANDING permits. The survey behind them was rebuilt {p.radius_stamp ?? '—'}, and
         that date stamps the survey, not any one filing.
@@ -1300,7 +1294,7 @@ function Neighbours(
               <div style={{ minWidth: 0 }}>
                 <strong className="small">Within {b} {plural(Number(b), 'mile')}</strong>
                 <div className="tiny muted">
-                  {r.neighbour_lease_count} neighbouring {plural(r.neighbour_lease_count, 'lease')}{' '}
+                  {r.neighbour_lease_count} neighboring {plural(r.neighbour_lease_count, 'lease')}{' '}
                   — your own {plural(p.totals.lease_count, 'lease')} excluded
                 </div>
               </div>

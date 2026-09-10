@@ -38,8 +38,14 @@ export interface ChartSpec {
 }
 
 export const COLOURS = {
-  gas: '#2e8f6d',
-  oil: '#b8892f',
+  /* ADAPTED · GAS AND OIL ARE SWAPPED against the reference, at the owner's
+     request: gas takes the gold the reference gave oil, and oil takes the
+     green. Changed HERE rather than at each chart, because every SVG series on
+     every page reads these two — the dashboard's two month-by-month panels,
+     the per-lease drawer charts and Production & Forecast's own chart. The
+     matching class rules in `dashboard-reference.css` were swapped with it. */
+  gas: '#b8892f',
+  oil: '#2e8f6d',
   value: '#54bf96',
   slate: '#64748b',
   blue: '#3b5bdb',

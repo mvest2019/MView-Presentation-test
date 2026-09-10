@@ -338,7 +338,7 @@ export async function fetchCounties(): Promise<CountyIndex> {
   }>(`${OWNERS}/counties`, "load the county list");
 
   if (!Array.isArray(data.counties)) {
-    throw new Error("The county list came back in a shape we don't recognise.");
+    throw new Error("The county list came back in a shape we don't recognize.");
   }
 
   const counties = data.counties
@@ -411,7 +411,7 @@ export async function searchOwners(
 
   if (!Array.isArray(data.owners)) {
     throw new Error(
-      "The search results came back in a shape we don't recognise.",
+      "The search results came back in a shape we don't recognize.",
     );
   }
 
@@ -461,7 +461,7 @@ export async function fetchLeaseOwners(params: {
 
   if (!Array.isArray(data.owners)) {
     throw new Error(
-      "That lease's owners came back in a shape we don't recognise.",
+      "That lease's owners came back in a shape we don't recognize.",
     );
   }
   return data.owners.map(toRecord);

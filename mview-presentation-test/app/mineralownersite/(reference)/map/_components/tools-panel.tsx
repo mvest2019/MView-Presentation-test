@@ -13,7 +13,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { type Density } from "./density";
+import type { Entitlements } from "@/lib/entitlements";
+
+import { useEntitlements } from "./entitlements-context";
 
 /*
  * The Tools panel that opens off the TOOLS edge tab.
@@ -51,8 +53,16 @@ export type MapTool = {
    * nearest loaded well — so it waits for the wells with the rest.
    */
   needsWells?: boolean;
-  /** The least view mode that offers this tool. */
-  from?: Density;
+  /**
+   * WHICH ENTITLEMENT CARRIES THIS TOOL, read off the tier table rather than a
+   * floor written here. Section 3.9, one row per tool:
+   *
+   *   Measure distance      every tier
+   *   Measure area          Essential
+   *   Draw an area          Detailed
+   *   What is near my land  Detailed at 1 mile, Pro at 1 / 3 / 5
+   */
+  needs: (e: Entitlements) => boolean;
 };
 
 export const MAP_TOOLS: MapTool[] = [
@@ -61,15 +71,17 @@ export const MAP_TOOLS: MapTool[] = [
     label: "Draw an area",
     icon: SquareDashed,
     needsWells: true,
-    /* Acreage work: professional, where distance and "what's near" are what an
-       owner reaches for. */
-    from: "pro",
+    /* Detailed, and it was Pro. Section 3.9 gives Detailed both the well count
+       in a box and the CSV of what is in it; what Pro adds in this panel is the
+       nearby radii and the nearby CSV, not the drawing. */
+    needs: (e) => e.tools.drawArea,
   },
   {
     id: "measure-distance",
     label: "Measure distance",
     icon: Ruler,
     needsWells: true,
+    needs: (e) => e.tools.measureDistance,
   },
   {
     id: "whats-near-my-land",
@@ -78,13 +90,16 @@ export const MAP_TOOLS: MapTool[] = [
     /* The click is traced to a lease through the nearest well on the map, so
        there has to be one — see the lookup in `map-explorer-view.tsx`. */
     needsWells: true,
+    needs: (e) => e.tools.nearbyRadii.length > 0,
   },
   {
     id: "measure-area",
     label: "Measure area",
     icon: LandPlot,
     needsWells: true,
-    from: "pro",
+    /* Essential, and it was Pro. Geodesic acreage of a shape you drew is the
+       first thing an owner asks of a map of their own land — section 3.9. */
+    needs: (e) => e.tools.measureArea,
   },
 ];
 
@@ -126,6 +141,9 @@ export function ToolsPanel({
   className = "",
   tools = MAP_TOOLS,
 }: ToolsPanelProps) {
+  /* Which of the four this tier carries. The rest are filtered out below. */
+  const ent = useEntitlements();
+
   /* Raised by a click made while the map is still on bubbles. */
   const [asked, setAsked] = useState(false);
 
@@ -148,8 +166,22 @@ export function ToolsPanel({
       </div>
 
       <div className="flex flex-col gap-2 lg:gap-[10px]">
-        {tools.map(({ id, label, icon: Icon, needsWells }) => {
-          /* Only the tools that measure the map wait for the map. */
+        {tools
+          .filter(({ needs }) => needs(ent))
+          .map(({ id, label, icon: Icon, needsWells }) => {
+          /*
+           * ONLY THE TOOLS THIS MODE CARRIES REACH THIS MAP — see the filter
+           * above. A tool the tier does not include is not rendered at all,
+           * which is a departure from §3.9 and §11.1: those ask for a greyed
+           * row with a tier chip, and for the sample window to stay reachable
+           * on it. Rejected in review — at 196px the chip and the label
+           * collided, and a four-row panel where two rows were adverts read as
+           * a paywall rather than a toolbox.
+           *
+           * `gated` is the OTHER reason a tool will not arm, and it survives:
+           * the map is on bubbles and the tool reads wells. That is a
+           * moment's problem, fixed by zooming, so the row stays and says so.
+           */
           const gated = Boolean(needsWells) && !wellsVisible;
 
           return (

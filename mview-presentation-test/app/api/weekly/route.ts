@@ -22,6 +22,12 @@
 import { NextResponse } from "next/server";
 
 import {
+  fetchWeekly,
+  fetchWeeklyEmailPreview,
+  fetchWeeklyFile,
+} from "@/app/mineralownersite/_lib/reference/member-api";
+import {
+  currentMemberTarget,
   getOwnerPayload,
   selectionFrom,
 } from "@/app/mineralownersite/_lib/reference/owner-data";
@@ -30,6 +36,48 @@ import * as render from "@/app/mineralownersite/_lib/reference/weekly-render";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+/**
+ * WHEN THE SERVICE IS CONFIGURED, THE FILE IS THE SERVICE'S FILE.
+ *
+ * `?format=html` and `?format=csv` are passed through with the service's own
+ * body, content type and filename rather than re-rendered here from the JSON.
+ * Re-rendering would be a second implementation of the same report with
+ * nothing keeping the two in step — and the reader who downloads the HTML and
+ * the reader who reads the screen are entitled to the same document.
+ *
+ * `?sample=1` is the exception and stays local: the not-claimed form is a
+ * transform this app applies to the payload (`sampleize`), and the service
+ * knows nothing about it. A sample download must keep going through the same
+ * transform the screen uses, or it could carry figures the screen withheld.
+ */
+async function live(
+  base: string,
+  member: string,
+  format: string,
+  download: boolean,
+): Promise<Response> {
+  if (format === "html" || format === "csv") {
+    const res = await fetchWeeklyFile(base, member, format, download);
+    const headers = new Headers({ "Cache-Control": "no-store" });
+    const pass = ["content-type", "content-disposition"];
+    for (const h of pass) {
+      const v = res.headers.get(h);
+      if (v) headers.set(h, v);
+    }
+    return new NextResponse(await res.arrayBuffer(), { headers });
+  }
+
+  if (format === "email") {
+    return NextResponse.json(await fetchWeeklyEmailPreview(base, member), {
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
+
+  return NextResponse.json(await fetchWeekly(base, member), {
+    headers: { "Cache-Control": "no-store" },
+  });
+}
 
 /** a filename a reader can find again in six months */
 function fileName(owner: string, week: string, ext: string): string {
@@ -47,13 +95,19 @@ export async function GET(req: Request) {
   const download = url.searchParams.get("dl") === "1";
 
   try {
+    /* the signed-in member, per request — see `currentMemberTarget`. A
+       download is this member's own report or it is the capture; it is never
+       an id baked into the deployment. */
+    const member = await currentMemberTarget();
+    if (member && !sample) return await live(member.base, member.member, format, download);
+
     /* `live: false` — this endpoint reads `payload.weekly` and nothing else,
        so it does not wait on the Alerts and Activity service, and a download
        cannot fail because that service is down. See `PayloadOptions`. */
-    const live = await getOwnerPayload(selectionFrom(url), { live: false });
+    const local = await getOwnerPayload(selectionFrom(url), { live: false });
     /* the not-claimed form goes through the SAME transform the screen uses, so
        a downloaded sample cannot carry figures the screen withheld */
-    const payload = sample ? sampleize(live).payload : live;
+    const payload = sample ? sampleize(local).payload : local;
     const r = payload.weekly;
 
     if (format === "html") {

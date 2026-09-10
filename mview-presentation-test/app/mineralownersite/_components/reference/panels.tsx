@@ -113,7 +113,7 @@ export function Essentials(
       k: 'around',
       head: 'What is happening around me?',
       ctx: 'permits',
-      hint: 'Why neighbours matter',
+      hint: 'Why neighbors matter',
       body: ac.counts.nearby
         ? (
           <>
@@ -150,7 +150,7 @@ export function Essentials(
         : (
           <>
             Nothing on these leases is asking for a decision. The next thing that would is a
-            neighbour permit inside a mile of a lease with a high new-well chance — both are watched
+            neighbor permit inside a mile of a lease with a high new-well chance — both are watched
             for you.
           </>
         ),

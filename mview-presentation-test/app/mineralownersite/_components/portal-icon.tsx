@@ -9,6 +9,7 @@ import {
   Flag,
   House,
   Lock,
+  LogOut,
   Mail,
   MapPin,
   MessageSquare,
@@ -85,6 +86,9 @@ const ICONS: Record<PortalIconName, LucideIcon> = {
   price: DollarSign,
   // mvi-chat — Feather `message-square`
   chat: MessageSquare,
+  /* No `mvi-*` counterpart: the reference prototype has no session to end, so
+     it has no sign-out control. Feather `log-out`, same family as the rest. */
+  logout: LogOut,
 };
 
 /**

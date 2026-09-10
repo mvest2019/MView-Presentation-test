@@ -4,8 +4,11 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 
+import { PortalAvatar } from "./portal-avatar";
 import { PortalIcon } from "./portal-icon";
+import { PortalLogout } from "./portal-logout";
 import { PortalNavRow } from "./portal-nav-row";
+import { usePortalMember } from "./portal-session";
 import { PortalSectionList } from "./portal-section-list";
 import {
   drawerSections,
@@ -28,6 +31,18 @@ import { demoDisclosure } from "../_lib/portal-demo-data";
  * IT CARRIES AN ACCOUNT SECTION and the sidebar does not, because there is no
  * avatar menu at phone width for Settings and Billing to live in. That is the
  * one intended difference between the two.
+ *
+ * WHO IS SIGNED IN, AT THE TOP, AND LOG OUT AT THE FOOT. The drawer is the
+ * menu a thumb actually opens on a phone, so the same two things the desktop
+ * account menu carries have to be reachable here: the identity — picture or
+ * initials, name, email — and the way out. Both come off the ONE
+ * `signOutAction` and the ONE `usePortalMember()` derivation the account menu
+ * uses, so the drawer cannot end up showing different initials or ending the
+ * session a different way. Signed out, the block is the way IN instead, for the
+ * reason the account menu records.
+ *
+ * LOG OUT SITS BELOW "Public site" and above the disclosure, at the very end of
+ * a scroll — nowhere near the navigation rows a thumb sweeps through.
  */
 export function PortalMobileDrawer({
   open,
@@ -37,6 +52,7 @@ export function PortalMobileDrawer({
   onClose: () => void;
 }) {
   const pathname = usePathname();
+  const member = usePortalMember();
 
   // Escape closes it. A drawer that traps a keyboard user behind a backdrop is
   // worse than no drawer.
@@ -77,6 +93,23 @@ export function PortalMobileDrawer({
           </svg>
         </button>
 
+        {/* The identity block, above the navigation. `aria-hidden` is on the
+            avatar itself (see `PortalAvatar`), so the name and address here are
+            the only announced text. */}
+        {member && (
+          <div className="mv-drawer-me">
+            <PortalAvatar
+              image={member.image}
+              initials={member.initials}
+              className="avatar mv-drawer-me-pic"
+            />
+            <div className="mv-drawer-me-who">
+              <strong>{member.name}</strong>
+              {member.email && <span className="tiny">{member.email}</span>}
+            </div>
+          </div>
+        )}
+
         {primarySlots.map((slot) => (
           <PortalNavRow
             key={slot.slotClass}
@@ -101,6 +134,27 @@ export function PortalMobileDrawer({
           </span>
           Public site
         </Link>
+
+        <div className="mv-drawer-out">
+          {member ? (
+            <PortalLogout
+              className="nav-item mv-drawer-logout"
+              onDone={onClose}
+            />
+          ) : (
+            <Link
+              href="/login"
+              className="nav-item mv-drawer-logout mv-drawer-signin"
+              onClick={onClose}
+            >
+              {/* No `.nav-ico` wrapper, unlike the rows above: the Log out
+                  button this slot swaps with renders its icon bare, and the two
+                  have to sit on the same left edge. */}
+              <PortalIcon name="logout" />
+              Sign in
+            </Link>
+          )}
+        </div>
 
         <div className="mv-drawer-demo">{demoDisclosure.drawer}</div>
       </div>

@@ -54,7 +54,7 @@ export function DashboardColumns() {
 
 /**
  * v43 · OW-34 — the high-level view first: the world the minerals sell into and
- * the neighbourhood they sit in. "Around me" means both, which is why the local
+ * the neighborhood they sit in. "Around me" means both, which is why the local
  * counts sit beside the world headlines rather than in a separate card.
  *
  * MARKET CONTEXT, NEVER ADVICE, and the chip and the footnote both say so. Each
@@ -72,7 +72,7 @@ function AroundYouCard() {
       </div>
       <p className="tiny muted" style={{ margin: "4px 0 0" }}>
         The high-level view: the world your minerals sell into, and the
-        neighbourhood they sit in.
+        neighborhood they sit in.
       </p>
 
       <div className="as-cats" style={{ margin: "11px 0 0" }}>

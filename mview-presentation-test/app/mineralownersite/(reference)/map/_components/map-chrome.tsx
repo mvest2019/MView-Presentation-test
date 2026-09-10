@@ -21,13 +21,13 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { BASEMAP_OPTIONS, BasemapGallery } from "./basemap-gallery";
+import { BasemapGallery } from "./basemap-gallery";
 import { FiltersPanel } from "./filters-panel";
 import { LegendsPanel } from "./legends-panel";
 import { getWellLookupMap, type MapWellLookup } from "@/lib/map-api";
 
 import { ApiResults } from "./api-results";
-import { showsAt, type Density } from "./density";
+import { useEntitlements } from "./entitlements-context";
 import { shareUrl, type ShareState } from "./filter-url";
 import { ShareMenu } from "./share-menu";
 import { MAP_TOOLS, ToolsPanel } from "./tools-panel";
@@ -64,9 +64,6 @@ type MapChromeProps = {
   center: { longitude: number; latitude: number };
   /** What a shared link should carry — see `shareUrl`. */
   share: ShareState;
-  /** How much of a well's record the Insights tab shows. Set in the portal's
-      avatar menu, not here — see the note where the picker used to be. */
-  density: Density;
   /** Active basemap id, so the gallery can mark its tile. */
   basemap: string;
   onBasemapChange: (id: string) => void;
@@ -137,6 +134,21 @@ export type ViewTab = "map" | "table" | "insights";
 /** The breathing room between the view switch and the top of the rail. */
 const RAIL_GAP = 8;
 
+/**
+ * The gap between the filters rail and the edges of the map, on all four sides.
+ *
+ * The rail used to sit flush in the corner — `left: 0`, `top: 0` — and read as
+ * part of the page frame rather than as a card laid over the map. Inset on
+ * every side it reads as what it is: a panel you can put away.
+ *
+ * ONE NUMBER, TWO PLACES. `left` and the first-paint `height` live in
+ * `.mv-filters-rail` in `globals.css`, because they have to be right before
+ * any JavaScript has measured anything; `top` and the measured `height` are
+ * applied here. Both use this value, and the CSS names it in a comment. Change
+ * one and change the other.
+ */
+const RAIL_INSET = 12;
+
 /** Roughly how tall the share menu is, for deciding which side to open on. */
 const SHARE_MENU_HEIGHT = 176;
 const SHARE_MENU_GAP = 8;
@@ -171,11 +183,6 @@ function asApiNumber(typed: string): string {
  * is drawn against; Satellite is the other one people actually ask for. The
  * four after that are taste.
  */
-const BASEMAP_FROM: Record<string, Density> = {
-  streets: "ultra",
-  satellite: "simple",
-};
-
 const VIEW_TABS: { id: ViewTab; label: string; icon: typeof MapIcon }[] = [
   { id: "map", label: "Map", icon: MapIcon },
   { id: "table", label: "Table", icon: Table2 },
@@ -189,7 +196,6 @@ export function MapChrome({
   marksVisible,
   center,
   share,
-  density,
   basemap,
   onBasemapChange,
   onSaveImage,
@@ -216,6 +222,10 @@ export function MapChrome({
   onZoomOut,
   onHome,
 }: MapChromeProps) {
+  /* What this tier may see. Read from the context rather than threaded as a
+     prop — the chrome is four levels deep and eleven of its controls need it. */
+  const ent = useEntitlements();
+
   const [basemapOpen, setBasemapOpen] = useState(false);
   const [legendsOpen, setLegendsOpen] = useState(true);
 
@@ -250,22 +260,27 @@ export function MapChrome({
    */
   const [railResetAt, setRailResetAt] = useState(0);
   /*
-   * Filters is open or closed per view, not globally. On the map it is the
-   * panel people work from, so it opens with the page; alongside Insights the
-   * map is only half as wide and the summary is the point, so it starts
-   * collapsed to its edge tab. Keeping a flag per tab also means each view
-   * remembers what you last did in it, instead of one view's choice following
-   * you into the other.
+   * Filters is open or closed per view, not globally, and it now starts CLOSED
+   * on every one of them.
+   *
+   * It used to open with the page on a wide screen, on the reasoning that the
+   * rail is the panel people work from. That was written when the map was its
+   * own full-bleed page. Inside the owner portal the map has a sidebar, a top
+   * bar and a pinned value line above it already, and a 252px rail on top of
+   * that left the map itself as a strip down the middle — the first thing a
+   * reader sees is chrome rather than their wells.
+   *
+   * The map is what the page is for, so it opens showing the map. The rail is
+   * one click away on its edge tab, and the tab carries a count when filters
+   * are applied so a narrowed map can never look like the whole of one.
+   *
+   * Keeping a flag per tab still means each view remembers what you last did
+   * in it, instead of one view's choice following you into the other.
    */
   const [filtersOpenByTab, setFiltersOpenByTab] = useState<
     Record<ViewTab, boolean>
   >(() => ({
-    // Only wide screens have room to give the rail 252px and still show a
-    // usable map. On phones and tablets it starts collapsed to its edge tab.
-    map:
-      typeof window === "undefined" ||
-      window.matchMedia("(min-width: 1024px)").matches,
-
+    map: false,
     insights: false,
     table: false,
   }));
@@ -681,7 +696,6 @@ export function MapChrome({
         <>
           <FiltersPanel
             key={`${filtersResetAt}:${railResetAt}`}
-            density={density}
             /* Only until something clears it. Rebuilt, the panel ticks `opening`
            again as it mounts, and the filter the link arrived with came back
            on boxes the reader had just emptied. */
@@ -736,10 +750,20 @@ export function MapChrome({
              * beside it saying it was shut. An inline style outranks both.
              */
             style={{
-              top: railTop,
+              /* Inset from the top of the map, or from the view switch on the
+                 widths where the switch lies across it. */
+              top: railTop + RAIL_INSET,
               ...(railHeight === null
                 ? null
-                : { height: Math.max(railHeight - railTop, 0) }),
+                : {
+                    /* `railHeight` already stops short of Esri's attribution
+                       strip. Taking the inset off twice leaves the same gap
+                       below the card as above it. */
+                    height: Math.max(
+                      railHeight - railTop - RAIL_INSET * 2,
+                      0,
+                    ),
+                  }),
               ...(filtersOpen ? null : { display: "none" }),
             }}
           />
@@ -759,20 +783,19 @@ export function MapChrome({
       {/* The panel takes the tab's place rather than sitting beside it, so the
           right edge never shows both.
 
-          Detailed and up: measuring is the point of these four, and Ultra and
-          Essentials are modes for reading a well rather than working a map. */}
-      <div
-        ref={toolsRef}
-        className={bare || !showsAt(density, "detailed") ? "hidden" : undefined}
-      >
+          ON EVERY TIER NOW. The whole tab used to disappear below Detailed;
+          §3.9 puts Measure distance at ✅ on all four and requires the tool
+          SAMPLE WINDOWS to be shown "for locked tools too", which cannot happen
+          if the panel holding them is not rendered. The individual tools carry
+          their own locks — see `ToolsPanel`. */}
+      <div ref={toolsRef} className={bare ? "hidden" : undefined}>
         {toolsOpen ? (
           <ToolsPanel
             activeId={activeTool ?? undefined}
-            /* Draw an area and Measure area are Pro; the other two are the
-               ones an owner reaches for. */
-            tools={MAP_TOOLS.filter((tool) =>
-              showsAt(density, tool.from ?? "detailed"),
-            )}
+            /* Every tool, every tier. `ToolsPanel` greys the ones this tier
+               does not carry and still opens their sample windows — §3.9 and
+               §11.1. Filtering the array here is what used to hide them. */
+            tools={MAP_TOOLS}
             /* Over bubbles the tools have no wells to measure, so the panel
                says what to do instead of arming one. */
             wellsVisible={wellsVisible}
@@ -824,7 +847,9 @@ export function MapChrome({
          * inside itself if that is not enough.
          */
         className={`absolute inset-x-0 top-0 flex justify-end p-4 max-[919px]:justify-center ${
-          filtersOpen ? "lg:pl-[268px]" : ""
+          /* The rail's own width plus its inset on both sides, so the
+             toolbar pill starts clear of it. */
+          filtersOpen ? "lg:pl-[276px]" : ""
         }`}
       >
         <div className="pointer-events-auto relative flex w-full max-w-full flex-col items-stretch gap-2 lg:w-auto lg:flex-row lg:flex-nowrap lg:items-center lg:gap-1 lg:overflow-x-auto lg:rounded-xl lg:border lg:border-mv-line lg:bg-white/97 lg:px-[6px] lg:py-[4px] lg:shadow-mv-lg lg:backdrop-blur-[6px]">
@@ -838,10 +863,10 @@ export function MapChrome({
             settings twice on one screen meant they could disagree, and there
             was no way to tell which of the two a reader had last touched.
 
-            `density` still arrives as a prop and still decides what this bar
-            shows; it comes from `usePortalViewState` now instead of from a
-            control here. `funnel` went with the menus — nothing else in this
-            file read it. See the note in `map-explorer-view.tsx`.
+            What decides the rest of this bar is now `ent` — the tier
+            entitlements from `lib/entitlements.ts`, read off the context. The
+            picker chooses which tier to SHOW; it cannot grant one. See
+            `entitlements-context.tsx`.
           */}
 
           {/* A segmented control: the grey track groups the three views and
@@ -956,9 +981,10 @@ export function MapChrome({
               hint only says why it cannot, and only while the map is showing
               bubbles rather than wells.
 
-              Pro only: a thirty-year replay of the state's drilling is a
-              market view, not an answer about one well. */}
-              {showsAt(density, "pro") && (
+              DETAILED AND PRO — §3.8, all three rows. It was Pro-only here;
+              the spec moves the whole of time-lapse down a tier, which is part
+              of what makes Detailed "a complete, satisfying product" (§1). */}
+              {ent.timeLapse && (
                 <>
                   <ToolbarButton
                     icon={Clock}
@@ -979,10 +1005,12 @@ export function MapChrome({
               the map, and on a phone's summary strip there is less again. It
               used to be dropped outright there, which left the reader looking
               at a record with no way to take it away. */}
-              {/* Detailed and up: a spreadsheet of the result set is a working
-                  file. The record's own PDF, which is what one well's owner
-                  wants, stays at every mode. */}
-              {showsAt(density, "detailed") && (
+              {/* DETAILED AND PRO — §3.10's "What is in view CSV", which is
+                  what this button exports. Ultra and Essential are 0/month, so
+                  the button is not drawn rather than drawn and refused: an
+                  export is an action with a monthly counter behind it, not a
+                  panel with a footprint to keep. §11.1's exception. */}
+              {ent.exports.viewCsvPerMonth > 0 && (
                 <>
                   <ToolbarButton
                     icon={Download}
@@ -1163,7 +1191,10 @@ export function MapChrome({
 
         {shareOpen && (
           <ShareMenu
-            withImageAndPrint={showsAt(density, "simple")}
+            /* §3.10: Save map image (PNG) and Print map are Essential and up.
+               PNG is client-side — no data leaves — so it is the one export
+               with no monthly counter (§4, `export.mapPng`). */
+            withImageAndPrint={ent.exports.mapPng}
             /* Rendered only after a click, so building this from
                `window.location` is client-side by construction. */
             url={shareUrl(share)}
@@ -1251,11 +1282,8 @@ export function MapChrome({
         <div ref={basemapRef} className="relative">
           {basemapOpen && (
             <BasemapGallery
-              /* One at Ultra, two at Essentials, all six from Detailed: the
-                 rest are preference rather than information. */
-              options={BASEMAP_OPTIONS.filter((option) =>
-                showsAt(density, BASEMAP_FROM[option.id] ?? "detailed"),
-              )}
+              /* All six tiles, always. The gallery greys the ones this tier
+                 cannot select and keeps them in the grid — §5.2. */
               selected={basemap}
               onSelect={(id) => {
                 onBasemapChange(id);

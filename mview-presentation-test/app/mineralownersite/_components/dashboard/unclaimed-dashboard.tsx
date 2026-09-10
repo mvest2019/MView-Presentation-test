@@ -76,7 +76,7 @@ export function ClaimRail() {
         </span>
         <span>
           <span className="cr-sw cr-sw-amber" aria-hidden="true" />
-          <b>Amber</b> — a labelled example, not yours yet
+          <b>Amber</b> — a labeled example, not yours yet
         </span>
         <span className="cr-key-end">
           Claiming turns the amber into your green.

@@ -73,7 +73,11 @@ export function Maturity({ p, open }: { p: Payload; open: (k: string) => void })
         lease&rsquo;s age; the figure beside it is how many months it has actually filed.
       </p>
 
-      {rows.map((r, i) => (
+      {/* ADAPTED · TOP TEN ONLY, sorted oldest first as the reference sorts
+          them. The median, the mean duty cycle and the patchy count above stay
+          over EVERY lease — they are statements about the portfolio, and
+          computing them off a truncated list would make them wrong. */}
+      {rows.slice(0, 10).map((r, i) => (
         <div
           className="lbar" key={r.lease_id + r.first} role="button" tabIndex={0}
           onClick={() => open('lease:' + r.lease_id)}

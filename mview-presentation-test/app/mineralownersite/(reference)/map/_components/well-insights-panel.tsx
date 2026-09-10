@@ -29,7 +29,7 @@ import {
   type MapWellSummary,
 } from "@/lib/map-api";
 
-import { DEFAULT_DENSITY, showsAt, type Density } from "./density";
+import { useEntitlements } from "./entitlements-context";
 import { copyText } from "./copy-text";
 import { declineRows, depletionBars, eurBars } from "./well-insights-fields";
 import { WELLBORE } from "./well-insights-data";
@@ -155,23 +155,37 @@ function readable(failure: unknown, fallback: string): string {
 
 export function WellInsightsPanel({
   well,
-  density = DEFAULT_DENSITY,
   onClose,
 }: {
   well: SelectedWell;
-  /**
-   * How much of the record to print, from the switch in the toolbar.
-   *
-   * Every card is still fetched and still here — the density decides which of
-   * them are on screen. Ultra is the six figures and what the well is;
-   * Essentials adds the lease, the latest activity and the operator; Detailed
-   * adds location, depths, the wellbore and the production chart; Professional
-   * adds the diagnostics.
-   */
-  density?: Density;
   /** Closes the record and hands the panel back to "Pick a well". */
   onClose?: () => void;
 }) {
+  /*
+   * HOW MUCH OF THE RECORD TO PRINT — §3.5, one row per card.
+   *
+   * Every card is still fetched and still here; the tier decides which are on
+   * screen and which is replaced by a locked card saying what it holds.
+   *
+   *   Ultra       identity, county, status, the record badge, and the lease /
+   *               county / operator lines. No volumes at all.
+   *   Essential   + last month's oil and gas, the reported production chart,
+   *               the wellbore diagram, the lease and location fields, depths,
+   *               and the permit details table.
+   *   Detailed    + next month's estimate, the reserves, the forecast tail, a
+   *               custom chart range, Decline Diagnostics and its notes,
+   *               Reserve Integrity, cohort EUR and own-cohort marking.
+   *   Pro         the same analytics as Detailed. What Pro adds here is
+   *               throughput and the exports, not another card — §1.
+   *
+   * Read off the context rather than taken as a prop: this panel is opened from
+   * the map, from the table and from a shared link, and threading a tier
+   * through three call sites is three chances to pass the wrong one.
+   */
+  /* `gate`, not `insights` — this file already has an `insights` holding the
+     well's own analytics payload, and the two are easy to confuse. */
+  const { insights: gate } = useEntitlements();
+
   /*
    * Which filing is on screen — the well's own, not a choice.
    *
@@ -520,14 +534,22 @@ export function WellInsightsPanel({
           bar down the side of the strip. */}
               <div className="mv-thin-scroll mt-3 flex gap-px overflow-x-auto overflow-y-hidden rounded-xl border border-mv-line bg-mv-line">
                 {(fields?.metrics ?? WELL_METRICS_LOADING)
-                  /* Two of the six are what the well produced last month; the
-                     other four are next month's estimate and the reserves
-                     behind it. Those are forecasts, and forecasts are Pro. */
-                  .filter(
-                    (metric) =>
-                      showsAt(density, "pro") ||
-                      !FORECAST_METRIC.test(metric.label),
-                  )
+                  /*
+                   * Two of the six are what the well produced last month; the
+                   * other four are next month's estimate and the reserves
+                   * behind it.
+                   *
+                   * §3.5 splits them across three tiers, not two: last month's
+                   * volumes at Essential, the estimate and the reserves at
+                   * Detailed. Both used to sit behind Pro, which is a tier
+                   * higher than the spec puts either.
+                   */
+                  .filter((metric) => {
+                    if (FORECAST_METRIC.test(metric.label)) {
+                      return gate.production === "full";
+                    }
+                    return gate.production !== "none";
+                  })
                   .map((metric) => (
                     <div
                       key={metric.label}
@@ -558,7 +580,7 @@ export function WellInsightsPanel({
                   />
                 </Card>
 
-                {showsAt(density, "simple") && (
+                {gate.summaryFields === "full" && (
                   <Card icon={ScrollText} title="Lease Information">
                     <Rows
                       rows={fields?.leaseInformation ?? blank(LEASE_LABELS)}
@@ -566,7 +588,7 @@ export function WellInsightsPanel({
                   </Card>
                 )}
 
-                {showsAt(density, "detailed") && (
+                {gate.wellbore && (
                   <Card
                     icon={Layers}
                     title="Wellbore"
@@ -589,7 +611,7 @@ export function WellInsightsPanel({
               </div>
 
               {/* ---------------- activity · location · wellbore ---------------- */}
-              {showsAt(density, "simple") && (
+              {gate.summaryFields === "full" && (
                 <div className="mt-3 grid gap-3 @2xl:grid-cols-2 @4xl:grid-cols-3">
                   <Card
                     icon={FileText}
@@ -600,7 +622,7 @@ export function WellInsightsPanel({
                     <Rows rows={fields?.activity ?? blank(ACTIVITY_LABELS)} />
                   </Card>
 
-                  {showsAt(density, "detailed") && (
+                  {gate.summaryFields === "full" && (
                     <Card
                       icon={MapPin}
                       title="Location"
@@ -658,7 +680,7 @@ export function WellInsightsPanel({
                       </div>
                     </Card>
 
-                    {showsAt(density, "detailed") && (
+                    {gate.summaryFields === "full" && (
                       <Card icon={Ruler} title="Depth & Geometry">
                         {/* One column, like the cards beside it: two columns cut
                   every depth down to "11,4…". */}
@@ -669,11 +691,15 @@ export function WellInsightsPanel({
                 </div>
               )}
 
-              {/* ---------------- production ---------------- */}
-              {showsAt(density, "detailed") && (
+              {/* ---------------- production ----------------
+
+                  REPORTED MONTHS FROM ESSENTIAL, THE FORECAST TAIL FROM
+                  DETAILED — §3.5's two separate rows. The chart was Detailed
+                  with a Pro forecast; both moved down one. */}
+              {gate.production !== "none" ? (
                 <div className="mt-3">
                   <ProductionChart
-                    withForecast={showsAt(density, "pro")}
+                    withForecast={gate.production === "full"}
                     points={production ?? []}
                     /* The endpoint sends reported and forecast months in one
                      list; the record's last reported month is what separates
@@ -686,13 +712,13 @@ export function WellInsightsPanel({
                     error={error ? null : productionError}
                   />
                 </div>
-              )}
+              ) : null}
 
               {/* ---------------- diagnostics · integrity · cohort ----------------
           Two across, then the cohort table on its own row: at a third of the
           width its five bars had no room to differ, and the difference between
           them is the whole point of that card. */}
-              {showsAt(density, "pro") && (
+              {gate.decline && (
                 <div className="mt-3 grid gap-3 @2xl:grid-cols-2">
                   <Card
                     title="Decline Diagnostics"

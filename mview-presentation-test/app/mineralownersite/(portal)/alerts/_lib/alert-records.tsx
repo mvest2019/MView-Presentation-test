@@ -86,7 +86,7 @@ export const alertRecords: AlertRecord[] = [
     iconLabel: "Nearby activity",
     headline:
       "Nearby-permit list updated — 11 permits within 1 mi of Ledbetter (74318)",
-    detail: <>Neighbour tracts, Cass Co. — a signal for your area, not income.</>,
+    detail: <>Neighbor tracts, Cass Co. — a signal for your area, not income.</>,
     meta: "Jul 03 · email + push",
     why: "Why you're seeing this: activity within 1 mile of a lease you own. Context for your area, not income — it can roll up weekly if you'd rather not hear about each permit.",
     actions: [
@@ -97,7 +97,7 @@ export const alertRecords: AlertRecord[] = [
     ],
     explainer: alertExplainers["permits-11"],
     keywords:
-      "ledbetter 74318 cass county permits radius enervista pine belt cedarleaf caddo pine neighbour drilling",
+      "ledbetter 74318 cass county permits radius enervista pine belt cedarleaf caddo pine neighbor drilling",
   },
 
   {
@@ -166,7 +166,7 @@ export const alertRecords: AlertRecord[] = [
     headline: "Price move touched your estimate — gas ▲ 1.53%",
     detail: (
       <>
-        Gas $3.245, WTI eased — favours your gas-weighted Bee units. Your $26,340
+        Gas $3.245, WTI eased — favors your gas-weighted Bee units. Your $26,340
         held.
       </>
     ),

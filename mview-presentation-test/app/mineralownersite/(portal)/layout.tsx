@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 
 import { PinnedValueBar } from "../_components/pinned-value-bar";
 import { PortalFunnelBar } from "../_components/portal-funnel-bar";
+import { PortalSessionProvider } from "../_components/portal-session";
 import { PortalShell } from "../_components/portal-shell";
 import { PortalStateProvider } from "../_components/portal-state-provider";
 import { demoDisclosure } from "../_lib/portal-demo-data";
+import { getSessionUser } from "@/lib/session";
 import "../portal.css";
 
 /**
@@ -35,6 +37,16 @@ import "../portal.css";
  * server-side check here and an API that authorises each read — see the note at
  * the foot of `_lib/portal-state.ts` and the warning in `lib/session.ts`.
  *
+ * IT DOES READ THE SESSION, and reading is not gating. `getSessionUser()` is
+ * awaited here so the chrome can print the member's own name, email and picture
+ * instead of the demo persona's, and the value goes into
+ * `PortalSessionProvider` because the cookie is httpOnly and the shell is a
+ * client component. NOTHING IS REDIRECTED ON A NULL — a signed-out visitor still
+ * gets the whole portal, as before, with the demo identity in the account menu.
+ * Adding a redirect here would be the auth boundary this paragraph says the
+ * layout is not, and it needs the API-side authorisation described above rather
+ * than a cookie check.
+ *
  * The marketing header and footer from the root layout still wrap this, so a
  * visitor keeps one way back to the public site. The portal's own sidebar foot
  * and drawer carry that link too.
@@ -58,9 +70,15 @@ export const metadata: Metadata = {
   },
 };
 
-export default function MineralOwnerPortalLayout({
+export default async function MineralOwnerPortalLayout({
   children,
 }: LayoutProps<"/mineralownersite">) {
+  /* The signed-in member, for the top bar's account menu and the drawer's
+     identity block. Read here rather than in the shell: the shell is a client
+     component and the `mv_user` cookie is httpOnly. Null is a normal answer —
+     see the note above about this layout not being an auth boundary. */
+  const user = await getSessionUser();
+
   const shell = (
     <PortalShell
       // Both are server components, so they are built here and handed to the
@@ -95,7 +113,13 @@ export default function MineralOwnerPortalLayout({
         way to find out. The fix then is a boundary whose fallback is NOT the
         shell.
       */}
-      <PortalStateProvider>{shell}</PortalStateProvider>
+      {/* The member wraps the state provider rather than the other way round:
+          the account menu needs both, and the session is the outer, slower-
+          changing fact. The same provider wraps the reference group's shell —
+          see `portal-session.tsx`. */}
+      <PortalSessionProvider user={user}>
+        <PortalStateProvider>{shell}</PortalStateProvider>
+      </PortalSessionProvider>
 
       {/* Fixed, on every portal screen. The account is fictional and the portal
           says so in four places — this ribbon, the top bar chip, the sidebar

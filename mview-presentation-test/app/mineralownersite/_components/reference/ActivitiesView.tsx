@@ -174,7 +174,15 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
   const shownRing = rows.filter((e) => e.scope === 'ring').length;
   const scopedMine = scoped.filter((e) => e.is_mine).length;
 
-  const cap = tier === 'pro' ? 40 : 20;
+  /* FIVE ROWS WHILE THE RECORD IS A SAMPLE (requested).
+     Unclaimed forces the density to `pro` (see `Portal`), so this list opened
+     on FORTY rows of substituted names and scaled figures — a wall of invented
+     detail, and the one state where volume argues against the page rather than
+     for it. A sample only has to show what the feed looks like; five rows do
+     that, and the claim rail above them is what the reader is meant to reach.
+     The "Show the other N" button below is untouched, so nothing is hidden from
+     anyone who asks for it. */
+  const cap = sample ? 5 : tier === 'pro' ? 40 : 20;
   const shown = showAll ? rows : rows.slice(0, cap);
   const filtered = kind !== 'all' || range !== 'all' || mi !== 'all' || q.trim() !== '';
 

@@ -26,7 +26,7 @@
  * machine below — the five funnel states, the four densities, the forced
  * density while unclaimed, the sample transform, the trial stamp, the drawer,
  * the owner load, the body/root classes — is the reference's, comments
- * included. FOUR ADAPTATIONS, each marked `ADAPTED` where it appears:
+ * included. FIVE ADAPTATIONS, each marked `ADAPTED` where it appears:
  *
  *   1  THE ROUTE TABLE. The reference serves `/`, `/alerts`, `/activities` and
  *      `/weekly`. Here the Dashboard is `/mineralownersite` and the Weekly
@@ -52,6 +52,13 @@
  *      go on this component's own wrapper and the ported stylesheet is scoped
  *      to it. Without that, `state-claimed .cl-lock` would blur figures on
  *      pages that have nothing to do with this one.
+ *
+ *   5  THE FUNNEL STATE OPENS ON THE RECORD. The reference starts at `'paid'`
+ *      because it is a prototype demonstrating five states. Here a real member
+ *      signs in, so an EMPTY `owner.claimed_owners` opens on `'unclaimed'`
+ *      instead of showing a paid dashboard to somebody with nothing claimed.
+ *      The other four states are still the menu's, because nothing any source
+ *      returns distinguishes them.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -195,7 +202,29 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tier, setTier] = useState<Tier>('detailed');
-  const [funnel, setFunnel] = useState<FunnelKey>('paid');
+  /* ADAPTED 5 · THE FUNNEL STATE OPENS ON WHAT THE RECORD SAYS, not on a
+     constant. It used to start at `'paid'` for everybody, so a visitor with
+     nothing claimed was shown a paid dashboard, and the one thing this state
+     is supposed to change — whether the figures are real or a sample — was
+     decided by a literal.
+
+     `owner.claimed_owners` is the only claim signal any of these sources
+     carries: `/api/v1/dashboard` returns the member's claimed roll owners, and
+     an empty list means nothing is claimed. That much is real, so that much is
+     read.
+
+     THE OTHER FOUR STATES STILL COME FROM THE MENU, and that is not an
+     omission. Nothing in the login response or in `/dashboard` distinguishes
+     paid from trial from lapsed — there is no subscription, entitlement or
+     plan field in either — so seeding those from anything here would be
+     inventing an entitlement. The demo menu and its `localStorage` memory are
+     left exactly as they were, and they still override this. */
+  const [funnel, setFunnel] = useState<FunnelKey>(
+    /* `?.length === 0` and not `!length`: the capture has no such field, and
+       "this source does not say" must keep the old default rather than
+       declaring the record unclaimed. Only an explicitly EMPTY list flips it. */
+    initial?.owner.claimed_owners?.length === 0 ? 'unclaimed' : 'paid',
+  );
   const [drawer, setDrawer] = useState<string | null>(null);
   const [loadingName, setLoadingName] = useState<string | null>(null);
   const [trialStarted, setTrialStarted] = useState<string | null>(null);
@@ -433,10 +462,15 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
           `effTier`: the raw choice, so a surface with its own ceiling rule can
           apply it rather than inherit this one's. See `view-state.tsx`. */}
       <PortalViewStateProvider tier={tier} funnel={funnel}>
+      {/* `onOwner` AND `busy` NO LONGER GO TO THE CHROME. The owner-search band
+          was their only consumer and it has been removed (see `Chrome`); `load`
+          and `busy` are still owned here — `load` for the URL-driven read in the
+          effect above, `busy` for the `Loader` below — so nothing about the
+          owner read changed, only who is told about it. */}
       <Chrome
         p={data} route={route} go={go} tier={tier} setTier={pickTier}
         funnel={funnel} setFunnel={pickFunnel} sample={sample}
-        onOwner={load} busy={busy} open={openDrawer}
+        open={openDrawer}
         sampleNote={shown?.note ?? null} trialStarted={trialStarted}
       >
         {error ? <ErrorCard detail={error} /> : null}
@@ -446,7 +480,10 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
             snapshot. The Map is not: it reads the whole public record, not one
             owner, so it renders perfectly well before anybody is picked and the
             card would be an error message under a working page. */}
-        {!children && !data && !error && !busy ? <ErrorCard detail="No owner is loaded yet. Search for a name above." /> : null}
+        {/* The copy no longer says "search for a name above" — there is no
+            search box above it any more. The owner comes from the URL or from
+            the default read, so a reload is the honest suggestion. */}
+        {!children && !data && !error && !busy ? <ErrorCard detail="No owner is loaded yet. Reload the page, or open a link that names one." /> : null}
       </Chrome>
       </PortalViewStateProvider>
 
@@ -466,8 +503,12 @@ function ErrorCard({ detail }: { detail: string }) {
       <h3 style={{ margin: '0 0 6px' }}>That did not load</h3>
       <p className="small" style={{ margin: 0 }}>{detail}</p>
       <p className="tiny muted" style={{ margin: '8px 0 0' }}>
-        Nothing is cached from a failed read, so nothing stale is being shown. Try the search box
-        above, or open <code>/api/health</code> to see which source did not answer.
+        {/* NOT "try the search box above" any more — that band was removed (see
+            `Chrome`), so this was pointing at a control the reader cannot find.
+            This card also serves the `detail` failures, which is why it says
+            reload rather than naming any one cause. */}
+        Nothing is cached from a failed read, so nothing stale is being shown. Reload the page, or
+        open <code>/api/health</code> to see which source did not answer.
       </p>
     </div>
   );

@@ -281,6 +281,42 @@
   z-index: 50;
 }
 
+/* THE BRAND SLOT.
+
+   Two images, one link, and CSS picks which shows — the marketing header's own
+   arrangement, and `portal-top-nav.tsx` records why the choice is not made in
+   JavaScript and why the swap happens at 1024px (the width where `.app-side`
+   and its wordmark go away).
+
+   `flex: none` so the bar's spacer, not the logo, absorbs the free space, and
+   the logo can never be squeezed to a fraction of itself. */
+.mv-portal .app-brand {
+  display: flex;
+  align-items: center;
+  flex: none;
+  line-height: 0;
+  text-decoration: none;
+}
+
+/* The square icon mark — desktop only, where the rail already carries the
+   wordmark. A JPG with its black tile baked in, so the circular crop bounds its
+   inscribed ring exactly and it reads as a badge rather than a black box; drop
+   the radius if this ever becomes a transparent PNG. */
+.mv-portal .app-brand .app-brand-mark {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+}
+
+/* The full wordmark — below 1025px only. Hidden by default rather than shown,
+   so the desktop bar is the plain case. */
+.mv-portal .app-brand .app-brand-word {
+  display: none;
+  height: 26px;
+  width: auto;
+}
+
 .mv-portal .app-top .pagename {
   font-weight: 700;
   font-size: 15px;
@@ -317,6 +353,31 @@
   border: 0;
   cursor: pointer;
   flex: none;
+}
+
+/* THE AVATAR MAY NOW HOLD A PICTURE, and these two rules are the whole cost of
+   it — the tile above is untouched.
+
+   `.v41-avbtn` is the trigger button: the image inside it is square and the tile
+   is a circle, so the overflow has to be clipped, and a `<button>` carries a UA
+   padding that would inset a photograph inside its own circle.
+
+   `.v41-avfill` is the span `PortalAvatar` renders inside the button. It has to
+   fill the tile rather than sit centred in it, or a 32px picture would be laid
+   out at its intrinsic size and burst the bar. */
+.mv-portal .v41-avbtn {
+  overflow: hidden;
+  padding: 0;
+}
+
+.mv-portal .v41-avfill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
 }
 
 .mv-portal .bellbtn {
@@ -420,12 +481,55 @@
   display: block;
 }
 
+/* THE HEAD IS A ROW: the member's picture beside their name, email and plan.
+
+   It was a bare column of two lines. The picture is here because an account menu
+   whose avatar is a photograph should show it at a size you can recognise rather
+   than only as the 32px trigger — and because two initials look right in exactly
+   the same slot, so the layout does not change shape between the two cases.
+
+   `align-items: flex-start` and not `center`: the text block is one, two or
+   three lines depending on whether there is a session and whether the record is
+   claimed, and a centred tile would drift down the block as it grows. */
 .mv-portal .v41-avhead {
   padding: 8px 10px 10px;
   border-bottom: 1px solid var(--line);
   display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+/* The head's own tile — the same `.avatar` circle, one step up. Specificity is
+   (0,3,0) deliberately, to beat both `.mv-portal .avatar` (32px) and the 767px
+   rule `.mv-portal .app-top .avatar` (40px), which would otherwise resize the
+   menu's tile along with the bar's. */
+.mv-portal .v41-avhead .v41-avbig {
+  width: 40px;
+  height: 40px;
+  font-size: 15px;
+  overflow: hidden;
+}
+
+/* `min-width: 0` is load-bearing: without it a long email refuses to wrap and
+   widens the 280px panel instead. */
+.mv-portal .v41-avwho {
+  display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
+}
+
+.mv-portal .v41-avwho > strong {
+  font-size: 13.5px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+/* An address can be longer than the panel, so it breaks rather than pushing.
+   `anywhere` and not `break-word`, because the long run has no spaces in it. */
+.mv-portal .v41-avmail {
+  overflow-wrap: anywhere;
 }
 
 .mv-portal .v41-avmenu a[role="menuitem"],
@@ -536,6 +640,76 @@
 .mv-portal .v41-avviews {
   margin: 4px 8px 8px;
   display: flex;
+}
+
+/* ----------------------------------------------------------------------------
+   LOG OUT — the account menu's last row, behind its own rule.
+
+   BOTTOM OF THE MENU AND SEPARATED, which is where a signed-in product puts it
+   and, more to the point, keeps the one destructive item away from the four
+   navigation rows a pointer sweeps through. The divider is the same
+   `1px var(--line)` the rest of the menu uses; nothing new is introduced.
+
+   The row itself takes the menu's own item geometry — 9px/10px padding, 9px
+   radius, 13.5px at weight 600, the 15px icon — so it reads as one of the list
+   rather than as a foreign button. It differs in exactly one way, its hover
+   colour, because an action that ends the session should not look identical to
+   one that opens a page.
+
+   THE RED IS THE DESIGN'S OWN, not a new colour. `#b91c1c` on `#fee2e2` is the
+   reference build's `--red` / `--red-bg` pair (`dashboard-reference.css`), and
+   `#b91c1c` is already in this file as `.delta-down`. Nothing is added to the
+   palette.
+
+   Resting state stays `--slate`, so the menu is not shouting at an owner who
+   only came for Settings.
+
+   It is a `<button>`, so it needs the shape declared here — the menu's
+   `a[role="menuitem"]` rules are attribute-selected on links and do not reach
+   it.
+   ---------------------------------------------------------------------------- */
+.mv-portal .v41-avfoot {
+  border-top: 1px solid var(--line);
+  margin-top: 6px;
+  padding-top: 6px;
+}
+
+.mv-portal .v41-avmenu .v41-logout {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--slate);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.mv-portal .v41-avmenu .v41-logout:hover {
+  background: #fee2e2;
+  color: #b91c1c;
+  text-decoration: none;
+}
+
+/* Signed out the slot is a way IN, not a way out, so it takes the menu's own
+   green hover rather than the destructive one. */
+.mv-portal .v41-avmenu .v41-logout-in:hover {
+  background: #f0faf5;
+  color: var(--green-deep);
+}
+
+/* While the action is in flight. `cursor: default` rather than `not-allowed`:
+   the row is not refusing the click, it is already doing it. */
+.mv-portal .v41-avmenu .v41-logout:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* The account menu's copy of the switch is sized in section 4, beside the switch
@@ -2856,6 +3030,115 @@
   display: flex;
 }
 
+/* WHO IS SIGNED IN — the drawer's head, above the navigation rows.
+
+   The panel is `--ink`, so this block is on the dark treatment the rest of the
+   drawer uses: `#22262f` for its rule, `#fff` for the name, `#8a93a3` for the
+   address. `#181a26` is the same tint the drawer's own `a.nav-item:hover`
+   carries, so the block reads as part of the panel rather than as a card
+   dropped into it.
+
+   The tile keeps `.avatar` — the green circle from §2 — because the member's
+   identity should look the same here as it does in the bar. */
+.mv-portal .mv-drawer-me {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #181a26;
+}
+
+.mv-portal .mv-drawer-me .mv-drawer-me-pic {
+  width: 38px;
+  height: 38px;
+  font-size: 14px;
+  overflow: hidden;
+}
+
+/* `min-width: 0` so a long address wraps inside the panel instead of widening
+   it — the panel is `max-width: 320px` and has nowhere to grow to. */
+.mv-portal .mv-drawer-me-who {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.mv-portal .mv-drawer-me-who > strong {
+  font-size: 13.5px;
+  line-height: 1.3;
+  color: #fff;
+  overflow-wrap: anywhere;
+}
+
+.mv-portal .mv-drawer-me-who > .tiny {
+  color: #8a93a3;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+/* LOG OUT — the drawer's last action, below "Public site" and above the
+   disclosure. Behind its own rule for the same reason the account menu's is:
+   the one destructive row does not belong in the sweep of navigation rows.
+
+   `margin-top: auto` pushes it to the foot of the flex panel, so on a short
+   list it sits at the bottom rather than floating under the rows. */
+.mv-portal .mv-drawer-out {
+  margin-top: auto;
+  padding-top: 6px;
+  border-top: 1px solid #22262f;
+}
+
+/* The panel's `a.nav-item` / `span.nav-item` rules are element-selected and do
+   not reach a `<button>`, so the row's shape is declared here. Everything in it
+   is the drawer's own: 9px/12px padding, 9px radius, 11px gap, 13.5px at weight
+   600, `#cbd5e1`. */
+.mv-portal .app-drawer .panel .mv-drawer-logout {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #cbd5e1;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.mv-portal .app-drawer .panel .mv-drawer-logout .mvi {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+/* The design's own red, on the dark ground: `#fca5a5` is `#b91c1c`'s legible
+   counterpart against `--ink` — the reference's red itself fails on it. The
+   background is the drawer's existing hover tint, unchanged. */
+.mv-portal .app-drawer .panel .mv-drawer-logout:hover {
+  background: #181a26;
+  color: #fca5a5;
+  text-decoration: none;
+}
+
+/* Signed out this slot is the way IN, so it takes the drawer's plain hover
+   rather than the destructive one. */
+.mv-portal .app-drawer .panel .mv-drawer-signin:hover {
+  color: #fff;
+}
+
+.mv-portal .app-drawer .panel .mv-drawer-logout:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .mv-portal .mv-drawer-demo {
   margin-top: 14px;
   padding: 10px 12px;
@@ -2918,6 +3201,20 @@
 
   .mv-portal .app-hamburger {
     display: flex;
+  }
+
+  /* THE LOGO SWAP, at the sidebar's own breakpoint.
+
+     Above this width the rail carries the wordmark and the bar carries the
+     compact mark. Here the rail is gone — `.app-side { display: none }` right
+     above — so the bar takes over the wordmark it took with it. Two images, one
+     shown; see `portal-top-nav.tsx` for why the choice is CSS and not JS. */
+  .mv-portal .app-brand .app-brand-mark {
+    display: none;
+  }
+
+  .mv-portal .app-brand .app-brand-word {
+    display: block;
   }
 
   .mv-portal .tabbar {
@@ -3109,6 +3406,14 @@
     font-size: 14.5px;
   }
 
+  /* 24px, so the wordmark plus the 44px hamburger still leave the page name a
+     readable slot on a 375px row before the bar wraps. The bar is `flex-wrap`
+     from 900px, so anything that does not fit takes the second line rather than
+     overflowing. */
+  .mv-portal .app-brand .app-brand-word {
+    height: 24px;
+  }
+
   /* The plan lives in the account menu and on Billing & Plan at this width. */
   .mv-portal .app-top .plan-pill {
     display: none;
@@ -3182,6 +3487,28 @@
 
   .mv-portal .v41-avmenu {
     width: min(280px, calc(100vw - 24px));
+  }
+}
+
+/* THE MARK COMES BACK ON A PHONE.
+
+   Same call as the other shell's, and the same measurement behind it: the
+   105px wordmark plus the 44px hamburger, the page name, the demo chip and the
+   four right-hand controls is more than a 375px row holds, and this bar's
+   `flex-wrap` turns that into extra rows of chrome above the page rather than
+   an overflow. The 26px mark is the branding that fits, and it is the file the
+   marketing header itself swaps to below 767px.
+
+   480px is the width at which the wordmark stops needing an extra row. Above
+   it, and below 1025px, the wordmark stands — that band is where the sidebar
+   and its own wordmark are gone. */
+@media (max-width: 480px) {
+  .mv-portal .app-brand .app-brand-mark {
+    display: block;
+  }
+
+  .mv-portal .app-brand .app-brand-word {
+    display: none;
   }
 }
 
