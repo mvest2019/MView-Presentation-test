@@ -38,7 +38,7 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { EventKind, TimelineEvent, RingKey } from '../../_lib/reference/payload';
-import { n0, nShort, plural, pctS, MCF, BBL } from '../../_lib/reference/fmt';
+import { n0, plural, pctS, MCF, BBL } from '../../_lib/reference/fmt';
 import { Band, ProductPair } from './bits';
 import { Charts } from './LineChart';
 import { type ChartSpec } from '../../_lib/reference/chart';
@@ -99,6 +99,22 @@ function n0d(n: number | null | undefined): string {
  *
  * "0.8%" and "0,5" are real readings and stay: only a bare zero, or a zero
  * with a unit behind it, counts as nothing.
+ */
+/**
+ * FIGURES ARE PRINTED IN FULL, NOT ABBREVIATED.
+ *
+ * These four were the only places this view shortened its own numbers:
+ * `nShort` turns 199,738 into "199K" and 10,604 into "11K". Every figure
+ * elsewhere on the page is printed whole by `n0`, so the ring panel was
+ * quietly the smallest-looking part of the screen while describing the
+ * largest volumes on it — a neighbour lease produces far more than the
+ * reader's own share does.
+ *
+ * Same values, same units, more digits. Nothing is scaled: "199K MCF" and
+ * "199,738 MCF" are the same month. The server-formatted strings on Alerts
+ * still abbreviate ("14K MCF · 665 BBL") and are left exactly as sent —
+ * §13 says render those verbatim, and re-formatting them is what once
+ * turned $4,548,479 into "$45,48,479".
  */
 function blankStat(value: string | null | undefined): boolean {
   const t = String(value ?? '').trim();
@@ -882,12 +898,12 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
               />
               <RingKpi
                 label={`Their gas, ${ring.last_label ?? 'last month'}`}
-                value={ring.last_gas ? `${nShort(ring.last_gas)} ${MCF}` : 'none filed'}
+                value={ring.last_gas ? `${n0(ring.last_gas)} ${MCF}` : 'none filed'}
                 sub="whole-lease volume next door — never your share"
               />
               <RingKpi
                 label={`Their oil, ${ring.last_label ?? 'last month'}`}
-                value={ring.last_oil ? `${nShort(ring.last_oil)} ${BBL}` : 'none filed'}
+                value={ring.last_oil ? `${n0(ring.last_oil)} ${BBL}` : 'none filed'}
                 sub={ring.last_oil
                   ? 'whole-lease volume next door — never your share'
                   : 'these neighbors file gas only'}
@@ -957,10 +973,10 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                           </td>
                           <td className="num">{nb.last_label ?? 'no month filed'}</td>
                           <td className="num">
-                            {nb.last_gas ? `${nShort(nb.last_gas)} ${MCF}` : '—'}
+                            {nb.last_gas ? `${n0(nb.last_gas)} ${MCF}` : '—'}
                           </td>
                           <td className="num">
-                            {nb.last_oil ? `${nShort(nb.last_oil)} ${BBL}` : '—'}
+                            {nb.last_oil ? `${n0(nb.last_oil)} ${BBL}` : '—'}
                           </td>
                           <td className="num hide-s">{n0d(nb.months_reported)}</td>
                         </tr>

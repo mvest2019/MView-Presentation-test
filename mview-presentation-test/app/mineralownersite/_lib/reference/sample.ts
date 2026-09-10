@@ -121,7 +121,14 @@ export function scaleFigures(text: string | null | undefined, factor: number): s
          grouped. */
       const decimals = (String(digits).split('.')[1] ?? '').length;
       const scaled = raw * factor;
-      const body = String(digits).includes(',')
+      /* GROUPED IF IT ARRIVED GROUPED, OR IF SCALING PUSHED IT PAST A THOUSAND.
+         The rule was "separators only where it already had them", which is
+         right for a figure that stays the same size — but scaling can carry
+         665 up to 1082, and "1082 BBL" beside "23K MCF" reads as a raw number
+         someone forgot to format. Four digits get the comma the reader would
+         have seen had the record itself been that big. */
+      const grouped = String(digits).includes(',') || Math.abs(scaled) >= 1000;
+      const body = grouped
         ? scaled.toLocaleString('en-US',
           { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
         : scaled.toFixed(decimals);
@@ -341,8 +348,28 @@ export function sampleize(input: Payload): SampleResult {
      name, so one owner always previews the same way. */
   const { payload: real, filled } = fillMissingProduct(input);
   const rnd = seeded(seedOf(real.owner.ownername + ':' + real.owner.roll_year));
-  /* one factor for the whole portfolio — see rule 2 */
-  const f = 0.55 + rnd() * 1.15;
+  /* ONE FACTOR FOR THE WHOLE PORTFOLIO — see rule 2 — AND IT NEVER SHRINKS
+     THE RECORD.
+
+     It used to be `0.55 + rnd() * 1.15`, a range of 0.55 to 1.70, so roughly
+     four owners in ten previewed SMALLER than the record they were drawn
+     from. That is the one direction this transform must not go. The preview
+     is the only thing a reader sees before deciding whether to claim, and a
+     figure scaled to 55% is an argument against bothering — the sample's job
+     is to show what the product looks like when it is working, not to roll a
+     die on how impressive that is.
+
+     1.15 to 2.00 keeps every property the old range had: one factor across
+     the whole portfolio so the internal arithmetic still ties out, seeded off
+     the real owner name so a given owner always previews identically, and a
+     multiplier close enough to 1 that the shape of the record — which lease
+     leads, how the months move — is unchanged.
+
+     IT IS NOT A CLAIM ABOUT THE READER. Nothing here is scaled once anything
+     is claimed: `Portal` only calls `sampleize` while `funnel === 'unclaimed'`,
+     and the page carries "Sample preview — the names and amounts belong to a
+     sample owner rather than to you" above everything it touches. */
+  const f = 1.15 + rnd() * 0.85;
   const nm = (i: number) => LEASE_NAMES[i % LEASE_NAMES.length];
   const op = (i: number) => OPERATOR_NAMES[i % OPERATOR_NAMES.length];
 
@@ -740,6 +767,22 @@ export function sampleize(input: Payload): SampleResult {
         lead_lease: subLease(a.lead_lease),
         evidence: a.evidence.map(prose),
         metric: null,
+        /* THE STAT STRIP WAS NEVER SAMPLED, and it is the loudest part of the
+           row. `title`, `body`, `why` and `evidence` all went through
+           `prose`, but `stats` was spread straight from `real` — so the
+           not-claimed page printed THIS OWNER'S OWN production in every cell
+           ("Your share, June 2026 · 14K MCF · 665 BBL") directly under a
+           banner reading "the names and amounts belong to a sample owner
+           rather than to you". The timeline branch has always mapped its
+           stats through `sampleStat`; the alerts branch was simply missed.
+
+           It is also why the preview's figures did not move with the scale
+           factor: everything else on the page was scaled and these were not,
+           so the sample read smaller than the record it was drawn from. */
+        stats: a.stats.map(sampleStat),
+        /* the sparkline beside them is the same series in shape — scaled, not
+           masked, so a sample with a flat line does not read as a dead lease */
+        spark: a.spark ? a.spark.map(s) : a.spark,
       })),
       notes: real.alerts.notes.map(prose),
     },
