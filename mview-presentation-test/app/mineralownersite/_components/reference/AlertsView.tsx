@@ -46,7 +46,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
-import type { Alert, AlertCategory } from '../../_lib/reference/payload';
+import type { Alert, AlertCategory, Payload } from '../../_lib/reference/payload';
 import { n0, plural } from '../../_lib/reference/fmt';
 import { Band } from './bits';
 import type { ViewProps } from './Dashboard';
@@ -92,6 +92,98 @@ const KLASS_CHIP: Record<string, string> = {
  * rendering below is unchanged — `isUnread` asks the same question, of a set
  * that lives one level up.
  */
+/**
+ * THE WATCH LEDGER MUST NEVER PRINT A ZERO.
+ *
+ * `alerts.ledger` feeds one panel — "What you are actually paying for" — and
+ * that panel is nothing but counts. It argues for the subscription only while
+ * the counts are real. Empty, it renders
+ *
+ *   "We read the public record on your 0 leases every day"
+ *   "0 leases · 0 counties"   "0" filings   "0" alerts
+ *   "Premium is  a month — about  a week ... on the annual plan ()"
+ *   "these 0 lease numbers ... 0 lease-months ... a week with 0"
+ *
+ * which is the strongest available argument AGAINST subscribing, printed on
+ * the one page whose job is to say what subscribing buys. A reader who has
+ * claimed nothing is exactly the reader this panel is written for, and they
+ * are the one it was failing.
+ *
+ * WHY HERE AND NOT ONLY IN THE SEAM. `owner-data.ts` already swaps an empty
+ * ledger for the captured one, which is better data and runs first. This is
+ * the backstop for every other way the block can arrive empty — a payload
+ * assembled somewhere else, a cached RSC render from before that guard
+ * existed, a future caller that does not go through the seam. The panel now
+ * carries the guarantee itself rather than trusting its input.
+ *
+ * WHAT IT SUBSTITUTES: THIS READER'S OWN RECORD, derived from the rest of the
+ * payload rather than asserted. Every figure below is already on the page
+ * somewhere else, so the panel cannot contradict it —
+ *
+ *   leases           totals.lease_count
+ *   counties         totals.county_count
+ *   adjacent_leases  rings.rings['1'].neighbours.length
+ *   wells/operators  totals.well_count / totals.operator_names.length
+ *   production       timeline.counts.production, the same count the Activities
+ *                    page prints on its "Production filed" card
+ *   nearby_filings   activities.counts.nearby
+ *   alerts           the list rendered directly below this panel
+ *
+ * Checked against the captured ledger, which the service computes
+ * independently: 10 leases, 1 county, 7 adjacent, 10 wells, 3 operators — the
+ * derivation reproduces all five exactly.
+ *
+ * AN EARLIER VERSION USED A FIXED SET and it was wrong in the field: a reader
+ * with 54 leases got a panel reading "your 10 leases" directly under an alert
+ * reading "44 of your 54 leases filed production". A constant cannot know
+ * whose record it is on. Nothing here is a constant except the plan prices,
+ * which are the same for every reader by definition.
+ *
+ * WHAT STAYS ZERO, DELIBERATELY. `standing_permits` and `lease_months_read`
+ * have no honest source anywhere else in the payload, so they are left at zero
+ * and the two clauses that print them are guarded instead. A missing clause is
+ * a smaller lie than a fabricated permit.
+ *
+ * WHAT IT DOES NOT SUBSTITUTE. The alert counts, whenever the payload has
+ * items: they are derived from the list rendered directly below, so the panel
+ * can never claim a different number of alerts than the reader can count. And
+ * a POPULATED ledger is trusted entirely — a zero inside one is a fact (an
+ * owner really can have no standing permits) and filling it would invent a
+ * permit that does not exist. `leases` is the gate, because a service that
+ * knows of no leases knows of nothing.
+ */
+/** the published plan, identical for every reader — the only constant here */
+const PLAN_PRICE = {
+  price_month: '$99.95', price_annual: '$999.50',
+  price_weekly: '$23', price_weekly_annual: '$19',
+} as const;
+
+function watchLedger(p: Payload): Payload['alerts']['ledger'] {
+  const real = p.alerts.ledger;
+
+  const priced = (l: Payload['alerts']['ledger']): Payload['alerts']['ledger'] =>
+    l.price_month ? l : { ...l, ...PLAN_PRICE };
+
+  if (real.leases) return priced(real);
+
+  const items = p.alerts.items;
+  const action = items.filter((a) => a.severity === 'action').length;
+
+  return priced({
+    ...real,
+    leases: p.totals.lease_count,
+    counties: p.totals.county_count,
+    wells: p.totals.well_count,
+    operators: p.totals.operator_names.length,
+    adjacent_leases: p.rings.rings['1']?.neighbours.length ?? 0,
+    production_filings: p.timeline.counts.production ?? 0,
+    nearby_filings: p.activities.counts.nearby,
+    alerts: items.length,
+    action_count: action,
+    rest_count: items.length - action,
+  });
+}
+
 export interface AlertsProps extends ViewProps {
   readIds: Set<string>;
   markRead: (ids: string[]) => void;
@@ -101,11 +193,18 @@ export default function AlertsView(
   { p, tier, funnel, sample, open, go, readIds, markRead }: AlertsProps,
 ) {
   const al = p.alerts;
-  const lg = al.ledger;
+  const lg = useMemo(() => watchLedger(p), [p]);
   const [cat, setCat] = useState<AlertCategory | 'all'>('all');
   const [q, setQ] = useState('');
 
   const unclaimed = funnel === 'unclaimed';
+
+  /* the four Ultra lists under its headline — everything except the one the
+     headline is already about, newest first as the payload orders them */
+  const ultraRest = useMemo(
+    () => al.items.filter((x) => x.severity !== 'action').slice(0, 4),
+    [al.items],
+  );
   const action = al.items.find((x) => x.severity === 'action') ?? null;
 
   /* the search matches anything the row shows — the redesign's box searches by
@@ -178,6 +277,41 @@ export default function AlertsView(
                 </>
               )}
           </p>
+          {/* ULTRA IS NOT MEANT TO BE EMPTY, only undivided.
+              "One headline, one status, one action" was being read as "one
+              figure", and the tier landed on a page with a sentence and a
+              button — nothing to weigh, and nothing to suggest a fuller view
+              exists. These four are the same figures the denser tiers open
+              with, on one line and without a card each, so the reader gets
+              the shape of the record before deciding to go deeper. Every one
+              is live: none is computed here that is not already printed
+              somewhere below. */}
+          <div className="u-stats">
+            <span className="u-stat">
+              <b className="num">{n0(al.count)}</b>
+              <i>{plural(al.count, 'alert')} {al.window_label ? 'this window' : 'on record'}</i>
+            </span>
+            {lg.action_count
+              ? (
+                <span className="u-stat u-stat-act">
+                  <b className="num">{n0(lg.action_count)}</b>
+                  <i>{lg.action_count === 1 ? 'asks' : 'ask'} something of you</i>
+                </span>
+              )
+              : null}
+            <span className="u-stat">
+              <b className="num">{n0(lg.leases)}</b>
+              <i>{plural(lg.leases, 'lease')} watched daily</i>
+            </span>
+            {lg.production_filings
+              ? (
+                <span className="u-stat">
+                  <b className="num">{n0(lg.production_filings)}</b>
+                  <i>production {plural(lg.production_filings, 'filing')} read</i>
+                </span>
+              )
+              : null}
+          </div>
           <div>
             <button
               className="btn btn-primary btn-lg" type="button"
@@ -189,6 +323,48 @@ export default function AlertsView(
           {/* the retention argument gets exactly one line in Ultra, and it is
               the honest one: you pay for the looking, not for there being
               something to find */}
+          {/* WHAT ELSE IS ON THE RECORD, and why Ultra needs it.
+              The hero answers "is anything wrong" and then stopped, leaving a
+              card of prose in an empty page — a tier that looked like a
+              product with nothing in it rather than a product with nothing
+              urgent. These are the REAL remaining alerts, title only, each one
+              opening the same drawer the denser tiers open. Ultra keeps its
+              one headline and one primary action; this is the evidence that
+              there is more here, and the way in. */}
+          {ultraRest.length
+            ? (
+              <div className="u-more">
+                <p className="u-more-h">
+                  Also on your record{' '}
+                  <span className="u-more-n num">{n0(al.count)}</span>
+                </p>
+                <ul className="u-more-l">
+                  {ultraRest.map((x) => (
+                    <li key={x.id}>
+                      <button type="button" onClick={() => open('alert:' + x.id)}>
+                        <span className={'u-more-sev s-' + x.severity} aria-hidden="true" />
+                        <span className="u-more-t">{x.title}</span>
+                        {x.event_label
+                          ? <span className="u-more-w">{x.event_label}</span>
+                          : null}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {al.count > ultraRest.length + (action ? 1 : 0)
+                  ? (
+                    <p className="u-more-f">
+                      and{' '}
+                      <strong className="num">
+                        {n0(al.count - ultraRest.length - (action ? 1 : 0))}
+                      </strong>{' '}
+                      more — Essentials and above show the full inbox.
+                    </p>
+                  )
+                  : null}
+              </div>
+            )
+            : null}
           <p className="u-note">
             We read the public record on your {lg.leases} {plural(lg.leases, 'lease')} every day.
             Most days there is nothing to tell you — and we will still have looked. That quiet is
@@ -298,9 +474,17 @@ export default function AlertsView(
                 </span>
                 <span className="aw-cap">
                   Yours, plus the <strong className="num">{n0(lg.adjacent_leases)}</strong>{' '}
-                  neighboring {plural(lg.adjacent_leases, 'lease')} and{' '}
-                  <strong className="num">{n0(lg.standing_permits)}</strong> standing{' '}
-                  {plural(lg.standing_permits, 'permit')} within about a mile of them.
+                  neighboring {plural(lg.adjacent_leases, 'lease')}
+                  {/* the permit count has no source outside the ledger, so the
+                      clause goes rather than printing "and 0 standing permits" */}
+                  {lg.standing_permits
+                    ? (
+                      <>
+                        {' '}and <strong className="num">{n0(lg.standing_permits)}</strong>{' '}
+                        standing {plural(lg.standing_permits, 'permit')}
+                      </>
+                    )
+                    : null} within about a mile of them.
                 </span>
               </div>
               <div>
@@ -344,8 +528,17 @@ export default function AlertsView(
                 against these {lg.leases} lease numbers and the one, three and five-mile radius
                 lists around them, plus the commodity price feed, the decline model&rsquo;s band
                 changes and the value model&rsquo;s nightly re-run.{' '}
-                {n0(lg.lease_months_read)} lease-months are held on these leases and{' '}
-                {n0(lg.production_filings)} of them carry a filing. Events are deduplicated across
+                {/* same: no second source for lease-months, so the sentence is
+                    dropped rather than claiming zero were read */}
+                {lg.lease_months_read
+                  ? (
+                    <>
+                      {n0(lg.lease_months_read)} lease-months are held on these leases and{' '}
+                      {n0(lg.production_filings)} of them carry a filing.{' '}
+                    </>
+                  )
+                  : null}
+                Events are deduplicated across
                 the dashboard, this page and the activity feed, so one filing never reaches you
                 three times. Every alert carries both its event date and the date it was detected —
                 an old filing newly matched to your record says so. A week with nothing in it costs

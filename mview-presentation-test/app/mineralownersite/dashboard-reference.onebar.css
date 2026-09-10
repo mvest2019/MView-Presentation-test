@@ -1207,3 +1207,189 @@ body .mv-ref-app .mv-kind .mk-act {
   margin-top: auto;
 }
 
+
+/* ----------------------------------------------------------------------------
+   THE ULTRA HERO'S STAT STRIP.
+
+   Ultra's brief is "one headline, one status, one action", and it was being
+   read as "one figure": the tier rendered a sentence and a button on an
+   otherwise empty page. Nothing to weigh, and nothing to suggest the denser
+   tiers hold more. The strip states three or four figures the page already
+   proves further down, on ONE line and without a card apiece, so the tier
+   stays undivided without being thin.
+
+   CENTRED, because `.ultra-hero` is a centred column and a left-aligned strip
+   inside it reads as a different component. `flex-wrap` rather than a grid:
+   the fourth figure is conditional (a reader with no neighbouring leases, or
+   no production filings, gets three) and a grid would leave a hole.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .ultra-hero .u-stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px 18px;
+  margin: 16px 0 18px;
+  padding: 14px 10px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+body .mv-ref-app .ultra-hero .u-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  /* four must fit one line inside the hero's column; the fourth cell wrapping
+     alone under three reads as a mistake rather than as a wrap */
+  min-width: 76px;
+  flex: 0 1 auto;
+}
+
+body .mv-ref-app .ultra-hero .u-stat b {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--green-deep);
+  font-variant-numeric: tabular-nums;
+}
+
+/* the one that asks something of the reader is the one worth finding first */
+body .mv-ref-app .ultra-hero .u-stat-act b { color: #b8892f; }
+
+body .mv-ref-app .ultra-hero .u-stat i {
+  font-style: normal;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--muted);
+  text-align: center;
+  max-width: 13ch;
+}
+
+/* THE PRO RANKING. `.mv-cols` is the two-column pair the charts already use,
+   so the tables inherit its stacking; only the cells need setting. `.rp-tbl`
+   is the reserves table's own rule and already carries the scroll wrapper. */
+body .mv-ref-app section[data-route="app-activities"] .rp-tbl td:first-child {
+  max-width: 20ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+/* ----------------------------------------------------------------------------
+   THE ULTRA HERO'S "WHAT ELSE" LIST.
+
+   The hero answered "is anything wrong" and then stopped, which left the tier
+   as one card of prose in a page of whitespace — it read as a product with
+   nothing in it rather than a product with nothing URGENT. The list carries
+   the rest of the record, one line each, and every line opens the same drawer
+   the denser tiers open, so Ultra gains depth without gaining a second column.
+
+   LEFT-ALIGNED INSIDE A CENTRED CARD, deliberately. `.ultra-hero` centres its
+   prose, and centred list rows have no common left edge to scan down; the
+   block gets its own alignment and a rule above it so it reads as a section
+   rather than as more of the paragraph.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .ultra-hero .u-more {
+  margin: 18px auto 4px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  text-align: left;
+  max-width: 560px;
+}
+
+body .mv-ref-app .ultra-hero .u-more-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+body .mv-ref-app .ultra-hero .u-more-n {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--green-deep);
+  background: #eaf7f1;
+  border-radius: 999px;
+  padding: 1px 8px;
+  letter-spacing: 0;
+}
+
+body .mv-ref-app .ultra-hero .u-more-l {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+body .mv-ref-app .ultra-hero .u-more-l > li + li { border-top: 1px solid var(--line); }
+
+body .mv-ref-app .ultra-hero .u-more-l button {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+body .mv-ref-app .ultra-hero .u-more-l button:hover { background: #f4faf7; }
+body .mv-ref-app .ultra-hero .u-more-l button:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: -2px;
+}
+
+/* the severity / kind dot, the same colours the denser tiers use on the row's
+   left edge — a reader who moves up a tier meets the same code */
+body .mv-ref-app .ultra-hero .u-more-sev {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  transform: translateY(-1px);
+}
+body .mv-ref-app .ultra-hero .u-more-sev.s-important { background: #b3261e; }
+body .mv-ref-app .ultra-hero .u-more-sev.s-info      { background: #3f4a58; }
+body .mv-ref-app .ultra-hero .u-more-sev.s-good      { background: var(--green); }
+body .mv-ref-app .ultra-hero .u-more-sev.k-permit     { background: #d9a441; }
+body .mv-ref-app .ultra-hero .u-more-sev.k-completion { background: #2e8f6d; }
+body .mv-ref-app .ultra-hero .u-more-sev.k-production { background: #1f7f60; }
+body .mv-ref-app .ultra-hero .u-more-sev.k-adjacent   { background: #3b5bdb; }
+body .mv-ref-app .ultra-hero .u-more-sev.k-status     { background: #6034c9; }
+body .mv-ref-app .ultra-hero .u-more-sev.k-operator   { background: #b3261e; }
+
+body .mv-ref-app .ultra-hero .u-more-t {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+body .mv-ref-app .ultra-hero .u-more-w {
+  flex: none;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+body .mv-ref-app .ultra-hero .u-more-f {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+@media (max-width: 560px) {
+  body .mv-ref-app .ultra-hero .u-more-l button { flex-wrap: wrap; gap: 4px 9px; }
+  body .mv-ref-app .ultra-hero .u-more-w { width: 100%; padding-left: 17px; }
+}

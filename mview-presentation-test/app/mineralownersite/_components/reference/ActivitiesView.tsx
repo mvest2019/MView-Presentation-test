@@ -104,6 +104,14 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
   const ac = p.activities;
   const rg = p.rings;
 
+  /* the four Ultra lists: newest dated filings, the owner's own first */
+  const ultraRecent = useMemo(
+    () => [...tl.events.filter((e) => !e.standing)]
+      .sort((x, y) => (x.is_mine === y.is_mine ? 0 : x.is_mine ? -1 : 1))
+      .slice(0, 4),
+    [tl.events],
+  );
+
   /* the six fixed labels, plus the floor's, which only the server knows */
   const rangeLabel = (k: RangeKey): string => k === 'jan25'
     ? `Since ${shortMonth(tl.range.floor_month)}`
@@ -375,11 +383,71 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                 + `${plural(ring.neighbour_leases, 'lease')}, ${ring.producing} of them producing.`
               : ''}
           </p>
+          {/* the same four-figure strip the Alerts hero carries — see its note.
+              These are `timeline.counts` and the one-mile ring, both already
+              printed on the denser tiers, so Ultra states the record's shape
+              rather than only describing it. */}
+          <div className="u-stats">
+            <span className="u-stat">
+              <b className="num">{n0(tl.counts.production)}</b>
+              <i>production {plural(tl.counts.production, 'filing')} on your leases</i>
+            </span>
+            <span className="u-stat">
+              <b className="num">{n0(tl.counts.completion)}</b>
+              <i>{plural(tl.counts.completion, 'completion')} nearby</i>
+            </span>
+            <span className="u-stat">
+              <b className="num">{n0(tl.counts.permit)}</b>
+              <i>{plural(tl.counts.permit, 'permit')} filed around you</i>
+            </span>
+            {ring.neighbour_leases
+              ? (
+                <span className="u-stat">
+                  <b className="num">{n0(ring.neighbour_leases)}</b>
+                  <i>{plural(ring.neighbour_leases, 'lease')} within a mile</i>
+                </span>
+              )
+              : null}
+          </div>
           <div>
             <button className="btn btn-primary btn-lg" type="button" onClick={() => open('permits')}>
               Why neighbors matter
             </button>
           </div>
+          {/* the same idea as the Alerts hero: Ultra was a paragraph and a
+              button on an empty page. These are the newest real filings,
+              one line each, opening the same drawers the denser tiers do. */}
+          {ultraRecent.length
+            ? (
+              <div className="u-more">
+                <p className="u-more-h">
+                  The latest on the record{' '}
+                  {/* the DATED count, matching the headline directly above —
+                      `events.length` includes the standing facts and printed
+                      895 under a headline reading 883 */}
+                  <span className="u-more-n num">
+                    {n0(tl.events.filter((e) => !e.standing).length)}
+                  </span>
+                </p>
+                <ul className="u-more-l">
+                  {ultraRecent.map((e) => (
+                    <li key={e.id}>
+                      <button type="button" onClick={() => open('kind:' + e.kind)}>
+                        <span className={'u-more-sev k-' + e.kind} aria-hidden="true" />
+                        <span className="u-more-t">{e.title}</span>
+                        {e.when_label
+                          ? <span className="u-more-w">{e.when_label}</span>
+                          : null}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <p className="u-more-f">
+                  Essentials and above show the whole feed, filterable by date and distance.
+                </p>
+              </div>
+            )
+            : null}
           <p className="u-note">
             We read the state record every day. Most days it says nothing about your acreage — and
             we will still have looked.
@@ -976,6 +1044,112 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
               </p>
             </div>
           )}
+
+        {/* ============================================ PRO ONLY — the ranking
+            DETAILED AND PRO WERE THE SAME PAGE. Every band in this view was
+            `to="ultra"`, `from="simple"` or `from="detailed"` — not one
+            `from="pro"` — so the two densest tiers differed only in how many
+            rows a list kept (40 against 20 in the timeline, 20 against 8 in a
+            ring). Two tiers that a reader chooses between should differ in
+            what they SAY, not only in how far they scroll.
+
+            THESE TWO TABLES ARE THE DIFFERENCE, and they are not padding:
+            `activities.operators` and `activities.fields` arrive on every
+            `/activity/summary` call and nothing rendered them. They answer the
+            question the whole county feed is evidence for — WHO is working
+            here and WHERE — ranked, which no other panel on the page does.
+            The permits/completions split matters: an operator filing permits
+            is planning, one filing completions is finishing, and the ratio is
+            the reading a professional wants. */}
+        <Band tier={tier} from="pro">
+          {ac.operators.length || ac.fields.length
+            ? (
+              <section style={{ marginTop: 18 }}>
+                <div className="act-band">Who is working here, and where</div>
+                <p className="ac-note" style={{ margin: '0 0 10px' }}>
+                  Every permit and completion in the county feed above, grouped. Counts are
+                  filings, not wells — one well can carry both a permit and a completion.
+                </p>
+                <div className="mv-cols">
+                  {ac.operators.length
+                    ? (
+                      <section className="card card-pad">
+                        <h3 style={{ margin: '0 0 8px' }}>Operators</h3>
+                        <div className="rp-tbl-wrap">
+                          <table className="rp-tbl">
+                            <thead>
+                              <tr>
+                                <th>Operator</th>
+                                <th className="num">Permits</th>
+                                <th className="num">Completions</th>
+                                <th className="num">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {ac.operators.slice(0, 12).map((o, i) => (
+                                <tr key={(o.operator_name ?? '') + i}>
+                                  <td>{o.operator_name ?? 'Not named in the filing'}</td>
+                                  <td className="num">{n0(o.permits)}</td>
+                                  <td className="num">{n0(o.completions)}</td>
+                                  <td className="num"><strong>{n0(o.total)}</strong></td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        {ac.operators.length > 12
+                          ? (
+                            <p className="ac-note" style={{ marginTop: 8 }}>
+                              The {n0(ac.operators.length - 12)} smaller{' '}
+                              {plural(ac.operators.length - 12, 'operator')} are in the feed above.
+                            </p>
+                          )
+                          : null}
+                      </section>
+                    )
+                    : null}
+                  {ac.fields.length
+                    ? (
+                      <section className="card card-pad">
+                        <h3 style={{ margin: '0 0 8px' }}>Fields</h3>
+                        <div className="rp-tbl-wrap">
+                          <table className="rp-tbl">
+                            <thead>
+                              <tr>
+                                <th>Field</th>
+                                <th className="num">Permits</th>
+                                <th className="num">Completions</th>
+                                <th className="num">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {ac.fields.slice(0, 12).map((fl, i) => (
+                                <tr key={(fl.field_name ?? '') + i}>
+                                  <td>{fl.field_name ?? 'Not named in the filing'}</td>
+                                  <td className="num">{n0(fl.permits)}</td>
+                                  <td className="num">{n0(fl.completions)}</td>
+                                  <td className="num"><strong>{n0(fl.total)}</strong></td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        {ac.fields.length > 12
+                          ? (
+                            <p className="ac-note" style={{ marginTop: 8 }}>
+                              The {n0(ac.fields.length - 12)} smaller{' '}
+                              {plural(ac.fields.length - 12, 'field')} are in the feed above.
+                            </p>
+                          )
+                          : null}
+                      </section>
+                    )
+                    : null}
+                </div>
+              </section>
+            )
+            : null}
+        </Band>
 
         {/* --------------------------------- what the record could not say */}
         {tl.notes.length

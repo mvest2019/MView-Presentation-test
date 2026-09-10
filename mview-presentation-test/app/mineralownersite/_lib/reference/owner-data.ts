@@ -217,6 +217,7 @@ export async function getOwnerPayload(
   return {
     ...FIXTURE,
     ...live,
+    alerts: withLedger(live.alerts),
     activities: { ...live.activities, nearby: trimNearby(live.activities.nearby) },
     drawers: withAlertDrawers(FIXTURE.drawers, live.alerts.items),
   };
@@ -506,6 +507,61 @@ function band(n: 1 | 3 | 5): Payload['nearby']['bands']['1'] {
     rows: 0, permits: 0, completions: 0, wellbores: 0, producing: 0, operators: 0,
     nearest_mi: null, nearest_name: null, newest_iso: null, newest_label: null,
     last_month_gas: 0, last_month_oil: 0,
+  };
+}
+
+/**
+ * THE WATCH LEDGER MUST NEVER PRINT A ZERO.
+ *
+ * `alerts.ledger` feeds one panel — "What you are actually paying for" — and
+ * that panel is built entirely out of counts. It reads as an argument for the
+ * subscription only while the counts are real. Empty, it renders
+ *
+ *   "We read the public record on your 0 leases every day"
+ *   "0 leases · 0 counties"   "0" filings   "0" alerts
+ *   "Premium is  a month — about  a week ... on the annual plan ()"
+ *   "these 0 lease numbers ... 0 lease-months ... a week with 0"
+ *
+ * which is the strongest available argument AGAINST subscribing, printed on the
+ * one page whose job is to say what subscribing buys. Seen in the field: the
+ * live block came back with an empty ledger while the same response's `counts`
+ * were correct, so the page showed nine alerts above a panel claiming to watch
+ * nothing.
+ *
+ * THE FALLBACK IS THIS OWNER'S OWN CAPTURED FIGURES, not another owner's and
+ * not an invented set. `getOwnerPayload` refuses any owner but the captured
+ * one a few lines above (409 `OWNER_NOT_AVAILABLE`), so `FIXTURE.alerts.ledger`
+ * is the same person, read on the day the capture was taken. Substituting it
+ * cannot attribute one owner's leases to another; the worst case is a figure a
+ * few weeks stale in a panel whose whole point is "this is the shape of what
+ * you get".
+ *
+ * ALL OR NOTHING ON THE COUNTS. `leases` is the headline and the gate: if the
+ * service knows of no leases it knows of nothing, and every other count is zero
+ * for the same reason, so the block is swapped whole and stays internally
+ * consistent. If `leases` is set, the live block is trusted entirely — a zero
+ * inside a populated ledger is a FACT (an owner really can have no standing
+ * permits), and back-filling that one from the capture would invent a permit
+ * that does not exist.
+ *
+ * THE PRICES ARE SEPARATE, because they are not facts about this owner at all —
+ * they are the plan's, identical for everybody, and an owner the service has no
+ * plan row for returns them blank while the counts are fine. So they fall back
+ * on their own, independently of the counts.
+ */
+function withLedger(live: Payload['alerts']): Payload['alerts'] {
+  const cap = FIXTURE.alerts.ledger;
+  const lg = live.ledger?.leases ? live.ledger : cap;
+  if (lg.price_month) return lg === live.ledger ? live : { ...live, ledger: lg };
+  return {
+    ...live,
+    ledger: {
+      ...lg,
+      price_month: cap.price_month,
+      price_annual: cap.price_annual,
+      price_weekly: cap.price_weekly,
+      price_weekly_annual: cap.price_weekly_annual,
+    },
   };
 }
 
