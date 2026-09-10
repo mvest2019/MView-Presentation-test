@@ -39,7 +39,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { EventKind, TimelineEvent, RingKey } from '../../_lib/reference/payload';
 import { n0, nShort, plural, pctS, MCF, BBL } from '../../_lib/reference/fmt';
-import { Band, Spark, ProductPair } from './bits';
+import { Band, ProductPair } from './bits';
 import { Charts } from './LineChart';
 import { type ChartSpec } from '../../_lib/reference/chart';
 import type { ViewProps } from './Dashboard';
@@ -610,13 +610,6 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                   </span>
                 </span>
                 <span className="mk-label">{k.label}</span>
-                {k.spark.some((v) => v > 0)
-                  ? (
-                    <span className="mk-spark" aria-hidden="true">
-                      <Spark points={k.spark} color={SPARK_COLOUR[k.kind]} />
-                    </span>
-                  )
-                  : null}
                 <span className="mk-sub">
                   {k.count
                     ? (
@@ -633,6 +626,27 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                 <Band tier={tier} from="detailed">
                   <span className="mk-mean">{k.meaning}</span>
                 </Band>
+                {/* NO SPARKLINE ON THESE CARDS, and its absence is the design.
+                    The reference drew one between the title and the caption
+                    that belongs to the title. It could never fill the space:
+                    `Spark` is a 90x20 viewBox, an aspect of 4.5, and
+                    `.mv-kinds` is `flex: 1 1 340px` with wrapping, so a card's
+                    content box runs from about 300px to 430px depending on how
+                    many fit the row. `xMidYMid meet` letterboxed it to roughly
+                    99px and centred it at every one of those widths — a stray
+                    squiggle holding two lines of copy apart.
+
+                    Four placements were tried: in the head row beside the
+                    count, left of it, under it, and full bleed along the card's
+                    floor. None of them read as designed, because the problem is
+                    not where it sits. A 24-point line 20px tall carries no
+                    reading a reader can act on, and this card already states
+                    the count, the newest date and what the kind means. The two
+                    charts below — "Is the area getting busier?" and "Your own
+                    filed months" — show these same series at a size where the
+                    shape can actually be read, with an axis and a hover
+                    readout. `timeline.kinds[].spark` still arrives from the
+                    API; nothing reads it here. */}
                 <span className="mk-act">{on ? 'Filtering — click to clear' : k.action} →</span>
               </button>
             );
@@ -992,7 +1006,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
 /**
  * THE FILINGS CHART'S OWN TWO COLOURS — one hue, two depths.
  *
- * WHY IT DOES NOT USE `SPARK_COLOUR`. It used to, and before that it used
+ * WHY IT IS ITS OWN PAIR. It used to read the kind palette, and before that
  * `COLOURS.oil`/`COLOURS.gas` — the OIL and GAS COMMODITY colours, which is
  * what the reference shipped and which meant the permit bar was drawn in the
  * colour "oil" everywhere else in this app. Matching the kind palette instead
@@ -1009,21 +1023,12 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
  * did not.
  *
  * THE COST, ACCEPTED: the permit bar no longer matches the gold permit card
- * and timeline chip. The kind palette below is unchanged and still governs
- * every other permit mark on the page; only this one chart departs from it.
+ * and timeline chip. The kind colours in `dashboard-reference.css` still
+ * govern every other permit mark on the page; only this chart departs.
  * The legend swatches in `.lc-head` follow automatically — they render from
  * `series[].colour`.
  */
 const FILINGS_COLOUR = { permit: '#9fd8c0', completion: '#1f7f60' };
-
-const SPARK_COLOUR: Record<EventKind, string> = {
-  permit: '#d9a441',
-  completion: '#2e8f6d',
-  production: '#1f7f60',
-  adjacent: '#3b5bdb',
-  status: '#6034c9',
-  operator: '#b3261e',
-};
 
 /** the month heading that separates one month of the timeline from the next */
 function monthBreak(list: TimelineEvent[], i: number): string | null {

@@ -349,6 +349,17 @@
   display: block;
   height: 30px;
   width: auto;
+  /* `align-self`, AND IT IS LOAD-BEARING — the logo was stretched without it.
+     `.app-side` is `display: flex; flex-direction: column`, so this image is a
+     flex item and the default `align-items: normal` behaves as `stretch` in the
+     cross axis. A stretched flex item's cross size is the line's, which BEATS
+     `width: auto` on a replaced element: the rail's 236px less 28px of padding
+     and 16px of margin left the mark 192px wide at 30px tall, against a true
+     577x132 that is 131px at that height. A 1.46x horizontal stretch, on the
+     one asset with a standing instruction against hand-altering it.
+
+     Measured on this page: 192px before, 131.1px after. */
+  align-self: flex-start;
   margin: 4px 8px 16px;
 }
 
@@ -366,14 +377,24 @@
   text-decoration: none;
 }
 
-/* The square mark, from 861px up — the rail's wordmark is already on screen at
-   those widths, and this row is measured to the pixel (§3). 26px is the
-   smallest of the row's controls, so it adds a brand anchor without taking a
-   settlement's width.
+/* THE BRAND SLOT IS OFF WHERE THE RAIL IS ON.
 
-   Its black tile is baked into the JPG, so it needs the circular crop that
-   bounds the mark's inscribed ring. On `--ink` the tile all but disappears and
+   It used to show the 26px icon mark from 861px up. The rail carries the full
+   wordmark at those widths and sits 236px to the left of it, so the row opened
+   with two Mineral View logos about 40px apart — the second one a small dark
+   circle wedged between the hamburger and the claim line, reading as a stray
+   favicon rather than branding.
+
+   Below 861px the rail is `display: none` and this slot is the only mark on
+   screen, which is what it was added for. So it stays there, and only there.
+
+   Its black tile is baked into the JPG, so the mark needs the circular crop
+   that bounds its inscribed ring. On `--ink` the tile all but disappears and
    the green ring is what reads, which is why no plate is needed. */
+.mv-ref-app .app-top .app-brand {
+  display: none;
+}
+
 .mv-ref-app .app-top .app-brand .app-brand-mark {
   display: block;
   width: 26px;
@@ -381,7 +402,6 @@
   border-radius: 50%;
 }
 
-/* The wordmark is the phone case, so it is off by default. */
 .mv-ref-app .app-top .app-brand .app-brand-word {
   display: none;
   height: 24px;
@@ -394,6 +414,10 @@
    carry it. By this width §3 has already given the pinned group its own line,
    so the control row has the room. */
 @media (max-width: 860px) {
+  .mv-ref-app .app-top .app-brand {
+    display: flex;
+  }
+
   .mv-ref-app .app-top .app-brand .app-brand-mark {
     display: none;
   }
@@ -1160,3 +1184,26 @@ body .mv-ref-app .al-meta {
   margin-top: 4px;
   color: var(--muted);
 }
+
+
+/* ----------------------------------------------------------------------------
+   THE KIND CARD'S ACTION LINK SITS ON THE CARD'S FLOOR.
+
+   `.mv-kinds` is a wrapping flex row, so every card in a line is stretched to
+   the tallest one — but the reference gives `.mk-act` a fixed `margin-top`,
+   so the link stops wherever that card's explanation happened to end and the
+   slack is left below it. Three cards side by side, three different heights
+   for the same control, and three divider rules at three different levels.
+
+   It was easy to miss while a sparkline sat under it. With that gone the row
+   reads as one band of cards, and the ragged footers are the only thing left
+   breaking it.
+
+   `auto` eats the slack instead. The 7px it replaces was a minimum gap, and
+   `.mv-kind`'s own `gap: 4px` still supplies one on the tallest card, where
+   there is no slack to take.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .mv-kind .mk-act {
+  margin-top: auto;
+}
+
