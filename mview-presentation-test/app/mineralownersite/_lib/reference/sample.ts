@@ -72,6 +72,64 @@ export function scrub(text: string | null | undefined): string {
     .replace(/-?\b\d[\d,]*(\.\d+)?\b/g, '•••');
 }
 
+/**
+ * THE SAMPLE'S FIGURES, IN PROSE — scaled by the same factor as everything
+ * else, rather than blanked out.
+ *
+ * WHY THIS REPLACED MASKING. `scrub()` below turns every digit in a sentence
+ * into "•••", and on a page whose whole job is to show a visitor what they get
+ * that read as a broken page rather than a preview: "••• of your ••• leases
+ * filed production in June •••". Thirty-seven of them on one dashboard.
+ *
+ * SCALING IS NOT LESS SAFE THAN MASKING. Every amount and volume on the cards
+ * is ALREADY multiplied by `f` — that is rule 2 of this transform — so a
+ * sentence carrying the same figure scaled the same way publishes exactly what
+ * the card beside it does, and no more. What masking actually bought was
+ * consistency, badly: the bar length was scaled (`s(b.value)`) while its own
+ * label was blanked, so the two disagreed.
+ *
+ * ONLY MONEY AND UNIT-QUALIFIED VOLUMES MOVE. Everything else in these
+ * sentences is a public fact the design says to keep real:
+ *
+ *   $4,548,479          scaled   — her money
+ *   8,776 mcf           scaled   — her share of a volume
+ *   1,405 barrels       scaled   — likewise
+ *   9 of your 10        LEFT     — a count, and it must match the strip
+ *   234 new wells       LEFT     — a public filing count
+ *   September 2024      LEFT     — a date; the design keeps dates real
+ *   fell 23.7%          LEFT     — a ratio between two figures scaled by the
+ *                                  same factor is unchanged by that factor
+ *   80% probability     LEFT     — a model output, not an amount
+ *
+ * The percentages are the reason this is more correct and not just prettier:
+ * masking them threw away a number that was never hers to begin with.
+ */
+export function scaleFigures(text: string | null | undefined, factor: number): string {
+  return String(text ?? '').replace(
+    /(\$\s*)?(\d[\d,]*(?:\.\d+)?)(\s*(?:million|billion|[MBk])\b)?(\s*(?:mcf|bbl|bbls|barrel|barrels|boe)\b)?/gi,
+    (whole, money, digits, magnitude, unit) => {
+      /* A bare number is a count, a year or a percentage's stem — left alone.
+         `\b` on the magnitude group is what keeps the "m" of "mcf" out of it,
+         which is the trap `scrub`'s own tests record. */
+      if (!money && !unit) return whole;
+      const raw = Number(String(digits).replace(/,/g, ''));
+      if (!Number.isFinite(raw)) return whole;
+
+      /* The written form is preserved: as many decimals as it arrived with,
+         and thousands separators only where it already had them. A figure that
+         reads "$4.5 million" stays two words; one that reads "8,776" stays
+         grouped. */
+      const decimals = (String(digits).split('.')[1] ?? '').length;
+      const scaled = raw * factor;
+      const body = String(digits).includes(',')
+        ? scaled.toLocaleString('en-US',
+          { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+        : scaled.toFixed(decimals);
+      return (money ?? '') + body + (magnitude ?? '') + (unit ?? '');
+    },
+  );
+}
+
 const LEASE_NAMES = [
   'BLUESTEM RANCH', 'CADDO CREEK', 'ELM HOLLOW', 'FALLOW FIELD', 'GRAYSON DRAW',
   'HALE PASTURE', 'INDIAN MOUND', 'JUNIPER FLAT', 'KIOWA SPRING', 'LONE MESQUITE',
@@ -84,8 +142,25 @@ const OPERATOR_NAMES = [
   'GRANITE HOLLOW ENERGY', 'HALSTEAD OPERATING CO',
 ];
 
-/** a person-shaped placeholder, never a real roll name */
-const SAMPLE_OWNER = 'Sample Owner';
+/**
+ * A person-shaped placeholder, never a real roll name.
+ *
+ * "Sample Owner" was the label of a thing rather than the name of a person, so
+ * the owner chip read "Mineral Owner: Sample Owner" — which tells a visitor
+ * what the row IS but not what the page will look like once it carries their
+ * own name. A plausible name does that, and the banner above the page plus the
+ * SAMPLE marker on the rollup are what say it is not real.
+ *
+ * IT MUST NOT COLLIDE WITH A ROLL NAME. Checked against the same shape rule the
+ * substituted lease and operator names follow: an invented Anglophone
+ * first + last with no middle initial, no suffix and no company form, which is
+ * not how the appraisal roll spells the people on it ("Platis Sydney Kay",
+ * "Aaron Kenneth Ryan" — surname first, three parts).
+ */
+const SAMPLE_OWNER = 'Michael Anderson';
+
+/** the first name that goes with it, for the greeting and for `names()` */
+const SAMPLE_FIRST_NAME = 'Michael';
 
 /**
  * Fold a company name to ONE identity.
@@ -98,6 +173,159 @@ export function foldOp(v: string): string {
   return v.toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
+/**
+ * A GAS-ONLY (OR OIL-ONLY) RECORD GETS THE OTHER PRODUCT, for the preview only.
+ *
+ * WHY. Most Texas royalty records carry one product. On a claimed dashboard
+ * "Oil filed in June 2026 — none · no oil has ever been filed" is a true and
+ * useful fact. On the NOT-CLAIMED preview it is not: the page is a shop window
+ * for what the product does, and a visitor whose own minerals do produce oil
+ * sees an empty cell, an "No oil on record" panel where a chart belongs, and a
+ * blank column in the lease table. Nothing about their own record is being
+ * described, so there is nothing there to be accurate about.
+ *
+ * ONE RATIO, APPLIED EVERYWHERE, so nothing on the page can contradict
+ * anything else. The derived stream is a fixed fraction of the stream that
+ * does exist, which means every figure the dashboard computes off it — the
+ * strip cell, the month chart, the lease bars, the operator card, the Pro
+ * table, the "your share" sentences — comes out consistent by construction
+ * rather than by being listed here twice.
+ *
+ * A ratio and not a random walk: `sampleize` already multiplies everything by
+ * its seeded factor afterwards, so this stays a shape and the amounts are
+ * illustrative for the same reason every other amount on the page is.
+ *
+ * IT RUNS ONLY WHEN A PRODUCT IS ENTIRELY ABSENT. A record that files both is
+ * untouched, and a record that files neither is left alone too — the dashboard
+ * has its own branch for that, and there is nothing to derive from.
+ *
+ * NOT-CLAIMED ONLY. `sampleize` is called from exactly one place in the shell
+ * (`Portal`, `funnel === 'unclaimed'`) and from the two weekly endpoints
+ * behind their own `sample` flag. A claimed, trial, lapsed or paid dashboard
+ * never reaches this function.
+ */
+const DERIVED_OIL_PER_MCF = 0.028;
+
+type Filled = 'oil' | 'gas' | null;
+
+function fillMissingProduct(real: Payload): { payload: Payload; filled: Filled } {
+  const t = real.totals;
+  const oilFromGas = t.has_gas && !t.has_oil;
+  const gasFromOil = t.has_oil && !t.has_gas;
+  if (!oilFromGas && !gasFromOil) return { payload: real, filled: null };
+
+  /* gas -> oil divides, oil -> gas multiplies, so one constant serves both */
+  const r = oilFromGas ? DERIVED_OIL_PER_MCF : 1 / DERIVED_OIL_PER_MCF;
+  const d = (v: number | null | undefined): number =>
+    (typeof v === 'number' && Number.isFinite(v) ? Math.round(v * r * 100) / 100 : 0);
+
+  /* the field on each row that is being filled, and the one it is read from */
+  const from = oilFromGas ? 'gas' : 'oil';
+  const to = oilFromGas ? 'oil' : 'gas';
+
+  return {
+    filled: oilFromGas ? 'oil' : 'gas',
+    payload: {
+    ...real,
+    totals: {
+      ...t,
+      has_oil: true,
+      has_gas: true,
+      [`anchor_${to}_net`]: d(t[`anchor_${from}_net`]),
+      [`prev_${to}_net`]: d(t[`prev_${from}_net`]),
+      /* a constant ratio leaves the month-over-month change identical */
+      [`${to}_change_pct`]: t[`${from}_change_pct`],
+      [`ttm_${to}_net`]: d(t[`ttm_${from}_net`]),
+      [`life_${to}_gross`]: d(t[`life_${from}_gross`]),
+    } as Payload['totals'],
+    leases: real.leases.map((l) => ({
+      ...l,
+      [`anchor_${to}`]: d(l[`anchor_${from}`] as number),
+      [`anchor_${to}_net`]: d(l[`anchor_${from}_net`] as number),
+      [`prev_${to}`]: d(l[`prev_${from}`] as number),
+      [`${to}_change_pct`]: l[`${from}_change_pct`],
+      [`ttm_${to}_net`]: d(l[`ttm_${from}_net`] as number),
+      [`total_${to}`]: d(l[`total_${from}`] as number),
+      monthly: l.monthly.map((m) => ({
+        ...m,
+        [to]: d(m[from] as number),
+        [`${to}_net`]: d(m[`${from}_net`] as number),
+      })),
+    })) as Payload['leases'],
+    series: {
+      ...real.series,
+      months: real.series.months.map((m) => ({
+        ...m, [`${to}_net`]: d(m[`${from}_net`] as number),
+      })) as Payload['series']['months'],
+      [`peak_${to}_net`]: d(real.series[`peak_${from}_net`]),
+    } as Payload['series'],
+    operators: {
+      ...real.operators,
+      operators: real.operators.operators.map((o) => ({
+        ...o, [`last_month_${to}_net`]: d(o[`last_month_${from}_net`] as number),
+      })) as Payload['operators']['operators'],
+    },
+    },
+  };
+}
+
+/**
+ * THE SENTENCES HAVE TO AGREE WITH THE STREAM — "and no oil" is a figure too.
+ *
+ * The service renders its prose before this transform runs, so a gas-only
+ * record hands over twenty sentences reading "38,358 MCF of gas and no oil"
+ * and stat rows reading "54K MCF · no oil". With the oil column now filled,
+ * leaving those would put "1,074 BBL" on the strip directly above a sentence
+ * insisting there is none.
+ *
+ * THE GAS FIGURE IS RIGHT THERE IN THE SENTENCE, so the replacement is derived
+ * from it with the same ratio the columns used — the two cannot drift. This
+ * runs BEFORE `scaleFigures`, so the number it inserts is scaled by the seeded
+ * factor along with the gas figure beside it, exactly as if the service had
+ * sent it.
+ *
+ * Two shapes, which is all the payload contains: the long form inside a
+ * sentence, and the short form on a stat row.
+ */
+function fillProductProse(text: string, filled: Filled): string {
+  if (!filled) return text;
+  const r = filled === 'oil' ? DERIVED_OIL_PER_MCF : 1 / DERIVED_OIL_PER_MCF;
+  const fromUnit = filled === 'oil' ? 'MCF' : 'BBL';
+  const toUnit = filled === 'oil' ? 'BBL' : 'MCF';
+  const fromWord = filled === 'oil' ? 'gas' : 'oil';
+  const toWord = filled === 'oil' ? 'oil' : 'gas';
+  const longWord = filled === 'oil' ? 'barrels of oil' : 'MCF of gas';
+
+  const val = (digits: string, mag: string | undefined): number => {
+    const n = Number(digits.replace(/,/g, ''));
+    if (!Number.isFinite(n)) return NaN;
+    return n * (mag === 'M' ? 1e6 : mag === 'K' ? 1e3 : 1) * r;
+  };
+  const short = (v: number): string => (v >= 1e6
+    ? `${(v / 1e6).toFixed(2).replace(/\.?0+$/, '')}M`
+    : v >= 1000 ? `${Math.round(v / 1000)}K` : String(Math.round(v)));
+
+  return text
+    /* "38,358 MCF of gas and no oil"  ->  "... and 1,074 barrels of oil" */
+    .replace(
+      new RegExp(`(\\d[\\d,]*(?:\\.\\d+)?)(\\s*${fromUnit} of ${fromWord} and )no ${toWord}`, 'gi'),
+      (whole, digits: string, mid: string) => {
+        const v = val(digits, undefined);
+        return Number.isFinite(v)
+          ? `${digits}${mid}${Math.round(v).toLocaleString('en-US')} ${longWord}`
+          : whole;
+      },
+    )
+    /* "54K MCF · no oil"  ->  "54K MCF · 1.5K BBL" */
+    .replace(
+      new RegExp(`(\\d[\\d,]*(?:\\.\\d+)?)(K|M)?(\\s*${fromUnit}\\s*·\\s*)no ${toWord}`, 'gi'),
+      (whole, digits: string, mag: string | undefined, mid: string) => {
+        const v = val(digits, mag);
+        return Number.isFinite(v) ? `${digits}${mag ?? ''}${mid}${short(v)} ${toUnit}` : whole;
+      },
+    );
+}
+
 export interface SampleResult { payload: Payload; factor: number; note: string }
 
 /**
@@ -107,7 +335,11 @@ export interface SampleResult { payload: Payload; factor: number; note: string }
  * exactly the same code path as the real thing, so the not-claimed view cannot
  * drift away from the claimed one as either changes.
  */
-export function sampleize(real: Payload): SampleResult {
+export function sampleize(input: Payload): SampleResult {
+  /* THE PREVIEW'S OWN RECORD, before anything is renamed or scaled — see
+     `fillMissingProduct`. The seed below is still taken from the REAL owner
+     name, so one owner always previews the same way. */
+  const { payload: real, filled } = fillMissingProduct(input);
   const rnd = seeded(seedOf(real.owner.ownername + ':' + real.owner.roll_year));
   /* one factor for the whole portfolio — see rule 2 */
   const f = 0.55 + rnd() * 1.15;
@@ -116,6 +348,11 @@ export function sampleize(real: Payload): SampleResult {
 
   const s = (v: number | null | undefined): number =>
     typeof v === 'number' && Number.isFinite(v) ? Math.round(v * f * 100) / 100 : 0;
+
+  /** the same scaling, for a figure that arrives already formatted as text —
+   *  after any "and no oil" in it has been reconciled with the filled stream */
+  const fig = (v: string | null | undefined): string =>
+    scaleFigures(fillProductProse(String(v ?? ''), filled), f);
 
   /* Name maps, built once so every surface substitutes the same way — a lease
      called ELM HOLLOW in the table must be ELM HOLLOW in the alert, the drawer
@@ -282,8 +519,8 @@ export function sampleize(real: Payload): SampleResult {
   /** one stat row: a figure is masked, a name inside a value is substituted */
   const sampleStat = <T extends { value: string; sub?: string }>(st: T): T => ({
     ...st,
-    value: /^[\d$.,+-]/.test(st.value) ? scrub(st.value) : (subOp(st.value) ?? st.value),
-    sub: st.sub ? scrub(st.sub) : st.sub,
+    value: /^[\d$.,+-]/.test(st.value) ? fig(st.value) : (subOp(st.value) ?? st.value),
+    sub: st.sub ? fig(st.sub) : st.sub,
   });
 
   /**
@@ -318,12 +555,14 @@ export function sampleize(real: Payload): SampleResult {
       if (from.length > 3) out = out.split(from).join(to);
     }
     out = out.split(real.owner.ownername).join(SAMPLE_OWNER);
-    if (real.owner.first_name) out = out.split(real.owner.first_name).join('there');
+    if (real.owner.first_name) {
+      out = out.split(real.owner.first_name).join(SAMPLE_FIRST_NAME);
+    }
     return out;
   };
 
   /** replace known names inside a sentence, then mask the numbers */
-  const prose = (text: string | null | undefined): string => scrub(names(text));
+  const prose = (text: string | null | undefined): string => fig(names(text));
 
   const t = real.totals;
   const payload: Payload = {
@@ -333,7 +572,7 @@ export function sampleize(real: Payload): SampleResult {
     owner: {
       ...real.owner,
       ownername: SAMPLE_OWNER,
-      first_name: 'there',
+      first_name: SAMPLE_FIRST_NAME,
       initials: 'SO',
       ownernumber: 'SAMPLE',
       city: null,
@@ -477,7 +716,7 @@ export function sampleize(real: Payload): SampleResult {
     activities: {
       ...real.activities,
       kpis_mine: real.activities.kpis_mine.map((k) => ({
-        ...k, value: scrub(k.value), sub: scrub(k.sub),
+        ...k, value: fig(k.value), sub: fig(k.sub),
       })),
       kpis_nearby: real.activities.kpis_nearby.map((k) => ({
         ...k, value: names(k.value), sub: names(k.sub),
@@ -504,7 +743,7 @@ export function sampleize(real: Payload): SampleResult {
       })),
       /* a field name is public geography and is not an identity, so it stays */
       mine_empty_reason: real.activities.mine_empty_reason
-        ? scrub(real.activities.mine_empty_reason) : null,
+        ? prose(real.activities.mine_empty_reason) : null,
       news_empty_reason: real.activities.news_empty_reason
         ? prose(real.activities.news_empty_reason) : null,
     },
@@ -584,7 +823,7 @@ export function sampleize(real: Payload): SampleResult {
         ...b,
         label: prose(b.label),
         sub: b.sub ? prose(b.sub) : b.sub,
-        display: scrub(b.display),
+        display: fig(b.display),
         /* the BAR LENGTH is scaled, not masked: it is a shape rather than a
            figure, and a sample with no bars is a page with nothing on it */
         value: s(b.value),
@@ -593,7 +832,7 @@ export function sampleize(real: Payload): SampleResult {
         ...b,
         label: prose(b.label),
         sub: b.sub ? prose(b.sub) : b.sub,
-        display: scrub(b.display),
+        display: fig(b.display),
         value: s(b.value),
       })),
       explains: real.weekly.explains.map((x) => ({
@@ -607,7 +846,7 @@ export function sampleize(real: Payload): SampleResult {
          `prose` — which substitutes the names and then masks the numbers */
       insights: real.weekly.insights.map((st) => ({
         ...st,
-        value: /^[\d$.,+-]/.test(st.value) ? scrub(st.value) : prose(st.value),
+        value: /^[\d$.,+-]/.test(st.value) ? fig(st.value) : prose(st.value),
         sub: st.sub ? prose(st.sub) : st.sub,
       })),
       depth: real.weekly.depth.map(prose),
@@ -642,12 +881,12 @@ export function sampleize(real: Payload): SampleResult {
       archive: real.weekly.archive.map((x) => ({ ...x, line: prose(x.line) })),
       estimate: {
         ...real.weekly.estimate,
-        low: scrub(real.weekly.estimate.low),
-        high: scrub(real.weekly.estimate.high),
-        mid: scrub(real.weekly.estimate.mid),
-        quarter_low: scrub(real.weekly.estimate.quarter_low),
-        quarter_high: scrub(real.weekly.estimate.quarter_high),
-        six_year: scrub(real.weekly.estimate.six_year),
+        low: fig(real.weekly.estimate.low),
+        high: fig(real.weekly.estimate.high),
+        mid: fig(real.weekly.estimate.mid),
+        quarter_low: fig(real.weekly.estimate.quarter_low),
+        quarter_high: fig(real.weekly.estimate.quarter_high),
+        six_year: fig(real.weekly.estimate.six_year),
         basis: prose(real.weekly.estimate.basis),
         why_range: real.weekly.estimate.why_range.map(prose),
         narrower: prose(real.weekly.estimate.narrower),
@@ -817,7 +1056,7 @@ export function sampleize(real: Payload): SampleResult {
           quarter_mid: s(rt.quarter_mid),
           six_year: s(rt.six_year),
         },
-        cards: rf.cards.map((c) => ({ ...c, value: scrub(c.value), sub: prose(c.sub) })),
+        cards: rf.cards.map((c) => ({ ...c, value: fig(c.value), sub: prose(c.sub) })),
         disposition: {
           ...rf.disposition,
           accounted: s(rf.disposition.accounted),
@@ -836,12 +1075,12 @@ export function sampleize(real: Payload): SampleResult {
         },
         insights: rf.insights.map((st) => ({
           ...st,
-          value: /^[\d$.,+-]/.test(st.value) ? scrub(st.value) : prose(st.value),
+          value: /^[\d$.,+-]/.test(st.value) ? fig(st.value) : prose(st.value),
           sub: st.sub ? prose(st.sub) : st.sub,
         })),
         stats: rf.stats.map((st) => ({
           ...st,
-          value: /^[\d$.,+-]/.test(st.value) ? scrub(st.value) : prose(st.value),
+          value: /^[\d$.,+-]/.test(st.value) ? fig(st.value) : prose(st.value),
           sub: st.sub ? prose(st.sub) : st.sub,
         })),
         /* the year columns are a SHAPE as well as a figure, so the money is
@@ -955,7 +1194,7 @@ export function sampleize(real: Payload): SampleResult {
         st: T,
       ): T => ({
         ...st,
-        value: /^[\d$.,+-]/.test(st.value) ? scrub(st.value) : prose(st.value),
+        value: /^[\d$.,+-]/.test(st.value) ? fig(st.value) : prose(st.value),
         sub: st.sub ? prose(st.sub) : st.sub,
       });
 

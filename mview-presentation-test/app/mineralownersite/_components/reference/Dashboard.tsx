@@ -28,6 +28,8 @@
  */
 import React, { useState } from 'react';
 import type { Payload } from '../../_lib/reference/payload';
+import { formatLakhs } from '../../_lib/format-lakhs';
+import { usePortalMember } from '../portal-session';
 import {
   n0, n1, usd, usdShort, pctS, vol, volWords, plural, productWord, interest, nShort,
   MCF, BBL,
@@ -74,6 +76,11 @@ export default function Dashboard(
 
   const unclaimed = funnel === 'unclaimed';
   const pw = productWord(t.has_gas, t.has_oil);
+  /* WHO IS READING, for the greeting. The context is filled on the SERVER in
+     the group's layout from the httpOnly `mv_user` cookie, so the name is in
+     the first HTML and no signed-in identity is ever requested from the
+     browser. `null` when nobody is signed in, which `greetLine` handles. */
+  const member = usePortalMember();
   const top = al.items[0] ?? null;
 
   return (
@@ -92,37 +99,65 @@ export default function Dashboard(
       {/* ---------- ULTRA: one headline, one status, one action ---------- */}
       {tier === 'ultra' ? <UltraHero p={p} funnel={funnel} open={open} /> : null}
 
-      {/* ---------- the claim rail: UNCLAIMED only ---------- */}
+      {/* ---------- SAMPLE PREVIEW: UNCLAIMED only ----------
+
+           ONE BANNER, AND THE PAGE BELOW IT IS THE PAID PAGE. This replaced a
+           claim rail whose own headline, sub-copy, CTA and two-swatch legend
+           re-arranged the top of the dashboard, so the state a visitor is
+           being shown looked like a different product rather than like the
+           thing they get by claiming — which is the one job this state has.
+           The rail's facts are not lost: the lease count, the counties and the
+           appraised figure are all on the greeting line and the strip
+           immediately below, and the sidebar carries "Claim Mineral Owner"
+           throughout this state.
+
+           `.smp-badge` / `.smp-tag` ARE THE EXISTING PAIR, not new styling —
+           the amber dashed box at `dashboard-reference.css:387`, its pill at
+           388 and its paragraph at 389. The same markup already carries this
+           message on My Leases and on the Weekly Report, so the sample state
+           reads identically wherever a visitor meets it.
+
+           TWO LINES, AND THE SENTENCE RUNS THE FULL WIDTH. The shared rule is
+           a `flex` row, so the pill took a column and the copy wrapped in what
+           was left of it — five short lines in a box as wide as the page. The
+           column direction is set HERE, inline on this one banner, and not in
+           `.smp-badge`: that class is also My Leases' and the Weekly Report's,
+           and re-flowing their banners is not this change. The copy is cut to
+           the two facts a reader needs before they look at a figure — whose
+           record this is, and that the amounts are not real. The roll year,
+           the filing month and the model run date left with it; all three are
+           already printed on the strip and the cards below. */}
       {unclaimed
         ? (
-          <div className="mv-claimrail" id="claimRail">
-            <div className="cr-top">
-              <span className="cr-dot" aria-hidden="true" />
-              <span className="cr-txt">
-                <span className="cr-kicker">On file under this name</span>
-                <span className="cr-head">
-                  {t.lease_count} {plural(t.lease_count, 'lease')} in {t.counties.join(', ')}{' '}
-                  {plural(t.county_count, 'County', 'Counties')} are on file under this name
-                </span>
-                <span className="cr-sub">
-                  The {p.owner.roll_year} appraisal roll lists {t.lease_count}{' '}
-                  {plural(t.lease_count, 'lease')} here, appraised at {usd(t.appraised_value)}.
-                  Claiming is free, takes about two minutes, and never changes who owns your
-                  minerals.
-                </span>
-              </span>
-              <span className="cr-act">
-                <button className="btn btn-primary btn-lg" type="button" onClick={() => open('identity')}>
-                  Claim your record — free, no obligation
-                </button>
-                <span className="cr-note">Nothing below is your own figure until you do.</span>
-              </span>
-            </div>
-            <div className="cr-key">
-              <span><i className="cr-sw cr-sw-green" />Green is activity we watch for you</span>
-              <span><i className="cr-sw cr-sw-amber" />Amber is a sample figure, not yours</span>
-              <span className="cr-key-end">Dates below are real · amounts are illustrative</span>
-            </div>
+          <div
+            className="smp-badge" id="sampleBadge"
+            style={{ flexDirection: 'column', alignItems: 'stretch', flexWrap: 'nowrap', gap: 6 }}
+          >
+            <span className="smp-tag" style={{ alignSelf: 'flex-start' }}>SAMPLE PREVIEW</span>
+            {/* `stretch` on the box and `flex-start` on the pill, rather than a
+                width on this paragraph. The shared rule grows it along a ROW
+                (`flex: 1`); turned into a column that sizes it to its content
+                instead — 615px of a 1114px box — and a percentage width did
+                not fix it, because the shared `flex-wrap: wrap` puts a
+                column-direction item on a flex line whose cross size is its
+                own. Stretching the line is what actually widens it, and the
+                pill opts out so it keeps hugging its label.
+
+                `maxWidth: none` LIFTS A DELIBERATE CAP, and only here. The
+                reference measures this paragraph at `78ch`
+                (`dashboard-reference.css`, the rule it shares with
+                `.simple-hero > p`, `#mvStateCard` and `.act-empty p`) — a
+                readability limit, not an oversight. At 13px that is 615px, so
+                in a 1114px box the banner ran three short lines with half its
+                width empty. The brief is two lines across the full width, and
+                the copy above was cut to suit it. The cap is untouched for
+                every other element that shares the rule. */}
+            <p style={{ maxWidth: 'none' }}>
+              <strong>This is what your dashboard looks like once you claim your record.</strong>{' '}
+              Every figure below belongs to <strong>{p.owner.ownername}, a fictional sample
+              owner</strong> — the dates are real, the amounts are illustrative. Claiming is
+              free, takes about two minutes, and never changes legal ownership.
+            </p>
           </div>
         )
         : null}
@@ -132,11 +167,14 @@ export default function Dashboard(
           {/* ---------- greeting + page head ---------- */}
           <div className="mv-greet">
             <div>
-              <p className="greet-line">{greetLine(p, unclaimed)}</p>
+              <p className="greet-line">{greetLine(p, member?.firstName)}</p>
+              {/* THE PAID HEADLINE, IN EVERY STATE. "Here is what your dashboard
+                  becomes" was the unclaimed variant, and it described the page
+                  instead of naming the record on it — the banner above now does
+                  the describing, so this can go back to being the same sentence
+                  a claimed owner reads. */}
               <h2 className="greet-head">
-                {unclaimed
-                  ? 'Here is what your dashboard becomes'
-                  : `Your minerals, through ${a.data_month_label ?? 'the latest filing'}`}
+                Your minerals, through {a.data_month_label ?? 'the latest filing'}
               </h2>
               <p className="small muted" style={{ margin: '3px 0 0' }}>
                 {t.lease_count} {plural(t.lease_count, 'lease')} · {t.producing_count} producing ·{' '}
@@ -158,18 +196,9 @@ export default function Dashboard(
             </span>
           </div>
 
-          {/* ---------- sample badge ---------- */}
-          {unclaimed
-            ? (
-              <div className="smp-badge" id="sampleBadge">
-                <strong>This is a preview of a record nobody has claimed.</strong> The dates below
-                are real — the {p.owner.roll_year} appraisal roll, state {pw} filings through{' '}
-                {a.data_month_label}, and the value model re-run on {a.estimate_run_label}. The
-                names and amounts are illustrative. Claiming attaches the real record to your
-                account and starts the watch.
-              </div>
-            )
-            : null}
+          {/* the sample badge moved to the top of the page — see SAMPLE
+              PREVIEW above, which is the only place this state announces
+              itself now. */}
 
           {/* ---------- pf-strip: the numbers that change ---------- */}
           <PfStrip p={p} sample={sample} open={open} />
@@ -180,6 +209,13 @@ export default function Dashboard(
               <div className="mv-alsum" id="dashAlSum">
                 <div className="as-top">
                   <div style={{ minWidth: 0 }}>
+                    {/* THE SAMPLE MARKER IS NOT PLACED HERE ANY MORE. It belongs
+                        beside EVERY card title on the not-claimed page, not
+                        just this one, so it is drawn from a single rule in
+                        `dashboard-reference.css` keyed on `.no-claim` — see
+                        "the sample marker" there. Hand-placing it per card
+                        meant fourteen edits and a fifteenth card that quietly
+                        went unmarked. */}
                     <span className="as-kicker">What moved — the short version</span>
                     <span className="as-line">
                       <strong className="as-count num">{al.count}</strong>{' '}
@@ -424,6 +460,22 @@ function PfStrip(
   const t = p.totals;
   const a = p.as_of;
 
+  /* LAKHS, ON THE SAMPLE PAGE ONLY.
+
+     The brief is that the not-claimed dashboard reads its MVestimate and its
+     production figures in lakhs. It is a presentation step and nothing else:
+     `formatLakhs` takes the already-formatted string and hands one back, so no
+     value is restated and a figure it cannot parse comes through untouched
+     rather than as `NaN`. Its own threshold means a figure under one lakh is
+     returned as it was — "17,306" stays "17,306", because "0.17 L" is harder to
+     read and throws away two digits.
+
+     GATED ON `sample`, deliberately. A claimed owner's own money keeps the
+     format their statements and the rest of the product use; only the
+     illustrative record is re-expressed. */
+  const lakhs = (display: string | null) =>
+    (sample && display != null ? formatLakhs(display) : display);
+
   const cells: React.ReactNode[] = [];
   const cell = (
     label: string, val: React.ReactNode, sub: React.ReactNode,
@@ -444,7 +496,7 @@ function PfStrip(
      state-lapsed and is untouched in trial and paid. Only the VALUE figures carry
      it — a claimed owner keeps every lease, volume and permit, because they
      claimed them. What Premium adds is what they are worth. */
-  cells.push(cell('Your value', usd(t.owner_value),
+  cells.push(cell('Your value', lakhs(usd(t.owner_value)),
     <>your share of {usdShort(t.gross_value)} · range {usdShort(t.owner_value_low)}–{usdShort(t.owner_value_high)}</>,
     'value', 'How it is built', 'big cl-lock'));
 
@@ -457,7 +509,7 @@ function PfStrip(
   if (t.has_gas || t.has_oil) {
     cells.push(cell(`Gas filed in ${a.data_month_label ?? '—'}`,
       t.has_gas
-        ? <>{n0(t.anchor_gas_net)}<span className="pf-val-s"> {MCF}</span></>
+        ? <>{lakhs(n0(t.anchor_gas_net))}<span className="pf-val-s"> {MCF}</span></>
         : <span className="nodata">none</span>,
       t.has_gas
         ? (t.gas_change_pct == null
@@ -475,7 +527,7 @@ function PfStrip(
        the label is just "Oil", which is what an owner's statement calls it. */
     cells.push(cell(`Oil filed in ${a.data_month_label ?? '—'}`,
       t.has_oil
-        ? <>{n0(t.anchor_oil_net)}<span className="pf-val-s"> {BBL}</span></>
+        ? <>{lakhs(n0(t.anchor_oil_net))}<span className="pf-val-s"> {BBL}</span></>
         : <span className="nodata">none</span>,
       t.has_oil
         ? (t.oil_change_pct == null
@@ -509,16 +561,13 @@ function PfStrip(
 
   return (
     <div className="pf-strip" id="pfStrip">
+      {/* NO SIXTH CELL WHILE SAMPLING. A cell reading "Sample / illustrative"
+          sat in the strip beside the five figures, so the sample state laid
+          out differently from the paid one — five cells became six, and every
+          cell narrowed. The banner at the top of the page says the same thing
+          once, and the strip keeps the amber ring `.no-claim` already puts
+          round it (`dashboard-reference.css:1351`). */}
       {cells}
-      {sample
-        ? (
-          <div className="pf-cell" style={{ flex: '0 0 auto', minWidth: 120 }}>
-            <div className="pf-label">Sample</div>
-            <div className="pf-val num" style={{ fontSize: 15 }}>illustrative</div>
-            <div className="pf-sub">dates real, amounts are not</div>
-          </div>
-        )
-        : null}
     </div>
   );
 }
@@ -531,6 +580,22 @@ function KpiGrid({ p, sample, open }: { p: Payload; sample: boolean; open: (k: s
   const rad = p.radius['1'];
   const trend = (p.series.months ?? []).map((m) => (t.has_gas ? m.gas_net : m.oil_net));
 
+  /* LAKHS, ON THE SAMPLE PAGE ONLY.
+
+     The brief is that the not-claimed dashboard reads its MVestimate and its
+     production figures in lakhs. It is a presentation step and nothing else:
+     `formatLakhs` takes the already-formatted string and hands one back, so no
+     value is restated and a figure it cannot parse comes through untouched
+     rather than as `NaN`. Its own threshold means a figure under one lakh is
+     returned as it was — "17,306" stays "17,306", because "0.17 L" is harder to
+     read and throws away two digits.
+
+     GATED ON `sample`, deliberately. A claimed owner's own money keeps the
+     format their statements and the rest of the product use; only the
+     illustrative record is re-expressed. */
+  const lakhs = (display: string | null) =>
+    (sample && display != null ? formatLakhs(display) : display);
+
   const kpi = (
     label: string, val: React.ReactNode, sub: React.ReactNode, chip: string | null,
     fresh: string, ctx: string, hint: string, showSpark: boolean, lock?: string,
@@ -540,7 +605,10 @@ function KpiGrid({ p, sample, open }: { p: Payload; sample: boolean; open: (k: s
       onClick={() => open(ctx)}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(ctx); } }}
     >
-      <div className="k-label">{label}{sample && lock ? <span className="samp-tag">sample</span> : null}</div>
+      {/* NO PER-CARD TAG. It repeated the page banner on four cards and
+          pushed the labels onto a second line at Detailed width, which the
+          paid page does not do. */}
+      <div className="k-label">{label}</div>
       <div className={'k-val num ' + (lock ?? '')}>{val}</div>
       {showSpark ? <Spark vals={trend} /> : null}
       <div className="k-sub">
@@ -554,7 +622,7 @@ function KpiGrid({ p, sample, open }: { p: Payload; sample: boolean; open: (k: s
 
   return (
     <div className="grid g4" style={{ margin: '14px 0' }} id="kpiGrid">
-      {kpi('Your value', usd(t.owner_value),
+      {kpi('Your value', lakhs(usd(t.owner_value)),
         'your interest applied to the six-year projection',
         'Estimate — not an appraisal', `re-run ${a.estimate_run_label}`,
         'value', 'How it is built', true, 'cl-lock')}
@@ -1402,12 +1470,27 @@ function metricText(it: { metric: number | null; metric_unit: string | null }): 
 
 /* the greeting reads the VIEWER's clock — the only "now" on this page, and the
    only thing here that legitimately is one */
-function greetLine(p: Payload, unclaimed: boolean): string {
+function greetLine(p: Payload, memberFirstName?: string): string {
   const h = new Date().getHours();
   const part = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
   const day = new Date().toLocaleDateString('en-US',
     { weekday: 'long', day: 'numeric', month: 'long' });
-  return part + (unclaimed ? '' : ', ' + p.owner.first_name) + ' · ' + day;
+  /* THE READER, NOT THE RECORD.
+
+     This greeted `owner.first_name` — the name on the appraisal roll — which
+     is a different person from the one reading the page whenever a member
+     claims a record filed under a relative's name, a trust or a company. It
+     also read "Good morning, there" in the sample state, because that is what
+     `sample.ts` substitutes into the record. The signed-in member's own first
+     name comes from the session (`portal-member.ts`, via the context the
+     group's layout fills on the server), so the greeting is right in every
+     state — including the sample one, where the banner above has already said
+     the figures are not theirs.
+
+     THE RECORD IS STILL THE FALLBACK. Nobody is signed in on a shared link or
+     a cold visit, and greeting the record is better than greeting no one. */
+  const who = memberFirstName || p.owner.first_name;
+  return part + (who ? ', ' + who : '') + ' · ' + day;
 }
 
 function aroundMeaning(cmp: Payload['activities']['compare_90']): string {

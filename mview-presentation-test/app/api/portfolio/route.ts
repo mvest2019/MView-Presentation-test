@@ -37,6 +37,14 @@ const HEADLINE: Record<string, string> = {
   CLIENT_TIMEOUT: "That took too long",
   NETWORK_ERROR: "The records service could not be reached",
   OWNER_NOT_AVAILABLE: "That owner is not available yet",
+  /* NOT A FAILURE, AND IT MUST NOT READ AS ONE. The member-keyed `/dashboard`
+     answers 404 `DASHBOARD_NO_CLAIM` for a signed-in member who has not
+     claimed a roll owner yet — an ordinary first-visit state, not a service
+     that fell over. Left out of this table it fell through to "That did not
+     load", which told the reader to reload a page that will answer the same
+     way every time. `Portal` reads the `code` below and renders the claim
+     invitation instead of the error card. */
+  DASHBOARD_NO_CLAIM: "Nothing is claimed on this account yet",
 };
 
 export const dynamic = "force-dynamic";
