@@ -100,25 +100,6 @@ export default function Dashboard(
       {/* ---------- ULTRA: one headline, one status, one action ---------- */}
       {tier === 'ultra' ? <UltraHero p={p} funnel={funnel} open={open} /> : null}
 
-      {/* ---------- ULTRA: and what needs the reader ----------
-
-           ULTRA WAS ONE FIGURE AND A BUTTON, which is not the same thing as
-           simple. A tier that answers "what are my minerals worth" and stops
-           makes the reader open another tier to find out whether anything has
-           happened — so the density that was supposed to save them time cost
-           them a navigation. The findings are the one other thing this page
-           exists to say, and they compress honestly: a count, and the three
-           that matter most, each one line.
-
-           THREE, AND THE REST BEHIND THE BUTTON. Nine rows here would rebuild
-           the Essentials rollup under an Ultra heading. The alerts route has
-           all of them and the button goes straight there.
-
-           `.tier-u` IS LOAD-BEARING. `dashboard-reference.css` hides every
-           direct child of this section that does not carry it while the view
-           is Ultra, so without the class this block renders and is then hidden
-           by a stylesheet that never mentions it. */}
-      {tier === 'ultra' && al.count ? <UltraAlerts p={p} open={open} go={go} /> : null}
 
       {/* ---------- SAMPLE PREVIEW: UNCLAIMED only ----------
 
@@ -506,6 +487,35 @@ function UltraHero(
             `${t.reporting_count} filed ${productWord(t.has_gas, t.has_oil)} in ${a.data_month_label} — ` +
             `${volWords(t.anchor_gas_net, t.anchor_oil_net)} to you.`}
       </p>
+      {/* WHAT CHANGED, INSIDE THE HERO — the Alerts route's own Ultra, which
+          is the design this tier is supposed to share.
+
+          A FIRST PASS PUT THIS UNDER THE CARD as a row of alert chips and a
+          count line. That was wrong twice over: Ultra is ONE card on an empty
+          page — dot, kicker, headline, status, button, note, and nothing else
+          — so a second block below it reads as the Detailed layout starting,
+          and it also invented a layout the portal does not have. `AlertsView`
+          already solved this: it keeps the single hero and writes the finding
+          into `u-status` as a sentence. Same thing here, in the same slot,
+          with the same classes.
+
+          IT REPLACES NOTHING. The line above is the money and the volumes;
+          this one is what moved. Together they are the two questions this page
+          answers, which is what Ultra was missing when it answered only the
+          first. */}
+      {!unclaimed && top
+        ? (
+          <p className="u-status">
+            <strong>{p.alerts.count} {plural(p.alerts.count, 'finding')}</strong>{' '}
+            {p.alerts.window_label}
+            {p.alerts.action_count
+              ? <> · <strong>{p.alerts.action_count}{' '}
+                {p.alerts.action_count === 1 ? 'asks' : 'ask'} something of you</strong></>
+              : null}
+            . {top.title}.
+          </p>
+        )
+        : null}
       <div>
         <button
           className="btn btn-primary btn-lg" type="button"
@@ -1585,55 +1595,6 @@ export function topKey(ev: { category: string }): string {
 function metricText(it: { metric: number | null; metric_unit: string | null }): string | null {
   if (it.metric == null) return null;
   return `${n1(it.metric)}${it.metric_unit ? ' ' + it.metric_unit : ''}`;
-}
-
-/**
- * THE ULTRA TIER'S SECOND BLOCK — what changed, in as few rows as it takes.
- *
- * Deliberately not a card: Ultra's hero is a bare block on the page ground and
- * a bordered panel under it would read as the start of the Detailed layout.
- * The rows reuse `.al-mini`, which is the alert chip the Detailed strip
- * already uses, so a reader moving between tiers meets the same object twice
- * rather than two designs of one thing.
- */
-function UltraAlerts(
-  { p, open, go }: { p: Payload; open: (k: string) => void; go: (r: Route) => void },
-) {
-  const al = p.alerts;
-  const top = al.items.slice(0, 3);
-  return (
-    <div className="ultra-alerts tier-u" id="ultraAlerts">
-      <p className="ua-line">
-        <strong className="num">{al.count}</strong>{' '}
-        {plural(al.count, 'finding')} {al.window_label}
-        {al.action_count
-          ? <> · <strong>{al.action_count} {al.action_count === 1 ? 'asks' : 'ask'} something of you</strong></>
-          : null}
-      </p>
-      <div className="al-strip">
-        {top.map((it) => (
-          <button
-            key={it.id} type="button"
-            className={'al-mini' + (it.severity === 'action' ? ' gold' : '')}
-            onClick={() => open('alert:' + it.id)}
-          >
-            <span className="al-k">{GLYPH[it.category] ?? '▤'} {it.title}</span>
-            <span className="al-s">
-              {[it.lead_lease, it.event_label].filter(Boolean).join(' · ')}{' '}
-              <span className="ctx-hint">expand →</span>
-            </span>
-          </button>
-        ))}
-      </div>
-      {al.count > top.length
-        ? (
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => go('alerts')}>
-            All {al.count} findings →
-          </button>
-        )
-        : null}
-    </div>
-  );
 }
 
 /* ================================================================ pager */
