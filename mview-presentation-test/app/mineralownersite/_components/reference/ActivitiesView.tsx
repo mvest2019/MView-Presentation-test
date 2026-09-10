@@ -264,10 +264,9 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
       if (e.kind === 'permit') perm[i] += 1;
       else comp[i] += 1;
     }
-    const label = (c: string) => {
-      const m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      return `${m[Number(c.slice(4, 6)) - 1] ?? c.slice(4, 6)} ${c.slice(0, 4)}`;
-    };
+    /* the same cycle-to-month formatter the range chip uses — a second copy
+       of the calendar in one file is a second place for it to drift */
+    const label = (c: string) => shortMonth(c) || `${c.slice(4, 6)} ${c.slice(0, 4)}`;
     const series = [
       { name: 'Permits', colour: FILINGS_COLOUR.permit, points: perm },
       { name: 'Completions', colour: FILINGS_COLOUR.completion, points: comp },
