@@ -516,10 +516,37 @@ export function sampleize(input: Payload): SampleResult {
     };
   };
 
-  /** one stat row: a figure is masked, a name inside a value is substituted */
+  /**
+   * One stat row: a figure is masked, an OPERATOR name inside a value is
+   * substituted, and nothing else is.
+   *
+   * THE BUG THIS FIXES, on a production row in the not-claimed view:
+   *
+   *   API   { label: "That month", value: "Producing" }
+   *   page    That month · CORDELL RESOURCES CO
+   *
+   *   API   body: "June 2026 was filed with the state."
+   *   page    body: "FAIRLANE OIL & GAS was filed with the state."
+   *
+   * `subOp` does not ASK whether a string is an operator, it MINTS one:
+   * `registerOp` hands any string of four characters or more a sample company
+   * name. A stat value that is a status ("Producing") or a month ("June 2026")
+   * therefore came back as a company.
+   *
+   * AND IT DID NOT STOP AT THAT CELL. `registerOp` also writes the string into
+   * `opName` / `opSpellings`, which is the table `names()` — and so `prose()` —
+   * substitutes inside sentences. Once one stat had registered "June 2026",
+   * every sentence containing those words had a company name pushed into it.
+   * That is the second line above: the body never mentioned an operator.
+   *
+   * `subIfOwnOp` LOOKS UP rather than mints, returning the value unchanged
+   * when it is not one of this owner's own operators. A stat naming her
+   * operator is still substituted — the leak this line exists to stop — and a
+   * stat naming a status, a month or a count is left as the API sent it.
+   */
   const sampleStat = <T extends { value: string; sub?: string }>(st: T): T => ({
     ...st,
-    value: /^[\d$.,+-]/.test(st.value) ? fig(st.value) : (subOp(st.value) ?? st.value),
+    value: /^[\d$.,+-]/.test(st.value) ? fig(st.value) : (subIfOwnOp(st.value) ?? st.value),
     sub: st.sub ? fig(st.sub) : st.sub,
   });
 

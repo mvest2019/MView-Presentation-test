@@ -84,6 +84,34 @@ function n0d(n: number | null | undefined): string {
   return (n ? n0(n) : null) ?? '—';
 }
 
+/**
+ * A STAT CELL WITH NOTHING IN IT IS NOT SHOWN.
+ *
+ * The API sends a fixed set of cells per event and fills what it can, so a
+ * month with no liquid arrives as "Oil filed —". Rendered, that is a labelled
+ * empty box sitting between two real readings: the reader is told a heading,
+ * then told nothing, and a row of those makes a producing lease look dead.
+ *
+ * A cell whose value is a dash, a blank or a bare zero is therefore dropped
+ * rather than drawn. The reading is not lost — the event body still describes
+ * the filing in prose, and the cells that DO carry a figure move up to fill
+ * the row.
+ *
+ * "0.8%" and "0,5" are real readings and stay: only a bare zero, or a zero
+ * with a unit behind it, counts as nothing.
+ */
+function blankStat(value: string | null | undefined): boolean {
+  const t = String(value ?? '').trim();
+  if (!t) return true;
+  if (t === '—' || t === '–' || t === '-') return true;
+  const low = t.toLowerCase();
+  if (low === 'no' || low.startsWith('none') || low.startsWith('no ')
+    || low.startsWith('n/a') || low.startsWith('not filed')) return true;
+  /* a bare zero, or a zero with a unit behind it — but 0.8% and 0,5 are real
+     readings and stay */
+  return t.charAt(0) === '0' && !'0123456789.,'.includes(t.charAt(1) || ' ');
+}
+
 /** "202501" -> "Jan 2025", for the places a chip has to stay short */
 function shortMonth(cycle: string): string {
   const name = MONTH_NAMES[Number(cycle.slice(4, 6)) - 1];
@@ -1290,10 +1318,12 @@ function Row(
 
         <h4 className="tl-title">{e.title}</h4>
 
-        {stats.length
+        {stats.some((s) => !blankStat(s.value))
           ? (
             <div className="tl-stats">
-              {stats.slice(0, tier === 'pro' ? 4 : 3).map((s) => (
+              {stats
+                .filter((s) => !blankStat(s.value))
+                .slice(0, tier === 'pro' ? 4 : 3).map((s) => (
                 <div className="tl-stat" key={s.label}>
                   <span className="tl-k">{s.label}</span>
                   <span className={'tl-v' + (s.tone ? ' t-' + s.tone : '')}>
