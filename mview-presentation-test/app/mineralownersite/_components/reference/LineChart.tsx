@@ -166,9 +166,16 @@ export default function LineChart(
             <span className="lc-val" key={s.name}>
               <i style={{ background: s.colour }} />
               {spec.series.length > 1 ? <em>{s.name}</em> : null}
+              {/* A COUNT OF ZERO IS THE SAME READING AS "not filed", so it
+                  gets the same word rather than a bare 0. Gated on `bars`,
+                  which is the counts chart: on a VOLUME series a zero can be
+                  a real measured month and "none" would overstate it — the
+                  null case above already covers a month nobody filed there. */}
               {v == null
                 ? <b className="lc-none">not filed</b>
-                : <b>{fmt(v, spec.dp)}<u>{spec.unit ? ' ' + spec.unit : ''}</u></b>}
+                : v === 0 && spec.kind === 'bars'
+                  ? <b className="lc-none">none</b>
+                  : <b>{fmt(v, spec.dp)}<u>{spec.unit ? ' ' + spec.unit : ''}</u></b>}
             </span>
           );
         })}

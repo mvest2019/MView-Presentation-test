@@ -152,6 +152,39 @@ const KLASS_CHIP: Record<string, string> = {
  * permit that does not exist. `leases` is the gate, because a service that
  * knows of no leases knows of nothing.
  */
+/**
+ * A STAT THAT COUNTS NOTHING SHOULD NOT LOOK LIKE THE HEADLINE.
+ *
+ * The server sends these cells verbatim and they are facts —
+ * `{label: "On leases you hold", value: "0", sub: "none carry your lease
+ * number"}` is the POINT of a county-wide completions alert: the wells are
+ * near you and none are yours. Dropping it would change what the alert says.
+ *
+ * But it was rendered in the same weight and colour as the figures beside it,
+ * so a row reading "23 wells · 0 · Linder John Operating · Aug 16 2017" led
+ * with a zero in the second slot and the eye stopped there. A reader deciding
+ * whether this product is worth paying for met "0" before "23".
+ *
+ * The cell is therefore DROPPED, not reworded. §13 says render the server's
+ * strings verbatim, so a zero is not ours to rewrite into a word — the choice
+ * is show it or don't, and the instruction is don't show a zero anywhere.
+ *
+ * WHAT THAT COSTS, recorded so it is a decision and not an accident: on a
+ * county-wide alert "On leases you hold: 0 — none carry your lease number" is
+ * the qualifier that stops the reader assuming the 234 completions are theirs.
+ * The alert's BODY still says it in prose ("None is on a lease you hold, so
+ * this is context for your area rather than income"), which is why dropping
+ * the cell is survivable — the fact stays on the page, just not as a figure.
+ *
+ * `0` followed by a digit, dot or comma is NOT nil: "0.8%" and "0,5" are real
+ * readings, and only a bare zero or a zero with a unit after it ("0 MCF · no
+ * oil") counts.
+ */
+function nilStat(value: string): boolean {
+  const t = value.trim();
+  return /^0(?![d.,])/.test(t) || /^(none|no)/i.test(t);
+}
+
 /** the published plan, identical for every reader — the only constant here */
 const PLAN_PRICE = {
   price_month: '$99.95', price_annual: '$999.50',
@@ -194,6 +227,14 @@ export default function AlertsView(
 ) {
   const al = p.alerts;
   const lg = useMemo(() => watchLedger(p), [p]);
+
+  /* EVERY FILING THE SWEEP READ, which is the largest true figure the record
+     carries and the one this panel is really selling. `timeline.events` is
+     the whole matched feed — the reader's own leases, their rings and their
+     counties — before any filter narrows it. Falls back to the ledger's own
+     counts if the feed is not loaded. */
+  const readCount = p.timeline.events.length
+    || (lg.production_filings + lg.nearby_filings);
   const [cat, setCat] = useState<AlertCategory | 'all'>('all');
   const [q, setQ] = useState('');
 
@@ -464,16 +505,40 @@ export default function AlertsView(
                   {lg.last_read_label ? <> Last read {lg.last_read_label}.</> : null}
                 </span>
               </div>
+              {/* THE VOLUME LEADS, because the volume is the argument.
+                  This cell used to open on the lease count — 54 — which is the
+                  SMALLEST true figure the panel holds, and it set the scale a
+                  reader judged the rest by. The sweep reads far more than it
+                  reports: every filing in the county feed is matched against
+                  the record before anything is discarded, and that total is
+                  `timeline.events.length`. The lease and county counts are not
+                  lost; they move into the caption, and the headline above
+                  already opens "on your {'{'}leases{'}'} leases every day".
+
+                  NOTHING IS SCALED OR ROUNDED UP. This is a different TRUE
+                  figure, not the same one inflated — 897 filings really were
+                  read, and `mine_count` says how many landed on the reader's
+                  own leases, so the caption cannot overstate what is theirs. */}
               <div>
                 <span className="aw-n num">
-                  {lg.leases}{' '}
-                  <span style={{ fontSize: 13, color: 'var(--slate)' }}>
-                    {plural(lg.leases, 'lease')} · {lg.counties}{' '}
-                    {lg.counties === 1 ? 'county' : 'counties'}
-                  </span>
+                  {n0(readCount)}{' '}
+                  {/* the unit tail rides inside `.aw-n`, so it has to be a class
+                      rather than an inline font-size */}
+                  <span className="aw-unit">filings read</span>
                 </span>
                 <span className="aw-cap">
-                  Yours, plus the <strong className="num">{n0(lg.adjacent_leases)}</strong>{' '}
+                  Matched against your <strong className="num">{n0(lg.leases)}</strong>{' '}
+                  {plural(lg.leases, 'lease')} in{' '}
+                  <strong className="num">{n0(lg.counties)}</strong>{' '}
+                  {lg.counties === 1 ? 'county' : 'counties'}
+                  {p.timeline.mine_count
+                    ? (
+                      <>
+                        {' '}— <strong className="num">{n0(p.timeline.mine_count)}</strong> of them
+                        landed on a lease you hold
+                      </>
+                    )
+                    : null}. Plus the <strong className="num">{n0(lg.adjacent_leases)}</strong>{' '}
                   neighboring {plural(lg.adjacent_leases, 'lease')}
                   {/* the permit count has no source outside the ledger, so the
                       clause goes rather than printing "and 0 standing permits" */}
@@ -675,10 +740,12 @@ export default function AlertsView(
                         hidden behind a click. These are the figures the
                         finding was actually built from, so the card answers
                         "how much, how many, since when" on sight. */}
-                    {a.stats.length
+                    {a.stats.some((st) => !nilStat(st.value))
                       ? (
                         <div className="alx-stats">
-                          {a.stats.slice(0, tier === 'pro' ? 4 : 3).map((st) => (
+                          {a.stats
+                            .filter((st) => !nilStat(st.value))
+                            .slice(0, tier === 'pro' ? 4 : 3).map((st) => (
                             <div className="alx-stat" key={st.label}>
                               <span className="alx-k">{st.label}</span>
                               {/* the arrow carries the direction, so the sign

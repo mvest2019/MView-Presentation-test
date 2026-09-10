@@ -66,6 +66,24 @@ const KIND_ICON: Record<EventKind, string> = {
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'];
 
+/**
+ * A COUNT OF NOTHING IN A NUMERIC COLUMN IS AN EM DASH, NOT A ZERO.
+ *
+ * These tables rank filings, and a "0" in the completions column of an
+ * operator with four permits reads as a score rather than as an absence — the
+ * eye stops on it, and a column of zeros makes a busy county look idle. The
+ * em dash is the ordinary table convention for "none" and carries the same
+ * fact without the weight, which is what "do not show 0 anywhere" asks for
+ * where the figure is genuinely nothing.
+ *
+ * NOT for a total or a measured value that happens to be zero and MEANS zero
+ * — only for counts, where absent and none are the same reading.
+ */
+function n0d(n: number | null | undefined): string {
+  /* `n0` is nullable; a count we could not format is the same absence */
+  return (n ? n0(n) : null) ?? '—';
+}
+
 /** "202501" -> "Jan 2025", for the places a chip has to stay short */
 function shortMonth(cycle: string): string {
   const name = MONTH_NAMES[Number(cycle.slice(4, 6)) - 1];
@@ -900,7 +918,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                           <td className="num">
                             {nb.last_oil ? `${nShort(nb.last_oil)} ${BBL}` : '—'}
                           </td>
-                          <td className="num hide-s">{n0(nb.months_reported)}</td>
+                          <td className="num hide-s">{n0d(nb.months_reported)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1088,8 +1106,8 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                               {ac.operators.slice(0, 12).map((o, i) => (
                                 <tr key={(o.operator_name ?? '') + i}>
                                   <td>{o.operator_name ?? 'Not named in the filing'}</td>
-                                  <td className="num">{n0(o.permits)}</td>
-                                  <td className="num">{n0(o.completions)}</td>
+                                  <td className="num">{n0d(o.permits)}</td>
+                                  <td className="num">{n0d(o.completions)}</td>
                                   <td className="num"><strong>{n0(o.total)}</strong></td>
                                 </tr>
                               ))}
@@ -1125,8 +1143,8 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                               {ac.fields.slice(0, 12).map((fl, i) => (
                                 <tr key={(fl.field_name ?? '') + i}>
                                   <td>{fl.field_name ?? 'Not named in the filing'}</td>
-                                  <td className="num">{n0(fl.permits)}</td>
-                                  <td className="num">{n0(fl.completions)}</td>
+                                  <td className="num">{n0d(fl.permits)}</td>
+                                  <td className="num">{n0d(fl.completions)}</td>
                                   <td className="num"><strong>{n0(fl.total)}</strong></td>
                                 </tr>
                               ))}

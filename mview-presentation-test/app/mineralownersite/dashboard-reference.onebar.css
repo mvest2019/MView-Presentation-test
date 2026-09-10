@@ -1393,3 +1393,65 @@ body .mv-ref-app .ultra-hero .u-more-f {
   body .mv-ref-app .ultra-hero .u-more-l button { flex-wrap: wrap; gap: 4px 9px; }
   body .mv-ref-app .ultra-hero .u-more-w { width: 100%; padding-left: 17px; }
 }
+
+
+/* ----------------------------------------------------------------------------
+   THE ALERT COUNT DOES NOT FOLLOW A READER WHO HAS CLAIMED NOTHING.
+
+   THE INCONSISTENCY. `dashboard-reference.css` already hides the BELL's badge
+   while nothing is claimed —
+
+     body .mv-ref-app.no-claim .bellbtn .bdg { display: none }
+
+   — and the rail's own badge never got the same rule. So the chrome carried
+   two counts of the same thing that disagreed: an empty bell beside a rail
+   reading 6.
+
+   WHY HIDDEN RATHER THAN RESTYLED. A numeric badge is a notification: it
+   asserts "six things are waiting for YOU". Two lines below it the claim card
+   says the opposite in as many words — "the names and amounts belong to a
+   sample owner rather than to you" — and the page teaches the reader to read
+   amber as "a labeled example, not yours yet". A badge cannot be made to say
+   "six, but not yours"; it is a number in a dot. The bell's author reached
+   the same conclusion, and one rule for both is better than two treatments of
+   one fact.
+
+   THE ENCOURAGEMENT MOVES TO THE PAGE, where it can be qualified in words —
+   see the ledger sizing below. A figure with a caption can say what it counts;
+   a badge cannot.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app.no-claim .app-side .unread { display: none; }
+
+
+/* ----------------------------------------------------------------------------
+   A ZERO IN AN ALERT'S STAT ROW READS AS THE HEADLINE UNLESS IT IS TOLD NOT TO.
+
+   `.alx-v` is one weight and one colour for every cell, so a row reading
+   "23 wells · 0 · Linder John Operating · Aug 16 2017" put a zero in the
+   second slot at full strength and the eye stopped on it. On the page whose
+   job is to show a reader what the service finds, the first figure they read
+   was nothing.
+
+   The cell stays — "none carry your lease number" is what that alert is FOR,
+   and `AlertsView` leaves the server's text exactly as sent (§13). Only its
+   weight drops, and `nilStat()` sorts it behind the cells that carry a
+   reading. A fact the reader can still find, no longer the loudest thing in
+   the row.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .alx-stat.alx-nil .alx-v {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+body .mv-ref-app .alx-stat.alx-nil .alx-k,
+body .mv-ref-app .alx-stat.alx-nil .alx-s {
+  opacity: .8;
+}
+
+/* `.aw-unit` replaced an inline `fontSize: 13` on the "leases · N counties"
+   tail inside `.aw-n`. The inline style is gone from the JSX, so this rule is
+   what now holds it at the reference's own size and colour. */
+body .mv-ref-app section[data-route="app-alerts"] .mv-alwatch .aw-unit {
+  font-size: 13px;
+  color: var(--slate);
+}
