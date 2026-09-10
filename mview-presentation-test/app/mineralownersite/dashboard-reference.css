@@ -1344,15 +1344,65 @@ body .mv-ref-app.no-claim .dx-v { color: transparent; text-shadow: 0 0 8px #7b86
 .mv-ref-app .mv-menu .mv-persona button.on {
   background: var(--green); color: #fff; border-color: var(--green);
   box-shadow: 0 2px 8px rgba(46, 143, 109, .28); }
+/* THE SAMPLE BORDER IS DASHED, and only in the not-claimed state.
+
+   `border-style` beside the `border-color` that was already here: a solid gold
+   rule reads as a card with an accent, and a dashed one reads as a placeholder,
+   which is what every card on this page is. It is the same language the
+   SAMPLE PREVIEW banner at the top of the page already uses
+   (`.smp-badge`, 2px dashed #d9a441).
+
+   WIDTH AND COLOUR ARE UNTOUCHED, so nothing moves: a dashed border occupies
+   exactly the box a solid one of the same width does. The cards keep the
+   1px / 3px-top / 4px-left widths the reference gives them.
+
+   THE STRIP IS AN OUTLINE, NOT A BORDER, and a box-shadow ring cannot be
+   dashed. `outline` draws in the same place the 2px spread did — outside the
+   border box, out of flow — so the strip keeps its size and its neighbours
+   keep their spacing. */
 body .mv-ref-app.no-claim .app-body .card,
 body .mv-ref-app.no-claim .app-body .kpi,
 body .mv-ref-app.no-claim .app-body .al-mini,
-body .mv-ref-app.no-claim .app-body .mv-alsum { border-color: var(--mv-sample) !important; }
-body .mv-ref-app.no-claim .app-body .pf-strip { box-shadow: 0 0 0 2px var(--mv-sample); }
+body .mv-ref-app.no-claim .app-body .mv-alsum {
+  border-color: var(--mv-sample) !important; border-style: dashed !important; }
+body .mv-ref-app.no-claim .app-body .pf-strip {
+  box-shadow: none; outline: 2px dashed var(--mv-sample); outline-offset: 0; }
 .mv-ref-app .samp-tag {
   display: inline-block; font-size: 8.5px; font-weight: 800; letter-spacing: .07em;
   text-transform: uppercase; padding: 2px 6px; border-radius: 4px;
   background: var(--mv-sample); color: #fff; margin-left: 6px; vertical-align: 1px; }
+
+/* ==========================================================================
+   THE SAMPLE MARKER, ON EVERY CARD — not-claimed only.
+
+   EVERY CARD, because a reader who scrolls past the banner at the top of the
+   page has nothing left on screen telling them the figures are illustrative.
+   One pill on one card was worse than none: it implied the OTHER thirteen
+   were real.
+
+   DRAWN IN CSS RATHER THAN PLACED IN THE MARKUP. Every card on this page
+   titles itself with exactly one `h4` — measured, all fourteen, none nested
+   and none outside a card — so one rule marks all of them, and a card added
+   later is marked the day it is added. The alternative was fourteen edits
+   across two components and a fifteenth card that quietly went unmarked.
+
+   IT IS A REMINDER, NOT THE DISCLOSURE. The disclosure is the SAMPLE PREVIEW
+   banner at the top of the page, which is real markup and says in a sentence
+   whose record this is and that the amounts are illustrative. These pills
+   repeat that at a glance; nothing depends on them being read aloud.
+
+   `.as-kicker` IS INLINE HERE for the same reason. It is a block, so the
+   marker after it dropped onto a line of its own instead of sitting beside
+   the heading the way it does on every card.
+   ========================================================================== */
+body .mv-ref-app.no-claim .app-body .card h4::after,
+body .mv-ref-app.no-claim .app-body .mv-alsum .as-kicker::after {
+  content: "Sample";
+  display: inline-block; font-size: 8.5px; font-weight: 800; letter-spacing: .07em;
+  text-transform: uppercase; padding: 2px 6px; border-radius: 4px;
+  background: var(--mv-sample); color: #fff; margin-left: 6px; vertical-align: 1px;
+  white-space: nowrap; }
+body .mv-ref-app.no-claim .app-body .mv-alsum .as-kicker { display: inline; }
 .mv-ref-app .al-filter .alf-n {font-weight: 800; opacity: .72; }
 .mv-ref-app .al-filter button:hover {border-color: var(--green); color: var(--green-deep); }
 .mv-ref-app .al-filter button[disabled] {opacity: .5; cursor: default; }

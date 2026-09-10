@@ -62,6 +62,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 import type { Payload } from '../../_lib/reference/payload';
 import type { Drawer as DrawerCopy } from '../../_lib/reference/payload';
@@ -208,6 +209,12 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
   const [live, setLive] = useState<Payload | null>(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /* THE ERROR'S CODE, KEPT BESIDE ITS SENTENCE. `/api/portfolio` already
+     returns one per §4; without it every failure had to be rendered the same
+     way, and `DASHBOARD_NO_CLAIM` — a signed-in member who has simply not
+     claimed a record yet — read as "That did not load" and was offered a
+     reload that answers the same way every time. */
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [tier, setTier] = useState<Tier>('detailed');
   /* ADAPTED 5 · THE FUNNEL STATE OPENS ON WHAT THE RECORD SAYS, not on a
      constant. It used to start at `'paid'` for everybody, so a visitor with
@@ -409,6 +416,7 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
     const my = ++seq.current;
     setBusy(true);
     setError(null);
+    setErrorCode(null);
     setLoadingName(o.ownername);
     try {
       const q = new URLSearchParams({ owner: o.ownername });
@@ -419,6 +427,7 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
       const data = await res.json();
       if (my !== seq.current) return;          // a later pick already won
       if (!res.ok) {
+        setErrorCode(typeof data?.code === 'string' ? data.code : null);
         setError(data?.detail ? `${data.error ?? 'Could not load'} — ${data.detail}`
           : (data?.error ?? `Request failed (${res.status})`));
         return;
@@ -433,7 +442,10 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
       else url.searchParams.delete('dist');
       window.history.replaceState(null, '', url.pathname + url.search);
     } catch (e) {
-      if (my === seq.current) setError(e instanceof Error ? e.message : String(e));
+      if (my === seq.current) {
+        setErrorCode(null);
+        setError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
       if (my === seq.current) { setBusy(false); setLoadingName(null); }
     }
@@ -543,7 +555,11 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
         open={openDrawer}
         sampleNote={shown?.note ?? null} trialStarted={trialStarted}
       >
-        {error ? <ErrorCard detail={error} /> : null}
+        {error
+          ? (errorCode === 'DASHBOARD_NO_CLAIM'
+            ? <NoClaimCard detail={error} />
+            : <ErrorCard detail={error} />)
+          : null}
         {view}
         {/* NOT WHEN THE PAGE BROUGHT ITS OWN VIEW. This card stands in for the
             Dashboard and the Weekly Report, which are nothing without a
@@ -577,9 +593,43 @@ function ErrorCard({ detail }: { detail: string }) {
             `Chrome`), so this was pointing at a control the reader cannot find.
             This card also serves the `detail` failures, which is why it says
             reload rather than naming any one cause. */}
-        Nothing is cached from a failed read, so nothing stale is being shown. Reload the page, or
-        open <code>/api/health</code> to see which source did not answer.
+        {/* NO <code>/api/health</code>. This app serves no such route — it 404s —
+           so the one concrete thing the card told the reader to try was a dead
+           end. What is true is left: nothing stale is on screen, and a reload
+           is the honest suggestion for the failures this card does serve. */}
+        Nothing is cached from a failed read, so nothing stale is being shown. Reload the page to
+        try the read again.
       </p>
+    </div>
+  );
+}
+
+/**
+ * NOT CLAIMED YET IS NOT A FAILURE — `DASHBOARD_NO_CLAIM`.
+ *
+ * The member-keyed `/dashboard` answers 404 with this code for a signed-in
+ * member who has not claimed a roll owner, which is where every new account
+ * starts. Rendered through `ErrorCard` it read "That did not load" over an
+ * invitation to reload — a page that will answer the same way every time. The
+ * state is ordinary, so it is given the ordinary next step instead: the claim
+ * flow the sidebar already links to.
+ */
+function NoClaimCard({ detail }: { detail: string }) {
+  return (
+    <div className="card card-pad" style={{ borderLeft: '4px solid #54bf96', margin: '16px 0' }}>
+      <h3 style={{ margin: '0 0 6px' }}>Nothing is claimed on this account yet</h3>
+      <p className="small" style={{ margin: 0 }}>
+        Your dashboard fills in the moment a record is claimed — your leases, what they
+        produced, what they are worth and what changed since your last visit.
+      </p>
+      {/* The service's own sentence and its request id, minus the headline
+          half this card has already said in its own words. */}
+      <p className="tiny muted" style={{ margin: '8px 0 10px' }}>
+        {detail.includes(' — ') ? detail.slice(detail.indexOf(' — ') + 3) : detail}
+      </p>
+      <Link className="btn btn-primary btn-sm" href="/mineralownersite/claim">
+        Claim your record — free →
+      </Link>
     </div>
   );
 }
