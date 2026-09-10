@@ -181,8 +181,37 @@ const KLASS_CHIP: Record<string, string> = {
  * oil") counts.
  */
 function nilStat(value: string): boolean {
-  const t = value.trim();
-  return /^0(?![d.,])/.test(t) || /^(none|no)/i.test(t);
+  const t = String(value ?? '').trim();
+  if (!t) return true;
+  if (t === '—' || t === '–' || t === '-') return true;
+  const low = t.toLowerCase();
+  if (low === 'no' || low.startsWith('none') || low.startsWith('no ')
+    || low.startsWith('n/a') || low.startsWith('not filed')) return true;
+  /* a bare zero, or a zero with a unit behind it — 0.8% and 0,5 are real */
+  return t.charAt(0) === '0' && !'0123456789.,'.includes(t.charAt(1) || ' ');
+}
+
+/**
+ * HALF A VALUE CAN BE NOTHING WHILE THE OTHER HALF IS A READING.
+ *
+ * The API composes some stat values from two measures joined by a middle
+ * dot, and fills both even when one is empty:
+ *
+ *   { label: "Your share, May 2026", value: "no gas · 56 BBL" }
+ *
+ * Dropping the whole cell would take the 56 BBL with it, and printing it
+ * whole leads a sales panel with the words "no gas". So the value is split on
+ * the dot, the empty halves are removed, and what is left is rendered. Only
+ * when NOTHING is left does the cell go.
+ *
+ * The text of a surviving half is untouched — this removes components, it
+ * does not reword them (§13).
+ */
+function liveValue(value: string): string | null {
+  const parts = value.split('·')
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0 && !nilStat(p));
+  return parts.length ? parts.join(' · ') : null;
 }
 
 /** the published plan, identical for every reader — the only constant here */
@@ -740,12 +769,14 @@ export default function AlertsView(
                         hidden behind a click. These are the figures the
                         finding was actually built from, so the card answers
                         "how much, how many, since when" on sight. */}
-                    {a.stats.some((st) => !nilStat(st.value))
+                    {a.stats.some((st) => liveValue(st.value))
                       ? (
                         <div className="alx-stats">
                           {a.stats
-                            .filter((st) => !nilStat(st.value))
-                            .slice(0, tier === 'pro' ? 4 : 3).map((st) => (
+                            .map((st) => ({ st, shown: liveValue(st.value) }))
+                            .filter((x): x is { st: typeof x.st; shown: string } =>
+                              x.shown !== null)
+                            .slice(0, tier === 'pro' ? 4 : 3).map(({ st, shown }) => (
                             <div className="alx-stat" key={st.label}>
                               <span className="alx-k">{st.label}</span>
                               {/* the arrow carries the direction, so the sign
@@ -754,9 +785,11 @@ export default function AlertsView(
                                   twice and reads as a double negative */}
                               <span className={'alx-v' + (st.tone ? ' t-' + st.tone : '')}>
                                 {st.tone === 'up' ? '▲ ' : st.tone === 'down' ? '▼ ' : ''}
+                                {/* `shown` is the value with its empty halves
+                                    removed — see `liveValue` */}
                                 {st.tone === 'up' || st.tone === 'down'
-                                  ? st.value.replace(/^[+-]/, '')
-                                  : st.value}
+                                  ? shown.replace(/^[+-]/, '')
+                                  : shown}
                               </span>
                               {st.sub ? <span className="alx-s">{st.sub}</span> : null}
                             </div>

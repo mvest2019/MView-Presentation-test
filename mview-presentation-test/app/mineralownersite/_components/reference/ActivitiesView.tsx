@@ -112,6 +112,22 @@ function blankStat(value: string | null | undefined): boolean {
   return t.charAt(0) === '0' && !'0123456789.,'.includes(t.charAt(1) || ' ');
 }
 
+/**
+ * HALF A VALUE CAN BE NOTHING WHILE THE OTHER HALF IS A READING.
+ *
+ * Some stat values are two measures joined by a middle dot, and the API
+ * fills both even when one is empty: "no gas · 56 BBL". Dropping the cell
+ * would take the 56 BBL with it; printing it whole opens the cell with the
+ * words "no gas". The empty halves are removed and the rest is rendered; the
+ * cell goes only when nothing is left. Surviving halves are untouched.
+ */
+function liveValue(value: string): string | null {
+  const parts = value.split('·')
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0 && !blankStat(p));
+  return parts.length ? parts.join(' · ') : null;
+}
+
 /** "202501" -> "Jan 2025", for the places a chip has to stay short */
 function shortMonth(cycle: string): string {
   const name = MONTH_NAMES[Number(cycle.slice(4, 6)) - 1];
@@ -1318,17 +1334,18 @@ function Row(
 
         <h4 className="tl-title">{e.title}</h4>
 
-        {stats.some((s) => !blankStat(s.value))
+        {stats.some((s) => liveValue(s.value))
           ? (
             <div className="tl-stats">
               {stats
-                .filter((s) => !blankStat(s.value))
-                .slice(0, tier === 'pro' ? 4 : 3).map((s) => (
+                .map((s) => ({ s, shown: liveValue(s.value) }))
+                .filter((x): x is { s: typeof x.s; shown: string } => x.shown !== null)
+                .slice(0, tier === 'pro' ? 4 : 3).map(({ s, shown }) => (
                 <div className="tl-stat" key={s.label}>
                   <span className="tl-k">{s.label}</span>
                   <span className={'tl-v' + (s.tone ? ' t-' + s.tone : '')}>
                     {s.tone === 'up' ? '▲ ' : s.tone === 'down' ? '▼ ' : ''}
-                    {s.tone === 'up' || s.tone === 'down' ? s.value.replace(/^[+-]/, '') : s.value}
+                    {s.tone === 'up' || s.tone === 'down' ? shown.replace(/^[+-]/, '') : shown}
                   </span>
                   {s.sub ? <span className="tl-s">{s.sub}</span> : null}
                 </div>
