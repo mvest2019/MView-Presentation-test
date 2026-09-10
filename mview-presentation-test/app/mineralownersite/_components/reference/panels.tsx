@@ -18,9 +18,10 @@
  * · `ValueMix` — a ten-lease portfolio is almost never even, and the
  *   concentration is the one thing an owner cannot see from a list.
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { Payload } from '../../_lib/reference/payload';
 import { n0, usd, usdShort, pctS, vol, plural, MCF, BBL } from '../../_lib/reference/fmt';
+import { Pager, usePaged } from './bits';
 import type { Route } from './Portal';
 
 /* ============================================================= Essentials */
@@ -359,16 +360,28 @@ export function Wells({ p, open }: { p: Payload; open: (k: string) => void }) {
  */
 export function ValueMix({ p, open }: { p: Payload; open: (k: string) => void }) {
   const t = p.totals;
+
+  /* ROLLED UP BEFORE THE EARLY RETURN, because `usePaged` below is a hook and
+     an account whose value arrives zero on one render and non-zero on the next
+     would otherwise change the hook order between them. Same trap the
+     operators card hit; `react-hooks/rules-of-hooks` catches it. */
+  const counties = useMemo(() => {
+    const byCounty = new Map<string, number>();
+    for (const l of p.leases) {
+      const k = l.county ?? 'county not recorded';
+      byCounty.set(k, (byCounty.get(k) ?? 0) + l.owner_value);
+    }
+    return [...byCounty.entries()].sort((a, b) => b[1] - a[1]);
+  }, [p.leases]);
+  const pg = usePaged(counties);
+
   if (!t.owner_value) return null;
 
-  const byCounty = new Map<string, number>();
-  for (const l of p.leases) {
-    const k = l.county ?? 'county not recorded';
-    byCounty.set(k, (byCounty.get(k) ?? 0) + l.owner_value);
-  }
-  const counties = [...byCounty.entries()].sort((a, b) => b[1] - a[1]);
   const ops = p.operators.operators;
   const topOp = ops[0];
+  /* THE BAR SCALE IS EVERY COUNTY'S, not the page's — otherwise the biggest
+     county on page three draws a full bar and looks like the biggest overall.
+     Same rule as the operators card. */
   const maxC = Math.max(1, ...counties.map(([, v]) => v));
 
   return (
@@ -383,7 +396,7 @@ export function ValueMix({ p, open }: { p: Payload; open: (k: string) => void })
         Your share of the six-year estimate, split by where the acreage is.
       </p>
 
-      {counties.map(([name, v]) => (
+      {pg.rows.map(([name, v]) => (
         <div
           className="lbar" key={name} role="button" tabIndex={0}
           onClick={() => open('value')}
@@ -400,6 +413,11 @@ export function ValueMix({ p, open }: { p: Payload; open: (k: string) => void })
           <span className="lb-val">{usdShort(v)}</span>
         </div>
       ))}
+
+      <Pager
+        page={pg.page} pages={pg.pages} setPage={pg.setPage} start={pg.start}
+        shown={pg.rows.length} total={counties.length} label="County pages"
+      />
 
       <div className="chart-insight">
         <span className="ci-dot" aria-hidden="true" />

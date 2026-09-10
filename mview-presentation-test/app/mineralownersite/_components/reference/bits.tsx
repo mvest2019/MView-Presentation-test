@@ -7,13 +7,112 @@
  * only ever be rendered through a formatter. Reaching for `String(n)` anywhere
  * in a view is how "$45,48,479" happened once already.
  */
-import React from 'react';
+import React, { useState } from 'react';
 import { n0, usd, usdShort, pctS, nShort, MCF, BBL } from '../../_lib/reference/fmt';
 import LineChart from './LineChart';
 import { productCharts } from '../../_lib/reference/chart';
 
 /* --------------------------------------------------------------- density */
 /** ultra → pro. A block declares the range it belongs in. */
+/* ================================================================ pager
+   LIVES HERE, not beside its first caller. It started in `Dashboard.tsx` for
+   the operators card and the lease table; "Where your value sits" is in
+   `panels.tsx`, which `Dashboard` imports, so keeping it there would have
+   meant a cycle. `bits` is where the shared primitives already are. */
+/**
+ * TEN ROWS A PAGE, on the two lists that a real portfolio makes unreadable.
+ *
+ * "Your operators" printed all fifty-seven and "Every lease, every field" all
+ * 1,659 — a card taller than eleven screens and a table taller than three
+ * hundred. Neither is a list anyone reads; both are a scroll the reader has to
+ * get past to reach the next card.
+ *
+ * A PAGE, NOT A "SHOW MORE". The reader of these two is auditing — checking
+ * one operator's share, finding one lease — and a growing list makes the
+ * document longer every time they look. Ten rows keeps every card the same
+ * height whatever the account holds, which is the property the strip and the
+ * rails already have.
+ */
+const PAGE_SIZE = 10;
+
+/**
+ * The current page's slice, clamped.
+ *
+ * CLAMPED IN RENDER rather than reset from an effect. The lists change under
+ * this — the funnel switch swaps the whole payload for its sample, and the
+ * sample holds a different number of rows — and a page index left pointing
+ * past the end would render an empty card. `Math.min` costs nothing and needs
+ * no effect, which also keeps this clear of the `set-state-in-effect` rule the
+ * shell had to disable.
+ */
+export function usePaged<T>(items: T[]) {
+  const [page, setPage] = useState(1);
+  const pages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const safe = Math.min(page, pages);
+  const start = (safe - 1) * PAGE_SIZE;
+  return { page: safe, pages, setPage, start, rows: items.slice(start, start + PAGE_SIZE) };
+}
+
+/**
+ * Which page numbers to draw: first, last, the current one and its neighbours.
+ *
+ * 1,659 leases is 166 pages, and 166 buttons is a worse control than no
+ * control. The gaps are rendered as text, never as buttons — an ellipsis you
+ * can click is a guess about where it takes you.
+ */
+function pageWindow(cur: number, pages: number): (number | '…')[] {
+  if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
+  const out: (number | '…')[] = [1];
+  const from = Math.max(2, cur - 1);
+  const to = Math.min(pages - 1, cur + 1);
+  if (from > 2) out.push('…');
+  for (let n = from; n <= to; n += 1) out.push(n);
+  if (to < pages - 1) out.push('…');
+  out.push(pages);
+  return out;
+}
+
+export function Pager(
+  { page, pages, setPage, start, shown, total, label }:
+  { page: number; pages: number; setPage: (n: number) => void;
+    start: number; shown: number; total: number; label: string },
+) {
+  if (pages <= 1) return null;
+  return (
+    <nav className="mv-pager" aria-label={label}>
+      <span className="pg-count">
+        {start + 1}–{start + shown} of {total}
+      </span>
+      <span className="pg-btns">
+        <button
+          type="button" onClick={() => setPage(page - 1)}
+          disabled={page === 1} aria-label="Previous page"
+        >
+          ‹
+        </button>
+        {pageWindow(page, pages).map((n, i) => (n === '…'
+          ? <span className="pg-gap" key={`gap${i}`}>…</span>
+          : (
+            <button
+              type="button" key={n} className={n === page ? 'on' : undefined}
+              aria-current={n === page ? 'page' : undefined}
+              aria-label={`Page ${n}`} onClick={() => setPage(n)}
+            >
+              {n}
+            </button>
+          )))}
+        <button
+          type="button" onClick={() => setPage(page + 1)}
+          disabled={page === pages} aria-label="Next page"
+        >
+          ›
+        </button>
+      </span>
+    </nav>
+  );
+}
+
+
 export type Tier = 'ultra' | 'simple' | 'detailed' | 'pro';
 export const TIERS: Tier[] = ['ultra', 'simple', 'detailed', 'pro'];
 export const rank = (t: Tier) => TIERS.indexOf(t);
