@@ -179,7 +179,20 @@ export default function Dashboard(
               </h2>
               <p className="small muted" style={{ margin: '3px 0 0' }}>
                 {t.lease_count} {plural(t.lease_count, 'lease')} · {t.producing_count} producing ·{' '}
-                {t.reporting_count} filed for {a.data_month_label ?? '—'} · {t.counties.join(', ')} ·{' '}
+                {t.reporting_count} filed for {a.data_month_label ?? '—'} ·{' '}
+                {/* THE COUNTIES COLLAPSE TO A COUNT once there are more than
+                    five of them. Twenty names is not a fact anyone reads — it
+                    is a wall the eye skips, and it pushed this line to three
+                    rows. The names are kept on the `title`, so hovering still
+                    answers "which ones", and the map and the leases table both
+                    list them properly. */}
+                {t.counties.length > MAX_COUNTY_NAMES
+                  ? (
+                    <span title={t.counties.join(', ')}>
+                      {t.counties.length} {plural(t.counties.length, 'county', 'counties')}
+                    </span>
+                  )
+                  : t.counties.join(', ')} ·{' '}
                 {t.operator_count} {plural(t.operator_count, 'operator')}
                 {t.plays.length ? ' · ' + t.plays.join(', ') : ''}
               </p>
@@ -559,7 +572,34 @@ function PfStrip(
       {t.behind_count
         ? `${t.reporting_count} filed ${a.data_month_label}, ${t.behind_count} still behind`
         : `all filed ${a.data_month_label}`}
-      {' · '}{t.operator_names.join(' · ')}
+      {' · '}{t.operator_names.slice(0, MAX_OPERATOR_NAMES).join(' · ')}
+      {/* AND THE REST BEHIND ONE CONTROL. Fifty-seven names ran the cell down
+          past the fold and stretched every tile in the strip to match. The
+          overflow opens the `operators` explainer, which is not a new panel:
+          it is the drawer this page already fetches for every payload, and it
+          lists every operator with its lease count, its volume and its share
+          of the value — more than the names ever said.
+
+          `stopPropagation` on BOTH handlers. The tile around this is itself a
+          `role="button"` that opens the `producing` drawer, so without it a
+          click here opens the wrong panel, and Enter on the focused control
+          opens both. */}
+      {t.operator_names.length > MAX_OPERATOR_NAMES
+        ? (
+          <>
+            {' · '}
+            <button
+              type="button" className="pf-more"
+              onClick={(e) => { e.stopPropagation(); open('operators'); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
+              }}
+            >
+              +{t.operator_names.length - MAX_OPERATOR_NAMES} more
+            </button>
+          </>
+        )
+        : null}
     </>,
     'producing', 'What paused means'));
 
@@ -1471,6 +1511,23 @@ function metricText(it: { metric: number | null; metric_unit: string | null }): 
   if (it.metric == null) return null;
   return `${n1(it.metric)}${it.metric_unit ? ' ' + it.metric_unit : ''}`;
 }
+
+/**
+ * HOW MANY NAMES A LIST PRINTS BEFORE IT COLLAPSES TO A COUNT.
+ *
+ * Both numbers are the point where a list stops informing and starts pushing
+ * the page around. A portfolio with 1,659 leases across 20 counties and 57
+ * operators wrapped the greeting onto three lines and grew the Producing cell
+ * to eight times the height of the four beside it — the strip is a row of
+ * equal tiles, so one tall cell stretches all five.
+ *
+ * FIVE AND THREE, not one rule for both. The counties sit in a sentence that
+ * already carries five other facts, so five names is as much as it can hold
+ * without becoming the line's subject. The operators sit under a figure in a
+ * narrow tile, where three is a sample and anything more is a wall.
+ */
+const MAX_COUNTY_NAMES = 5;
+const MAX_OPERATOR_NAMES = 3;
 
 /* ============================================================ owner switch */
 /**

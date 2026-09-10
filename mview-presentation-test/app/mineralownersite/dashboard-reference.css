@@ -353,6 +353,13 @@ body .mv-ref-app.in-app .app-shell {display:grid;grid-template-columns:236px min
    it the panel opened behind the first card. 340 sits under the drawer's 371
    so the evidence panel still covers this if both are somehow open.
    ========================================================================== */
+/* The Producing cell's overflow control. It lives in `.pf-sub`, which is muted
+   text on the dark strip, so it reads as the one thing in there you can press
+   without becoming a second button competing with the tile itself. */
+.mv-ref-app .pf-more {font:inherit;font-size:inherit;font-weight:800;color:var(--green);
+  background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;
+  text-underline-offset:2px }
+.mv-ref-app .pf-more:hover {color:#fff }
 .mv-ref-app .mv-ownersw {position:relative }
 .mv-ref-app .ownersw-pop {position:absolute;top:calc(100% + 8px);right:0;z-index:340;
   width:min(380px,calc(100vw - 32px));background:#fff;border:1px solid var(--line);
