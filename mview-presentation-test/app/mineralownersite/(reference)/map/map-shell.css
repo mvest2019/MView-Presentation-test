@@ -88,3 +88,47 @@
     padding-bottom: 84px;
   }
 }
+
+/*
+ * THE MAP'S TYPE, BACK FROM ARIAL.
+ *
+ * `dashboard-reference.css` carries this, which is the reference build's own
+ * normalize for form controls:
+ *
+ *   .mv-ref-app button, input, select, textarea, optgroup {
+ *     font-family: revert; font-size: revert; font-weight: revert;
+ *     font-style: revert; line-height: normal;
+ *   }
+ *
+ * `revert` on an author declaration rolls the property back to the USER-AGENT
+ * stylesheet, and Chrome's UA font for form controls on Windows is Arial at
+ * 13.333px. That is correct for the Dashboard and the Weekly Report, which
+ * style their controls with the reference's own `.btn` classes.
+ *
+ * IT IS WRONG FOR THE MAP, and it only started applying when the map moved
+ * inside this shell — before that no `.mv-ref-app` selector could reach it.
+ * Almost every label on the map lives inside a `<button>`: the facet headings,
+ * the Map / Table / Insights tabs, the toolbar, the tool rows. So they all
+ * turned Arial while plain text beside them — the "Search & filters" heading —
+ * stayed Lexend Deca, which is the mismatch that makes the panel look wrong.
+ *
+ * ── WHY A LAYER AND NOT JUST A RULE ──
+ *
+ * An unlayered rule here would beat the reference sheet, but it would also beat
+ * Tailwind's utilities, which live in `@layer utilities` — and then
+ * `font-size: inherit` below would silently outrank every `text-[12px]` in the
+ * map. So this sits in `mv-map-reset`, declared in `app/globals.css` between
+ * `mv-reference` and `components`: above the sheet, below the utilities.
+ *
+ * WHAT IT RESTATES is Tailwind's own preflight — `font: inherit` on form
+ * controls — for this subtree only. Nothing in the reference tree is touched.
+ */
+@layer mv-map-reset {
+  .mv-ref-app .mv-map-slot :is(button, input, select, textarea, optgroup) {
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    font-style: inherit;
+    line-height: inherit;
+  }
+}

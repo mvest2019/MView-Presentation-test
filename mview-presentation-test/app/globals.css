@@ -18,6 +18,11 @@
  *   headings to `font-size:inherit`, strips link colour and zeroes margins —
  *   run over the reference sheet, it would flatten the whole Dashboard.
  *
+ *   `mv-map-reset` sits just above it, and holds one thing: the map's undo of
+ *   the reference's form-control reset. See `(reference)/map/map-shell.css`.
+ *   It has to beat `mv-reference` and still lose to `utilities`, which is
+ *   exactly one slot, and this is it.
+ *
  *   BEFORE `utilities`, so a Tailwind class CAN override it. That is the point.
  *   `dashboard-reference.css` scopes ~600 rules to `.mv-ref-app`, and around
  *   twenty of them name bare elements: `h1`-`h4`, `a`, `table`, `th`, `td`,
@@ -33,7 +38,7 @@
  * utility, so this changes how nothing on those pages renders. It only settles
  * who wins where the two systems now meet.
  */
-@layer properties, theme, base, mv-reference, components, utilities;
+@layer properties, theme, base, mv-reference, mv-map-reset, components, utilities;
 
 @import "tailwindcss";
 
@@ -499,15 +504,25 @@
    ------------------------------------------------------------------------- */
 .mv-filters-rail {
   position: absolute;
-  left: 0;
-  top: 0;
+  /*
+   * Inset from the map's edge on every side, so the card reads as something
+   * laid over the map rather than as part of the page frame. This is
+   * `RAIL_INSET` in `map-chrome.tsx` — 12px — and the two must agree: `left`
+   * is only set here, while `top` and the final `height` are applied inline
+   * from the measurement there.
+   */
+  left: 12px;
+  top: 12px;
   /*
    * Full height less Esri's attribution strip, which the panel must not
    * cover — the terms of use require it to stay legible. 20px is the strip at
-   * its usual one line; the measurement in `map-chrome` refines it where it
-   * wraps to two.
+   * its usual one line, plus the 12px inset at each end; the measurement in
+   * `map-chrome` refines it where the strip wraps to two lines.
+   *
+   * A first-paint value only. It stands for the frame or two before the
+   * ResizeObserver in `map-chrome` reports a real number.
    */
-  height: calc(100% - 20px);
+  height: calc(100% - 44px);
 }
 
 .mv-filters-card {

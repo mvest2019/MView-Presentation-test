@@ -2,6 +2,8 @@
 
 import { Check } from "lucide-react";
 
+import { useEntitlements } from "./entitlements-context";
+
 /*
  * The basemap picker panel that opens off the basemap button.
  *
@@ -125,6 +127,24 @@ export function BasemapGallery({
   className = "",
   options = BASEMAP_OPTIONS,
 }: BasemapGalleryProps) {
+  /*
+   * WHICH GROUNDS THIS TIER MAY USE — `entitlements.ts`, never a list here.
+   *
+   * §5.2: Ultra gets `streets` (the default) and `topo-vector`; `satellite` and
+   * `hybrid` "are the two people actually want for looking at their own land",
+   * so they carry the Essential upgrade.
+   *
+   * ⚠️ SPEC GAP, worth raising: the spec names four basemaps and this gallery
+   * offers six — `terrain` and `dark-gray-vector` are not in any tier's list.
+   * Read literally, that locks two working basemaps on every tier including
+   * Pro. Treated instead as "Ultra gets the two plain grounds, every paid tier
+   * gets the lot", which satisfies §3.1's "✅ all four" without taking
+   * something away from a Pro account. Confirm with Nikhil.
+   */
+  const { map, tier } = useEntitlements();
+  const allowed =
+    tier === "ultra" ? map.basemaps : options.map((option) => option.id);
+
   return (
     <div
       role="radiogroup"
@@ -135,10 +155,15 @@ export function BasemapGallery({
         Basemap
       </div>
 
+      {/* ONLY THE GROUNDS THIS MODE CARRIES. The locked tiles used to stay in
+          the grid greyed, per §5.2 — "a greyed satellite thumbnail sells the
+          upgrade; a missing one sells nothing" — and that was reversed with the
+          rest of the lock chips: the map shows what you can use. */}
       <div className="grid grid-cols-3 gap-x-[14px] gap-y-[10px]">
-        {options.map(({ id, label, palette }) => {
+        {options
+          .filter(({ id }) => allowed.includes(id))
+          .map(({ id, label, palette }) => {
           const active = id === selected;
-
           return (
             <button
               key={id}

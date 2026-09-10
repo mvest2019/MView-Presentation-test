@@ -1,5 +1,6 @@
 "use client";
 
+import { useEntitlements } from "./entitlements-context";
 import { edgeClamped } from "./tooltip-edge";
 
 /*
@@ -35,6 +36,15 @@ const CARD_HEIGHT = 150;
 const CARD_WIDTH = 236;
 
 export function WellTooltip({ well }: { well: HoveredWell }) {
+  /*
+   * ULTRA GETS A SHORTER CARD, NOT NO CARD — spec §3.2 and §5.5(c).
+   *
+   * API number, well number and county at Ultra; operator, status and type from
+   * Essential up. The card keeps its shape either way, which is the §11.1 rule:
+   * a reader who can see that there IS more to know is being sold to, and one
+   * who sees nothing is being told the product is small.
+   */
+  const { map } = useEntitlements();
   const below = well.y < CARD_HEIGHT;
   const { left, tail } = edgeClamped(well.x, CARD_WIDTH);
 
@@ -58,12 +68,19 @@ export function WellTooltip({ well }: { well: HoveredWell }) {
 
         <dl className="px-[14px] py-[9px] text-[11.5px] leading-none">
           <Row label="Well" value={well.well} />
-          <Row label="Operator" value={well.operator} />
-          <Row label="Status" value={well.status} />
-          <Row label="Type" value={well.wtype} />
+          {map.wellTooltipFull ? (
+            <>
+              <Row label="Operator" value={well.operator} />
+              <Row label="Status" value={well.status} />
+              <Row label="Type" value={well.wtype} />
+            </>
+          ) : null}
           <Row label="County" value={well.county} />
-          <Row label="Record" value={well.recordType ?? ""} />
+          {map.wellTooltipFull ? (
+            <Row label="Record" value={well.recordType ?? ""} />
+          ) : null}
         </dl>
+
       </div>
 
       <span

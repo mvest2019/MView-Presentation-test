@@ -24,7 +24,10 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { showsAt, type Density } from "./density";
+import type { Facet } from "@/lib/entitlements";
+
+import { useEntitlements } from "./entitlements-context";
+import { TruncationBand, nextCapUp } from "./locks";
 import { MapToast } from "./map-toast";
 import { usePanelPlacement } from "./panel-placement";
 import { downloadSheet, type SheetColumn } from "./xlsx";
@@ -109,9 +112,6 @@ type WellsTableProps = {
   activeTab: ViewTab;
   onTabChange: (tab: ViewTab) => void;
   onShowOnMap: (row: MapTableRow) => void;
-  /** How many columns to print. Set in the portal's avatar menu — the switch
-      that used to sit beside the view tabs is gone. */
-  density: Density;
 };
 
 /**
@@ -135,14 +135,24 @@ const COLUMNS: {
   /**
    * The least density this column belongs to, from the toolbar switch.
    *
-   * Ultra is which well it is and what state it is in; Essentials adds who
-   * holds it and where; Detailed adds what kind of well it is; Pro adds the
-   * production figures. Omitted means the column is in every mode.
+   * WHICH ENTITLEMENT DECIDES THE COLUMN, read off the tier object rather than
+   * a floor written here. `undefined` is a column every tier prints.
+   *
+   * The production columns hang off `insights.production`: §3.5 puts reported
+   * volumes at Essential and the forecast at Detailed, and a table column of
+   * produced volumes is the same data as the chart's reported months. They used
+   * to be `from: "pro"`, which put them two tiers above the panel showing the
+   * same figures.
    */
-  from?: Density;
+  needs?: (e: import("@/lib/entitlements").Entitlements) => boolean;
 }[] = [
   { key: "api", label: "API", width: "w-[10%]", sortable: false },
-  { key: "operator", label: "Operator", width: "w-[13%]", from: "simple" },
+  {
+    key: "operator",
+    label: "Operator",
+    width: "w-[13%]",
+    needs: (e) => e.map.wellTooltipFull,
+  },
   { key: "lease", label: "Lease", width: "w-[15%]" },
   /* The widest of the short columns: its values are phrases — "Injection /
      Disposal from Oil" — and at the old width every one of them wrapped to
@@ -152,23 +162,25 @@ const COLUMNS: {
     label: "Type",
     width: "w-[15%]",
     sortable: false,
-    from: "detailed",
+    needs: (e) => e.map.wellTooltipFull,
   },
   { key: "status", label: "Status", width: "w-[12%]", sortable: false },
-  { key: "county", label: "County", width: "w-[10%]", from: "simple" },
+  /* COUNTY IS UNGATED. §3.2 lists it in the Ultra hover card, so a table that
+     hid it was stricter than the map beside it. */
+  { key: "county", label: "County", width: "w-[10%]" },
   {
     key: "oil",
     label: "Producing Oil (bbl)",
     align: "right",
     width: "w-[12%]",
-    from: "pro",
+    needs: (e) => e.insights.production !== "none",
   },
   {
     key: "gas",
     label: "Producing Gas (mcf)",
     align: "right",
     width: "w-[12%]",
-    from: "pro",
+    needs: (e) => e.insights.production !== "none",
   },
 ];
 
@@ -181,11 +193,21 @@ const FACETS: {
   key: FacetKey;
   label: string;
   searchable?: boolean;
+  /**
+   * WHICH ENTITLEMENT FACET THIS DROPDOWN IS.
+   *
+   * §3.4 gives the table one line for its facet filters — "mirrors §3.3" — so
+   * these unlock on exactly the same schedule as the rail's checkbox sections
+   * and read the same list out of `TIERS`. Two of the keys differ from the
+   * entitlement names (`type` is `wtype` here), which is why the mapping is
+   * spelled out rather than assumed.
+   */
+  facet: Facet;
 }[] = [
-  { key: "operator", label: "Operator", searchable: true },
-  { key: "type", label: "Well type" },
-  { key: "status", label: "Status" },
-  { key: "county", label: "County", searchable: true },
+  { key: "operator", label: "Operator", searchable: true, facet: "operator" },
+  { key: "type", label: "Well type", facet: "wtype" },
+  { key: "status", label: "Status", facet: "status" },
+  { key: "county", label: "County", searchable: true, facet: "county" },
 ];
 
 /*
@@ -234,7 +256,6 @@ export function WellsTable({
   activeTab,
   onTabChange,
   onShowOnMap,
-  density,
 }: WellsTableProps) {
   const [page, setPage] = useState(1);
   /*
@@ -274,13 +295,29 @@ export function WellsTable({
   /** The table card, for taking the reader to the rows an Apply just asked for. */
   const tableRef = useRef<HTMLDivElement>(null);
 
-  /* Which columns this density prints. The header and the cells read the same
+  /* Which columns this tier prints. The header and the cells read the same
      list, so a column cannot appear in one and not the other. */
-  const shownColumns = COLUMNS.filter((column) =>
-    /* No mode named means the lowest one — the column is in every mode. */
-    showsAt(density, column.from ?? "ultra"),
+  const ent = useEntitlements();
+  const shownColumns = COLUMNS.filter(
+    /* No predicate means every tier prints it. */
+    (column) => !column.needs || column.needs(ent),
   );
-  const shows = (from: Density) => showsAt(density, from);
+  const has = (key: (typeof COLUMNS)[number]["key"]) =>
+    shownColumns.some((column) => column.key === key);
+
+  /*
+   * The dropdowns this tier may use.
+   *
+   * Derived once and used for BOTH the row of controls and everything built
+   * from a selection — the applied chips, the draft count, the "has anything
+   * changed" spelling. If it were only applied at the render site, a selection
+   * carried over from a higher tier would keep filtering the table through a
+   * control the reader can no longer see, which is exactly the "silently
+   * returns a different result set" failure §5.7 warns about.
+   */
+  const shownFacets = FACETS.filter(({ facet }) =>
+    ent.filters.facets.includes(facet),
+  );
 
   const [facetItems, setFacetItems] = useState<
     Record<FacetKey, MapFilterItem[]>
@@ -523,7 +560,27 @@ export function WellsTable({
     operatorIds,
   ]);
 
-  const safePage = Math.min(page, totalPages);
+  /*
+   * HOW FAR THIS TIER MAY PAGE — §3.4 and §4's `table.maxPage`.
+   *
+   *   Ultra 3 pages (30 rows) · Essential 20 (200) · Detailed 500 (5,000) ·
+   *   Pro unlimited.
+   *
+   * `null` IS UNLIMITED AND IS TESTED FOR EXPLICITLY. The spec's own warning
+   * about this exact value: a `null` falling through a `page > maxPage`
+   * comparison "silently evaluates false and works by accident, which will
+   * break the day someone tidies the type".
+   */
+  const pageCeiling =
+    ent.table.maxPage === null
+      ? totalPages
+      : Math.min(totalPages, ent.table.maxPage);
+
+  const safePage = Math.min(page, pageCeiling);
+
+  /* Capped, and by how much — for the band under the pager. The row count is
+     the service's true figure; only what can be reached is limited. */
+  const pagesWithheld = totalPages - pageCeiling;
   const firstShown = total ? (safePage - 1) * PER_PAGE + 1 : 0;
   const lastShown = Math.min(safePage * PER_PAGE, total);
 
@@ -536,7 +593,7 @@ export function WellsTable({
    * already on. Ticking is a draft; this row is what Apply made of it.
    */
   const chips = [
-    ...FACETS.flatMap(({ key, label }) =>
+    ...shownFacets.flatMap(({ key, label }) =>
       [...appliedFacets[key]].map((value) => ({ key, label, value })),
     ),
   ];
@@ -642,7 +699,7 @@ export function WellsTable({
 
   /** A stable spelling of a selection, for telling draft from applied. */
   const spell = (of: Facets) =>
-    FACETS.map(({ key }) => [...of[key]].sort().join("|")).join("§");
+    shownFacets.map(({ key }) => [...of[key]].sort().join("|")).join("§");
 
   const pending =
     spell(facets) !== spell(appliedFacets) ||
@@ -651,8 +708,8 @@ export function WellsTable({
   /* What Apply would send, counted: every ticked value, a production range,
      and whatever the search box is holding. */
   const draftCount =
-    FACETS.reduce((total, { key }) => total + facets[key].size, 0) +
-    productionCount(production) +
+    shownFacets.reduce((total, { key }) => total + facets[key].size, 0) +
+    (ent.filters.productionRange ? productionCount(production) : 0) +
     (picked ? 1 : 0);
 
   const anyFilter =
@@ -791,10 +848,15 @@ export function WellsTable({
 
             {/* The view-mode switch stood here, a second copy of the one in
               the map's toolbar. Both are gone: the portal's avatar menu carries
-              the four density tabs now, and `density` — which still decides how
-              many columns this table prints — comes down from there. */}
+              the four density tabs now, and what decides the columns is the
+              tier entitlement read off the context. */}
 
-            {shows("detailed") && (
+            {/* §3.10's "Table results CSV" — Essential 10/month, Detailed 100,
+                Pro unlimited. Ultra is 0, so no button: an export is an action
+                with a counter behind it, not a panel worth keeping a footprint
+                for. Was `detailed`, which withheld it from the tier the spec
+                gives it to. */}
+            {ent.exports.tableCsvPerMonth > 0 && (
               <ExportButton
                 className="hidden lg:inline-flex"
                 onClick={exportPage}
@@ -836,7 +898,11 @@ export function WellsTable({
             className="mx-1 hidden h-5 w-px shrink-0 bg-mv-line lg:block"
           />
 
-          {FACETS.map((facet) => (
+          {/* ONLY THE FACETS THIS MODE CARRIES, the same rule the rail follows.
+              A dropdown the reader cannot filter on is not drawn — see the note
+              in `filters-panel.tsx` for why the locked-and-greyed version was
+              dropped. */}
+          {shownFacets.map((facet) => (
             <FilterDropdown
               key={facet.key}
               label={facet.label}
@@ -862,6 +928,9 @@ export function WellsTable({
             />
           ))}
 
+          {/* §3.3: produced-volume ranges are Detailed and up — screening a
+              portfolio by what wells actually make is the Detailed job. */}
+          {ent.filters.productionRange && (
           <ProductionFilter
             range={production}
             open={productionOpen}
@@ -872,6 +941,7 @@ export function WellsTable({
             }}
             onChange={setProduction}
           />
+          )}
 
           {/* Apply and Clear at the end of the row, where the space is. */}
           <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
@@ -959,9 +1029,12 @@ export function WellsTable({
         {/* ---------------- summary strip ----------------
           Top border only — the card's own edge closes it off below.
 
-          Essentials and up: six statewide tallies are context for a result
-          set, and Ultra is one question at a time. */}
-        {shows("simple") && (
+          ON EVERY TIER NOW, with the PERCENTAGES gated instead of the strip.
+          §3.4: Ultra gets "◐ totals only", Essential "✅ with percentages". It
+          used to vanish below Essentials, which took the row counts with it —
+          and §6 lists the true counts as deliberately never gated, because
+          "the size of what they cannot reach is the upgrade argument". */}
+        {true && (
           <div className="grid grid-cols-2 gap-px overflow-hidden rounded-b-xl border-t border-mv-line bg-mv-line md:grid-cols-3 xl:grid-cols-6">
             <SummaryCard
               icon={FlaskConical}
@@ -975,21 +1048,27 @@ export function WellsTable({
               tint="green"
               label="Oil wells"
               value={summary?.oilWells ?? 0}
-              note={`${summary?.oilPct ?? 0}%`}
+              note={
+                ent.table.summaryFull ? `${summary?.oilPct ?? 0}%` : undefined
+              }
             />
             <SummaryCard
               icon={Droplet}
               tint="red"
               label="Gas wells"
               value={summary?.gasWells ?? 0}
-              note={`${summary?.gasPct ?? 0}%`}
+              note={
+                ent.table.summaryFull ? `${summary?.gasPct ?? 0}%` : undefined
+              }
             />
             <SummaryCard
               icon={CircleCheck}
               tint="green"
               label="Active wells"
               value={summary?.activeWells ?? 0}
-              note={`${summary?.activePct ?? 0}%`}
+              note={
+                ent.table.summaryFull ? `${summary?.activePct ?? 0}%` : undefined
+              }
             />
             <SummaryCard
               icon={Layers}
@@ -1075,7 +1154,16 @@ export function WellsTable({
                         index === 0 ? "pl-6 pr-4" : "px-4"
                       } ${width} ${align === "right" ? "text-right" : ""}`}
                     >
-                      {sortable === false ? (
+                      {sortable === false || !ent.table.sort ? (
+                        /*
+                         * COLUMN SORTING IS ESSENTIAL AND UP — §3.4.
+                         *
+                         * The heading stays and the arrow goes, with no chip in
+                         * its place: the column is still there and still
+                         * readable, so nothing is being hidden — only the
+                         * control that reorders it. Dropping the heading would
+                         * take the column with it.
+                         */
                         <span className="inline-flex whitespace-nowrap text-[12.5px] font-extrabold uppercase tracking-[.08em] text-mv-slate">
                           {label}
                         </span>
@@ -1141,7 +1229,7 @@ export function WellsTable({
                       {row.api}
                     </span>
                   </td>
-                  {shows("simple") && (
+                  {has("operator") && (
                     <td className="px-4 py-[14px] text-[13px] text-mv-slate">
                       {shown(row.operator)}
                     </td>
@@ -1155,7 +1243,7 @@ export function WellsTable({
                   >
                     {shown(row.lease)}
                   </td>
-                  {shows("detailed") && (
+                  {has("type") && (
                     <td className="px-4 py-[14px]">
                       {missing(row.wtype) ? (
                         <span className="text-[13px] text-mv-muted">N/A</span>
@@ -1174,12 +1262,10 @@ export function WellsTable({
                       </span>
                     )}
                   </td>
-                  {shows("simple") && (
-                    <td className="px-4 py-[14px] text-[13px] text-mv-slate">
-                      {shown(row.county)}
-                    </td>
-                  )}
-                  {shows("pro") && (
+                  <td className="px-4 py-[14px] text-[13px] text-mv-slate">
+                    {shown(row.county)}
+                  </td>
+                  {has("oil") && (
                     <>
                       <Volume value={row.producedOil} />
                       <Volume value={row.producedGas} />
@@ -1255,6 +1341,27 @@ export function WellsTable({
           </div>
         )}
 
+        {/* ---------------- the page cap ----------------
+
+            §11.2's truncation band, on the last page this tier can reach. It
+            states the TRUE row count and what the next tier reaches, which
+            §11.3 calls "the strongest upgrade argument the product has, and it
+            is also just true". Persistent and non-dismissible by that rule.
+
+            Only once the reader is actually at the ceiling: a band above every
+            page of a 5,000-row result would be furniture rather than news. */}
+        {pagesWithheld > 0 && safePage === pageCeiling && (
+          <TruncationBand
+            showing={lastShown}
+            total={total}
+            noun="matching wells"
+            next={nextCapUp(ent.tier, (e) =>
+              e.table.maxPage === null ? total : e.table.maxPage * PER_PAGE,
+            )}
+            feature="table-pages"
+          />
+        )}
+
         {/* ---------------- pager ---------------- */}
         <div
           className={`flex flex-col items-center gap-2 px-4 py-3 lg:flex-row lg:flex-wrap lg:justify-end lg:px-6 ${
@@ -1281,7 +1388,7 @@ export function WellsTable({
               onClick={() => setPage(Math.max(1, safePage - 1))}
             />
 
-            {pageWindow(safePage, totalPages).map((entry, index) =>
+            {pageWindow(safePage, pageCeiling).map((entry, index) =>
               entry === null ? (
                 <span
                   key={`gap-${index}`}
@@ -1302,7 +1409,7 @@ export function WellsTable({
                    what makes the gap readable as a gap. */
                   className={`h-[28px] min-w-[28px] rounded-lg border px-2 text-[12.5px] font-semibold enabled:cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
                     entry === 1 ||
-                    entry === totalPages ||
+                    entry === pageCeiling ||
                     Math.abs(entry - safePage) <= 2
                       ? ""
                       : "hidden lg:inline-block"
@@ -1320,14 +1427,14 @@ export function WellsTable({
             <PagerButton
               label="Next page"
               icon={ChevronRight}
-              disabled={loading || safePage === totalPages}
-              onClick={() => setPage(Math.min(totalPages, safePage + 1))}
+              disabled={loading || safePage === pageCeiling}
+              onClick={() => setPage(Math.min(pageCeiling, safePage + 1))}
             />
             <PagerButton
               label="Last page"
               icon={ChevronsRight}
-              disabled={loading || safePage === totalPages}
-              onClick={() => setPage(totalPages)}
+              disabled={loading || safePage === pageCeiling}
+              onClick={() => setPage(pageCeiling)}
             />
           </div>
         </div>
@@ -1754,7 +1861,8 @@ function SummaryCard({
   tint: keyof typeof TINTS;
   label: string;
   value: number;
-  note: string;
+  /** Omitted at Ultra, where §3.4 gives "totals only" and no percentages. */
+  note?: string;
 }) {
   return (
     <div className="flex items-start gap-2 bg-white px-3 py-[11px] lg:gap-3 lg:px-6 lg:py-[13px]">
