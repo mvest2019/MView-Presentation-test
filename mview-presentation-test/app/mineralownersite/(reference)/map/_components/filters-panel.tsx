@@ -23,7 +23,9 @@ import {
   type MapFilterItem,
 } from "@/lib/map-api";
 
-import { DEFAULT_DENSITY, showsAt, type Density } from "./density";
+import type { Facet } from "@/lib/entitlements";
+
+import { useEntitlements } from "./entitlements-context";
 
 /*
  * The Search & filters panel that opens off the FILTERS edge tab.
@@ -80,13 +82,18 @@ type FilterSection = {
   label: string;
   items: FilterItem[];
   /**
-   * The least view mode this facet belongs to.
+   * WHICH ENTITLEMENT FACET THIS SECTION IS.
    *
-   * Ultra is one map and one question — which county; Essentials adds who
-   * holds the well and what state it is in; Detailed adds the two facets that
-   * are industry vocabulary. Omitted means every mode has it.
+   * Was `from: Density` — a per-section floor written here. The floors now live
+   * in `lib/entitlements.ts` as `filters.facets`, one list per tier, so this
+   * only has to say which facet the section IS and the tier table decides who
+   * gets it. §5.7's unlock order, and its reasoning:
+   *
+   *   county + wtype   (Ultra)      "what is near me"
+   *   + operator + status (Essential) "who, and is it live"
+   *   + play + field   (Detailed)   how you screen a portfolio
    */
-  from?: Density;
+  facet: Facet;
   /** Puts the Find… box above the list — for the sections that run long. */
   searchable?: boolean;
   /** The amber flag beside the heading. */
@@ -112,6 +119,7 @@ export const FILTER_SECTIONS: FilterSection[] = [
   {
     id: "county",
     label: "County",
+    facet: "county",
     searchable: true,
     defaultOpen: true,
     items: [],
@@ -119,19 +127,22 @@ export const FILTER_SECTIONS: FilterSection[] = [
   {
     id: "operator",
     label: "Operator",
+    facet: "operator",
     searchable: true,
     items: [],
-    from: "simple",
   },
-  { id: "well-type", label: "Well type", items: [], from: "simple" },
-  { id: "status", label: "Well status", items: [], from: "simple" },
-  { id: "play-type", label: "Play type", items: [], from: "detailed" },
+  /* WELL TYPE MOVED DOWN TO ULTRA. It carried `from: "simple"` here, but §3.3
+     lists it ✅ on all four tiers — with County it is the pair that answers
+     "what is near me", which is the whole of the Ultra job (§5.7). */
+  { id: "well-type", label: "Well type", facet: "wtype", items: [] },
+  { id: "status", label: "Well status", facet: "status", items: [] },
+  { id: "play-type", label: "Play type", facet: "play", items: [] },
   {
     id: "field",
     label: "Field",
+    facet: "field",
     searchable: true,
     items: [],
-    from: "detailed",
   },
 ];
 
@@ -229,8 +240,6 @@ type FiltersPanelProps = {
    * what to do with the answer.
    */
   onApply?: (filters: Record<string, string[]>) => void;
-  /** Which facets to offer — the view mode from the toolbar. */
-  density?: Density;
   /**
    * The filter the page was opened with, from the address.
    *
@@ -261,7 +270,6 @@ type FiltersPanelProps = {
 
 export function FiltersPanel({
   onApply,
-  density = DEFAULT_DENSITY,
   opening,
   onCollapse,
   disabled,
@@ -388,6 +396,14 @@ export function FiltersPanel({
     [counties, operators, wellTypes, wellStatuses, playTypes, fields],
   );
 
+  /* Which facets this tier carries. The list, not a per-section floor — see
+     `FilterSection.facet`. Read at the top of the component because the very
+     first piece of state below it, `openSections`, already needs to know how
+     many sections there will be. */
+  const {
+    filters: { facets },
+  } = useEntitlements();
+
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for the commented-out My leases section
   const [selectedLease, setSelectedLease] = useState<string | null>(
     MY_LEASES[0].id,
@@ -395,14 +411,65 @@ export function FiltersPanel({
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for the commented-out My leases section
   const [leasesOpen, setLeasesOpen] = useState(true);
 
-  const [openSections, setOpenSections] = useState<Set<string>>(
-    () =>
-      new Set(
-        sections
-          .filter((section) => section.defaultOpen)
-          .map((section) => section.id),
-      ),
+  /*
+   * WHICH SECTIONS OPEN ON ARRIVAL.
+   *
+   * Normally just the one carrying `defaultOpen` — County. That rule was
+   * written for a rail of six facets, where opening more than one pushed the
+   * sections below it off the bottom before the reader had scrolled.
+   *
+   * A SHORT RAIL HAS THE OPPOSITE PROBLEM. Once the rail only renders the
+   * facets a mode carries, Ultra is down to two — County and Well type — and
+   * the old rule left the second one collapsed above a half-panel of empty
+   * white. Nothing was pushed off the bottom because there was nothing below
+   * it; the rail just looked broken.
+   *
+   * So: at two or fewer sections, open all of them. Both fit with room to
+   * spare, and there is no crowding left to protect against. Counted off what
+   * is actually rendered rather than keyed to a tier name, so the rule follows
+   * the rail if the facet lists in `entitlements.ts` are ever re-cut.
+   */
+  const defaultOpenFor = useCallback(
+    (forFacets: readonly Facet[]) => {
+      const shown = FILTER_SECTIONS.filter((section) =>
+        forFacets.includes(section.facet),
+      );
+      return new Set(
+        (shown.length <= 2
+          ? shown
+          : shown.filter((section) => section.defaultOpen)
+        ).map((section) => section.id),
+      );
+    },
+    [],
   );
+
+  const [openSections, setOpenSections] = useState<Set<string>>(() =>
+    defaultOpenFor(facets),
+  );
+
+  /*
+   * AND RECOMPUTED WHEN THE MODE CHANGES.
+   *
+   * `useState`'s initialiser runs once, on mount, and this panel is not
+   * remounted when the reader switches mode — its `key` is tied to the two
+   * reset counters, not to the tier. So the open sections were whichever the
+   * mode at mount called for: arriving at Ultra opened County AND Well type,
+   * and switching up to Essentials left Well type open in a four-section rail
+   * where the rule says only County should be.
+   *
+   * Written as a set-during-render comparison rather than an effect. This is
+   * React's own pattern for adjusting state when an input changes — it
+   * re-renders before anything is painted, so no wrong-open frame is ever
+   * shown — and it keeps this file clear of the `set-state-in-effect` rule the
+   * project enforces everywhere outside the reference port.
+   */
+  const facetKey = facets.join(",");
+  const [lastFacetKey, setLastFacetKey] = useState(facetKey);
+  if (facetKey !== lastFacetKey) {
+    setLastFacetKey(facetKey);
+    setOpenSections(defaultOpenFor(facets));
+  }
 
   // Everything starts ticked, so the panel opens showing the whole map.
   const [checked, setChecked] = useState<Record<string, Set<string>>>(() =>
@@ -1183,7 +1250,11 @@ export function FiltersPanel({
       /* Rounded on the right only: the other three sides are the map's own
          edges, and a rounded corner against a straight frame reads as a card
          that has come loose. */
-      className={`mv-filters-card w-[196px] rounded-r-xl border-y-0 border-l-0 border-r border-mv-line bg-white shadow-mv-lg md:w-[224px] lg:w-[252px] ${className}`}
+      /* Rounded and bordered on all four sides. It was `rounded-r-xl` with
+         only a right border, which was right while the card sat flush in the
+         corner with two edges off-screen; it is inset on every side now — see
+         `RAIL_INSET` in `map-chrome.tsx`. */
+      className={`mv-filters-card w-[196px] rounded-xl border border-mv-line bg-white shadow-mv-lg md:w-[224px] lg:w-[252px] ${className}`}
     >
       {/* Sits over the card and takes the clicks, so nothing inside needs a
           `disabled` of its own — there are six facets, two search boxes and a
@@ -1447,9 +1518,25 @@ export function FiltersPanel({
         </SectionShell>
         */}
 
-        {/* ---------------- the checkbox sections ---------------- */}
+        {/* ---------------- the checkbox sections ----------------
+
+            ONLY THE FACETS THIS MODE CARRIES. The rest are not rendered.
+
+            THIS IS A DELIBERATE DEPARTURE FROM THE SPEC, recorded so it is not
+            "fixed" back by someone reading §5.7 alone. That section asks for
+            locked facets to stay in the rail — "collapsed, greyed, with a lock
+            chip … The rail's shape is part of what the user is buying; seeing
+            it is the pitch." Built that way first, and rejected on sight:
+            four greyed rows carrying tier chips made a short rail look like a
+            paywall with a filter panel attached, and the chips crowded the
+            labels at rail width.
+
+            The product decision is that the map shows what you can use. The
+            upsell lives on the pricing page and in the truncation bands, which
+            stay — those describe DATA the reader is being given less of, not
+            controls they cannot press.                                    */}
         {sections
-          .filter((section) => showsAt(density, section.from ?? "ultra"))
+          .filter((section) => facets.includes(section.facet))
           .map((section) => (
             <CheckboxSection
               key={`${section.id}-${sectionsResetAt}`}

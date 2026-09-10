@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
+import { entitlementsForUser } from "@/lib/entitlements-server";
 import { getSessionUser } from "@/lib/session";
 
 import Portal from "../../_components/reference/Portal";
@@ -55,6 +56,18 @@ import "./map-shell.css";
  * httpOnly and only readable there — deciding it here means the right response
  * is the first one, instead of the map flashing up and being replaced.
  *
+ * ── ENTITLEMENTS ARE RESOLVED HERE, AND ONLY HERE ──
+ *
+ * `entitlementsForUser` runs on the server, from the session, per §5.1 and
+ * §7.3, and the object is handed to the view as a PROP. Never fetched on mount:
+ * the spec's reason is that a fetch "would flash an ungated UI for one render
+ * and then lock it — visibly worse, and briefly exploitable".
+ *
+ * It is also why this page cannot be cached per §7.3's option A — the tier is
+ * read per request so an upgrade or a cancellation takes effect immediately.
+ * `force-dynamic` was already required for the owner payload, so this costs
+ * nothing new.
+ *
  * `force-dynamic` for the same reason as the Dashboard: the owner comes off the
  * query string, so there is nothing correct to cache at the page level.
  */
@@ -74,14 +87,19 @@ export default async function OwnerMap({
   const user = await getSessionUser();
   if (!user) redirect("/map-explorer");
 
-  const initial: Payload | null = await loadInitial(searchParams);
+  /* Two independent server reads. The payload is the chrome's; the entitlements
+     are the map's, and they must not come from the client. */
+  const [initial, entitlements] = await Promise.all([
+    loadInitial(searchParams),
+    entitlementsForUser(user.id),
+  ]);
 
   return (
     <Portal route="map" initial={initial} shellClass="mv-ref-mapshell">
       {/* The slot `map-shell.css` sizes. The map fills whatever it is given and
           has no height of its own, so something has to be the box. */}
       <div className="mv-map-slot">
-        <MapExplorerView />
+        <MapExplorerView entitlements={entitlements} />
       </div>
     </Portal>
   );

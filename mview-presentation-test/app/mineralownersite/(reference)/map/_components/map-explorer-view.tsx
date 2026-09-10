@@ -13,12 +13,11 @@ import { AreaSelectionBar } from "./area-selection";
 import { loadArcgisModules } from "./arcgis-loader";
 import { ClusterTooltip } from "./cluster-tooltip";
 import { SampleBanner } from "./sample-banner";
-import { DEFAULT_DENSITY, showsAt, type Density } from "./density";
+import type { Entitlements } from "@/lib/entitlements";
 import {
-  DEFAULT_FUNNEL_STATE,
-  FUNNEL_CEILING,
-  type FunnelState,
-} from "./funnel-state";
+  MapEntitlementsProvider,
+  tierFromPortalDensity,
+} from "./entitlements-context";
 import { WellInsightsPanel, type SelectedWell } from "./well-insights-panel";
 import { MapChrome, type ViewTab } from "./map-chrome";
 import { usePortalViewState } from "../../../_components/reference/view-state";
@@ -662,7 +661,16 @@ function boxBetween(a: LonLat, b: LonLat): Area {
 
 type Status = "loading" | "ready" | "error";
 
-export function MapExplorerView() {
+export function MapExplorerView({
+  entitlements,
+}: {
+  /**
+   * WHAT THIS READER MAY SEE, resolved on the server and handed down — §5.1.
+   * Required, not optional: a default here would be a second place a tier can
+   * come from, and the whole point of §7.3 is that there is exactly one.
+   */
+  entitlements: Entitlements;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EsriView | null>(null);
@@ -787,38 +795,40 @@ export function MapExplorerView() {
    * without an account, and this is the shape it takes.
    */
   const shellView = usePortalViewState();
-  const chosenDensity: Density = shellView?.tier ?? DEFAULT_DENSITY;
-  const funnel: FunnelState = shellView?.funnel ?? DEFAULT_FUNNEL_STATE;
 
-  /* What the account may read. A free one stops at Essentials.
-
-     STILL THE MAP'S OWN RULE, applied to the shell's raw choice rather than to
-     a mode picked here. The shell has a different one — it forces Pro while
-     nothing is claimed, which suits a dashboard acting as a shop window — so
-     it hands over the choice and lets each surface cap it its own way. */
-  const ceiling = FUNNEL_CEILING[funnel];
+  /* Which tier the chrome's picker is showing, in the spec's vocabulary. Null
+     outside the portal, where the account tier stands on its own. */
+  const demoTier = shellView
+    ? tierFromPortalDensity(shellView.tier)
+    : null;
 
   /*
-   * The mode actually in force: the reader's choice, held to the ceiling.
+   * WHAT TO DRAW is resolved by the provider at the foot of this component —
+   * the lower of what the account holds and what the picker is showing. §12.1's
+   * "fail down, never up" applied to the one control that could otherwise break
+   * it: selecting Pro on an Ultra account shows the Ultra map, because the
+   * picker is a view of an entitlement and never a source of one. See
+   * `entitlements-context.tsx`.
    *
-   * Derived rather than written back, so dropping to the free state and
-   * returning to a paid one gives the reader their own mode again instead of
-   * the one the demo left them on.
+   * NOTHING IN THIS BODY READS THE RESULT YET. The gates that live out here
+   * rather than in JSX — the wells-per-extent cap on the request, and the
+   * matched-wells return cap — are still to be wired (§5.5(a), §5.7). When they
+   * are, call `resolveMapEntitlements(entitlements, demoTier)` here and hand
+   * the same object to the provider, so the two cannot drift.
    */
-  const density = showsAt(ceiling, chosenDensity) ? chosenDensity : ceiling;
 
   /*
-   * The district and county lines are Essentials and up.
+   * THE DISTRICT AND COUNTY LINES ARE UNGATED, on every tier.
    *
-   * Drawn on the map itself rather than in React, so they are switched by
-   * their own `visible` flag rather than by not rendering something. Ultra is
-   * the wells on a plain map; every line over it is one more thing to read.
+   * They used to come off below Essentials. The spec removed that: §3.1 lists
+   * the RRC district layer as ✅ on all four tiers and §5.2 says the map
+   * surface "behaves identically on every tier". §5.6 gives the reasoning that
+   * covers the county lines too — gating the furniture that makes a map legible
+   * "would make the Ultra map unreadable rather than limited".
+   *
+   * Ultra is limited by HOW MUCH it draws (250 wells per extent) and how much
+   * each well carries, never by whether the map can be read.
    */
-  useEffect(() => {
-    const on = showsAt(density, "simple");
-    if (districtLayerRef.current) districtLayerRef.current.visible = on;
-    for (const layer of countyLayersRef.current) layer.visible = on;
-  }, [density]);
 
   /* What is on screen, readable from a callback — the tab is set from half a
      dozen places and only one of them should leave a history step. */
@@ -3956,6 +3966,11 @@ export function MapExplorerView() {
   }, []);
 
   return (
+    /* Everything below reads its tier from here rather than being handed a
+       prop through four levels of chrome. `account` is the server's answer;
+       `demoTier` is the picker's, and the provider takes the lower — see
+       `entitlements-context.tsx`. */
+    <MapEntitlementsProvider account={entitlements} demoTier={demoTier}>
     <div
       ref={rootRef}
       className={`mv-map relative h-full w-full bg-[#efe7d8] ${
@@ -4097,10 +4112,11 @@ export function MapExplorerView() {
           />
         )}
 
-        {/* Essentials and up: Ultra is a map you click, not one you read by
-            hovering — and the card carries API, operator and status, which is
-            the detail that mode leaves out. */}
-        {status === "ready" && hoveredWell && showsAt(density, "simple") && (
+        {/* ON EVERY TIER. The card itself drops operator, status and type at
+            Ultra and says where they live — §5.5(c). It used to not render at
+            all below Essentials, which is the pattern §11.1 forbids: a reader
+            who never sees the card cannot learn there is more in it. */}
+        {status === "ready" && hoveredWell && (
           <WellTooltip well={hoveredWell} />
         )}
 
@@ -4307,7 +4323,6 @@ export function MapExplorerView() {
             center={readout.center}
             /* Everything the Share menu puts in a link, since none of it is
                in the address any more. */
-            density={density}
             share={{
               filters: shareFilters,
               tab: viewTab,
@@ -4414,7 +4429,6 @@ export function MapExplorerView() {
               <WellInsightsPanel
                 key={selectedWell.api}
                 well={selectedWell}
-                density={density}
                 onClose={closeSummaryToMap}
               />
             ) : (
@@ -4480,10 +4494,10 @@ export function MapExplorerView() {
           activeTab={viewTab}
           onTabChange={changeViewTab}
           onShowOnMap={showRowOnMap}
-          density={density}
         />
       )}
     </div>
+    </MapEntitlementsProvider>
   );
 }
 
