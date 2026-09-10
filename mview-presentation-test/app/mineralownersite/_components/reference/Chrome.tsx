@@ -173,6 +173,9 @@ export interface ChromeProps {
      render. `Portal` still owns both (`load` for the URL-driven read on mount,
      `busy` for the Loader); they simply no longer reach the chrome. */
   open: (key: string) => void;
+  /** the alerts this reader has opened, owned by `Portal` so the rail badge
+   *  and the Alerts page cannot disagree — see `markRead` there */
+  readIds: Set<string>;
   children: React.ReactNode;
 }
 
@@ -250,7 +253,11 @@ export default function Chrome(c: ChromeProps) {
 
   const o = c.p?.owner;
   const t = c.p?.totals;
-  const unread = c.p?.alerts.items.filter((a) => a.unread).length ?? 0;
+  /* `a.unread` is the SERVER'S opinion and `readIds` is this reader's, so the
+     badge subtracts one from the other. Counting the payload alone left the
+     rail saying 6 after the page had been marked all read. */
+  const unread = c.p?.alerts.items
+    .filter((a) => a.unread && !c.readIds.has(a.id)).length ?? 0;
   const state = FUNNEL.find((s) => s.key === c.funnel)!;
   const persona = PERSONAS.find((x) => x.key === c.tier)!;
   /* The avatar is the MEMBER when there is one. Its old value — the owner

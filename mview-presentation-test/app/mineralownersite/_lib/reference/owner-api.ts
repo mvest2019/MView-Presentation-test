@@ -18,7 +18,7 @@ import type { Payload } from './payload';
  *
  *   GET /alerts            ->  Payload['alerts']     + filtered_count
  *   GET /activity          ->  Payload['timeline']   + truncated, filter
- *   GET /activity/summary  ->  Payload['activities']
+ *   GET /activity/summary  ->  Payload['activities'] + series_months
  *   GET /activity/rings    ->  Payload['rings']
  *
  * so each response is assigned straight into the block it belongs to and `tsc`
@@ -213,18 +213,105 @@ export type ActivityResponse = Payload['timeline'] & {
   filter: unknown;
 };
 
-/** `/activity/summary` is `Payload['activities']`, field for field */
-export type ActivitySummaryResponse = Payload['activities'];
+/**
+ * One month of the owner's OWN filed production, as `/activity/summary` sends
+ * it. Every figure is the owner's NET share: `gas_net` in MCF, `oil_net` in
+ * BBL, both already apportioned by their decimal interest in each lease.
+ *
+ * `leases` IS NOT DECORATION. It is how many of this owner's leases filed that
+ * month, and it separates two facts a chart must not confuse:
+ *
+ *   leases > 0, gas_net 0  ->  they filed, and produced nothing. A zero.
+ *   leases === 0           ->  nobody has filed yet. A GAP, not a zero.
+ *
+ * A month the state has not filed is not a month without production, and
+ * drawing it as a fall to zero says something false about the owner's wells.
+ * `ActivitiesView` turns `leases === 0` into `NaN`, which the chart breaks the
+ * line at rather than plotting.
+ */
+export interface SeriesMonth {
+  cycle: string;
+  label: string;
+  gas_net: number;
+  oil_net: number;
+  leases: number;
+}
+
+/**
+ * `/activity/summary` is `Payload['activities']` field for field, plus one
+ * field that belongs to a DIFFERENT block.
+ *
+ * `series_months` is 24 months, oldest first, and it is the only source for
+ * the "Your own filed months" chart. It rides on this endpoint because it is
+ * one field on a request already being made rather than a fifth round trip;
+ * it is lifted out into `Payload['series']` below, where its two consumers
+ * look for it.
+ *
+ * THE SERIES ENDS AT THE LAST REPORTED MONTH, not at today. Production posts
+ * two to three months late, so the newest entry is June 2026 while the roll's
+ * newest month is September 2026. That tail is not padded — a month nobody has
+ * filed is absent, not zero.
+ */
+export type ActivitySummaryResponse = Payload['activities'] & {
+  series_months: SeriesMonth[];
+};
+
+/** the equivalence the whole record uses: 15 MCF of gas is one barrel of oil */
+const MCF_PER_BOE = 15;
+
+/**
+ * `series_months` -> `Payload['series']`, the block the charts read.
+ *
+ * THREE FIELDS ARE DERIVED, and each is derived rather than requested, because
+ * each is a function of the months and nothing else. Asking the server for a
+ * total it computes from an array it has already sent is a second place for
+ * the same number to be wrong.
+ *
+ *   boe_net   `gas_net / 15 + oil_net`, the record's own identity. Checked
+ *             against the capture: it reproduces all 24 months to the last
+ *             floating-point digit.
+ *   window    how many months came back. Not a constant 24 — it is the length
+ *             of what arrived, so a shorter history prints a shorter caption.
+ *   peak_*    the maxima. Only `sample.ts` reads them, to scale the demo
+ *             owner's figures, but `Payload` promises them.
+ */
+function seriesFrom(months: SeriesMonth[] | undefined): Payload['series'] {
+  /* THE ONE FIELD WORTH CHECKING BY HAND. `tsc` guarantees the shape of a
+     response only as far as the declaration; it cannot know the server sent
+     it. Every other block is an object that would render empty, but this one
+     is spread over `.map` in two components with no guard, so its absence
+     would surface as "Cannot read properties of undefined" on a blank page
+     rather than as the sentence the shell already knows how to print. */
+  if (!Array.isArray(months)) {
+    throw new OwnerApiError('/activity/summary', 502, {
+      statusCode: 502,
+      code: 'CONTRACT_MISMATCH',
+      message: '/activity/summary answered without `series_months`, which is '
+        + "the only source for the owner's monthly filed production.",
+    });
+  }
+  return {
+    months: months.map((m) => ({
+      ...m, boe_net: m.gas_net / MCF_PER_BOE + m.oil_net,
+    })),
+    window: months.length,
+    /* the leading 0 is the empty case: `Math.max()` of nothing is -Infinity */
+    peak_gas_net: Math.max(0, ...months.map((m) => m.gas_net)),
+    peak_oil_net: Math.max(0, ...months.map((m) => m.oil_net)),
+  };
+}
 
 /** `/activity/rings` is `Payload['rings']`, field for field */
 export type RingsResponse = Payload['rings'];
 
-/** the four blocks, ready to merge into a `Payload` */
+/** the five blocks, ready to merge into a `Payload` */
 export interface OwnerLiveBlocks {
   alerts: Payload['alerts'];
   timeline: Payload['timeline'];
   activities: Payload['activities'];
   rings: Payload['rings'];
+  /** lifted out of `/activity/summary`'s `series_months` — see `seriesFrom` */
+  series: Payload['series'];
 }
 
 /**
@@ -251,5 +338,8 @@ export async function fetchOwnerLiveBlocks(
 
   /* Each assignment is checked against the `Payload` block it fills, which is
      the only contract test this client needs — see the header. */
-  return { alerts, timeline, activities, rings };
+  return {
+    alerts, timeline, activities, rings,
+    series: seriesFrom(activities.series_months),
+  };
 }

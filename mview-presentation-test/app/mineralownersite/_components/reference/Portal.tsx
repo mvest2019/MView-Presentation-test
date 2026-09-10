@@ -141,6 +141,13 @@ export interface OwnerRef {
   districtcode: string | null; year: number | null;
 }
 
+/** where the reader's own read-state lives — see `markRead` in `Portal` */
+const READ_KEY = 'mv.alertsRead';
+
+function persistRead(ids: Set<string>): void {
+  try { localStorage.setItem(READ_KEY, JSON.stringify([...ids])); } catch { /* private mode */ }
+}
+
 /* the loader names its step, because the first read of a new owner is seconds
    long and a bare spinner for four seconds reads as a hang */
 const STEPS: Step[] = [
@@ -228,6 +235,9 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
   const [drawer, setDrawer] = useState<string | null>(null);
   const [loadingName, setLoadingName] = useState<string | null>(null);
   const [trialStarted, setTrialStarted] = useState<string | null>(null);
+  /* WHICH ALERTS THIS READER HAS OPENED — see `markRead` below for why it
+     lives up here rather than inside `AlertsView`. */
+  const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const seq = useRef(0);
   const router = useRouter();
 
@@ -253,7 +263,47 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
       const f = localStorage.getItem('mv.funnel') as FunnelKey | null;
       if (f && FUNNEL.some((s) => s.key === f)) setFunnel(f);
       setTrialStarted(localStorage.getItem('mv.trialStart'));
-    } catch { /* private mode — the defaults are correct */ }
+      const r = JSON.parse(localStorage.getItem(READ_KEY) ?? '[]') as unknown;
+      if (Array.isArray(r)) setReadIds(new Set(r.filter((x): x is string => typeof x === 'string')));
+    } catch { /* private mode — nothing read yet is the correct default */ }
+  }, []);
+
+  /**
+   * MARKING AN ALERT READ, IN ONE PLACE.
+   *
+   * This used to live inside `AlertsView` as its own `useState`, which is where
+   * the reference put it — and there it was invisible to the sidebar. Pressing
+   * "Mark all 6 read" emptied the page's own Unread chip while the rail and the
+   * bell went on saying 6, because `Chrome` counts `alerts.items[].unread`
+   * straight off the payload. Two counts of the same thing, disagreeing on
+   * screen, which is the exact defect the payload's own comment says the single
+   * snapshot exists to prevent.
+   *
+   * So the set is owned by the shell, which already owns everything the page
+   * and the chrome share, and both now read one value.
+   *
+   * IT PERSISTS, because a read state that forgets on reload is not a read
+   * state. `unread` is the SERVER'S opinion and the contract is explicit that
+   * "read state is client-side", so the browser is the right home for it —
+   * alongside `mv.tier` and `mv.funnel`, which are stored the same way and for
+   * the same reason. When the API grows somewhere to record this, this function
+   * is the one place that changes.
+   *
+   * PRUNED WHENEVER THE ALERTS CHANGE, by the effect below rather than here:
+   * two of the contract's ten ids carry a period or a lease
+   * (`filed-<YYYYMM>`, `handover-<lease_id>`), so an id stops existing when the
+   * month rolls. Unpruned, the key would grow for ever and could resurrect a
+   * stale id if the server ever reused one.
+   */
+  const markRead = useCallback((ids: string[]) => {
+    if (!ids.length) return;
+    setReadIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.add(id);
+      if (next.size === prev.size) return prev;
+      persistRead(next);
+      return next;
+    });
   }, []);
   const pickTier = useCallback((t: Tier) => {
     setTier(t);
@@ -413,6 +463,21 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
     () => (live && sample ? sampleize(live) : null), [live, sample]);
   const data: Payload | null = sample ? (shown?.payload ?? null) : live;
 
+  /* Drop ids the payload no longer carries — see `markRead`. Runs on every
+     new snapshot, which is also every owner change. */
+  useEffect(() => {
+    const items = data?.alerts.items;
+    if (!items) return;
+    const live = new Set(items.map((a) => a.id));
+    setReadIds((prev) => {
+      const kept = [...prev].filter((id) => live.has(id));
+      if (kept.length === prev.size) return prev;
+      const next = new Set(kept);
+      persistRead(next);
+      return next;
+    });
+  }, [data?.alerts.items]);
+
   const openDrawer = useCallback((key: string) => setDrawer(key), []);
   const copy: DrawerCopy | null = drawer ? (data?.drawers?.[drawer] ?? null) : null;
 
@@ -443,7 +508,12 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
       : route === 'weekly'
         ? <WeeklyView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
         : route === 'alerts'
-          ? <AlertsView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
+          ? (
+            <AlertsView
+              p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go}
+              readIds={readIds} markRead={markRead}
+            />
+          )
           : route === 'activities'
             ? <ActivitiesView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
             : route === 'production'
@@ -468,7 +538,7 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
           effect above, `busy` for the `Loader` below — so nothing about the
           owner read changed, only who is told about it. */}
       <Chrome
-        p={data} route={route} go={go} tier={tier} setTier={pickTier}
+        p={data} route={route} go={go} tier={tier} setTier={pickTier} readIds={readIds}
         funnel={funnel} setFunnel={pickFunnel} sample={sample}
         open={openDrawer}
         sampleNote={shown?.note ?? null} trialStarted={trialStarted}

@@ -53,15 +53,42 @@ const KIND_ICON: Record<EventKind, string> = {
   operator: 'mvi-claim',
 };
 
+/* ----------------------------------------------------------- the calendar */
+
+/**
+ * THE ONLY LITERALS ON THIS SCREEN, and they are the Gregorian calendar rather
+ * than anything about this owner. Every figure, label and sentence the page
+ * prints comes from the API — but two places turn a `cycle` ("202501") into a
+ * month a reader recognises, and a cycle carries no name. The API's own labels
+ * are day-precision where they exist (`when_label` is "Sep 8, 2026"), so they
+ * cannot supply a month heading.
+ */
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+
+/** "202501" -> "Jan 2025", for the places a chip has to stay short */
+function shortMonth(cycle: string): string {
+  const name = MONTH_NAMES[Number(cycle.slice(4, 6)) - 1];
+  return name ? `${name.slice(0, 3)} ${cycle.slice(0, 4)}` : '';
+}
+
 /* ------------------------------------------------------------- the ranges */
 type RangeKey = '30' | '60' | '90' | '365' | 'jan25' | 'all' | 'custom';
 
-const RANGE_LABEL: Record<RangeKey, string> = {
+/**
+ * `jan25` IS NOT A STATIC LABEL, which is why it is missing here.
+ *
+ * The other six are durations and read the same in any month. This one names
+ * the production record's floor, and the bound behind it is already the
+ * server's `range.floor_key` — so a fixed "Since Jan 2025" would go on
+ * printing January the month the floor moved, while filtering to the new one.
+ * `rangeLabel()` inside the component supplies it from `range.floor_month`.
+ */
+const RANGE_LABEL: Record<Exclude<RangeKey, 'jan25'>, string> = {
   30: '30 days',
   60: '60 days',
   90: '90 days',
   365: '12 months',
-  jan25: 'Since Jan 2025',
   all: 'All dates',
   custom: 'Custom range',
 };
@@ -76,6 +103,11 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
   const tl = p.timeline;
   const ac = p.activities;
   const rg = p.rings;
+
+  /* the six fixed labels, plus the floor's, which only the server knows */
+  const rangeLabel = (k: RangeKey): string => k === 'jan25'
+    ? `Since ${shortMonth(tl.range.floor_month)}`
+    : RANGE_LABEL[k];
 
   /* THE PAGE OPENS ON HER OWN LEASES.
      It used to open on 'all', and for this owner that is 890 rows of which
@@ -195,7 +227,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
   const prodKind = tl.kinds.find((k) => k.kind === 'production');
   const dayWindow = range === '30' || range === '60' || range === '90';
   const lagHint = dayWindow && prodKind && prodKind.count > 0 && !scopedCount('production')
-    ? `No month of production falls inside ${RANGE_LABEL[range].toLowerCase()}. The newest month `
+    ? `No month of production falls inside ${rangeLabel(range).toLowerCase()}. The newest month `
       + `the state has filed for your leases is ${prodKind.newest} — a production filing arrives `
       + 'months after the month it covers, while the permit and completion feeds run to within '
       + 'days of today. Widen the range to see your own months.'
@@ -406,7 +438,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                   aria-pressed={range === r}
                   onClick={() => { setRange(r); setShowAll(false); }}
                 >
-                  {RANGE_LABEL[r]}
+                  {rangeLabel(r)}
                 </button>
               ))}
             </div>
@@ -433,9 +465,16 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                   </select>
                 </label>
                 <span className="ac-note">
-                  The month list starts at <strong>January 2025</strong> — the floor the production
-                  record itself uses. Anything filed before that is reachable with{' '}
-                  <em>All dates</em>.
+                  {/* THE FLOOR IS THE SERVER'S, NOT A CONSTANT. `range.months`
+                      is newest first and stops at `range.floor_month`, so its
+                      last entry IS the floor, already labelled `en-US`. The
+                      reference printed "January 2025" as prose; it happens to
+                      be today's floor, and it would quietly go stale the month
+                      the production record moves. */}
+                  The month list starts at{' '}
+                  <strong>{tl.range.months[tl.range.months.length - 1]?.label}</strong>{' '}
+                  — the floor the production record itself uses. Anything filed
+                  before that is reachable with <em>All dates</em>.
                 </span>
               </div>
             )
@@ -521,7 +560,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
           <Pulse
             label="In this filter"
             value={n0(rows.length) ?? '0'}
-            sub={range === 'all' ? 'all dates on record' : RANGE_LABEL[range].toLowerCase()}
+            sub={range === 'all' ? 'all dates on record' : rangeLabel(range).toLowerCase()}
           />
           <Pulse
             label="On your leases"
@@ -915,7 +954,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                   )
                   : null}
                 {range !== 'all' && mi === 'all'
-                  ? <>Nothing of this kind falls inside {RANGE_LABEL[range].toLowerCase()}. </>
+                  ? <>Nothing of this kind falls inside {rangeLabel(range).toLowerCase()}. </>
                   : null}
                 <button type="button" className="linklike" onClick={reset}>
                   clear the filters and show all {n0(tl.events.length)} →
@@ -996,9 +1035,8 @@ function monthBreak(list: TimelineEvent[], i: number): string | null {
   if (!e.cycle) return i === 0 ? 'Date not recorded' : null;
   const prev = list[i - 1];
   if (prev && !prev.standing && prev.cycle === e.cycle) return null;
-  const m = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
-    'September', 'October', 'November', 'December'];
-  return `${m[Number(e.cycle.slice(4, 6)) - 1] ?? ''} ${e.cycle.slice(0, 4)}`.trim();
+  return `${MONTH_NAMES[Number(e.cycle.slice(4, 6)) - 1] ?? ''} ${e.cycle.slice(0, 4)}`
+    .trim();
 }
 
 /* ------------------------------------------------------------------ a row */

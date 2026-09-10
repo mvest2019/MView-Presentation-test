@@ -78,13 +78,32 @@ const KLASS_CHIP: Record<string, string> = {
   Community: 'chip-mint',
 };
 
-export default function AlertsView({ p, tier, funnel, sample, open, go }: ViewProps) {
+/**
+ * ADAPTED · THE READ STATE IS THE SHELL'S, NOT THIS COMPONENT'S.
+ *
+ * The reference keeps `read` and `allRead` in local state here. That works for
+ * the page and is invisible to everything else: pressing "Mark all 6 read"
+ * emptied this page's Unread chip while the sidebar rail and the bell went on
+ * saying 6, because `Chrome` counts `alerts.items[].unread` off the payload.
+ * Two counts of one thing, disagreeing on screen.
+ *
+ * `Portal` owns the set now and hands it to this page and to `Chrome`, so both
+ * read one value; it also persists it, so marking read survives a reload. The
+ * rendering below is unchanged — `isUnread` asks the same question, of a set
+ * that lives one level up.
+ */
+export interface AlertsProps extends ViewProps {
+  readIds: Set<string>;
+  markRead: (ids: string[]) => void;
+}
+
+export default function AlertsView(
+  { p, tier, funnel, sample, open, go, readIds, markRead }: AlertsProps,
+) {
   const al = p.alerts;
   const lg = al.ledger;
   const [cat, setCat] = useState<AlertCategory | 'all'>('all');
   const [q, setQ] = useState('');
-  const [read, setRead] = useState<Set<string>>(new Set());
-  const [allRead, setAllRead] = useState(false);
 
   const unclaimed = funnel === 'unclaimed';
   const action = al.items.find((x) => x.severity === 'action') ?? null;
@@ -102,7 +121,7 @@ export default function AlertsView({ p, tier, funnel, sample, open, go }: ViewPr
     });
   }, [al.items, cat, q]);
 
-  const isUnread = (a: Alert) => a.unread && !allRead && !read.has(a.id);
+  const isUnread = (a: Alert) => a.unread && !readIds.has(a.id);
   const unreadCount = al.items.filter(isUnread).length;
 
   return (
@@ -192,7 +211,7 @@ export default function AlertsView({ p, tier, funnel, sample, open, go }: ViewPr
             <button
               className="btn btn-ghost btn-sm" type="button"
               disabled={!unreadCount}
-              onClick={() => setAllRead(true)}
+              onClick={() => markRead(al.items.filter(isUnread).map((a) => a.id))}
             >
               {unreadCount ? `Mark all ${unreadCount} read` : 'All read'}
             </button>
@@ -376,7 +395,7 @@ export default function AlertsView({ p, tier, funnel, sample, open, go }: ViewPr
             ? (
               <button
                 type="button" className={cat === 'all' && false ? 'on' : ''}
-                onClick={() => setAllRead(true)}
+                onClick={() => markRead(al.items.filter(isUnread).map((a) => a.id))}
                 title="Unread means the event is newer than the last time notifications went out"
                 style={{ marginLeft: 'auto' }}
               >
@@ -416,11 +435,11 @@ export default function AlertsView({ p, tier, funnel, sample, open, go }: ViewPr
                   role="button" tabIndex={0}
                   style={{ cursor: 'pointer' }}
                   title="Tap — this alert explains itself in a side panel"
-                  onClick={() => { setRead((r) => new Set(r).add(a.id)); open('alert:' + a.id); }}
+                  onClick={() => { markRead([a.id]); open('alert:' + a.id); }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      setRead((r) => new Set(r).add(a.id));
+                      markRead([a.id]);
                       open('alert:' + a.id);
                     }
                   }}

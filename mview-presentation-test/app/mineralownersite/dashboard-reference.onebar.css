@@ -806,6 +806,7 @@ body .mv-ref-app.no-claim .tl-row.mine .tl-v.t-warn {
 .mv-ref-app .ac-lag,
 .mv-ref-app .ac-note,
 .mv-ref-app .ac-sum,
+.mv-ref-app .al-meta,
 .mv-ref-app .al-row .ctx-hint,
 .mv-ref-app .app-side .navsec,
 .mv-ref-app .ctx-head .ctx-sub,
@@ -1117,4 +1118,45 @@ body .mv-ref-app.no-claim section[data-route="app-alerts"] .al-row {
   border-top: 2px dashed #d9a441;
   border-right: 2px dashed #d9a441;
   border-bottom: 2px dashed #d9a441;
+}
+
+
+/* ----------------------------------------------------------------------------
+   THE ALERT ROW'S FOOTNOTE HAD NO RULE AT ALL, so its three spans ran together.
+
+   THE DEFECT, and it is the reference's own rather than something lost in the
+   port. `AlertsView` renders
+
+     <div class="al-meta">
+       <span><b>{lead_lease}</b></span>
+       <span>detected {detected_label}</span>
+       <span>{n} lines behind it</span>
+     </div>
+
+   with no separator between the spans, because the class is supposed to supply
+   one. The prototype sheet declares it as `.al-more .al-meta` — a DESCENDANT
+   selector — and this `.al-meta` is not inside an `.al-more`, so nothing
+   matched it in the reference build either. Three inline spans, no padding, no
+   margin, no gap: the browser sets them flush and the row reads
+
+     MCCABE ETAL GUdetected Sep 10, 20268 lines behind it
+
+   Measured on this page: the spans sit at x 338, 474 and 634, each starting at
+   exactly the previous one's right edge.
+
+   THE FIX IS THE RULE THE REFERENCE MEANT TO APPLY, copied verbatim from
+   `v40css.css:62` and un-nested — nothing invented, only the selector widened
+   from `.al-more .al-meta` to `.al-meta`. Rows inside an `.al-more` are
+   unaffected: they were already getting these exact declarations.
+
+   The `body` prefix is this sheet's convention for restoring the specificity
+   the extraction cost — see the header.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .al-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 4px;
+  color: var(--muted);
 }

@@ -1,5 +1,27 @@
 # API request — a monthly series of the owner's own filed production
 
+> **CLOSED — shipped by the backend in `c6f3ada`, and wired up here.**
+>
+> Both asks landed:
+>
+> - **the oil bug** — a gas lease's liquid is filed as CONDENSATE, in a field
+>   the API was not reading. Every `oil` field is now crude + condensate. The
+>   timeline prints a real BBL figure on 108 of 120 production rows where it
+>   printed "—" on all of them, and the money alert now reads "14,477 MCF of
+>   gas and 665 barrels of oil".
+> - **Option A** — `series_months` on `GET /activity/summary`, 24 months,
+>   oldest first. `owner-api.ts` lifts it into `Payload['series']`, deriving
+>   `boe_net`, `window` and the two peaks from it.
+>
+> The verification below now reads **177 of 177** figures on the Activities
+> panel found in an API response — including the 22,735 MCF peak that was the
+> whole point of the check. Options B and C were not needed and nothing was
+> asked of `/owners/search`.
+>
+> Kept as the record of what was asked and why. Nothing here is outstanding
+> except the British-spelling note at the foot, which the frontend normalizes
+> on the way in.
+
 **From:** frontend (owner portal, Activities screen)
 **Against:** `mineralview-api`, the contract in `OWNER-ALERTS-ACTIVITY-API.md`
 **Status:** one chart on Activities cannot be built from the seven endpoints.

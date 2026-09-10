@@ -129,11 +129,18 @@ export interface PayloadOptions {
  * The owner record every surface renders.
  *
  * TWO SOURCES, ONE SEAM, AND THE JOIN IS DECLARED HERE — the whole reason this
- * module exists. `mineralview-api` serves four of the record's blocks and no
+ * module exists. `mineralview-api` serves five of the record's blocks and no
  * more (`OWNER-ALERTS-ACTIVITY-API.md`, §1), so:
  *
  *   alerts · timeline · activities · rings     the API, when configured
+ *   series                                     the same, lifted out of
+ *                                              `/activity/summary`
  *   everything else                            the committed capture
+ *
+ * `series` is the newest of them and the reason Activities is now dynamic to
+ * the last figure: its "Your own filed months" chart was the one thing on
+ * either screen still drawn from the capture, because no endpoint returned the
+ * owner's monthly NET share until `series_months` was added.
  *
  * WHY THE FOUR ARE FETCHED TOGETHER even for a route that shows one of them:
  * they are one snapshot on the server and they must stay one here. The bell
@@ -200,10 +207,12 @@ export async function getOwnerPayload(
     year: sel?.year ?? null,
   }));
 
-  /* `live` is four whole blocks, each already checked against its `Payload`
+  /* `live` is five whole blocks, each already checked against its `Payload`
      member by `owner-api.ts`, so this is a replace and not a deep merge. A
      deep merge would be the bug: it would let a field the API stopped sending
-     be back-filled from a capture taken on a different day. */
+     be back-filled from a capture taken on a different day. `series` lands
+     here by the spread like the rest — it is a whole block by the time
+     `owner-api.ts` hands it over. */
   return {
     ...FIXTURE,
     ...live,
