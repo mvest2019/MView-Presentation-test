@@ -120,6 +120,51 @@ export function scaleFigures(text: string | null | undefined, factor: number): s
          reads "$4.5 million" stays two words; one that reads "8,776" stays
          grouped. */
       const decimals = (String(digits).split('.')[1] ?? '').length;
+
+      /* A PRICE PER UNIT IS A MARKET FACT, NOT THIS OWNER'S MONEY.
+         "Oil in the model · $95.65" is the WTI settlement — the same number
+         for every reader on earth — and scaling it produced "$91,001.41" a
+         barrel. Same for the subscription: "$99.95 a month" is the price, not
+         a holding.
+
+         THE TELL IS CENTS. `usd()` renders every owner-money figure through
+         `Math.round`, so a holding never carries decimals: "$4,436,010",
+         "$11,928". A per-unit price always does: "$95.65", "$2.900",
+         "$999.50". The one exception is `usdShort`, which writes "$3.71M" —
+         decimals AND a magnitude suffix — and that IS a holding, so the
+         suffix is what tells the two apart.
+
+         Volumes are unaffected: this tests `money`, so "1,363.5 BBL" still
+         scales. */
+      if (money && decimals > 0 && !magnitude) return whole;
+
+      /* A MAGNITUDE SUFFIX IS PART OF THE NUMBER, NOT DECORATION.
+         The suffix used to be carried across untouched while the digits were
+         multiplied, so "14K MCF" scaled by 1000 came out "14,172K MCF" — a
+         number that reads as fourteen thousand thousand and formats like
+         neither. The suffix is resolved to its true value first, scaled, then
+         a suffix is chosen again for the size the figure has become. */
+      const SUFFIX = { k: 1e3, m: 1e6, b: 1e9 };
+      const key = String(magnitude ?? '').trim().toLowerCase();
+      const mult = key.startsWith('b') ? SUFFIX.b
+        : key.startsWith('m') ? SUFFIX.m
+          : key.startsWith('k') ? SUFFIX.k : 1;
+      const trueValue = raw * mult * factor;
+
+      if (mult > 1) {
+        /* it arrived abbreviated, so it leaves abbreviated — at whatever
+           magnitude it now belongs to */
+        const abs = Math.abs(trueValue);
+        const [div, tag] = abs >= 1e9 ? [1e9, 'B']
+          : abs >= 1e6 ? [1e6, 'M']
+            : abs >= 1e3 ? [1e3, 'K'] : [1, ''];
+        const n = trueValue / div;
+        const shown = n >= 100 || tag === ''
+          ? Math.round(n).toLocaleString('en-US')
+          : n.toFixed(1).replace('.0', '');
+        return (money ?? '') + shown + tag + (unit ?? '');
+      }
+
       const scaled = raw * factor;
       /* GROUPED IF IT ARRIVED GROUPED, OR IF SCALING PUSHED IT PAST A THOUSAND.
          The rule was "separators only where it already had them", which is
@@ -347,7 +392,10 @@ export function sampleize(input: Payload): SampleResult {
      `fillMissingProduct`. The seed below is still taken from the REAL owner
      name, so one owner always previews the same way. */
   const { payload: real, filled } = fillMissingProduct(input);
-  const rnd = seeded(seedOf(real.owner.ownername + ':' + real.owner.roll_year));
+  /* the factor below is flat, so nothing consumes this yet; it stays because
+     the name substitution seeds off the same owner string and a future
+     per-owner variation belongs here rather than in a new generator */
+  void seeded(seedOf(real.owner.ownername + ':' + real.owner.roll_year));
   /* ONE FACTOR FOR THE WHOLE PORTFOLIO — see rule 2 — AND IT NEVER SHRINKS
      THE RECORD.
 
@@ -359,18 +407,22 @@ export function sampleize(input: Payload): SampleResult {
      is to show what the product looks like when it is working, not to roll a
      die on how impressive that is.
 
-     8 to 12 is a PRESENTATION choice, not an estimate: the preview should
-     open on figures with weight to them. Measured on this record, it puts the
-     monthly gas share at about 148,000 MCF, the one-mile ring at 2.0 million
-     and the portfolio at roughly $45m — large, and still the shape of a real
-     Texas mineral record. Past about 40x the portfolio runs to $150m+ for a
-     twelve-lease owner and the preview stops resembling anything.
+     A FLAT 1000 is a PRESENTATION choice, asked for directly, and it applies
+     ONLY to the not-claimed preview. It puts the monthly oil share in the tens
+     of thousands of barrels and the gas share in the tens of millions of MCF,
+     with every original digit still legible in the result.
 
-     WHAT IT CANNOT REACH, recorded so the limit is known rather than
-     rediscovered: the monthly OIL share. It is roughly twenty times smaller
-     than the gas on these leases, so at this factor it reads in the hundreds
-     of barrels. Lifting that one cell to six figures needs about 3000x, which
-     would put the portfolio in the billions.
+     IT IS DELIBERATELY NOT PLAUSIBLE, and that is the trade recorded here: at
+     this factor the portfolio estimate for a ten-lease owner reads in the
+     billions of dollars, which no Texas mineral record does. The preview stops
+     being a realistic example and becomes an illustration of scale. That is a
+     product call, not an accident — dial the range down if the portfolio
+     figure starts costing more credibility than the volumes buy.
+
+     NOTHING A CLAIMED READER SEES IS TOUCHED. `Portal` calls `sampleize` only
+     while `funnel === 'unclaimed'`, and the page carries "Sample preview — the
+     names and amounts belong to a sample owner rather than to you" above
+     everything this scales. A real owner's own figures are never multiplied.
 
      Every property of the old range is kept: one factor across the whole
      portfolio so the internal arithmetic still ties out, and seeded off the
@@ -380,7 +432,13 @@ export function sampleize(input: Payload): SampleResult {
      is claimed: `Portal` only calls `sampleize` while `funnel === 'unclaimed'`,
      and the page carries "Sample preview — the names and amounts belong to a
      sample owner rather than to you" above everything it touches. */
-  const f = 8 + rnd() * 4;
+  /* EXACTLY ONE THOUSAND — "three zeros on the end", literally.
+     A random multiplier in a band (the 900-1100 this replaced) rewrites the
+     digits: 56 became 53,278, which is bigger but is no longer recognisably
+     the same reading. A flat 1000 appends three zeros and leaves every digit
+     where it was — 56 BBL reads 56,000 BBL, 14,477 MCF reads 14,477,000 MCF —
+     so the preview scales without disguising the shape of the record. */
+  const f = 1000;
   const nm = (i: number) => LEASE_NAMES[i % LEASE_NAMES.length];
   const op = (i: number) => OPERATOR_NAMES[i % OPERATOR_NAMES.length];
 
@@ -584,7 +642,22 @@ export function sampleize(input: Payload): SampleResult {
    */
   const sampleStat = <T extends { value: string; sub?: string }>(st: T): T => ({
     ...st,
-    value: /^[\d$.,+-]/.test(st.value) ? fig(st.value) : (subIfOwnOp(st.value) ?? st.value),
+    /* NAMES FIRST, THEN FIGURES, AND NEITHER TEST LOOKS AT THE FIRST
+       CHARACTER.
+
+       This used to branch on "does the value START with a figure", which
+       silently skipped every compound value whose first half is a word. A
+       share cell reading "no gas · 56 BBL" begins with an "n", so it never
+       reached the scaler: the sentence above it scaled to 53,278 barrels
+       while the cell beside it still said 56.
+
+       The test is not needed. `subIfOwnOp` LOOKS UP rather than mints, so a
+       value that is not one of this owner's operators comes back untouched;
+       and `scaleFigures` only multiplies a number carrying a currency symbol
+       or a volume unit, so "Feb 23, 2021", "9 of 10" and "▲ 720.0%" pass
+       through unchanged. Running both over every value is safe and catches
+       the compound case. */
+    value: fig(subIfOwnOp(st.value) ?? st.value),
     sub: st.sub ? fig(st.sub) : st.sub,
   });
 
