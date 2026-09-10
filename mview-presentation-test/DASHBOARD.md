@@ -291,6 +291,20 @@ Your minerals, through June 2026
 * **No claim rail, no per-card `sample` tags, no sixth "Sample / illustrative"
   cell in the strip.** All three re-arranged the page relative to paid; the
   banner says the same thing once.
+* **Every card carries a SAMPLE pill beside its title**, and so does the
+  alerts rollup's kicker. Drawn from one rule in `dashboard-reference.css`
+  keyed on `.no-claim`, not placed by hand: every card on this page titles
+  itself with exactly one `h4` — measured, all fourteen, none nested and none
+  outside a card — so one rule marks all of them and a card added later is
+  marked the day it is added. `.as-kicker` is switched to `display: inline` in
+  this state so its pill sits beside the heading instead of dropping to a line
+  of its own.
+
+  It is a **reminder, not the disclosure**. The disclosure is the banner above,
+  which is real markup and says in a sentence whose record this is. These pills
+  are CSS generated content, so they are not selectable and screen-reader
+  exposure varies; nothing depends on them being read aloud. One pill on one
+  card was worse than none — it implied the other thirteen were real.
 * The claim CTA lives in the sidebar ("Claim Mineral Owner"), which `Chrome`
   renders throughout this state.
 * `.no-claim` still puts an amber ring round the strip and the alert rollup —
@@ -415,6 +429,7 @@ any bar. Close with the ✕.
 
 | Control | Behaviour |
 |---|---|
+| Mineral View wordmark | Leaves the portal for the marketing home page, `/`. A plain `Link` with no `onClick`, so middle-click and modified clicks behave normally. It used to be a second route to the Dashboard, which did nothing at all when you were already on it; the other shell's rail (`portal-side-nav.tsx`) has always pointed at `/` and this now matches it |
 | Sidebar rows (7) | Client-side route change; the payload is re-used, so the switch is instant |
 | "Coming soon" rows (3) | Navigate to `/mineralownersite/soon/{slug}` |
 | Hamburger (≤860px) | Opens the mobile drawer |
@@ -591,8 +606,14 @@ carry a browser origin.
 
 **States**
 - [ ] All five funnel states render without a console error
-- [ ] Not claimed: banner present, no claim rail, no `samp-tag`, five strip cells,
-      card list identical to paid
+- [ ] Not claimed: banner present, no claim rail, five strip cells, card list
+      identical to paid
+- [ ] Not claimed: a SAMPLE pill beside all fourteen card titles and the rollup
+      kicker; **zero** of them in any claimed state
+- [ ] Not claimed: no `•••` anywhere, and no `none` in a production field a
+      derived stream should have filled
+- [ ] The wordmark goes to `/` from the Dashboard, from the Weekly Report and
+      from a cold load of a portal-group route
 - [ ] Not claimed: MVestimate in lakhs; claimed states unchanged
 - [ ] Claimed and lapsed blur the value figures
 - [ ] Trial counts down from the stamp rather than printing a fixed day
