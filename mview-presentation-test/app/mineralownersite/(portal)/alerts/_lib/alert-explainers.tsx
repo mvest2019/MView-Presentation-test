@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { Badge, EstimateBadge } from "../../../_components/ui/badge";
-import { leaseReportPath } from "../../leases/_lib/lease-routes";
+import { leaseReportPath } from "../../../_lib/portal-routes";
 import type { AlertExplainer } from "./alert-types";
 
 /**
