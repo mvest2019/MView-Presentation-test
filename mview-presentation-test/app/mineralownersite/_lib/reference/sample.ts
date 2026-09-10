@@ -580,6 +580,22 @@ export function sampleize(input: Payload): SampleResult {
         'This is the sample view. No interests are claimed on this account, so every figure ' +
         'below is illustrative — the dates are real, the amounts are not.',
       other_identities: [],
+      /* THE ONE RECORD THIS SAMPLE ACCOUNT HOLDS, and a leak closed.
+
+         `claimed_owners` is the member's REAL list of claimed roll owners --
+         eight of them on the account this was caught with -- and the owner
+         switch in the greeting row prints every one. Substituting only
+         `ownername` left the other seven on screen under a banner promising
+         nothing below it is real: a leak of exactly the kind this transform
+         exists to prevent, and the kind `scrub` cannot catch, because a name
+         carries no digits.
+
+         ONE ENTRY RATHER THAN SEVEN SUBSTITUTED ONES. A sample account that
+         holds a single record is the state the preview is arguing about --
+         the switch panel then shows its own empty line, "claim one below and
+         it appears here", which is the invitation the page is for. Inventing
+         six more fictional records would be more code saying less. */
+      claimed_owners: [SAMPLE_OWNER],
       collapse_note: 'Not applicable in the sample view.',
     },
 

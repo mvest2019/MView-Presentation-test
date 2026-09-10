@@ -26,7 +26,8 @@
  *
  * 3. The neighbours card carries the feed's own filings, not just ring counts.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import type { Payload } from '../../_lib/reference/payload';
 import { formatLakhs } from '../../_lib/format-lakhs';
 import { usePortalMember } from '../portal-session';
@@ -183,17 +184,20 @@ export default function Dashboard(
                 {t.plays.length ? ' · ' + t.plays.join(', ') : ''}
               </p>
             </div>
-            <span className="owner-chip">
-              {/* ADAPTED · the reference says "Owner:"; this build says
-                  "Mineral Owner:", which is the term the rest of this app uses
-                  for the same thing — the sidebar heading, the owner search and
-                  the claim flow all say mineral owner. */}
-              Mineral Owner: <strong>{p.owner.ownername}</strong>
-              {p.owner.city ? ' · ' + p.owner.city : ''}{' '}
-              <button type="button" className="sw-btn" onClick={() => open('identity')}>
-                How we matched this
-              </button>
-            </span>
+            {/* ADAPTED · the reference says "Owner:"; this build says
+                "Mineral Owner:", which is the term the rest of this app uses
+                for the same thing — the sidebar heading, the owner search and
+                the claim flow all say mineral owner.
+
+                THE CITY AND "HOW WE MATCHED THIS" LEFT THIS CHIP. The city was
+                a second, quieter answer to the question the name already
+                answers, and the identity drawer it sat beside is still one
+                click away from the account menu ("How this record was
+                identified") and from the "what was matched →" hint in the
+                sources card. What the chip lacked was the thing an account
+                with more than one claimed record actually needs: a way to see
+                which of them is filling the page. */}
+            <OwnerSwitch p={p} />
           </div>
 
           {/* the sample badge moved to the top of the page — see SAMPLE
@@ -1466,6 +1470,128 @@ export function topKey(ev: { category: string }): string {
 function metricText(it: { metric: number | null; metric_unit: string | null }): string | null {
   if (it.metric == null) return null;
   return `${n1(it.metric)}${it.metric_unit ? ' ' + it.metric_unit : ''}`;
+}
+
+/* ============================================================ owner switch */
+/**
+ * WHICH CLAIMED RECORD IS FILLING THIS PAGE — the chip, and the panel behind it.
+ *
+ * WHY IT EXISTS. One account can hold several owner records: a spouse, a family
+ * trust, an inherited interest. `/api/v1/dashboard` answers with the one it
+ * resolved (`owner.ownername`) and lists the rest in `owner.claimed_owners`,
+ * and until now the page named the active one and said nothing about the
+ * others — so an owner with three records had no way to tell which of the
+ * three every figure on the page belonged to, or that the other two existed.
+ *
+ * EVERY FIGURE IN HERE IS THE PAYLOAD'S. The name, the roll number, the lease
+ * count, the counties and the list of other records are all read off the same
+ * answer the strip is drawn from, so the panel cannot disagree with the page it
+ * explains — the failure the drawer endpoint's `owner` parameter is documented
+ * against in `owner-data.ts`.
+ *
+ * SWITCHING IS NOT WIRED, AND NO CONTROL PRETENDS IT IS. There is no endpoint:
+ * `/api/v1/dashboard?member_id=&owner=` answers 502, so the active record
+ * cannot be changed from here yet. The other records are therefore LISTED —
+ * which is honest and is itself the missing information — and not given a
+ * button that would do nothing. The one action in the panel is the claim flow,
+ * which does exist. When the API can take an owner, each row becomes the
+ * control; nothing else here has to change.
+ */
+function OwnerSwitch({ p }: { p: Payload }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLSpanElement>(null);
+
+  /* A click anywhere else, or Escape, closes it — the same contract the
+     account menu and the demo state menu in `Chrome` already keep. */
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = (e: MouseEvent) => {
+      if (!box.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('mousedown', away);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [open]);
+
+  const active = p.owner.ownername;
+  /* The active record is in this list too — it is filtered out rather than
+     assumed to be first, because the endpoint does not promise an order. */
+  const others = (p.owner.claimed_owners ?? []).filter((o) => o !== active);
+  const counties = p.totals.counties ?? [];
+
+  return (
+    <span className="owner-chip mv-ownersw" ref={box}>
+      Mineral Owner: <strong>{active}</strong>
+      <button
+        type="button" className="sw-btn" aria-expanded={open} aria-haspopup="dialog"
+        onClick={() => setOpen((v) => !v)}
+      >
+        Switch Owner ▾
+      </button>
+
+      {open ? (
+        <div className="ownersw-pop" role="dialog" aria-label="Switch the active owner record">
+          <h4>Switch the active owner record</h4>
+          <p className="ownersw-lede">
+            One account can hold several owner records — a spouse, a family trust,
+            an inherited interest. Switching swaps <strong>which record fills every
+            page</strong>: dashboard, leases, map, alerts and reports.
+          </p>
+
+          {/* THE LIST SCROLLS, THE PANEL DOES NOT. This account holds eight
+              claimed records and the panel grew to 802px against a 720px
+              viewport, which put the claim button — the only working control
+              in here — below the fold with no scrollbar to suggest it was
+              there. Capping the list keeps the heading, the button and the
+              seven-day note on screen whatever the account holds. */}
+          <div className="ownersw-list">
+          <div className="ownersw-rec is-active">
+            <div className="ownersw-name">
+              {active}
+              <span className="ownersw-now">✓ Active now</span>
+            </div>
+            <div className="ownersw-meta">
+              {p.owner.ownernumber ? <>{p.owner.ownernumber} · </> : null}
+              {p.totals.lease_count} {plural(p.totals.lease_count, 'lease')}
+              {counties.length ? <> · {counties.join(', ')}</> : null}
+            </div>
+          </div>
+
+          {others.length
+            ? others.map((o) => (
+              <div className="ownersw-rec" key={o}>
+                <div className="ownersw-name">{o}</div>
+                {/* NOT A BUTTON. See the header: there is no endpoint to switch
+                    to this record yet, and a row that looks clickable and is
+                    not is worse than a row that plainly waits. */}
+                <div className="ownersw-meta">Claimed · waiting its turn</div>
+              </div>
+            ))
+            : (
+              <p className="ownersw-empty">
+                No other owner records on this account yet — claim one below and it
+                appears here, ready to switch to.
+              </p>
+            )}
+          </div>
+
+          <Link className="ownersw-cta" href="/mineralownersite/claim">
+            + Claim another owner record — free
+          </Link>
+
+          <p className="ownersw-foot">
+            You can change the active record <strong>once every 7 days</strong>.
+            Claimed records are never removed by switching — they just wait their
+            turn.
+          </p>
+        </div>
+      ) : null}
+    </span>
+  );
 }
 
 /* the greeting reads the VIEWER's clock — the only "now" on this page, and the
