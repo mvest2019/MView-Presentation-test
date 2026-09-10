@@ -359,17 +359,28 @@ export function sampleize(input: Payload): SampleResult {
      is to show what the product looks like when it is working, not to roll a
      die on how impressive that is.
 
-     1.15 to 2.00 keeps every property the old range had: one factor across
-     the whole portfolio so the internal arithmetic still ties out, seeded off
-     the real owner name so a given owner always previews identically, and a
-     multiplier close enough to 1 that the shape of the record — which lease
-     leads, how the months move — is unchanged.
+     8 to 12 is a PRESENTATION choice, not an estimate: the preview should
+     open on figures with weight to them. Measured on this record, it puts the
+     monthly gas share at about 148,000 MCF, the one-mile ring at 2.0 million
+     and the portfolio at roughly $45m — large, and still the shape of a real
+     Texas mineral record. Past about 40x the portfolio runs to $150m+ for a
+     twelve-lease owner and the preview stops resembling anything.
+
+     WHAT IT CANNOT REACH, recorded so the limit is known rather than
+     rediscovered: the monthly OIL share. It is roughly twenty times smaller
+     than the gas on these leases, so at this factor it reads in the hundreds
+     of barrels. Lifting that one cell to six figures needs about 3000x, which
+     would put the portfolio in the billions.
+
+     Every property of the old range is kept: one factor across the whole
+     portfolio so the internal arithmetic still ties out, and seeded off the
+     real owner name so a given owner always previews identically.
 
      IT IS NOT A CLAIM ABOUT THE READER. Nothing here is scaled once anything
      is claimed: `Portal` only calls `sampleize` while `funnel === 'unclaimed'`,
      and the page carries "Sample preview — the names and amounts belong to a
      sample owner rather than to you" above everything it touches. */
-  const f = 1.15 + rnd() * 0.85;
+  const f = 8 + rnd() * 4;
   const nm = (i: number) => LEASE_NAMES[i % LEASE_NAMES.length];
   const op = (i: number) => OPERATOR_NAMES[i % OPERATOR_NAMES.length];
 
