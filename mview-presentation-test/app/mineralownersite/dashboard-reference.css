@@ -354,6 +354,22 @@ body .mv-ref-app.in-app .app-shell {display:grid;grid-template-columns:236px min
    so the evidence panel still covers this if both are somehow open.
    ========================================================================== */
 /* ==========================================================================
+   THE ULTRA TIER'S ALERTS BLOCK.
+
+   Bare on the page ground, like the hero above it -- a bordered card here
+   would read as the first row of the Detailed layout and undo the point of
+   the tier. The rows themselves are `.al-strip`/`.al-mini`, unchanged, so this
+   inherits the Detailed strip's look for free and cannot drift from it.
+   ========================================================================== */
+/* 640px is `.ultra-hero`'s own max-width, matched rather than guessed: the
+   two blocks are one column and a wider strip under a narrower hero reads as
+   a second, unrelated section. */
+.mv-ref-app .ultra-alerts {max-width:640px;margin:0 auto;padding:0 0 26px;text-align:left }
+.mv-ref-app .ultra-alerts .ua-line {margin:0 0 10px;font-size:14px;color:var(--slate) }
+.mv-ref-app .ultra-alerts .ua-line .num {font-size:17px;color:var(--green-ink) }
+.mv-ref-app .ultra-alerts .al-strip {margin:0 0 12px }
+
+/* ==========================================================================
    THE PAGER — ten rows a page on the operators card and the lease table.
 
    It sits BELOW the list and above the card's own footnote, which is where a

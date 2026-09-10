@@ -100,6 +100,26 @@ export default function Dashboard(
       {/* ---------- ULTRA: one headline, one status, one action ---------- */}
       {tier === 'ultra' ? <UltraHero p={p} funnel={funnel} open={open} /> : null}
 
+      {/* ---------- ULTRA: and what needs the reader ----------
+
+           ULTRA WAS ONE FIGURE AND A BUTTON, which is not the same thing as
+           simple. A tier that answers "what are my minerals worth" and stops
+           makes the reader open another tier to find out whether anything has
+           happened — so the density that was supposed to save them time cost
+           them a navigation. The findings are the one other thing this page
+           exists to say, and they compress honestly: a count, and the three
+           that matter most, each one line.
+
+           THREE, AND THE REST BEHIND THE BUTTON. Nine rows here would rebuild
+           the Essentials rollup under an Ultra heading. The alerts route has
+           all of them and the button goes straight there.
+
+           `.tier-u` IS LOAD-BEARING. `dashboard-reference.css` hides every
+           direct child of this section that does not carry it while the view
+           is Ultra, so without the class this block renders and is then hidden
+           by a stylesheet that never mentions it. */}
+      {tier === 'ultra' && al.count ? <UltraAlerts p={p} open={open} go={go} /> : null}
+
       {/* ---------- SAMPLE PREVIEW: UNCLAIMED only ----------
 
            ONE BANNER, AND THE PAGE BELOW IT IS THE PAID PAGE. This replaced a
@@ -391,14 +411,21 @@ export default function Dashboard(
                   <ProdSeries p={p} />
                   <AroundYou p={p} tier={tier} open={open} go={go} />
                   <Maturity p={p} open={open} />
-                  <Operators p={p} open={open} />
-                  {/* The price deck sits on whichever rail needs the height.
-                      Pro adds the every-lease table below, which makes the left
-                      rail the long one, so the deck belongs on the right there;
-                      Detailed has no table and the right rail is longer, so the
-                      deck comes back over. Measured both ways: it takes a 15%
-                      and a 17% mismatch down to 3% and 9%. */}
-                  {tier === 'pro' ? null : <PriceDeck p={p} open={open} />}
+                  {/* OPERATORS CROSSES TO THE RIGHT AT DETAILED, and only there.
+                      Shedding the three reference panels left that rail 1,847px
+                      against this one's 2,930 -- a 37% gap, which is the empty
+                      rectangle the balancing note above was written about, just
+                      on the other side. This card is 563px, which is almost
+                      exactly the difference; measured after the move, 2,367
+                      against 2,410, a 2% gap. Pro keeps it here, where its own
+                      rails are already balanced by the lease table. */}
+                  {tier === 'pro' ? <Operators p={p} open={open} /> : null}
+                  {/* The price deck now sits on the right in BOTH tiers. It
+                      used to cross to the left at Detailed, to fill a right
+                      rail that ran short — but Detailed has since given up the
+                      three reference panels below, so the right rail is the
+                      short one in both tiers and the deck belongs on it in
+                      both. One rule instead of a swap. */}
                   {tier === 'pro' ? <RawTable p={p} open={open} /> : null}
                 </div>
 
@@ -407,14 +434,39 @@ export default function Dashboard(
                     above the left one and left a rectangle of empty page at the
                     bottom; Wells and ValueMix are both reads already in the
                     payload that nothing was showing. */}
+                {/* DETAILED IS NO LONGER PRO MINUS ONE TABLE.
+
+                    The two tiers differed by the every-lease table and by
+                    which rail held the price deck — thirteen cards against
+                    fourteen, in the same order, so a reader switching between
+                    them saw the same page twice and the control looked broken.
+
+                    THE CUT IS THE CONTRACT'S OWN WORDING. Detailed is "key
+                    numbers plus context and drill-downs"; Professional is
+                    "full tables, maximum density, exports"
+                    (`_lib/portal-state.ts`). The three panels below are the
+                    reference material on this page — a permit register, a well
+                    register and the source table — and each is a list to look
+                    something up in rather than a number to read. They are what
+                    "full tables" means, so they are what Pro keeps.
+
+                    NOTHING IS LOST AT DETAILED. Neighbours is the same ring the
+                    "Permits within 1 mile" KPI counts and its drawer explains;
+                    Wells is the well list the map and each lease's own drawer
+                    carry; Provenance is the freshness table whose one live
+                    figure — the read date — is already in the greeting. Every
+                    one of them is a click away, and Pro is one click away too.
+
+                    PRO IS UNTOUCHED: same seven panels, same order. */}
                 <div className="stack">
                   <Watched p={p} open={open} />
-                  {tier === 'pro' ? <PriceDeck p={p} open={open} /> : null}
+                  <PriceDeck p={p} open={open} />
                   <Reserves p={p} open={open} />
-                  <Neighbors p={p} open={open} go={go} />
-                  <Wells p={p} open={open} />
+                  {tier === 'pro' ? null : <Operators p={p} open={open} />}
+                  {tier === 'pro' ? <Neighbors p={p} open={open} go={go} /> : null}
+                  {tier === 'pro' ? <Wells p={p} open={open} /> : null}
                   <ValueMix p={p} open={open} />
-                  <Provenance p={p} open={open} />
+                  {tier === 'pro' ? <Provenance p={p} open={open} /> : null}
                 </div>
               </div>
             )
@@ -1533,6 +1585,55 @@ export function topKey(ev: { category: string }): string {
 function metricText(it: { metric: number | null; metric_unit: string | null }): string | null {
   if (it.metric == null) return null;
   return `${n1(it.metric)}${it.metric_unit ? ' ' + it.metric_unit : ''}`;
+}
+
+/**
+ * THE ULTRA TIER'S SECOND BLOCK — what changed, in as few rows as it takes.
+ *
+ * Deliberately not a card: Ultra's hero is a bare block on the page ground and
+ * a bordered panel under it would read as the start of the Detailed layout.
+ * The rows reuse `.al-mini`, which is the alert chip the Detailed strip
+ * already uses, so a reader moving between tiers meets the same object twice
+ * rather than two designs of one thing.
+ */
+function UltraAlerts(
+  { p, open, go }: { p: Payload; open: (k: string) => void; go: (r: Route) => void },
+) {
+  const al = p.alerts;
+  const top = al.items.slice(0, 3);
+  return (
+    <div className="ultra-alerts tier-u" id="ultraAlerts">
+      <p className="ua-line">
+        <strong className="num">{al.count}</strong>{' '}
+        {plural(al.count, 'finding')} {al.window_label}
+        {al.action_count
+          ? <> · <strong>{al.action_count} {al.action_count === 1 ? 'asks' : 'ask'} something of you</strong></>
+          : null}
+      </p>
+      <div className="al-strip">
+        {top.map((it) => (
+          <button
+            key={it.id} type="button"
+            className={'al-mini' + (it.severity === 'action' ? ' gold' : '')}
+            onClick={() => open('alert:' + it.id)}
+          >
+            <span className="al-k">{GLYPH[it.category] ?? '▤'} {it.title}</span>
+            <span className="al-s">
+              {[it.lead_lease, it.event_label].filter(Boolean).join(' · ')}{' '}
+              <span className="ctx-hint">expand →</span>
+            </span>
+          </button>
+        ))}
+      </div>
+      {al.count > top.length
+        ? (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => go('alerts')}>
+            All {al.count} findings →
+          </button>
+        )
+        : null}
+    </div>
+  );
 }
 
 /* ================================================================ pager */
