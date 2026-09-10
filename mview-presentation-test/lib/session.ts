@@ -36,6 +36,18 @@ export interface SessionUser {
   lastName: string;
   email: string;
   /**
+   * `mineral_owner` or `professional` — the account CATEGORY, which is what
+   * the login response carries and all it carries.
+   *
+   * It was being dropped here, and it is worth keeping: `auth-actions.ts`
+   * already branches a landing page on it, and the portal is a mineral-owner
+   * surface. But it is NOT a plan: there is no subscription, entitlement or
+   * trial field anywhere in the login response or in `/api/v1/dashboard`, so
+   * nothing here can tell paid from trial from lapsed. Anything that needs
+   * that has to wait for the backend to serve it.
+   */
+  memberType?: string;
+  /**
    * The member's own `profile_pic`, when the record carries a usable one.
    *
    * OPTIONAL, AND EVERY READER MUST COPE WITHOUT IT. The field is absent from
@@ -85,6 +97,7 @@ export async function startSession(
     firstName: user.f_name ?? "",
     lastName: user.l_name ?? "",
     email: user.email_id ?? "",
+    ...(user.member_type ? { memberType: user.member_type } : {}),
     // Spread rather than `profileImage: image ?? undefined`, so an account with
     // no picture writes no key at all instead of `"profileImage":null`.
     ...(image ? { profileImage: image } : {}),

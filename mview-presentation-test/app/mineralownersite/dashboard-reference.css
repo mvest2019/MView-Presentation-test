@@ -976,8 +976,8 @@ body .mv-ref-app.state-lapsed #mvStateCard {background:#fdf6e7;border:1px solid 
 .mv-ref-app .lbar .lb-name {flex:0 0 172px;font-size:11.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
 .mv-ref-app .lbar .lb-track {flex:1 1 auto;height:16px;background:#eef2f1;border-radius:5px;overflow:hidden;min-width:40px }
 .mv-ref-app .lbar .lb-fill {display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,var(--green),#2e8f6d) }
-.mv-ref-app .lbar .lb-fill.gas {background:linear-gradient(90deg,#54bf96,#1f7f60) }
-.mv-ref-app .lbar .lb-fill.oil {background:linear-gradient(90deg,#3f4756,#20242e) }
+.mv-ref-app .lbar .lb-fill.gas {background:linear-gradient(90deg,#d9a441,#b8892f) }
+.mv-ref-app .lbar .lb-fill.oil {background:linear-gradient(90deg,#54bf96,#1f7f60) }
 .mv-ref-app .lbar .lb-fill.amber {background:linear-gradient(90deg,#d9a441,#b8892f) }
 .mv-ref-app .lbar .lb-fill.slate {background:linear-gradient(90deg,#94a3b8,#64748b) }
 .mv-ref-app .lbar .lb-val {flex:0 0 108px;text-align:right;font-size:11.5px;font-weight:800;font-variant-numeric:tabular-nums }
@@ -1955,8 +1955,8 @@ body .mv-ref-app.view-simple:not(.no-claim) section[data-route="app-briefing"] #
 .mv-ref-app .pf2-gaugefacts { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .mv-ref-app .pf2-gk { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
           margin-bottom: 2px; }
-.mv-ref-app .pf2-gk.gas { color: var(--green-deep); }
-.mv-ref-app .pf2-gk.oil { color: #a07a2c; }
+.mv-ref-app .pf2-gk.gas { color: #a07a2c; }
+.mv-ref-app .pf2-gk.oil { color: var(--green-deep); }
 .mv-ref-app .pf2-gr { font-size: 12px; color: var(--slate); line-height: 1.5; }
 .mv-ref-app .pf2-gr em { font-style: normal; font-weight: 800; color: var(--ink);
              font-variant-numeric: tabular-nums; }
@@ -1983,8 +1983,8 @@ body .mv-ref-app.view-simple:not(.no-claim) section[data-route="app-briefing"] #
                font-variant-numeric: tabular-nums; }
 .mv-ref-app .pf2-dotk { display: inline-block; width: 9px; height: 9px; border-radius: 3px;
             margin-right: 6px; vertical-align: 0; }
-.mv-ref-app .pf2-dotk.gas { background: var(--green-deep); }
-.mv-ref-app .pf2-dotk.oil { background: #b8892f; }
+.mv-ref-app .pf2-dotk.gas { background: #b8892f; }
+.mv-ref-app .pf2-dotk.oil { background: var(--green-deep); }
 .mv-ref-app .pf2-years { display: flex; align-items: flex-end; gap: 10px; height: 190px;
              padding: 6px 2px 0; }
 .mv-ref-app .pf2-yr { flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column;
@@ -1997,8 +1997,8 @@ body .mv-ref-app.view-simple:not(.no-claim) section[data-route="app-briefing"] #
              flex-direction: column; border-radius: 5px 5px 0 0; overflow: hidden;
              min-height: 3px; }
 .mv-ref-app .pf2-yrcol i { display: block; width: 100%; }
-.mv-ref-app .pf2-yrcol i.gas { background: var(--green-deep); }
-.mv-ref-app .pf2-yrcol i.oil { background: #b8892f; }
+.mv-ref-app .pf2-yrcol i.gas { background: #b8892f; }
+.mv-ref-app .pf2-yrcol i.oil { background: var(--green-deep); }
 .mv-ref-app .pf2-yrl { font-size: 11px; font-weight: 700; color: var(--slate); white-space: nowrap;
            font-variant-numeric: tabular-nums; }
 .mv-ref-app .pf2-yrl em { font-style: normal; font-size: 9px; font-weight: 800; color: var(--amber);
