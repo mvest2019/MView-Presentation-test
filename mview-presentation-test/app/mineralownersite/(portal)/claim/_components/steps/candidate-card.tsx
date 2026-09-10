@@ -4,7 +4,6 @@ import { Check, EyeOff } from "lucide-react";
 import { memo } from "react";
 
 import { Badge } from "../../../../_components/ui/badge";
-import { mailCity } from "../../_lib/claim-format";
 import type { OwnerRecord } from "../../_lib/claim-types";
 
 /**
@@ -59,14 +58,9 @@ export const CandidateCard = memo(function CandidateCard({
    */
   onToggle: (record: OwnerRecord, checked: boolean) => void;
 }) {
-  /* ONCE, NOT THREE TIMES. This was called in the condition, again in the
-     badge, and a third time inside `maskedAddress` — three string splits per
-     card, 3,459 of them across the list, for one answer. */
-  const city = mailCity(record.address);
-
   return (
     <label
-      className={`flex cursor-pointer items-start gap-3 rounded-mv border p-4 transition-colors ${
+      className={`flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition-colors ${
         selected
           ? "border-mv-green bg-mv-mint/40"
           : "border-mv-line bg-mv-card hover:border-mv-line-strong"
@@ -87,19 +81,23 @@ export const CandidateCard = memo(function CandidateCard({
           <h3 className="text-[13.5px] font-extrabold tracking-[.01em] text-mv-ink">
             {record.name}
           </h3>
-          {city && (
-            <Badge tone="mint" size="xs">
-              Mail goes to: {city}
-            </Badge>
-          )}
         </div>
 
+        {/*
+          THE ADDRESS IN FULL (requested).
+
+          It printed "•••• DENVER, CO" — the street half masked, the city kept —
+          on the grounds that this list is every name matching a search and a
+          stranger's doorstep should not be published to it. That is a real
+          concern and it is the product's call, not this component's; the rolls
+          are public record either way.
+
+          The "Mail goes to: CITY" chip went with the mask. With the whole
+          address on the line beneath it, the chip was saying a second time
+          what the line already said.
+        */}
         <p className="mt-[5px] text-[12px] text-mv-muted">
-          {!record.address
-            ? "No address on file"
-            : city
-              ? `•••• ${city}`
-              : record.address}
+          {record.address || "No address on file"}
         </p>
 
         <div className="mt-[10px] flex flex-wrap gap-[6px]">

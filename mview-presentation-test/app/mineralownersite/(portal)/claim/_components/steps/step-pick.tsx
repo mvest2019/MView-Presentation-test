@@ -1,16 +1,13 @@
 "use client";
 
-import {
-  ListFilter,
-  LoaderCircle,
-  Lock,
-  RotateCcw,
-  Users,
-  X,
-} from "lucide-react";
-import { useState } from "react";
+import { ListFilter, LoaderCircle, RotateCcw, Users, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { PortalButton } from "../../../../_components/ui/button";
+import {
+  SegmentedControl,
+  type SegmentedOption,
+} from "../../../../_components/ui/segmented-control";
 import { recordKey } from "../../_lib/claim-format";
 import {
   MAX_CLAIM_OWNERS as MAX_CLAIM,
@@ -23,6 +20,35 @@ import { GuideNote } from "../guide-note";
 import { ClaimSearchFields, type ClaimQuery } from "../search-fields";
 import { StepIntro } from "../step-intro";
 import { CandidateCard } from "./candidate-card";
+
+/**
+ * WHICH FIELD THE NARROW-DOWN BOX LOOKS AT.
+ *
+ * It searched name, address and county at once and said so only in placeholder
+ * text — which vanishes the moment anybody types. So a reader who entered "Bee"
+ * could not tell whether they had filtered to a county, to an address
+ * containing "Bee", or to an owner called Beeson, and across 1,153 records
+ * those are very different answers.
+ *
+ * The scope is a control now rather than a sentence: pick the field, and the
+ * placeholder, the result line and the empty state all name it back.
+ */
+type FilterScope = "all" | "name" | "address" | "county";
+
+const FILTER_SCOPES: SegmentedOption<FilterScope>[] = [
+  { value: "all", label: "All" },
+  { value: "name", label: "Name" },
+  { value: "address", label: "Address" },
+  { value: "county", label: "County" },
+];
+
+/** What the box is looking through, in words, for the lines that report it. */
+const SCOPE_NOUN: Record<FilterScope, string> = {
+  all: "name, address or county",
+  name: "owner name",
+  address: "address",
+  county: "county",
+};
 
 /**
  * STEP 2 — pick the records that are yours, from `GET /owners/search`.
@@ -95,6 +121,48 @@ export function StepPick({
   const overLimit = count > MAX_CLAIM;
 
   /*
+   * CHANGING A FILTER BRINGS THE LIST BACK INTO VIEW (requested).
+   *
+   * The four search fields are at the top of the step and the answer is below
+   * them. Change one from halfway down 1,153 rows and the new answer starts
+   * somewhere above you — so this puts the top of the card back on screen.
+   *
+   * ── WHEN THE ANSWER LANDS, NOT WHEN IT IS ASKED FOR ──
+   *
+   * It used to fire the moment a request started, and that is what put the page
+   * at the bottom: the scroll was measured against the OLD list — a thousand
+   * rows tall — and then the answer came back with four, the document collapsed
+   * under it, and the browser clamped what was left to the end of the page.
+   * Measured after the rows have rendered, the distance is the real one.
+   *
+   * ── AND ONLY IF THE LIST IS NOT ALREADY THERE ──
+   *
+   * If the top of the card is on screen, the reader can already see where the
+   * new answer begins, and scrolling anyway only shoves the filter fields off
+   * the top for no reason. A short answer therefore does not move the page at
+   * all — which is the other half of the bottomed-out jump.
+   *
+   * `scroll-mt` on the target keeps the card's heading clear of the portal's
+   * sticky top bar, which `scrollIntoView` would otherwise tuck it under.
+   */
+  const listRef = useRef<HTMLDivElement>(null);
+  const wasRefreshing = useRef(false);
+
+  useEffect(() => {
+    const landed = wasRefreshing.current && !refreshing;
+    wasRefreshing.current = refreshing;
+    if (!landed) return;
+
+    const card = listRef.current;
+    if (!card) return;
+
+    const { top } = card.getBoundingClientRect();
+    if (top >= 0 && top < window.innerHeight) return;
+
+    card.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [refreshing]);
+
+  /*
    * THE NARROW-DOWN BOX — a filter over the rows already on the page.
    *
    * ── WHY IT IS NOT THE SEARCH ABOVE ──
@@ -114,6 +182,7 @@ export function StepPick({
    * and every tick still intact.
    */
   const [filter, setFilter] = useState("");
+  const [scope, setScope] = useState<FilterScope>("all");
   const needle = filter.trim().toLowerCase();
 
   /** Anything set in either filter — the search fields or the narrow-down box. */
@@ -125,10 +194,22 @@ export function StepPick({
      1,153 while the filter hides the rows above it — and so finding that place
      is not a scan of the whole array per row. */
   const numbered = records.map((record, i) => ({ record, index: i + 1 }));
+  /* ONE FIELD OR ALL THREE, whichever the scope says. The space between the
+     three in the "all" case is load-bearing: joined without it, a needle could
+     match across the seam of two fields and hide a row for a reason that is in
+     neither of them. */
   const shown = needle
-    ? numbered.filter(({ record: r }) =>
-        `${r.name} ${r.address} ${r.county}`.toLowerCase().includes(needle),
-      )
+    ? numbered.filter(({ record: r }) => {
+        const hay =
+          scope === "name"
+            ? r.name
+            : scope === "address"
+              ? r.address
+              : scope === "county"
+                ? r.county
+                : `${r.name} ${r.address} ${r.county}`;
+        return hay.toLowerCase().includes(needle);
+      })
     : numbered;
 
   /* Ticks are kept on rows the filter is hiding — losing a selection because a
@@ -197,7 +278,10 @@ export function StepPick({
       </form>
 
       {/* CARD TWO — the answer to whatever the filter last asked. */}
-      <div className="grid gap-[18px] rounded-mv border border-mv-line bg-mv-card p-4">
+      <div
+        ref={listRef}
+        className="grid scroll-mt-[76px] gap-[18px] rounded-mv border border-mv-line bg-mv-card p-4"
+      >
         <StepIntro
           step={2}
           icon={Users}
@@ -224,34 +308,22 @@ export function StepPick({
           }
         />
 
-        {/* The rows below are the PREVIOUS answer while this runs, so it says
-            so — a count that silently belongs to an older query is worse than
-            no count. */}
-        {refreshing && (
-          <p
-            role="status"
-            className="flex items-center gap-2 text-[12px] text-mv-muted"
-          >
-            <LoaderCircle
-              aria-hidden="true"
-              className="h-[13px] w-[13px] animate-spin text-mv-green-deep"
-            />
-            Updating results…
-          </p>
-        )}
+        {/* ONE REFRESH INDICATOR, NOT TWO. A mint bar used to sit here as well
+            as the pill over the list, so a single request drew two spinners
+            saying the same sentence — which reads as two things loading. The
+            pill won because it is where the staleness is: on the rows. */}
 
         {/* THE FIRST SEARCH GETS THE BIG BLOCK, A RE-SEARCH DOES NOT. There is
             nothing to hold the reader's place on the first one, so the slab
             reserves it. Once rows exist, replacing them with that slab on every
             pause in typing is a flash between two full-height layouts — the
             rows stay and the heading says it is refreshing instead. */}
-        {/* THE LABEL DOES NOT SAY "SEARCHING" AGAIN. The heading directly above
-            already says "Searching the public record…", so repeating it filled
-            the block with the one thing the reader had just read. This says
-            what the heading cannot: why it is taking a moment. */}
-        {firstLoad && (
-          <FlowLoading label="A common name can match a thousand records — this takes a few seconds." />
-        )}
+        {/* ONE SHORT LINE (requested). It used to explain itself — "a common
+            name can match a thousand records" — which is true and is two lines
+            of reading under a spinner, at the moment the reader has the least
+            appetite for either. The heading above already says what is
+            happening; this only has to say it will not be instant. */}
+        {firstLoad && <FlowLoading label="This takes a few seconds." />}
 
         {results.error && (
           <FlowError message={results.error} onRetry={onSearch} />
@@ -287,30 +359,48 @@ export function StepPick({
 
         {records.length > 0 && (
           <div className="grid gap-2">
-            <label className="relative flex items-center">
-              <ListFilter
-                aria-hidden="true"
-                className="pointer-events-none absolute left-[11px] h-[14px] w-[14px] text-mv-muted"
+            {/* THE BOX AND ITS SCOPE ARE ONE CONTROL, so they sit on one row
+                and wrap together. The scope is to the RIGHT of the field
+                because it qualifies what was typed — reading left to right,
+                "kennedy" then "Name". */}
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="relative flex min-w-[min(100%,240px)] flex-1 items-center">
+                <ListFilter
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-[11px] h-[14px] w-[14px] text-mv-muted"
+                />
+                <input
+                  type="search"
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  placeholder={
+                    scope === "all"
+                      ? `Narrow these ${records.length.toLocaleString("en-US")} results — name, address or county`
+                      : `Narrow these ${records.length.toLocaleString("en-US")} results by ${SCOPE_NOUN[scope]}`
+                  }
+                  aria-label={`Filter the results on this page by ${SCOPE_NOUN[scope]}`}
+                  className="w-full rounded-mv border border-mv-line bg-mv-card py-[9px] pr-[34px] pl-[32px] text-[12.5px] text-mv-ink outline-none placeholder:text-mv-muted focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.28)] [&::-webkit-search-cancel-button]:appearance-none"
+                />
+                {filter !== "" && (
+                  <button
+                    type="button"
+                    onClick={() => setFilter("")}
+                    aria-label="Clear the filter"
+                    className="absolute right-[8px] flex h-[20px] w-[20px] cursor-pointer items-center justify-center rounded-full text-mv-muted hover:bg-mv-hover hover:text-mv-ink"
+                  >
+                    <X aria-hidden="true" className="h-[13px] w-[13px]" />
+                  </button>
+                )}
+              </label>
+
+              <SegmentedControl
+                label="Which field to filter on"
+                options={FILTER_SCOPES}
+                value={scope}
+                onChange={setScope}
+                className="flex-none"
               />
-              <input
-                type="search"
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                placeholder={`Narrow these ${records.length.toLocaleString("en-US")} results — name, address or county`}
-                aria-label="Filter the results on this page"
-                className="w-full rounded-mv border border-mv-line bg-mv-card py-[9px] pr-[34px] pl-[32px] text-[12.5px] text-mv-ink outline-none placeholder:text-mv-muted focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.28)] [&::-webkit-search-cancel-button]:appearance-none"
-              />
-              {filter !== "" && (
-                <button
-                  type="button"
-                  onClick={() => setFilter("")}
-                  aria-label="Clear the filter"
-                  className="absolute right-[8px] flex h-[20px] w-[20px] cursor-pointer items-center justify-center rounded-full text-mv-muted hover:bg-mv-hover hover:text-mv-ink"
-                >
-                  <X aria-hidden="true" className="h-[13px] w-[13px]" />
-                </button>
-              )}
-            </label>
+            </div>
 
             {needle !== "" && (
               <p className="text-[11.5px] text-mv-muted" role="status">
@@ -318,7 +408,8 @@ export function StepPick({
                 <b className="font-semibold text-mv-ink">
                   {shown.length.toLocaleString("en-US")}
                 </b>{" "}
-                of {records.length.toLocaleString("en-US")}
+                of {records.length.toLocaleString("en-US")} by{" "}
+                <b className="font-semibold text-mv-ink">{SCOPE_NOUN[scope]}</b>
                 {hiddenPicks > 0 &&
                   ` · ${hiddenPicks} record${hiddenPicks === 1 ? "" : "s"} you ticked ${hiddenPicks === 1 ? "is" : "are"} hidden by this filter, and ${hiddenPicks === 1 ? "is" : "are"} still selected`}
               </p>
@@ -326,17 +417,65 @@ export function StepPick({
           </div>
         )}
 
+        {/* AND THE STALE ROWS LOOK STALE. Dimmed and unclickable while the new
+            answer is in flight — the reader keeps their place in the list, which
+            is why these are not torn down and replaced by a loading slab, but
+            cannot mistake them for the result of the filter they just typed.
+
+            `aria-busy` says the same thing to a screen reader, which cannot
+            see a dim. */}
         {shown.length > 0 && (
-          <div className="grid gap-3 @[760px]:grid-cols-2">
-            {shown.map(({ record, index }) => (
-              <CandidateCard
-                key={recordKey(record)}
-                index={index}
-                record={record}
-                selected={selected.includes(recordKey(record))}
-                onToggle={onToggle}
-              />
-            ))}
+          <div className="relative">
+            <div
+              aria-busy={refreshing}
+              className={`grid gap-3 transition-opacity @[760px]:grid-cols-2 ${
+                refreshing ? "pointer-events-none opacity-45" : ""
+              }`}
+            >
+              {shown.map(({ record, index }) => (
+                <CandidateCard
+                  key={recordKey(record)}
+                  index={index}
+                  record={record}
+                  selected={selected.includes(recordKey(record))}
+                  onToggle={onToggle}
+                />
+              ))}
+            </div>
+
+            {/* THE ONLY REFRESH INDICATOR, AND IT IS ON THE ROWS.
+                This list runs to 1,153 rows, and a notice at the top of the
+                card is off screen for most of it — a reader scrolled into the
+                list would see the rows go pale with nothing saying why. This
+                floats over them, and it carries `role="status"` because it is
+                now the one thing announcing the refresh.
+
+                ── IT COSTS NO LAYOUT ──
+
+                Absolute over the grid, so nothing below it moves when it
+                appears and nothing shifts back when it goes.
+
+                ── AND IT FOLLOWS THE SCROLL ──
+
+                `sticky` inside a wrapper that covers the whole grid keeps it in
+                view for as long as any part of the list is, and clamps it
+                inside the grid rather than letting it wander off the end. The
+                whole overlay is `pointer-events-none`; the rows underneath are
+                already inert while this is up. */}
+            {refreshing && (
+              <div className="pointer-events-none absolute inset-0 z-20 flex justify-center">
+                <span
+                  role="status"
+                  className="sticky top-[38vh] flex h-fit items-center gap-2 rounded-full border border-mv-mint-edge bg-mv-card px-4 py-[9px] text-[12.5px] font-bold text-mv-green-deep shadow-mv-lg"
+                >
+                  <LoaderCircle
+                    aria-hidden="true"
+                    className="h-[14px] w-[14px] animate-spin"
+                  />
+                  Searching…
+                </span>
+              </div>
+            )}
           </div>
         )}
 
@@ -344,8 +483,12 @@ export function StepPick({
             The wording has to send you to the box you actually typed in. */}
         {records.length > 0 && shown.length === 0 && (
           <FlowEmpty
-            message={`Nothing on this page matches "${filter.trim()}".`}
-            hint="This filters the results already loaded. Clear it to see all of them, or change the search fields at the top of this step to ask the record for a different name."
+            message={`No record’s ${SCOPE_NOUN[scope]} matches "${filter.trim()}".`}
+            hint={
+              scope === "all"
+                ? "This filters the results already loaded. Clear it to see all of them, or change the search fields at the top of this step to ask the record for a different name."
+                : `This is only looking at the ${SCOPE_NOUN[scope]}. Switch the filter to All to search every field, or clear it to see all of them.`
+            }
           />
         )}
       </div>
@@ -442,11 +585,6 @@ export function StepPick({
         Address is the discriminator — city pre-verification, street
         post-verification, no cross-record merge on name.
       </GuideNote>
-
-      <p className="-mx-[22px] -mb-[22px] flex items-center gap-[6px] border-t border-mv-line px-[22px] py-[10px] text-[11.5px] text-mv-muted max-[767px]:-mx-4 max-[767px]:-mb-4 max-[767px]:px-4">
-        <Lock aria-hidden="true" className="h-[12px] w-[12px]" />
-        Values are withheld until a record is confirmed as yours.
-      </p>
     </div>
   );
 }

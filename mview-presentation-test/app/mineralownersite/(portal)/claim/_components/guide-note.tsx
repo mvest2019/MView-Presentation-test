@@ -28,7 +28,10 @@ export function GuideNote({
        without the note looking like it holds a card's worth of content. The
        horizontal padding stays at 16px — that one is stopping the text touching
        the tinted edge, and it was never the space in question. */
-    <aside className="rounded-[10px] border border-mv-mint-edge bg-mv-mint/60 px-4 py-[10px]">
+    <aside
+      data-claim="guide"
+      className="rounded-[10px] border border-mv-mint-edge bg-mv-mint/60 px-4 py-[10px]"
+    >
       <h3 className="flex items-center gap-[7px] text-[12.5px] font-bold text-mv-green-deep">
         <span className="flex h-[22px] w-[22px] flex-none items-center justify-center rounded-full bg-mv-mint">
           <Lightbulb aria-hidden="true" className="h-[13px] w-[13px]" />

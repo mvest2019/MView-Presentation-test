@@ -463,7 +463,14 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
       )}
 
       {step === 5 && (
-        <StepSuccess result={claim.data} onStartOver={startOver} />
+        <StepSuccess
+          result={claim.data}
+          /* The receipt prints an RRC lease number per name, and the claim
+             response has none — it answers in counts and statuses, never in
+             lease identity. The confirmed set is where that number lives. */
+          records={claimSet.data?.records ?? []}
+          onStartOver={startOver}
+        />
       )}
     </ClaimShell>
   );

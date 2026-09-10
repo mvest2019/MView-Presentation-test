@@ -212,13 +212,27 @@ export function StepProve({
 
         Each name is now its own card: a header that says what the reader is
         being asked to do and whether they have done it, and the addresses as
-        separate tiles beneath. `divide-y` is gone with it, because a tile that
+        separate tiles beneath.
+
+        6px CORNERS (requested), on the card AND the tiles inside it. Matching
+        them matters more than the number does: a 12px tile inside a 6px card
+        reads as a mistake, because the inner radius would be the larger of the
+        two.
+
+        THE AVATAR IS A SOLID GREEN FILL. It has been through all three
+        weights on request — `mv-deep` (#14312a, near-black), then this, then a
+        pale `mv-mint` tint, and back here. `mv-green-deep` (#2e8f6d) is the
+        middle one: dark enough to anchor the card's header, not so dark that it
+        outweighs the name beside it the way the near-black did.
+
+        No border on this version: a solid disc has its own edge. The mint one
+        needed `mv-mint-edge` because the header band is itself a pale wash. `divide-y` is gone with it, because a tile that
         can be ticked should be bounded on all four sides — that is what makes
         the tick look like it belongs to something.
       */}
       {groups.size > 0 && (
         <div className="grid gap-[14px]">
-          {[...groups.entries()].map(([name, rows]) => {
+          {[...groups.entries()].map(([name, rows], groupIndex) => {
             const picked = rows.filter((r) =>
               confirmed.includes(recordKey(r.record)),
             ).length;
@@ -226,10 +240,31 @@ export function StepProve({
             return (
               <section
                 key={name}
-                className="overflow-hidden rounded-mv border border-mv-line bg-mv-card"
+                className="overflow-hidden rounded-md border border-mv-line bg-mv-card"
               >
-                <header className="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-mv-line bg-linear-to-r from-mv-portal-wash/55 to-mv-card px-4 py-[14px]">
-                  <span className="flex h-[36px] w-[36px] flex-none items-center justify-center rounded-full bg-mv-deep text-mv-on-deep">
+                <header className="flex flex-wrap items-center gap-x-3 gap-y-3 border-b border-mv-line bg-linear-to-r from-mv-portal-wash/55 to-mv-card px-4 py-[14px]">
+                  {/*
+                    THE NUMBER IS THE CARD'S PLACE IN THE LIST (requested).
+
+                    A claim of several names is several of these cards, and
+                    without a number they are told apart only by the name at the
+                    top — which is exactly what a reader scanning for "the
+                    second one" cannot use, because every name here is a
+                    variation on the same person. "1" and "2" give the cards
+                    handles.
+
+                    `aria-hidden`: it is an ordinal the DOM order already
+                    carries, and a screen reader announcing "1" before the name
+                    adds a syllable and no information.
+                  */}
+                  <span
+                    aria-hidden="true"
+                    className="flex h-[24px] w-[24px] flex-none items-center justify-center rounded-full border border-mv-line bg-mv-card text-[11.5px] font-bold text-mv-muted tabular-nums"
+                  >
+                    {groupIndex + 1}
+                  </span>
+
+                  <span className="flex h-[36px] w-[36px] flex-none items-center justify-center rounded-full bg-mv-green-deep text-white">
                     <House aria-hidden="true" className="h-[17px] w-[17px]" />
                   </span>
 
@@ -293,14 +328,14 @@ export function StepProve({
                     return (
                       <div
                         key={key}
-                        className={`rounded-mv border transition-colors ${
+                        className={`rounded-md border transition-colors ${
                           ticked
                             ? "border-mv-mint-edge bg-mv-mint/35"
                             : "border-mv-line bg-mv-card"
                         }`}
                       >
                         <label
-                          className={`flex cursor-pointer items-center gap-3 rounded-mv px-[14px] py-[12px] ${
+                          className={`flex cursor-pointer items-center gap-3 rounded-md px-[14px] py-[12px] ${
                             ticked ? "" : "hover:bg-mv-hover"
                           }`}
                         >
@@ -473,7 +508,10 @@ export function StepProve({
         </p>
       )}
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 border-t border-mv-line pt-[18px]">
+      <div
+        data-claim="step-actions"
+        className="flex flex-wrap items-center gap-x-4 gap-y-3 border-t border-mv-line pt-[18px]"
+      >
         <PortalButton
           variant="primary"
           onClick={onConfirm}

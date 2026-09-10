@@ -76,3 +76,100 @@
 .mv-portal.view-pro .mv-claim-flow th {
   padding: 10px 14px;
 }
+
+/* ----------------------------------------------------------------------------
+   3 · THE WALKTHROUGH'S OWN, TIGHTER COPY OF THESE SCREENS
+
+   The sample popup mounts the REAL step components, so every screen in it is
+   the page's screen. That is the whole point of it — a lookalike would drift.
+   But the popup is a 760px panel and the page is a full browser window, and the
+   page's own rhythm does not fit inside the panel: the stepper, the headings and
+   the padding that read correctly at full size cost the popup a third of its
+   stage.
+
+   THESE RULES CHANGE THE POPUP AND NOTHING ELSE. Every one is scoped under
+   `.mv-sample-stage`, which exists only inside the dialog, so the page renders
+   exactly as it did before any of this. It was done the wrong way round first —
+   by editing the shared components — which quietly restyled the live flow to
+   suit a demo. The components carry inert `data-claim` hooks now and no sizing
+   of their own beyond what the page wants.
+
+   WHY CSS AND NOT PROPS. Passing a `compact` flag down would put a branch in
+   five components and a second set of Tailwind classes in each, all to serve
+   one caller. A stylesheet the popup opts into keeps the components single-
+   purpose, and `portal.css` is unlayered anyway — so these sit in the same
+   cascade position as the rules they are adjusting.
+   ---------------------------------------------------------------------------- */
+
+.mv-sample-stage [data-claim="heading"] {
+  gap: 8px;
+  font-size: 15px;
+}
+
+.mv-sample-stage [data-claim="panel"] {
+  padding: 18px;
+}
+
+.mv-sample-stage [data-claim="stepper"] {
+  padding-top: 6px;
+}
+
+.mv-sample-stage [data-claim="stepper"] li {
+  gap: 3px;
+  padding-top: 0;
+}
+
+.mv-sample-stage [data-claim="step-dot"] {
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+}
+
+/* The connector is pinned to the dot's middle, so it rises with the dot. */
+.mv-sample-stage [data-claim="step-line"] {
+  top: 10px;
+}
+
+.mv-sample-stage [data-claim="step-dot"] svg {
+  width: 11px;
+  height: 11px;
+}
+
+.mv-sample-stage [data-claim="step-label"] {
+  padding-bottom: 5px;
+  font-size: 11.5px;
+}
+
+.mv-sample-stage [data-claim="step-title"] {
+  font-size: 20px;
+}
+
+.mv-sample-stage [data-claim="step-lead"] {
+  margin-top: 10px;
+  font-size: 13.5px;
+}
+
+.mv-sample-stage [data-claim="find-form"] {
+  gap: 13px;
+}
+
+.mv-sample-stage [data-claim="find-fields"] {
+  padding: 16px;
+}
+
+/* The guide note and the action row are the two blocks between the fields and
+   the foot of a step, and together they carried about 50px of padding the popup
+   cannot spare. Trimmed here only — on the page they are the right size. */
+
+.mv-sample-stage [data-claim="find-form"] {
+  gap: 10px;
+}
+
+.mv-sample-stage [data-claim="guide"] {
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
+.mv-sample-stage [data-claim="step-actions"] {
+  padding-top: 12px;
+}
