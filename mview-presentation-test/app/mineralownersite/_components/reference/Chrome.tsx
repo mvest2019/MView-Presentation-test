@@ -401,24 +401,28 @@ export default function Chrome(c: ChromeProps) {
               other in after hydration.
 
               `alt` on the wordmark and `alt=""` on the mark, so the link is
-              announced once rather than twice. A real `Link`, not `c.go`: it
-              points at the shell's own home route and `c.go('dashboard')` would
-              be the same destination without a working middle-click. */}
+              announced once rather than twice.
+
+              IT LEAVES THE PORTAL, and that is the point of a brand mark. It
+              used to be a second route to the Dashboard: `href` on
+              `ROUTE_PATH.dashboard` with an `onClick` that called
+              `c.go('dashboard')` so the switch cost no request. But the
+              sidebar's own Dashboard row is already that, one line below, and
+              a logo that goes nowhere new is a dead control — on the Dashboard
+              itself it did literally nothing. Everywhere else on this site the
+              wordmark means "back to the top of the site", including the other
+              portal shell's rail (`portal-side-nav.tsx`, `href="/"`), which
+              this now matches.
+
+              NO `onClick` AT ALL any more. The handler existed to keep the
+              navigation inside the client shell; leaving the shell is now the
+              whole intent, so the plain `Link` is correct and a middle-click,
+              a modified click and a right-click all behave the way the browser
+              means them to. */}
           <Link
             className="app-brand"
-            href={ROUTE_PATH.dashboard}
-            aria-label="Mineral View — portal home"
-            onClick={(e) => {
-              /* Inside this shell the Dashboard switches without a request —
-                 that is `go`'s whole point (see `Portal`), and a full
-                 navigation here would throw away a snapshot that took seconds
-                 to build. A modified or middle click is left to the browser,
-                 which is what the `href` is for. */
-              if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-              e.preventDefault();
-              setNav(false);
-              c.go('dashboard');
-            }}
+            href="/"
+            aria-label="Mineral View — home"
           >
             <Image
               src={LOGO.wordmark.src}
