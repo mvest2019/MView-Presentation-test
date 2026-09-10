@@ -26,7 +26,7 @@
  *
  * 3. The neighbours card carries the feed's own filings, not just ring counts.
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { Payload } from '../../_lib/reference/payload';
 import { formatLakhs } from '../../_lib/format-lakhs';
@@ -1138,7 +1138,16 @@ function PriceSpark({ hist, k }: { hist: { label: string | null; gas: number; oi
 function Operators({ p, open }: { p: Payload; open: (k: string) => void }) {
   const o = p.operators;
   const t = p.totals;
+  /* BEFORE THE EARLY RETURN, because it is a hook. An owner whose operator
+     list arrives empty on one render and filled on the next would change the
+     hook order between them, which React treats as a different component and
+     throws on. `eslint react-hooks/rules-of-hooks` caught this. */
+  const pg = usePaged(o.operators);
   if (!o.operators.length) return null;
+  /* THE BAR SCALE IS THE WHOLE LIST'S, not the page's. Scaling to the page
+     would make the largest operator on page six look like the largest overall
+     — every page would end in a full bar and the comparison the bars exist
+     for would be gone. */
   const maxVal = Math.max(1, ...o.operators.map((x) => x.owner_share_value));
 
   return (
@@ -1158,7 +1167,7 @@ function Operators({ p, open }: { p: Payload; open: (k: string) => void }) {
           : '. No handover is recorded on these leases.'}
       </p>
       <div id="opBody">
-        {o.operators.map((op) => (
+        {pg.rows.map((op) => (
           <div
             className="opscore" key={op.operator_name} role="button" tabIndex={0}
             onClick={() => open('operators')}
@@ -1185,6 +1194,10 @@ function Operators({ p, open }: { p: Payload; open: (k: string) => void }) {
             </span>
           </div>
         ))}
+        <Pager
+          page={pg.page} pages={pg.pages} setPage={pg.setPage} start={pg.start}
+          shown={pg.rows.length} total={o.operators.length} label="Operators pages"
+        />
         {o.handovers.length
           ? (
             <p className="tiny muted" style={{ margin: '9px 0 0', paddingTop: 8, borderTop: '1px solid var(--line)' }}>
@@ -1203,6 +1216,12 @@ function Operators({ p, open }: { p: Payload; open: (k: string) => void }) {
 
 /* ============================================================ raw table */
 function RawTable({ p, open }: { p: Payload; open: (k: string) => void }) {
+  /* SORTED ONCE, not on every page turn. 1,659 rows re-sorted on each click of
+     the pager is work with nothing to show for it — the order never changes. */
+  const sorted = useMemo(
+    () => [...p.leases].sort((x, y) => y.owner_value - x.owner_value), [p.leases],
+  );
+  const pg = usePaged(sorted);
   return (
     <div className="card card-pad" id="rawCard">
       <div className="between" style={{ flexWrap: 'wrap' }}>
@@ -1231,7 +1250,7 @@ function RawTable({ p, open }: { p: Payload; open: (k: string) => void }) {
             </tr>
           </thead>
           <tbody>
-            {[...p.leases].sort((x, y) => y.owner_value - x.owner_value).map((l) => (
+            {pg.rows.map((l) => (
               <tr
                 key={l.lease_id + String(l.interest_type)} style={{ cursor: 'pointer' }}
                 onClick={() => open('lease:' + l.lease_id)}
@@ -1264,6 +1283,10 @@ function RawTable({ p, open }: { p: Payload; open: (k: string) => void }) {
           </tbody>
         </table>
       </div>
+      <Pager
+        page={pg.page} pages={pg.pages} setPage={pg.setPage} start={pg.start}
+        shown={pg.rows.length} total={sorted.length} label="Lease table pages"
+      />
       <p className="tiny muted" style={{ margin: '8px 0 0' }}>
         “Gas left” and “Oil left” are the decline model’s remaining reserves with your interest
         already applied — your share, not the whole lease. A lease showing “none” either has no
@@ -1510,6 +1533,100 @@ export function topKey(ev: { category: string }): string {
 function metricText(it: { metric: number | null; metric_unit: string | null }): string | null {
   if (it.metric == null) return null;
   return `${n1(it.metric)}${it.metric_unit ? ' ' + it.metric_unit : ''}`;
+}
+
+/* ================================================================ pager */
+/**
+ * TEN ROWS A PAGE, on the two lists that a real portfolio makes unreadable.
+ *
+ * "Your operators" printed all fifty-seven and "Every lease, every field" all
+ * 1,659 — a card taller than eleven screens and a table taller than three
+ * hundred. Neither is a list anyone reads; both are a scroll the reader has to
+ * get past to reach the next card.
+ *
+ * A PAGE, NOT A "SHOW MORE". The reader of these two is auditing — checking
+ * one operator's share, finding one lease — and a growing list makes the
+ * document longer every time they look. Ten rows keeps every card the same
+ * height whatever the account holds, which is the property the strip and the
+ * rails already have.
+ */
+const PAGE_SIZE = 10;
+
+/**
+ * The current page's slice, clamped.
+ *
+ * CLAMPED IN RENDER rather than reset from an effect. The lists change under
+ * this — the funnel switch swaps the whole payload for its sample, and the
+ * sample holds a different number of rows — and a page index left pointing
+ * past the end would render an empty card. `Math.min` costs nothing and needs
+ * no effect, which also keeps this clear of the `set-state-in-effect` rule the
+ * shell had to disable.
+ */
+function usePaged<T>(items: T[]) {
+  const [page, setPage] = useState(1);
+  const pages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const safe = Math.min(page, pages);
+  const start = (safe - 1) * PAGE_SIZE;
+  return { page: safe, pages, setPage, start, rows: items.slice(start, start + PAGE_SIZE) };
+}
+
+/**
+ * Which page numbers to draw: first, last, the current one and its neighbours.
+ *
+ * 1,659 leases is 166 pages, and 166 buttons is a worse control than no
+ * control. The gaps are rendered as text, never as buttons — an ellipsis you
+ * can click is a guess about where it takes you.
+ */
+function pageWindow(cur: number, pages: number): (number | '…')[] {
+  if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
+  const out: (number | '…')[] = [1];
+  const from = Math.max(2, cur - 1);
+  const to = Math.min(pages - 1, cur + 1);
+  if (from > 2) out.push('…');
+  for (let n = from; n <= to; n += 1) out.push(n);
+  if (to < pages - 1) out.push('…');
+  out.push(pages);
+  return out;
+}
+
+function Pager(
+  { page, pages, setPage, start, shown, total, label }:
+  { page: number; pages: number; setPage: (n: number) => void;
+    start: number; shown: number; total: number; label: string },
+) {
+  if (pages <= 1) return null;
+  return (
+    <nav className="mv-pager" aria-label={label}>
+      <span className="pg-count">
+        {start + 1}–{start + shown} of {total}
+      </span>
+      <span className="pg-btns">
+        <button
+          type="button" onClick={() => setPage(page - 1)}
+          disabled={page === 1} aria-label="Previous page"
+        >
+          ‹
+        </button>
+        {pageWindow(page, pages).map((n, i) => (n === '…'
+          ? <span className="pg-gap" key={`gap${i}`}>…</span>
+          : (
+            <button
+              type="button" key={n} className={n === page ? 'on' : undefined}
+              aria-current={n === page ? 'page' : undefined}
+              aria-label={`Page ${n}`} onClick={() => setPage(n)}
+            >
+              {n}
+            </button>
+          )))}
+        <button
+          type="button" onClick={() => setPage(page + 1)}
+          disabled={page === pages} aria-label="Next page"
+        >
+          ›
+        </button>
+      </span>
+    </nav>
+  );
 }
 
 /**
