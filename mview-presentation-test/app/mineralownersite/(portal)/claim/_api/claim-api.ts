@@ -926,11 +926,38 @@ export async function fetchClaimSet(picked: OwnerRecord[]): Promise<ClaimSet> {
 
   /* The endpoint's own view of each pick where it has one; the row the reader
      ticked otherwise, so a record never silently disappears from the list. */
-  const records = answers.map((a, i) => a.selected ?? picked[i]);
+  /*
+   * ONE ROW PER DOORSTEP, NOT ONE PER TICK.
+   *
+   * ── THE DUPLICATES THIS REMOVES ──
+   *
+   * `answers.map(...)` gave one record per ticked row, and several rows can
+   * resolve to the SAME record: the endpoint answers on name and address, so
+   * three step-2 cards carrying one owner's name came back with one identical
+   * `selected` three times. Step 3 then drew "PO BOX 897, OZONA, TX 76943 ·
+   * Midland County · 10 leases" three times over, each with its own tick, under
+   * a heading counting five addresses where there were three.
+   *
+   * Worse than untidy: those rows are the claim. A reader ticking what looks
+   * like three doorsteps is ticking one, and no screen says so.
+   *
+   * `others` was already keyed this way a few lines below — `records` simply
+   * never got the same treatment.
+   *
+   * THE FIRST OF A SET WINS and the rest are dropped, which is safe because
+   * they are equal on the only three fields this flow keys on. `picked[i]` is
+   * the fallback for a record the endpoint had no view of, and two of those
+   * cannot collide either: they came from distinct rows of one search.
+   */
+  const byDoorstep = new Map<string, OwnerRecord>();
+  for (const [i, answer] of answers.entries()) {
+    const record = answer.selected ?? picked[i];
+    const key = `${record.county}|${record.name}|${record.address}`;
+    if (!byDoorstep.has(key)) byDoorstep.set(key, record);
+  }
+  const records = [...byDoorstep.values()];
 
-  const pickedKeys = new Set(
-    records.map((r) => `${r.county}|${r.name}|${r.address}`),
-  );
+  const pickedKeys = new Set(byDoorstep.keys());
   const others = new Map<string, OwnerRecord>();
   for (const answer of answers) {
     for (const other of answer.others) {

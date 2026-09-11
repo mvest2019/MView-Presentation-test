@@ -99,6 +99,51 @@ function message(error: unknown): string {
 /** `?step=3` — the flow's position, and the only thing it puts in the URL. */
 const stepUrl = (step: number) => `${window.location.pathname}?step=${step}`;
 
+/**
+ * STEP 3 OPENS WITH ONE ADDRESS TICKED PER OWNER — every row is SHOWN, one is
+ * CHOSEN (requested).
+ *
+ * ── WHY NOT ALL OF THEM ──
+ *
+ * It used to tick every record in the set, so a name the roll spells five ways
+ * arrived with five ticks and a header reading "5 addresses are yours — 5
+ * selected". That is the flow answering its own question: the whole point of
+ * the screen is which doorsteps are actually the reader's, and a page that has
+ * already said "all of them" invites a glance and a Continue.
+ *
+ * Attesting is the next thing it asks for. Pre-ticking the maximum and then
+ * asking for a good-faith statement about it puts the reader's name to a claim
+ * they did not assemble.
+ *
+ * ── WHICH ONE IS "THE IMPORTANT ONE" ──
+ *
+ * The address holding the most leases, and the higher appraised value where two
+ * tie. It is the row the reader is most likely to recognise as theirs and the
+ * one that carries most of what a claim is for, so it is the least surprising
+ * thing to find already ticked — and the rest are one click away, right there
+ * on the same card.
+ *
+ * Grouped by NAME because the cards are: one card per owner name, one tick in
+ * each. `others` — the addresses the endpoint volunteered rather than the
+ * reader picking them — stay untouched and unticked, as before.
+ */
+function leadAddressPerOwner(records: OwnerRecord[]): string[] {
+  const lead = new Map<string, OwnerRecord>();
+
+  for (const record of records) {
+    const held = lead.get(record.name);
+    const better =
+      !held ||
+      record.leaseCount > held.leaseCount ||
+      (record.leaseCount === held.leaseCount &&
+        record.appraisedValue > held.appraisedValue);
+
+    if (better) lead.set(record.name, record);
+  }
+
+  return [...lead.values()].map(recordKey);
+}
+
 export function ClaimWizard({ memberId }: { memberId: number | null }) {
   const [step, setStep] = useState(1);
 
@@ -493,7 +538,7 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
     try {
       const set = await fetchClaimSet(picked);
       setClaimSet({ data: set, loading: false, error: null });
-      setConfirmed(set.records.map(recordKey));
+      setConfirmed(leadAddressPerOwner(set.records));
     } catch (error) {
       setClaimSet({ data: null, loading: false, error: message(error) });
     }
