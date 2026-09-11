@@ -9,7 +9,14 @@ import {
   RotateCcw,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 
 import { PortalButton } from "../../../../_components/ui/button";
@@ -34,6 +41,29 @@ import { SampleCursor } from "./sample-cursor";
 
 /** Every callback the real steps take, wired to nothing. */
 const noop = () => {};
+
+/**
+ * "AM I BEING RENDERED INSIDE THE WALKTHROUGH?"
+ *
+ * ── THE BUG THIS FIXES ──
+ *
+ * The trigger moved into step 1's heading, and the walkthrough mounts the REAL
+ * `StepFind` — so the sample's own first screen drew a second "Watch a sample
+ * claim" button. Inert, so it did nothing when pressed, which is worse than
+ * useless: a control on screen that cannot be used is one the viewer spends
+ * attention on and then distrusts.
+ *
+ * ── A CONTEXT, NOT A PROP ──
+ *
+ * A `showSample` prop would have to be threaded from the dialog, through
+ * `StepFind`, into `StepIntro`, and every future step that wants its own sample
+ * trigger would have to remember to add one. The stage sets this once and
+ * anything inside it disappears on its own.
+ *
+ * It is `false` everywhere else, which is the page, so the real button is
+ * unaffected.
+ */
+const InsideSample = createContext(false);
 
 const LAST = SAMPLE_ACTS.length - 1;
 
@@ -92,6 +122,11 @@ const HOME = { x: 60, y: 40 };
  * a card.
  */
 export function SampleFlowButton() {
+  /* Inside the walkthrough this renders nothing — see `InsideSample`. The hook
+     runs before any other, because a component that returns null must still
+     call its hooks in the same order as one that does not. */
+  const insideSample = useContext(InsideSample);
+
   const dialog = useRef<HTMLDialogElement>(null);
   const stage = useRef<HTMLDivElement>(null);
 
@@ -427,6 +462,11 @@ export function SampleFlowButton() {
 
   const screenOf = (i: number) => SAMPLE_ACTS[i].screen;
 
+  /* AFTER every hook, never before one. An early return above them would
+     change the hook count between the page's copy and the stage's, which React
+     rejects outright. */
+  if (insideSample) return null;
+
   return (
     <>
       {/* MINT, NOT THE GREY OUTLINE (requested).
@@ -644,89 +684,93 @@ export function SampleFlowButton() {
                 inert
                 className={`mv-sample-stage pointer-events-none ${portalClass}`}
               >
-                <ClaimShell current={act.state.step} scrollOnChange={false}>
-                  {act.state.step === 1 && (
-                    <StepFind
-                      query={query}
-                      onQueryChange={noop}
-                      counties={{
-                        data: SAMPLE_COUNTIES,
-                        loading: false,
-                        error: null,
-                      }}
-                      onRetryCounties={noop}
-                      onSearch={noop}
-                    />
-                  )}
+                {/* Everything below is the walkthrough, so anything in it that
+                    would offer the walkthrough removes itself. */}
+                <InsideSample.Provider value={true}>
+                  <ClaimShell current={act.state.step} scrollOnChange={false}>
+                    {act.state.step === 1 && (
+                      <StepFind
+                        query={query}
+                        onQueryChange={noop}
+                        counties={{
+                          data: SAMPLE_COUNTIES,
+                          loading: false,
+                          error: null,
+                        }}
+                        onRetryCounties={noop}
+                        onSearch={noop}
+                      />
+                    )}
 
-                  {act.state.step === 2 && (
-                    <StepPick
-                      results={{
-                        data: act.state.results,
-                        loading: act.state.loading,
-                        error: null,
-                      }}
-                      query={query}
-                      onQueryChange={noop}
-                      counties={{
-                        data: SAMPLE_COUNTIES,
-                        loading: false,
-                        error: null,
-                      }}
-                      selected={act.state.selected}
-                      onToggle={noop}
-                      onContinue={noop}
-                      resolving={false}
-                      onSearch={noop}
-                      tooShort={false}
-                      onClearSelection={noop}
-                      onReset={noop}
-                    />
-                  )}
+                    {act.state.step === 2 && (
+                      <StepPick
+                        results={{
+                          data: act.state.results,
+                          loading: act.state.loading,
+                          error: null,
+                        }}
+                        query={query}
+                        onQueryChange={noop}
+                        counties={{
+                          data: SAMPLE_COUNTIES,
+                          loading: false,
+                          error: null,
+                        }}
+                        selected={act.state.selected}
+                        onToggle={noop}
+                        onContinue={noop}
+                        resolving={false}
+                        onSearch={noop}
+                        tooShort={false}
+                        onClearSelection={noop}
+                        onReset={noop}
+                      />
+                    )}
 
-                  {act.state.step === 3 && (
-                    <StepProve
-                      claimSet={{
-                        data: SAMPLE_CLAIM_SET,
-                        loading: false,
-                        error: null,
-                      }}
-                      memberId={1}
-                      /* THE SCRIPT'S, NOT THE CONSTANT'S. It was pinned to
+                    {act.state.step === 3 && (
+                      <StepProve
+                        claimSet={{
+                          data: SAMPLE_CLAIM_SET,
+                          loading: false,
+                          error: null,
+                        }}
+                        memberId={1}
+                        /* THE SCRIPT'S, NOT THE CONSTANT'S. It was pinned to
                          `SAMPLE_CONFIRMED`, so every address arrived already
                          ticked and the pointer then mimed clicking boxes that
                          were green before it got there. */
-                      confirmed={act.state.confirmed}
-                      onToggleRecord={noop}
-                      attested={act.state.attested}
-                      onAttest={noop}
-                      onConfirm={noop}
-                      onBack={noop}
-                    />
-                  )}
+                        confirmed={act.state.confirmed}
+                        onToggleRecord={noop}
+                        attested={act.state.attested}
+                        onAttest={noop}
+                        onConfirm={noop}
+                        onBack={noop}
+                      />
+                    )}
 
-                  {act.state.step === 4 && (
-                    <StepLeases
-                      records={SAMPLE_CLAIM_SET.records}
-                      leases={SAMPLE_CLAIM_SET.all.leases}
-                      ownerCount={SAMPLE_CLAIM_SET.records.length}
-                      memberId={1}
-                      claiming={false}
-                      claimError={null}
-                      alreadyClaimed={false}
-                      onContinue={noop}
-                      onBack={noop}
-                    />
-                  )}
+                    {act.state.step === 4 && (
+                      <StepLeases
+                        records={SAMPLE_CLAIM_SET.records}
+                        leases={SAMPLE_CLAIM_SET.all.leases}
+                        ownerCount={SAMPLE_CLAIM_SET.records.length}
+                        memberId={1}
+                        claiming={false}
+                        claimError={null}
+                        alreadyClaimed={false}
+                        onContinue={noop}
+                        onBack={noop}
+                      />
+                    )}
 
-                  {act.state.step === 5 && (
-                    <StepSuccess
-                      result={SAMPLE_RESULT}
-                      records={SAMPLE_CLAIM_SET.records}
-                      onStartOver={noop}
-                    />
-                  )}
-                </ClaimShell>
+                    {act.state.step === 5 && (
+                      <StepSuccess
+                        result={SAMPLE_RESULT}
+                        records={SAMPLE_CLAIM_SET.records}
+                        onStartOver={noop}
+                      />
+                    )}
+                  </ClaimShell>
+                </InsideSample.Provider>
               </div>
 
               <SampleCursor
