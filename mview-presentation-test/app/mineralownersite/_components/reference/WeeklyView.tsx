@@ -474,7 +474,17 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
             Owner record {r.owner_record} · {minutesFor('wrPage1', 2)} min to read this cover,
             about {r.read_minutes} for all of it
           </p>
-          <p className="small" style={{ margin: '0 0 12px', maxWidth: '74ch' }}>
+          {/* FULL WIDTH, and it takes TWO overrides to get there — the same trap
+              page 2's paragraphs record. The inline `74ch` was only half of it:
+              `.wr-page .small { max-width: 84ch }` in the stylesheet is the
+              rule that was actually winning, so dropping the inline value
+              alone would have left this paragraph at 84ch instead of 74 and
+              looked like the change had not taken. `none` beats the class.
+
+              ONLY THIS PARAGRAPH. The stylesheet rule is untouched, so every
+              other `.small` and `.tiny` in every report sheet keeps the
+              reading measure it was written for. */}
+          <p className="small" style={{ margin: '0 0 12px', maxWidth: 'none' }}>
             <strong>{r.headline}</strong> This cover is written so the four answers below are
             enough. If you stop here you will not have missed anything that mattered this week —
             every page beneath it is the evidence, kept for when you want it rather than because
