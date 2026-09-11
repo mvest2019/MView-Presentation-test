@@ -346,17 +346,46 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
                 on the account (see the effect above), so the first click is the
                 send; the answer appears below the promise line, where the panel
                 used to be. Disabled only while one is in flight, so a second
-                click cannot post a second copy. */}
+                click cannot post a second copy.
+
+                BOTH CONTROLS ARE DEAD WHILE NOTHING IS CLAIMED. What they act
+                on is the reader's OWN copy of this report — one mails it to
+                the address on the account, the other saves it — and a visitor
+                looking at the sample has neither an account to mail nor a
+                report of their own to keep. Offered live they would have
+                answered with the fictional owner's issue, which is the one
+                thing the SAMPLE PREVIEW banner above promises they are not
+                getting. Shown and disabled rather than hidden, because the
+                state's whole job is to show what claiming gets you, and a
+                control that is not there shows nothing at all.
+
+                `disabled` AND NOT A CLASS. `.btn[disabled]` already dims and
+                blocks both of these (`dashboard-reference.css`), and the
+                attribute is what also takes them out of the tab order and off
+                the keyboard — `pointer-events: none` alone stops a mouse and
+                lets Enter through. That is why the download swaps from an `<a>`
+                to a `<button>` for this state instead of wearing the attribute
+                as an anchor: HTML has no disabled link, so a disabled-looking
+                one still navigates. The href is unchanged in every other
+                state, and the route behind it is untouched. */}
             <button
               className="btn btn-ghost btn-sm" type="button"
               onClick={send}
-              disabled={mail.busy}
+              disabled={mail.busy || unclaimed}
             >
               {mail.busy ? 'Sending…' : 'Email me this report'}
             </button>
-            <a className="btn btn-ghost btn-sm" href={`/api/weekly?format=html&dl=1&${qs}`}>
-              Download the report
-            </a>
+            {unclaimed
+              ? (
+                <button className="btn btn-ghost btn-sm" type="button" disabled>
+                  Download the report
+                </button>
+              )
+              : (
+                <a className="btn btn-ghost btn-sm" href={`/api/weekly?format=html&dl=1&${qs}`}>
+                  Download the report
+                </a>
+              )}
           </div>
         </div>
 
