@@ -474,16 +474,25 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
             Owner record {r.owner_record} · {minutesFor('wrPage1', 2)} min to read this cover,
             about {r.read_minutes} for all of it
           </p>
-          {/* FULL WIDTH, and it takes TWO overrides to get there — the same trap
-              page 2's paragraphs record. The inline `74ch` was only half of it:
-              `.wr-page .small { max-width: 84ch }` in the stylesheet is the
-              rule that was actually winning, so dropping the inline value
-              alone would have left this paragraph at 84ch instead of 74 and
-              looked like the change had not taken. `none` beats the class.
+          {/* FULL WIDTH — AND IT TAKES TWO OVERRIDES, WHICH IS WHY THIS NOTE
+              SITS HERE AND NOT ONLY BESIDE THE STYLESHEET RULE.
 
-              ONLY THIS PARAGRAPH. The stylesheet rule is untouched, so every
-              other `.small` and `.tiny` in every report sheet keeps the
-              reading measure it was written for. */}
+              The report held its body text to a reading measure in TWO places:
+              an inline `74ch` on each paragraph, and
+              `.wr-page .small, .wr-page .tiny { max-width: 84ch }` in the
+              stylesheet. The rule is the one that actually won, so lifting only
+              the inline value moved a paragraph from 74ch to 84ch and looked
+              like nothing had happened; lifting only the rule left every inline
+              `74ch` standing, because an inline style beats a class. Both had
+              to go, and both did: every `maxWidth` in this file now reads
+              `none`, and the rule is overridden at the foot of
+              `dashboard-reference.css`, scoped to this route.
+
+              WHAT IT COSTS, said plainly, because it is a real trade: a reading
+              measure is a typographic device and the reference chose one. On a
+              wide screen these lines now run longer than the 66-to-84
+              characters convention recommends. That is the call the owner
+              made, for the whole report rather than one paragraph. */}
           <p className="small" style={{ margin: '0 0 12px', maxWidth: 'none' }}>
             <strong>{r.headline}</strong> This cover is written so the four answers below are
             enough. If you stop here you will not have missed anything that mattered this week —
@@ -550,7 +559,7 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
             links pointed at hidden sections. */}
         <div className="card card-pad wr-noprint" id="wrSimpleEvidence">
           <div className="section-label">The evidence, one click deeper</div>
-          <p className="small" style={{ margin: '2px 0 0', maxWidth: '74ch' }}>
+          <p className="small" style={{ margin: '2px 0 0', maxWidth: 'none' }}>
             You are reading the <strong>Essentials</strong> view, which is the cover: the four
             answers and nothing you have to wade through. The five evidence pages behind them —
             what every lease posted against expected, who is drilling within a mile, what the
@@ -575,7 +584,7 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
                 <p className="wr-q">1 · {pageOf(2)!.title}</p>
                 <span className="tiny muted">{minutesFor('wrPage2', 4)} min</span>
               </div>
-              <p className="small" style={{ maxWidth: '74ch' }}>{pageOf(2)!.lead}</p>
+              <p className="small" style={{ maxWidth: 'none' }}>{pageOf(2)!.lead}</p>
 
               <div className="grid g4" style={{ margin: '12px 0' }}>
                 {pageOf(2)!.stats.slice(0, 4).map((st) => (
@@ -673,16 +682,10 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
                 )
                 : null}
 
-              {/* ADAPTED · FULL WIDTH. The reference holds these paragraphs to a
-                  reading measure TWICE — an inline `maxWidth: '74ch'` here, and
-                  `.wr-page .small { max-width: 84ch }` in the stylesheet, which
-                  is the one that was actually winning at 84ch. Dropping the
-                  inline value alone left them at 663px inside an 808px card, so
-                  this sets `none` explicitly to beat the class rule.
-
-                  ONLY THIS BLOCK. The shared rule is left alone, so every other
-                  paragraph in every report page keeps its measure — editing the
-                  stylesheet would have widened all of them. */}
+              {/* FULL WIDTH, like every other paragraph in the report now —
+                  see the note on the cover's own lead. This block was the first
+                  one widened, back when it was the only one; the inline `none`
+                  it needed then is what all of them carry now. */}
               {pageOf(2)!.paras.map((t, i) => (
                 <p className="small" key={i} style={{ maxWidth: 'none' }}>{t}</p>
               ))}
@@ -708,7 +711,7 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
                 <p className="wr-q">2 · {pageOf(3)!.title}</p>
                 <span className="tiny muted">{minutesFor('wrPage3', 5)} min</span>
               </div>
-              <p className="small" style={{ maxWidth: '74ch' }}>{pageOf(3)!.lead}</p>
+              <p className="small" style={{ maxWidth: 'none' }}>{pageOf(3)!.lead}</p>
 
               <div className="grid g4" style={{ margin: '12px 0' }}>
                 {pageOf(3)!.stats.slice(0, 4).map((st) => (
@@ -740,7 +743,7 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
               </div>
 
               {pageOf(3)!.paras.map((t, i) => (
-                <p className="small" key={i} style={{ maxWidth: '74ch' }}>{t}</p>
+                <p className="small" key={i} style={{ maxWidth: 'none' }}>{t}</p>
               ))}
 
               <div className="section-label" style={{ marginTop: 12 }}>
@@ -761,7 +764,7 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
                 <p className="wr-q">4 · {pageOf(5)!.title}</p>
                 <span className="tiny muted">{minutesFor('wrPage4', 5)} min</span>
               </div>
-              <p className="small" style={{ maxWidth: '74ch' }}>{pageOf(5)!.lead}</p>
+              <p className="small" style={{ maxWidth: 'none' }}>{pageOf(5)!.lead}</p>
 
               <div className="grid g4" style={{ margin: '12px 0' }}>
                 {r.prices.map((q) => (
@@ -825,7 +828,7 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
                 : null}
 
               {pageOf(5)!.paras.map((t, i) => (
-                <p className="small" key={i} style={{ maxWidth: '74ch' }}>{t}</p>
+                <p className="small" key={i} style={{ maxWidth: 'none' }}>{t}</p>
               ))}
               {pageOf(5)!.note ? <p className="tiny muted">{pageOf(5)!.note}</p> : null}
               <span className="wr-pageno">Page 4 of {r.page_count}</span>
@@ -978,7 +981,7 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
                 </div>
               </div>
               <h2 style={{ margin: '0 0 4px', fontSize: 22 }}>{r.monthly.title}</h2>
-              <p className="small" style={{ maxWidth: '74ch' }}>
+              <p className="small" style={{ maxWidth: 'none' }}>
                 <strong>{r.monthly.find}</strong>
               </p>
 

@@ -2427,3 +2427,31 @@ body .mv-ref-app.no-claim .app-body section[data-route="app-briefing"] .wr-page 
    and it was put back on request. Nothing in this block touches the width.
    ========================================================================== */
 .mv-ref-app section[data-route="app-briefing"] .wr-promise { margin-bottom: 20px; }
+
+/* ==========================================================================
+   THE REPORT'S BODY TEXT FILLS ITS SHEET.
+
+   `.mv-ref-app .wr-page .small, .mv-ref-app .wr-page .tiny { max-width: 84ch }`
+   further up is the reference's reading measure for every paragraph, lead,
+   note and footnote inside a report sheet. At 84ch that is about 663px in a
+   sheet whose inner width is 808, so roughly a fifth of every page was left
+   empty down the right-hand side and paragraphs ran to four short lines where
+   two would do.
+
+   OVERRIDDEN HERE RATHER THAN EDITED THERE, so the original rule and the
+   reason it exists stay legible, and so the override is scoped to this one
+   route by its selector rather than by where `.wr-page` happens to be used
+   today.
+
+   THE OTHER HALF OF THIS LIVES IN THE MARKUP. Each of these paragraphs also
+   carried an INLINE `max-width: 74ch`, which no stylesheet rule can beat, so
+   this override only finishes a job `WeeklyView.tsx` starts — see the note on
+   the cover's lead paragraph, which records both halves and what the trade
+   costs.
+
+   WHAT IS NOT TOUCHED: `.wr-page`'s own 880px, put back at the owner's word;
+   `.smp-badge p`'s 78ch, which the sample banner already lifts inline for
+   itself; and the same 84ch measure anywhere outside a report sheet.
+   ========================================================================== */
+.mv-ref-app section[data-route="app-briefing"] .wr-page .small,
+.mv-ref-app section[data-route="app-briefing"] .wr-page .tiny { max-width: none; }
