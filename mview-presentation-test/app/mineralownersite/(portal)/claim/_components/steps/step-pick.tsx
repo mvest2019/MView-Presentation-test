@@ -192,6 +192,41 @@ export function StepPick({
   /** The selection bar's "Show picked" toggle — see `onlyPicked` below. */
   const [showPicked, setShowPicked] = useState(false);
 
+  /*
+   * THE TOGGLE CANNOT OUTLIVE ITS OWN BUTTON.
+   *
+   * ── THE TRAP THIS CLOSES ──
+   *
+   * `showPicked` was a plain boolean that nothing ever cleared, and the control
+   * that flips it lives in the selection bar — which hides itself when nothing
+   * is ticked. So the state could be ON with no switch on screen:
+   *
+   *   Show picked, then untick both records. The 1,153 come back and the bar
+   *   goes, which reads as the filter releasing. It has not. Tick any record
+   *   and the list collapses to that one row, with nothing on screen to say
+   *   why. Measured: it survived "Reset filters" AND a brand-new search — the
+   *   first tick after both still cut the list to one.
+   *
+   * ── CLEARED WHERE THE SELECTION EMPTIES, WHICHEVER WAY ──
+   *
+   * Unticking the last row, `Clear`, `Reset filters`, and a filter change that
+   * drops the picks up in the wizard are four different paths to the same
+   * state, and patching them one at a time leaves the fifth. This watches the
+   * count instead, so every route out is covered by one rule.
+   *
+   * ── ADJUSTED DURING RENDER, NOT IN AN EFFECT ──
+   *
+   * React's own pattern for state that depends on props. An effect would paint
+   * the collapsed list first and correct it a frame later, and it is what
+   * `react-hooks/set-state-in-effect` exists to refuse. Guarded by the count
+   * comparison, this re-renders immediately and nothing wrong is ever shown.
+   */
+  const [countWhenChecked, setCountWhenChecked] = useState(count);
+  if (count !== countWhenChecked) {
+    setCountWhenChecked(count);
+    if (count === 0) setShowPicked(false);
+  }
+
   /** Anything set in either filter — the search fields or the narrow-down box. */
   const anyFilter = Boolean(
     query.name || query.county || query.lease || query.address || filter,
