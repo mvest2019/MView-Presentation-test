@@ -1,33 +1,44 @@
-import { gates } from "../../../_components/ui/portal-gating";
+import { PrototypeButton } from "../../../_components/ui/prototype-button";
 import { leaseOwnerRecord } from "../_lib/lease-records";
 import { portfolioSummary } from "../_lib/lease-totals";
-import { ExportActions } from "./export-actions";
 
 /**
- * THE PAGE TITLE ROW — what this page is, whose record it is, and the exports.
+ * THE PAGE TITLE, THE RECORD IT BELONGS TO, AND THE TWO EXPORTS.
  *
- * The subtitle is DERIVED from the record rather than written out, so a lease
- * added to the fixture changes "10 leases on record …" without anyone editing a
- * sentence. The prototype hard-coded the count here and in five other places,
- * which is how a page ends up saying 10 in one line and 9 in the next.
+ * THE SUBTITLE IS THE WHOLE SCOPE OF THE PAGE IN ONE LINE — how many leases,
+ * whose record, how many wells and how many reservoirs. It is derived from the
+ * records rather than written out, so it cannot drift from the table beneath it.
  *
- * The exports are `hide-s`: a reader on the plain-English tier is being shown
- * seven sentences about their leases, and a CSV export is not part of that
- * conversation.
+ * BOTH BUTTONS ACKNOWLEDGE RATHER THAN PRETEND. Neither export is wired to a
+ * generator yet, and a button that silently does nothing teaches a reader the
+ * product is broken. `PrototypeButton` is the portal's own idiom for that — see
+ * its note.
  */
 export function LeasesHeader() {
   return (
-    <div className="mb-2.5 flex flex-wrap items-start justify-between gap-3">
+    <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h2 className="text-2xl font-bold">My Leases</h2>
-        <p className="text-[13px] text-mv-muted">
+        <h1 className="text-[26px] leading-tight font-bold">My Leases</h1>
+        <p className="mt-0.5 text-[12.5px] text-mv-muted">
           {portfolioSummary.leaseCount} leases on record {leaseOwnerRecord.name}{" "}
-          ({leaseOwnerRecord.id}) · all {portfolioSummary.leaseCount} visible on
-          Premium
+          · {portfolioSummary.wells} wells · {portfolioSummary.reservoirs}{" "}
+          reservoirs
         </p>
       </div>
-      <div className={gates("hideInEssentials")}>
-        <ExportActions />
+
+      <div className="flex flex-wrap gap-2">
+        <PrototypeButton
+          title="Exports every figure on this page as JSON. Not connected yet."
+          acknowledgement="Exported ✓ (prototype)"
+        >
+          Portfolio JSON
+        </PrototypeButton>
+        <PrototypeButton
+          title="Produces a printable portfolio report. Not connected yet."
+          acknowledgement="Prepared ✓ (prototype)"
+        >
+          Print / PDF
+        </PrototypeButton>
       </div>
     </div>
   );

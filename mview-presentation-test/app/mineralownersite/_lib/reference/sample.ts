@@ -977,7 +977,17 @@ export function sampleize(input: Payload): SampleResult {
     weekly: {
       ...real.weekly,
       owner_name: SAMPLE_OWNER,
-      owner_first: 'there',
+      /* THE SAMPLE OWNER'S FIRST NAME, not the anonymous greeting.
+         This was `'there'`, which is the right word in the Dashboard's
+         greeting slot — "Good morning, there" — and the wrong one in the only
+         slot the weekly report puts it in: its cover opens
+         "{owner_first}, here’s your week.", so the sample cover read
+         "there, here’s your week." The rest of the block already names this
+         record `Michael Anderson`, twice, one line above and one line below,
+         so the first name is the one field that was disagreeing with its own
+         owner. `SAMPLE_FIRST_NAME` is the same constant `owner.first_name`
+         takes, which is what keeps the two surfaces telling one story. */
+      owner_first: SAMPLE_FIRST_NAME,
       owner_record: `${SAMPLE_OWNER} (sample record) · roll year ${real.owner.roll_year}`,
       headline: prose(real.weekly.headline),
       bottom_line: prose(real.weekly.bottom_line),

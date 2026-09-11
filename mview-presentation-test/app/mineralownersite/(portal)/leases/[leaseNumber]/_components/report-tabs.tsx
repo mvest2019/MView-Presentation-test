@@ -1,100 +1,72 @@
 import Link from "next/link";
 
 import { leaseReportPath } from "../../_lib/lease-routes";
-import type { ReportTab } from "../_lib/lease-report-types";
 
 /**
- * THE THREE TIED REPORTS — Lease · Reservoir · Wells.
+ * THE THREE REPORTS ON ONE LEASE.
  *
- * ── LINKS, NOT LOCAL STATE, BECAUSE THE URL HAS TO MOVE ──
+ * ── WHY THEY ARE SEPARATE REPORTS AND NOT SECTIONS ──
  *
- * The prototype switched these by toggling `style.display` on three divs. That
- * makes the reservoir report unreachable by URL: it cannot be linked to, shared,
- * bookmarked, reached by the back button, or deep-linked from an alert — and an
- * alert about a well-level change has nowhere to point.
+ * A lease, the reservoir it produces from, and its wells are three different
+ * subjects at three different scales, and the facts that belong to each are the
+ * ones readers most often look for in the wrong place: the API number, the
+ * field, the play and the depth describe a WELL, and a lease can have many. The
+ * line above the tabs says so in one sentence, because the alternative is a
+ * reader concluding the data is missing.
  *
- * Here each tab is `?report=reservoir` on this lease's own path, so every one of
- * those works for free, the breadcrumb's last segment follows the tab, and only
- * the open panel is rendered on the server. `scroll={false}` keeps the reader
- * where they were: switching from Lease to Wells should not throw them to the
- * top of the page.
+ * ── LINKS, NOT BUTTONS ──
  *
- * ── ROLE="TAB" ON A LINK ──
- *
- * The house precedent is `_components/view-tier-switch.tsx`, which does the same
- * thing for the density tiers: the control reads as a tablist, so it is marked
- * as one, with `aria-selected` tracking the choice rather than leaving a screen
- * reader to infer it from a background colour. The panel below carries the
- * matching `role="tabpanel"`.
- *
- * ── THE SUB-LABELS ARE NOT DECORATION ──
- *
- * "Blanco Creek (Wilcox Massive E)" under Reservoir report and "1 well · 5L
- * producing" under Wells report tell the reader what is behind the tab before
- * they spend a click on it. On a lease with eleven wells that second line is the
- * difference between a tab and a guess.
+ * `?report=` is in the URL, so each report is addressable, shareable and back-
+ * buttonable, and the page resolves it on the server. The prototype's version
+ * toggled `display` on three divs, which meant a reader could not send anyone
+ * the reservoir report.
  */
-export function ReportTabs({
-  leaseNumber,
-  active,
-  reservoirName,
-  wellsSummary,
-}: {
-  leaseNumber: string;
-  active: ReportTab;
-  reservoirName: string;
-  wellsSummary: string;
-}) {
-  const tabs: { key: ReportTab; label: string; sub: string }[] = [
-    { key: "lease", label: "Lease report", sub: "value · cash flow · activity" },
-    { key: "reservoir", label: "Reservoir report", sub: reservoirName },
-    { key: "wells", label: "Wells report", sub: wellsSummary },
-  ];
 
+export type LeaseReportTab = "lease" | "reservoir" | "wells";
+
+const TABS: { value: LeaseReportTab; label: string }[] = [
+  { value: "lease", label: "Lease report" },
+  { value: "reservoir", label: "Reservoir report" },
+  { value: "wells", label: "Well report" },
+];
+
+export function ReportTabs({
+  slug,
+  active,
+}: {
+  slug: string;
+  active: LeaseReportTab;
+}) {
   return (
     <>
-      <p className="mb-1.5 text-[11px] text-mv-muted">
-        One lease → one reservoir → its wells. Three reports on the same lease —
+      <p className="mt-4 text-[12.5px] text-mv-slate">
+        One lease → one reservoir → its well. Three reports on the same lease —
         move between them here.
       </p>
 
-      <div
-        role="tablist"
-        aria-label="Report sections"
-        className="mb-3.5 grid gap-1.5 rounded-mv border border-mv-line bg-mv-card p-1.5 shadow-mv sm:grid-cols-3"
-      >
-        {tabs.map((tab) => {
-          const selected = tab.key === active;
+      <nav aria-label="Reports on this lease" className="mt-2 grid gap-3 sm:grid-cols-3">
+        {TABS.map((tab) => {
+          const selected = tab.value === active;
           return (
             <Link
-              key={tab.key}
-              role="tab"
-              aria-selected={selected}
-              aria-controls="lease-report-panel"
-              scroll={false}
+              key={tab.value}
               href={
-                tab.key === "lease"
-                  ? leaseReportPath(leaseNumber)
-                  : `${leaseReportPath(leaseNumber)}?report=${tab.key}`
+                tab.value === "lease"
+                  ? leaseReportPath(slug)
+                  : `${leaseReportPath(slug)}?report=${tab.value}`
               }
-              className={`block rounded-[9px] px-4 py-2.5 text-center no-underline transition-colors ${
+              aria-current={selected ? "page" : undefined}
+              className={`rounded-mv border px-4 py-[14px] text-center text-[15px] font-bold no-underline shadow-mv transition-colors ${
                 selected
-                  ? "bg-mv-green-deep text-white"
-                  : "text-mv-slate hover:bg-mv-bg"
+                  ? "border-mv-green-deep bg-mv-green-deep text-white"
+                  : "border-mv-line bg-mv-card text-mv-ink hover:bg-mv-bg"
               }`}
             >
-              <span className="block text-[14.5px] font-bold">{tab.label}</span>
-              <span
-                className={`mt-0.5 block text-[10.5px] ${
-                  selected ? "text-white/80" : "text-mv-muted"
-                }`}
-              >
-                {tab.sub}
-              </span>
+              {tab.label}
             </Link>
           );
         })}
-      </div>
+      </nav>
     </>
   );
 }

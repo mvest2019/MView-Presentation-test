@@ -1,34 +1,40 @@
 "use client";
 
-import { SearchField, SelectField } from "../../../../_components/ui/form-controls";
+import {
+  SearchField,
+  SelectField,
+} from "../../../../_components/ui/form-controls";
 import { SegmentedControl } from "../../../../_components/ui/segmented-control";
 import {
+  leasePageSizes,
   leaseSortOptions,
   type LeaseSortKey,
 } from "../../_lib/lease-sorting";
 
-/**
- * SORT · SEARCH · LIST-OR-GRID — the three controls above the lease list.
- *
- * FULLY CONTROLLED, AND IT OWNS NO STATE. Every value comes down as a prop and
- * every change goes up as a callback, so `LeaseListPanel` holds one piece of
- * state for the whole panel and this component is a pure function of it. That is
- * what lets the result count be honest: it is `shown` and `total` computed from
- * the same list the table renders, not a number this component tallies itself.
- *
- * THE COUNT LINE IS AN `aria-live` REGION, which the prototype's was not. Typing
- * in the search box changes the table below silently for a screen-reader user —
- * they have no way to know whether "bee" matched four leases or none without
- * navigating into the table and counting. `polite` announces "Showing 4 of 10
- * leases" after they stop typing, which is the same information the sighted
- * reader gets from the line being there.
- */
-
+/** Which layout the list is drawn in. */
 export type LeaseView = "list" | "grid";
 
+/**
+ * SORT, PAGE SIZE, SEARCH AND LAYOUT — the four controls above the list.
+ *
+ * IT OWNS NO STATE. Every value is passed in and every change is handed back up
+ * to `LeaseListPanel`, because the table, the grid and the totals row all read
+ * the same selection — a toolbar holding its own state would be the second place
+ * that selection lives.
+ *
+ * TWO ROWS, AND THE SPLIT IS BY WHAT THEY DO. The top row changes the ORDER and
+ * the SHAPE of the list; the bottom row changes WHICH LEASES are in it, and the
+ * count beside the box is the answer to what was typed. Putting the search on
+ * its own line is also what keeps it wide enough to read a lease name back.
+ *
+ * THE COUNT IS `aria-live` so a screen-reader user who types into the box is
+ * told how many leases are left, which is the only feedback a filter gives.
+ */
 export function LeaseToolbar({
   sort,
   onSortChange,
+  pageSize,
+  onPageSizeChange,
   query,
   onQueryChange,
   view,
@@ -38,6 +44,8 @@ export function LeaseToolbar({
 }: {
   sort: LeaseSortKey;
   onSortChange: (next: LeaseSortKey) => void;
+  pageSize: number;
+  onPageSizeChange: (next: number) => void;
   query: string;
   onQueryChange: (next: string) => void;
   view: LeaseView;
@@ -45,15 +53,15 @@ export function LeaseToolbar({
   shown: number;
   total: number;
 }) {
+  const searching = query.trim().length > 0;
+
   return (
-    <div className="mb-2.5 flex flex-col gap-2.5">
-      <div className="flex flex-wrap items-center gap-2.5">
+    <div className="mb-3 flex flex-col gap-2.5">
+      <div className="flex flex-wrap items-center gap-3">
         <SelectField
           label="Sort:"
           value={sort}
-          onChange={(event) =>
-            onSortChange(event.target.value as LeaseSortKey)
-          }
+          onChange={(event) => onSortChange(event.target.value as LeaseSortKey)}
         >
           {leaseSortOptions.map((option) => (
             <option key={option.value} value={option.value}>
@@ -62,8 +70,21 @@ export function LeaseToolbar({
           ))}
         </SelectField>
 
+        <SelectField
+          label="Show:"
+          value={pageSize}
+          onChange={(event) => onPageSizeChange(Number(event.target.value))}
+        >
+          {leasePageSizes.map((size) => (
+            <option key={size} value={size}>
+              {size} per page
+            </option>
+          ))}
+        </SelectField>
+
         <SegmentedControl
           label="Lease layout"
+          tone="green"
           className="ml-auto"
           value={view}
           onChange={onViewChange}
@@ -74,26 +95,18 @@ export function LeaseToolbar({
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2.5">
+      <div className="flex flex-wrap items-center gap-3">
         <SearchField
           label="Search your leases"
-          placeholder="Search your leases — name, number, county, or operator…"
+          placeholder="Search — lease, number, county, operator or reservoir…"
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
         />
         <span
           aria-live="polite"
-          className="text-[10px] tabular-nums text-mv-muted"
+          className="text-[12px] tabular-nums text-mv-muted"
         >
-          {query.trim()
-            ? `Showing ${shown} of ${total} leases`
-            : `Showing all ${total} leases`}
-        </span>
-        <span
-          className="text-[10px] text-mv-muted"
-          title="Pages appear automatically once a record holds more than 25 leases"
-        >
-          · pagination joins at 25+ leases
+          {searching ? `${shown} of ${total} leases` : `${total} leases`}
         </span>
       </div>
     </div>

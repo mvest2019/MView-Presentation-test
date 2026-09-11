@@ -11,10 +11,15 @@ import {
 import { useSearchParams } from "next/navigation";
 
 import {
+  readViewTier,
+  readViewTierOnServer,
+  subscribeViewTier,
+  writeViewTier,
+} from "../_lib/view-tier-store";
+import {
   DEFAULT_FUNNEL_STATE,
   DEFAULT_VIEW_TIER,
   FUNNEL_STATE_CLASS,
-  STORAGE_KEYS,
   normaliseStateParam,
   stateAccess,
   toFunnelState,
@@ -66,55 +71,6 @@ interface PortalStateValue {
 
 const PortalStateContext = createContext<PortalStateValue | null>(null);
 
-/* ----------------------------------------------------------------------------
-   THE SAVED DENSITY, as an external store.
-
-   `localStorage` IS an external system, so `useSyncExternalStore` is the tool
-   React provides for reading one — rather than an effect that reads it and
-   calls `setState`, which cascades a second render and is what
-   `react-hooks/set-state-in-effect` objects to.
-
-   It buys a real behaviour on top of that: subscribing to `storage` events
-   means changing density in one tab updates every other open tab, which the
-   effect version could not do.
-
-   Both callbacks are module-level so their identity is stable across renders —
-   a `subscribe` that changed each render would resubscribe on every one.
-   ---------------------------------------------------------------------------- */
-
-function subscribeToStoredTier(onChange: () => void): () => void {
-  // `storage` fires in OTHER tabs, which is exactly the cross-tab case.
-  window.addEventListener("storage", onChange);
-  return () => window.removeEventListener("storage", onChange);
-}
-
-/**
- * Returns the raw stored string — a primitive, so React's `===` comparison is
- * stable and cannot loop. Any read can throw (private mode, blocked site data,
- * a browser that errors on access), and `null` is the right answer when it does.
- */
-function readStoredTier(): string | null {
-  try {
-    return window.localStorage.getItem(STORAGE_KEYS.viewTier);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * On the server there is no storage to read, so the default is the honest
- * answer — and it is the same default the reference pre-paints "so first paint
- * never flashes Detailed".
- */
-function readStoredTierOnServer(): string | null {
-  return null;
-}
-
-/**
- * For the top bar's controls, which need to know what is selected to draw their
- * own `.on` state and `aria-selected`. Everything else should be reading the
- * CSS gate instead of asking this hook.
- */
 export function usePortalState(): PortalStateValue {
   const value = useContext(PortalStateContext);
   if (!value) {
@@ -138,9 +94,9 @@ export function PortalStateProvider({ children }: { children: ReactNode }) {
   // `null` until the first client read — which on the server, and on the very
   // first paint, means the default. See the note on the store above.
   const storedTier = useSyncExternalStore(
-    subscribeToStoredTier,
-    readStoredTier,
-    readStoredTierOnServer,
+    subscribeViewTier,
+    readViewTier,
+    readViewTierOnServer,
   );
 
   // A density arriving by deep link becomes the saved choice, so following a
@@ -149,19 +105,33 @@ export function PortalStateProvider({ children }: { children: ReactNode }) {
   // sets no React state, so it cascades nothing.
   useEffect(() => {
     if (!viewParam) return;
-    try {
-      window.localStorage.setItem(STORAGE_KEYS.viewTier, toViewTier(viewParam));
-    } catch {
-      // Nothing to do: the URL is already carrying the choice for this visit.
-    }
+    /* THROUGH THE STORE, NOT `localStorage` DIRECTLY — the write has to notify
+       this tab or the deep link would be saved and not shown. See
+       `view-tier-store.ts`. */
+    writeViewTier(toViewTier(viewParam));
   }, [viewParam]);
 
-  // Clause 5: a deep link beats the saved choice; the saved choice beats the
-  // default. `toViewTier` narrows a stored string that is missing or stale.
-  const viewTier = viewParam
-    ? toViewTier(viewParam)
-    : storedTier
-      ? toViewTier(storedTier)
+  /*
+   * THE SAVED CHOICE IS READ FIRST, AND THE DEEP LINK STILL WINS. That reads
+   * backwards, so: `?view=` is applied by the effect above, which SAVES it —
+   * so by the time this line runs for a deep link the store already holds the
+   * linked tier. Clause 5 is honoured through the store rather than around it.
+   *
+   * WHY IT MATTERS THAT THE PARAM IS NOT READ DIRECTLY HERE. The density switch
+   * no longer navigates (see `view-tier-switch.tsx`), so a `?view=pro` left in
+   * the address bar by an older link would otherwise out-rank every subsequent
+   * click and pin the reader to one density with a control that appeared to do
+   * nothing. The param seeds the store once; after that the store is the
+   * answer.
+   *
+   * The param is still consulted on the FIRST render, before the effect has
+   * run, so a cold deep link paints at the linked density rather than flashing
+   * the stored one.
+   */
+  const viewTier = storedTier
+    ? toViewTier(storedTier)
+    : viewParam
+      ? toViewTier(viewParam)
       : DEFAULT_VIEW_TIER;
 
   return (

@@ -6,7 +6,7 @@ import { getSessionUser } from '@/lib/session';
 
 import {
   fetchDashboard, fetchDrawers, fetchForecast, fetchForecastDrawers, fetchWeekly,
-  memberApiBase, searchRoll,
+  fetchWeeklyHistory, memberApiBase, searchRoll,
 } from './member-api';
 import { leaseAndWellDrawers } from './member-drawers';
 
@@ -324,11 +324,47 @@ async function buildMemberPayload(base: string, member: string): Promise<Payload
      the capture and saying nothing — the rule `getOwnerPayload` sets out
      above. `Portal` retries once on mount and then shows the API's own
      message. */
-  const [dash, weekly, forecast] = await Promise.all([
+  /* THE ARCHIVE COMES FROM THE ENDPOINT THAT OWNS IT, and it rides this round
+     rather than a lazy read for the same reason `/production/forecast` does:
+     `Portal` holds ONE payload across the five routes in `OWNED` and moves
+     between them with `history.pushState`, so a reader who enters at the
+     Dashboard and clicks Weekly Report issues no new request. It is a 2 KB
+     read beside a 648 KB one and costs nothing in wall-clock.
+
+     IT IS THE ONE READ HERE THAT DOES NOT THROW. The other three ARE the page
+     — without them there is no report to draw, and failing loudly is right.
+     The archive is one section at the foot of it, and `/weekly` already
+     carries an `archive` of its own, so a history endpoint that is down has a
+     correct answer available: use what `/weekly` sent. Throwing instead would
+     take the whole report down over its last section. */
+  const [dash, weekly, forecast, history] = await Promise.all([
     fetchDashboard(base, member),
     fetchWeekly(base, member),
     fetchForecast(base, member),
+    fetchWeeklyHistory(base, member).catch((e: unknown) => {
+      console.warn('[mineralview-api] /weekly/history could not be read, keeping '
+        + "/weekly's own archive:", e instanceof Error ? e.message : e);
+      return null;
+    }),
   ]);
+
+  /* THE CURRENT ISSUE IS DROPPED, and that is the whole of the mapping.
+     `/weekly/history` returns the issue this report IS alongside the ones
+     before it (`current: true`, measured: seven rows where `/weekly.archive`
+     sends six), and the archive's own heading counts "N issues before this
+     one" — which stops being true the moment this one is in the list. Every
+     other field the section draws is already named the same on both sides, so
+     nothing else is translated. */
+  const archive = history
+    ? history.issues
+      .filter((it) => !it.current)
+      .map((it) => ({
+        week_ending_iso: it.week_ending_iso,
+        week_ending_label: it.week_ending_label,
+        line: it.line,
+        quiet: it.quiet,
+      }))
+    : weekly.archive;
 
   /* THE THREE FAMILIES OF EXPLAINER, and only one of them is fetched.
      `drawer_keys` advertises 205 keys; the endpoint serves the eleven flat ones
@@ -378,7 +414,7 @@ async function buildMemberPayload(base: string, member: string): Promise<Payload
     ...dash,
     owner: { ...dash.owner, ...OWNER_GAPS },
     alerts: { ...dash.alerts, ledger: dash.alerts.ledger ?? EMPTY_LEDGER },
-    weekly,
+    weekly: { ...weekly, archive },
     nearby: NO_NEARBY,
     activities: {
       ...dash.activities,

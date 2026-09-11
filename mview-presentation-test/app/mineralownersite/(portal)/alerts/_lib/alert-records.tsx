@@ -1,4 +1,4 @@
-import { leaseReportPath } from "../../leases/_lib/lease-routes";
+import { leaseReportPath } from "../../../_lib/portal-routes";
 import { alertExplainers } from "./alert-explainers";
 import type { AlertRecord } from "./alert-types";
 

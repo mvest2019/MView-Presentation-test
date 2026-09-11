@@ -99,3 +99,26 @@ export function isBuiltRoute(href: string): boolean {
  */
 export const UNBUILT_TITLE =
   "This part of your portal is not open yet — it arrives with its own module.";
+
+/**
+ * WHERE A LEASE REPORT LIVES.
+ *
+ * MOVED HERE FROM `leases/_lib/lease-routes.ts` when the My Leases module's
+ * components and lib were deleted. It survived that deletion because it is not
+ * lease UI — it is a portal path, and this file is where portal paths live.
+ *
+ * ITS ONLY REMAINING CALLERS ARE IN ALERTS: three cross-links that open the
+ * report for lease 305892. Every other call site (the table row, the row's Open
+ * button, the grid card, the plain-English list, both explainers, the annual
+ * table) went with the components that held them. One function rather than three
+ * hand-built template strings, for the reason the original gave: the shape of
+ * this path should have exactly one definition.
+ *
+ * THE `tab` PARAMETER IS GONE. It carried `?report=reservoir` and
+ * `?report=wells` to the report's two other panels; the parked page reads no
+ * query string, so a tab argument would have been a parameter that changed
+ * nothing. It comes back with those panels.
+ */
+export function leaseReportPath(leaseNumber: string): string {
+  return `/mineralownersite/leases/${leaseNumber}`;
+}

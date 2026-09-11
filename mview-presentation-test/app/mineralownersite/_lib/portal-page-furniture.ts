@@ -212,7 +212,18 @@ export const ROUTE_ACTIONS: Record<string, readonly string[]> = {
   "/mineralownersite": ["watch", "audit", "briefing", "invite"],
   "/mineralownersite/activities": ["watch", "map", "ask"],
   "/mineralownersite/briefing": ["audit", "watch", "map"],
-  "/mineralownersite/leases": ["audit", "watch", "map", "upgrade"],
+  /* MY LEASES HAS NO FOOTER, and that is the absence doing the work.
+     `PortalActionFooter` returns null for a route with no entry here, so
+     leaving the row out is the whole removal — the shell is untouched and
+     every other route keeps its own set.
+
+     WHY THIS PAGE AND NOT THE OTHERS. It already ends in two cards that answer
+     "now what?": the note saying every lease opens its three reports, and the
+     provenance table saying where each figure came from. Four more buttons
+     under those made the page end in a third ask, and the loudest of them
+     ("Upgrade my plan") contradicted the footer's own reassurance that no
+     action is needed. The list itself is the call to action — every row opens
+     a report. */
   "/mineralownersite/alerts": ["audit", "watch", "map"],
   "/mineralownersite/map": ["watch", "audit", "briefing"],
   "/mineralownersite/audit": ["ask", "watch"],
