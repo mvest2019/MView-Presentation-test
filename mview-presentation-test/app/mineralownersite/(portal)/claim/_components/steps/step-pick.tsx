@@ -9,15 +9,15 @@ import {
   type SegmentedOption,
 } from "../../../../_components/ui/segmented-control";
 import { recordKey } from "../../_lib/claim-format";
-import {
-  MAX_CLAIM_OWNERS as MAX_CLAIM,
-  type CountyIndex,
-  type OwnerRecord,
-} from "../../_lib/claim-types";
+import type { CountyIndex, OwnerRecord } from "../../_lib/claim-types";
 import type { Async } from "../claim-wizard";
 import { FlowEmpty, FlowError, FlowLoading } from "../flow-state";
 import { GuideNote } from "../guide-note";
-import { ClaimSearchFields, type ClaimQuery } from "../search-fields";
+import {
+  ClaimSearchFields,
+  isSearchable,
+  type ClaimQuery,
+} from "../search-fields";
 import { StepIntro } from "../step-intro";
 import { CandidateCard } from "./candidate-card";
 
@@ -117,8 +117,19 @@ export function StepPick({
   const firstLoad = results.loading && records.length === 0;
   const refreshing = results.loading && records.length > 0;
 
-  /** `postClaim` throws above this, so the bar refuses to go on. */
-  const overLimit = count > MAX_CLAIM;
+  /*
+   * NOTHING HERE CAPS THE SELECTION (requested).
+   *
+   * There was a ceiling of 25, enforced twice: this step refused a 26th tick
+   * and `postClaim` threw above 25. Both were wrong about what 25 means — it is
+   * what ONE request accepts, not how many records a person may own — and the
+   * step's copy was wrong twice over, because it counted ticked ROWS while the
+   * endpoint counts owner NAMES. Ticking 26 rows that spell 24 people was
+   * refused outright.
+   *
+   * `postClaim` files in batches of 25 now, so tick every row the roll spells
+   * you. Nothing on this screen counts, compares or refuses.
+   */
 
   /*
    * CHANGING A FILTER BRINGS THE LIST BACK INTO VIEW (requested).
@@ -185,6 +196,44 @@ export function StepPick({
   const [scope, setScope] = useState<FilterScope>("all");
   const needle = filter.trim().toLowerCase();
 
+  /** The selection bar's "Show picked" toggle — see `onlyPicked` below. */
+  const [showPicked, setShowPicked] = useState(false);
+
+  /*
+   * THE TOGGLE CANNOT OUTLIVE ITS OWN BUTTON.
+   *
+   * ── THE TRAP THIS CLOSES ──
+   *
+   * `showPicked` was a plain boolean that nothing ever cleared, and the control
+   * that flips it lives in the selection bar — which hides itself when nothing
+   * is ticked. So the state could be ON with no switch on screen:
+   *
+   *   Show picked, then untick both records. The 1,153 come back and the bar
+   *   goes, which reads as the filter releasing. It has not. Tick any record
+   *   and the list collapses to that one row, with nothing on screen to say
+   *   why. Measured: it survived "Reset filters" AND a brand-new search — the
+   *   first tick after both still cut the list to one.
+   *
+   * ── CLEARED WHERE THE SELECTION EMPTIES, WHICHEVER WAY ──
+   *
+   * Unticking the last row, `Clear`, `Reset filters`, and a filter change that
+   * drops the picks up in the wizard are four different paths to the same
+   * state, and patching them one at a time leaves the fifth. This watches the
+   * count instead, so every route out is covered by one rule.
+   *
+   * ── ADJUSTED DURING RENDER, NOT IN AN EFFECT ──
+   *
+   * React's own pattern for state that depends on props. An effect would paint
+   * the collapsed list first and correct it a frame later, and it is what
+   * `react-hooks/set-state-in-effect` exists to refuse. Guarded by the count
+   * comparison, this re-renders immediately and nothing wrong is ever shown.
+   */
+  const [countWhenChecked, setCountWhenChecked] = useState(count);
+  if (count !== countWhenChecked) {
+    setCountWhenChecked(count);
+    if (count === 0) setShowPicked(false);
+  }
+
   /** Anything set in either filter — the search fields or the narrow-down box. */
   const anyFilter = Boolean(
     query.name || query.county || query.lease || query.address || filter,
@@ -198,26 +247,64 @@ export function StepPick({
      three in the "all" case is load-bearing: joined without it, a needle could
      match across the seam of two fields and hide a row for a reason that is in
      neither of them. */
-  const shown = needle
-    ? numbered.filter(({ record: r }) => {
-        const hay =
-          scope === "name"
-            ? r.name
-            : scope === "address"
-              ? r.address
-              : scope === "county"
-                ? r.county
-                : `${r.name} ${r.address} ${r.county}`;
-        return hay.toLowerCase().includes(needle);
-      })
-    : numbered;
+  /*
+   * "SHOW THE ONES I PICKED" — the answer to a count you cannot find.
+   *
+   * ── THE COMPLAINT THIS FIXES ──
+   *
+   * Filter to Anderson, tick a record, clear the county: the bar still reads "1
+   * selected" and nothing on screen appears ticked. It LOOKS like a stale count
+   * left over from a search that no longer exists. It is not — measured, the
+   * record is row 387 of the 1,153, still there and still ticked. It is simply
+   * a thousand rows below the fold, and the reader has no way to reach it or
+   * confirm what the number refers to.
+   *
+   * Dropping the tick would be wrong: the record IS in this answer, and the
+   * reader ticked it on purpose. What was missing is a way to see it. This
+   * narrows the list to the picks, so the count is always one click from the
+   * rows it counts.
+   *
+   * `count > 0` guards it: with nothing ticked the bar is gone, and a toggle
+   * left on would hide every row with no control left to turn it off.
+   */
+  const onlyPicked = showPicked && count > 0;
 
-  /* Ticks are kept on rows the filter is hiding — losing a selection because a
-     row scrolled out of view would be the worst thing this control could do —
-     so when that happens the count says so. */
+  /** Either filter is cutting the list, so the heading must say "N of M". */
+  const narrowed = onlyPicked || needle !== "";
+
+  const shown = numbered.filter(({ record: r }) => {
+    if (onlyPicked && !selected.includes(recordKey(r))) return false;
+    if (!needle) return true;
+    /* ONE FIELD OR ALL THREE, whichever the scope says. The space between the
+       three in the "all" case is load-bearing: joined without it, a needle
+       could match across the seam of two fields and hide a row for a reason
+       that is in neither of them. */
+    const hay =
+      scope === "name"
+        ? r.name
+        : scope === "address"
+          ? r.address
+          : scope === "county"
+            ? r.county
+            : `${r.name} ${r.address} ${r.county}`;
+    return hay.toLowerCase().includes(needle);
+  });
+
+  /*
+   * TICKS HIDDEN BY THE NARROW-DOWN BOX ARE KEPT, AND COUNTED.
+   *
+   * The record is still in this answer; a term typed into the box is only
+   * hiding its row. Losing a selection because a row scrolled out of view would
+   * be the worst thing that control could do, so the tick stays and the line
+   * under the box says how many are out of sight.
+   *
+   * A tick that the API's LATEST answer no longer contains is a different case
+   * and is not handled here — the wizard drops it as the new results land, so
+   * `selected` only ever holds keys this screen can actually draw.
+   */
   const visible = new Set(shown.map(({ record }) => recordKey(record)));
   const hiddenPicks = needle
-    ? selected.filter((k) => !visible.has(k)).length
+    ? selected.filter((key) => !visible.has(key)).length
     : 0;
 
   return (
@@ -240,7 +327,16 @@ export function StepPick({
       >
         <ClaimSearchFields
           query={query}
-          onChange={onQueryChange}
+          /* EMPTYING THE LAST SEARCH FIELD ALSO EMPTIES THIS BOX.
+             The wizard drops the results at the same moment, and a narrow-down
+             term left behind would be invisible — the box only renders when
+             there are rows — and then silently filter the NEXT search's answer
+             from a field the reader last saw two searches ago. Reset already
+             clears both; the ✕ path now agrees with it. */
+          onChange={(next) => {
+            onQueryChange(next);
+            if (!isSearchable(next)) setFilter("");
+          }}
           counties={counties}
           compact
         />
@@ -294,17 +390,35 @@ export function StepPick({
              a list of 1,153, which reads as a page that has lost track of what
              it is showing. The count is suppressed only when there is nothing
              to count. */
+          /* AND IT COUNTS WHAT IS ON SCREEN, NOT WHAT THE API RETURNED.
+             With "Show picked" on, the heading read "1153 candidate owner
+             records" over two rows, the line beneath it still said "tick every
+             record that is you", and the only thing reconciling the two was an
+             11px grey footnote. The heading is the largest text on the step:
+             a reader who glances at it and sees two rows concludes the list
+             failed to load, not that they turned a filter on.
+
+             `toLocaleString` on both halves, because the narrow-down box beside
+             it already prints "1,153" — the same number in two spellings on one
+             screen reads as two different numbers. */
           title={
             results.loading
               ? "Searching the public record…"
               : results.error || records.length === 0
                 ? "Pick your record"
-                : `${records.length} candidate owner record${records.length === 1 ? "" : "s"}`
+                : narrowed
+                  ? `${shown.length.toLocaleString("en-US")} of ${records.length.toLocaleString("en-US")} owner record${records.length === 1 ? "" : "s"}`
+                  : `${records.length.toLocaleString("en-US")} candidate owner record${records.length === 1 ? "" : "s"}`
           }
+          /* The instruction has to match the view too. "Tick every record that
+             is you" is advice for browsing a thousand candidates; over the two
+             you have already ticked, the thing to do is check them. */
           lead={
-            records.length > 0 && !refreshing
-              ? "Tick every record that is you — you can take more than one."
-              : undefined
+            records.length === 0 || refreshing
+              ? undefined
+              : onlyPicked
+                ? "Showing only the records you ticked."
+                : "Tick every record that is you — you can take more than one."
           }
         />
 
@@ -402,17 +516,41 @@ export function StepPick({
               />
             </div>
 
-            {needle !== "" && (
+            {/* THE LINE HAS TO NAME WHICHEVER FILTER IS NARROWING THE LIST.
+                Under "Show picked" the rows are cut by the ticks, not by the
+                box, and reporting "N of 1,153 by name, address or county" then
+                would credit the wrong control — the reader would look at an
+                empty box and wonder why 1,152 rows had gone. */}
+            {/* THE THREE LINES SAY THREE DIFFERENT THINGS.
+                The heading now carries the count and the lead says what the
+                rows are, so this one is left with the part neither can: what to
+                do about it, and where the control is. It kept `role="status"`
+                because the heading is not a live region — toggling the filter
+                would otherwise change the screen silently for a screen
+                reader. */}
+            {onlyPicked ? (
               <p className="text-[11.5px] text-mv-muted" role="status">
-                Showing{" "}
-                <b className="font-semibold text-mv-ink">
-                  {shown.length.toLocaleString("en-US")}
-                </b>{" "}
-                of {records.length.toLocaleString("en-US")} by{" "}
-                <b className="font-semibold text-mv-ink">{SCOPE_NOUN[scope]}</b>
-                {hiddenPicks > 0 &&
-                  ` · ${hiddenPicks} record${hiddenPicks === 1 ? "" : "s"} you ticked ${hiddenPicks === 1 ? "is" : "are"} hidden by this filter, and ${hiddenPicks === 1 ? "is" : "are"} still selected`}
+                {needle !== "" && <>Also matching “{filter.trim()}”. </>}
+                Untick anything that is not you, or use{" "}
+                <b className="font-semibold text-mv-ink">Show all</b> in the bar
+                below to see the other{" "}
+                {(records.length - count).toLocaleString("en-US")}.
               </p>
+            ) : (
+              needle !== "" && (
+                <p className="text-[11.5px] text-mv-muted" role="status">
+                  Showing{" "}
+                  <b className="font-semibold text-mv-ink">
+                    {shown.length.toLocaleString("en-US")}
+                  </b>{" "}
+                  of {records.length.toLocaleString("en-US")} by{" "}
+                  <b className="font-semibold text-mv-ink">
+                    {SCOPE_NOUN[scope]}
+                  </b>
+                  {hiddenPicks > 0 &&
+                    ` · ${hiddenPicks} record${hiddenPicks === 1 ? "" : "s"} you ticked ${hiddenPicks === 1 ? "is" : "are"} hidden by this filter, and ${hiddenPicks === 1 ? "is" : "are"} still selected`}
+                </p>
+              )
             )}
           </div>
         )}
@@ -530,38 +668,49 @@ export function StepPick({
         <div className="pointer-events-none sticky bottom-4 z-30 flex justify-center max-[1024px]:bottom-[84px]">
           <div className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-full border border-white/10 bg-mv-deep py-2 pr-2 pl-3 shadow-mv-lg">
             <span className="flex items-center gap-2 text-[12.5px] font-semibold text-mv-on-deep">
-              <span
-                className={`flex h-[22px] min-w-[22px] items-center justify-center rounded-full px-[6px] text-[11.5px] font-bold tabular-nums ${
-                  overLimit
-                    ? "bg-mv-red text-white"
-                    : "bg-mv-on-deep-accent text-mv-deep-ink"
-                }`}
-              >
+              <span className="flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-mv-on-deep-accent px-[6px] text-[11.5px] font-bold text-mv-deep-ink tabular-nums">
                 {count}
               </span>
               selected
             </span>
 
-            {overLimit ? (
-              <span className="text-[11.5px] text-mv-on-deep-soft">
-                25 is the most one claim can take — untick {count - MAX_CLAIM}.
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={onClearSelection}
-                className="cursor-pointer text-[11.5px] font-semibold text-mv-on-deep-soft underline underline-offset-2 hover:text-mv-on-deep"
-              >
-                Clear
-              </button>
-            )}
+            {/* THE COUNT NOW LEADS SOMEWHERE.
+                A tick can be row 387 of 1,153 — on screen, but a thousand rows
+                down, which reads as a number referring to nothing. This narrows
+                the list to exactly the rows the number counts, so the selection
+                can be checked and unticked without hunting for it. */}
+            <button
+              type="button"
+              onClick={() => setShowPicked((on) => !on)}
+              aria-pressed={showPicked}
+              title={
+                showPicked
+                  ? "Show every record the search returned"
+                  : "Narrow the list to the records you have ticked"
+              }
+              className="cursor-pointer text-[11.5px] font-semibold text-mv-on-deep-soft underline underline-offset-2 hover:text-mv-on-deep"
+            >
+              {showPicked ? "Show all" : "Show picked"}
+            </button>
+
+            {/* NO CEILING ON THE SELECTION (requested). The bar used to turn
+                its count red and swap `Clear` for a refusal past 25; claims are
+                filed in batches now, so there is nothing here to refuse and
+                nothing to count against. */}
+            <button
+              type="button"
+              onClick={onClearSelection}
+              className="cursor-pointer text-[11.5px] font-semibold text-mv-on-deep-soft underline underline-offset-2 hover:text-mv-on-deep"
+            >
+              Clear
+            </button>
 
             <PortalButton
               variant="primary"
               size="sm"
               className="rounded-full"
               onClick={onContinue}
-              disabled={resolving || overLimit}
+              disabled={resolving}
             >
               {resolving && (
                 <LoaderCircle
