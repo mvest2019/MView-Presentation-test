@@ -2,7 +2,6 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
@@ -90,7 +89,6 @@ function formatPhoneNumber(value: string): string {
 }
 
 export function RegisterForm({ next }: { next: string }) {
-  const router = useRouter();
 
   /*
    * VERIFICATION STATE, held as the two ADDRESSES rather than as booleans.
@@ -313,10 +311,22 @@ export function RegisterForm({ next }: { next: string }) {
     }
 
     toast.success("Registration Successful");
-    /* `registerAction` signed them in and set the cookie, so the tree on screen
-       is still the signed-out one — `refresh` is what re-renders the header. */
-    router.push(next);
-    router.refresh();
+    /*
+     * ONE FULL NAVIGATION, for the reasons written out at length on sign-in's
+     * own handler (`app/login/_components/login-form.tsx`) — this had the same
+     * `router.push(next)` + `router.refresh()` pair and therefore the same
+     * blank page: the refresh re-rendered `/register`, which redirects a
+     * visitor who now has a session, so its page slot committed empty under a
+     * freshly signed-in header while the destination was fetched twice.
+     *
+     * THE TOAST ABOVE DOES NOT SURVIVE THIS, and that is a real if small loss:
+     * a full navigation tears down the document, so "Registration Successful"
+     * flashes rather than settles. It is kept rather than deleted because it is
+     * still the acknowledgement for the no-JS and slow-network cases, and
+     * because the portal arriving is itself the confirmation — but nobody
+     * should expect to be able to read it.
+     */
+    window.location.assign(next);
   }
 
   return (
