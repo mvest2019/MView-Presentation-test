@@ -2406,35 +2406,24 @@ body .mv-ref-app.no-claim .app-body section[data-route="app-briefing"] .wr-page 
   white-space: nowrap; }
 
 /* ==========================================================================
-   THE REPORT FILLS THE COLUMN IT IS GIVEN, and the promise band is not glued
-   to it.
+   THE PROMISE BAND IS NOT GLUED TO THE COVER.
 
-   TWO RULES, BOTH ABOUT THE SAME STRETCH OF PAGE.
+   `.notice` carries no bottom margin — correct everywhere else it is used,
+   which is inside a sheet, tucked under the paragraph it qualifies — and
+   `.wr-page` carries no top margin, so the band and the cover sheet met at a
+   shared edge and read as one box with a line through it. Measured gap: zero.
+   20px is the same rhythm that already separates one sheet from the next
+   (`.wr-page`'s own `margin-bottom`), so the band joins the stack rather than
+   introducing a second spacing.
 
-   1 · `max-width: none` ON `.wr-page`. The reference caps its sheets at 880px
-   and centres them, which is a paper measure — right on a page that is only
-   the report. Here the report is one route inside the portal, laid out in a
-   column that is already narrowed by the sidebar, and at a normal desktop
-   width that cap left every sheet floating in the middle of a column whose
-   own furniture — the page rail above, the promise band, the title — ran the
-   full width. The sheets read as a narrower document dropped INTO the page
-   rather than as the page. `none` lets them take the column they are in, and
-   below 880px nothing changes at all, because the cap was never binding
-   there.
+   `.wr-promise` IS A CLASS THAT EXISTS ONLY TO BE AIMED AT. The alternative
+   was a selector describing where this notice sits, which would have caught
+   the dozen `.notice` elements inside the report's sheets the first time one
+   moved — and there, having no margin is exactly what keeps a notice tucked
+   under the paragraph it belongs to.
 
-   `margin: 0 auto 20px` IS LEFT ALONE. `auto` on a box that now fills its
-   parent computes to zero, so the sheets sit where they are told; the 20px
-   that separates one sheet from the next is the rhythm the rule below matches.
-   The PRINT block further up sets its own `max-width: none` already, so a
-   printed report is untouched by this.
-
-   2 · THE PROMISE BAND GETS THE SAME 20px. `.notice` carries no bottom margin
-   — correct everywhere else it is used, which is inside a sheet, tucked under
-   the paragraph it qualifies — and `.wr-page` carries no top margin, so the
-   band and the cover met at a shared edge and read as one box with a line
-   through it. `.wr-promise` is a class that exists only to be aimed at here,
-   so the other dozen notices in this report keep the spacing they were
-   written for.
+   `.wr-page`'s OWN `max-width: 880px` IS DELIBERATE AND IS LEFT ALONE. It is
+   the reference's paper measure for the sheets, it was briefly lifted here,
+   and it was put back on request. Nothing in this block touches the width.
    ========================================================================== */
-.mv-ref-app section[data-route="app-briefing"] .wr-page { max-width: none; }
 .mv-ref-app section[data-route="app-briefing"] .wr-promise { margin-bottom: 20px; }
