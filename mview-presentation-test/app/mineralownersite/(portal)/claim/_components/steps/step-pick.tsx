@@ -227,6 +227,9 @@ export function StepPick({
    */
   const onlyPicked = showPicked && count > 0;
 
+  /** Either filter is cutting the list, so the heading must say "N of M". */
+  const narrowed = onlyPicked || needle !== "";
+
   const shown = numbered.filter(({ record: r }) => {
     if (onlyPicked && !selected.includes(recordKey(r))) return false;
     if (!needle) return true;
@@ -345,17 +348,35 @@ export function StepPick({
              a list of 1,153, which reads as a page that has lost track of what
              it is showing. The count is suppressed only when there is nothing
              to count. */
+          /* AND IT COUNTS WHAT IS ON SCREEN, NOT WHAT THE API RETURNED.
+             With "Show picked" on, the heading read "1153 candidate owner
+             records" over two rows, the line beneath it still said "tick every
+             record that is you", and the only thing reconciling the two was an
+             11px grey footnote. The heading is the largest text on the step:
+             a reader who glances at it and sees two rows concludes the list
+             failed to load, not that they turned a filter on.
+
+             `toLocaleString` on both halves, because the narrow-down box beside
+             it already prints "1,153" — the same number in two spellings on one
+             screen reads as two different numbers. */
           title={
             results.loading
               ? "Searching the public record…"
               : results.error || records.length === 0
                 ? "Pick your record"
-                : `${records.length} candidate owner record${records.length === 1 ? "" : "s"}`
+                : narrowed
+                  ? `${shown.length.toLocaleString("en-US")} of ${records.length.toLocaleString("en-US")} owner record${records.length === 1 ? "" : "s"}`
+                  : `${records.length.toLocaleString("en-US")} candidate owner record${records.length === 1 ? "" : "s"}`
           }
+          /* The instruction has to match the view too. "Tick every record that
+             is you" is advice for browsing a thousand candidates; over the two
+             you have already ticked, the thing to do is check them. */
           lead={
-            records.length > 0 && !refreshing
-              ? "Tick every record that is you — you can take more than one."
-              : undefined
+            records.length === 0 || refreshing
+              ? undefined
+              : onlyPicked
+                ? "Showing only the records you ticked."
+                : "Tick every record that is you — you can take more than one."
           }
         />
 
@@ -458,17 +479,20 @@ export function StepPick({
                 box, and reporting "N of 1,153 by name, address or county" then
                 would credit the wrong control — the reader would look at an
                 empty box and wonder why 1,152 rows had gone. */}
+            {/* THE THREE LINES SAY THREE DIFFERENT THINGS.
+                The heading now carries the count and the lead says what the
+                rows are, so this one is left with the part neither can: what to
+                do about it, and where the control is. It kept `role="status"`
+                because the heading is not a live region — toggling the filter
+                would otherwise change the screen silently for a screen
+                reader. */}
             {onlyPicked ? (
               <p className="text-[11.5px] text-mv-muted" role="status">
-                Showing only the{" "}
-                <b className="font-semibold text-mv-ink">
-                  {shown.length.toLocaleString("en-US")}
-                </b>{" "}
-                record{shown.length === 1 ? "" : "s"} you ticked
-                {needle !== "" && ` that also match “${filter.trim()}”`} · use{" "}
+                {needle !== "" && <>Also matching “{filter.trim()}”. </>}
+                Untick anything that is not you, or use{" "}
                 <b className="font-semibold text-mv-ink">Show all</b> in the bar
                 below to see the other{" "}
-                {(records.length - count).toLocaleString("en-US")}
+                {(records.length - count).toLocaleString("en-US")}.
               </p>
             ) : (
               needle !== "" && (
