@@ -6,7 +6,9 @@ import type { LeaseAgg } from "@/lib/claim-search/types";
 
 import { fmt } from "../_lib/working-set";
 import {
+  ClearableInput,
   EmptyState,
+  InlineSpinner,
   LeaseIcon,
   LeaseListSkeleton,
   LockedInline,
@@ -33,6 +35,7 @@ export function LeasePanel({
   cty,
   onCty,
   selL,
+  pendingLeaseKey,
   onToggleLease,
   onOpenReport,
   onClearTicks,
@@ -51,8 +54,11 @@ export function LeasePanel({
   countyOptions: { county: string; count: number }[];
   cty: string;
   onCty: (v: string) => void;
+  /** Keyed by the lease's base-name key — see `lkey`. */
   selL: Record<string, boolean>;
-  onToggleLease: (key: string) => void;
+  /** The lease whose membership is loading — its row shows the spinner. */
+  pendingLeaseKey: string | null;
+  onToggleLease: (lease: LeaseAgg) => void;
   onOpenReport: (lease: LeaseAgg) => void;
   onClearTicks: () => void;
 }) {
@@ -86,24 +92,33 @@ export function LeasePanel({
           </button>
         )}
       </div>
-      <input
-        className={`${refineInput} mb-2 mt-[6px]`}
-        placeholder="Refine leases"
-        aria-label="Refine leases"
-        value={refL}
-        onChange={(e) => onRefL(e.target.value)}
-      />
+      <div className="mb-2 mt-[6px]">
+        <ClearableInput
+          className={refineInput}
+          label="lease refine"
+          placeholder="Refine leases"
+          aria-label="Refine leases"
+          value={refL}
+          onChange={onRefL}
+        />
+      </div>
       <div className="mb-[6px]">
+        {/* NO COUNT BESIDE THE COUNTY (2026-09-11). "Andrews (508)" read as
+            the number of leases, or of owners, or of records in that county —
+            it was whichever of those the last panel happened to show, and
+            nothing on screen said which. The panel's own tally answers the
+            question the count was trying to; an unexplained number next to a
+            filter option only raises it. */}
         <select
           aria-label="Filter results to one county"
           value={cty}
           onChange={(e) => onCty(e.target.value)}
-          className="h-[40px] w-full rounded-[10px] border border-mv-line bg-white px-[11px] text-[13px] text-mv-ink focus-visible:border-mv-green-deep focus-visible:shadow-[0_0_0_3px_var(--color-mv-tint)] focus-visible:outline-none"
+          className="h-[40px] w-full max-w-full truncate rounded-[10px] border border-mv-line bg-white px-[11px] text-[13px] text-mv-ink max-[767px]:text-[16px] focus-visible:border-mv-green-deep focus-visible:shadow-[0_0_0_3px_var(--color-mv-tint)] focus-visible:outline-none"
         >
           <option value="*">All counties in results</option>
-          {countyOptions.map(({ county, count }) => (
+          {countyOptions.map(({ county }) => (
             <option key={county} value={county}>
-              {county} ({count})
+              {county}
             </option>
           ))}
         </select>
@@ -126,43 +141,71 @@ export function LeasePanel({
             No leases in this set — clear a filter to widen it.
           </div>
         ) : (
-          leases.map((l, i) => (
-            <div
-              key={l.key}
-              className={`mt-2 flex items-start gap-[10px] rounded-[11px] border px-3 py-[10px] text-[12.5px] transition-[border-color,background-color,box-shadow] ${
-                i >= mobileLimit ? "max-[767px]:!hidden" : ""
-              } ${
-                selL[l.key]
-                  ? "border-mv-green bg-mv-tint"
-                  : "border-mv-line bg-white hover:border-mv-mint-line hover:shadow-mv"
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={!!selL[l.key]}
-                onChange={() => onToggleLease(l.key)}
-                aria-label={`Filter owners to ${l.n}`}
-                className="mt-[2px] h-4 w-4 flex-none cursor-pointer accent-mv-green-deep"
-              />
-              <div className="min-w-0 flex-1">
-                <button
-                  type="button"
-                  onClick={() => onOpenReport(l)}
-                  className="cursor-pointer whitespace-normal break-words text-left font-semibold text-mv-green-deep underline decoration-[rgba(46,143,109,.35)] underline-offset-[2.5px] hover:text-mv-green-ink"
-                >
-                  {l.n}
-                </button>
-                <div className="mt-[2px] text-[11px] text-mv-muted">
-                  {l.c} · {l.cnt} owner{l.cnt === 1 ? "" : "s"} ·{" "}
-                  {signedIn ? (
-                    fmt(l.val)
-                  ) : (
-                    <LockedInline label="Appraised value locked" />
-                  )}
+          leases.map((l, i) => {
+            const on = !!selL[l.key];
+            const loading = pendingLeaseKey === l.key;
+            return (
+              <div
+                key={l.key}
+                className={`mt-2 flex items-start gap-[10px] rounded-[11px] border px-3 py-[10px] text-[12.5px] transition-[border-color,background-color,box-shadow] ${
+                  i >= mobileLimit ? "max-[767px]:!hidden" : ""
+                } ${
+                  on
+                    ? "border-mv-green bg-mv-tint"
+                    : loading
+                      ? "border-mv-mint-line bg-mv-hover"
+                      : "border-mv-line bg-white hover:border-mv-mint-line hover:shadow-mv"
+                }`}
+              >
+                {/* THE TICK ANSWERS IMMEDIATELY (2026-09-11). Loading a
+                    515-owner lease takes seconds, and with the checkbox
+                    unchanged for all of them people clicked it again — and
+                    again — assuming the first click had missed. The box
+                    becomes its own spinner until the owners land. */}
+                {loading ? (
+                  <span className="mt-[2px] flex h-4 w-4 flex-none items-center justify-center">
+                    <InlineSpinner />
+                  </span>
+                ) : (
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    disabled={!!pendingLeaseKey}
+                    onChange={() => onToggleLease(l)}
+                    aria-label={`Filter owners to ${l.n}`}
+                    className="mt-[2px] h-4 w-4 flex-none cursor-pointer accent-mv-green-deep disabled:cursor-wait disabled:opacity-50"
+                  />
+                )}
+                <div className="min-w-0 flex-1">
+                  <button
+                    type="button"
+                    onClick={() => onOpenReport(l)}
+                    className="cursor-pointer whitespace-normal break-words text-left font-semibold text-mv-green-deep underline decoration-[rgba(46,143,109,.35)] underline-offset-[2.5px] hover:text-mv-green-ink"
+                  >
+                    {l.n}
+                  </button>
+                  <div className="mt-[2px] text-[11px] text-mv-muted">
+                    {l.c} · {l.cnt} owner{l.cnt === 1 ? "" : "s"} ·{" "}
+                    {signedIn ? (
+                      /* `partial` means the roll gave no per-lease figure for
+                         some owner here, so the sum is a floor. Printing it
+                         bare would be a total this panel cannot stand behind. */
+                      <span title={l.partial ? "Some owners on this lease have no per-lease figure on the roll" : undefined}>
+                        {l.partial ? `${fmt(l.val)}+` : fmt(l.val)}
+                      </span>
+                    ) : (
+                      <LockedInline label="Appraised value locked" />
+                    )}
+                    {loading && (
+                      <span className="ml-[6px] font-semibold text-mv-green-deep">
+                        loading owners…
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
         {/* Phones only: the desktop panel keeps every lease in its scroll box. */}
         {!busyLabel && searched && leases.length > mobileLimit && (

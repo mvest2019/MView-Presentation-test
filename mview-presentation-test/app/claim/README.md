@@ -29,6 +29,10 @@ app/claim/
   _lib/
     working-set.ts             CLIENT-side view algebra (pure, no network)
 
+app/api/claim/[endpoint]/
+  route.ts                     signed-out proxy: redacts the gated fields,
+                               applies the Address filter before it does
+
 lib/claim-search/
   api.ts                       the ONLY data access — typed fetchers
   types.ts                     API + view shapes (the contract)
@@ -47,11 +51,19 @@ Host comes from `NEXT_PUBLIC_CLAIM_API_BASE_URL`
 belongs to `api.ts`, so pointing at another environment is a host swap only.
 The endpoints send CORS, so the browser calls them directly.
 
+**Signed-out visitors read the two list endpoints through `/api/claim/*`**, a
+same-origin route handler that deletes `address`, `appraisedValue` and
+`leaseValues` before the response leaves the server (`app/api/claim/[endpoint]`).
+Members call the backend directly — they are entitled to those fields, and the
+direct call saves a hop on a request that can take the better part of a minute.
+The Address filter is applied inside that proxy for signed-out visitors, since
+their results no longer carry an address to filter on in the browser.
+
 | Endpoint | Used for |
 |---|---|
 | `GET /owners/counties` | Hero stats + county dropdown |
 | `GET /owners/search?name&lease[&county]` | The search. **Statewide = omit `county`** — the API 404s on a literal `*` |
-| `GET /owners/lease-owners?county&lease` | Every owner on a ticked lease (`lease` is the despaced name) |
+| `GET /owners/lease-owners?county&lease` | Every owner on a ticked lease (`lease` is the despaced **base** name — see below) |
 | `GET /owners/same-name?county&name&address` | Same-name records at other addresses, for the popup |
 | `POST /owners/claim` | File a claim — `{member_id, mineralOwners:[{ownername}]}` |
 | `POST /owners/address-correction` | Wrong mailing address — `{owner, county, oldAddress, newAddress, member_id｜visitorId}` |
@@ -105,8 +117,30 @@ binds to:
 - A sequence guard means a slow response can never overwrite a newer one.
 - Results cap at 500; the tally shows `500+` when capped.
 
-Four filters: **County**, **Address**, **Lease Name**, **Owner Name**. The
-Address box seeds the owner refine box after a search.
+Four filters: **County**, **Address**, **Lease Name**, **Owner Name**, each
+with a clear button and each removable on its own from the chip row under the
+fields. **Clear filters** clears the refine boxes, the county chip and every
+tick too.
+
+- **Address is a filter, not a search.** `/owners/search` has no address
+  parameter, so an address alone cannot query anything — the field says so and
+  waits for a county, owner or lease. Alongside one of those it narrows the
+  results: in the browser for a member, in the proxy for a signed-out visitor.
+  It no longer overwrites the owner refine box, which is what used to make a
+  refine silently vanish whenever any filter was touched.
+- **Punctuation is not a query.** A name or lease with no letter or digit in
+  it never reaches the backend — `.` came back with every record in scope.
+- **A multi-word lease query must actually match.** The backend ranks loosely
+  enough that `MABEE 240A` returned the same set as `MABEE`; owners holding no
+  lease that contains every typed word are dropped, and what remains is
+  ordered by how well it matches. If that rejects everything the loose
+  ranking is kept — an empty page would be a worse answer than a broad one.
+
+### Ticks survive a re-search
+
+Removing one filter re-runs the search, and the ticks a visitor has built up
+are kept wherever the record is still in the results. Wiping them meant the
+records someone had picked out vanished while their rows stayed on screen.
 
 ### Loading
 
@@ -137,13 +171,25 @@ Locked behaviours (ported from the v90 prototype, do not "simplify"):
 
 1. **Membership is exact** — an owner belongs to a lease by despaced name
    within the county. Fuzzy scoring only ever *ranks*, never links.
+   *The name is the BASE name.* County rolls split one lease across an account
+   per tract and export them as `SHAFTER LAKE /SAN ANDRES/ UNIT (1 of 18)` …
+   `(18 of 18)`. The marker is presentation, not identity, and the backend
+   agrees: `lease-owners` answers `SHAFTERLAKESANANDRESUNIT` with all 508
+   owners and `SHAFTERLAKESANANDRESUNIT1OF11` with **zero**. Keying on the raw
+   name listed one lease eighteen times AND made ticking any of them fetch an
+   empty membership — which is why both panels used to answer a tick with
+   "nothing found". `lkey` strips the marker; `baseLeaseName` is the rule.
 2. **The name query persists after ticking a lease** (the v102 fix) — it keeps
    filtering that lease's membership.
 3. **A ticked owner is never hidden** by that filter, or a second record could
    never be ticked for a multi-record claim.
 
 **Left — Leases**: each lease with its owner count and appraised total,
-aggregated over the working set. Click the name for its report drawer; tick it
+aggregated over the working set. **The total is the sum of the API's PER-LEASE
+values**, not the record total counted once per lease — the latter put a
+five-lease owner's whole portfolio against each of their five leases, which is
+why the panel and the lease-details modal disagreed. Where the roll carries no
+per-lease figure for someone the row shows `$X+` and says so. Click the name for its report drawer; tick it
 to keep only its owners. Has its own refine box and a county chip.
 
 **Right — Owner records**: name, county, mailing address, property count,
@@ -212,9 +258,16 @@ The confirm popup still shows addresses: it is how someone identifies their own
 record, and gating it would break claiming for signed-out visitors, which is
 the page's whole promise.
 
-> ⚠️ **The gate is presentational.** The API still returns addresses and
-> values to anonymous callers, so they are readable in devtools. To make it
-> real, `/owners/search` must withhold those fields without a session.
+> **The gate is enforced for this page's own traffic.** A signed-out visitor's
+> search and lease-owner responses come through `/api/claim/*`, which deletes
+> `address`, `appraisedValue` and `leaseValues` server-side — devtools show a
+> payload that genuinely does not contain them. The Address filter still works
+> because the proxy applies it before the delete.
+>
+> ⚠️ **It is not a boundary on the data itself.** `/api/v1/owners/*` is public
+> and CORS-open, so the same fields are one `curl` away from anyone who knows
+> the URL. Closing that needs the backend to withhold them without a session;
+> this only makes sure the page is not the thing handing them out.
 
 ---
 
@@ -228,7 +281,12 @@ Below 768px:
 - Owner table becomes **cards** — a 6-column, 640px-wide grid needed sideways
   scrolling on a phone.
 - **Tabs** switch between `Owners (n)` and `Leases (n)`; stacked, the lease
-  panel buried the owner records ~1100px down.
+  panel buried the owner records ~1100px down. The tabs run to **1024px**, not
+  768: the grid collapses to one column at 900px, so tablets used to get the
+  stacked layout the tabs exist to avoid.
+- Filter fields are **16px**. Below that, Safari on iOS zooms the viewport in
+  on focus and does not zoom back out. (Not a `user-scalable=no` viewport —
+  that takes pinch-zoom from everyone.)
 - The filter card is **static** (not sticky — it is ~400px of an 812px screen)
   and **collapses after a search** into a sticky one-line summary with **Edit**;
   reopening gives a **Done** button.
@@ -266,5 +324,7 @@ Client-side storage:
 | No `GET /owners/claims` | Cannot show "already claimed" or list them |
 | No change-of-address endpoint | The "Free perk" form is UI only |
 | No stable record id | Records keyed by `county｜name｜address`; a corrected address changes the key |
-| Server-side gating missing | The 🔒 gate is presentational only |
+| `/owners/*` is public and CORS-open | The proxy keeps the gated fields out of THIS page's responses, but the same data is one `curl` away. Only the backend withholding them without a session closes it |
+| No typo tolerance on the backend | `Cochrn` returns nothing while `Cochran` works — the fuzzy scorer only ranks what the backend already sent |
+| `leaseCount` counts roll rows | It disagreed with the lease list beside it and changed when the same owner came back from a different endpoint, so the page derives the count from the lease list (`propCount`) |
 | Search ~10–15s on dev | Skeletons cover it; occasional timeouts |

@@ -18,3 +18,17 @@
  * `(reference)` is a route group, so it contributes nothing to the URL.
  */
 export const PORTAL_HOME = "/mineralownersite";
+
+/**
+ * Where a FILED CLAIM lands — the portal's My Leases list.
+ *
+ * A successful claim used to push to `PORTAL_HOME`, the dashboard. The thing
+ * that just changed is the set of leases attached to the account, and the
+ * dashboard is not where those are listed: someone who had just claimed four
+ * leases arrived at a summary screen with no sight of them and read it as the
+ * claim having gone somewhere else. This is the page the claim wrote to.
+ *
+ * Still one constant rather than a literal at the call site, for the reason
+ * the note above gives.
+ */
+export const PORTAL_CLAIMED_LEASES = "/mineralownersite/leases";

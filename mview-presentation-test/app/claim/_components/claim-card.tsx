@@ -8,9 +8,9 @@ import type {
   MergedTx,
   ScoredOwner,
 } from "@/lib/claim-search/types";
-import { PORTAL_HOME } from "@/lib/routes";
+import { PORTAL_CLAIMED_LEASES, PORTAL_HOME } from "@/lib/routes";
 
-import { fmt } from "../_lib/working-set";
+import { fmt, propCount } from "../_lib/working-set";
 import { btnGhost, btnMint, btnPrimary, btnSm } from "./ui";
 
 export type ClaimState =
@@ -29,9 +29,20 @@ export type ClaimState =
  */
 export function ClaimCard({
   claim,
+  claiming,
+  signedIn,
   onMerge,
 }: {
   claim: ClaimState;
+  /** True while `POST /owners/claim` is in flight — the merge buttons say so. */
+  claiming: boolean;
+  /**
+   * Signed-out visitors never see an appraised figure here. They cannot: the
+   * search that fed this card withholds the field, so the only number the
+   * card could print is `$0`. The record, its county and its property count
+   * are what identifies it, and those are not gated.
+   */
+  signedIn: boolean;
   onMerge: (merged: ScoredOwner[]) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -46,20 +57,34 @@ export function ClaimCard({
       <span aria-hidden="true">✓</span>
       <div className="w-full">
         {claim.phase === "ask" ? (
-          <MergeAsk base={claim.base} others={claim.others} onMerge={onMerge} />
+          <MergeAsk
+            base={claim.base}
+            others={claim.others}
+            claiming={claiming}
+            signedIn={signedIn}
+            onMerge={onMerge}
+          />
         ) : claim.phase === "result" ? (
           <ClaimFiled result={claim.result} />
         ) : claim.phase === "error" ? (
           <ClaimFailed tx={claim.tx} />
         ) : (
-          <ClaimDone tx={claim.tx} base={claim.base} />
+          <ClaimDone tx={claim.tx} base={claim.base} signedIn={signedIn} />
         )}
       </div>
     </div>
   );
 }
 
-function MergeRow({ o, picked }: { o: ScoredOwner; picked?: boolean }) {
+function MergeRow({
+  o,
+  picked,
+  signedIn,
+}: {
+  o: ScoredOwner;
+  picked?: boolean;
+  signedIn: boolean;
+}) {
   return (
     <div
       className={`mt-[7px] flex items-start gap-[9px] rounded-[10px] border border-mv-line px-[11px] py-[9px] text-[12.5px] ${picked ? "bg-mv-bg" : "bg-white"}`}
@@ -68,8 +93,9 @@ function MergeRow({ o, picked }: { o: ScoredOwner; picked?: boolean }) {
       <div>
         <strong>{(o.r[4] as string) || "(no address on the roll)"}</strong>
         <div className="text-[11px] text-mv-muted">
-          {o.county} County · {o.r[1]} propert{o.r[1] === 1 ? "y" : "ies"} ·{" "}
-          {fmt(o.r[2])}
+          {o.county} County · {propCount(o)} propert
+          {propCount(o) === 1 ? "y" : "ies"}
+          {signedIn && <> · {fmt(o.r[2])}</>}
           {picked && " — the record you picked"}
         </div>
       </div>
@@ -80,10 +106,14 @@ function MergeRow({ o, picked }: { o: ScoredOwner; picked?: boolean }) {
 function MergeAsk({
   base,
   others,
+  claiming,
+  signedIn,
   onMerge,
 }: {
   base: ScoredOwner;
   others: ScoredOwner[];
+  claiming: boolean;
+  signedIn: boolean;
   onMerge: (merged: ScoredOwner[]) => void;
 }) {
   // All pre-checked, as in the prototype: same name at another address is
@@ -95,7 +125,7 @@ function MergeAsk({
         We found {others.length + 1} records under “{base.r[0]}” at different
         addresses — are these all you?
       </strong>
-      <MergeRow o={base} picked />
+      <MergeRow o={base} picked signedIn={signedIn} />
       {others.map((o, i) => (
         <label
           key={i}
@@ -112,23 +142,28 @@ function MergeAsk({
           <div>
             <strong>{(o.r[4] as string) || "(no address on the roll)"}</strong>
             <div className="text-[11px] text-mv-muted">
-              {o.county} County · {o.r[1]} propert{o.r[1] === 1 ? "y" : "ies"} ·{" "}
-              {fmt(o.r[2])}
+              {o.county} County · {propCount(o)} propert
+              {propCount(o) === 1 ? "y" : "ies"}
+              {signedIn && <> · {fmt(o.r[2])}</>}
             </div>
           </div>
         </label>
       ))}
+      {/* Both answers file the claim, so both have to show that they did —
+          the call takes seconds and the card sat inert for all of them. */}
       <div className="mt-[10px] flex flex-wrap gap-2">
         <button
           type="button"
-          className={`${btnPrimary} ${btnSm}`}
+          disabled={claiming}
+          className={`${btnPrimary} ${btnSm} disabled:cursor-wait disabled:opacity-70`}
           onClick={() => onMerge(others.filter((_, i) => checked[i]))}
         >
-          Yes, merge into one record
+          {claiming ? "Filing your claim…" : "Yes, merge into one record"}
         </button>
         <button
           type="button"
-          className={`${btnGhost} ${btnSm}`}
+          disabled={claiming}
+          className={`${btnGhost} ${btnSm} disabled:cursor-wait disabled:opacity-70`}
           onClick={() => onMerge([])}
         >
           No, just this one
@@ -193,11 +228,13 @@ function ClaimFiled({ result }: { result: ClaimResult }) {
           </ul>
         </>
       )}
+      {/* To the leases, not the dashboard: those are what this claim just
+          added, and the dashboard does not list them. */}
       <Link
-        href={PORTAL_HOME}
+        href={PORTAL_CLAIMED_LEASES}
         className={`${btnPrimary} mt-3 !rounded-xl !px-[26px] !py-[14px] !text-[15px]`}
       >
-        Go to your portal &rarr;
+        See your claimed leases &rarr;
       </Link>
     </div>
   );
@@ -223,7 +260,15 @@ function ClaimFailed({ tx }: { tx: MergedTx }) {
   );
 }
 
-function ClaimDone({ tx, base }: { tx: MergedTx; base: ScoredOwner }) {
+function ClaimDone({
+  tx,
+  base,
+  signedIn,
+}: {
+  tx: MergedTx;
+  base: ScoredOwner;
+  signedIn: boolean;
+}) {
   const [perk, setPerk] = useState<"idle" | "form" | "done">("idle");
   const [addr, setAddr] = useState("");
   const [name, setName] = useState(tx.owner);
@@ -247,8 +292,8 @@ function ClaimDone({ tx, base }: { tx: MergedTx; base: ScoredOwner }) {
         {tx.owners.length === 1 && tx.records > 1
           ? `${tx.records} records · `
           : ""}
-        {tx.props} propert{tx.props === 1 ? "y" : "ies"} · {fmt(tx.value)}{" "}
-        appraised
+        {tx.props} propert{tx.props === 1 ? "y" : "ies"}
+        {signedIn && <> · {fmt(tx.value)} appraised</>}
         {tx.merged
           ? ` · ${tx.addresses.length} address${tx.addresses.length === 1 ? "" : "es"} merged.`
           : "."}

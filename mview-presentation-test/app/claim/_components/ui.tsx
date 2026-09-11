@@ -13,12 +13,72 @@ import Link from "next/link";
 export const fieldLabel =
   "mb-[6px] flex items-center gap-[6px] text-[11px] font-semibold uppercase tracking-[.05em] text-mv-muted [&_svg]:flex-none [&_svg]:text-mv-sublabel";
 
-/** Field chrome, on the site's form tokens (see `contact-form.tsx`). */
+/**
+ * Field chrome, on the site's form tokens (see `contact-form.tsx`).
+ *
+ * 16px ON PHONES, AND IT HAS TO BE (2026-09-11). Safari on iOS zooms the
+ * viewport in whenever a focused form control's text is smaller than 16px,
+ * and it does not zoom back out — so tapping any filter left the page
+ * magnified and scrolled sideways. The fix is the font size, not a
+ * `user-scalable=no` viewport: that would take pinch-zoom away from everyone,
+ * which is an accessibility failure, not a bug fix. 14px is kept above 767px
+ * where no browser does this.
+ */
 export const fieldInput =
-  "h-[44px] w-full rounded-[10px] border border-mv-line bg-white px-[13px] text-[14px] text-mv-ink transition-[border-color,box-shadow] placeholder:text-mv-placeholder hover:border-mv-line-strong focus-visible:border-mv-green-deep focus-visible:shadow-[0_0_0_3px_var(--color-mv-tint)] focus-visible:outline-none";
+  "h-[44px] w-full rounded-[10px] border border-mv-line bg-white px-[13px] text-[14px] max-[767px]:text-[16px] text-mv-ink transition-[border-color,box-shadow] placeholder:text-mv-placeholder hover:border-mv-line-strong focus-visible:border-mv-green-deep focus-visible:shadow-[0_0_0_3px_var(--color-mv-tint)] focus-visible:outline-none";
 
 export const refineInput =
-  "w-full rounded-[10px] border border-mv-line bg-white px-[13px] py-[10px] text-[13.5px] text-mv-ink transition-[border-color,box-shadow] placeholder:text-mv-placeholder hover:border-mv-line-strong focus-visible:border-mv-green-deep focus-visible:shadow-[0_0_0_3px_var(--color-mv-tint)] focus-visible:outline-none";
+  "w-full rounded-[10px] border border-mv-line bg-white px-[13px] py-[10px] text-[13.5px] max-[767px]:text-[16px] text-mv-ink transition-[border-color,box-shadow] placeholder:text-mv-placeholder hover:border-mv-line-strong focus-visible:border-mv-green-deep focus-visible:shadow-[0_0_0_3px_var(--color-mv-tint)] focus-visible:outline-none";
+
+/**
+ * A text filter with a clear button.
+ *
+ * EVERY FILTER CAN BE EMPTIED IN ONE CLICK (2026-09-11). None of them could:
+ * clearing a refine box meant selecting the text and deleting it, and with
+ * live search each backspace was a keystroke the page reacted to. The × only
+ * exists while there is something to clear, so the field is unchanged when
+ * empty.
+ *
+ * PADDING, NOT AN OVERLAY: the input reserves room for the button on the
+ * right, so a long value scrolls under the × rather than behind it.
+ */
+export function ClearableInput({
+  value,
+  onChange,
+  className,
+  label,
+  ...rest
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  className: string;
+  /** Named for the assistive-tech label on the clear button. */
+  label: string;
+} & Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  "value" | "onChange" | "className"
+>) {
+  return (
+    <div className="relative">
+      <input
+        {...rest}
+        className={`${className} ${value ? "!pr-[34px]" : ""}`}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {value && (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          aria-label={`Clear ${label}`}
+          className="absolute right-[6px] top-1/2 flex h-[22px] w-[22px] -translate-y-1/2 cursor-pointer items-center justify-center rounded-full text-[15px] leading-none text-mv-muted transition-colors hover:bg-mv-hover hover:text-mv-ink"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
 
 /** Panel shell — the site's card: 12px radius, hairline, `shadow-mv`. */
 export const panelCard =

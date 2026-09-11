@@ -78,7 +78,12 @@ export function LeaseDetailsModal({
               band fills the top corners and rows sit flush inside it. */}
           {/* Phones get the same rows as cards — an 860px six-column grid is
               unusable at 375px. */}
-          <div className="overflow-hidden rounded-xl border border-mv-line max-[767px]:hidden">
+          {/* `overflow-x-auto`, NOT `overflow-hidden` (2026-09-11). The table
+              declares `min-w-[980px]`, so on anything narrower — an iPad in
+              portrait is 768 — the clip simply cut the last columns off with
+              no way to reach them: Interest Value and Appraised Value, the
+              two the modal exists to show. It scrolls sideways now. */}
+          <div className="overflow-x-auto rounded-xl border border-mv-line max-[767px]:hidden">
             <table className="w-full min-w-[980px] border-collapse text-[13px]">
               <thead>
                 <tr>

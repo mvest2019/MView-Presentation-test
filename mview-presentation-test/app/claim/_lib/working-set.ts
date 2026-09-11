@@ -1,4 +1,9 @@
-import { despace, matchToks, scoreText } from "@/lib/claim-search/scoring";
+import {
+  baseLeaseName,
+  despace,
+  matchToks,
+  scoreText,
+} from "@/lib/claim-search/scoring";
 import type { LeaseAgg, MergedTx, ScoredOwner } from "@/lib/claim-search/types";
 
 /**
@@ -12,14 +17,37 @@ import type { LeaseAgg, MergedTx, ScoredOwner } from "@/lib/claim-search/types";
  * only rank and filter.
  */
 
-/** A lease's exact-membership key: `county|despacedLeaseName`. */
+/**
+ * A lease's identity: `county|despacedBaseLeaseName` — the name with the
+ * roll's `(3 of 17)` marker stripped.
+ *
+ * THE MARKER IS NOT PART OF THE NAME, AND THE BACKEND AGREES (verified
+ * 2026-09-11). `GET /owners/lease-owners?county=Andrews&lease=` answers
+ * `SHAFTERLAKESANANDRESUNIT` with all 508 owners and
+ * `SHAFTERLAKESANANDRESUNIT1OF11` with **zero**. Keying on the raw name
+ * therefore did two things at once: it listed one lease as eighteen rows, and
+ * ticking any of them fetched an empty membership — which is what put "No
+ * leases in this set" in one panel and "No owner matches these filters" in
+ * the other. One key, on the base name, fixes both: the panel groups the rows
+ * and the tick asks for a lease the backend knows.
+ */
 export function lkey(county: string, lease: string): string {
-  return county + "|" + despace(lease);
+  return county + "|" + despace(baseLeaseName(lease));
 }
 
-/** An owner record's identity: `county|despacedName|despacedAddress`. */
+/**
+ * An owner record's identity: `county|despacedName|addressKey`.
+ *
+ * THE THIRD PART IS THE ADDRESS'S TOKEN, NOT THE ADDRESS (2026-09-11). A
+ * signed-out visitor's results carry no address — the proxy withholds it — so
+ * keying on the address directly turned every same-name record in a county
+ * into one record: duplicate React keys, one tick selecting several rows, and
+ * a merge flow with nothing to merge. `addrKey` is derived from the address
+ * when there is one and served by the proxy when there is not, so one format
+ * covers both.
+ */
 export function okey(o: ScoredOwner): string {
-  return o.county + "|" + despace(o.r[0]) + "|" + despace((o.r[4] as string) || "");
+  return o.county + "|" + despace(o.r[0]) + "|" + o.addrKey;
 }
 
 /**
@@ -32,7 +60,12 @@ export function universe(
   selL: Record<string, boolean>,
   memb: Record<string, ScoredOwner[]>,
 ): ScoredOwner[] {
-  const keys = Object.keys(selL).filter((k) => selL[k]);
+  // A ticked lease whose membership has not arrived contributes nothing, and
+  // if NONE of them have arrived the universe stays the search results.
+  // Emptying it instead put "No leases in this set" in one panel and "No
+  // owner matches these filters" in the other the moment a lease was ticked —
+  // two "nothing found" messages for a set that was merely still loading.
+  const keys = Object.keys(selL).filter((k) => selL[k] && memb[k]);
   if (!keys.length) return owners;
   const seen: Record<string, 1> = {};
   const out: ScoredOwner[] = [];
@@ -52,6 +85,17 @@ export interface WorkingSetFilters {
   cty: string;
   /** The committed owner-name query. */
   nameQ: string;
+  /**
+   * The committed ADDRESS query — its own filter, not the refine box.
+   *
+   * The backend's `/owners/search` takes no address parameter, so the filter
+   * has to run here. It used to be poured into the refine box instead, which
+   * had two costs: it overwrote whatever the visitor had typed there (so
+   * refining by "kenedy" and then touching any filter silently dropped it),
+   * and an address on its own filtered nothing at all because the box also
+   * matches the name and the county.
+   */
+  addrQ: string;
   /** Owner refine box. */
   refine: string;
   /** Lease refine box (an owner must hold a matching lease to stay). */
@@ -83,6 +127,12 @@ export function workingSet(
       scoreText(f.nameQ, o.r[0]) < 0.34
     )
       continue;
+    // The address filter reads the ADDRESS COLUMN ONLY. Widened to the name
+    // and county (as the refine box is) a ZIP would match a lease number in a
+    // name and "po box" would match nothing it should, which is why an
+    // address appeared to do nothing at all.
+    if (f.addrQ && !f.selO[K] && !matchToks(f.addrQ, (o.r[4] as string) || ""))
+      continue;
     if (
       f.refine &&
       !matchToks(f.refine, o.r[0] + " " + ((o.r[4] as string) || "") + " " + o.county)
@@ -109,27 +159,57 @@ export function leftLeases(
 ): LeaseAgg[] {
   const agg: Record<string, LeaseAgg> = {};
   const order: string[] = [];
+  const rollNames: Record<string, Set<string>> = {};
   for (const w of W) {
-    const seen: Record<string, 1> = {};
-    for (const l of (w.o.r[3] as string[]) ?? []) {
-      const k = lkey(w.o.county, l);
-      if (seen[k]) continue;
-      seen[k] = 1;
-      if (!agg[k]) {
-        agg[k] = { n: l, c: w.o.county, cnt: 0, val: 0, key: k };
-        order.push(k);
+    const leases = (w.o.r[3] as string[]) ?? [];
+    // An owner counts ONCE per lease, however many roll rows that lease has
+    // under them — `(1 of 17)` … `(17 of 17)` is one lease, one owner.
+    const countedHere: Record<string, 1> = {};
+    leases.forEach((l, i) => {
+      const g = lkey(w.o.county, l);
+      if (!agg[g]) {
+        agg[g] = {
+          n: baseLeaseName(l),
+          c: w.o.county,
+          cnt: 0,
+          val: 0,
+          partial: false,
+          rolls: 0,
+          key: g,
+        };
+        order.push(g);
+        rollNames[g] = new Set();
       }
-      agg[k].cnt++;
-      agg[k].val += +w.o.r[2] || 0;
-    }
+      rollNames[g].add(l);
+      if (!countedHere[g]) {
+        countedHere[g] = 1;
+        agg[g].cnt++;
+      }
+      // THIS LEASE'S value, from the API's index-aligned `leaseValues`. The
+      // record total is only right for a single-lease owner; for anyone else
+      // adding it here counted their whole portfolio against every lease
+      // they hold, which is exactly the figure that disagreed with the lease
+      // details modal.
+      const per = w.o.leaseValues?.[i];
+      if (typeof per === "number") agg[g].val += per;
+      else if (leases.length === 1) agg[g].val += +w.o.r[2] || 0;
+      else agg[g].partial = true;
+    });
   }
+  for (const k of order) agg[k].rolls = rollNames[k].size;
   let arr = order.map((k) => agg[k]);
-  if (refL) arr = arr.filter((l) => selL[l.key] || matchToks(refL, l.n + " " + l.c));
+  if (refL)
+    arr = arr.filter((l) => selL[l.key] || matchToks(refL, l.n + " " + l.c));
   arr.sort((a, b) => b.cnt - a.cnt || (a.n < b.n ? -1 : 1));
   return arr;
 }
 
-/** Distinct leases across the whole universe — the tally's denominator. */
+/**
+ * Distinct leases across the whole universe — the tally's denominator.
+ * Counted by GROUP, like the panel, so the two numbers agree: counting raw
+ * roll rows here while the panel showed groups was one half of the "41 leases
+ * listed, 42 properties" mismatch.
+ */
 export function totalLeaseCount(U: ScoredOwner[]): number {
   const u: Record<string, 1> = {};
   let n = 0;
@@ -146,18 +226,108 @@ export function totalLeaseCount(U: ScoredOwner[]): number {
 }
 
 /**
+ * How many leases a record actually holds.
+ *
+ * DERIVED, NOT READ OFF `leaseCount` (2026-09-11). The backend's count is a
+ * count of ROLL ROWS, and the two endpoints disagree about what a row is:
+ * `/owners/search` sent 42 for a record whose lease list held 41 distinct
+ * leases, and ticking a lease — which re-reads the same owner through
+ * `/owners/lease-owners` — turned "1 property" into "10". Both endpoints send
+ * the lease list itself, so counting that gives one number that matches the
+ * lease panel beside it and does not move when the record is re-fetched.
+ *
+ * The served count is still the fallback for a record that arrives with no
+ * lease list at all.
+ */
+export function propCount(o: Pick<ScoredOwner, "r" | "county">): number {
+  const leases = (o.r[3] as string[]) ?? [];
+  if (!leases.length) return +o.r[1] || 0;
+  const seen: Record<string, 1> = {};
+  let n = 0;
+  for (const l of leases) {
+    const k = lkey(o.county, l);
+    if (!seen[k]) {
+      seen[k] = 1;
+      n++;
+    }
+  }
+  return n;
+}
+
+/**
+ * Best fuzzy score of a lease query against any lease an owner holds, on the
+ * BASE names — `MABEE 240A` should not score against the marker digits in
+ * `MABEE 240 (3 of 9)`.
+ */
+export function ownerLeaseScore(o: ScoredOwner, leaseQ: string): number {
+  if (!leaseQ) return 1;
+  let best = 0;
+  for (const l of (o.r[3] as string[]) ?? [])
+    best = Math.max(best, scoreText(leaseQ, baseLeaseName(l)));
+  return best;
+}
+
+/**
+ * Put the closest matches first.
+ *
+ * THE BACKEND RANKS LOOSELY. `MABEE 240A` came back with the same 801 owners
+ * as `MABEE` — the extra token narrowed nothing — and `TITAN GAS UNIT` pushed
+ * leases matching only `TITAN` above the unit that was typed in full. Both
+ * halves of the fix live here: owners whose best lease is not a real match
+ * for a MULTI-TOKEN lease query are dropped (a single token stays loose, so
+ * `HALL` still browses), and what survives is ordered by how well it matches
+ * rather than by the order it arrived in.
+ *
+ * Ticked owners are never dropped — a ticked record must stay tickable.
+ */
+export function rankOwners(
+  W: WorkingRow[],
+  q: { name: string; lease: string },
+  selO: Record<string, boolean>,
+): WorkingRow[] {
+  if (!q.lease && !q.name) return W;
+  const leaseToks = q.lease.trim().split(/\s+/).filter(Boolean);
+  const strictLease = leaseToks.length > 1;
+  const scored = W.map((w) => {
+    const ls = ownerLeaseScore(w.o, q.lease);
+    const ns = q.name ? scoreText(q.name, w.o.r[0]) : 1;
+    // EVERY TYPED WORD HAS TO APPEAR SOMEWHERE. A fuzzy threshold is not
+    // enough for this: `TITAN GAS UNIT` scores 0.6 against `DINO GAS UNIT` on
+    // the shared words alone, which is how a search for one named unit came
+    // back with every gas unit in the county. Token coverage asks the
+    // question the visitor asked — is this the lease I typed?
+    const hasAll = ((w.o.r[3] as string[]) ?? []).some((l) =>
+      matchToks(q.lease, baseLeaseName(l)),
+    );
+    return { w, rank: Math.min(ls, ns), hasAll };
+  });
+  const kept = strictLease
+    ? scored.filter((s) => selO[s.w.key] || s.hasAll)
+    : scored;
+  // Never filter the panel down to nothing on a judgement call: if the strict
+  // pass rejected everything, the loose ranking is still better than an empty
+  // page telling the visitor there are no records when the API sent some.
+  const base = kept.length ? kept : scored;
+  return base
+    .map((s, i) => ({ ...s, i }))
+    .sort((a, b) => b.rank - a.rank || a.i - b.i)
+    .map((s) => s.w);
+}
+
+/**
  * Same name at a different address inside the universe — the claim flow's
  * merge-ask candidates, deduped by county+address.
  */
 export function sameNameOthers(base: ScoredOwner, U: ScoredOwner[]): ScoredOwner[] {
   const bn = despace(base.r[0]);
-  const ba = despace((base.r[4] as string) || "");
+  const ba = base.addrKey;
   const out: ScoredOwner[] = [];
   const seen: Record<string, 1> = {};
   for (const o of U) {
     if (o === base) continue;
     if (despace(o.r[0]) !== bn) continue;
-    const a = despace((o.r[4] as string) || "");
+    // Compared by address TOKEN, for the reason `okey` gives.
+    const a = o.addrKey;
     if (a === ba) continue;
     const k = o.county + "|" + a;
     if (seen[k]) continue;
@@ -190,17 +360,20 @@ export function buildMergedTx(base: ScoredOwner, merged: ScoredOwner[]): MergedT
       seenA[despace(a)] = 1;
       addrs.push(a);
     }
-    props += +o.r[1] || 0;
+    // Derived, like the table — see `propCount`.
+    props += propCount(o);
     value += +o.r[2] || 0;
     if (!seenC[o.county]) {
       seenC[o.county] = 1;
       ctyOrder.push(o.county);
     }
     for (const l of (o.r[3] as string[]) ?? []) {
+      // Grouped, so a lease split into seventeen roll rows is one lease in
+      // the claim summary rather than seventeen near-identical lines.
       const k = lkey(o.county, l);
       if (!seenL[k]) {
         seenL[k] = 1;
-        leases.push(l);
+        leases.push(baseLeaseName(l));
       }
     }
   }
