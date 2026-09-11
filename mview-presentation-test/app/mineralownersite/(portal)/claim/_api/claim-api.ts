@@ -68,6 +68,49 @@ const OWNERS = `${BASE}/api/v1/owners`;
 const TIMEOUT_MS = 20_000;
 
 /**
+ * HOW MANY `/same-name` CALLS MAY BE IN FLIGHT AT ONCE — see `fetchClaimSet`.
+ *
+ * Six, because that is roughly what a browser will open to one host over
+ * HTTP/1.1 anyway: asking for more does not make them run in parallel, it makes
+ * them queue in the browser where nothing can see or report them.
+ */
+const SAME_NAME_CONCURRENCY = 6;
+
+/**
+ * `items.map(run)` WITH A CEILING ON HOW MANY RUN TOGETHER.
+ *
+ * Results come back index-aligned with `items`, exactly as `Promise.all` would
+ * give them — callers zip them against the input and must not be handed a
+ * different order because one request happened to finish first.
+ *
+ * Workers share one index. That is safe without a lock because JavaScript runs
+ * one turn at a time: `at = next++` cannot be interleaved, so no two workers
+ * can take the same item.
+ *
+ * A rejection propagates, which is deliberate — see the note on `fetchClaimSet`
+ * about why a partial answer would be worse than a visible failure.
+ */
+async function mapWithLimit<T, R>(
+  items: T[],
+  limit: number,
+  run: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+
+  const worker = async () => {
+    for (let at = next++; at < items.length; at = next++) {
+      out[at] = await run(items[at]);
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  );
+  return out;
+}
+
+/**
  * `signal` LETS A CALLER CANCEL — it is combined with the timeout rather than
  * replacing it, so a cancellable request still gives up after 20s on its own.
  *
@@ -579,12 +622,122 @@ export async function postClaim(
   if (owners.length === 0) {
     throw new Error("Pick at least one record to claim.");
   }
-  if (owners.length > MAX_CLAIM_OWNERS) {
-    throw new Error(
-      `A single claim can cover at most ${MAX_CLAIM_OWNERS} owner records.`,
-    );
+
+  /*
+   * AS MANY OWNERS AS THE READER HAS, IN BATCHES OF WHAT THE ENDPOINT TAKES.
+   *
+   * ── NOBODY IS TURNED AWAY ANY MORE ──
+   *
+   * This used to throw above 25 and step 2 refused the 26th tick, so an owner
+   * whose name the roll spells thirty ways could not claim their own record.
+   * 25 is what one POST accepts; it was never a rule about how much a person
+   * may own. The batching moves that ceiling off the reader and onto the wire.
+   *
+   * ── IN ORDER, NOT IN PARALLEL ──
+   *
+   * Each call is a write the backend runs as one transaction. Firing ten at
+   * once to save a few seconds asks it to interleave ten transactions against
+   * the same member for no benefit the reader can see — a claim is filed once
+   * and waited on once.
+   *
+   * ── A FAILED BATCH DOES NOT ERASE A FILED ONE ──
+   *
+   * Throwing on the second batch would report "we could not file your claim"
+   * over a first batch that DID land — the reader would try again and meet
+   * OWNER_ALREADY_CLAIMED for names that were already theirs. So a batch that
+   * fails is turned into `failed_owners` entries carrying the reason, the rest
+   * are marked as not attempted, and the receipt tells the truth about every
+   * name. Only a first batch that fails with nothing filed throws, because then
+   * there is no partial truth to report and the error screen is right.
+   */
+  const batches: ClaimOwner[][] = [];
+  for (let i = 0; i < owners.length; i += MAX_CLAIM_OWNERS) {
+    batches.push(owners.slice(i, i + MAX_CLAIM_OWNERS));
   }
 
+  const parts: ClaimResult[] = [];
+
+  for (const [index, batch] of batches.entries()) {
+    try {
+      parts.push(await postClaimBatch(memberId, batch));
+    } catch (error) {
+      if (parts.length === 0) throw error;
+
+      const why =
+        error instanceof Error
+          ? error.message
+          : "The claim could not be filed.";
+
+      parts.push(refusal(batch, why));
+      for (const rest of batches.slice(index + 1)) {
+        parts.push(
+          refusal(
+            rest,
+            "Not attempted — an earlier part of this claim did not go through.",
+          ),
+        );
+      }
+      break;
+    }
+  }
+
+  return mergeClaims(parts);
+}
+
+/** Owners a request never managed to file, in the shape the receipt reads. */
+function refusal(owners: ClaimOwner[], error: string): ClaimResult {
+  return {
+    successful_owners: [],
+    failed_owners: owners.map(({ ownername }) => ({
+      ownername,
+      error,
+      error_code: "REQUEST_FAILED",
+      failed_lease_count: 0,
+    })),
+    summary: {
+      total_owners_processed: owners.length,
+      total_successful_owners: 0,
+      total_failed_owners: owners.length,
+    },
+    claimedAt: null,
+  };
+}
+
+/**
+ * One receipt out of several.
+ *
+ * `claimedAt` takes the FIRST batch that actually filed something. It is the
+ * moment the claim began, which is what step 5 prints — and a null from a batch
+ * where every name failed must not overwrite a real timestamp from one that
+ * succeeded.
+ */
+function mergeClaims(parts: ClaimResult[]): ClaimResult {
+  return {
+    successful_owners: parts.flatMap((p) => p.successful_owners ?? []),
+    failed_owners: parts.flatMap((p) => p.failed_owners ?? []),
+    summary: {
+      total_owners_processed: parts.reduce(
+        (n, p) => n + (p.summary?.total_owners_processed ?? 0),
+        0,
+      ),
+      total_successful_owners: parts.reduce(
+        (n, p) => n + (p.summary?.total_successful_owners ?? 0),
+        0,
+      ),
+      total_failed_owners: parts.reduce(
+        (n, p) => n + (p.summary?.total_failed_owners ?? 0),
+        0,
+      ),
+    },
+    claimedAt: parts.find((p) => p.claimedAt)?.claimedAt ?? null,
+  };
+}
+
+/** One POST — the endpoint's own unit of work. */
+async function postClaimBatch(
+  memberId: number,
+  owners: ClaimOwner[],
+): Promise<ClaimResult> {
   let res: Response;
   try {
     res = await fetch(`${OWNERS}/claim`, {
@@ -610,7 +763,71 @@ export async function postClaim(
       `The records service could not file your claim (${res.status}).`,
     );
   }
-  return (await res.json()) as ClaimResult;
+
+  let data: Partial<ClaimResult>;
+  try {
+    data = (await res.json()) as Partial<ClaimResult>;
+  } catch (cause) {
+    throw new Error("The records service sent an unreadable reply.", { cause });
+  }
+
+  /*
+   * THE ONE FETCHER THAT WAS NOT CHECKING ITS REPLY — and the only one that
+   * WRITES.
+   *
+   * ── WHAT `as ClaimResult` WAS BUYING ──
+   *
+   * Nothing. It is a promise to the compiler, not a check at runtime, so
+   * whatever the endpoint sent became the claim result. Two ways that hurt:
+   *
+   *   A · A reply with no owners in it — `{}` — was accepted as a completed
+   *       claim. `claim.data` is what tells step 4 the write already happened,
+   *       so its button turned into "View your claim" and `fileClaim` stopped
+   *       posting. Nothing had been filed, and the only way to try again was
+   *       Start over and redo all four steps.
+   *
+   *   B · A field of the wrong TYPE went straight through. Step 5 guards with
+   *       `successful_owners ?? []`, which catches null and undefined and not
+   *       `{}` — so `successful_owners: {}` reached `.reduce` and the receipt
+   *       failed to render at all.
+   *
+   * ── THROWING FIXES BOTH ──
+   *
+   * `fileClaim` catches, leaves `claim.data` null and shows the message, so the
+   * button stays "Claim N leases" and the reader can press it again. Which is
+   * right: nothing was filed, so nothing should say otherwise.
+   *
+   * ── AND THE ARRAYS ARE NORMALISED ON THE WAY OUT ──
+   *
+   * A reply may legitimately omit a half — a claim where nothing failed need
+   * not carry `failed_owners` — so an absent one becomes an empty array here
+   * rather than being left for four call sites to each guard differently. What
+   * is refused is a half that is PRESENT and not an array, because that is the
+   * endpoint saying something this flow does not understand.
+   */
+  const usable = (value: unknown) =>
+    value === undefined || Array.isArray(value);
+
+  if (
+    !usable(data.successful_owners) ||
+    !usable(data.failed_owners) ||
+    (data.successful_owners === undefined && data.failed_owners === undefined)
+  ) {
+    throw new Error(
+      "The claim receipt came back in a shape we don't recognize.",
+    );
+  }
+
+  return {
+    successful_owners: data.successful_owners ?? [],
+    failed_owners: data.failed_owners ?? [],
+    summary: data.summary ?? {
+      total_owners_processed: owners.length,
+      total_successful_owners: data.successful_owners?.length ?? 0,
+      total_failed_owners: data.failed_owners?.length ?? 0,
+    },
+    claimedAt: data.claimedAt ?? null,
+  };
 }
 
 /* ============================================================================
@@ -661,13 +878,33 @@ export function postAddressCorrection(
  * Step 2 allows more than one record to be ticked, so this resolves the whole
  * selection in one call from the flow's point of view.
  *
- * ── ONE REQUEST PER RECORD, IN PARALLEL ──
+ * ── ONE REQUEST PER RECORD, A FEW AT A TIME ──
  *
  * `/same-name` is keyed on name AND address — the address is what makes it
  * return `selected` and the statewide totals — so a set of records cannot be
- * asked for in a single request. They go together with `Promise.all` rather
- * than in sequence: at ~4s each, five picks in series is twenty seconds of
- * staring at a spinner.
+ * asked for in a single request. They overlap rather than running in sequence:
+ * at ~1.4s each, eighty picks one after another is two minutes of spinner.
+ *
+ * ── BUT NOT ALL AT ONCE, WHICH IS WHAT IT USED TO DO ──
+ *
+ * This was `Promise.all` over the whole selection, and that was survivable only
+ * because step 2 refused a 26th tick. With the cap gone — a reader may now take
+ * every spelling the roll has of their name — the same line would open eighty
+ * sockets in one go: past the browser's own per-host ceiling, hard on an
+ * endpoint that takes over a second to answer one of them, and the kind of
+ * burst that gets a client rate-limited into failures it then reports as "we
+ * could not check these records".
+ *
+ * `SAME_NAME_CONCURRENCY` keeps a few in flight and starts the next as each
+ * lands, so the wait scales with the selection while the load does not.
+ *
+ * ── A SINGLE FAILURE STILL FAILS THE SET, ON PURPOSE ──
+ *
+ * Swallowing one record's error would hand steps 4 and 5 a lease total quietly
+ * missing that record's leases, and nothing on either screen could say so —
+ * the reader would file a claim against figures that are wrong by an unknown
+ * amount. Failing loudly and letting them try again is the honest half of that
+ * trade.
  *
  * ── EVERYTHING IS DEDUPLICATED ON THE WAY OUT ──
  *
@@ -683,17 +920,44 @@ export function postAddressCorrection(
 export async function fetchClaimSet(picked: OwnerRecord[]): Promise<ClaimSet> {
   if (picked.length === 0) throw new Error("Pick at least one record.");
 
-  const answers = await Promise.all(
-    picked.map((r) => fetchSameName(r.county, r.name, r.address)),
+  const answers = await mapWithLimit(picked, SAME_NAME_CONCURRENCY, (record) =>
+    fetchSameName(record.county, record.name, record.address),
   );
 
   /* The endpoint's own view of each pick where it has one; the row the reader
      ticked otherwise, so a record never silently disappears from the list. */
-  const records = answers.map((a, i) => a.selected ?? picked[i]);
+  /*
+   * ONE ROW PER DOORSTEP, NOT ONE PER TICK.
+   *
+   * ── THE DUPLICATES THIS REMOVES ──
+   *
+   * `answers.map(...)` gave one record per ticked row, and several rows can
+   * resolve to the SAME record: the endpoint answers on name and address, so
+   * three step-2 cards carrying one owner's name came back with one identical
+   * `selected` three times. Step 3 then drew "PO BOX 897, OZONA, TX 76943 ·
+   * Midland County · 10 leases" three times over, each with its own tick, under
+   * a heading counting five addresses where there were three.
+   *
+   * Worse than untidy: those rows are the claim. A reader ticking what looks
+   * like three doorsteps is ticking one, and no screen says so.
+   *
+   * `others` was already keyed this way a few lines below — `records` simply
+   * never got the same treatment.
+   *
+   * THE FIRST OF A SET WINS and the rest are dropped, which is safe because
+   * they are equal on the only three fields this flow keys on. `picked[i]` is
+   * the fallback for a record the endpoint had no view of, and two of those
+   * cannot collide either: they came from distinct rows of one search.
+   */
+  const byDoorstep = new Map<string, OwnerRecord>();
+  for (const [i, answer] of answers.entries()) {
+    const record = answer.selected ?? picked[i];
+    const key = `${record.county}|${record.name}|${record.address}`;
+    if (!byDoorstep.has(key)) byDoorstep.set(key, record);
+  }
+  const records = [...byDoorstep.values()];
 
-  const pickedKeys = new Set(
-    records.map((r) => `${r.county}|${r.name}|${r.address}`),
-  );
+  const pickedKeys = new Set(byDoorstep.keys());
   const others = new Map<string, OwnerRecord>();
   for (const answer of answers) {
     for (const other of answer.others) {
