@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
+import { PORTAL_HOME } from "@/lib/routes";
 import { getSessionUser } from "@/lib/session";
 
 import { AuthShell } from "../_components/auth-shell";
@@ -44,7 +45,7 @@ export default async function ResetPasswordPage({
   const raw = params.resetPasswordToken;
   const token = (Array.isArray(raw) ? raw[0] : raw)?.trim() || null;
 
-  if (!token && (await getSessionUser())) redirect("/portal");
+  if (!token && (await getSessionUser())) redirect(PORTAL_HOME);
 
   return (
     <AuthShell>

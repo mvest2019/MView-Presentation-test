@@ -337,30 +337,58 @@
    source order without needing extra specificity.
    ---------------------------------------------------------------------------- */
 
-/* THE SIDEBAR WORDMARK. `height: 30px; width: auto` is what the reference
-   renders this same file at on this same rail (`owner/src/shell/chunk-004.html`
-   — "height:30px;width:auto;display:block"), and the margins are the ones the
-   text element it replaced carried, so nothing below it moved.
+/* THE SIDEBAR WORDMARK, AND THE LINK THAT NOW WRAPS IT.
+
+   `height: 30px; width: auto` is what the reference renders this same file at on
+   this same rail (`owner/src/shell/chunk-004.html` —
+   "height:30px;width:auto;display:block").
 
    NO PLATE, NO RADIUS, NO PADDING: this is the DARK-ground asset on the dark
    rail, which is the ground it was drawn for. A white tile behind it would be
    the mistake the other shell's sidebar note warns about. */
+.mv-ref-app .app-side .mv-side-logo-link {
+  /* `align-self`, AND IT IS LOAD-BEARING — the mark was stretched without it.
+     `.app-side` is `display: flex; flex-direction: column`, so this element is a
+     flex item and the default `align-items: normal` behaves as `stretch` in the
+     cross axis. A stretched flex item's cross size is the line's, which BEATS
+     `width: auto` on a replaced element: the rail's 236px less its padding left
+     the mark 192px wide at 30px tall, against a true 577x132 that is 131px at
+     that height — a 1.46x horizontal stretch, on the one asset carrying a
+     standing instruction against hand-altering it.
+
+     IT MOVED HERE FROM THE IMAGE when the wordmark became a link. The anchor is
+     the flex item now and the image is an ordinary block inside it, so the old
+     `align-self` on the image would have been declaring nothing — and the
+     anchor, left to stretch, would have made a 208px-wide invisible click
+     target out of a 131px logo. Measured after the move: 131.1x30, the true
+     4.371 aspect exactly, at every width from 900px to 1920px.
+
+     `line-height: 0` so the anchor hugs the image instead of carrying a text
+     line's worth of dead height under it. */
+  display: block;
+  align-self: flex-start;
+  line-height: 0;
+
+  /* NO HORIZONTAL MARGIN, and this is the position fix (Pragati, 2026-09-11:
+     "fix that logo position").
+
+     It was `4px 8px 16px` — margins inherited from the hand-drawn text element
+     this replaced rather than chosen for the image — and that 8px put the mark's
+     left edge at 22px while EVERYTHING ELSE in the rail sits on one 14px
+     column. Measured: the rail's own padding edge, the three section labels
+     ("My Minerals", "Services", "Community") and the current row's pill are all
+     at 14px, and the rows' icons are at 26px. 22px lined up with neither, so the
+     logo read as nudged out of the column it heads.
+
+     The VERTICAL margins are kept exactly as they were, so nothing below it
+     moves. */
+  margin: 4px 0 16px;
+}
+
 .mv-ref-app .app-side .mv-side-logo {
   display: block;
   height: 30px;
   width: auto;
-  /* `align-self`, AND IT IS LOAD-BEARING — the logo was stretched without it.
-     `.app-side` is `display: flex; flex-direction: column`, so this image is a
-     flex item and the default `align-items: normal` behaves as `stretch` in the
-     cross axis. A stretched flex item's cross size is the line's, which BEATS
-     `width: auto` on a replaced element: the rail's 236px less 28px of padding
-     and 16px of margin left the mark 192px wide at 30px tall, against a true
-     577x132 that is 131px at that height. A 1.46x horizontal stretch, on the
-     one asset with a standing instruction against hand-altering it.
-
-     Measured on this page: 192px before, 131.1px after. */
-  align-self: flex-start;
-  margin: 4px 8px 16px;
 }
 
 /* THE BRAND SLOT ON THE CHROME ROW.

@@ -407,13 +407,42 @@ export function SiteHeader({ user }: { user: SessionUser | null }) {
               rather than a link while leaving the funnel's hierarchy intact, and
               every colour in it is already in the design system.
             */}
-            <Link
-              href="/mineralownersite"
-              aria-current={isCurrent("/mineralownersite") ? "page" : undefined}
-              className={`${ctaOutline} whitespace-nowrap max-[1139px]:hidden`}
-            >
-              Dashboard
-            </Link>
+            {/*
+              SIGNED OUT ONLY, and that is a narrowing of what the paragraph
+              above describes (Pragati, 2026-09-11: "show here only one
+              button").
+
+              IT AND "Go to your portal →" ARE THE SAME DESTINATION. Both are
+              `href="/mineralownersite"`, one immediately after the other, so a
+              signed-in visitor was offered the identical journey twice — and as
+              two DIFFERENT treatments, an outline button beside a filled green
+              one, which reads as two different places rather than one place
+              named twice. It also put a second primary green in the row next to
+              "Find your record", which is precisely the three-competing-CTAs
+              problem the note above says the outline treatment existed to
+              avoid.
+
+              WHY THIS ONE GIVES WAY, rather than the portal link: "Dashboard"
+              was added unconditionally because the reference screenshot
+              supplied with the request was the SIGNED-OUT bar, and that is the
+              state it was really for. The design's own dashboard CTA is
+              `data-auth="in"` only, and for a signed-in owner that CTA is
+              "Go to your portal →" — already in place, already the primary
+              action, already carrying the words the design asked for. So the
+              signed-out bar keeps exactly what was requested, and the signed-in
+              bar stops saying it twice.
+            */}
+            {!user && (
+              <Link
+                href="/mineralownersite"
+                aria-current={
+                  isCurrent("/mineralownersite") ? "page" : undefined
+                }
+                className={`${ctaOutline} whitespace-nowrap max-[1139px]:hidden`}
+              >
+                Dashboard
+              </Link>
+            )}
             {user ? (
               <>
                 <Link
@@ -548,11 +577,19 @@ export function SiteHeader({ user }: { user: SessionUser | null }) {
           {/* The bar's Dashboard link hides at 1139px along with everything else
               in the actions cluster, so the sheet has to carry it or there is no
               route into the portal on a phone or an iPad — the same reasoning
-              that moved "Free account" down here. */}
+              that moved "Free account" down here.
+
+              AND IT IS SIGNED-OUT ONLY HERE TOO, for the reason written out at
+              the bar's copy of this link. The sheet carried the same pair of
+              rows to the same route — "Dashboard" and then "Go to your portal
+              →" a few lines below — so the duplicate was on a phone as well,
+              and fixing only the bar would have left it there. */}
           <SheetDivider />
-          <SheetLink href="/mineralownersite" onNavigate={closeDrawer}>
-            Dashboard
-          </SheetLink>
+          {!user && (
+            <SheetLink href="/mineralownersite" onNavigate={closeDrawer}>
+              Dashboard
+            </SheetLink>
+          )}
 
           {user ? (
             <>
