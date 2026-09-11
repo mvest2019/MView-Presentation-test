@@ -763,7 +763,71 @@ async function postClaimBatch(
       `The records service could not file your claim (${res.status}).`,
     );
   }
-  return (await res.json()) as ClaimResult;
+
+  let data: Partial<ClaimResult>;
+  try {
+    data = (await res.json()) as Partial<ClaimResult>;
+  } catch (cause) {
+    throw new Error("The records service sent an unreadable reply.", { cause });
+  }
+
+  /*
+   * THE ONE FETCHER THAT WAS NOT CHECKING ITS REPLY — and the only one that
+   * WRITES.
+   *
+   * ── WHAT `as ClaimResult` WAS BUYING ──
+   *
+   * Nothing. It is a promise to the compiler, not a check at runtime, so
+   * whatever the endpoint sent became the claim result. Two ways that hurt:
+   *
+   *   A · A reply with no owners in it — `{}` — was accepted as a completed
+   *       claim. `claim.data` is what tells step 4 the write already happened,
+   *       so its button turned into "View your claim" and `fileClaim` stopped
+   *       posting. Nothing had been filed, and the only way to try again was
+   *       Start over and redo all four steps.
+   *
+   *   B · A field of the wrong TYPE went straight through. Step 5 guards with
+   *       `successful_owners ?? []`, which catches null and undefined and not
+   *       `{}` — so `successful_owners: {}` reached `.reduce` and the receipt
+   *       failed to render at all.
+   *
+   * ── THROWING FIXES BOTH ──
+   *
+   * `fileClaim` catches, leaves `claim.data` null and shows the message, so the
+   * button stays "Claim N leases" and the reader can press it again. Which is
+   * right: nothing was filed, so nothing should say otherwise.
+   *
+   * ── AND THE ARRAYS ARE NORMALISED ON THE WAY OUT ──
+   *
+   * A reply may legitimately omit a half — a claim where nothing failed need
+   * not carry `failed_owners` — so an absent one becomes an empty array here
+   * rather than being left for four call sites to each guard differently. What
+   * is refused is a half that is PRESENT and not an array, because that is the
+   * endpoint saying something this flow does not understand.
+   */
+  const usable = (value: unknown) =>
+    value === undefined || Array.isArray(value);
+
+  if (
+    !usable(data.successful_owners) ||
+    !usable(data.failed_owners) ||
+    (data.successful_owners === undefined && data.failed_owners === undefined)
+  ) {
+    throw new Error(
+      "The claim receipt came back in a shape we don't recognize.",
+    );
+  }
+
+  return {
+    successful_owners: data.successful_owners ?? [],
+    failed_owners: data.failed_owners ?? [],
+    summary: data.summary ?? {
+      total_owners_processed: owners.length,
+      total_successful_owners: data.successful_owners?.length ?? 0,
+      total_failed_owners: data.failed_owners?.length ?? 0,
+    },
+    claimedAt: data.claimedAt ?? null,
+  };
 }
 
 /* ============================================================================
