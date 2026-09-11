@@ -972,7 +972,22 @@ export function SampleFlowButton() {
             */}
             {finished && (
               <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-mv-ink/35 px-4 backdrop-blur-[2px]">
-                <div className="pointer-events-auto w-full max-w-[400px] rounded-mv border border-mv-line bg-mv-card p-6 text-center shadow-mv-lg">
+                <div className="pointer-events-auto relative w-full max-w-[400px] rounded-mv border border-mv-line bg-mv-card p-6 text-center shadow-mv-lg">
+                  {/* A WAY OUT THAT IS NEITHER OF THE TWO ANSWERS (requested).
+                      The card offered "try it" and "watch again", and a reader
+                      who wants neither — they have seen it, they are not ready
+                      to start — had only the dialog's own ✕ behind a scrim, or
+                      Escape. The corner ✕ is where every card of this shape
+                      keeps its exit, so it is the one people look for. */}
+                  <button
+                    type="button"
+                    onClick={close}
+                    aria-label="Close the sample"
+                    className="absolute top-[10px] right-[10px] flex h-[26px] w-[26px] cursor-pointer items-center justify-center rounded-full text-mv-muted transition-colors hover:bg-mv-hover hover:text-mv-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+                  >
+                    <X aria-hidden="true" className="h-[15px] w-[15px]" />
+                  </button>
+
                   <span className="mx-auto flex h-[46px] w-[46px] items-center justify-center rounded-full bg-mv-mint text-mv-green-deep">
                     <CircleCheck
                       aria-hidden="true"
