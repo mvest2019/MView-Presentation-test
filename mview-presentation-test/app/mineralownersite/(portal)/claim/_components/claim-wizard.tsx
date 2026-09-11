@@ -127,6 +127,8 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
   /** Step 3's ticks, keyed by county|name|address — seeded from the pick. */
   const [confirmed, setConfirmed] = useState<string[]>([]);
   const [attested, setAttested] = useState(false);
+  /** Which selection `attested` was given for — see `resolveSelection`. */
+  const attestedFor = useRef<string>("");
 
   /*
    * A PROMISE CHAIN, NOT AN AWAITED CALL — the pattern `app/claim`'s finder
@@ -298,11 +300,35 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
    */
   function changeQuery(next: ClaimQuery) {
     setQuery(next);
+
+    /*
+     * CHANGING A SEARCH FIELD EMPTIES THE SELECTION (requested).
+     *
+     * ── WHY THE WHOLE SELECTION, NOT JUST THE ROWS THAT LEFT ──
+     *
+     * Pruning only the picks the new answer no longer contains looks tidier and
+     * reads worse. Filter to Anderson, tick a record, clear the county: that
+     * record IS still in the 1,153 that come back, so it survived — as row 387,
+     * a thousand rows below the fold, under a bar reading "1 selected" that
+     * pointed at nothing the reader could see. Technically correct, and
+     * indistinguishable from a bug.
+     *
+     * A change to these four fields is a new question. The ticks belonged to
+     * the answer to the old one, so they go with it, and the bar disappears
+     * rather than reporting a selection the screen cannot account for.
+     *
+     * ── IT IS THE FIELDS, NOT THE NARROW-DOWN BOX ──
+     *
+     * That box filters rows the reader already has and deliberately keeps its
+     * ticks — step 2 reports how many are hidden by it. Only these four go back
+     * to the API and come back with a different set.
+     */
+    setPicked([]);
+
     if (isSearchable(next)) return;
     searchRef.current?.abort();
     searchedRef.current = "";
     setResults(idle());
-    setPicked([]);
   }
 
   function startOver() {
@@ -316,6 +342,7 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
     setClaim(idle());
     setConfirmed([]);
     setAttested(false);
+    attestedFor.current = "";
   }
 
   /*
@@ -358,23 +385,14 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
         setResults({ data: found.owners, loading: false, error: null });
 
         /*
-         * A NEW ANSWER UNTICKS ANYTHING IT DOES NOT CONTAIN.
+         * A BACKSTOP: no tick may outlive the rows it was made on.
          *
-         * Tick a Reeves record, then add County = Anderson: the record is not
-         * in the new four and there is no row left to untick, but the tick was
-         * kept — the bar still counted it and "Review addresses →" carried it
-         * to step 3 alongside records the reader could actually see. A claim
-         * built partly from a query that is no longer in the fields.
-         *
-         * So the selection is pruned to the answer on screen. No message: a
-         * tick with no row is not something to explain, and the count in the
-         * bar simply matches what is ticked.
-         *
-         * ── THIS IS NOT THE NARROW-DOWN BOX ──
-         *
-         * That one hides rows from an answer the reader still has, and its
-         * ticks are deliberately kept — step 2 reports how many are out of
-         * sight. This runs only when the API returns a DIFFERENT answer.
+         * `changeQuery` already empties the selection whenever a search field
+         * is edited, which is every ordinary way of getting here. This covers
+         * the one path that does not go through it — Enter, and the retry after
+         * an error, both of which re-run the SAME query. The endpoint scores
+         * its matches, so "the same query" is not a promise of the same rows,
+         * and a tick with no row on screen is the bug this whole area is about.
          */
         const kept = new Set(found.owners.map(recordKey));
         setPicked((current) =>
@@ -440,6 +458,36 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
    */
   async function resolveSelection() {
     if (picked.length === 0) return;
+
+    /*
+     * THE ATTESTATION BELONGS TO THE RECORDS IT WAS MADE ABOUT.
+     *
+     * ── THE BUG THIS FIXES ──
+     *
+     * Step 3's tick is a legal statement — "I have a good-faith basis and
+     * authority to claim this record" — and it was plain state that nothing
+     * ever cleared. Attest for Aaron Kenneth Ryan, go back, swap the pick to
+     * Aasen Ryan R, and step 3 re-opened with the statement already ticked and
+     * the Continue button already unlocked: the flow recorded a promise about a
+     * person the reader had never been shown it for, and let them file on it.
+     *
+     * ── CLEARED ON A CHANGE, NOT ON EVERY VISIT ──
+     *
+     * The signature is the picked keys, sorted so a reordering is not a change.
+     * Someone who goes back to re-read a record and returns having changed
+     * nothing has already made this promise about exactly these records, and
+     * making them tick it again teaches them to tick it without reading. A
+     * DIFFERENT set has never been attested to, so it starts blank.
+     *
+     * `startOver` clears the signature with everything else, so a fresh claim
+     * cannot inherit the last one's promise.
+     */
+    const signature = picked.map(recordKey).sort().join("|");
+    if (signature !== attestedFor.current) {
+      attestedFor.current = signature;
+      setAttested(false);
+    }
+
     setClaimSet({ data: null, loading: true, error: null });
     goStep(3);
     try {

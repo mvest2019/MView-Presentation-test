@@ -143,12 +143,33 @@ export function ClaimShell({
           />
           Claim your owner record
         </h1>
+        {/*
+          "SAVED AS YOU GO" WAS REMOVED, BECAUSE IT WAS NOT TRUE.
+
+          It promised the reader that leaving or refreshing would not cost them
+          anything: come back and your progress is here. Nothing in this flow is
+          persisted — the query, the ticked records, the resolved addresses and
+          the lease set are all React state and nothing else — so F5 on step 4
+          returns an empty step 1. The line was the one thing on screen telling
+          a reader it was safe to close the tab, and it was wrong.
+
+          The fix is the honest half of the choice. Making it TRUE is a real
+          feature, not a copy change: the search answer alone is over a thousand
+          records with their lease arrays, which is the wrong thing to put in
+          `localStorage`, so a restore has to re-run the search and re-resolve
+          the picks — with a filed claim as its own case. Worth doing, and worth
+          doing deliberately rather than to justify a sentence.
+
+          What replaces it is a fact the flow can keep. "About two minutes" is
+          the same promise this page's own metadata makes, and it answers the
+          question the line was really there for — how much am I taking on.
+        */}
         <p className="flex items-center gap-[6px] text-[12px] text-mv-muted">
           <CircleCheck
             aria-hidden="true"
             className="h-[14px] w-[14px] text-mv-green-deep"
           />
-          {TOTAL_STEPS} short steps · Saved as you go · No card, ever
+          {TOTAL_STEPS} short steps · About two minutes · No card, ever
         </p>
       </header>
 

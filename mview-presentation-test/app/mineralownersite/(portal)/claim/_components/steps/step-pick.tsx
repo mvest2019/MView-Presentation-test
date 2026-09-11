@@ -189,6 +189,9 @@ export function StepPick({
   const [scope, setScope] = useState<FilterScope>("all");
   const needle = filter.trim().toLowerCase();
 
+  /** The selection bar's "Show picked" toggle — see `onlyPicked` below. */
+  const [showPicked, setShowPicked] = useState(false);
+
   /** Anything set in either filter — the search fields or the narrow-down box. */
   const anyFilter = Boolean(
     query.name || query.county || query.lease || query.address || filter,
@@ -202,19 +205,45 @@ export function StepPick({
      three in the "all" case is load-bearing: joined without it, a needle could
      match across the seam of two fields and hide a row for a reason that is in
      neither of them. */
-  const shown = needle
-    ? numbered.filter(({ record: r }) => {
-        const hay =
-          scope === "name"
-            ? r.name
-            : scope === "address"
-              ? r.address
-              : scope === "county"
-                ? r.county
-                : `${r.name} ${r.address} ${r.county}`;
-        return hay.toLowerCase().includes(needle);
-      })
-    : numbered;
+  /*
+   * "SHOW THE ONES I PICKED" — the answer to a count you cannot find.
+   *
+   * ── THE COMPLAINT THIS FIXES ──
+   *
+   * Filter to Anderson, tick a record, clear the county: the bar still reads "1
+   * selected" and nothing on screen appears ticked. It LOOKS like a stale count
+   * left over from a search that no longer exists. It is not — measured, the
+   * record is row 387 of the 1,153, still there and still ticked. It is simply
+   * a thousand rows below the fold, and the reader has no way to reach it or
+   * confirm what the number refers to.
+   *
+   * Dropping the tick would be wrong: the record IS in this answer, and the
+   * reader ticked it on purpose. What was missing is a way to see it. This
+   * narrows the list to the picks, so the count is always one click from the
+   * rows it counts.
+   *
+   * `count > 0` guards it: with nothing ticked the bar is gone, and a toggle
+   * left on would hide every row with no control left to turn it off.
+   */
+  const onlyPicked = showPicked && count > 0;
+
+  const shown = numbered.filter(({ record: r }) => {
+    if (onlyPicked && !selected.includes(recordKey(r))) return false;
+    if (!needle) return true;
+    /* ONE FIELD OR ALL THREE, whichever the scope says. The space between the
+       three in the "all" case is load-bearing: joined without it, a needle
+       could match across the seam of two fields and hide a row for a reason
+       that is in neither of them. */
+    const hay =
+      scope === "name"
+        ? r.name
+        : scope === "address"
+          ? r.address
+          : scope === "county"
+            ? r.county
+            : `${r.name} ${r.address} ${r.county}`;
+    return hay.toLowerCase().includes(needle);
+  });
 
   /*
    * TICKS HIDDEN BY THE NARROW-DOWN BOX ARE KEPT, AND COUNTED.
@@ -424,17 +453,38 @@ export function StepPick({
               />
             </div>
 
-            {needle !== "" && (
+            {/* THE LINE HAS TO NAME WHICHEVER FILTER IS NARROWING THE LIST.
+                Under "Show picked" the rows are cut by the ticks, not by the
+                box, and reporting "N of 1,153 by name, address or county" then
+                would credit the wrong control — the reader would look at an
+                empty box and wonder why 1,152 rows had gone. */}
+            {onlyPicked ? (
               <p className="text-[11.5px] text-mv-muted" role="status">
-                Showing{" "}
+                Showing only the{" "}
                 <b className="font-semibold text-mv-ink">
                   {shown.length.toLocaleString("en-US")}
                 </b>{" "}
-                of {records.length.toLocaleString("en-US")} by{" "}
-                <b className="font-semibold text-mv-ink">{SCOPE_NOUN[scope]}</b>
-                {hiddenPicks > 0 &&
-                  ` · ${hiddenPicks} record${hiddenPicks === 1 ? "" : "s"} you ticked ${hiddenPicks === 1 ? "is" : "are"} hidden by this filter, and ${hiddenPicks === 1 ? "is" : "are"} still selected`}
+                record{shown.length === 1 ? "" : "s"} you ticked
+                {needle !== "" && ` that also match “${filter.trim()}”`} · use{" "}
+                <b className="font-semibold text-mv-ink">Show all</b> in the bar
+                below to see the other{" "}
+                {(records.length - count).toLocaleString("en-US")}
               </p>
+            ) : (
+              needle !== "" && (
+                <p className="text-[11.5px] text-mv-muted" role="status">
+                  Showing{" "}
+                  <b className="font-semibold text-mv-ink">
+                    {shown.length.toLocaleString("en-US")}
+                  </b>{" "}
+                  of {records.length.toLocaleString("en-US")} by{" "}
+                  <b className="font-semibold text-mv-ink">
+                    {SCOPE_NOUN[scope]}
+                  </b>
+                  {hiddenPicks > 0 &&
+                    ` · ${hiddenPicks} record${hiddenPicks === 1 ? "" : "s"} you ticked ${hiddenPicks === 1 ? "is" : "are"} hidden by this filter, and ${hiddenPicks === 1 ? "is" : "are"} still selected`}
+                </p>
+              )
             )}
           </div>
         )}
@@ -563,6 +613,25 @@ export function StepPick({
               </span>
               selected
             </span>
+
+            {/* THE COUNT NOW LEADS SOMEWHERE.
+                A tick can be row 387 of 1,153 — on screen, but a thousand rows
+                down, which reads as a number referring to nothing. This narrows
+                the list to exactly the rows the number counts, so the selection
+                can be checked and unticked without hunting for it. */}
+            <button
+              type="button"
+              onClick={() => setShowPicked((on) => !on)}
+              aria-pressed={showPicked}
+              title={
+                showPicked
+                  ? "Show every record the search returned"
+                  : "Narrow the list to the records you have ticked"
+              }
+              className="cursor-pointer text-[11.5px] font-semibold text-mv-on-deep-soft underline underline-offset-2 hover:text-mv-on-deep"
+            >
+              {showPicked ? "Show all" : "Show picked"}
+            </button>
 
             {overLimit ? (
               <span className="text-[11.5px] text-mv-on-deep-soft">
