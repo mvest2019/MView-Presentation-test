@@ -410,6 +410,53 @@ export function SampleFlowButton() {
    * `showModal()` WAITS FOR THE PORTAL TO EXIST. The dialog is only in the tree
    * while `open`, so it cannot be opened in the same tick the flag is set.
    */
+  /*
+   * THE PAGE BEHIND HOLDS STILL WHILE THE WALKTHROUGH PLAYS.
+   *
+   * ── WHAT `showModal()` DOES AND DOES NOT GIVE YOU ──
+   *
+   * The top layer blocks clicks and focus from reaching the page underneath. It
+   * does NOT block scrolling, and nothing else here did either — measured with
+   * the popup open, a wheel gesture over the backdrop took the page from 0 to
+   * its full scroll. The reader watched the portal header and the claim card
+   * drift about behind the video, and came back to a page that was no longer
+   * where they left it.
+   *
+   * The stage inside already has `overscroll-contain`, so a scroll that runs
+   * out inside the walkthrough does not chain to the page. The gap was only the
+   * backdrop.
+   *
+   * ── AND IT DOES NOT JUMP SIDEWAYS WHEN IT LOCKS ──
+   *
+   * Hiding the overflow takes the scrollbar with it, and on a platform with
+   * classic scrollbars the page then widens by that much — a sideways lurch at
+   * the moment the popup opens, and another when it closes. The width the
+   * scrollbar occupied is measured first and handed to `body` as padding, so
+   * the layout does not move. Overlay scrollbars measure 0 and nothing is
+   * added.
+   *
+   * Restoring what was there rather than clearing: the portal may be setting
+   * these itself for its own reasons, and a cleanup that assumes "" would undo
+   * that instead of undoing this.
+   */
+  useEffect(() => {
+    if (!open) return;
+
+    const root = document.documentElement;
+    const gap = window.innerWidth - root.clientWidth;
+
+    const rootOverflow = root.style.overflow;
+    const bodyPad = document.body.style.paddingRight;
+
+    root.style.overflow = "hidden";
+    if (gap > 0) document.body.style.paddingRight = `${gap}px`;
+
+    return () => {
+      root.style.overflow = rootOverflow;
+      document.body.style.paddingRight = bodyPad;
+    };
+  }, [open]);
+
   useEffect(() => {
     if (open) dialog.current?.showModal();
   }, [open]);
