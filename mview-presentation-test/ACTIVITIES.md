@@ -495,18 +495,18 @@ where her 120 production filings and 3 operator changes land.
 
 ## 13. Known gaps
 
-- **`open('kind:' + e.kind)` is a dead control.** The Ultra tier's "The latest on
-  the record" list opens `kind:permit`, `kind:completion` and so on, but the
-  payload's `drawers` map carries no `kind:*` keys — the capture holds 52 keys,
-  all of them flat names, `alert:*`, `lease:*`, `well:*` or `pf_*`, and
-  `/api/v1/dashboard/drawers/{key}` serves only the eleven flat keys plus five
-  of the nine `alert:*` (see `member-drawers.ts`). `DrawerPanel`
-  puts `display:none` on the panel and the scrim when `copy` is null, so those
-  buttons do nothing at all, with no error and nothing on screen. The dated rows
-  in the denser tiers are fine — they open `e.ctx`, which the server supplies and
-  which resolves. The fix is either to route those Ultra items through `e.ctx`
-  too, or to derive `kind:*` panels from `timeline.kinds[]` the way
-  `withAlertDrawers()` derives the alert panels.
+- ~~**`open('kind:' + e.kind)` is a dead control.**~~ **Fixed.** The Ultra tier's
+  "The latest on the record" list opened `kind:permit`, `kind:completion` and so
+  on, but the payload's `drawers` map carries no `kind:*` keys — the capture
+  holds 52 keys, all of them flat names, `alert:*`, `lease:*`, `well:*` or
+  `pf_*`, and `/api/v1/dashboard/drawers/{key}` serves only the eleven flat keys
+  plus five of the nine `alert:*` (see `member-drawers.ts`). `DrawerPanel` puts
+  `display:none` on the panel and the scrim when `copy` is null, so all four
+  buttons did nothing at all, with no error and nothing on screen — confirmed in
+  the browser against the live record. They now open **`e.ctx`**, the key the
+  server supplies for that row and the one the dated rows in the denser tiers
+  already use, so an Ultra item opens the same panel as the same event lower
+  down.
 - **`timeline.kinds[].spark`** arrives on every response and nothing reads it —
   deliberately, see §5, but it is bandwidth being spent on nothing.
 - **`activities.news`** and `news_empty_reason` are in the payload type and not
