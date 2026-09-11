@@ -2355,3 +2355,52 @@ body .mv-ref-app.view-ultra:not(.no-claim) section[data-route="app-leases"] > .p
   display: revert;
   vertical-align: revert;
 }
+
+/* ==========================================================================
+   THE SAME TREATMENT ON THE WEEKLY REPORT — not-claimed only.
+
+   WHY IT NEEDED ITS OWN RULES, the same reason Production & Forecast did.
+   Everything above keys on `.card`, `.kpi`, `.al-mini` and `.mv-alsum`, and
+   the report is built out of `.wr-page` — the six sheets a reader actually
+   scrolls — plus `.wr-mini` for the two inset panels. The report's `.kpi`
+   tiles and its handful of `.card`s were already being marked by the rules
+   above; the sheets carrying them were not, so a reader who scrolled past the
+   SAMPLE PREVIEW banner met page after page of white sheets that looked like
+   the paid report with a few dashed tiles inside them.
+
+   THE SAME THREE DECLARATIONS, NOT A SECOND STYLE — `--mv-sample` for the
+   colour, `dashed` for the border, the identical pill. Width is untouched, so
+   nothing moves: a dashed border occupies exactly the box a solid one of the
+   same width does. The monthly keeper's inline `2px solid var(--green)` is
+   overridden here too, deliberately — a green-bordered "keeper" sheet is the
+   one card on the page that reads as endorsed, and in a sample it is not.
+
+   THE PILL GOES ON THE SHEET'S OWN HEADING and nowhere else. Each `.wr-page`
+   titles itself exactly once: the four evidence sheets with a `.wr-q`, the
+   cover and the monthly with the `.section-label` inside their `.wr-head`.
+   Those are the six headings a reader meets scrolling, which is the gap the
+   banner alone leaves. The dozens of `.section-label`s further down each sheet
+   are sub-headings, and a pill on every one of them would be more chrome than
+   report.
+
+   `display: inline-block` ON THAT `.section-label` for the reason the
+   `.as-kicker` rule above records: it is a block, so the pill after it took a
+   line of its own instead of sitting beside the heading. `.wr-q` is a block
+   too and needs the same. Neither carries anything but its own text, so
+   shrinking the box to its content changes nothing else.
+   ========================================================================== */
+body .mv-ref-app.no-claim .app-body section[data-route="app-briefing"] .wr-page,
+body .mv-ref-app.no-claim .app-body section[data-route="app-briefing"] .wr-mini {
+  border-color: var(--mv-sample) !important; border-style: dashed !important; }
+
+body .mv-ref-app.no-claim .app-body section[data-route="app-briefing"] .wr-page > .between > .wr-q,
+body .mv-ref-app.no-claim .app-body section[data-route="app-briefing"] .wr-page > .wr-head .section-label {
+  display: inline-block; }
+
+body .mv-ref-app.no-claim .app-body section[data-route="app-briefing"] .wr-page > .between > .wr-q::after,
+body .mv-ref-app.no-claim .app-body section[data-route="app-briefing"] .wr-page > .wr-head .section-label::after {
+  content: "Sample";
+  display: inline-block; font-size: 8.5px; font-weight: 800; letter-spacing: .07em;
+  text-transform: uppercase; padding: 2px 6px; border-radius: 4px;
+  background: var(--mv-sample); color: #fff; margin-left: 6px; vertical-align: 1px;
+  white-space: nowrap; }
