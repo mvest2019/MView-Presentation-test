@@ -234,6 +234,38 @@ export default function ProductionView(
         </span>
       </div>
 
+      {/* ---------- SAMPLE PREVIEW: NOT CLAIMED only ----------
+
+          THE SAME BANNER THE DASHBOARD, ALERTS AND ACTIVITIES CARRY, and the
+          same `.smp-badge` / `.smp-tag` pair — not new styling. This page was
+          the only not-claimed surface without it: the reader got a sampled
+          page with nothing at the top of it saying so, while every other route
+          announced itself. The copy follows Alerts' shape — what the page
+          becomes once the record is claimed, then the two facts that matter
+          before looking at a figure: whose record this is, and that the dates
+          are real while the amounts are not. */}
+      {sample ? (
+        <div className="smp-badge">
+          <span className="smp-tag">Sample preview</span>
+          {/* `maxWidth: none` LIFTS A DELIBERATE CAP, and only on this banner.
+              The shared rule caps this paragraph at `78ch` — a readability
+              limit it shares with `.simple-hero > p`, `#mvStateCard` and
+              `.act-empty p` — which is about 615px. In this full-width box that
+              wrapped the copy into a narrow column with roughly a third of the
+              banner empty to its right. The Dashboard's own banner lifts the
+              same cap for the same reason; the cap is untouched for every other
+              element sharing the rule. The copy is cut to the two facts a
+              reader needs before they look at a figure: whose record this is,
+              and that the dates are real while the amounts are not. */}
+          <p style={{ maxWidth: 'none' }}>
+            <strong>This is what your production and forecast page looks like once you claim
+            your record.</strong>{' '}
+            The dates are real; the lease names and amounts belong to a sample owner.{' '}
+            <strong>Free, no-obligation account.</strong>
+          </p>
+        </div>
+      ) : null}
+
       <div className="notice mint" style={{ marginBottom: 14 }}>
         <span>✦</span>
         <div>
@@ -322,9 +354,13 @@ export default function ProductionView(
           </button>
         </div>
 
-        <p className="pf2-note" style={{ paddingTop: 10 }}>{b.note}</p>
+        {/* `b.boundary.note` used to print here — the paragraph restating in
+            prose what the three segments above already say in figures. Removed
+            as asked; the strip is the explanation. The notice below keeps the
+            10px that paragraph's `paddingTop` was providing, so the spacing
+            under the strip is unchanged. */}
         {blindMonths ? (
-          <div className="notice slate" style={{ margin: '4px 0 0' }}>
+          <div className="notice slate" style={{ margin: '10px 0 0' }}>
             <span>◷</span>
             <div>
               <strong>{b.blind_labels.join(', ')} {blindMonths === 1 ? 'is' : 'are'} missing from
@@ -774,14 +810,31 @@ export default function ProductionView(
                       </span>
                     ) : null}
                   </td>
+                  {/* THE GATE IS THE HIGH BOUND, NOT THE LOW ONE, and that is a
+                      fix rather than a preference. A band is allowed to open at
+                      zero — the model puts the floor at $0 whenever a lease's
+                      next month is uncertain enough — and testing the LOW bound
+                      threw the whole range away when it did: measured on a
+                      108-lease record, 34 leases carried `next_month_low: 0`
+                      beside a real `next_month_high` (GRISSOM, $98,745 next
+                      month and $2.89M over six years) and every one of them
+                      printed a flat "$0", in 68 cells across these two columns.
+                      A lease that may earn ninety-eight thousand dollars next
+                      month reading "$0" is the worst kind of wrong: it is a
+                      figure, so nobody doubts it.
+
+                      The 19 leases where BOTH bounds are zero are the inactive
+                      ones — nothing is projected for them and "$0" is the
+                      honest answer, which the note under the six-year column
+                      already explains. */}
                   <td className="right num">
-                    {l.next_month_low != null && l.next_month_low > 0
-                      ? `${usd(l.next_month_low)} – ${usd(l.next_month_high)}`
+                    {l.next_month_high != null && l.next_month_high > 0
+                      ? `${usd(l.next_month_low ?? 0)} – ${usd(l.next_month_high)}`
                       : '$0'}
                   </td>
                   <td className="right num">
-                    {l.quarter_low != null && l.quarter_low > 0
-                      ? `${usd(l.quarter_low)} – ${usd(l.quarter_high)}`
+                    {l.quarter_high != null && l.quarter_high > 0
+                      ? `${usd(l.quarter_low ?? 0)} – ${usd(l.quarter_high)}`
                       : '$0'}
                   </td>
                   <td className="right num">
