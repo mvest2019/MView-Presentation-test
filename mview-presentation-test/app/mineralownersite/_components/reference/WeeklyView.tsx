@@ -439,7 +439,16 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
         </nav>
 
         {/* ---------------------------------------------------- the promise */}
-        <div className="notice slate wr-noprint">
+        {/* `wr-promise` CARRIES ONE DECLARATION AND EXISTS ONLY TO BE AIMED AT.
+            The promise band sat flush against the cover sheet below it — the
+            shared `.notice` has no bottom margin and `.wr-page` no top one, so
+            the two boxes touched and read as one control that had been cut in
+            half. The gap belongs on this element and nowhere else: `.notice` is
+            used a dozen times inside the report's own sheets, where its lack of
+            a margin is what keeps it tucked under the paragraph it belongs to.
+            A class is the way to say "this one", rather than a selector that
+            tries to describe where it sits. */}
+        <div className="notice slate wr-noprint wr-promise">
           <div>☕ {r.promise}</div>
         </div>
 

@@ -18,6 +18,7 @@ import { apiBase, OwnerApiError, type ApiErrorBody } from './owner-api';
  *   GET /api/v1/dashboard/drawers/{key}?member_id&owner one explainer
  *   GET /api/v1/weekly?member_id                        the whole report
  *   GET /api/v1/weekly?member_id&format=html|csv|email  the three renderings
+ *   GET /api/v1/weekly/history?member_id                every issue kept
  *   GET /api/v1/weekly/email                            can this build send
  *   POST /api/v1/weekly/email {member_id,to}            send it
  *   GET /api/v1/production/forecast?member_id            the whole forecast
@@ -184,6 +185,45 @@ export interface WeeklyEmailCapability {
   note: string;
 }
 
+/**
+ * `GET /weekly/history` — the archive, from the endpoint that owns it.
+ *
+ * `/weekly` carries an `archive` of its own and it is a SHORTER LIST: measured
+ * on member 4785, six rows against this endpoint's seven. The difference is
+ * the current issue, which `/history` includes and flags (`current: true`)
+ * while `/weekly.archive` leaves it out — so the two are the same history
+ * counted from different ends, and the seam drops the current row rather than
+ * letting "N issues before this one" start counting this one.
+ *
+ * THREE FIELDS BEYOND `WeeklyArchiveItem`, and they are typed here even though
+ * the report does not draw them yet, because they are the answer to a question
+ * the archive will eventually be asked: `stored` and `frozen` say whether a row
+ * is the copy that was published at the time or a rebuild of that week from
+ * today's record, and operators file late, so the two can differ. `note` is the
+ * service's own paragraph explaining exactly that.
+ */
+export interface WeeklyHistoryIssue {
+  week_ending_iso: string;
+  week_ending_label: string;
+  window_label: string;
+  line: string;
+  quiet: boolean;
+  /** the issue this report IS — not one of the past briefings */
+  current: boolean;
+  /** kept as it was published, rather than rebuilt from the record now */
+  stored: boolean;
+  /** a stored issue that is never rewritten */
+  frozen: boolean;
+}
+
+export interface WeeklyHistoryResponse {
+  owner_name: string;
+  weeks_kept: number;
+  issues: WeeklyHistoryIssue[];
+  note: string;
+  built_at?: string;
+}
+
 /* ------------------------------------------------------------- the reads */
 
 export function fetchDashboard(base: string, member: string): Promise<DashboardResponse> {
@@ -241,6 +281,12 @@ export type WeeklyResponse = WeeklyReport & { prices_note?: string };
 
 export function fetchWeekly(base: string, member: string): Promise<WeeklyResponse> {
   return getJson<WeeklyResponse>(base, '/weekly', { member_id: member });
+}
+
+export function fetchWeeklyHistory(
+  base: string, member: string,
+): Promise<WeeklyHistoryResponse> {
+  return getJson<WeeklyHistoryResponse>(base, '/weekly/history', { member_id: member });
 }
 
 export function fetchWeeklyEmailPreview(
