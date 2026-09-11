@@ -96,6 +96,9 @@ function message(error: unknown): string {
  * committed, step 4 says plainly that it commits, step 5 says it is done.
  * Posting anywhere else would make one of those a lie.
  */
+/** `?step=3` — the flow's position, and the only thing it puts in the URL. */
+const stepUrl = (step: number) => `${window.location.pathname}?step=${step}`;
+
 export function ClaimWizard({ memberId }: { memberId: number | null }) {
   const [step, setStep] = useState(1);
 
@@ -151,6 +154,92 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
   }
 
   /*
+   * ══════════════════════════════════════════════════════════════════════════
+   * THE STEP IS A HISTORY ENTRY, SO BACK MEANS "BACK ONE STEP"
+   * ══════════════════════════════════════════════════════════════════════════
+   *
+   * ── THE BUG THIS FIXES ──
+   *
+   * The step was state and nothing else, so the browser had never been told the
+   * reader had moved. Back on step 4 left the claim page altogether and took
+   * four screens of work with it — and Back is exactly the gesture people reach
+   * for in a wizard that draws its own "Back to the addresses" button two lines
+   * above the browser's.
+   *
+   * ── `history.pushState`, NOT THE ROUTER ──
+   *
+   * `router.push` would re-run the route on the server for a change that is
+   * entirely client state. The native call is what Next supports for exactly
+   * this — updating the URL without a navigation — and it leaves the mounted
+   * component, and therefore the whole claim in progress, alone.
+   *
+   * ── A RELOAD ALWAYS LANDS ON STEP 1 ──
+   *
+   * `?step=4` in a bookmark or a reload describes a position, not the four
+   * screens of state behind it, and none of that state survives a reload. So
+   * the mount `replaceState`s back to step 1 rather than reading the parameter:
+   * honouring it would open a lease table with no leases and a Claim button
+   * with nothing to file.
+   */
+  useEffect(() => {
+    window.history.replaceState(null, "", stepUrl(1));
+  }, []);
+
+  /** Forward: a new entry, so the one behind it is the step just left. */
+  function goStep(next: number) {
+    setStep(next);
+    window.history.pushState(null, "", stepUrl(next));
+  }
+
+  /*
+   * IN-APP BACK IS THE BROWSER'S BACK.
+   *
+   * "Back to the records" used to push a THIRD entry, which left the two
+   * controls disagreeing: after clicking it, the browser's Back button moved
+   * the reader FORWARD to the step they had just left. Delegating to
+   * `history.back()` means one stack and one meaning.
+   *
+   * It cannot walk off the flow: those buttons only render on steps 3 and 4,
+   * and every forward move pushed an entry, so there is always a step behind.
+   */
+  function goBack() {
+    window.history.back();
+  }
+
+  /*
+   * HOW FAR FORWARD THE DATA GOES — the clamp on a Back or a Forward.
+   *
+   * History entries outlive the state they described. `startOver` on step 5
+   * drops the claim but the entries for steps 2 to 5 are still in the stack, so
+   * Back from a fresh step 1 would otherwise re-open a receipt for a claim that
+   * is no longer in memory. Each step names the one thing it cannot render
+   * without, and the URL is corrected in place when a target is refused.
+   */
+  const furthest = claim.data
+    ? 5
+    : claimSet.data
+      ? 4
+      : picked.length > 0
+        ? 3
+        : results.data !== null || results.loading
+          ? 2
+          : 1;
+
+  useEffect(() => {
+    function onPop() {
+      const asked =
+        Number(new URLSearchParams(window.location.search).get("step")) || 1;
+      const target = Math.min(Math.max(asked, 1), furthest);
+      setStep(target);
+      if (target !== asked) {
+        window.history.replaceState(null, "", stepUrl(target));
+      }
+    }
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [furthest]);
+
+  /*
    * BACK TO STEP 1 FOR A DIFFERENT RECORD — and EVERY piece of the last claim
    * has to go with it.
    *
@@ -175,12 +264,51 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
     searchedRef.current = "";
     setQuery(emptyQuery);
     setResults(idle());
+    /* The rows are gone, so the ticks on them go too — a count in the bar over
+       an empty page is the same invisible selection, reached another way. */
+    setPicked([]);
+  }
+
+  /*
+   * EDITING A FILTER — AND EMPTYING THE LAST ONE DROPS THE ANSWER WITH IT.
+   *
+   * ── THE BUG THIS FIXES ──
+   *
+   * Search "ryan", then clear the owner name with its ✕. All four fields are
+   * empty, so `isSearchable` is false and the debounce below refuses to ask the
+   * API anything — correctly, there is nothing to ask. But the 1,153 rows from
+   * the deleted query stayed on screen, under a heading counting them, and
+   * "Reset filters" had hidden itself because there were no filters left to
+   * reset. The page showed the answer to a question it was no longer asking,
+   * with no control left to clear it short of a reload.
+   *
+   * ── WHY IT IS HERE AND NOT IN AN EFFECT ──
+   *
+   * This is an event, not a consequence to observe: the reader emptied the last
+   * field. Watching `query` from an effect would mean a synchronous setState in
+   * an effect body, which `react-hooks/set-state-in-effect` rejects, and
+   * deferring it in a timer would leave a frame where the stale rows are still
+   * there. `resetSearch` does exactly this for the Reset button — the two paths
+   * now agree, which is the point: reaching the empty state one field at a time
+   * has to land where reaching it in one click does.
+   *
+   * Not gated on `step === 2`. Step 1 shows no results, so clearing a field
+   * there drops an `idle()` that is already idle — and a guard would be a rule
+   * to keep in sync for no behaviour.
+   */
+  function changeQuery(next: ClaimQuery) {
+    setQuery(next);
+    if (isSearchable(next)) return;
+    searchRef.current?.abort();
+    searchedRef.current = "";
+    setResults(idle());
+    setPicked([]);
   }
 
   function startOver() {
     searchRef.current?.abort();
     searchedRef.current = "";
-    setStep(1);
+    goStep(1);
     setQuery(emptyQuery);
     setResults(idle());
     setPicked([]);
@@ -228,6 +356,30 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
       .then((found) => {
         if (controller.signal.aborted) return;
         setResults({ data: found.owners, loading: false, error: null });
+
+        /*
+         * A NEW ANSWER UNTICKS ANYTHING IT DOES NOT CONTAIN.
+         *
+         * Tick a Reeves record, then add County = Anderson: the record is not
+         * in the new four and there is no row left to untick, but the tick was
+         * kept — the bar still counted it and "Review addresses →" carried it
+         * to step 3 alongside records the reader could actually see. A claim
+         * built partly from a query that is no longer in the fields.
+         *
+         * So the selection is pruned to the answer on screen. No message: a
+         * tick with no row is not something to explain, and the count in the
+         * bar simply matches what is ticked.
+         *
+         * ── THIS IS NOT THE NARROW-DOWN BOX ──
+         *
+         * That one hides rows from an answer the reader still has, and its
+         * ticks are deliberately kept — step 2 reports how many are out of
+         * sight. This runs only when the API returns a DIFFERENT answer.
+         */
+        const kept = new Set(found.owners.map(recordKey));
+        setPicked((current) =>
+          current.filter((record) => kept.has(recordKey(record))),
+        );
       })
       .catch((error) => {
         /* A superseded search is not a failure — it aborts into this catch
@@ -240,7 +392,7 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
 
   /** Step 1's button: go to the results and search at once, no debounce. */
   function startSearch() {
-    setStep(2);
+    goStep(2);
     if (isSearchable(query)) runSearch(query);
   }
 
@@ -289,7 +441,7 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
   async function resolveSelection() {
     if (picked.length === 0) return;
     setClaimSet({ data: null, loading: true, error: null });
-    setStep(3);
+    goStep(3);
     try {
       const set = await fetchClaimSet(picked);
       setClaimSet({ data: set, loading: false, error: null });
@@ -358,7 +510,7 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
    * carries that forward; step 4 is where the claim is actually filed.
    */
   function reviewLeases() {
-    setStep(4);
+    goStep(4);
   }
 
   /**
@@ -380,7 +532,7 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
    */
   async function fileClaim() {
     if (claim.data) {
-      setStep(5);
+      goStep(5);
       return;
     }
     if (memberId === null || claimOwners.length === 0) return;
@@ -391,7 +543,7 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
       setClaim({ data: result, loading: false, error: null });
       /* Step 5 reads the response — including a partial refusal, which is the
          one thing it must not round up into "successfully claimed". */
-      setStep(5);
+      goStep(5);
     } catch (error) {
       setClaim({ data: null, loading: false, error: message(error) });
     }
@@ -404,7 +556,7 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
       {step === 1 && (
         <StepFind
           query={query}
-          onQueryChange={setQuery}
+          onQueryChange={changeQuery}
           counties={counties}
           onRetryCounties={retryCounties}
           onSearch={startSearch}
@@ -415,7 +567,7 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
         <StepPick
           results={results}
           query={query}
-          onQueryChange={setQuery}
+          onQueryChange={changeQuery}
           counties={counties}
           selected={picked.map(recordKey)}
           onToggle={toggleRecord}
@@ -444,7 +596,7 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
           attested={attested}
           onAttest={setAttested}
           onConfirm={reviewLeases}
-          onBack={() => setStep(2)}
+          onBack={goBack}
         />
       )}
 
@@ -458,7 +610,7 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
           claimError={claim.error}
           alreadyClaimed={claim.data !== null}
           onContinue={fileClaim}
-          onBack={() => setStep(3)}
+          onBack={goBack}
         />
       )}
 

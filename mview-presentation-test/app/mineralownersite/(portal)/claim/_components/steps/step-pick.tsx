@@ -17,7 +17,11 @@ import {
 import type { Async } from "../claim-wizard";
 import { FlowEmpty, FlowError, FlowLoading } from "../flow-state";
 import { GuideNote } from "../guide-note";
-import { ClaimSearchFields, type ClaimQuery } from "../search-fields";
+import {
+  ClaimSearchFields,
+  isSearchable,
+  type ClaimQuery,
+} from "../search-fields";
 import { StepIntro } from "../step-intro";
 import { CandidateCard } from "./candidate-card";
 
@@ -212,12 +216,21 @@ export function StepPick({
       })
     : numbered;
 
-  /* Ticks are kept on rows the filter is hiding — losing a selection because a
-     row scrolled out of view would be the worst thing this control could do —
-     so when that happens the count says so. */
+  /*
+   * TICKS HIDDEN BY THE NARROW-DOWN BOX ARE KEPT, AND COUNTED.
+   *
+   * The record is still in this answer; a term typed into the box is only
+   * hiding its row. Losing a selection because a row scrolled out of view would
+   * be the worst thing that control could do, so the tick stays and the line
+   * under the box says how many are out of sight.
+   *
+   * A tick that the API's LATEST answer no longer contains is a different case
+   * and is not handled here — the wizard drops it as the new results land, so
+   * `selected` only ever holds keys this screen can actually draw.
+   */
   const visible = new Set(shown.map(({ record }) => recordKey(record)));
   const hiddenPicks = needle
-    ? selected.filter((k) => !visible.has(k)).length
+    ? selected.filter((key) => !visible.has(key)).length
     : 0;
 
   return (
@@ -240,7 +253,16 @@ export function StepPick({
       >
         <ClaimSearchFields
           query={query}
-          onChange={onQueryChange}
+          /* EMPTYING THE LAST SEARCH FIELD ALSO EMPTIES THIS BOX.
+             The wizard drops the results at the same moment, and a narrow-down
+             term left behind would be invisible — the box only renders when
+             there are rows — and then silently filter the NEXT search's answer
+             from a field the reader last saw two searches ago. Reset already
+             clears both; the ✕ path now agrees with it. */
+          onChange={(next) => {
+            onQueryChange(next);
+            if (!isSearchable(next)) setFilter("");
+          }}
           counties={counties}
           compact
         />
