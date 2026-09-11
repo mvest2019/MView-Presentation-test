@@ -116,10 +116,17 @@ export function StepFind({
         <FlowLoading label="Loading the county list…" compact />
       )}
 
+      {/* EXACTLY TWO FULL LINES (requested).
+          The original ran to a line and a word, stranding "search only." on its
+          own; the first rewrite over-corrected to three. The middle sentence —
+          that the rolls spell one person several ways — is the one worth the
+          room, because it is why a full name can find nothing while an initial
+          finds the record, and step 2 exists to sort out what it produces. */}
       <GuideNote title="Why this step matters">
-        Query runs against matched owner records (RRC + county appraisal
-        sources), ranked on name and county proximity. No claim event is written
-        on this step — search only.
+        Your search runs against matched owner records from the Railroad
+        Commission and county appraisal rolls. Those rolls spell one person
+        several ways, so initials often find rows a full name misses — and
+        nothing is claimed here, this step only searches.
       </GuideNote>
 
       <div
