@@ -359,9 +359,26 @@ blue `#3b5bdb` for models, green `#2e8f6d` otherwise.
 
 | State | What it says |
 |---|---|
-| No alerts at all, no filter | **"What a quiet week looks like"** — `al.quiet_reason` if the server gave one, otherwise the default sentence naming the five feeds checked |
-| Filter or search matches nothing | **"Nothing in that filter"** — names the category, and offers "show all *N* →" |
+| No alerts at all, no filter (`quiet`) | **"What a quiet week looks like"** — `al.quiet_reason` if the server gave one, otherwise the default sentence naming the five feeds checked |
+| A search matches nothing | **"Nothing matches these filters"** — *No alert matches "term"*, plus *in &lt;category&gt;* when one is also on, and "show all *N* →" |
+| A category matches nothing | the same heading, with *No &lt;category&gt; alert matches.* |
 | There *are* rows (Detailed and above) | the quiet-week card renders anyway, as a promise about what most weeks look like |
+
+`quiet` is the only state that is a **result** — nothing is filtered and there is
+nothing to show — and it is the one the retention copy is written for.
+Everything else is a filter the reader set, so the card names which one.
+
+Two things were wrong here and are fixed:
+
+- The card read *"No {label} alert matches"* and `CATS` carries `all` with the
+  label "All", so the commonest empty case — a search with no hits and no
+  category chosen — printed **"No all alert matches."** `catLabel` is now null
+  on `all`, and the search term is named instead.
+- A second empty state sat under the search box (*"No alerts match that search
+  — clear it and show all 9"*) firing on exactly the same condition, so an empty
+  search printed both, above and below the filter row, with two buttons doing
+  the same two `setState` calls. The card is the one in the reading flow, where
+  the rows would have been, so it is the one that survives.
 
 The distinction the page is built on: *"No alerts"* and *"the well-status feed
 stopped updating in January"* are different facts, and only the second one

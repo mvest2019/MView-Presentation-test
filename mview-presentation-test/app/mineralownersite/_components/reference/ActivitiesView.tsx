@@ -509,7 +509,29 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                 <ul className="u-more-l">
                   {ultraRecent.map((e) => (
                     <li key={e.id}>
-                      <button type="button" onClick={() => open('kind:' + e.kind)}>
+                      {/* `e.ctx`, NOT `'kind:' + e.kind` — these four buttons
+                          did nothing at all.
+
+                          There is no `kind:*` drawer anywhere: the capture
+                          carries 52 keys, all of them flat names, `alert:*`,
+                          `lease:*`, `well:*` or `pf_*`, and
+                          `/dashboard/drawers/{key}` serves only the eleven
+                          flat keys plus five `alert:*` (see
+                          `member-drawers.ts`). `Portal` resolves a drawer as
+                          `data.drawers[key] ?? null`, and `DrawerPanel` puts
+                          `display:none` on both itself and its scrim when
+                          `copy` is null — so a miss is not a blank panel, it
+                          is a DEAD CONTROL: no error, no console line,
+                          nothing on screen. Measured in the browser on the
+                          live record: all four items inert, the dialog never
+                          leaving `display:none`.
+
+                          `ctx` is the key the SERVER supplies for this very
+                          row, and it is what the dated rows in the denser
+                          tiers already open (`Row` calls `open(e.ctx)`), so
+                          Ultra now opens the same panel for the same event
+                          rather than a key nothing serves. */}
+                      <button type="button" onClick={() => open(e.ctx)}>
                         <span className={'u-more-sev k-' + e.kind} aria-hidden="true" />
                         <span className="u-more-t">{e.title}</span>
                         {e.when_label
