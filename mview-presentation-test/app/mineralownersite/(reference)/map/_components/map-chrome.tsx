@@ -1218,7 +1218,11 @@ export function MapChrome({
       {/* ---------------- legend + scale ----------------
           One bottom-left stack, so the two keep their spacing whatever the
           legend is doing. It steps aside when the filters panel is open rather
-          than hiding under it: 12px gutter + the panel's 252px + 12px again.
+          than hiding under it: the rail's own 12px inset, its 252px card, and
+          12px again as the gap between the two — 276px, the same figure the
+          toolbar pads by. It read 264 while the rail sat flush at `left: 0`;
+          insetting the rail moved its right edge without moving this, and the
+          legend ended up against the panel with no gap at all.
 
           Below lg there is nowhere to step aside to — the panel takes most of
           the width — so the stack gets out of the way entirely until the
@@ -1229,7 +1233,7 @@ export function MapChrome({
           bare
             ? "hidden"
             : filtersOpen
-              ? "left-[264px] hidden lg:flex"
+              ? "left-[276px] hidden lg:flex"
               : "left-3 flex"
         }`}
       >

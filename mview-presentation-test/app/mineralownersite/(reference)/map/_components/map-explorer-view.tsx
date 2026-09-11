@@ -375,14 +375,18 @@ const FILTER_FIT_MIN_DEGREES = 0.05;
 const DEGREE_METRES = 111_320;
 
 /**
- * What the filters rail covers, in pixels: its 252px card and the 12px inset.
+ * What the filters rail covers, in pixels: the 12px it is inset from the left
+ * edge, its 252px card, and 12px of clearance beyond it.
  *
  * The map runs the full width of the page and the rail floats over its left
  * edge, so the part of it anyone can see is this much narrower. A frame that
  * ignores it puts the western end of a wide selection under the panel — which
  * is exactly what "it only zoomed to one county" looks like.
+ *
+ * Was 264, from when the card sat flush at `left: 0`. Inset by 12 it reaches
+ * 264 on its own, so the clearance had quietly become zero.
  */
-const FILTERS_RAIL_WIDTH = 264;
+const FILTERS_RAIL_WIDTH = 276;
 
 /** One well, framed: close enough to read the lease lines around it. */
 const SINGLE_WELL_SCALE = 9_000;
