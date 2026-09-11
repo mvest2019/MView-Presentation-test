@@ -32,52 +32,123 @@
  * exactly as it is there — see section 10 of app.css.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import type { WeeklyReport, Verdict, WeeklyBar } from '../../_lib/reference/weekly';
 import { n0, nShort, pctS, plural } from '../../_lib/reference/fmt';
 import { Band, ProductPair } from './bits';
 import type { ViewProps } from './Dashboard';
+import { usePortalMember } from '../portal-session';
 
 const MARK: Record<Verdict, string> = { good: '✓', watch: '⚑', flag: '⚑', quiet: '·' };
 const CHIP: Record<Verdict, string> = {
   good: 'chip-mint', watch: 'chip-est', flag: 'chip-est', quiet: 'chip-slate',
 };
 
-interface MailState {
-  open: boolean;
-  to: string;
-  busy: boolean;
-  result: null | {
-    sent: boolean; detail?: string; subject?: string; text?: string; reason?: string;
-  };
-  transport: 'webhook' | 'none' | 'unknown';
-  transportNote: string;
+/**
+ * ONE BUTTON, NO FORM.
+ *
+ * "Email me this report" used to expand a panel — an address field, a second
+ * button, and a line about what the build could send with — and the reader had
+ * to cross all three to get the thing the button already named. The panel is
+ * gone: the control sends, to the address the account registered, on the first
+ * click.
+ *
+ * WHAT IS LEFT OF ITS STATE IS ONE BOOLEAN. `open` and `toAuto` went with the
+ * panel — there is nothing to open and nothing to type over. `transport` /
+ * `transportNote` went with it too: both existed ONLY to label the panel's
+ * button and print its note, and the answer they carried comes back on the
+ * POST's own `detail`.
+ *
+ * THE ADDRESS IS NOT STATE EITHER, now that no field shows it. It is read at
+ * the click, in `send`, which is the only moment anything needs it — holding
+ * it meant an effect copying a value out of the session into `useState` for no
+ * reader, and an effect that only calls `setState` is a render the component
+ * did not need.
+ *
+ * NOR IS THE OUTCOME. It used to be `result`, drawn as a four-line notice
+ * between the promise and the cover — a permanent block of page given to a
+ * fact with a shelf life of seconds, which then sat in the report for the rest
+ * of the session. It is a toast now, through the shared `<Toaster>` the root
+ * layout already mounts, so it announces itself, times itself out, and leaves
+ * the report's own layout alone.
+ */
+
+/** what the two routes answer with; only these four fields are read here */
+interface MailAnswer {
+  sent?: boolean;
+  to?: string;
+  detail?: string;
+  error?: string;
+}
+
+/**
+ * THE REGISTERED ADDRESS, WHEREVER THIS BUILD KEEPS IT.
+ *
+ * The brief asks for "the registered email ID from sessionStorage (the email
+ * stored after login)". Nothing in this app writes one there today — login
+ * stores the member in the httpOnly `mv_user` cookie (`lib/session.ts`), which
+ * is deliberate: page JavaScript cannot read or forge it. The portal layout
+ * hands the four printable fields of that cookie to the client through
+ * `PortalSessionProvider`, and `email` is one of them, so the registered
+ * address IS available here — it just arrives by context rather than by
+ * storage.
+ *
+ * So both are read, storage first. If a later change does write the address at
+ * login, this picks it up with no further edit; until then the session context
+ * answers, and the field is never left empty for a signed-in reader. The keys
+ * are the plausible spellings rather than one guess, because a miss here is a
+ * silently blank field.
+ */
+const EMAIL_KEYS = ['mvEmail', 'mv_email', 'mvUserEmail', 'userEmail', 'email'];
+
+function storedEmail(): string {
+  if (typeof window === 'undefined') return '';
+  for (const store of [window.sessionStorage, window.localStorage]) {
+    try {
+      for (const k of EMAIL_KEYS) {
+        const v = store?.getItem(k);
+        if (!v) continue;
+        /* the value may be the address itself or a JSON record holding one */
+        const one = v.trim().startsWith('{')
+          ? (() => {
+              try {
+                const o = JSON.parse(v) as Record<string, unknown>;
+                const hit = ['email', 'email_id', 'emailId'].find((f) => typeof o[f] === 'string');
+                return hit ? String(o[hit]) : '';
+              } catch { return ''; }
+            })()
+          : v;
+        if (one && one.includes('@')) return one.trim();
+      }
+    } catch { /* private mode — the session context is the answer */ }
+  }
+  return '';
 }
 
 export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewProps) {
   const r = p.weekly;
-  const [mail, setMail] = useState<MailState>({
-    open: false, to: '', busy: false, result: null, transport: 'unknown', transportNote: '',
-  });
+  const member = usePortalMember();
+  const [sending, setSending] = useState(false);
 
   const unclaimed = funnel === 'unclaimed';
   const pageOf = (n: number) => r.pages.find((x) => x.n === n) ?? null;
   const explainFor = (n: number) => r.explains.find((x) => x.page === n) ?? null;
-
-  useEffect(() => {
-    let live = true;
-    fetch('/api/weekly/email')
-      .then((res) => res.json() as Promise<{ transport: string; note: string }>)
-      .then((d) => {
-        if (!live) return;
-        setMail((m) => ({
-          ...m,
-          transport: d.transport === 'webhook' ? 'webhook' : 'none',
-          transportNote: d.note ?? '',
-        }));
-      })
-      .catch(() => { if (live) setMail((m) => ({ ...m, transport: 'none' })); });
-    return () => { live = false; };
-  }, []);
+  /* THE RAIL IS THE PAGES THAT ARE ACTUALLY THERE. `rail` comes from the
+     service and always names the archive; the not-claimed report does not
+     render one — see the archive block at the foot of this component — and a
+     rail row pointing at an anchor that does not exist is a control that
+     silently does nothing. Filtered here rather than in the payload, so the
+     claimed report is untouched. */
+  const railItems = unclaimed ? r.rail.filter((it) => it.id !== 'wrArchive') : r.rail;
+  /* THE MINUTE MARKS ARE THE REPORT'S OWN, not four numbers typed into this
+     file. Every evidence page printed one — "4 min", "5 min", "5 min", "4 min"
+     — while `rail[].minutes` carried the same four from the service, so a
+     report the service re-timed would have gone on showing the old figure
+     beside a rail that had moved. One lookup, keyed on the anchor each page
+     already has; the fallback keeps the reference's own number if a rail row
+     ever stops being sent. */
+  const minutesFor = (id: string, fallback: number) =>
+    r.rail.find((it) => it.id === id)?.minutes ?? fallback;
 
   /* A SHARED LINK HAS TO LAND.
      `/weekly#wrPage2` is the point of using anchors, but the page is rendered
@@ -109,54 +180,160 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
     return u.toString();
   }, [p.owner, unclaimed]);
 
+  /**
+   * SENDING IT — AND WHY NO REPORT HTML IS IN THIS BODY.
+   *
+   * The contract already exists, at two levels, and neither of them takes a
+   * document:
+   *
+   *   this app   POST /api/weekly/email      {to, owner, num, dist, sample}
+   *   upstream   POST /api/v1/weekly/email   {member_id, to}
+   *
+   * `member_id` is NOT sent from here and must not be: it lives in the
+   * httpOnly `mv_user` cookie, page JavaScript cannot read it, and the route
+   * handler resolves it per request through `currentMemberTarget()`. That is
+   * the stronger arrangement — a member id posted by the browser is an id the
+   * browser could change, which is one edited request away from mailing
+   * somebody else's report to an address of your choosing. So the id travels
+   * with the session and reaches the service on the server's side of the wire,
+   * exactly as `sendWeeklyEmail()` sends it.
+   *
+   * POSTING THE RENDERED HTML WAS CONSIDERED AND IS THE WRONG SHAPE HERE.
+   * The service renders and sends the report itself from the same 15-minute
+   * `/api/v1/weekly` snapshot this screen was drawn from, so the message
+   * already carries the current dynamic data — there is nothing a posted
+   * document would add, and three things it would cost: a second renderer of
+   * the same report with nothing keeping the two in step (the argument
+   * `../../../api/weekly/route.ts` already makes about the download), a mail
+   * body the browser controls end to end, and an invented request shape the
+   * service does not accept. The one case that genuinely cannot be served by
+   * the member's own report is the NOT-CLAIMED sample, which is this app's
+   * transform of the payload and unknown upstream — and that case already
+   * renders locally, behind `sample`, in the route handler.
+   *
+   * THE OUTCOME IS A TOAST, AND THAT IS THE WHOLE OF IT. Both answers go to
+   * the shared `<Toaster>` the root layout mounts (`_components/ui/sonner.tsx`)
+   * — the same one the contact form and the auth pages already speak through,
+   * so the report is not the one surface in this app with its own idea of what
+   * a confirmation looks like. Two lines each, and gone in 4.5s: the title says
+   * which way it went and the description carries the one fact worth carrying,
+   * the address on a send and the service's own reason on a refusal.
+   *
+   * IT REPLACED A NOTICE BLOCK BETWEEN THE PROMISE AND THE COVER — four lines
+   * of report given over to a fact with a shelf life of seconds, which then sat
+   * there for the rest of the session pushing the cover down every time the
+   * reader came back to the page.
+   *
+   * NO `role="status"` IS NEEDED IN ITS PLACE. Sonner owns a live region, which
+   * is what the hand-written attribute was standing in for.
+   */
   const send = useCallback(async () => {
-    setMail((m) => ({ ...m, busy: true, result: null }));
+    /* NO ADDRESS IS ANSWERED HERE, not by the route. Signed out there is no
+       registered address to send to, and posting an empty `to` only spends a
+       request to be told "bad address" — a sentence written for a reader who
+       mistyped one, which this reader did not. */
+    /* WHERE THE REPORT GOES, answered at the press. With the address field
+       gone this is the only answer to "to whom": the address the account
+       registered, which is what "Email ME this report" says on the button. See
+       `storedEmail` above for the two places it is read from and why. */
+    const to = (storedEmail() || member?.email || '').trim();
+    if (!to) {
+      toast.error('Report not sent', {
+        description: 'There is no email address on this account to send it to.',
+      });
+      return;
+    }
+    setSending(true);
     try {
       const res = await fetch('/api/weekly/email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          to: mail.to,
+          to,
           owner: p.owner.ownername,
           num: p.owner.ownernumber != null ? String(p.owner.ownernumber) : undefined,
           dist: p.owner.districtcode ?? undefined,
           sample: unclaimed,
         }),
       });
-      const d = await res.json() as MailState['result'];
-      setMail((m) => ({ ...m, busy: false, result: d }));
+      const d = await res.json() as MailAnswer;
+      setSending(false);
+      if (d?.sent) {
+        /* THE ADDRESS IS READ OFF THE ANSWER, not off local state, so the line
+           names what the server accepted rather than what this component last
+           held. */
+        toast.success('Report sent', { description: `On its way to ${d.to || to}.` });
+      } else {
+        /* THE SERVICE'S OWN SENTENCE, not one written here. A refusal has a
+           reason — no transport, a rejected address, a service that would not
+           take it — and the route already words each of them; replacing them
+           with "something went wrong" would throw away the only thing that
+           tells a reader whether to try again. */
+        toast.error('Report not sent', {
+          description: d?.detail || d?.error || 'The report service did not accept the message.',
+        });
+      }
     } catch (e) {
-      setMail((m) => ({
-        ...m, busy: false,
-        result: { sent: false, detail: e instanceof Error ? e.message : String(e) },
-      }));
+      setSending(false);
+      toast.error('Report not sent', {
+        description: e instanceof Error ? e.message : String(e),
+      });
     }
-  }, [mail.to, p.owner, unclaimed]);
+  }, [member?.email, p.owner, unclaimed]);
 
   return (
     <section data-route="app-briefing" className="active">
 
+      {/* ---------- SAMPLE PREVIEW: NOT CLAIMED only ----------
+
+          ONE BANNER, AND THE REPORT BELOW IT IS THE PAID REPORT — the
+          Dashboard's own arrangement, and the same `.smp-badge` / `.smp-tag`
+          pair it, Alerts, Activities and Production & Forecast already carry.
+          It replaces the `mv-claimrail` that used to sit here: that rail had
+          its own kicker, headline, sub-copy and full-width CTA, which
+          re-arranged the top of the report so the state a visitor is being
+          shown looked like a different product rather than like the thing they
+          get by claiming — the one job this state has.
+
+          THE CLAIM CONTROL SURVIVES THE SWAP, and it had to. The rail was this
+          report's ONLY route into the identity flow (`open('identity')`), so
+          dropping it wholesale would have cost the page its one conversion
+          path and left a visitor who wanted to act with nowhere on the report
+          to do it. It moves into the banner at `btn-sm` instead of leading a
+          block of its own: the report below reads exactly as the paid one
+          does, and the offer is still one click away.
+
+          TWO LINES, FULL WIDTH, exactly as the Dashboard sets it. The shared
+          rule is a `flex` ROW, so the pill takes a column and the copy wraps in
+          what is left of it; the column direction is set here, inline on this
+          one banner, so the class stays the one My Leases and the other routes
+          share. */}
       {unclaimed
         ? (
-          <div className="mv-claimrail wr-noprint">
-            <div className="cr-top">
-              <span className="cr-dot" aria-hidden="true" />
-              <div className="cr-txt">
-                <span className="cr-kicker">Your one next step</span>
-                <strong className="cr-head">Claim your record to get this every Saturday</strong>
-                <span className="cr-sub">
-                  This is the <strong>whole report, not a teaser</strong> — the dates, the filings
-                  and the prices are the real public record. The figures that would be yours are
-                  withheld until you claim, which is <strong>free</strong>.
-                </span>
-              </div>
-              <span className="cr-act">
-                <button className="btn btn-primary btn-lg" type="button" onClick={() => open('identity')}>
-                  Claim your record — free, no obligation
-                </button>
-                <span className="cr-note">Yours is written about your leases.</span>
-              </span>
-            </div>
+          <div
+            className="smp-badge wr-noprint" id="sampleBadge"
+            style={{ flexDirection: 'column', alignItems: 'stretch', flexWrap: 'nowrap', gap: 6 }}
+          >
+            <span className="smp-tag" style={{ alignSelf: 'flex-start' }}>SAMPLE PREVIEW</span>
+            {/* `maxWidth: none` lifts the shared 78ch readability cap on this
+                one banner and nowhere else — the same lift, for the same
+                reason, that the Dashboard's and Production's banners make. */}
+            <p style={{ maxWidth: 'none' }}>
+              <strong>This is what your weekly report looks like once you claim your
+              record.</strong>{' '}
+              It is the <strong>whole report, not a teaser</strong> — the dates, the filings and
+              the prices are the real public record. Every figure below belongs to{' '}
+              <strong>{p.owner.ownername}, a fictional sample owner</strong>. Claiming is free,
+              takes about two minutes, and never changes legal ownership.
+            </p>
+            <span style={{ alignSelf: 'flex-start' }}>
+              <button
+                className="btn btn-primary btn-sm" type="button"
+                onClick={() => open('identity')}
+              >
+                Claim your record — free, no obligation
+              </button>
+            </span>
           </div>
         )
         : null}
@@ -183,7 +360,8 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
             <h2 style={{ fontSize: 24, margin: 0 }}>Weekly Mineral Owner Report</h2>
             <p className="small muted" style={{ margin: '3px 0 0' }}>
               Week ending {r.week_ending_label} · {r.owner_record} · delivered Saturday morning ·
-              about a {r.read_minutes}-minute read, and the cover alone is 2
+              about a {r.read_minutes}-minute read, and the cover alone is{' '}
+              {minutesFor('wrPage1', 2)}
             </p>
           </div>
           <div className="flex" style={{ flexWrap: 'wrap', gap: 6 }}>
@@ -192,16 +370,52 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
                 serves the same standalone HTML the print button rendered, and
                 `/api/weekly?format=csv` is untouched — only the two controls
                 are gone, not the routes behind them. */}
+            {/* IT SENDS. It used to open a panel that asked for an address and
+                carried its own send button — three steps for a control whose
+                label is already the whole instruction. The address is the one
+                on the account (see the effect above), so the first click is the
+                send; the answer appears below the promise line, where the panel
+                used to be. Disabled only while one is in flight, so a second
+                click cannot post a second copy.
+
+                BOTH CONTROLS ARE DEAD WHILE NOTHING IS CLAIMED. What they act
+                on is the reader's OWN copy of this report — one mails it to
+                the address on the account, the other saves it — and a visitor
+                looking at the sample has neither an account to mail nor a
+                report of their own to keep. Offered live they would have
+                answered with the fictional owner's issue, which is the one
+                thing the SAMPLE PREVIEW banner above promises they are not
+                getting. Shown and disabled rather than hidden, because the
+                state's whole job is to show what claiming gets you, and a
+                control that is not there shows nothing at all.
+
+                `disabled` AND NOT A CLASS. `.btn[disabled]` already dims and
+                blocks both of these (`dashboard-reference.css`), and the
+                attribute is what also takes them out of the tab order and off
+                the keyboard — `pointer-events: none` alone stops a mouse and
+                lets Enter through. That is why the download swaps from an `<a>`
+                to a `<button>` for this state instead of wearing the attribute
+                as an anchor: HTML has no disabled link, so a disabled-looking
+                one still navigates. The href is unchanged in every other
+                state, and the route behind it is untouched. */}
             <button
               className="btn btn-ghost btn-sm" type="button"
-              onClick={() => setMail((m) => ({ ...m, open: !m.open }))}
-              aria-expanded={mail.open}
+              onClick={send}
+              disabled={sending || unclaimed}
             >
-              Email me this report
+              {sending ? 'Sending…' : 'Email me this report'}
             </button>
-            <a className="btn btn-ghost btn-sm" href={`/api/weekly?format=html&dl=1&${qs}`}>
-              Download the report
-            </a>
+            {unclaimed
+              ? (
+                <button className="btn btn-ghost btn-sm" type="button" disabled>
+                  Download the report
+                </button>
+              )
+              : (
+                <a className="btn btn-ghost btn-sm" href={`/api/weekly?format=html&dl=1&${qs}`}>
+                  Download the report
+                </a>
+              )}
           </div>
         </div>
 
@@ -215,7 +429,7 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
             someone. `scroll-margin-top` on the pages keeps the sticky header
             off the heading. */}
         <nav className="wr-rail wr-noprint" aria-label="Report pages">
-          {r.rail.map((it) => (
+          {railItems.map((it) => (
             <a key={it.id} href={'#' + it.id}>
               <span className="rl-n">{it.mark}</span>
               <span className="rl-t">{it.title}</span>
@@ -225,80 +439,18 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
         </nav>
 
         {/* ---------------------------------------------------- the promise */}
-        <div className="notice slate wr-noprint">
+        {/* `wr-promise` CARRIES ONE DECLARATION AND EXISTS ONLY TO BE AIMED AT.
+            The promise band sat flush against the cover sheet below it — the
+            shared `.notice` has no bottom margin and `.wr-page` no top one, so
+            the two boxes touched and read as one control that had been cut in
+            half. The gap belongs on this element and nowhere else: `.notice` is
+            used a dozen times inside the report's own sheets, where its lack of
+            a margin is what keeps it tucked under the paragraph it belongs to.
+            A class is the way to say "this one", rather than a selector that
+            tries to describe where it sits. */}
+        <div className="notice slate wr-noprint wr-promise">
           <div>☕ {r.promise}</div>
         </div>
-
-        {/* ---------------------------------------------------------- the mailer */}
-        {mail.open
-          ? (
-            <div className="card card-pad wr-noprint wk-mail">
-              <div className="wm-row">
-                <label className="wm-lab" htmlFor="wkTo">Send this issue to</label>
-                <input
-                  id="wkTo" type="email" className="wm-in" placeholder="name@example.com"
-                  value={mail.to}
-                  onChange={(e) => setMail((m) => ({ ...m, to: e.target.value, result: null }))}
-                />
-                <button
-                  className="btn btn-primary btn-sm" type="button"
-                  disabled={mail.busy || !mail.to.trim()}
-                  onClick={send}
-                >
-                  {mail.busy ? 'Sending…' : mail.transport === 'webhook' ? 'Send it' : 'Prepare it'}
-                </button>
-              </div>
-              <p className="tiny muted" style={{ margin: '8px 0 0' }}>
-                {mail.transport === 'webhook'
-                  ? 'A mail transport is configured, so this sends the report from the server.'
-                  : mail.transport === 'none'
-                    ? mail.transportNote
-                    : 'Checking what this build can send with…'}
-              </p>
-              {mail.result
-                ? (
-                  <div className={'notice ' + (mail.result.sent ? 'mint' : '')} style={{ marginTop: 10 }}>
-                    <div>
-                      <strong>{mail.result.sent ? `Sent to ${mail.to}.` : 'Nothing was sent.'}</strong>
-                      {mail.result.subject
-                        ? <p className="small" style={{ margin: '4px 0 0' }}>Subject: {mail.result.subject}</p>
-                        : null}
-                      {mail.result.detail
-                        ? <p className="small" style={{ margin: '4px 0 0' }}>{mail.result.detail}</p>
-                        : null}
-                      {!mail.result.sent && mail.result.text
-                        ? (
-                          <>
-                            <div className="flex" style={{ flexWrap: 'wrap', gap: 6, marginTop: 9 }}>
-                              <a
-                                className="btn btn-primary btn-sm"
-                                href={`mailto:${encodeURIComponent(mail.to)}`
-                                  + `?subject=${encodeURIComponent(mail.result.subject ?? '')}`
-                                  + `&body=${encodeURIComponent(mail.result.text.slice(0, 1800))}`}
-                              >
-                                Open it in your mail app
-                              </a>
-                              <button
-                                className="btn btn-ghost btn-sm" type="button"
-                                onClick={() => { void navigator.clipboard?.writeText(mail.result?.text ?? ''); }}
-                              >
-                                Copy the message
-                              </button>
-                              <a className="btn btn-ghost btn-sm" href={`/api/weekly?format=html&dl=1&${qs}`}>
-                                Download it to attach
-                              </a>
-                            </div>
-                            <pre className="wm-pre">{mail.result.text}</pre>
-                          </>
-                        )
-                        : null}
-                    </div>
-                  </div>
-                )
-                : null}
-            </div>
-          )
-          : null}
 
         {/* ==================================================== PAGE 1 · cover
             The cover IS the executive summary — see the note at the top of this
@@ -319,10 +471,29 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
 
           <h2 style={{ margin: '0 0 4px', fontSize: 26 }}>{r.owner_first}, here&rsquo;s your week.</h2>
           <p className="small muted" style={{ margin: '0 0 10px' }}>
-            Owner record {r.owner_record} · 2 min to read this cover, about {r.read_minutes} for
-            all of it
+            Owner record {r.owner_record} · {minutesFor('wrPage1', 2)} min to read this cover,
+            about {r.read_minutes} for all of it
           </p>
-          <p className="small" style={{ margin: '0 0 12px', maxWidth: '74ch' }}>
+          {/* FULL WIDTH — AND IT TAKES TWO OVERRIDES, WHICH IS WHY THIS NOTE
+              SITS HERE AND NOT ONLY BESIDE THE STYLESHEET RULE.
+
+              The report held its body text to a reading measure in TWO places:
+              an inline `74ch` on each paragraph, and
+              `.wr-page .small, .wr-page .tiny { max-width: 84ch }` in the
+              stylesheet. The rule is the one that actually won, so lifting only
+              the inline value moved a paragraph from 74ch to 84ch and looked
+              like nothing had happened; lifting only the rule left every inline
+              `74ch` standing, because an inline style beats a class. Both had
+              to go, and both did: every `maxWidth` in this file now reads
+              `none`, and the rule is overridden at the foot of
+              `dashboard-reference.css`, scoped to this route.
+
+              WHAT IT COSTS, said plainly, because it is a real trade: a reading
+              measure is a typographic device and the reference chose one. On a
+              wide screen these lines now run longer than the 66-to-84
+              characters convention recommends. That is the call the owner
+              made, for the whole report rather than one paragraph. */}
+          <p className="small" style={{ margin: '0 0 12px', maxWidth: 'none' }}>
             <strong>{r.headline}</strong> This cover is written so the four answers below are
             enough. If you stop here you will not have missed anything that mattered this week —
             every page beneath it is the evidence, kept for when you want it rather than because
@@ -388,7 +559,7 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
             links pointed at hidden sections. */}
         <div className="card card-pad wr-noprint" id="wrSimpleEvidence">
           <div className="section-label">The evidence, one click deeper</div>
-          <p className="small" style={{ margin: '2px 0 0', maxWidth: '74ch' }}>
+          <p className="small" style={{ margin: '2px 0 0', maxWidth: 'none' }}>
             You are reading the <strong>Essentials</strong> view, which is the cover: the four
             answers and nothing you have to wade through. The five evidence pages behind them —
             what every lease posted against expected, who is drilling within a mile, what the
@@ -396,7 +567,7 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
             <strong>open in the Detailed view</strong>, from the view control beside your name.
           </p>
           <div className="wse-list">
-            {r.rail.slice(1).map((it) => (
+            {railItems.slice(1).map((it) => (
               <span key={it.id}>
                 <b>{it.title}</b>
                 {it.sub} · {it.minutes} min
@@ -411,9 +582,9 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
             <div className="wr-page" id="wrPage2">
               <div className="between">
                 <p className="wr-q">1 · {pageOf(2)!.title}</p>
-                <span className="tiny muted">4 min</span>
+                <span className="tiny muted">{minutesFor('wrPage2', 4)} min</span>
               </div>
-              <p className="small" style={{ maxWidth: '74ch' }}>{pageOf(2)!.lead}</p>
+              <p className="small" style={{ maxWidth: 'none' }}>{pageOf(2)!.lead}</p>
 
               <div className="grid g4" style={{ margin: '12px 0' }}>
                 {pageOf(2)!.stats.slice(0, 4).map((st) => (
@@ -511,16 +682,10 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
                 )
                 : null}
 
-              {/* ADAPTED · FULL WIDTH. The reference holds these paragraphs to a
-                  reading measure TWICE — an inline `maxWidth: '74ch'` here, and
-                  `.wr-page .small { max-width: 84ch }` in the stylesheet, which
-                  is the one that was actually winning at 84ch. Dropping the
-                  inline value alone left them at 663px inside an 808px card, so
-                  this sets `none` explicitly to beat the class rule.
-
-                  ONLY THIS BLOCK. The shared rule is left alone, so every other
-                  paragraph in every report page keeps its measure — editing the
-                  stylesheet would have widened all of them. */}
+              {/* FULL WIDTH, like every other paragraph in the report now —
+                  see the note on the cover's own lead. This block was the first
+                  one widened, back when it was the only one; the inline `none`
+                  it needed then is what all of them carry now. */}
               {pageOf(2)!.paras.map((t, i) => (
                 <p className="small" key={i} style={{ maxWidth: 'none' }}>{t}</p>
               ))}
@@ -544,9 +709,9 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
             <div className="wr-page" id="wrPage3">
               <div className="between">
                 <p className="wr-q">2 · {pageOf(3)!.title}</p>
-                <span className="tiny muted">5 min</span>
+                <span className="tiny muted">{minutesFor('wrPage3', 5)} min</span>
               </div>
-              <p className="small" style={{ maxWidth: '74ch' }}>{pageOf(3)!.lead}</p>
+              <p className="small" style={{ maxWidth: 'none' }}>{pageOf(3)!.lead}</p>
 
               <div className="grid g4" style={{ margin: '12px 0' }}>
                 {pageOf(3)!.stats.slice(0, 4).map((st) => (
@@ -578,7 +743,7 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
               </div>
 
               {pageOf(3)!.paras.map((t, i) => (
-                <p className="small" key={i} style={{ maxWidth: '74ch' }}>{t}</p>
+                <p className="small" key={i} style={{ maxWidth: 'none' }}>{t}</p>
               ))}
 
               <div className="section-label" style={{ marginTop: 12 }}>
@@ -597,9 +762,9 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
             <div className="wr-page" id="wrPage4">
               <div className="between">
                 <p className="wr-q">4 · {pageOf(5)!.title}</p>
-                <span className="tiny muted">5 min</span>
+                <span className="tiny muted">{minutesFor('wrPage4', 5)} min</span>
               </div>
-              <p className="small" style={{ maxWidth: '74ch' }}>{pageOf(5)!.lead}</p>
+              <p className="small" style={{ maxWidth: 'none' }}>{pageOf(5)!.lead}</p>
 
               <div className="grid g4" style={{ margin: '12px 0' }}>
                 {r.prices.map((q) => (
@@ -663,7 +828,7 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
                 : null}
 
               {pageOf(5)!.paras.map((t, i) => (
-                <p className="small" key={i} style={{ maxWidth: '74ch' }}>{t}</p>
+                <p className="small" key={i} style={{ maxWidth: 'none' }}>{t}</p>
               ))}
               {pageOf(5)!.note ? <p className="tiny muted">{pageOf(5)!.note}</p> : null}
               <span className="wr-pageno">Page 4 of {r.page_count}</span>
@@ -677,7 +842,7 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
             <div className="wr-page" id="wrPage5">
               <div className="between">
                 <p className="wr-q">5 · {pageOf(6)!.title}</p>
-                <span className="tiny muted">4 min</span>
+                <span className="tiny muted">{minutesFor('wrPage5', 4)} min</span>
               </div>
 
               {/* THE NUMBER PEOPLE OPEN IT FOR */}
@@ -733,7 +898,15 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
                 </div>
               </div>
 
-              <div className="section-label">Three things to watch</div>
+              {/* THE COUNT IS THE LIST'S OWN. This heading read "Three things
+                  to watch" over a list the service fills: it is sending four,
+                  and has been — a heading that miscounts the list directly
+                  beneath it is the cheapest kind of wrong to notice and the
+                  quickest to lose a reader's trust in the figures above it.
+                  The wording is otherwise the reference's. */}
+              <div className="section-label">
+                {r.watch.items.length} {plural(r.watch.items.length, 'thing')} to watch
+              </div>
               <ul className="wr-watch">
                 {r.watch.items.map((w, i) => (
                   <li key={i}><b aria-hidden="true">👀</b><span className="small">{w}</span></li>
@@ -808,7 +981,7 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
                 </div>
               </div>
               <h2 style={{ margin: '0 0 4px', fontSize: 22 }}>{r.monthly.title}</h2>
-              <p className="small" style={{ maxWidth: '74ch' }}>
+              <p className="small" style={{ maxWidth: 'none' }}>
                 <strong>{r.monthly.find}</strong>
               </p>
 
@@ -832,7 +1005,19 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
           )
           : null}
 
-        {/* ================================================== EVERY ISSUE KEPT */}
+        {/* ================================================== EVERY ISSUE KEPT
+
+            CLAIMED ONLY. "Past briefings — your archive" is a promise about a
+            record that has been kept over time, and a not-claimed visitor has
+            no such record: every line under it would be a sampled week
+            belonging to the fictional owner, offered as "every issue kept" for
+            an account that has never had one. It is the single section of this
+            report whose SUBJECT is the reader's own history rather than the
+            public filings, which is why it is the only one held back — the
+            five evidence pages and the monthly keeper all stay, sampled, so
+            the state still shows the whole product. `railItems` above drops
+            its rail row to match. */}
+        {unclaimed ? null : (
         <div className="wr-page" id="wrArchive">
           <div className="wr-head">
             <div>
@@ -864,6 +1049,7 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
           </p>
           <span className="wr-pageno">The archive</span>
         </div>
+        )}
       </Band>
     </section>
   );
