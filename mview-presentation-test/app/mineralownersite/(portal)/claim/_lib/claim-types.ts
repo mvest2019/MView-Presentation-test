@@ -9,12 +9,19 @@
  */
 
 /**
- * THE MOST OWNER NAMES ONE CLAIM CAN CARRY — the backend's ceiling.
+ * THE MOST OWNER NAMES ONE **REQUEST** CAN CARRY — a batch size, not a cap.
  *
- * It lives here rather than in `claim-api.ts` so step 2 can stop a reader
- * ticking a 26th record without importing the API layer, which the steps
- * deliberately never do. `postClaim` reads the same constant, so the button
- * that refuses and the call that would refuse cannot drift apart.
+ * ── IT USED TO BE A LIMIT ON THE READER ──
+ *
+ * Step 2 refused a 26th tick and `postClaim` threw above 25, so an owner whose
+ * name the roll spells thirty ways simply could not claim their own record.
+ * That was never the backend's rule: 25 is what one POST accepts, and nothing
+ * says a claim is one POST.
+ *
+ * So the ceiling moved to where it belongs. `postClaim` splits the owners into
+ * batches of this size, files them in order and merges the receipts; nothing in
+ * the UI counts, compares or refuses. Raise this if the endpoint ever accepts
+ * more and the only thing that changes is how many requests go out.
  */
 export const MAX_CLAIM_OWNERS = 25;
 

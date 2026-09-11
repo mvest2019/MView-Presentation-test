@@ -9,11 +9,7 @@ import {
   type SegmentedOption,
 } from "../../../../_components/ui/segmented-control";
 import { recordKey } from "../../_lib/claim-format";
-import {
-  MAX_CLAIM_OWNERS as MAX_CLAIM,
-  type CountyIndex,
-  type OwnerRecord,
-} from "../../_lib/claim-types";
+import type { CountyIndex, OwnerRecord } from "../../_lib/claim-types";
 import type { Async } from "../claim-wizard";
 import { FlowEmpty, FlowError, FlowLoading } from "../flow-state";
 import { GuideNote } from "../guide-note";
@@ -121,8 +117,19 @@ export function StepPick({
   const firstLoad = results.loading && records.length === 0;
   const refreshing = results.loading && records.length > 0;
 
-  /** `postClaim` throws above this, so the bar refuses to go on. */
-  const overLimit = count > MAX_CLAIM;
+  /*
+   * NOTHING HERE CAPS THE SELECTION (requested).
+   *
+   * There was a ceiling of 25, enforced twice: this step refused a 26th tick
+   * and `postClaim` threw above 25. Both were wrong about what 25 means — it is
+   * what ONE request accepts, not how many records a person may own — and the
+   * step's copy was wrong twice over, because it counted ticked ROWS while the
+   * endpoint counts owner NAMES. Ticking 26 rows that spell 24 people was
+   * refused outright.
+   *
+   * `postClaim` files in batches of 25 now, so tick every row the roll spells
+   * you. Nothing on this screen counts, compares or refuses.
+   */
 
   /*
    * CHANGING A FILTER BRINGS THE LIST BACK INTO VIEW (requested).
@@ -661,13 +668,7 @@ export function StepPick({
         <div className="pointer-events-none sticky bottom-4 z-30 flex justify-center max-[1024px]:bottom-[84px]">
           <div className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-full border border-white/10 bg-mv-deep py-2 pr-2 pl-3 shadow-mv-lg">
             <span className="flex items-center gap-2 text-[12.5px] font-semibold text-mv-on-deep">
-              <span
-                className={`flex h-[22px] min-w-[22px] items-center justify-center rounded-full px-[6px] text-[11.5px] font-bold tabular-nums ${
-                  overLimit
-                    ? "bg-mv-red text-white"
-                    : "bg-mv-on-deep-accent text-mv-deep-ink"
-                }`}
-              >
+              <span className="flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-mv-on-deep-accent px-[6px] text-[11.5px] font-bold text-mv-deep-ink tabular-nums">
                 {count}
               </span>
               selected
@@ -692,26 +693,24 @@ export function StepPick({
               {showPicked ? "Show all" : "Show picked"}
             </button>
 
-            {overLimit ? (
-              <span className="text-[11.5px] text-mv-on-deep-soft">
-                25 is the most one claim can take — untick {count - MAX_CLAIM}.
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={onClearSelection}
-                className="cursor-pointer text-[11.5px] font-semibold text-mv-on-deep-soft underline underline-offset-2 hover:text-mv-on-deep"
-              >
-                Clear
-              </button>
-            )}
+            {/* NO CEILING ON THE SELECTION (requested). The bar used to turn
+                its count red and swap `Clear` for a refusal past 25; claims are
+                filed in batches now, so there is nothing here to refuse and
+                nothing to count against. */}
+            <button
+              type="button"
+              onClick={onClearSelection}
+              className="cursor-pointer text-[11.5px] font-semibold text-mv-on-deep-soft underline underline-offset-2 hover:text-mv-on-deep"
+            >
+              Clear
+            </button>
 
             <PortalButton
               variant="primary"
               size="sm"
               className="rounded-full"
               onClick={onContinue}
-              disabled={resolving || overLimit}
+              disabled={resolving}
             >
               {resolving && (
                 <LoaderCircle

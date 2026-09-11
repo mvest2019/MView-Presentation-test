@@ -579,12 +579,122 @@ export async function postClaim(
   if (owners.length === 0) {
     throw new Error("Pick at least one record to claim.");
   }
-  if (owners.length > MAX_CLAIM_OWNERS) {
-    throw new Error(
-      `A single claim can cover at most ${MAX_CLAIM_OWNERS} owner records.`,
-    );
+
+  /*
+   * AS MANY OWNERS AS THE READER HAS, IN BATCHES OF WHAT THE ENDPOINT TAKES.
+   *
+   * ── NOBODY IS TURNED AWAY ANY MORE ──
+   *
+   * This used to throw above 25 and step 2 refused the 26th tick, so an owner
+   * whose name the roll spells thirty ways could not claim their own record.
+   * 25 is what one POST accepts; it was never a rule about how much a person
+   * may own. The batching moves that ceiling off the reader and onto the wire.
+   *
+   * ── IN ORDER, NOT IN PARALLEL ──
+   *
+   * Each call is a write the backend runs as one transaction. Firing ten at
+   * once to save a few seconds asks it to interleave ten transactions against
+   * the same member for no benefit the reader can see — a claim is filed once
+   * and waited on once.
+   *
+   * ── A FAILED BATCH DOES NOT ERASE A FILED ONE ──
+   *
+   * Throwing on the second batch would report "we could not file your claim"
+   * over a first batch that DID land — the reader would try again and meet
+   * OWNER_ALREADY_CLAIMED for names that were already theirs. So a batch that
+   * fails is turned into `failed_owners` entries carrying the reason, the rest
+   * are marked as not attempted, and the receipt tells the truth about every
+   * name. Only a first batch that fails with nothing filed throws, because then
+   * there is no partial truth to report and the error screen is right.
+   */
+  const batches: ClaimOwner[][] = [];
+  for (let i = 0; i < owners.length; i += MAX_CLAIM_OWNERS) {
+    batches.push(owners.slice(i, i + MAX_CLAIM_OWNERS));
   }
 
+  const parts: ClaimResult[] = [];
+
+  for (const [index, batch] of batches.entries()) {
+    try {
+      parts.push(await postClaimBatch(memberId, batch));
+    } catch (error) {
+      if (parts.length === 0) throw error;
+
+      const why =
+        error instanceof Error
+          ? error.message
+          : "The claim could not be filed.";
+
+      parts.push(refusal(batch, why));
+      for (const rest of batches.slice(index + 1)) {
+        parts.push(
+          refusal(
+            rest,
+            "Not attempted — an earlier part of this claim did not go through.",
+          ),
+        );
+      }
+      break;
+    }
+  }
+
+  return mergeClaims(parts);
+}
+
+/** Owners a request never managed to file, in the shape the receipt reads. */
+function refusal(owners: ClaimOwner[], error: string): ClaimResult {
+  return {
+    successful_owners: [],
+    failed_owners: owners.map(({ ownername }) => ({
+      ownername,
+      error,
+      error_code: "REQUEST_FAILED",
+      failed_lease_count: 0,
+    })),
+    summary: {
+      total_owners_processed: owners.length,
+      total_successful_owners: 0,
+      total_failed_owners: owners.length,
+    },
+    claimedAt: null,
+  };
+}
+
+/**
+ * One receipt out of several.
+ *
+ * `claimedAt` takes the FIRST batch that actually filed something. It is the
+ * moment the claim began, which is what step 5 prints — and a null from a batch
+ * where every name failed must not overwrite a real timestamp from one that
+ * succeeded.
+ */
+function mergeClaims(parts: ClaimResult[]): ClaimResult {
+  return {
+    successful_owners: parts.flatMap((p) => p.successful_owners ?? []),
+    failed_owners: parts.flatMap((p) => p.failed_owners ?? []),
+    summary: {
+      total_owners_processed: parts.reduce(
+        (n, p) => n + (p.summary?.total_owners_processed ?? 0),
+        0,
+      ),
+      total_successful_owners: parts.reduce(
+        (n, p) => n + (p.summary?.total_successful_owners ?? 0),
+        0,
+      ),
+      total_failed_owners: parts.reduce(
+        (n, p) => n + (p.summary?.total_failed_owners ?? 0),
+        0,
+      ),
+    },
+    claimedAt: parts.find((p) => p.claimedAt)?.claimedAt ?? null,
+  };
+}
+
+/** One POST — the endpoint's own unit of work. */
+async function postClaimBatch(
+  memberId: number,
+  owners: ClaimOwner[],
+): Promise<ClaimResult> {
   let res: Response;
   try {
     res = await fetch(`${OWNERS}/claim`, {
