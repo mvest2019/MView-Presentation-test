@@ -164,6 +164,9 @@ export function SampleFlowButton() {
    */
   const glideRef = useRef<{ from: number; to: number } | null>(null);
 
+  /** Whether this dialog's own history entry is still on the stack. */
+  const pushedRef = useRef(false);
+
   const act: Act = SAMPLE_ACTS[index];
 
   const seek = useCallback((next: number) => {
@@ -425,11 +428,113 @@ export function SampleFlowButton() {
       document.querySelector(".mv-portal")?.className ?? "mv-portal",
     );
     setOpen(true);
+
+    /*
+     * OPENING IT IS A PLACE THE READER CAN COME BACK FROM.
+     *
+     * ── THE BUG THIS FIXES ──
+     *
+     * The popup was React state and nothing else. Back — the normal way to
+     * dismiss a full-screen overlay, and the PRIMARY way on Android — did not
+     * close it: the browser acted on the page instead, and since the trigger
+     * only exists on step 1, that meant leaving the claim page altogether. The
+     * gesture people reach for to close the video was the one that threw them
+     * off the page.
+     *
+     * ── THE SAME URL, A MARKED STATE ──
+     *
+     * The entry is the URL the reader is already on, so the address bar does
+     * not change and the wizard's own `popstate` handler reads the same
+     * `?step=N` and re-selects the step it is already showing. The marker in
+     * `history.state` is what tells this component the entry is its own.
+     *
+     * Next's router keeps its own keys in `history.state`, so they are spread
+     * through rather than replaced — a bare object would drop them.
+     */
+    if (!pushedRef.current) {
+      pushedRef.current = true;
+      window.history.pushState(
+        { ...window.history.state, mvSampleOpen: true },
+        "",
+        window.location.href,
+      );
+    }
   }
 
+  /*
+   * THE ONE WAY OUT, WHICHEVER CONTROL WAS USED.
+   *
+   * Unmounts the dialog — `open` is what renders it, so nothing is left behind
+   * — and drops the history entry it pushed. Leaving that entry on the stack
+   * would mean the reader's next Back returned to a popup that is not open.
+   *
+   * `pushedRef` makes it safe to call twice: the second call finds the entry
+   * already gone and only settles the state.
+   */
+  const dismiss = useCallback(() => {
+    setOpen(false);
+    if (!pushedRef.current) return;
+    pushedRef.current = false;
+    window.history.back();
+  }, []);
+
   function close() {
-    dialog.current?.close();
+    dismiss();
   }
+
+  /*
+   * BACK CLOSES IT — and does not then go back a second time, which is what
+   * clearing the ref before `dismiss` prevents. The browser has already moved.
+   */
+  useEffect(() => {
+    if (!open) return;
+    const onPop = () => {
+      pushedRef.current = false;
+      setOpen(false);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [open]);
+
+  /*
+   * ESCAPE, ON A NATIVE LISTENER — and this fixes a bug that predates the
+   * history work.
+   *
+   * The browser closes a `<dialog>` on Escape itself, without going through any
+   * handler of ours, and announces it with a `close` event. React's `onClose`
+   * never saw it: `close` does not bubble, this dialog is `createPortal`-ed to
+   * `document.body`, and React's delegated listeners sit on the root container
+   * — so the event had nowhere to reach.
+   *
+   * The consequence was quiet and total. `open` stayed `true` with the dialog
+   * shut, so the element stayed mounted, and `showModal()` — which runs only
+   * when `open` CHANGES — never fired again. Pressing Escape once made "Watch a
+   * sample claim" a dead button for the rest of the page's life.
+   *
+   * A listener on the element itself is the fix: it is where the event is
+   * dispatched, so there is no delegation to miss it.
+   */
+  useEffect(() => {
+    const el = dialog.current;
+    if (!open || !el) return;
+
+    /* `cancel` IS THE ONE TO ACT ON, and `close` is the safety net.
+       Escape fires `cancel` first, and it is cancelable — so this takes the
+       dismissal over rather than letting the browser shut the dialog and then
+       reacting to it. That ordering is what keeps the history entry and the
+       React state in step with the element: one path out, whichever key or
+       control started it. */
+    const onCancel = (event: Event) => {
+      event.preventDefault();
+      dismiss();
+    };
+    el.addEventListener("cancel", onCancel);
+    el.addEventListener("close", dismiss);
+    return () => {
+      el.removeEventListener("cancel", onCancel);
+      el.removeEventListener("close", dismiss);
+    };
+  }, [open, dismiss]);
 
   function replay() {
     progressRef.current = 0;
@@ -513,7 +618,9 @@ export function SampleFlowButton() {
                above stays visible and says the same thing to everyone
                else. */
             aria-label="Sample claim walkthrough"
-            onClose={() => setOpen(false)}
+            /* Kept as a belt-and-braces path only — see the effect above for
+               why it does not fire here. `dismiss` is safe to run twice. */
+            onClose={dismiss}
             onClick={(event) => {
               /* Click-outside. The backdrop is part of the dialog's own box, so
                  a click landing on the element ITSELF rather than a child is
