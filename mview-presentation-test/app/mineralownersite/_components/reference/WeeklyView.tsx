@@ -43,18 +43,31 @@ const CHIP: Record<Verdict, string> = {
   good: 'chip-mint', watch: 'chip-est', flag: 'chip-est', quiet: 'chip-slate',
 };
 
+/**
+ * ONE BUTTON, NO FORM.
+ *
+ * "Email me this report" used to expand a panel — an address field, a second
+ * button, and a line about what the build could send with — and the reader had
+ * to cross all three to get the thing the button already named. The panel is
+ * gone: the control sends, to the address the account registered, on the first
+ * click.
+ *
+ * SO THE STATE IS THE THREE THINGS A SEND HAS: who it goes to, whether one is
+ * in flight, and what came back. `open` and `toAuto` went with the panel —
+ * there is nothing to open and nothing to type over. `transport` /
+ * `transportNote` went with it too: both existed ONLY to label the panel's
+ * button and print its note, and the answer they carried is in the POST's own
+ * `detail` verbatim, which the result notice already prints. Keeping the
+ * capability request would have been a round trip per page load for a sentence
+ * with nowhere left to go.
+ */
 interface MailState {
-  open: boolean;
   to: string;
-  /** true until the reader edits the address, so a late session read may fill it */
-  toAuto: boolean;
   busy: boolean;
   result: null | {
     sent: boolean; detail?: string; subject?: string; text?: string; reason?: string;
     to?: string; transport?: string;
   };
-  transport: 'webhook' | 'none' | 'unknown';
-  transportNote: string;
 }
 
 /**
@@ -104,10 +117,7 @@ function storedEmail(): string {
 export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewProps) {
   const r = p.weekly;
   const member = usePortalMember();
-  const [mail, setMail] = useState<MailState>({
-    open: false, to: '', toAuto: true, busy: false, result: null,
-    transport: 'unknown', transportNote: '',
-  });
+  const [mail, setMail] = useState<MailState>({ to: '', busy: false, result: null });
 
   const unclaimed = funnel === 'unclaimed';
   const pageOf = (n: number) => r.pages.find((x) => x.n === n) ?? null;
@@ -129,34 +139,15 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
   const minutesFor = (id: string, fallback: number) =>
     r.rail.find((it) => it.id === id)?.minutes ?? fallback;
 
-  useEffect(() => {
-    let live = true;
-    fetch('/api/weekly/email')
-      .then((res) => res.json() as Promise<{ transport: string; note: string }>)
-      .then((d) => {
-        if (!live) return;
-        setMail((m) => ({
-          ...m,
-          transport: d.transport === 'webhook' ? 'webhook' : 'none',
-          transportNote: d.note ?? '',
-        }));
-      })
-      .catch(() => { if (live) setMail((m) => ({ ...m, transport: 'none' })); });
-    return () => { live = false; };
-  }, []);
-
-  /* THE FIELD OPENS ON THE ADDRESS THE ACCOUNT REGISTERED.
-     Typing your own address into a "email me this" box is the kind of friction
-     that loses a send to a typo, and the address is already known — see
-     `storedEmail` above for where it is read from and why both sources are
-     tried. `toAuto` is what makes this a DEFAULT rather than a lock: the moment
-     the reader edits the field it stops being overwritten, so sending a copy to
-     an accountant still works. Runs on mount and again if the session lands
-     late. */
+  /* WHERE THE REPORT GOES, resolved before anyone presses anything.
+     With the address field gone this is the only answer to "to whom", so it is
+     read on mount and again if the session lands late — see `storedEmail` above
+     for the two places it is read from and why. It is the address the account
+     registered, which is what "Email ME this report" says on the button. */
   useEffect(() => {
     const known = storedEmail() || member?.email || '';
     if (!known) return;
-    setMail((m) => (m.toAuto && m.to !== known ? { ...m, to: known } : m));
+    setMail((m) => (m.to === known ? m : { ...m, to: known }));
   }, [member?.email]);
 
   /* A SHARED LINK HAS TO LAND.
@@ -221,13 +212,29 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
    * renders locally, behind `sample`, in the route handler.
    */
   const send = useCallback(async () => {
+    /* NO ADDRESS IS ANSWERED HERE, not by the route. Signed out there is no
+       registered address to send to, and posting an empty `to` only spends a
+       request to be told "bad address" — a sentence written for a reader who
+       mistyped one, which this reader did not. */
+    const to = mail.to.trim();
+    if (!to) {
+      setMail((m) => ({
+        ...m,
+        result: {
+          sent: false,
+          detail: 'Nothing was sent: this account has no email address on it to send to. '
+            + 'Sign in and press this again, or use "Download the report" to keep a copy.',
+        },
+      }));
+      return;
+    }
     setMail((m) => ({ ...m, busy: true, result: null }));
     try {
       const res = await fetch('/api/weekly/email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          to: mail.to.trim(),
+          to,
           owner: p.owner.ownername,
           num: p.owner.ownernumber != null ? String(p.owner.ownernumber) : undefined,
           dist: p.owner.districtcode ?? undefined,
@@ -333,12 +340,19 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
                 serves the same standalone HTML the print button rendered, and
                 `/api/weekly?format=csv` is untouched — only the two controls
                 are gone, not the routes behind them. */}
+            {/* IT SENDS. It used to open a panel that asked for an address and
+                carried its own send button — three steps for a control whose
+                label is already the whole instruction. The address is the one
+                on the account (see the effect above), so the first click is the
+                send; the answer appears below the promise line, where the panel
+                used to be. Disabled only while one is in flight, so a second
+                click cannot post a second copy. */}
             <button
               className="btn btn-ghost btn-sm" type="button"
-              onClick={() => setMail((m) => ({ ...m, open: !m.open }))}
-              aria-expanded={mail.open}
+              onClick={send}
+              disabled={mail.busy}
             >
-              Email me this report
+              {mail.busy ? 'Sending…' : 'Email me this report'}
             </button>
             <a className="btn btn-ghost btn-sm" href={`/api/weekly?format=html&dl=1&${qs}`}>
               Download the report
@@ -370,110 +384,81 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
           <div>☕ {r.promise}</div>
         </div>
 
-        {/* ---------------------------------------------------------- the mailer */}
-        {mail.open
+        {/* ----------------------------------------------- what the send said
+
+            THE ANSWER, AND NOTHING ELSE. This is all that is left of the
+            mailer panel that used to stand here: the address field, its send
+            button and the transport note went with the one-click send above,
+            and what remains is the one part of that panel a reader still needs
+            — whether the report went, and where.
+
+            A send the reader cannot tell succeeded is a send they make twice,
+            so the success case is marked three ways: the mint notice, a tick,
+            and the address it actually went to, read off the RESPONSE
+            (`result.to`) rather than off local state, so the line names what
+            the server accepted. `role="status"` is what carries the same
+            sentence to a screen reader, which is the one reader for whom a
+            colour and a tick are nothing at all — and it matters more now that
+            pressing the button no longer opens anything visible.
+
+            THE CANNOT-SEND FALLBACK IS KEPT INTACT. When the build has no
+            transport the route answers with the rendered message instead of
+            claiming a send, and the three controls under it — open in your
+            mail app, copy, download to attach — are what make that answer
+            useful rather than merely honest. */}
+        {mail.result
           ? (
-            <div className="card card-pad wr-noprint wk-mail">
-              <div className="wm-row">
-                <label className="wm-lab" htmlFor="wkTo">Send this issue to</label>
-                <input
-                  id="wkTo" type="email" className="wm-in" placeholder="name@example.com"
-                  value={mail.to}
-                  autoComplete="email"
-                  onChange={(e) => setMail((m) => ({
-                    /* editing it stops the prefill from writing over the
-                       reader's own choice — see the effect above */
-                    ...m, to: e.target.value, toAuto: false, result: null,
-                  }))}
-                />
-                <button
-                  className="btn btn-primary btn-sm" type="button"
-                  disabled={mail.busy || !mail.to.trim()}
-                  onClick={send}
-                >
-                  {mail.busy ? 'Sending…' : mail.transport === 'webhook' ? 'Send it' : 'Prepare it'}
-                </button>
-              </div>
-              <p className="tiny muted" style={{ margin: '8px 0 0' }}>
-                {mail.transport === 'webhook'
-                  ? 'A mail transport is configured, so this sends the report from the server.'
-                  : mail.transport === 'none'
-                    ? mail.transportNote
-                    : 'Checking what this build can send with…'}
-                {/* WHERE THE ADDRESS CAME FROM, said once. A field that filled
-                    itself is a field a reader checks; saying it is theirs is
-                    what stops them re-typing it. Only while it is still the
-                    default — once they edit it, it is plainly their own. */}
-                {mail.toAuto && mail.to
-                  ? <> This is the address on your account; change it to send a copy elsewhere.</>
+            <div
+              className={'notice wr-noprint ' + (mail.result.sent ? 'mint' : '')}
+              role="status" aria-live="polite"
+            >
+              <div>
+                <strong>
+                  {mail.result.sent
+                    ? `✓ Sent — the report is on its way to ${mail.result.to || mail.to}.`
+                    : 'Nothing was sent.'}
+                </strong>
+                {mail.result.sent
+                  ? (
+                    <p className="small" style={{ margin: '4px 0 0' }}>
+                      Week ending {r.week_ending_label}. It can take a minute or two to
+                      arrive — check the spam folder if it does not.
+                    </p>
+                  )
                   : null}
-              </p>
-              {/* THE ANSWER, AND IT SAYS WHICH ONE IT IS.
-                  A send the reader cannot tell succeeded is a send they make
-                  twice, so the success case is marked three ways — the mint
-                  notice, a tick, and the address it actually went to, read off
-                  the RESPONSE (`result.to`) rather than off the input box, so
-                  the line names what the server accepted and not what is
-                  currently typed. `role="status"` is what makes the same
-                  sentence reach a screen reader, which is the one reader for
-                  whom a colour and a tick are nothing at all. */}
-              {mail.result
-                ? (
-                  <div
-                    className={'notice ' + (mail.result.sent ? 'mint' : '')}
-                    style={{ marginTop: 10 }}
-                    role="status" aria-live="polite"
-                  >
-                    <div>
-                      <strong>
-                        {mail.result.sent
-                          ? `✓ Sent — the report is on its way to ${mail.result.to || mail.to}.`
-                          : 'Nothing was sent.'}
-                      </strong>
-                      {mail.result.sent
-                        ? (
-                          <p className="small" style={{ margin: '4px 0 0' }}>
-                            Week ending {r.week_ending_label}. It can take a minute or two to
-                            arrive — check the spam folder if it does not.
-                          </p>
-                        )
-                        : null}
-                      {mail.result.subject
-                        ? <p className="small" style={{ margin: '4px 0 0' }}>Subject: {mail.result.subject}</p>
-                        : null}
-                      {mail.result.detail
-                        ? <p className="small" style={{ margin: '4px 0 0' }}>{mail.result.detail}</p>
-                        : null}
-                      {!mail.result.sent && mail.result.text
-                        ? (
-                          <>
-                            <div className="flex" style={{ flexWrap: 'wrap', gap: 6, marginTop: 9 }}>
-                              <a
-                                className="btn btn-primary btn-sm"
-                                href={`mailto:${encodeURIComponent(mail.to)}`
-                                  + `?subject=${encodeURIComponent(mail.result.subject ?? '')}`
-                                  + `&body=${encodeURIComponent(mail.result.text.slice(0, 1800))}`}
-                              >
-                                Open it in your mail app
-                              </a>
-                              <button
-                                className="btn btn-ghost btn-sm" type="button"
-                                onClick={() => { void navigator.clipboard?.writeText(mail.result?.text ?? ''); }}
-                              >
-                                Copy the message
-                              </button>
-                              <a className="btn btn-ghost btn-sm" href={`/api/weekly?format=html&dl=1&${qs}`}>
-                                Download it to attach
-                              </a>
-                            </div>
-                            <pre className="wm-pre">{mail.result.text}</pre>
-                          </>
-                        )
-                        : null}
-                    </div>
-                  </div>
-                )
-                : null}
+                {mail.result.subject
+                  ? <p className="small" style={{ margin: '4px 0 0' }}>Subject: {mail.result.subject}</p>
+                  : null}
+                {mail.result.detail
+                  ? <p className="small" style={{ margin: '4px 0 0' }}>{mail.result.detail}</p>
+                  : null}
+                {!mail.result.sent && mail.result.text
+                  ? (
+                    <>
+                      <div className="flex" style={{ flexWrap: 'wrap', gap: 6, marginTop: 9 }}>
+                        <a
+                          className="btn btn-primary btn-sm"
+                          href={`mailto:${encodeURIComponent(mail.to)}`
+                            + `?subject=${encodeURIComponent(mail.result.subject ?? '')}`
+                            + `&body=${encodeURIComponent(mail.result.text.slice(0, 1800))}`}
+                        >
+                          Open it in your mail app
+                        </a>
+                        <button
+                          className="btn btn-ghost btn-sm" type="button"
+                          onClick={() => { void navigator.clipboard?.writeText(mail.result?.text ?? ''); }}
+                        >
+                          Copy the message
+                        </button>
+                        <a className="btn btn-ghost btn-sm" href={`/api/weekly?format=html&dl=1&${qs}`}>
+                          Download it to attach
+                        </a>
+                      </div>
+                      <pre className="wm-pre">{mail.result.text}</pre>
+                    </>
+                  )
+                  : null}
+              </div>
             </div>
           )
           : null}
