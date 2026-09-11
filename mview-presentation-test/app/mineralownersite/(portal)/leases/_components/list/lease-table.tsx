@@ -1,5 +1,4 @@
 import { EstimateBadge } from "../../../../_components/ui/badge";
-import { gates, portalGate } from "../../../../_components/ui/portal-gating";
 import {
   Table,
   TableBody,
@@ -9,84 +8,77 @@ import {
   TableRow,
   TableScroll,
 } from "../../../../_components/ui/table";
-import { formatDollars } from "../../_lib/lease-format";
 import {
-  countyPlaceholderTotal,
-  mvestimateTotal,
-  portfolioSummary,
-} from "../../_lib/lease-totals";
+  formatCompactDollars,
+  formatCount,
+} from "../../_lib/lease-format";
+import { portfolioSummary } from "../../_lib/lease-totals";
 import type { LeaseRecord } from "../../_lib/lease-types";
 import { LeaseTableRow } from "./lease-table-row";
 
 /**
- * THE FULL LEASE TABLE.
+ * THE WIDE TABLE — eleven columns and a totals row.
  *
- * PRESENTATIONAL AND SERVER-SAFE — it takes a list and renders it. Sorting,
- * searching and the list/grid choice all live one level up in
- * `lease-list-panel.tsx`, so this component has no idea any of that exists and
- * can be reasoned about as "given these leases, this is the table".
+ * IT SCROLLS INSIDE ITS OWN BOX, never the page: `TableScroll` plus a stated
+ * minimum width is what keeps a phone from collapsing the columns into
+ * unreadable slivers. The identity column is frozen because it is the first
+ * thing to leave the viewport, and a reader scrolled out to the production
+ * columns is otherwise looking at volumes with nothing to attach them to.
  *
- * THE TOTALS ROW IS HIDDEN WHILE SEARCHING. A footer reading "Total — 10 leases ·
- * $26,340" under four filtered rows is simply false, and re-totalling the
- * visible subset would be worse: it would put a number on screen that means
- * nothing (the value of an arbitrary search result) in the place where the
- * portfolio total belongs. The prototype hid the row too; `showTotals` makes
- * that decision explicit and passes the reason with it.
+ * THE TOTALS ROW IS SUPPRESSED WHILE SEARCHING. A "Total — 10 leases" line under
+ * three matching rows is wrong twice over: the count is not the number of rows
+ * and the sums are not the sums of what is on screen. Rather than re-total the
+ * filtered set — which would print a portfolio value that is not the
+ * portfolio's — the row is simply absent until the full list is back.
  *
- * THE FOOTER SAYS THE $940 OUT LOUD. Three leases show a county value in the
- * money column and those dollars are not in the $26,340 above them. Somebody
- * adding the column up by hand will get a different number, so the footer tells
- * them why before they wonder.
+ * THE ESTIMATE CHIP SITS IN THE TOTALS ROW because that is the one place both
+ * money columns are added up, and a total is exactly where a projection is most
+ * likely to be mistaken for a bank balance.
  */
 export function LeaseTable({
   leases,
   showTotals,
-  picker,
 }: {
   leases: LeaseRecord[];
   showTotals: boolean;
-  /** The lapsed lease picker, passed straight through to each row. */
-  picker?: {
-    activeLease: string;
-    onPick: (leaseNumber: string) => void;
-  };
 }) {
+  if (leases.length === 0) {
+    return (
+      <p className="rounded-mv border border-mv-line bg-mv-card p-6 text-center text-[13px] text-mv-muted">
+        No lease on this record matches that search. Try a lease name, a lease
+        number, a county, an operator or a reservoir.
+      </p>
+    );
+  }
+
   return (
-    <TableScroll id="ls-main-table">
-      <Table minWidth={1120} freezeFirstColumn>
+    <TableScroll>
+      <Table minWidth={1280} freezeFirstColumn>
         <TableHead>
-          <TableRow>
-            <TableHeaderCell>Lease (no.)</TableHeaderCell>
+          <TableRow className="bg-mv-portal-wash">
+            {/* THE IDENTITY COLUMN IS GIVEN A FLOOR. Without one the browser
+                hands the widest column the least space — every other cell is a
+                short number or a single word, so the table's own layout
+                algorithm squeezed "MCCABE ETAL GU · Lease 290271" into four
+                lines and left the number columns half empty. */}
+            <TableHeaderCell className="min-w-[270px]">
+              Lease (no.)
+            </TableHeaderCell>
             <TableHeaderCell numeric>MVestimate</TableHeaderCell>
-            <TableHeaderCell numeric>County appraised (2026)</TableHeaderCell>
-            <TableHeaderCell numeric className={gates("professionalOnly")}>
-              Wk Δ
-            </TableHeaderCell>
-            <TableHeaderCell>County (acres)</TableHeaderCell>
+            <TableHeaderCell numeric>County appraised</TableHeaderCell>
+            <TableHeaderCell>County</TableHeaderCell>
             <TableHeaderCell>Operator</TableHeaderCell>
-            <TableHeaderCell>Play</TableHeaderCell>
-            <TableHeaderCell className={gates("professionalOnly")}>
-              Field
-            </TableHeaderCell>
-            <TableHeaderCell numeric className={gates("professionalOnly")}>
-              API
-            </TableHeaderCell>
-            <TableHeaderCell numeric className={gates("professionalOnly")}>
-              RRC dist.
-            </TableHeaderCell>
-            <TableHeaderCell numeric>Wells</TableHeaderCell>
-            <TableHeaderCell numeric>
-              <abbr
-                title="Your ownership share of a lease, written as a decimal — e.g. 0.00538700. Multiply gross lease dollars by it to get your share."
-                className="cursor-help border-b-[1.5px] border-dotted border-mv-green-deep no-underline"
-              >
-                Decimal interest
-              </abbr>
-            </TableHeaderCell>
-            <TableHeaderCell numeric>Gas (mcf)</TableHeaderCell>
-            <TableHeaderCell numeric>Oil (bbl)</TableHeaderCell>
-            <TableHeaderCell numeric>3-mo BOE</TableHeaderCell>
+            <TableHeaderCell>Reservoir</TableHeaderCell>
+            <TableHeaderCell>Wells</TableHeaderCell>
+            <TableHeaderCell>Decimal interest</TableHeaderCell>
+            <TableHeaderCell numeric>Gas (MCF)</TableHeaderCell>
+            <TableHeaderCell numeric>Oil (BBL)</TableHeaderCell>
+            <TableHeaderCell>Last posted</TableHeaderCell>
             <TableHeaderCell>
+              {/* Visually hidden rather than empty: the column holds a link and
+                  a bare `›` announces as nothing. Safe inside `TableScroll` —
+                  see the note there about `sr-only` being absolutely
+                  positioned. */}
               <span className="sr-only">Open the lease report</span>
             </TableHeaderCell>
           </TableRow>
@@ -94,75 +86,33 @@ export function LeaseTable({
 
         <TableBody>
           {leases.map((lease) => (
-            <LeaseTableRow
-              key={lease.number}
-              lease={lease}
-              picker={
-                picker
-                  ? {
-                      active: lease.number === picker.activeLease,
-                      onPick: picker.onPick,
-                    }
-                  : undefined
-              }
-            />
+            <LeaseTableRow key={lease.slug} lease={lease} />
           ))}
 
-          {leases.length === 0 && (
-            <TableRow>
-              <TableCell
-                colSpan={16}
-                className="py-8 text-center text-mv-muted"
-              >
-                No lease on this record matches that search. Try a lease name, a
-                lease number, a county or an operator.
-              </TableCell>
-            </TableRow>
-          )}
-
-          {/* `lp-totalrow`: not a lease, but an all-ten-lease figure, so the
-              lapsed state blurs it — the design's own comment on this row. Its
-              first cell stays legible like every other first cell. */}
-          {showTotals && leases.length > 0 && (
-            <TableRow
-              tone="total"
-              className={picker ? "lp-totalrow" : undefined}
-            >
-              <TableCell>
-                Total — {portfolioSummary.leaseCount} leases
-              </TableCell>
-              {/* The totals row is inside the gated column too — the design's
-                    rule is `tbody td.mv-cell`, and its own comment records why:
-                    "the KPI strip and the table total are ALL-TEN-LEASE figures.
-                    Leaving them sharp hands back exactly what the gate
-                    withholds." */}
-              <TableCell numeric className={portalGate.lockedValue}>
-                {formatDollars(mvestimateTotal)}
-                <span className="mt-0.5 block text-[10px] font-normal text-mv-muted">
-                  {/* No line break between "(" and the figure: JSX collapses
-                        it to a space and the text rendered "( $875)". */}
-                  MVestimate total · county placeholders{" "}
-                  {`(${formatDollars(countyPlaceholderTotal)})`} shown above are
-                  display-only, never summed
-                </span>
+          {showTotals && (
+            <TableRow tone="total">
+              <TableCell>Total — {portfolioSummary.leaseCount} leases</TableCell>
+              <TableCell numeric>
+                {formatCompactDollars(portfolioSummary.mvestimate)}
               </TableCell>
               <TableCell numeric>
-                ~{formatDollars(portfolioSummary.countyAppraisedTotal)}
+                {formatCompactDollars(portfolioSummary.countyAppraised)}
               </TableCell>
-              <TableCell
-                numeric
-                className={`text-[10px] text-mv-muted ${gates("professionalOnly")}`}
-              >
-                0.0%
-              </TableCell>
-              <TableCell colSpan={3}>
+              <TableCell className="whitespace-nowrap">
                 <EstimateBadge />
               </TableCell>
-              {/* 4 single cells + 3 + 3 + 6 = the header's 16 columns. The
-                    tier-p group is its own span so the row still totals 12 when
-                    those four Professional columns are hidden. */}
-              <TableCell colSpan={3} className={gates("professionalOnly")} />
-              <TableCell colSpan={6} />
+              <TableCell />
+              <TableCell />
+              <TableCell>{portfolioSummary.wells}</TableCell>
+              <TableCell />
+              <TableCell numeric>
+                {formatCount(portfolioSummary.gasMcf)}
+              </TableCell>
+              <TableCell numeric>
+                {formatCount(portfolioSummary.oilBbl)}
+              </TableCell>
+              <TableCell />
+              <TableCell />
             </TableRow>
           )}
         </TableBody>

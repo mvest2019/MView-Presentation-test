@@ -1,69 +1,66 @@
-import { ValueBand, type ValueBandStat } from "../../../_components/ui/value-band";
-import { formatDollars } from "../_lib/lease-format";
-import { leaseOwnerRecord } from "../_lib/lease-records";
+import { ValueBand } from "../../../_components/ui/value-band";
 import {
-  counties,
-  operators,
-  portfolioSummary,
-} from "../_lib/lease-totals";
+  formatCompactDollars,
+  formatCompactVolume,
+} from "../_lib/lease-format";
+import { portfolioSummary } from "../_lib/lease-totals";
 
 /**
- * THE FIVE PORTFOLIO FIGURES, pinned under the page title in every density.
+ * THE DARK BAND — the five figures the page exists to give, above everything
+ * that explains them.
  *
- * ALL FIVE ARE DERIVED (see `lease-totals.ts`) except the county roll total and
- * the week-over-week delta, which are not computable from the ten rows and are
- * carried on `leaseOwnerRecord` with their reasons.
+ * IT SITS ABOVE THE NOTICES, DELIBERATELY. The change feed below is dismissible
+ * and varies in height with how much news there is that week; with it first, the
+ * number an owner opened the page for moved down the screen — or off it —
+ * depending on the news.
  *
- * EVERY CAPTION EARNS ITS PLACE:
+ * ONLY THE FIRST FIGURE IS GREEN. It is the answer to "what is my record
+ * worth"; the four beside it are the context that makes the answer readable. The
+ * band's own component colours it rather than enlarging it — see `ValueBand`.
  *
- *   · "Estimate — not an appraisal" is a legal distinction, not modesty. An
- *     MVestimate is a forward cash-flow projection; an appraisal is a regulated
- *     valuation somebody signs.
- *   · The county figure says "different method, both real" because a reader
- *     seeing $26,340 above $11,532 will otherwise assume one of them is wrong.
- *   · The week delta says "illustrative" because the snapshot service is not
- *     connected. It is the one figure here nobody measured, and it says so.
- *   · "3 inactive — projected $0 forward" is the whole story of the three
- *     leases whose money column shows a county value instead of a projection.
- *
- * ONLY THE TWO MVESTIMATE-DERIVED FIGURES ARE `locked`. The county roll is
- * public record and the lease and county counts are not money, so blurring them
- * for a claimed-but-unpaid reader would hide facts the paywall does not cover.
+ * EVERY CAPTION SAYS WHAT THE FIGURE IS NOT. "Estimate — not an appraisal" on
+ * the money, "gross" on the gas, the roll year on the county column. A caption
+ * is not optional on this band for the reason `KpiTile` gives: an unqualified
+ * dollar figure on a minerals page gets read as an amount somebody will be paid.
  */
 export function PortfolioValueBand() {
-  const stats: ValueBandStat[] = [
-    {
-      label: "Total · MVestimate",
-      value: formatDollars(portfolioSummary.mvestimateTotal),
-      caption: "Estimate — not an appraisal",
-      emphasis: true,
-      locked: true,
-    },
-    {
-      label: "County appraised · 2026",
-      value: `~${formatDollars(portfolioSummary.countyAppraisedTotal)}`,
-      caption: "county tax value — different method, both real",
-    },
-    {
-      label: "This week's change",
-      value: `+${formatDollars(leaseOwnerRecord.weekChange.amount)}`,
-      qualifier: `(+${leaseOwnerRecord.weekChange.percent}%)`,
-      caption: "vs last week's snapshot · illustrative",
-      locked: true,
-    },
-    {
-      label: "Producing",
-      value: portfolioSummary.producingCount,
-      qualifier: `of ${portfolioSummary.leaseCount}`,
-      caption: `${portfolioSummary.inactiveCount} inactive — projected $0 forward`,
-    },
-    {
-      label: "Counties · operators",
-      value: portfolioSummary.countyCount,
-      qualifier: `· ${portfolioSummary.operatorCount}`,
-      caption: `${counties.join(" · ")} · ${operators.length} operators`,
-    },
-  ];
+  const summary = portfolioSummary;
 
-  return <ValueBand stats={stats} className="mb-4" />;
+  return (
+    <ValueBand
+      className="mb-3"
+      stats={[
+        {
+          label: "Total · MVestimate",
+          value: formatCompactDollars(summary.mvestimate),
+          emphasis: true,
+          /* The claimed-but-unpaid gate covers this one figure and no other on
+             the band — the county roll is a public document and the counts are
+             not money. See `portalGate.lockedValue`. */
+          locked: true,
+          caption: "Estimate — not an appraisal",
+        },
+        {
+          label: "County appraised",
+          value: formatCompactDollars(summary.countyAppraised),
+          caption: `all ${summary.leaseCount} interests, ${summary.rollYear} roll`,
+        },
+        {
+          label: "Wells · Reservoirs",
+          value: `${summary.wells} · ${summary.reservoirs}`,
+          caption: `${summary.horizontalWells} drilled sideways`,
+        },
+        {
+          label: "Gas filed to date",
+          value: formatCompactVolume(summary.gasMcf),
+          caption: "MCF · all leases, gross",
+        },
+        {
+          label: "Operators · Counties",
+          value: `${summary.operators} · ${summary.counties}`,
+          caption: "named on the production filings",
+        },
+      ]}
+    />
+  );
 }

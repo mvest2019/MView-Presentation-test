@@ -23,11 +23,23 @@ export interface SegmentedOption<T extends string> {
   label: ReactNode;
 }
 
+/**
+ * The selected segment's fill. `plain` is the original white card; `green` is
+ * the brand fill My Leases uses, so its view switch matches the selected tab
+ * directly above it. A prop rather than a second component — the geometry,
+ * the roles and the keyboard behaviour are identical and only the fill differs.
+ */
+const SELECTED_TONES = {
+  plain: "bg-mv-card text-mv-ink shadow-mv",
+  green: "bg-mv-green-deep text-white shadow-mv",
+} as const;
+
 export function SegmentedControl<T extends string>({
   label,
   options,
   value,
   onChange,
+  tone = "plain",
   className = "",
 }: {
   /** Announced to screen readers; never rendered. */
@@ -35,6 +47,7 @@ export function SegmentedControl<T extends string>({
   options: SegmentedOption<T>[];
   value: T;
   onChange: (next: T) => void;
+  tone?: keyof typeof SELECTED_TONES;
   className?: string;
 }) {
   return (
@@ -53,7 +66,7 @@ export function SegmentedControl<T extends string>({
             onClick={() => onChange(option.value)}
             className={`cursor-pointer rounded-lg border-0 px-3 py-1.5 text-xs font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep ${
               selected
-                ? "bg-mv-card text-mv-ink shadow-mv"
+                ? SELECTED_TONES[tone]
                 : "bg-transparent text-mv-slate hover:text-mv-ink"
             }`}
           >

@@ -1,67 +1,24 @@
-import Link from "next/link";
-
-import { Notice } from "../../../../_components/ui/notice";
-import { formatLeaseTitle } from "../../_lib/lease-format";
-import { leaseRecords } from "../../_lib/lease-records";
-import { leaseReportPath } from "../../_lib/lease-routes";
-
 /**
- * "EVERY LEASE OPENS A FULL REPORT STACK" — and this notice is NOT tier-gated.
+ * THE LINE UNDER THE TABLE — what opening a lease actually gets you.
  *
- * ── WHY IT LIVES IN ITS OWN FILE ──
+ * IT IS HERE BECAUSE OF A QUESTION THE TABLE CANNOT ANSWER. Readers look for
+ * the API number, the field and the depth in the lease list and do not find
+ * them, because those facts describe a WELL and a lease can hold many. Saying so
+ * once, directly under the table, is what stops that reading as missing data.
  *
- * It used to sit inside `lease-list-panel.tsx`, next to the "two honest numbers"
- * notice, under that panel's `hide-s` wrapper. But the design gates only ONE of
- * the two: the calibration-study paragraph carries `hide-s`, and this one carries
- * nothing. Nesting them together hid this notice from Essentials — the tier
- * whose reader is least likely to know a lease is clickable at all, and most in
- * need of being told.
- *
- * So it is a sibling of the tab strip rather than a child of the list panel, and
- * that structural difference IS the gating difference. Keeping it inside the
- * panel and adding an un-hide class would fight the parent's `display:none`,
- * which cannot be undone from a descendant.
- *
- * ── THE TWO CAPTURED LEASES ARE NAMED, AND LINKED ──
- *
- * Two of the ten have a captured curve and a digitized survey; the other eight
- * carry real record fields and an honest gap where the chart would be. Naming
- * the two and linking them is how a reader finds the full thing on their first
- * visit instead of opening a generic report and concluding the feature is thin.
- *
- * DERIVED, so the sentence cannot drift: the count comes from the record and the
- * two names come from `CAPTURED`, which is the same list the report module uses.
+ * PLAIN TEXT RATHER THAN A `Notice`. A tinted panel here would compete with the
+ * provenance card below it and with the totals row above; the design puts this
+ * one as a quiet footnote, which is the weight it deserves.
  */
-
-/** The leases with a fully captured decline curve and reservoir narrative. */
-const CAPTURED = ["74318", "305892"];
-
-export function LeaseReportStackNotice() {
-  const captured = CAPTURED.map(
-    (number) => leaseRecords.find((lease) => lease.number === number)!,
-  );
-  const others = leaseRecords.length - captured.length;
-
+export function ReportStackNotice() {
   return (
-    <div className="mt-3.5">
-      <Notice glyph="▤">
-        <strong>Every lease opens a full report stack</strong> — Lease ·
-        Reservoir · Wells, three tied tabs.{" "}
-        {captured.map((lease, index) => (
-          <span key={lease.number}>
-            {index > 0 && " and "}
-            <Link
-              href={leaseReportPath(lease.number)}
-              className="font-semibold text-mv-green-deep"
-            >
-              {formatLeaseTitle(lease.name, lease.number)}
-            </Link>
-          </span>
-        ))}{" "}
-        carry fully captured data; the other {others} now carry their real well,
-        operator, play, field, and first-production data from the live record
-        (chart curve internals remain illustrative between real anchor points).
-      </Notice>
-    </div>
+    <p className="mt-2.5 max-w-[110ch] text-[11.5px] leading-[1.55] text-mv-muted">
+      <strong className="text-mv-slate">
+        Open any lease for its three reports
+      </strong>{" "}
+      — the lease, the reservoir it produces from, and its wells. The well-level
+      facts — API, field, play, depth — live on the well report, because they
+      describe a well and a lease can have many.
+    </p>
   );
 }

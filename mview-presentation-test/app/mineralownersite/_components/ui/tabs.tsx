@@ -20,6 +20,12 @@ import type { ComponentProps } from "react";
  * roughly 80 lines of well-tested behaviour for a 5KB dependency, and getting
  * it subtly wrong by hand is the normal outcome.
  *
+ * THE SELECTED PILL IS BRAND GREEN, not the portal's near-black. The design
+ * gives the module tab strip the green fill and keeps `mv-ink` for the one
+ * finished action on a screen — see the `dark` variant in `button.tsx`. Changed
+ * here rather than passed in per call site so every tab strip in the portal
+ * agrees; this component has one consumer today, My Leases.
+ *
  * `activationMode="manual"` is deliberate: with automatic activation an arrow
  * key both moves focus and switches the panel, so a keyboard user scanning the
  * strip re-renders a large table on every keystroke. Manual means arrows move,
@@ -56,7 +62,7 @@ function TabsTrigger({
       /* `data-[state=active]` is Radix's own attribute — the selected pill is
          driven by the component's state rather than by a class the caller has to
          remember to toggle, which is what the prototype got wrong. */
-      className={`cursor-pointer rounded-full border border-mv-line bg-mv-card px-[15px] py-[7px] text-[13px] font-semibold text-mv-slate transition-colors hover:bg-mv-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep data-[state=active]:border-mv-ink data-[state=active]:bg-mv-ink data-[state=active]:text-white ${className}`.trim()}
+      className={`cursor-pointer rounded-full border border-mv-line bg-mv-card px-[15px] py-[7px] text-[13px] font-semibold text-mv-slate transition-colors hover:bg-mv-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep data-[state=active]:border-mv-green-deep data-[state=active]:bg-mv-green-deep data-[state=active]:text-white ${className}`.trim()}
       {...props}
     />
   );
