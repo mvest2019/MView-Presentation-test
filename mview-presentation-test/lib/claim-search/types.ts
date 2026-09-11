@@ -38,6 +38,13 @@ export interface BackendOwner {
   /** Decimal interest, e.g. 0.007753 — NOT a percentage. */
   interestValues: number[] | null;
   address: string | null;
+  /**
+   * THE ADDRESS'S STAND-IN FOR A SIGNED-OUT VISITOR. The proxy sends this
+   * instead of `address` (see `app/api/claim/[endpoint]`), so a record keeps
+   * an identity the page can tell apart without the page being told where
+   * anyone lives. Absent for a member — their `address` is the identity.
+   */
+  addressKey?: string | null;
   workingInterest: boolean;
   score: number | null;
   accounts: unknown;
@@ -63,6 +70,12 @@ export interface ScoredOwner {
   interestValues?: number[];
   /** True = working interest, false = royalty interest (the API's flag). */
   workingInterest?: boolean;
+  /**
+   * The record's address identity. Derived from `r[4]` when there is an
+   * address, and served by the proxy when there is not — `okey` reads this,
+   * never the address directly, so both paths key records the same way.
+   */
+  addrKey: string;
 }
 
 /** `GET /api/claim/meta` — hero stats and the county dropdown. */
@@ -100,6 +113,8 @@ export interface SameNameResponse {
     r: OwnerRow;
     county: string;
     key: string;
+    /** The record's address identity — see `ScoredOwner.addrKey`. */
+    addrKey: string;
     leaseValues?: number[];
     leaseNumbers?: string[];
     operators?: string[];
@@ -138,15 +153,34 @@ export interface ClaimResult {
   claimedAt: string;
 }
 
-/** One aggregated lease on the left panel, keyed `county|despacedName`. */
+/** One aggregated lease on the left panel, keyed `county|despacedBaseName`. */
 export interface LeaseAgg {
   key: string;
+  /** The lease's name with the roll's `(3 of 17)` marker stripped. */
   n: string;
   c: string;
   /** Owners of this lease inside the current working set. */
   cnt: number;
-  /** Sum of those owners' appraised values. */
+  /**
+   * Sum of the owners' appraised value FOR THIS LEASE — the API's per-lease
+   * figure, not the record's whole-portfolio total. Summing the total once
+   * per lease made a five-lease owner's entire holding appear against each of
+   * their five leases, so the panel and the lease details modal disagreed.
+   */
   val: number;
+  /**
+   * True when some owner on this lease had no per-lease figure to add, so
+   * `val` is a floor rather than the total. The panel says so rather than
+   * printing a number it cannot stand behind.
+   */
+  partial: boolean;
+  /**
+   * How many RAW roll rows this one lease is written as — usually 1, but
+   * `(1 of 17)` … `(17 of 17)` is one lease written seventeen times. Shown in
+   * the report drawer; it is not part of the lease's identity, and membership
+   * is fetched once, by the base name (see `lkey`).
+   */
+  rolls: number;
 }
 
 /** The claimed-record payload stored for the signup flow to pick up. */

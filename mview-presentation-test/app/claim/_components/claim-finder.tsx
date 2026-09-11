@@ -11,14 +11,20 @@ import {
   postAddressCorrection,
   postClaim,
 } from "@/lib/claim-search/api";
-import { despace } from "@/lib/claim-search/scoring";
+import {
+  baseLeaseName,
+  despace,
+  hasSearchableChars,
+} from "@/lib/claim-search/scoring";
 import type { ClaimMeta, LeaseAgg, ScoredOwner } from "@/lib/claim-search/types";
-import { PORTAL_HOME } from "@/lib/routes";
+import { PORTAL_CLAIMED_LEASES } from "@/lib/routes";
 
+import { Breadcrumb } from "../../_components/breadcrumb";
 import {
   buildMergedTx,
   leftLeases,
   okey,
+  rankOwners,
   sameNameOthers,
   totalLeaseCount,
   universe,
@@ -34,10 +40,12 @@ import { LeasePanel } from "./lease-panel";
 import { OwnerTable } from "./owner-table";
 import { RecordModal, type ModalState } from "./record-modal";
 import {
+  btnPrimary,
+  btnSm,
+  ClearableInput,
   fieldInput,
   fieldLabel,
   HomeIcon,
-  InlineSpinner,
   LeaseIcon,
   LockIcon,
   PersonIcon,
@@ -139,11 +147,23 @@ export function ClaimFinder({
   // The form is draft state; a search commits it into `query` so typing in
   // the boxes never moves the panels until Search (or Enter) fires.
   const [form, setForm] = useState({ name: "", lease: "", addr: "", county: "*" });
-  const [query, setQuery] = useState({ name: "", lease: "", county: "*" });
+  const [query, setQuery] = useState({
+    name: "",
+    lease: "",
+    addr: "",
+    county: "*",
+  });
   const [owners, setOwners] = useState<ScoredOwner[]>([]);
   const [searched, setSearched] = useState(false);
   const [searching, setSearching] = useState(false);
   const [status, setStatus] = useState("");
+  /**
+   * Set when the search itself failed, as opposed to succeeding with nothing.
+   * It carries a Try again button: the backend drops the occasional request
+   * on a slow lease and the answer to that is one more attempt, not a dead
+   * end that reads as "this lease cannot be searched".
+   */
+  const [searchError, setSearchError] = useState(false);
 
   // Post-search filters: the two refine boxes and the county chip.
   const [refine, setRefine] = useState("");
@@ -159,6 +179,13 @@ export function ClaimFinder({
   // overlay (search / lease membership) or a row spinner (same-name) while
   // the API works, because the dev backend can take seconds.
   const [leaseLoading, setLeaseLoading] = useState(false);
+  /**
+   * The lease row whose membership is loading. A plain global flag told the
+   * visitor SOMETHING was happening but not which lease, and ticking a lease
+   * in a 515-owner county took long enough that people clicked again — and
+   * again — not knowing the first click had registered.
+   */
+  const [pendingLeaseKey, setPendingLeaseKey] = useState<string | null>(null);
   const [pendingOwnerKey, setPendingOwnerKey] = useState<string | null>(null);
 
   /**
@@ -210,18 +237,38 @@ export function ClaimFinder({
   const selLeaseCount = Object.keys(selL).filter((k) => selL[k]).length;
 
   const U = useMemo(() => universe(owners, selL, memb), [owners, selL, memb]);
-  const W = useMemo(
-    () =>
-      workingSet(U, {
-        cty,
-        nameQ: query.name,
-        refine,
-        refL,
-        selO,
-        anyLeaseTicked,
-      }),
-    [U, cty, query.name, refine, refL, selO, anyLeaseTicked],
-  );
+  const W = useMemo(() => {
+    const filtered = workingSet(U, {
+      cty,
+      nameQ: query.name,
+      // Members filter here; a signed-out visitor's results were already
+      // filtered by the proxy and no longer carry an address to match — see
+      // `fetchSearch`.
+      addrQ: signedIn ? query.addr : "",
+      refine,
+      refL,
+      selO,
+      anyLeaseTicked,
+    });
+    // Closest matches first — and, for a multi-word lease query, only the
+    // ones that actually match it. Ticking a lease replaces the universe with
+    // that lease's own membership, so the query no longer has a bearing on
+    // which records belong there and ranking by it would be noise.
+    return anyLeaseTicked
+      ? filtered
+      : rankOwners(filtered, { name: query.name, lease: query.lease }, selO);
+  }, [
+    U,
+    cty,
+    query.name,
+    query.lease,
+    query.addr,
+    refine,
+    refL,
+    selO,
+    anyLeaseTicked,
+    signedIn,
+  ]);
   // Lease aggregation runs over ticked owners only, once any are ticked.
   const L = useMemo(() => {
     const WL = anyOwnerTicked ? W.filter((w) => selO[w.key]) : W;
@@ -309,12 +356,35 @@ export function ClaimFinder({
     form.addr.trim() !== "" ||
     form.county !== "*";
 
+  /**
+   * CLEAR ALL MEANS ALL (2026-09-11). It used to clear the four fields and
+   * leave the two refine boxes, the county chip and every tick standing — so
+   * a page that said "no filters" was still filtered, and the next search
+   * came back narrowed by a box the visitor had forgotten typing in.
+   */
   function clearFilters() {
     setForm({ name: "", lease: "", addr: "", county: "*" });
+    setRefine("");
+    setRefL("");
+    setCty("*");
+    setSelO({});
+    setSelL({});
+    setClaim(null);
   }
+
+  /** Remove one filter without touching the others — see the chips below. */
+  function clearOne(field: "name" | "lease" | "addr" | "county") {
+    setForm((f) => ({ ...f, [field]: field === "county" ? "*" : "" }));
+  }
+
+  /** Aborts the request a superseded search left in flight. */
+  const inFlight = useRef<AbortController | null>(null);
 
   async function doSearch() {
     const seq = ++searchSeq.current;
+    inFlight.current?.abort();
+    const ctl = new AbortController();
+    inFlight.current = ctl;
     const q = {
       name: form.name.trim(),
       lease: form.lease.trim(),
@@ -322,28 +392,60 @@ export function ClaimFinder({
       county: form.county,
     };
     setSearching(true);
+    setSearchError(false);
     setStatus("");
     try {
-      const { owners: results } = await fetchSearch(q);
+      const { owners: results } = await fetchSearch(q, {
+        signedIn,
+        signal: ctl.signal,
+      });
       if (seq !== searchSeq.current) return; // a newer search superseded this one
       setOwners(results);
-      setQuery({ name: q.name, lease: q.lease, county: q.county });
-      setSelO({});
+      setQuery(q);
+      // TICKS SURVIVE A RE-SEARCH (2026-09-11). Removing one filter re-runs
+      // the search, and wiping the ticks meant the records someone had spent
+      // time picking out vanished while the rows they sat on stayed on
+      // screen. Only ticks whose record is no longer in the results are
+      // dropped — `workingSet` keeps a ticked row visible regardless.
+      const live = new Set(results.map(okey));
+      setSelO((prev) => {
+        const next: Record<string, boolean> = {};
+        for (const k of Object.keys(prev))
+          if (prev[k] && live.has(k)) next[k] = true;
+        return next;
+      });
       setSelL({});
-      // The address box seeds the owner refine — same field, same tokens.
-      setRefine(q.addr);
       setRefL("");
       setCty("*");
       setSearched(true);
+      // A claim summary describes the set it was raised from; a new search is
+      // a different set, so the card goes rather than sitting there stale.
       setClaim(null);
       scrollToResultsOnPhone();
     } catch {
-      if (seq === searchSeq.current)
+      if (seq === searchSeq.current) {
+        setSearchError(true);
         setStatus("Search failed to load — try again.");
+      }
     } finally {
       if (seq === searchSeq.current) setSearching(false);
     }
   }
+
+  /**
+   * What a change to the filters has to ASK THE SERVER again for.
+   *
+   * The address is in it only for a signed-out visitor, whose address filter
+   * the proxy applies (see `fetchSearch`). A member's results already carry
+   * the addresses, so theirs is a local filter and re-running a 10–45s search
+   * on every keystroke in that box would be a pointless wait.
+   */
+  const searchKey = [
+    form.name.trim(),
+    form.lease.trim(),
+    form.county,
+    signedIn ? "" : form.addr.trim(),
+  ].join("\u0000");
 
   /**
    * LIVE SEARCH (2026-08-25) — no Search button: results follow the filters.
@@ -355,17 +457,28 @@ export function ClaimFinder({
   useEffect(() => {
     const name = form.name.trim();
     const lease = form.lease.trim();
-    const active =
-      name.length >= 2 || lease.length >= 2 || form.county !== "*";
+    // A QUERY OF PURE PUNCTUATION IS NOT A QUERY. `.` in the owner box came
+    // back with 2,691 records — every record in scope — because the backend
+    // read it as "match anything". Two characters of punctuation are still
+    // nothing to search for.
+    const usableName = name.length >= 2 && hasSearchableChars(name);
+    const usableLease = lease.length >= 2 && hasSearchableChars(lease);
+    // ADDRESS NARROWS, IT DOES NOT SEARCH. `/owners/search` has no address
+    // parameter, so an address on its own has nothing to send and used to do
+    // nothing at all — no request, no message, a filter that looked broken.
+    // Alongside anything else it filters the results here in the browser.
+    const active = usableName || usableLease || form.county !== "*";
     if (!active) searchSeq.current++; // cancel anything in flight NOW
     const t = setTimeout(
       () => {
         debounceTimer.current = null;
         if (!active) {
           if (searched || searching || owners.length) {
+            inFlight.current?.abort();
             setOwners([]);
             setSearched(false);
             setSearching(false);
+            setSearchError(false);
             setSelO({});
             setSelL({});
             setClaim(null);
@@ -379,26 +492,81 @@ export function ClaimFinder({
     );
     debounceTimer.current = t;
     return () => clearTimeout(t);
-    // doSearch reads the same `form` this effect keys on.
+    // doSearch reads the same `form` this key is built from.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form]);
+  }, [searchKey]);
 
-  async function toggleLease(key: string) {
-    const turningOn = !selL[key];
-    setSelL((s) => ({ ...s, [key]: turningOn }));
-    if (!turningOn || memb[key]) return;
-    // First tick of this lease: fetch its full membership (exact despaced
-    // name match on the server — never fuzzy).
+  /**
+   * The address box filters results the browser already has, so it must not
+   * wait on a round trip — but it also must not run against the PREVIOUS
+   * search's results while a new one is in flight. Committing it separately
+   * from `doSearch` is what lets it stay responsive either way.
+   */
+  useEffect(() => {
+    const t = setTimeout(
+      () => setQuery((q) => ({ ...q, addr: form.addr.trim() })),
+      250,
+    );
+    return () => clearTimeout(t);
+  }, [form.addr]);
+
+  /** True when an address is typed but nothing has been searched to filter. */
+  const addressNeedsCompany =
+    form.addr.trim() !== "" &&
+    !(
+      (form.name.trim().length >= 2 && hasSearchableChars(form.name)) ||
+      (form.lease.trim().length >= 2 && hasSearchableChars(form.lease)) ||
+      form.county !== "*"
+    );
+
+  /**
+   * Tick or untick a lease.
+   *
+   * MEMBERSHIP IS FETCHED BEFORE THE TICK LANDS (2026-09-11). Ticking first
+   * and fetching after left a render where the lease was ticked and its
+   * owners had not arrived: the universe was empty, so the left panel said
+   * "No leases in this set" and the right said "No owner matches these
+   * filters" — two dead ends for a set that was simply still loading. The row
+   * shows its own spinner in the meantime, so the click is visibly doing
+   * something. An empty answer now says so rather than blanking both panels.
+   *
+   * `lease.key` is the BASE name — the only spelling the endpoint answers to;
+   * see `lkey`.
+   */
+  async function toggleLease(lease: LeaseAgg) {
+    const key = lease.key;
+    if (selL[key]) {
+      setSelL((s) => ({ ...s, [key]: false }));
+      return;
+    }
+    if (memb[key]) {
+      setSelL((s) => ({ ...s, [key]: true }));
+      return;
+    }
+    if (pendingLeaseKey) return; // one membership load at a time
+    setPendingLeaseKey(key);
     setLeaseLoading(true);
     setStatus("Loading every owner on that lease…");
     try {
-      const [county, lease] = key.split("|");
-      const { owners: rows } = await fetchLeaseOwners(county, lease);
+      const sep = key.indexOf("|");
+      const { owners: rows } = await fetchLeaseOwners(
+        key.slice(0, sep),
+        key.slice(sep + 1),
+        { signedIn },
+      );
+      if (!rows.length) {
+        setStatus(
+          `The roll has no owner list for ${lease.n} — showing your search results instead.`,
+        );
+        return;
+      }
       setMemb((prev) => ({ ...prev, [key]: rows }));
+      setSelL((s) => ({ ...s, [key]: true }));
       setStatus("");
     } catch {
       setStatus("Couldn't load that lease's owners — try again.");
     } finally {
+      setPendingLeaseKey(null);
       setLeaseLoading(false);
     }
   }
@@ -423,18 +591,32 @@ export function ClaimFinder({
         o.r[0],
         (o.r[4] as string) || "",
       );
-      const merged = [...items];
+      const baseKey = okey(o);
+      /**
+       * THE POPUP IS WHERE A SIGNED-OUT VISITOR READS THEIR OWN ADDRESS.
+       * Their search result carries none — the proxy withholds it — but
+       * recognising the record by its mailing address is the whole way to
+       * claim without an account, so it has to come from somewhere. It comes
+       * from here: the backend excludes the passed address, and with no
+       * address to pass it returns the base record along with the siblings.
+       * Matching on the address token picks it out, gives the popup the real
+       * address to show, and keeps it out of the "other addresses" list where
+       * it would otherwise appear as a duplicate of itself.
+       */
+      const self = items.find((it) => it.key === baseKey);
+      const shownBase: ScoredOwner = self ? { ...o, r: self.r } : o;
+      const merged = items.filter((it) => it.key !== baseKey);
       // Statewide searches can hold the same name in other counties too.
       const bn = despace(o.r[0]);
       for (const x of owners) {
         if (x.county === o.county) continue;
         if (despace(x.r[0]) !== bn) continue;
         const k = okey(x);
-        if (k === okey(o)) continue;
+        if (k === baseKey) continue;
         if (!merged.some((it) => it.key === k))
           merged.push({ ...x, key: k });
       }
-      setModal({ base: o, items: merged });
+      setModal({ base: shownBase, items: merged });
     } catch {
       /* lookup failed — leave the tick alone */
     } finally {
@@ -458,6 +640,7 @@ export function ClaimFinder({
               r: it.r,
               county: it.county,
               s: 1,
+              addrKey: it.addrKey,
               // Without these the record's Lease Details row loses its lease
               // number, operator and interest.
               leaseValues: it.leaseValues,
@@ -532,7 +715,8 @@ export function ClaimFinder({
       const result = await postClaim(memberId, tx.owners);
       setStatus("");
       if (result.failed_owners.length === 0) {
-        router.push(PORTAL_HOME);
+        // The leases list, not the dashboard — see `PORTAL_CLAIMED_LEASES`.
+        router.push(PORTAL_CLAIMED_LEASES);
         return;
       }
       setClaim({ phase: "result", base, tx, result });
@@ -544,11 +728,41 @@ export function ClaimFinder({
     }
   }
 
-  /** The Claim button: merge-ask first when the name exists elsewhere. */
-  function claimOne(o: ScoredOwner) {
+  /**
+   * The Claim button: merge-ask first when the name exists elsewhere.
+   *
+   * THE MERGE-ASK IS A QUESTION ABOUT ADDRESSES — "we found these at
+   * different addresses, are these all you?" — so it cannot be asked without
+   * them, and a signed-out visitor's results carry none. The same lookup the
+   * "is this you?" popup uses fills them in first; the addresses are matched
+   * onto the records by their address token. Members already have them and
+   * skip the round trip.
+   */
+  async function claimOne(o: ScoredOwner) {
     const others = sameNameOthers(o, U);
-    if (others.length) setClaim({ phase: "ask", base: o, others });
-    else void finishClaim(o, []);
+    if (!others.length) {
+      void finishClaim(o, []);
+      return;
+    }
+    if (signedIn) {
+      setClaim({ phase: "ask", base: o, others });
+      return;
+    }
+    setPendingOwnerKey(okey(o));
+    try {
+      const { items } = await fetchSameName(o.county, o.r[0], "");
+      const byKey = new Map(items.map((it) => [it.addrKey, it.r]));
+      const fill = (x: ScoredOwner): ScoredOwner => {
+        const r = byKey.get(x.addrKey);
+        return r ? { ...x, r } : x;
+      };
+      setClaim({ phase: "ask", base: fill(o), others: others.map(fill) });
+    } catch {
+      // The lookup is a courtesy, not a gate: the claim itself is by name.
+      setClaim({ phase: "ask", base: o, others });
+    } finally {
+      setPendingOwnerKey(null);
+    }
   }
 
   /** Multi-claim: the user ticked the records themselves — no merge-ask. */
@@ -575,12 +789,18 @@ export function ClaimFinder({
       if (!selO[okey(o)]) continue;
       const leases = (o.r[3] as string[]) ?? [];
       leases.forEach((lease, i) => {
-        const dedup = okey(o) + "|" + lease;
+        const leaseNo = o.leaseNumbers?.[i]?.trim() || "";
+        // ONE ROW PER LEASE, NOT PER ROLL ROW. A lease split into `(1 of 17)`
+        // … `(17 of 17)` carries the same lease number on all seventeen, and
+        // listing them was seventeen identical lines. Where the roll gives no
+        // number the raw name is still the only thing telling rows apart, so
+        // that is what de-duplicates them then.
+        const dedup = okey(o) + "|" + (leaseNo || despace(lease));
         if (seen.has(dedup)) return;
         seen.add(dedup);
         rows.push({
-          lease,
-          leaseNo: o.leaseNumbers?.[i]?.trim() || "",
+          lease: baseLeaseName(lease),
+          leaseNo,
           owner: o.r[0],
           county: o.county,
           operator: o.operators?.[i]?.trim() || "",
@@ -618,15 +838,27 @@ export function ClaimFinder({
           pushed the filters and both panels down the page. */}
       <section className="pb-5 pt-5 max-[767px]:pb-4 max-[767px]:pt-4">
         <div className="mx-auto max-w-[1140px] px-7 max-[767px]:px-4">
+          {/* The site's trail, as every other top-level page carries — this
+              page is reached from a header CTA and had no way back up. */}
+          <Breadcrumb trail={[{ label: "Find Your Record" }]} />
           {/* Headline and stat pills share ONE row (2026-08-25): pills on a
               row of their own left an empty band above the h1. They wrap
               under the headline on narrow screens. */}
           <div className="mb-2 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
             <h1 className="text-[clamp(24px,4.5vw,31px)] font-extrabold leading-[1.15] tracking-[-.02em] text-mv-ink">
-              Find your record —{" "}
-              <em className="not-italic text-mv-green-deep">
-                no account needed
-              </em>
+              {/* THE PITCH IS FOR VISITORS WHO HAVE NO ACCOUNT. Telling a
+                  signed-in member that no account is needed sells them
+                  something they are already holding. */}
+              {signedIn ? (
+                "Find your record"
+              ) : (
+                <>
+                  Find your record —{" "}
+                  <em className="not-italic text-mv-green-deep">
+                    no account needed
+                  </em>
+                </>
+              )}
             </h1>
             <div className="flex flex-wrap gap-2">
               {meta ? (
@@ -643,7 +875,7 @@ export function ClaimFinder({
                     </b>{" "}
                     Texas counties
                   </HeroPill>
-                  <HeroPill>Free · no account</HeroPill>
+                  {!signedIn && <HeroPill>Free · no account</HeroPill>}
                 </>
               ) : (
                 <HeroPill>Loading index…</HeroPill>
@@ -682,13 +914,21 @@ export function ClaimFinder({
           </div>
         )}
 
-        {/* sticky search card — overlaps the hero; sits under the h-16 header.
-            NO Search button (2026-08-25): results follow the filters live, so
-            the card is just the four fields plus the running tally. */}
+        {/* The search card — NO Search button (2026-08-25): results follow
+            the filters live, so the card is just the four fields plus the
+            running tally.
+
+            AND IT SCROLLS WITH THE PAGE (2026-09-11). Pinned at `top-72` it
+            held ~200px of a desktop viewport while the results slid past
+            underneath it, which read as the panel having frozen. The filters
+            are set once and then read from; the results are what the visitor
+            scrolls through. Phones keep the one-line summary bar below, which
+            IS sticky and costs 44px. */}
         <form
           onSubmit={(e) => e.preventDefault()}
           onKeyDown={onFormKeyDown}
-          className={`${filtersOpen ? "" : "max-[767px]:hidden"} sticky top-[72px] z-40 mb-[18px] rounded-mv border border-mv-line bg-mv-card p-[18px] pb-[14px] shadow-mv-lg max-[767px]:static max-[767px]:p-[14px] max-[767px]:pb-3`}
+          autoComplete="off"
+          className={`${filtersOpen ? "" : "max-[767px]:hidden"} relative z-30 mb-[18px] rounded-mv border border-mv-line bg-mv-card p-[18px] pb-[14px] shadow-mv-lg max-[767px]:p-[14px] max-[767px]:pb-3`}
         >
           <div className="grid grid-cols-[1fr_1.4fr] items-end gap-3 max-[640px]:grid-cols-1 max-[640px]:gap-[10px]">
             <div>
@@ -714,12 +954,21 @@ export function ClaimFinder({
                 <HomeIcon />
                 Address
               </div>
-              <input
+              <ClearableInput
                 className={fieldInput}
+                label="address"
                 placeholder="Street, city, or ZIP"
                 value={form.addr}
-                onChange={(e) => setForm((f) => ({ ...f, addr: e.target.value }))}
+                onChange={(v) => setForm((f) => ({ ...f, addr: v }))}
               />
+              {/* The one filter that cannot search on its own — say so, in
+                  place, rather than leaving a typed address doing nothing. */}
+              {addressNeedsCompany && (
+                <p className="mt-[5px] text-[11.5px] text-mv-muted">
+                  Address narrows results — add a county, owner or lease to
+                  search.
+                </p>
+              )}
             </div>
           </div>
           <div className="mt-3 grid grid-cols-[1fr_1.4fr] gap-3 max-[640px]:mt-[10px] max-[640px]:grid-cols-1 max-[640px]:gap-[10px]">
@@ -728,11 +977,12 @@ export function ClaimFinder({
                 <LeaseIcon />
                 Lease Name
               </div>
-              <input
+              <ClearableInput
                 className={fieldInput}
+                label="lease name"
                 placeholder="e.g. Smith Gas Unit"
                 value={form.lease}
-                onChange={(e) => setForm((f) => ({ ...f, lease: e.target.value }))}
+                onChange={(v) => setForm((f) => ({ ...f, lease: v }))}
               />
             </div>
             <div>
@@ -740,21 +990,57 @@ export function ClaimFinder({
                 <PersonIcon />
                 Owner Name
               </div>
-              <input
+              <ClearableInput
                 className={fieldInput}
+                label="owner name"
                 placeholder="e.g. Cochran"
                 value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                onChange={(v) => setForm((f) => ({ ...f, name: v }))}
               />
             </div>
           </div>
-          <div className="mt-3 flex min-h-[26px] flex-wrap items-center gap-2">
-            {searching ? (
-              <span className="inline-flex items-center gap-2 rounded-full border border-mv-line bg-mv-hover px-3 py-1 text-xs font-semibold text-mv-slate">
-                <InlineSpinner />
-                Searching the rolls…
-              </span>
-            ) : searched ? (
+          {/* ONE CHIP PER APPLIED FILTER, EACH REMOVABLE (2026-09-11). "Clear
+              filters" was all or nothing: narrowing to a county and then
+              wanting it gone meant clearing the owner name too and retyping
+              it. The chips also make what is applied legible without reading
+              four fields back. */}
+          {anyFilter && (
+            <div className="mt-[10px] flex flex-wrap items-center gap-[6px]">
+              {(
+                [
+                  form.county !== "*" && ["county", `${form.county} County`],
+                  form.name.trim() && ["name", `Owner: ${form.name.trim()}`],
+                  form.lease.trim() && ["lease", `Lease: ${form.lease.trim()}`],
+                  form.addr.trim() && ["addr", `Address: ${form.addr.trim()}`],
+                ].filter(Boolean) as ["county" | "name" | "lease" | "addr", string][]
+              ).map(([field, label]) => (
+                <span
+                  key={field}
+                  className="inline-flex max-w-full items-center gap-[6px] rounded-full border border-mv-mint-line bg-mv-tint py-[3px] pl-[11px] pr-[4px] text-[12px] font-semibold text-mv-green-ink"
+                >
+                  <span className="min-w-0 truncate">{label}</span>
+                  <button
+                    type="button"
+                    onClick={() => clearOne(field)}
+                    aria-label={`Remove ${label}`}
+                    className="flex h-[19px] w-[19px] flex-none cursor-pointer items-center justify-center rounded-full text-[14px] leading-none text-mv-green-deep transition-colors hover:bg-white"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          {/* The tally stays put while a search runs — the "searching"
+              message belongs over the tables that are about to change, not in
+              the filter card the visitor has just finished with. It fades
+              while the counts are out of date, so a stale number is never
+              mistaken for the new one. */}
+          <div
+            aria-busy={searching}
+            className={`mt-3 flex min-h-[26px] flex-wrap items-center gap-2 transition-opacity ${searching ? "opacity-45" : ""}`}
+          >
+            {searched && !searchError ? (
               <>
                 <span className="rounded-full border border-mv-line bg-mv-hover px-3 py-1 text-xs text-mv-slate">
                   <b className="text-mv-green-deep">{W.length}</b> of {U.length}
@@ -765,6 +1051,17 @@ export function ClaimFinder({
                   <b className="text-mv-green-deep">{L.length}</b> of{" "}
                   {totalLeases} lease{totalLeases === 1 ? "" : "s"}
                 </span>
+                {/* THE 500 CAP IS WHY THE COUNTS DISAGREE. A lease listing
+                    "515 owners" was counted over a result set the backend had
+                    already truncated, so ticking it — which fetches the
+                    lease's real membership — answered with a different
+                    number. Saying so is the difference between a caveat and a
+                    contradiction. */}
+                {!anyLeaseTicked && owners.length === 500 && (
+                  <span className="rounded-full border border-mv-line bg-white px-3 py-1 text-xs text-mv-muted">
+                    first 500 matches — narrow the filters for an exact count
+                  </span>
+                )}
               </>
             ) : null}
             {searched && (
@@ -792,9 +1089,38 @@ export function ClaimFinder({
           </div>
         </form>
 
-        <p aria-live="polite" className={status ? "mb-[10px] text-[13px] text-mv-muted" : "sr-only"}>
-          {status}
-        </p>
+        {/* A FAILED SEARCH OFFERS THE RETRY (2026-09-11). The dev backend
+            drops the occasional request on a slow lease and answers the next
+            attempt fine; a bare "try again" with nothing to press read as
+            that lease being unsearchable. The client retries once on its own
+            before this ever appears. */}
+        {searchError && !searching ? (
+          <div
+            role="alert"
+            className="mb-[10px] flex flex-wrap items-center gap-3 rounded-[10px] border border-mv-line border-l-4 border-l-mv-ink bg-white px-[14px] py-[10px] text-[13px] text-mv-slate"
+          >
+            <span>
+              <strong>Search failed to load.</strong> The rolls service did not
+              answer — this is usually temporary.
+            </span>
+            <button
+              type="button"
+              onClick={() => void doSearch()}
+              className={`${btnPrimary} ${btnSm} ml-auto`}
+            >
+              Try again
+            </button>
+          </div>
+        ) : (
+          <p
+            aria-live="polite"
+            className={
+              status ? "mb-[10px] text-[13px] text-mv-muted" : "sr-only"
+            }
+          >
+            {status}
+          </p>
+        )}
         {/* Scroll target for phones — see `scrollToResultsOnPhone`. */}
         <div ref={resultsAnchor} aria-hidden="true" />
 
@@ -822,12 +1148,19 @@ export function ClaimFinder({
           </p>
         )}
 
-        {/* Panel switch — phones only; both panels show side by side above
-            768px, so the tabs are pure mobile chrome. The inactive panel is
-            hidden with `!hidden`: the grid sets `[&>*]:flex` on its children,
-            which otherwise wins over a plain `hidden`. */}
+        {/* Panel switch — every screen too narrow for two panels side by
+            side. The inactive panel is hidden with `!hidden`: the grid sets
+            `[&>*]:flex` on its children, which otherwise wins over a plain
+            `hidden`.
+
+            1024px, NOT 768 (2026-09-11). The grid collapses to one column at
+            900px, and between there and the phone breakpoint the tabs were
+            absent — so an iPad got the stacked layout the tabs exist to
+            avoid: the lease panel first and the owner records, which are what
+            people came for, a full screen below it. Tablets now get the same
+            owners-first tab pair phones do. */}
         {(searched || searching) && (
-          <div className="mb-3 hidden gap-2 max-[767px]:flex" role="tablist">
+          <div className="mb-3 hidden gap-2 max-[1024px]:flex" role="tablist">
             {(
               [
                 ["owners", `Owners (${W.length})`],
@@ -852,22 +1185,37 @@ export function ClaimFinder({
           </div>
         )}
 
+        {/* ABOVE THE PANELS, NOT UNDER THEM (2026-09-11). The card is the
+            answer to the button the visitor just pressed, and below a
+            560px-tall table it landed off-screen — the page scrolled itself
+            there, which on a phone read as the filters having jumped away.
+            Here it appears where the eye already is. */}
+        {claim && (
+          <ClaimCard
+            claim={claim}
+            claiming={claiming}
+            signedIn={signedIn}
+            onMerge={(merged) => {
+              if (claim) void finishClaim(claim.base, merged);
+            }}
+          />
+        )}
+
         <div
-          className={`grid grid-cols-[370px_1fr] items-stretch gap-[18px] pb-2 max-[900px]:grid-cols-1 max-[767px]:gap-3 [&>*]:flex [&>*]:min-w-0 ${
+          className={`grid grid-cols-[370px_1fr] items-stretch gap-[18px] pb-2 max-[1024px]:grid-cols-1 max-[767px]:gap-3 [&>*]:flex [&>*]:min-w-0 ${
             !searched && !searching ? "hidden" : ""
           }`}
         >
-          <div className={mobilePanel === "leases" ? "" : "max-[767px]:!hidden"}>
+          <div className={mobilePanel === "leases" ? "" : "max-[1024px]:!hidden"}>
             <LeasePanel
               searched={searched}
               signedIn={signedIn}
-              busyLabel={
-                searching
-                  ? "Searching the rolls…"
-                  : leaseLoading
-                    ? "Loading every owner on that lease…"
-                    : null
-              }
+              /* A SEARCH replaces this list, so it skeletons. LOADING A
+                 LEASE'S MEMBERSHIP does not: the list is where the tick the
+                 visitor just made lives, and blanking it took away the one
+                 thing that could show the click had registered. That row
+                 carries its own spinner instead (`pendingLeaseKey`). */
+              busyLabel={searching ? "Searching the rolls…" : null}
               leases={L}
               ownerCount={W.length}
               anyOwnerTicked={anyOwnerTicked}
@@ -878,12 +1226,13 @@ export function ClaimFinder({
               cty={cty}
               onCty={setCty}
               selL={selL}
+              pendingLeaseKey={pendingLeaseKey}
               onToggleLease={toggleLease}
               onOpenReport={setDrawer}
               onClearTicks={() => setSelL({})}
             />
           </div>
-          <div className={mobilePanel === "owners" ? "" : "max-[767px]:!hidden"}>
+          <div className={mobilePanel === "owners" ? "" : "max-[1024px]:!hidden"}>
             <OwnerTable
               searched={searched}
               signedIn={signedIn}
@@ -895,6 +1244,7 @@ export function ClaimFinder({
                     : null
               }
               pendingOwnerKey={pendingOwnerKey}
+              claiming={claiming}
               W={W}
               universeCount={U.length}
               corr={corr}
@@ -913,15 +1263,6 @@ export function ClaimFinder({
           </div>
         </div>
 
-        {claim && (
-          <ClaimCard
-            claim={claim}
-            onMerge={(merged) => {
-              if (claim) void finishClaim(claim.base, merged);
-            }}
-          />
-        )}
-
         <footer className="mb-[34px] mt-[26px] border-t border-mv-line pt-[18px] text-center text-[11.5px] text-mv-sublabel">
           Source: county appraisal mineral rolls · latest roll per county.
           Claiming does not change legal ownership.
@@ -931,6 +1272,7 @@ export function ClaimFinder({
       {modal && (
         <RecordModal
           modal={modal}
+          signedIn={signedIn}
           corr={corr}
           selO={selO}
           onSaveCorrection={saveCorrection}

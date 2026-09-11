@@ -7,6 +7,24 @@ import type { LeaseAgg } from "@/lib/claim-search/types";
 import { fmt } from "../_lib/working-set";
 import { btnPrimary, LockedInline } from "./ui";
 
+/** One labelled figure in the drawer's readout. */
+function Figure({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-mv-line bg-white px-3 py-[10px]">
+      <dt className="text-[10.5px] font-semibold uppercase tracking-[.05em] text-mv-sublabel">
+        {label}
+      </dt>
+      <dd className="mt-[3px] text-[14px] font-bold text-mv-ink">{value}</dd>
+    </div>
+  );
+}
+
 /**
  * The lease-report drawer. Owner count and appraised total are REAL — summed
  * from the county roll rows in the current result set — which is why the
@@ -56,29 +74,64 @@ export function LeaseDrawer({
             ×
           </button>
         </div>
+        {/* THE BODY IS FILLED, NOT STRETCHED (2026-09-11). Three chips and a
+            caption inside a full-height drawer left most of a 500px column
+            blank, which read as content that had failed to load. The figures
+            are now a two-column readout, and what the full report adds is
+            listed rather than only alluded to in the footer button. */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {lease && (
             <>
-              <div className="mt-[6px] flex flex-wrap gap-2">
-                <span className="inline-flex items-center rounded-full bg-mv-mint px-[10px] py-[3px] text-[11.5px] font-extrabold text-mv-green-ink">
-                  {lease.cnt} owner{lease.cnt === 1 ? "" : "s"} in your result set
-                </span>
-                <span className="inline-flex items-center rounded-full bg-mv-hover px-[10px] py-[3px] text-[11.5px] font-semibold text-mv-slate">
-                  {signedIn ? (
-                    `${fmt(lease.val)} appraised`
-                  ) : (
-                    <LockedInline label="Appraised value locked" />
-                  )}
-                </span>
-                <span className="inline-flex items-center rounded-full bg-mv-hover px-[10px] py-[3px] text-[11.5px] font-semibold text-mv-slate">
-                  {lease.c} County
-                </span>
-              </div>
-              <p className="mt-[10px] text-[11px] text-mv-muted">
-                Owner count and appraised total are real, from the county roll
-                rows in your current results. Production, wells, and operators
-                arrive in the full Lease Report.
+              <dl className="grid grid-cols-2 gap-[10px]">
+                <Figure
+                  label="Owners in your results"
+                  value={String(lease.cnt)}
+                />
+                <Figure
+                  label="Appraised in your results"
+                  value={
+                    signedIn ? (
+                      lease.partial ? `${fmt(lease.val)}+` : fmt(lease.val)
+                    ) : (
+                      <LockedInline label="Free account" />
+                    )
+                  }
+                />
+                <Figure label="County" value={`${lease.c} County`} />
+                <Figure
+                  label="Roll entries"
+                  value={`${lease.rolls} row${lease.rolls === 1 ? "" : "s"}`}
+                />
+              </dl>
+              <p className="mt-3 text-[11.5px] leading-[1.55] text-mv-muted">
+                Owner count and appraised total are real, summed from the
+                county roll rows in your <em>current results</em> — not the
+                lease&rsquo;s totals across every owner.
+                {lease.partial &&
+                  " Some owners here carry no per-lease figure on the roll, so the total is a floor."}
               </p>
+
+              <div className="mt-4 rounded-xl border border-mv-line bg-mv-bg px-4 py-[14px]">
+                <h4 className="text-[12.5px] font-bold text-mv-ink">
+                  The full Lease Report adds
+                </h4>
+                <ul className="mt-2 space-y-[7px] text-[12.5px] text-mv-slate">
+                  {[
+                    "Wells on the lease, with permit and completion dates",
+                    "Monthly oil and gas production, and the decline curve",
+                    "Current operator and the operator history",
+                    "Every owner on the lease, not just those in your results",
+                  ].map((line) => (
+                    <li key={line} className="flex gap-[8px]">
+                      <span
+                        aria-hidden="true"
+                        className="mt-[6px] h-[5px] w-[5px] flex-none rounded-full bg-mv-green-deep"
+                      />
+                      <span>{line}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </>
           )}
         </div>

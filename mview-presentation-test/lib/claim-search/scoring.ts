@@ -12,6 +12,62 @@ export function despace(s: string): string {
   return s.toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
+/**
+ * The lease name without the roll's duplicate marker.
+ *
+ * ONE LEASE, MANY ROLL ROWS. A county roll splits a single lease across an
+ * account per tract, and the export names them `SHAFTER LAKE /SAN ANDRES/
+ * UNIT (1 of 17)` … `(17 of 17)`. Read literally those are seventeen leases:
+ * the panel listed the same lease seventeen times, the tally counted it
+ * seventeen times, and `DEANN (1 of 1)` beside `DEANN (1 of 2)` read as two
+ * different leases. The marker is presentation, not identity — this strips it
+ * so the panel can group the rows back into the lease they came from.
+ *
+ * The RAW name is still what membership is fetched by (`lkey`): the backend
+ * knows the rows under their full names.
+ */
+export function baseLeaseName(s: string): string {
+  const stripped = s.replace(/\s*\(\s*\d+\s*of\s*\d+\s*\)\s*$/i, "").trim();
+  return stripped || s.trim();
+}
+
+/**
+ * A record's ADDRESS IDENTITY — a short, stable, one-way token for a mailing
+ * address (FNV-1a over the despaced form). `""` for no address at all.
+ *
+ * WHY A HASH AND NOT THE ADDRESS. A record is identified by
+ * `county|name|address`, and a signed-out visitor's search no longer carries
+ * the address — the proxy deletes it. Without a stand-in, two same-name
+ * records in one county became the same record: React saw duplicate keys,
+ * ticking one ticked both, and the merge flow could not tell them apart. The
+ * proxy sends this token in the address's place, so identity survives the
+ * redaction while the address itself does not.
+ *
+ * It is an identifier, not a secret and not a lookup: you cannot read an
+ * address out of it, and the page never tries to.
+ */
+export function addressKey(address: string): string {
+  const s = despace(address);
+  if (!s) return "";
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
+
+/**
+ * Does this query carry anything to search for?
+ *
+ * `.` matched every record on the roll — punctuation alone reaches the
+ * backend as a wildcard-ish pattern and comes back with the whole county.
+ * A query with no letter or digit is not a query.
+ */
+export function hasSearchableChars(q: string): boolean {
+  return /[a-z0-9]/i.test(q);
+}
+
 function toks(s: string): string[] {
   return s
     .toUpperCase()

@@ -4,13 +4,15 @@ import { useState } from "react";
 
 import type { OwnerRow, ScoredOwner } from "@/lib/claim-search/types";
 
-import { fmt, okey } from "../_lib/working-set";
+import { fmt, okey, propCount } from "../_lib/working-set";
 import { btnGhost, btnPrimary, btnSm } from "./ui";
 
 export interface ModalItem {
   r: OwnerRow;
   county: string;
   key: string;
+  /** The record's address identity — see `ScoredOwner.addrKey`. */
+  addrKey: string;
   /** The API's per-lease arrays, carried so a confirmed record keeps them. */
   leaseValues?: number[];
   leaseNumbers?: string[];
@@ -36,12 +38,22 @@ export interface ModalState {
  */
 export function RecordModal({
   modal,
+  signedIn,
   corr,
   selO,
   onSaveCorrection,
   onClose,
 }: {
   modal: ModalState;
+  /**
+   * ADDRESSES STAY VISIBLE HERE EVEN SIGNED OUT — identifying your own record
+   * by its mailing address is how this popup works, and gating it would break
+   * claiming for the visitors the page is for. The APPRAISED VALUE is gated
+   * like everywhere else: it is not needed to recognise yourself, and for a
+   * signed-out visitor the search no longer carries it anyway, so printing it
+   * would print `$0`.
+   */
+  signedIn: boolean;
   corr: Record<string, string>;
   selO: Record<string, boolean>;
   onSaveCorrection: (
@@ -103,8 +115,14 @@ export function RecordModal({
         <div className="overflow-y-auto px-[22px] py-[14px]">
           <SectionLabel first>Your selected record</SectionLabel>
           <ModalRow
-            item={{ r: base.r, county: base.county, key: okey(base) }}
+            item={{
+              r: base.r,
+              county: base.county,
+              key: okey(base),
+              addrKey: base.addrKey,
+            }}
             isBase
+            signedIn={signedIn}
             corr={corr}
             onSaveCorrection={onSaveCorrection}
           />
@@ -115,6 +133,7 @@ export function RecordModal({
                 <ModalRow
                   key={it.key}
                   item={it}
+                  signedIn={signedIn}
                   corr={corr}
                   checked={!!checked[it.key]}
                   onCheck={() =>
@@ -165,6 +184,7 @@ function SectionLabel({
 function ModalRow({
   item,
   isBase,
+  signedIn,
   checked,
   onCheck,
   corr,
@@ -172,6 +192,7 @@ function ModalRow({
 }: {
   item: ModalItem;
   isBase?: boolean;
+  signedIn: boolean;
   checked?: boolean;
   onCheck?: () => void;
   corr: Record<string, string>;
@@ -223,8 +244,9 @@ function ModalRow({
             )}
           </div>
           <div className="mt-[1px] text-[11.5px] text-mv-muted">
-            {item.county} County · {r[1]} propert{r[1] === 1 ? "y" : "ies"} ·{" "}
-            {fmt(r[2])}
+            {item.county} County · {propCount(item)} propert
+            {propCount(item) === 1 ? "y" : "ies"}
+            {signedIn && <> · {fmt(r[2])}</>}
           </div>
           {editing && (
             <div className="mt-[9px] flex flex-wrap gap-2">
@@ -238,9 +260,14 @@ function ModalRow({
                 }}
                 className="h-[38px] min-w-[220px] flex-1 rounded-[9px] border border-mv-line px-[11px] text-[12.5px] focus-visible:border-mv-green-deep focus-visible:shadow-[0_0_0_3px_var(--color-mv-tint)] focus-visible:outline-none"
               />
+              {/* DISABLED UNTIL THERE IS AN ADDRESS TO SAVE (2026-09-11). It
+                  looked live on an empty field, and pressing it did nothing
+                  at all — `save()` returned early — so the button read as
+                  broken rather than as not-yet-applicable. */}
               <button
                 type="button"
-                className={`${btnPrimary} ${btnSm}`}
+                disabled={!draft.trim()}
+                className={`${btnPrimary} ${btnSm} disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:brightness-100`}
                 onClick={save}
               >
                 Save address

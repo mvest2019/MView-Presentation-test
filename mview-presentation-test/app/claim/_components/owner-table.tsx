@@ -4,10 +4,11 @@ import { useState } from "react";
 
 import type { ScoredOwner } from "@/lib/claim-search/types";
 
-import { fmt, type WorkingRow } from "../_lib/working-set";
+import { fmt, propCount, type WorkingRow } from "../_lib/working-set";
 import {
   btnMint,
   btnPrimary,
+  ClearableInput,
   EmptyState,
   InlineSpinner,
   OwnerRowsSkeleton,
@@ -27,6 +28,7 @@ export function OwnerTable({
   signedIn,
   busyLabel,
   pendingOwnerKey,
+  claiming,
   W,
   universeCount,
   corr,
@@ -49,6 +51,8 @@ export function OwnerTable({
   busyLabel: string | null;
   /** The owner whose same-name lookup is running — its row shows a spinner. */
   pendingOwnerKey: string | null;
+  /** True while a claim is being filed — the Claim buttons say so. */
+  claiming: boolean;
   W: WorkingRow[];
   universeCount: number;
   corr: Record<string, string>;
@@ -75,6 +79,23 @@ export function OwnerTable({
   const mobileRows = W.slice(0, mobileLimit);
   const mobileHidden = W.length - mobileRows.length;
 
+  /**
+   * DESKTOP PAGES TOO (2026-09-11). A county like Midland answers with the
+   * full 500-row cap, and 500 rows in a 560px scroll box is a scrollbar a few
+   * pixels tall inside a page that also scrolls — there was no way to tell
+   * where in the results you were or to reach a row near the end. Fifty is
+   * about two screens of table.
+   */
+  const PAGE = 50;
+  const [page, setPage] = useState(0);
+  const pageCount = Math.max(1, Math.ceil(W.length / PAGE));
+  // Clamped rather than reset in an effect: the working set changes on every
+  // filter keystroke, and an effect would render one frame of an empty page
+  // each time before correcting itself.
+  const safePage = Math.min(page, pageCount - 1);
+  const from = safePage * PAGE;
+  const rows = W.slice(from, from + PAGE);
+
   const anyOwnerTicked = Object.keys(selO).some((k) => selO[k]);
   const selCount = Object.keys(selO).filter((k) => selO[k]).length;
   return (
@@ -94,13 +115,16 @@ export function OwnerTable({
           </button>
         )}
       </div>
-      <input
-        className={`${refineInput} mb-2 mt-[6px]`}
-        placeholder="Refine owners — name, street, city, ZIP, or county"
-        aria-label="Refine owner results"
-        value={refine}
-        onChange={(e) => onRefine(e.target.value)}
-      />
+      <div className="mb-2 mt-[6px]">
+        <ClearableInput
+          className={refineInput}
+          label="owner refine"
+          placeholder="Refine owners — name, street, city, ZIP, or county"
+          aria-label="Refine owner results"
+          value={refine}
+          onChange={onRefine}
+        />
+      </div>
       <p className="mb-[6px] text-xs text-mv-muted">
         {busyLabel
           ? busyLabel
@@ -119,19 +143,23 @@ export function OwnerTable({
         <div className="max-h-[560px] flex-1 overflow-auto rounded-xl border border-mv-line max-[767px]:hidden">
           <table className="w-full min-w-[640px] border-collapse text-[12.5px]">
           <thead>
+            {/* EVERY COLUMN IS NAMED (2026-09-11). The first and last headers
+                were empty strings, so the two columns the page is actually
+                for — the tick that selects a record and the button that
+                claims it — were the only ones with nothing above them. */}
             <tr>
-              {["", "Owner", "Mailing address", "Props", "Appraised", ""].map(
-                (h, i) => (
-                  <th
-                    key={i}
-                    className={`${tableHead} ${
-                      i === 3 || i === 4 ? "!text-right" : ""
-                    } ${i === 0 ? "w-[38px]" : ""}`}
-                  >
-                    {h}
-                  </th>
-                ),
-              )}
+              {[
+                ["Select", "w-[54px]"],
+                ["Owner", ""],
+                ["Mailing address", ""],
+                ["Props", "!text-right"],
+                ["Appraised", "!text-right"],
+                ["Claim", "w-[90px]"],
+              ].map(([h, extra]) => (
+                <th key={h} className={`${tableHead} ${extra}`}>
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -153,7 +181,7 @@ export function OwnerTable({
                 </td>
               </tr>
             ) : (
-              W.map((w) => {
+              rows.map((w) => {
                 const r = w.o.r;
                 const shown = corr[w.key] ?? ((r[4] as string) || "");
                 const on = !!selO[w.key];
@@ -199,11 +227,17 @@ export function OwnerTable({
                           )}
                         </>
                       ) : (
-                        <span className="text-[11px] text-mv-muted">—</span>
+                        /* "N/A", not an em dash: the roll genuinely holds no
+                           mailing address for this record, and a dash read as
+                           the page having failed to load one. */
+                        <span className="text-[11px] text-mv-muted">N/A</span>
                       )}
                     </td>
                     <td className="border-b border-mv-line-soft px-[15px] py-[12px] text-right tabular-nums">
-                      {r[1]}
+                      {/* Counted off the record's own lease list — see
+                          `propCount`; the served figure disagreed with the
+                          lease panel beside it. */}
+                      {propCount(w.o)}
                     </td>
                     <td className="whitespace-nowrap border-b border-mv-line-soft px-[15px] py-[12px] text-right font-bold tabular-nums text-mv-green-deep">
                       {signedIn ? (
@@ -215,15 +249,22 @@ export function OwnerTable({
                       )}
                     </td>
                     <td className="border-b border-mv-line-soft px-[15px] py-[12px]">
+                      {/* CLAIMING IS VISIBLY IN PROGRESS (2026-09-11). The
+                          call takes four or five seconds and the page used to
+                          sit dead still for all of them before redirecting,
+                          so nobody could tell the button had registered — or
+                          whether to press it again. */}
                       <button
                         type="button"
+                        disabled={claiming}
                         onClick={(e) => {
                           e.stopPropagation();
                           onClaim(w.o);
                         }}
-                        className="cursor-pointer whitespace-nowrap rounded-lg border-[1.5px] border-mv-line bg-white px-[13px] py-[6px] text-[11.5px] font-bold text-mv-green-deep transition-colors hover:border-mv-green-deep hover:bg-mv-green-deep hover:text-white"
+                        className="inline-flex cursor-pointer items-center gap-[6px] whitespace-nowrap rounded-lg border-[1.5px] border-mv-line bg-white px-[13px] py-[6px] text-[11.5px] font-bold text-mv-green-deep transition-colors hover:border-mv-green-deep hover:bg-mv-green-deep hover:text-white disabled:cursor-wait disabled:opacity-60 disabled:hover:border-mv-line disabled:hover:bg-white disabled:hover:text-mv-green-deep"
                       >
-                        Claim
+                        {claiming && <InlineSpinner />}
+                        {claiming ? "Filing…" : "Claim"}
                       </button>
                     </td>
                   </tr>
@@ -233,6 +274,40 @@ export function OwnerTable({
           </tbody>
           </table>
         </div>
+
+        {/* The pager sits OUTSIDE the scroll box, so it stays put while the
+            rows scroll under it. Hidden with one page of results — a pager
+            for a single page is furniture. */}
+        {!busyLabel && searched && W.length > PAGE && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 max-[767px]:hidden">
+            <span className="text-[11.5px] text-mv-muted">
+              Showing <b className="text-mv-slate">{from + 1}</b>–
+              <b className="text-mv-slate">{Math.min(from + PAGE, W.length)}</b>{" "}
+              of {W.length}
+            </span>
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage(safePage - 1)}
+                disabled={safePage === 0}
+                className="min-h-[32px] cursor-pointer rounded-lg border border-mv-line bg-white px-3 text-[12.5px] font-semibold text-mv-green-deep transition-colors hover:bg-mv-hover disabled:cursor-default disabled:text-mv-muted disabled:hover:bg-white"
+              >
+                ← Prev
+              </button>
+              <span className="text-[12px] tabular-nums text-mv-slate">
+                {safePage + 1} / {pageCount}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage(safePage + 1)}
+                disabled={safePage >= pageCount - 1}
+                className="min-h-[32px] cursor-pointer rounded-lg border border-mv-line bg-white px-3 text-[12.5px] font-semibold text-mv-green-deep transition-colors hover:bg-mv-hover disabled:cursor-default disabled:text-mv-muted disabled:hover:bg-white"
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ---- the same working set as stacked cards, phones only ---- */}
         <div className="hidden flex-1 max-[767px]:block">
@@ -264,7 +339,11 @@ export function OwnerTable({
               )}
             </div>
           ) : (
-            <ul className="space-y-2">
+            /* The claim bar is `sticky bottom-3` and floats over whatever is
+               under it; without this the last card sat beneath it and could
+               not be read or tapped. The padding only exists while the bar
+               does. */
+            <ul className={`space-y-2 ${selCount > 0 ? "pb-[92px]" : ""}`}>
               {mobileRows.map((w) => {
                 const r = w.o.r;
                 const shown = corr[w.key] ?? ((r[4] as string) || "");
@@ -299,19 +378,21 @@ export function OwnerTable({
                           {r[0]}
                         </div>
                         <div className="mt-[1px] text-[11.5px] text-mv-muted">
-                          {w.o.county} County · {r[1]} propert
-                          {r[1] === 1 ? "y" : "ies"}
+                          {w.o.county} County · {propCount(w.o)} propert
+                          {propCount(w.o) === 1 ? "y" : "ies"}
                         </div>
                       </div>
                       <button
                         type="button"
+                        disabled={claiming}
                         onClick={(e) => {
                           e.stopPropagation();
                           onClaim(w.o);
                         }}
-                        className="min-h-[34px] flex-none cursor-pointer whitespace-nowrap rounded-lg border border-mv-line-strong bg-white px-3 text-[12px] font-bold text-mv-green-deep hover:border-mv-ink hover:bg-mv-ink hover:text-white"
+                        className="inline-flex min-h-[34px] flex-none cursor-pointer items-center gap-[6px] whitespace-nowrap rounded-lg border border-mv-line-strong bg-white px-3 text-[12px] font-bold text-mv-green-deep hover:border-mv-ink hover:bg-mv-ink hover:text-white disabled:cursor-wait disabled:opacity-60"
                       >
-                        Claim
+                        {claiming && <InlineSpinner />}
+                        {claiming ? "Filing…" : "Claim"}
                       </button>
                     </div>
                     {/* Label the two gated fields explicitly: without the
@@ -328,7 +409,7 @@ export function OwnerTable({
                           ) : shown ? (
                             shown
                           ) : (
-                            "—"
+                            "N/A"
                           )}
                         </dd>
                       </div>
@@ -390,12 +471,16 @@ export function OwnerTable({
           </button>
           <button
             type="button"
+            disabled={claiming}
             onClick={onClaimSelected}
-            className={`${btnPrimary} max-[560px]:w-full`}
+            className={`${btnPrimary} max-[560px]:w-full disabled:cursor-wait disabled:opacity-70`}
           >
-            {selCount === 1
-              ? "Claim This Record →"
-              : `Claim ${selCount} Records Together →`}
+            {claiming && <InlineSpinner />}
+            {claiming
+              ? "Filing your claim…"
+              : selCount === 1
+                ? "Claim This Record →"
+                : `Claim ${selCount} Records Together →`}
           </button>
         </div>
       )}
