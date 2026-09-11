@@ -32,6 +32,7 @@
  * exactly as it is there — see section 10 of app.css.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import type { WeeklyReport, Verdict, WeeklyBar } from '../../_lib/reference/weekly';
 import { n0, nShort, pctS, plural } from '../../_lib/reference/fmt';
 import { Band, ProductPair } from './bits';
@@ -52,22 +53,32 @@ const CHIP: Record<Verdict, string> = {
  * gone: the control sends, to the address the account registered, on the first
  * click.
  *
- * SO THE STATE IS THE THREE THINGS A SEND HAS: who it goes to, whether one is
- * in flight, and what came back. `open` and `toAuto` went with the panel —
- * there is nothing to open and nothing to type over. `transport` /
+ * WHAT IS LEFT OF ITS STATE IS ONE BOOLEAN. `open` and `toAuto` went with the
+ * panel — there is nothing to open and nothing to type over. `transport` /
  * `transportNote` went with it too: both existed ONLY to label the panel's
- * button and print its note, and the answer they carried is in the POST's own
- * `detail` verbatim, which the result notice already prints. Keeping the
- * capability request would have been a round trip per page load for a sentence
- * with nowhere left to go.
+ * button and print its note, and the answer they carried comes back on the
+ * POST's own `detail`.
+ *
+ * THE ADDRESS IS NOT STATE EITHER, now that no field shows it. It is read at
+ * the click, in `send`, which is the only moment anything needs it — holding
+ * it meant an effect copying a value out of the session into `useState` for no
+ * reader, and an effect that only calls `setState` is a render the component
+ * did not need.
+ *
+ * NOR IS THE OUTCOME. It used to be `result`, drawn as a four-line notice
+ * between the promise and the cover — a permanent block of page given to a
+ * fact with a shelf life of seconds, which then sat in the report for the rest
+ * of the session. It is a toast now, through the shared `<Toaster>` the root
+ * layout already mounts, so it announces itself, times itself out, and leaves
+ * the report's own layout alone.
  */
-interface MailState {
-  to: string;
-  busy: boolean;
-  result: null | {
-    sent: boolean; detail?: string; subject?: string; text?: string; reason?: string;
-    to?: string; transport?: string;
-  };
+
+/** what the two routes answer with; only these four fields are read here */
+interface MailAnswer {
+  sent?: boolean;
+  to?: string;
+  detail?: string;
+  error?: string;
 }
 
 /**
@@ -117,7 +128,7 @@ function storedEmail(): string {
 export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewProps) {
   const r = p.weekly;
   const member = usePortalMember();
-  const [mail, setMail] = useState<MailState>({ to: '', busy: false, result: null });
+  const [sending, setSending] = useState(false);
 
   const unclaimed = funnel === 'unclaimed';
   const pageOf = (n: number) => r.pages.find((x) => x.n === n) ?? null;
@@ -138,17 +149,6 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
      ever stops being sent. */
   const minutesFor = (id: string, fallback: number) =>
     r.rail.find((it) => it.id === id)?.minutes ?? fallback;
-
-  /* WHERE THE REPORT GOES, resolved before anyone presses anything.
-     With the address field gone this is the only answer to "to whom", so it is
-     read on mount and again if the session lands late — see `storedEmail` above
-     for the two places it is read from and why. It is the address the account
-     registered, which is what "Email ME this report" says on the button. */
-  useEffect(() => {
-    const known = storedEmail() || member?.email || '';
-    if (!known) return;
-    setMail((m) => (m.to === known ? m : { ...m, to: known }));
-  }, [member?.email]);
 
   /* A SHARED LINK HAS TO LAND.
      `/weekly#wrPage2` is the point of using anchors, but the page is rendered
@@ -210,25 +210,40 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
    * the member's own report is the NOT-CLAIMED sample, which is this app's
    * transform of the payload and unknown upstream — and that case already
    * renders locally, behind `sample`, in the route handler.
+   *
+   * THE OUTCOME IS A TOAST, AND THAT IS THE WHOLE OF IT. Both answers go to
+   * the shared `<Toaster>` the root layout mounts (`_components/ui/sonner.tsx`)
+   * — the same one the contact form and the auth pages already speak through,
+   * so the report is not the one surface in this app with its own idea of what
+   * a confirmation looks like. Two lines each, and gone in 4.5s: the title says
+   * which way it went and the description carries the one fact worth carrying,
+   * the address on a send and the service's own reason on a refusal.
+   *
+   * IT REPLACED A NOTICE BLOCK BETWEEN THE PROMISE AND THE COVER — four lines
+   * of report given over to a fact with a shelf life of seconds, which then sat
+   * there for the rest of the session pushing the cover down every time the
+   * reader came back to the page.
+   *
+   * NO `role="status"` IS NEEDED IN ITS PLACE. Sonner owns a live region, which
+   * is what the hand-written attribute was standing in for.
    */
   const send = useCallback(async () => {
     /* NO ADDRESS IS ANSWERED HERE, not by the route. Signed out there is no
        registered address to send to, and posting an empty `to` only spends a
        request to be told "bad address" — a sentence written for a reader who
        mistyped one, which this reader did not. */
-    const to = mail.to.trim();
+    /* WHERE THE REPORT GOES, answered at the press. With the address field
+       gone this is the only answer to "to whom": the address the account
+       registered, which is what "Email ME this report" says on the button. See
+       `storedEmail` above for the two places it is read from and why. */
+    const to = (storedEmail() || member?.email || '').trim();
     if (!to) {
-      setMail((m) => ({
-        ...m,
-        result: {
-          sent: false,
-          detail: 'Nothing was sent: this account has no email address on it to send to. '
-            + 'Sign in and press this again, or use "Download the report" to keep a copy.',
-        },
-      }));
+      toast.error('Report not sent', {
+        description: 'There is no email address on this account to send it to.',
+      });
       return;
     }
-    setMail((m) => ({ ...m, busy: true, result: null }));
+    setSending(true);
     try {
       const res = await fetch('/api/weekly/email', {
         method: 'POST',
@@ -241,15 +256,30 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
           sample: unclaimed,
         }),
       });
-      const d = await res.json() as MailState['result'];
-      setMail((m) => ({ ...m, busy: false, result: d }));
+      const d = await res.json() as MailAnswer;
+      setSending(false);
+      if (d?.sent) {
+        /* THE ADDRESS IS READ OFF THE ANSWER, not off local state, so the line
+           names what the server accepted rather than what this component last
+           held. */
+        toast.success('Report sent', { description: `On its way to ${d.to || to}.` });
+      } else {
+        /* THE SERVICE'S OWN SENTENCE, not one written here. A refusal has a
+           reason — no transport, a rejected address, a service that would not
+           take it — and the route already words each of them; replacing them
+           with "something went wrong" would throw away the only thing that
+           tells a reader whether to try again. */
+        toast.error('Report not sent', {
+          description: d?.detail || d?.error || 'The report service did not accept the message.',
+        });
+      }
     } catch (e) {
-      setMail((m) => ({
-        ...m, busy: false,
-        result: { sent: false, detail: e instanceof Error ? e.message : String(e) },
-      }));
+      setSending(false);
+      toast.error('Report not sent', {
+        description: e instanceof Error ? e.message : String(e),
+      });
     }
-  }, [mail.to, p.owner, unclaimed]);
+  }, [member?.email, p.owner, unclaimed]);
 
   return (
     <section data-route="app-briefing" className="active">
@@ -371,9 +401,9 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
             <button
               className="btn btn-ghost btn-sm" type="button"
               onClick={send}
-              disabled={mail.busy || unclaimed}
+              disabled={sending || unclaimed}
             >
-              {mail.busy ? 'Sending…' : 'Email me this report'}
+              {sending ? 'Sending…' : 'Email me this report'}
             </button>
             {unclaimed
               ? (
@@ -412,85 +442,6 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
         <div className="notice slate wr-noprint">
           <div>☕ {r.promise}</div>
         </div>
-
-        {/* ----------------------------------------------- what the send said
-
-            THE ANSWER, AND NOTHING ELSE. This is all that is left of the
-            mailer panel that used to stand here: the address field, its send
-            button and the transport note went with the one-click send above,
-            and what remains is the one part of that panel a reader still needs
-            — whether the report went, and where.
-
-            A send the reader cannot tell succeeded is a send they make twice,
-            so the success case is marked three ways: the mint notice, a tick,
-            and the address it actually went to, read off the RESPONSE
-            (`result.to`) rather than off local state, so the line names what
-            the server accepted. `role="status"` is what carries the same
-            sentence to a screen reader, which is the one reader for whom a
-            colour and a tick are nothing at all — and it matters more now that
-            pressing the button no longer opens anything visible.
-
-            THE CANNOT-SEND FALLBACK IS KEPT INTACT. When the build has no
-            transport the route answers with the rendered message instead of
-            claiming a send, and the three controls under it — open in your
-            mail app, copy, download to attach — are what make that answer
-            useful rather than merely honest. */}
-        {mail.result
-          ? (
-            <div
-              className={'notice wr-noprint ' + (mail.result.sent ? 'mint' : '')}
-              role="status" aria-live="polite"
-            >
-              <div>
-                <strong>
-                  {mail.result.sent
-                    ? `✓ Sent — the report is on its way to ${mail.result.to || mail.to}.`
-                    : 'Nothing was sent.'}
-                </strong>
-                {mail.result.sent
-                  ? (
-                    <p className="small" style={{ margin: '4px 0 0' }}>
-                      Week ending {r.week_ending_label}. It can take a minute or two to
-                      arrive — check the spam folder if it does not.
-                    </p>
-                  )
-                  : null}
-                {mail.result.subject
-                  ? <p className="small" style={{ margin: '4px 0 0' }}>Subject: {mail.result.subject}</p>
-                  : null}
-                {mail.result.detail
-                  ? <p className="small" style={{ margin: '4px 0 0' }}>{mail.result.detail}</p>
-                  : null}
-                {!mail.result.sent && mail.result.text
-                  ? (
-                    <>
-                      <div className="flex" style={{ flexWrap: 'wrap', gap: 6, marginTop: 9 }}>
-                        <a
-                          className="btn btn-primary btn-sm"
-                          href={`mailto:${encodeURIComponent(mail.to)}`
-                            + `?subject=${encodeURIComponent(mail.result.subject ?? '')}`
-                            + `&body=${encodeURIComponent(mail.result.text.slice(0, 1800))}`}
-                        >
-                          Open it in your mail app
-                        </a>
-                        <button
-                          className="btn btn-ghost btn-sm" type="button"
-                          onClick={() => { void navigator.clipboard?.writeText(mail.result?.text ?? ''); }}
-                        >
-                          Copy the message
-                        </button>
-                        <a className="btn btn-ghost btn-sm" href={`/api/weekly?format=html&dl=1&${qs}`}>
-                          Download it to attach
-                        </a>
-                      </div>
-                      <pre className="wm-pre">{mail.result.text}</pre>
-                    </>
-                  )
-                  : null}
-              </div>
-            </div>
-          )
-          : null}
 
         {/* ==================================================== PAGE 1 · cover
             The cover IS the executive summary — see the note at the top of this
