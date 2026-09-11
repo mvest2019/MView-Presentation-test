@@ -10,7 +10,7 @@ import {
 } from "react";
 
 import { AreaSelectionBar } from "./area-selection";
-import { loadArcgisModules } from "./arcgis-loader";
+import { loadArcgisModules } from "../../../_lib/arcgis-loader";
 import { ClusterTooltip } from "./cluster-tooltip";
 import { SampleBanner } from "./sample-banner";
 import type { Entitlements } from "@/lib/entitlements";

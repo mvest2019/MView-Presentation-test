@@ -753,6 +753,12 @@
   text-decoration: none;
 }
 
+/* BUTTON AND ANCHOR BOTH, since the density switch became a set of buttons —
+   see `view-tier-switch.tsx`. This rule used to name the anchor alone, which
+   is why it is called out: the two selectors above it were already paired, and
+   leaving the hover unpaired made the switch the one control in the portal
+   that stopped responding to a pointer. */
+.mv-portal .view-switch button:hover,
 .mv-portal .view-switch a:hover {
   text-decoration: none;
   color: var(--ink);
