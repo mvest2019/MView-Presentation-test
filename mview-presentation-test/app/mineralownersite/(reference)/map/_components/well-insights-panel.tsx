@@ -593,10 +593,6 @@ export function WellInsightsPanel({
                     icon={Layers}
                     title="Wellbore"
                     badge={fields?.wellboreKind ?? WELLBORE.kind}
-                    /* Two columns is an odd number of cards short: at tablet
-                     width this one is the third of three, so it takes the row
-                     under the other two rather than half of one. */
-                    className="@2xl:col-span-2 @4xl:col-span-1"
                   >
                     {/* Drawn to the record's own profile: a vertical hole is not
                   illustrated with a mile of lateral. */}
@@ -608,11 +604,52 @@ export function WellInsightsPanel({
                     />
                   </Card>
                 )}
+
+                {/*
+                 * OPERATOR AND DEPTHS SIT BESIDE THE WELLBORE, not two rows
+                 * below it.
+                 *
+                 * The diagram is a tall, narrow drawing. It used to take the
+                 * whole row at two columns — `@2xl:col-span-2` — which left a
+                 * card-sized area of white to the right of it on every record,
+                 * while the two shortest cards in the panel sat further down
+                 * with empty line beside each of them. Moving them up fills
+                 * that space with the two facts a reader checks against the
+                 * diagram anyway: who operates the well, and how deep it goes.
+                 *
+                 * Stacked in one cell rather than dropped in as two, so at two
+                 * columns they share the Wellbore's row instead of pushing it
+                 * up on its own.
+                 */}
+                <div className="grid gap-3 @4xl:col-span-3 @4xl:grid-cols-2">
+                  <Card icon={Building2} title="Operator Info">
+                    <div className="mt-[10px] flex items-baseline justify-between gap-3 text-[12px]">
+                      <span className="shrink-0 text-mv-muted">Operator</span>
+                      <span className="text-right font-semibold text-mv-ink">
+                        {fields?.operator.value ?? well.operator ?? "—"}
+                      </span>
+                    </div>
+                  </Card>
+
+                  {gate.summaryFields === "full" && (
+                    <Card icon={Ruler} title="Depth & Geometry">
+                      {/* One column, like the cards beside it: two columns cut
+                  every depth down to "11,4…". */}
+                      <Rows rows={fields?.depth ?? blank(DEPTH_LABELS)} />
+                    </Card>
+                  )}
+                </div>
               </div>
 
-              {/* ---------------- activity · location · wellbore ---------------- */}
+              {/* ---------------- activity · location ----------------
+
+                  TWO CARDS NOW, not three — Operator Info and Depth & Geometry
+                  moved up beside the Wellbore diagram. Two columns rather than
+                  three at the widest size, so the pair that is left fills the
+                  row instead of leaving the third of it they used to occupy
+                  standing empty. */}
               {gate.summaryFields === "full" && (
-                <div className="mt-3 grid gap-3 @2xl:grid-cols-2 @4xl:grid-cols-3">
+                <div className="mt-3 grid gap-3 @2xl:grid-cols-2">
                   <Card
                     icon={FileText}
                     title="Latest Well Activity and Production"
@@ -664,30 +701,6 @@ export function WellInsightsPanel({
                     </Card>
                   )}
 
-                  <div
-                    /* One under the other in the third column where there are
-                     three, and side by side across the row at the width where
-                     there are two — stacked full width they were two short
-                     cards with a page of empty line beside each. */
-                    className="grid gap-3 @2xl:col-span-2 @2xl:grid-cols-2 @4xl:col-span-1 @4xl:grid-cols-1"
-                  >
-                    <Card icon={Building2} title="Operator Info">
-                      <div className="mt-[10px] flex items-baseline justify-between gap-3 text-[12px]">
-                        <span className="shrink-0 text-mv-muted">Operator</span>
-                        <span className="text-right font-semibold text-mv-ink">
-                          {fields?.operator.value ?? well.operator ?? "—"}
-                        </span>
-                      </div>
-                    </Card>
-
-                    {gate.summaryFields === "full" && (
-                      <Card icon={Ruler} title="Depth & Geometry">
-                        {/* One column, like the cards beside it: two columns cut
-                  every depth down to "11,4…". */}
-                        <Rows rows={fields?.depth ?? blank(DEPTH_LABELS)} />
-                      </Card>
-                    )}
-                  </div>
                 </div>
               )}
 

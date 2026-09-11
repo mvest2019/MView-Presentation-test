@@ -290,6 +290,17 @@ export default function AlertsView(
     });
   }, [al.items, cat, q]);
 
+  /* WHAT AN EMPTY PAGE MEANS, asked once. `quiet` is the only state that is a
+     RESULT — nothing is filtered and there is nothing to show — and it is the
+     one the retention copy is written for. Everything else is a filter the
+     reader set and can clear, so the card names which one. `catLabel` is null
+     on `all` precisely because "All" is not a category a sentence can name. */
+  const needle = q.trim();
+  const quiet = cat === 'all' && !needle;
+  const catLabel = cat === 'all'
+    ? null
+    : CATS.find((c) => c.key === cat)?.label.toLowerCase();
+
   const isUnread = (a: Alert) => a.unread && !readIds.has(a.id);
   const unreadCount = al.items.filter(isUnread).length;
 
@@ -652,17 +663,16 @@ export default function AlertsView(
               aria-label="Search alerts" style={{ width: '100%' }}
             />
           </div>
-          {q.trim() && !rows.length
-            ? (
-              <p className="tiny muted" style={{ margin: '8px 0 0' }}>
-                No alerts match that search —{' '}
-                <button type="button" className="linklike" style={{ fontWeight: 700 }}
-                  onClick={() => { setQ(''); setCat('all'); }}>
-                  clear it and show all {al.count}
-                </button>.
-              </p>
-            )
-            : null}
+          {/* NO SECOND EMPTY STATE HERE, and that is the fix.
+              This slot used to carry "No alerts match that search — clear it
+              and show all 9", which fires on exactly the condition the card
+              below the filter row already answers. An empty search therefore
+              printed BOTH, one above the pills and one under them, saying the
+              same thing in different words and offering two buttons that do
+              the same two setState calls. The card is the one in the reading
+              flow — it stands where the rows would have been — so it is the
+              one that survives, and it now names the search term rather than
+              the category. */}
         </Band>
 
         <div className="al-filter" role="group" aria-label="Filter alerts">
@@ -833,17 +843,32 @@ export default function AlertsView(
               style={{ marginTop: 14, border: '2px dashed var(--line)', textAlign: 'center' }}
             >
               <strong className="small">
-                {cat === 'all' && !q.trim() ? 'What a quiet week looks like' : 'Nothing in that filter'}
+                {quiet ? 'What a quiet week looks like' : 'Nothing matches these filters'}
               </strong>
               <p className="tiny muted" style={{ margin: '6px auto 0', maxWidth: 560 }}>
-                {cat === 'all' && !q.trim()
+                {quiet
                   ? (al.quiet_reason
                     ?? `Nothing new on or near these leases ${al.window_label}. We checked production `
                       + 'filings, permits, completions, status changes and the model flags. Quiet is a '
                       + 'result, not a failure — we never invent activity to look busy.')
                   : (
                     <>
-                      No {CATS.find((c) => c.key === cat)?.label.toLowerCase()} alert matches.{' '}
+                      {/* THE REASON, NOT THE CATEGORY. This read "No {label}
+                          alert matches", and `CATS` carries `all` with the
+                          label "All" — so the commonest empty case of all, a
+                          search with no hits and no category chosen, printed
+                          "No all alert matches." Naming the term instead is
+                          both grammatical and more use: it tells the reader
+                          WHICH of the two controls emptied the page, the way
+                          the Activities feed's empty state already does. */}
+                      {needle
+                        ? (
+                          <>
+                            No alert matches &ldquo;{q.trim()}&rdquo;
+                            {catLabel ? <> in {catLabel}</> : null}.{' '}
+                          </>
+                        )
+                        : <>No {catLabel} alert matches.{' '}</>}
                       <button type="button" className="linklike"
                         onClick={() => { setCat('all'); setQ(''); }}>
                         show all {al.count} →

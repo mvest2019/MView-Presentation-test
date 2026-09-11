@@ -36,7 +36,7 @@ import {
   MCF, BBL,
 } from '../../_lib/reference/fmt';
 import type { Tier } from './bits';
-import { ProductPair } from './bits';
+import { Pager, ProductPair, usePaged } from './bits';
 import { Essentials, ProdCols, Wells, ValueMix } from './panels';
 import { StateCard } from './funnel';
 import { Maturity } from './maturity';
@@ -99,6 +99,7 @@ export default function Dashboard(
 
       {/* ---------- ULTRA: one headline, one status, one action ---------- */}
       {tier === 'ultra' ? <UltraHero p={p} funnel={funnel} open={open} /> : null}
+
 
       {/* ---------- SAMPLE PREVIEW: UNCLAIMED only ----------
 
@@ -391,14 +392,21 @@ export default function Dashboard(
                   <ProdSeries p={p} />
                   <AroundYou p={p} tier={tier} open={open} go={go} />
                   <Maturity p={p} open={open} />
-                  <Operators p={p} open={open} />
-                  {/* The price deck sits on whichever rail needs the height.
-                      Pro adds the every-lease table below, which makes the left
-                      rail the long one, so the deck belongs on the right there;
-                      Detailed has no table and the right rail is longer, so the
-                      deck comes back over. Measured both ways: it takes a 15%
-                      and a 17% mismatch down to 3% and 9%. */}
-                  {tier === 'pro' ? null : <PriceDeck p={p} open={open} />}
+                  {/* OPERATORS CROSSES TO THE RIGHT AT DETAILED, and only there.
+                      Shedding the three reference panels left that rail 1,847px
+                      against this one's 2,930 -- a 37% gap, which is the empty
+                      rectangle the balancing note above was written about, just
+                      on the other side. This card is 563px, which is almost
+                      exactly the difference; measured after the move, 2,367
+                      against 2,410, a 2% gap. Pro keeps it here, where its own
+                      rails are already balanced by the lease table. */}
+                  {tier === 'pro' ? <Operators p={p} open={open} /> : null}
+                  {/* The price deck now sits on the right in BOTH tiers. It
+                      used to cross to the left at Detailed, to fill a right
+                      rail that ran short — but Detailed has since given up the
+                      three reference panels below, so the right rail is the
+                      short one in both tiers and the deck belongs on it in
+                      both. One rule instead of a swap. */}
                   {tier === 'pro' ? <RawTable p={p} open={open} /> : null}
                 </div>
 
@@ -407,14 +415,39 @@ export default function Dashboard(
                     above the left one and left a rectangle of empty page at the
                     bottom; Wells and ValueMix are both reads already in the
                     payload that nothing was showing. */}
+                {/* DETAILED IS NO LONGER PRO MINUS ONE TABLE.
+
+                    The two tiers differed by the every-lease table and by
+                    which rail held the price deck — thirteen cards against
+                    fourteen, in the same order, so a reader switching between
+                    them saw the same page twice and the control looked broken.
+
+                    THE CUT IS THE CONTRACT'S OWN WORDING. Detailed is "key
+                    numbers plus context and drill-downs"; Professional is
+                    "full tables, maximum density, exports"
+                    (`_lib/portal-state.ts`). The three panels below are the
+                    reference material on this page — a permit register, a well
+                    register and the source table — and each is a list to look
+                    something up in rather than a number to read. They are what
+                    "full tables" means, so they are what Pro keeps.
+
+                    NOTHING IS LOST AT DETAILED. Neighbours is the same ring the
+                    "Permits within 1 mile" KPI counts and its drawer explains;
+                    Wells is the well list the map and each lease's own drawer
+                    carry; Provenance is the freshness table whose one live
+                    figure — the read date — is already in the greeting. Every
+                    one of them is a click away, and Pro is one click away too.
+
+                    PRO IS UNTOUCHED: same seven panels, same order. */}
                 <div className="stack">
                   <Watched p={p} open={open} />
-                  {tier === 'pro' ? <PriceDeck p={p} open={open} /> : null}
+                  <PriceDeck p={p} open={open} />
                   <Reserves p={p} open={open} />
-                  <Neighbors p={p} open={open} go={go} />
-                  <Wells p={p} open={open} />
+                  {tier === 'pro' ? null : <Operators p={p} open={open} />}
+                  {tier === 'pro' ? <Neighbors p={p} open={open} go={go} /> : null}
+                  {tier === 'pro' ? <Wells p={p} open={open} /> : null}
                   <ValueMix p={p} open={open} />
-                  <Provenance p={p} open={open} />
+                  {tier === 'pro' ? <Provenance p={p} open={open} /> : null}
                 </div>
               </div>
             )
@@ -454,6 +487,77 @@ function UltraHero(
             `${t.reporting_count} filed ${productWord(t.has_gas, t.has_oil)} in ${a.data_month_label} — ` +
             `${volWords(t.anchor_gas_net, t.anchor_oil_net)} to you.`}
       </p>
+      {/* WHAT CHANGED, INSIDE THE HERO — the Alerts route's own Ultra, which
+          is the design this tier is supposed to share.
+
+          A FIRST PASS PUT THIS UNDER THE CARD as a row of alert chips and a
+          count line. That was wrong twice over: Ultra is ONE card on an empty
+          page — dot, kicker, headline, status, button, note, and nothing else
+          — so a second block below it reads as the Detailed layout starting,
+          and it also invented a layout the portal does not have. `AlertsView`
+          already solved this: it keeps the single hero and writes the finding
+          into `u-status` as a sentence. Same thing here, in the same slot,
+          with the same classes.
+
+          IT REPLACES NOTHING. The line above is the money and the volumes;
+          this one is what moved. Together they are the two questions this page
+          answers, which is what Ultra was missing when it answered only the
+          first. */}
+      {/* THE TWO VOLUMES, AS FIGURES — the third and fourth things this page
+          knows, after the estimate above and before anything else.
+
+          THE LADDER, STATED: Ultra is the estimate, the two volumes and the
+          finding; Essentials adds the five plain-English cards; Detailed adds
+          the KPIs, the charts and the rails; Pro adds the registers and the
+          table. Ultra was carrying the volumes already, but inside the
+          sentence above — "247,404 MCF of gas and 50 barrels of oil to you" —
+          where they read as grammar rather than as numbers. The same two
+          fields, given the weight the estimate has.
+
+          A STRICT SUBSET OF THE STRIP, deliberately: `anchor_gas_net` and
+          `anchor_oil_net` are the same fields the "Gas filed" and "Oil filed"
+          cells read at every other tier, with the same "none" when a product
+          was never filed, so a figure learned here is the figure met again one
+          tier down.
+
+          NOT CONTROLS. Every other tier makes these tiles open a drawer;
+          Ultra's whole contract is one action, and that is the button below. */}
+      {!unclaimed && (t.has_gas || t.has_oil)
+        ? (
+          <div className="u-figs">
+            <div className="u-fig">
+              <span className="u-fig-k">Gas filed in {a.data_month_label ?? '—'}</span>
+              <span className="u-fig-v num">
+                {t.has_gas
+                  ? <>{n0(t.anchor_gas_net)} <span className="u-fig-u">{MCF}</span></>
+                  : <span className="nodata">none</span>}
+              </span>
+            </div>
+            <div className="u-fig">
+              <span className="u-fig-k">Oil filed in {a.data_month_label ?? '—'}</span>
+              <span className="u-fig-v num">
+                {t.has_oil
+                  ? <>{n0(t.anchor_oil_net)} <span className="u-fig-u">{BBL}</span></>
+                  : <span className="nodata">none</span>}
+              </span>
+            </div>
+          </div>
+        )
+        : null}
+
+      {!unclaimed && top
+        ? (
+          <p className="u-status">
+            <strong>{p.alerts.count} {plural(p.alerts.count, 'finding')}</strong>{' '}
+            {p.alerts.window_label}
+            {p.alerts.action_count
+              ? <> · <strong>{p.alerts.action_count}{' '}
+                {p.alerts.action_count === 1 ? 'asks' : 'ask'} something of you</strong></>
+              : null}
+            . {top.title}.
+          </p>
+        )
+        : null}
       <div>
         <button
           className="btn btn-primary btn-lg" type="button"
@@ -1533,100 +1637,6 @@ export function topKey(ev: { category: string }): string {
 function metricText(it: { metric: number | null; metric_unit: string | null }): string | null {
   if (it.metric == null) return null;
   return `${n1(it.metric)}${it.metric_unit ? ' ' + it.metric_unit : ''}`;
-}
-
-/* ================================================================ pager */
-/**
- * TEN ROWS A PAGE, on the two lists that a real portfolio makes unreadable.
- *
- * "Your operators" printed all fifty-seven and "Every lease, every field" all
- * 1,659 — a card taller than eleven screens and a table taller than three
- * hundred. Neither is a list anyone reads; both are a scroll the reader has to
- * get past to reach the next card.
- *
- * A PAGE, NOT A "SHOW MORE". The reader of these two is auditing — checking
- * one operator's share, finding one lease — and a growing list makes the
- * document longer every time they look. Ten rows keeps every card the same
- * height whatever the account holds, which is the property the strip and the
- * rails already have.
- */
-const PAGE_SIZE = 10;
-
-/**
- * The current page's slice, clamped.
- *
- * CLAMPED IN RENDER rather than reset from an effect. The lists change under
- * this — the funnel switch swaps the whole payload for its sample, and the
- * sample holds a different number of rows — and a page index left pointing
- * past the end would render an empty card. `Math.min` costs nothing and needs
- * no effect, which also keeps this clear of the `set-state-in-effect` rule the
- * shell had to disable.
- */
-function usePaged<T>(items: T[]) {
-  const [page, setPage] = useState(1);
-  const pages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
-  const safe = Math.min(page, pages);
-  const start = (safe - 1) * PAGE_SIZE;
-  return { page: safe, pages, setPage, start, rows: items.slice(start, start + PAGE_SIZE) };
-}
-
-/**
- * Which page numbers to draw: first, last, the current one and its neighbours.
- *
- * 1,659 leases is 166 pages, and 166 buttons is a worse control than no
- * control. The gaps are rendered as text, never as buttons — an ellipsis you
- * can click is a guess about where it takes you.
- */
-function pageWindow(cur: number, pages: number): (number | '…')[] {
-  if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
-  const out: (number | '…')[] = [1];
-  const from = Math.max(2, cur - 1);
-  const to = Math.min(pages - 1, cur + 1);
-  if (from > 2) out.push('…');
-  for (let n = from; n <= to; n += 1) out.push(n);
-  if (to < pages - 1) out.push('…');
-  out.push(pages);
-  return out;
-}
-
-function Pager(
-  { page, pages, setPage, start, shown, total, label }:
-  { page: number; pages: number; setPage: (n: number) => void;
-    start: number; shown: number; total: number; label: string },
-) {
-  if (pages <= 1) return null;
-  return (
-    <nav className="mv-pager" aria-label={label}>
-      <span className="pg-count">
-        {start + 1}–{start + shown} of {total}
-      </span>
-      <span className="pg-btns">
-        <button
-          type="button" onClick={() => setPage(page - 1)}
-          disabled={page === 1} aria-label="Previous page"
-        >
-          ‹
-        </button>
-        {pageWindow(page, pages).map((n, i) => (n === '…'
-          ? <span className="pg-gap" key={`gap${i}`}>…</span>
-          : (
-            <button
-              type="button" key={n} className={n === page ? 'on' : undefined}
-              aria-current={n === page ? 'page' : undefined}
-              aria-label={`Page ${n}`} onClick={() => setPage(n)}
-            >
-              {n}
-            </button>
-          )))}
-        <button
-          type="button" onClick={() => setPage(page + 1)}
-          disabled={page === pages} aria-label="Next page"
-        >
-          ›
-        </button>
-      </span>
-    </nav>
-  );
 }
 
 /**

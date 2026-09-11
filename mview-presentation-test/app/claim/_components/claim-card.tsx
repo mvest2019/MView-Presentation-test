@@ -8,6 +8,7 @@ import type {
   MergedTx,
   ScoredOwner,
 } from "@/lib/claim-search/types";
+import { PORTAL_HOME } from "@/lib/routes";
 
 import { fmt } from "../_lib/working-set";
 import { btnGhost, btnMint, btnPrimary, btnSm } from "./ui";
@@ -193,7 +194,7 @@ function ClaimFiled({ result }: { result: ClaimResult }) {
         </>
       )}
       <Link
-        href="/portal"
+        href={PORTAL_HOME}
         className={`${btnPrimary} mt-3 !rounded-xl !px-[26px] !py-[14px] !text-[15px]`}
       >
         Go to your portal &rarr;
@@ -213,7 +214,7 @@ function ClaimFailed({ tx }: { tx: MergedTx }) {
       </span>
       <br />
       <Link
-        href="/portal"
+        href={PORTAL_HOME}
         className={`${btnGhost} ${btnSm} mt-3`}
       >
         Go to your portal &rarr;

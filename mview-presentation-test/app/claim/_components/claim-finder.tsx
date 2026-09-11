@@ -13,6 +13,7 @@ import {
 } from "@/lib/claim-search/api";
 import { despace } from "@/lib/claim-search/scoring";
 import type { ClaimMeta, LeaseAgg, ScoredOwner } from "@/lib/claim-search/types";
+import { PORTAL_HOME } from "@/lib/routes";
 
 import {
   buildMergedTx,
@@ -531,7 +532,7 @@ export function ClaimFinder({
       const result = await postClaim(memberId, tx.owners);
       setStatus("");
       if (result.failed_owners.length === 0) {
-        router.push("/portal");
+        router.push(PORTAL_HOME);
         return;
       }
       setClaim({ phase: "result", base, tx, result });

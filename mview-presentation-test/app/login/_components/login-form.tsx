@@ -2,7 +2,6 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 
@@ -59,7 +58,6 @@ function describedByFailure(
 }
 
 export function LoginForm({ next }: { next: string }) {
-  const router = useRouter();
   const [failure, setFailure] = useState<string | null>(null);
   /* Kept apart from `failure`: a Google fault belongs under the Google button,
      not in the form's error slot next to the password field. */
@@ -119,10 +117,46 @@ export function LoginForm({ next }: { next: string }) {
       setFailure(result.message);
       return;
     }
-    router.push(next);
-    // The cookie was set on the server; the tree on screen is still the
-    // signed-out one, so the header needs re-rendering.
-    router.refresh();
+    /*
+     * ONE FULL NAVIGATION, exactly as the Google button above it already does
+     * (`google-sign-in.tsx`) — and NOT `router.push(next)` followed by
+     * `router.refresh()`, which is what this was and what put a BLANK PAGE
+     * between the form and the portal (Pragati, 2026-09-11: "when i am login
+     * then for sometime it show blank page and then show portal"). Measured at
+     * ~1.0s of empty `<main>` locally, and longer against a real owner record.
+     *
+     * NEITHER HALF OF THAT PAIR COULD JUST BE DELETED, which is why this
+     * replaces both rather than dropping one:
+     *
+     *   · `refresh()` was load-bearing. The header is in the ROOT layout
+     *     (`app/layout.tsx` awaits `getSessionUser()`), and a root layout is
+     *     NOT re-rendered by a client-side navigation — measured: set the
+     *     cookie, soft-navigate, and the bar still reads "Sign in". So `push`
+     *     on its own would have left a signed-in visitor under a signed-out
+     *     header, which is the bug the refresh was added to fix.
+     *
+     *   · But `refresh()` refreshes the CURRENT route, and the current route is
+     *     `/login` — which redirects anyone who now has a session. So the
+     *     refresh re-rendered `/login`: the root layout committed with the new
+     *     header, and the page slot beneath it committed EMPTY, because the
+     *     page component redirected instead of returning a tree. A signed-in
+     *     header over an empty page, still at URL `/login`, is precisely the
+     *     blank in the report.
+     *
+     *   · And `push(next)` had already started fetching the portal, so the
+     *     slowest page in the app was rendered TWICE for one sign-in: once for
+     *     the push, once for the redirect the refresh then followed.
+     *
+     * A full navigation has none of that. The browser keeps this form on screen
+     * — the button still reading "Signing in…" — until the server has rendered
+     * the destination, then swaps the whole document in. The root layout is
+     * part of that same server render, so the header is right without a second
+     * round trip, and there is no moment with nothing in it.
+     *
+     * `next` was validated server-side for a single leading slash before it was
+     * passed to this component, so this cannot be pointed off-site.
+     */
+    window.location.assign(next);
   }
 
   return (

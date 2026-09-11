@@ -255,6 +255,11 @@
   --color-mv-sand: #a9781f;
   --color-mv-sand-tint: #f6efdc;
   --color-mv-sand-line: #e8d9ab;
+  /* The pricing route's "separate product" note — the design's own #fffcf5.
+     `mv-sand-tint` above is the nearest existing ground and reads clearly
+     beige against it; this one is a cream barely off white, which is what lets
+     the note sit inside the page without becoming a warning banner. */
+  --color-mv-sand-wash: #fffcf5;
   --color-mv-amber-bg: #fef3c7;
   --color-mv-red: #b91c1c;
   --color-mv-red-bg: #fee2e2;

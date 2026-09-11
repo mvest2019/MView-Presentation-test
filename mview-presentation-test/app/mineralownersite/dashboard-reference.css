@@ -447,6 +447,23 @@ body .mv-ref-app.view-ultra .tier-s {display:none !important }
 .mv-ref-app .ultra-hero .u-headline strong {color:var(--green-deep) }
 .mv-ref-app .ultra-hero .u-status {font-size:19px;color:#3f4756;margin:0 0 30px;line-height:1.5 }
 .mv-ref-app .ultra-hero .u-note {font-size:14px;color:#8a93a3;margin-top:26px;line-height:1.55 }
+/* The two volumes inside the Ultra hero. A pair, not a strip: three or more
+   would be the `.pf-strip` rebuilt in a card that is supposed to hold one
+   idea, and the estimate above is already the third figure. Centred with the
+   rest of the hero, and it collapses to one column where two would squeeze. */
+.mv-ref-app .ultra-hero .u-figs {display:flex;justify-content:center;gap:10px;
+  margin:0 0 28px;flex-wrap:wrap }
+.mv-ref-app .ultra-hero .u-fig {flex:1 1 190px;max-width:250px;background:#f7faf9;
+  border:1px solid var(--line);border-radius:14px;padding:14px 16px;text-align:left }
+.mv-ref-app .ultra-hero .u-fig-k {display:block;font-size:10.5px;font-weight:800;
+  letter-spacing:.07em;text-transform:uppercase;color:#8a93a3;margin-bottom:4px }
+.mv-ref-app .ultra-hero .u-fig-v {display:block;font-size:24px;font-weight:800;
+  color:var(--green-ink);line-height:1.15 }
+.mv-ref-app .ultra-hero .u-fig-u {font-size:13px;font-weight:700;color:#8a93a3 }
+.mv-ref-app .ultra-hero .u-fig .nodata {font-size:20px;font-style:italic;color:#8a93a3 }
+@media (max-width: 560px) {
+  .mv-ref-app .ultra-hero .u-fig {flex:1 1 100%;max-width:none }
+}
 @media(max-width:520px) {
   .mv-ref-app .ultra-hero {margin-top:3vh;padding:40px 20px 36px }
   .mv-ref-app .ultra-hero .u-headline {font-size:32px }
@@ -1481,6 +1498,63 @@ body .mv-ref-app.no-claim .app-body .mv-alsum .as-kicker::after {
   text-transform: uppercase; padding: 2px 6px; border-radius: 4px;
   background: var(--mv-sample); color: #fff; margin-left: 6px; vertical-align: 1px;
   white-space: nowrap; }
+
+/* ==========================================================================
+   THE SAME TREATMENT ON PRODUCTION & FORECAST — not-claimed only.
+
+   WHY IT NEEDED ITS OWN RULES. Everything above keys on `.card` and `.kpi`,
+   and Production & Forecast has NEITHER: measured on that route, zero `.card`
+   and zero `.kpi` elements. It builds itself out of `.chartbox` (the nine
+   section cards), `.pf2-tv` (the three estimates) and `.pf2-in` (the six
+   insights and the six life-of-the-record figures). So the golden dashed
+   border and the "Sample" pill stopped at the page boundary: the Dashboard
+   announced itself as a sample on all fourteen cards and this page, sampled
+   by the same transform, looked like the paid product.
+
+   THE SAME THREE DECLARATIONS, NOT A SECOND STYLE — `--mv-sample` for the
+   colour, `dashed` for the border, the identical pill. Width and colour are
+   the only things touched, so nothing moves: a dashed border occupies exactly
+   the box a solid one of the same width does, which is the rule the block
+   above sets out and the reason `.pf2-tv`'s 1px and the strip's outline are
+   left to their own widths.
+
+   THE PILL GOES ON `h4` ONLY, as it does above. `.chartbox` titles itself with
+   one `h4`; `.pf2-tv` and `.pf2-in` carry a `.tvl`/`.pf2-inl` kicker instead
+   and are small enough that the banner plus the dashed edge is the disclosure —
+   a pill on a 12-card grid of one-line figures would be more chrome than
+   content. The `h4` marker is what a reader meets at every section heading as
+   they scroll, which is the gap the banner alone leaves.
+   ========================================================================== */
+body .mv-ref-app.no-claim .app-body .chartbox,
+body .mv-ref-app.no-claim .app-body .pf2-tv,
+body .mv-ref-app.no-claim .app-body .pf2-in {
+  border-color: var(--mv-sample) !important; border-style: dashed !important; }
+
+/* THE INSIGHT CARDS NEEDED THE TRANSITION TAKEN OFF `border-color`, and this
+   is the only reason those twelve are not styled by the rule above alone.
+
+   `.pf2-inbtn` carries `transition: border-color .12s, box-shadow .12s,
+   transform .12s` for its hover lift. The shell writes `no-claim` from an
+   EFFECT, so it lands after first paint — the border-color therefore changes
+   as a style change on a live element, which starts that transition, and a
+   running transition outranks every declaration in the cascade including an
+   `!important` one. Measured: all twelve cards sat at the grey `--line` while
+   `.chartbox` and `.pf2-tv` — same rule, no transition — went amber, and an
+   inline `!important` could not move them either. Suppressing the transition
+   made all twelve amber immediately.
+
+   ONLY `border-color` IS DROPPED. `box-shadow` and `transform` keep their
+   .12s, so the hover lift these buttons are known by is unchanged; what goes
+   is a 120ms fade on a border that is only ever set once per page. */
+body .mv-ref-app.no-claim .app-body .pf2-inbtn {
+  transition: box-shadow .12s, transform .12s; }
+
+body .mv-ref-app.no-claim .app-body .chartbox h4::after {
+  content: "Sample";
+  display: inline-block; font-size: 8.5px; font-weight: 800; letter-spacing: .07em;
+  text-transform: uppercase; padding: 2px 6px; border-radius: 4px;
+  background: var(--mv-sample); color: #fff; margin-left: 6px; vertical-align: 1px;
+  white-space: nowrap; }
 body .mv-ref-app.no-claim .app-body .mv-alsum .as-kicker { display: inline; }
 .mv-ref-app .al-filter .alf-n {font-weight: 800; opacity: .72; }
 .mv-ref-app .al-filter button:hover {border-color: var(--green); color: var(--green-deep); }
@@ -2150,7 +2224,18 @@ body .mv-ref-app.view-simple:not(.no-claim) section[data-route="app-briefing"] #
   .mv-ref-app .pf2-kt,
   .mv-ref-app .pf2-kstrip,
   .mv-ref-app .pf2-kfoot { padding-left: 14px; padding-right: 14px; }
-  .mv-ref-app .pf2-sel select { max-width: 100%; }
+  /* THE LEASE PICKER HAS TO BE ALLOWED TO SHRINK, not just told it may.
+     `max-width: 100%` on the select alone did nothing: `.pf2-sel` is an
+     `inline-flex`, so it sizes to its own content and the 100% resolved
+     against a width the select itself was setting. A `<select>` is as wide as
+     its longest option, so a large portfolio blew the label out past the card
+     — measured on a 108-lease record at 375px: select 434px and label 488px
+     inside a 346px chart card, overflowing it with `overflow-x: visible` and
+     no scroller. Capping the LABEL and clearing both `min-width`s gives the
+     percentage something real to resolve against: 251px select, 306px label,
+     card no longer overflows. */
+  .mv-ref-app .pf2-sel { max-width: 100%; min-width: 0; }
+  .mv-ref-app .pf2-sel select { max-width: 100%; min-width: 0; }
 }
 body .mv-ref-app.view-ultra:not(.no-claim) section[data-route="app-leases"] > .pf2-ins {
   display: grid !important; }

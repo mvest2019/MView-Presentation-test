@@ -273,16 +273,47 @@ export default function Chrome(c: ChromeProps) {
         {/* THE REAL WORDMARK, not the two-tone text that used to be here — see
             `LOGO` above. `height: 30px; width: auto` is what the reference build
             renders this same file at on this same rail
-            (`owner/src/shell/chunk-004.html`), and the margins are the ones the
-            text carried, so nothing below it moves. */}
-        <Image
-          src={LOGO.wordmark.src}
-          alt="Mineral View"
-          width={LOGO.wordmark.width}
-          height={LOGO.wordmark.height}
-          priority
-          className="mv-side-logo"
-        />
+            (`owner/src/shell/chunk-004.html`).
+
+            IT IS A LINK HOME NOW, AND IT WAS NOT ONE. The rail's wordmark was a
+            bare `<Image>` with nothing around it, so the most prominent thing on
+            the page did nothing at all when clicked (Pragati, 2026-09-11).
+            Every other wordmark in this app already goes to `/`: the marketing
+            header's, `.app-brand` on the chrome row a hundred lines below, and
+            the OTHER portal shell's rail — `portal-side-nav.tsx` renders exactly
+            `<Link href="/" aria-label="Mineral View home">` around the same
+            asset. This rail was the one that missed out; it now matches.
+
+            NOT A SECOND ROUTE TO THE DASHBOARD, for the reason `.app-brand`
+            sets out at length: the sidebar's own Dashboard row is one line under
+            this and already carries `aria-current`, so a logo pointing there
+            would be a dead control — on the Dashboard itself it would do
+            literally nothing. A wordmark means "back to the top of the site".
+
+            A PLAIN `Link`, NO `onClick`. Leaving the client shell is the whole
+            intent, so there is no `c.go` to keep the switch request-free, and a
+            middle-click, a modified click and a right-click all behave the way
+            the browser means them to.
+
+            THE ANCHOR CARRIES THE LAYOUT, NOT THE IMAGE, and that is not
+            cosmetic — `dashboard-reference.onebar.css` §4 had to move
+            `align-self: flex-start` onto it, because wrapping the image made the
+            anchor the flex item and an unpinned anchor would both stretch its
+            own click target and leave the old rule declaring nothing. */}
+        <Link
+          href="/"
+          aria-label="Mineral View — home"
+          className="mv-side-logo-link"
+        >
+          <Image
+            src={LOGO.wordmark.src}
+            alt="Mineral View"
+            width={LOGO.wordmark.width}
+            height={LOGO.wordmark.height}
+            priority
+            className="mv-side-logo"
+          />
+        </Link>
 
         {/*
           IT OPENS THE CLAIM FLOW, NOT THE EXPLAINER.

@@ -1,9 +1,30 @@
 import type { Metadata } from "next";
 
-import { PRICING_MARKUP } from "../_proto/markup";
-import { ProtoPage } from "../_proto/proto-page";
+import { pageShellClass } from "../_components/page-shell";
+import { PricingView } from "./_components/pricing-view";
 
-/** Pricing — the prototype's own page. See `_proto/markup.ts`. */
+/**
+ * Pricing — a composed route.
+ *
+ * THIS PAGE NO LONGER RENDERS `PRICING_MARKUP`. It used to inject the
+ * prototype's 31 KB HTML string through `ProtoPage` with
+ * `dangerouslySetInnerHTML`; it is built from `mv-*` tokens and Tailwind
+ * utilities now, like the feature landings. Three things that could not be done
+ * through the injected string are the reason:
+ *
+ *   1. The feature cards open the pages that explain them. Injected markup can
+ *      only carry plain `<a href>`, which is a full page load; these are real
+ *      `next/link` navigations.
+ *   2. `#plans` exists as a real anchor, so `upgradeHref` in
+ *      `lib/entitlements.ts` — which returns `/pricing?…#plans` — lands on the
+ *      ladder instead of scrolling nowhere.
+ *   3. The Professionals segment shows the professional feature pages this app
+ *      actually has, rather than an empty ladder.
+ *
+ * `PRICING_MARKUP` in `_proto/markup.ts` is now unread. It is left in place
+ * because the generator still emits it alongside the home and professionals
+ * markup this app does still inject.
+ */
 export const metadata: Metadata = {
   // The design's own title for this route, from its route/title map.
   title: "Plans & Pricing — Owner & Professional | Mineral View",
@@ -12,11 +33,16 @@ export const metadata: Metadata = {
 };
 
 export default function PricingPage() {
-  /*
-    `heading` is supplied because the prototype's pricing section has no `h1` of
-    its own — its heading is set by the router, which swaps the document title
-    between "Owner pricing" and "Professional pricing" as the segment changes.
-    We hold a stable one instead; see the prop's doc comment in `proto-page.tsx`.
-  */
-  return <ProtoPage markup={PRICING_MARKUP} heading="Plans and pricing" />;
+  return (
+    <div className={pageShellClass}>
+      {/*
+        The page's own h1, which the prototype's pricing section never had — its
+        heading was set by the router as the segment switched. Visually hidden
+        because the section leads with its own centred display heading; a second
+        visible one would read as a duplicate.
+      */}
+      <h1 className="sr-only">Plans and pricing</h1>
+      <PricingView />
+    </div>
+  );
 }
