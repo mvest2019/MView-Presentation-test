@@ -144,7 +144,26 @@ export function ShareMenu({
       </div>
 
       {withImageAndPrint && (
-        <div className="mt-[14px] flex flex-col">
+        /*
+         * `items-stretch` is stated, not assumed.
+         *
+         * It is the CSS default for a flex container, so this read `flex
+         * flex-col` and relied on it — and the rows came out centred, each
+         * shrunk to its own text width in the middle of a 254px menu, while
+         * the heading and the link field above them sat hard left.
+         *
+         * The default had been flipped from outside the app: ArcGIS's own
+         * `main.css` is loaded from `js.arcgis.com` for the map view this menu
+         * floats over, and it sets `align-items: center` on something that
+         * matches here. It is cross-origin, so its rules cannot even be read
+         * back from `document.styleSheets` to see which selector did it.
+         *
+         * The lesson is the general one rather than anything about Esri: this
+         * chrome renders inside a third party's stylesheet, so a layout that
+         * depends on an inherited default is a layout that can be changed by
+         * someone else's release. Anything that matters is written down.
+         */
+        <div className="mt-[14px] flex flex-col items-stretch">
           <MenuItem
             icon={Download}
             label="Save image (PNG)"
