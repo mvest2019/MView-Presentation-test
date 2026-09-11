@@ -68,6 +68,49 @@ const OWNERS = `${BASE}/api/v1/owners`;
 const TIMEOUT_MS = 20_000;
 
 /**
+ * HOW MANY `/same-name` CALLS MAY BE IN FLIGHT AT ONCE — see `fetchClaimSet`.
+ *
+ * Six, because that is roughly what a browser will open to one host over
+ * HTTP/1.1 anyway: asking for more does not make them run in parallel, it makes
+ * them queue in the browser where nothing can see or report them.
+ */
+const SAME_NAME_CONCURRENCY = 6;
+
+/**
+ * `items.map(run)` WITH A CEILING ON HOW MANY RUN TOGETHER.
+ *
+ * Results come back index-aligned with `items`, exactly as `Promise.all` would
+ * give them — callers zip them against the input and must not be handed a
+ * different order because one request happened to finish first.
+ *
+ * Workers share one index. That is safe without a lock because JavaScript runs
+ * one turn at a time: `at = next++` cannot be interleaved, so no two workers
+ * can take the same item.
+ *
+ * A rejection propagates, which is deliberate — see the note on `fetchClaimSet`
+ * about why a partial answer would be worse than a visible failure.
+ */
+async function mapWithLimit<T, R>(
+  items: T[],
+  limit: number,
+  run: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+
+  const worker = async () => {
+    for (let at = next++; at < items.length; at = next++) {
+      out[at] = await run(items[at]);
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  );
+  return out;
+}
+
+/**
  * `signal` LETS A CALLER CANCEL — it is combined with the timeout rather than
  * replacing it, so a cancellable request still gives up after 20s on its own.
  *
@@ -771,13 +814,33 @@ export function postAddressCorrection(
  * Step 2 allows more than one record to be ticked, so this resolves the whole
  * selection in one call from the flow's point of view.
  *
- * ── ONE REQUEST PER RECORD, IN PARALLEL ──
+ * ── ONE REQUEST PER RECORD, A FEW AT A TIME ──
  *
  * `/same-name` is keyed on name AND address — the address is what makes it
  * return `selected` and the statewide totals — so a set of records cannot be
- * asked for in a single request. They go together with `Promise.all` rather
- * than in sequence: at ~4s each, five picks in series is twenty seconds of
- * staring at a spinner.
+ * asked for in a single request. They overlap rather than running in sequence:
+ * at ~1.4s each, eighty picks one after another is two minutes of spinner.
+ *
+ * ── BUT NOT ALL AT ONCE, WHICH IS WHAT IT USED TO DO ──
+ *
+ * This was `Promise.all` over the whole selection, and that was survivable only
+ * because step 2 refused a 26th tick. With the cap gone — a reader may now take
+ * every spelling the roll has of their name — the same line would open eighty
+ * sockets in one go: past the browser's own per-host ceiling, hard on an
+ * endpoint that takes over a second to answer one of them, and the kind of
+ * burst that gets a client rate-limited into failures it then reports as "we
+ * could not check these records".
+ *
+ * `SAME_NAME_CONCURRENCY` keeps a few in flight and starts the next as each
+ * lands, so the wait scales with the selection while the load does not.
+ *
+ * ── A SINGLE FAILURE STILL FAILS THE SET, ON PURPOSE ──
+ *
+ * Swallowing one record's error would hand steps 4 and 5 a lease total quietly
+ * missing that record's leases, and nothing on either screen could say so —
+ * the reader would file a claim against figures that are wrong by an unknown
+ * amount. Failing loudly and letting them try again is the honest half of that
+ * trade.
  *
  * ── EVERYTHING IS DEDUPLICATED ON THE WAY OUT ──
  *
@@ -793,8 +856,8 @@ export function postAddressCorrection(
 export async function fetchClaimSet(picked: OwnerRecord[]): Promise<ClaimSet> {
   if (picked.length === 0) throw new Error("Pick at least one record.");
 
-  const answers = await Promise.all(
-    picked.map((r) => fetchSameName(r.county, r.name, r.address)),
+  const answers = await mapWithLimit(picked, SAME_NAME_CONCURRENCY, (record) =>
+    fetchSameName(record.county, record.name, record.address),
   );
 
   /* The endpoint's own view of each pick where it has one; the row the reader
