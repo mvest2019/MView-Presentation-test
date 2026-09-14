@@ -54,6 +54,10 @@ export const PAGE_PURPOSE: Record<string, string> = {
      one. */
   "/mineralownersite/settings":
     "Delivery, alerts, privacy, and your view — everything saves immediately.",
+  /* The premise first, because it is the part a reader does not already know:
+     the other owners of their leases are already named on a public record. */
+  "/mineralownersite/invite":
+    "The other owners of your leases are on the public roll — pick the ones you know and the email writes itself.",
 };
 
 /** Where the per-route dismissal is remembered. The reference's own key. */

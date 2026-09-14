@@ -125,6 +125,11 @@ const LOGO = {
  * OWNED in Portal). The row is the reference's in every other respect, `.on`
  * highlighting included.
  *
+ * ADAPTED — `Invite Co-Owners` went the same way as `Map` when
+ * `(portal)/invite` landed: the reference tags it `soon`, this app has the
+ * page, so the row is a real link with no tag. It is an `href` row rather than
+ * a `key` row because that module wears the portal shell, not this one.
+ *
  * Nothing else moves: the labels, the icons, the order and the three section
  * headings are the reference's, and the rows that genuinely have no page here
  * keep its `soon` treatment exactly.
@@ -141,7 +146,16 @@ const NAV: {
   { key: 'weekly', label: 'Weekly Report', icon: 'mvi-mail' },
   { sec: 'Services', key: null, label: 'Lease Audit', icon: 'mvi-audit' },
   { sec: 'Community', key: null, label: 'Groups', icon: 'mvi-groups' },
-  { key: null, label: 'Invite Co-Owners', icon: 'mvi-invite' },
+  /* ADAPTED — Invite Co-Owners is a `soon` row in the reference and a built
+     module here, so it takes an `href` and loses the tag, the same way Map did.
+     It is an `href` row rather than a `key` row because the page lives in the
+     `(portal)` group and wears that shell, not this one — see `leases`. */
+  {
+    key: null,
+    label: 'Invite Co-Owners',
+    icon: 'mvi-invite',
+    href: '/mineralownersite/invite',
+  },
 ];
 
 /** where the account menu's four rows go in this app */

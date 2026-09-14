@@ -215,7 +215,14 @@ export const navSections: PortalNavSection[] = [
     heading: "Community",
     items: [
       { label: "Groups", icon: "groups", navKey: "app-groups" },
-      { label: "Invite Co-Owners", icon: "invite", navKey: "app-invite" },
+      // `app-invite` landed. The module is the Community section's first real
+      // destination; Groups is still unbuilt and stays a plain label.
+      {
+        label: "Invite Co-Owners",
+        icon: "invite",
+        href: "/mineralownersite/invite",
+        navKey: "app-invite",
+      },
     ],
   },
 ];
