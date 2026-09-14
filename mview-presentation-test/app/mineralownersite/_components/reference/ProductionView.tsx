@@ -996,14 +996,39 @@ export default function ProductionView(
                   <Unit>%/mo</Unit>
                 </span>
               </div>
-              <div className="pf2-c sh"><span className="pf2-vs na">—</span></div>
+              {/* A DECLINE RATE IS THE SAME AT ANY INTEREST, which is why the
+                  share column is a dash here: there is no separate owner-share
+                  version of "falls 0.5% a month" to print. On the SAMPLE page
+                  that dash is one of the blanks the shop window must not have,
+                  and the honest fill is the rate itself — your share of a lease
+                  declines at exactly the lease's rate. Gated on `sample`, so
+                  the claimed page keeps the dash it has always shown. */}
+              <div className="pf2-c sh">
+                {sample && card.decline_gas_pct != null
+                  ? (
+                    <span className="pf2-vs g num">
+                      {card.decline_gas_pct}
+                      <Unit>%/mo</Unit>
+                    </span>
+                  )
+                  : <span className="pf2-vs na">—</span>}
+              </div>
               <div className="pf2-c">
                 <span className="pf2-vo num">
                   {card.decline_oil_pct == null ? '—' : card.decline_oil_pct}
                   <Unit>%/mo</Unit>
                 </span>
               </div>
-              <div className="pf2-c sh"><span className="pf2-vs na">—</span></div>
+              <div className="pf2-c sh">
+                {sample && card.decline_oil_pct != null
+                  ? (
+                    <span className="pf2-vs o num">
+                      {card.decline_oil_pct}
+                      <Unit>%/mo</Unit>
+                    </span>
+                  )
+                  : <span className="pf2-vs na">—</span>}
+              </div>
 
               <div className="pf2-c">
                 <span className="pf2-l">
@@ -1033,10 +1058,23 @@ export default function ProductionView(
                   <span className="pf2-est">estimate — not an appraisal</span>
                 </span>
               </div>
+              {/* THE OWNER'S SHARE OF EUR IS NOT IN THE PAYLOAD, so these two
+                  pass `null` and print a dash. It is a real quantity though —
+                  ultimate recovery at this lease's own decimal interest — so
+                  on the SAMPLE page, where a blank is the one thing the window
+                  cannot afford, it is derived rather than left empty. Gated on
+                  `sample`: the claimed page still shows a dash rather than a
+                  figure the record did not report. */}
               <Cell v={card.eur_gas} unit={MCF} kind="gas" />
-              <Cell v={null} unit={MCF} kind="gas" share />
+              <Cell
+                v={sample && card.eur_gas != null ? card.eur_gas * card.interest : null}
+                unit={MCF} kind="gas" share
+              />
               <Cell v={card.eur_oil} unit={BBL} kind="oil" />
-              <Cell v={null} unit={BBL} kind="oil" share />
+              <Cell
+                v={sample && card.eur_oil != null ? card.eur_oil * card.interest : null}
+                unit={BBL} kind="oil" share
+              />
             </div>
             <div className="pf2-kstrip">
               <span>
