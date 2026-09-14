@@ -160,7 +160,7 @@ const NAV: {
 
 /** where the account menu's four rows go in this app */
 const ACCOUNT: { label: string; href?: string }[] = [
-  { label: 'My Profile' },
+  { label: 'My Profile', href: '/mineralownersite/profile' },
   { label: 'Settings', href: '/mineralownersite/settings' },
   { label: 'Billing & Plan' },
   { label: 'Contact Us', href: '/contact-us' },

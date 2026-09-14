@@ -87,12 +87,21 @@ export default function SettingsPage() {
         eighteen rows of white. That is the misalignment the design's own
         `align-items:start` was there to prevent.
 
-        LEFT IS WHAT THE PRODUCT SENDS YOU — view, delivery, quiet weeks,
-        notifications, alert channels. RIGHT IS WHO YOU ARE AND WHAT YOU CAN
-        DO ABOUT IT — the tour, credits, profile, privacy, account, and the
-        Professional surface. The split is by subject, not by height, so a
-        reader scanning for "where does my report go" only has to read one
-        column.
+        LEFT IS HOW THE PRODUCT PRESENTS ITSELF AND WHAT IT SENDS YOU — view,
+        the guided tour, delivery, quiet weeks, notifications, alert channels.
+        RIGHT IS WHO YOU ARE AND WHAT YOU CAN DO ABOUT IT — credits, profile,
+        privacy, account, and the Professional surface. The split is by
+        subject, not by height, so a reader scanning for "where does my
+        report go" only has to read one column.
+
+        THE TOUR SITS UNDER "YOUR VIEW", which is where the delivered design
+        puts it (`mineralview-settings-detailed 2.html`, 2026-09-14) and not
+        where this page had it — it was the first card of the right column.
+        The design's placement is the better one and the move is not merely
+        cosmetic: the tour card's own copy ends "New accounts start in the
+        Essentials view with the tour offered once", so it is describing the
+        card directly above it. From the right column that sentence referred
+        to a control the reader had to go and find.
 
         One column below 1024px, in the design's own order: the whole left
         column, then the whole right one. That keeps the four cards that hold
@@ -102,6 +111,7 @@ export default function SettingsPage() {
       <div className="grid grid-cols-1 items-start gap-[18px] min-[1024px]:grid-cols-2">
         <div className="flex flex-col gap-[18px]">
           <ViewCard />
+          <GuidedTourCard />
           <DeliveryCard />
           <QuietWeekCard />
           <NotificationsCard />
@@ -109,7 +119,6 @@ export default function SettingsPage() {
         </div>
 
         <div className="flex flex-col gap-[18px]">
-          <GuidedTourCard />
           <CreditsCard />
           <ProfileCard />
           <PrivacyCard />

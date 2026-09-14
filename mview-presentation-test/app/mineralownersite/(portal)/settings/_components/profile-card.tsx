@@ -1,130 +1,60 @@
-import { PortalButton } from "../../../_components/ui/button";
-import { SETTINGS_SECTIONS, profileCard } from "../_lib/settings-data";
-import type { ProfileField } from "../_lib/settings-data";
+import { PortalButtonLink } from "../../../_components/ui/button";
+import { SETTINGS_SECTIONS, profilePointer } from "../_lib/settings-data";
 import { SettingsCard } from "./settings-card";
 
 /**
- * PROFILE & CONTACT — the page's only real form.  (v35 · feedback 19)
+ * PROFILE & CONTACT — a pointer, not a form.  (2026-09-14)
  *
- * SOURCE: `PG.members_entity` for name, email and phone; the mailing address is
- * the one that verified the claim.
+ * ── WHAT CHANGED, AND WHY THIS IS NOT A REGRESSION ──
  *
- * BUILD-CONTRACT, and both halves are product rules rather than form
- * decoration:
- *   · changing the email sends a 6-digit code and the change waits for it;
- *   · changing the mailing address RE-RUNS the claim address check before it
- *     applies, because that address is what proved the record was theirs.
- * Both are stated in the field hints, where somebody about to make the change
- * will actually read them.
+ * This card used to BE the form: name, email, phone and mailing address, with
+ * its own fieldsets, hints and submit. All of it moved to
+ * `/mineralownersite/profile`, which the account menu's "My Profile" row now
+ * opens, and `profile/_lib/profile-data.ts` is the single definition of those
+ * four fields.
  *
- * ── THE UI PASS: MARKUP, NOT SUBMISSION ──
+ * The alternative was to render the form on both routes from the shared content
+ * module. It was considered and rejected: two forms writing the same four
+ * fields means two submit paths, two validation states and two places for the
+ * email-verification and address-recheck rules to be half-implemented. The
+ * reader loses one click; the build loses a whole class of drift.
  *
- * There is no submit handler and no validation state yet. The fields are
- * uncontrolled (`defaultValue`), and `required` is on the inputs — which means
- * the browser's own constraint validation already works and the message line
- * shows its idle promise. Wiring is a handler on the `<form>` plus a state for
- * that one line; nothing about the layout has to change for it.
+ * ── THE SECTION KEEPS ITS ID AND ITS JUMP CHIP ──
  *
- * ── WHY THE FIELDS ARE GROUPED ──
+ * `SETTINGS_SECTIONS.profile` is unchanged, so `#settings-profile` still
+ * resolves and the "Profile" chip in the jump nav still lands here. A reader
+ * who has bookmarked that fragment, or who follows the chip looking for the
+ * form, arrives at the card that tells them where it went — which is the whole
+ * job of this card and the reason the section was not simply deleted from the
+ * page.
  *
- * Feedback 19 was that this card was a flat stack of four inputs. "Who you are"
- * and "Where royalty mail arrives" are genuinely different subjects — one is
- * identity, the other is a verified fact about a mineral record — and the
- * mailing address gets read as just another contact detail when it sits under
- * the phone number. A `<fieldset>` with a `<legend>` is the element for that,
- * and it gives a screen reader the same grouping the eye gets.
- *
- * ── REQUIRED IS MARKED, OPTIONAL IS SAID OUT LOUD ──
- *
- * Three of the four are required and the phone is not. The design marks the
- * required ones with a red asterisk AND says "everything else is optional", so
- * the reader never has to infer optionality from the absence of a mark. The
- * asterisk is decorative — `aria-hidden` — because `required` on the input is
- * what actually tells assistive tech, and "Full name star" is not a field name.
- *
- * ── THE MESSAGE LINE IS ALREADY A LIVE REGION ──
- *
- * `aria-live="polite"`, so when the validation and confirmation states land in
- * it they are announced rather than only shown. Declaring the region up front
- * matters: a live region created at the same moment its text arrives is the one
- * case where announcements are unreliable.
+ * The fields are NAMED here rather than described in the abstract, because
+ * "manage your profile elsewhere" does not tell a reader looking for their
+ * mailing address whether this is the right link to follow.
  */
 export function ProfileCard() {
   return (
     <SettingsCard section={SETTINGS_SECTIONS.profile}>
-      <p className="mt-1 mb-3 text-[11px] leading-[1.55] text-mv-muted">
-        <span aria-hidden="true" className="font-extrabold text-mv-required">
-          *
-        </span>{" "}
-        {profileCard.requiredNote}
+      <p className="mt-1.5 text-[13px] leading-[1.55] text-mv-muted">
+        {profilePointer.body}
       </p>
-
-      <form>
-        {profileCard.groups.map((group) => (
-          <fieldset
-            key={group.legend}
-            className="mb-3 rounded-xl border border-mv-line bg-mv-portal-explain px-3.5 pt-3 pb-1"
+      <ul className="mt-2 mb-3.5 flex flex-wrap gap-x-4 gap-y-1 list-none p-0 text-[12.5px] font-semibold text-mv-slate">
+        {profilePointer.fields.map((field) => (
+          <li
+            key={field}
+            className="before:mr-1.5 before:font-extrabold before:text-mv-green before:content-['✓']"
           >
-            <legend className="px-1 text-[10px] font-extrabold tracking-[0.09em] text-mv-muted uppercase">
-              {group.legend}
-            </legend>
-            {group.fields.map((field) => (
-              <ProfileInput key={field.id} field={field} />
-            ))}
-          </fieldset>
+            {field}
+          </li>
         ))}
-
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span
-            aria-live="polite"
-            className="text-[11px] leading-[1.5] text-mv-muted"
-          >
-            {profileCard.idle}
-          </span>
-          <PortalButton type="submit" variant="primary" size="sm">
-            {profileCard.submit}
-          </PortalButton>
-        </div>
-      </form>
-    </SettingsCard>
-  );
-}
-
-/** One labelled input — the design's `.field` / `.hint` pair. */
-function ProfileInput({ field }: { field: ProfileField }) {
-  return (
-    <div className="mb-3.5 flex flex-col gap-1.5">
-      <label
-        htmlFor={field.id}
-        className="text-[12.5px] font-bold text-mv-slate"
+      </ul>
+      <PortalButtonLink
+        href="/mineralownersite/profile"
+        variant="primary"
+        size="sm"
       >
-        {field.label}{" "}
-        {field.required ? (
-          <span aria-hidden="true" className="font-extrabold text-mv-required">
-            *
-          </span>
-        ) : (
-          <span className="font-normal text-mv-muted">
-            {profileCard.optionalMark}
-          </span>
-        )}
-      </label>
-      <input
-        id={field.id}
-        name={field.id}
-        type={field.type}
-        required={field.required}
-        defaultValue={field.defaultValue}
-        placeholder={field.placeholder}
-        autoComplete={field.autoComplete}
-        aria-describedby={field.hint ? `${field.id}-hint` : undefined}
-        className="w-full rounded-[9px] border border-mv-line-strong bg-mv-card px-3 py-[11px] text-sm text-mv-ink outline-none placeholder:text-mv-placeholder focus-visible:border-mv-green focus-visible:outline-2 focus-visible:outline-mv-green"
-      />
-      {field.hint ? (
-        <span id={`${field.id}-hint`} className="text-xs text-mv-muted">
-          {field.hint}
-        </span>
-      ) : null}
-    </div>
+        {profilePointer.cta}
+      </PortalButtonLink>
+    </SettingsCard>
   );
 }
