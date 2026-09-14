@@ -259,14 +259,13 @@ export function PricingView() {
           </p>
           <p className="mx-auto mt-3 max-w-[700px] text-center text-[12.5px] text-mv-muted">
             <strong className="font-bold text-mv-ink">1 lease?</strong> Free.{" "}
-            <strong className="font-bold text-mv-ink">
-              Up to 10 across two records?
-            </strong>{" "}
+            <strong className="font-bold text-mv-ink">Up to 5 on one record?</strong>{" "}
             Pro.{" "}
             <strong className="font-bold text-mv-ink">
-              Up to 20 a record, across five records?
+              Up to 10 a record, across two records?
             </strong>{" "}
-            Premium. · 12-month terms that never auto-renew · every feature on
+            Premium — half the cost per lease, and the only plan you can add
+            more to. · 12-month terms that never auto-renew · every feature on
             every plan.
           </p>
         </div>
@@ -289,9 +288,10 @@ export function PricingView() {
             </strong>{" "}
             and{" "}
             <strong className="font-bold text-mv-ink">
-              how many leases you can open
+              how many leases each one opens
             </strong>
-            . Whatever you open, you see in full.
+            . Multiply the two and you have your capacity — 1, 5, 20 or no
+            limit. Whatever you open, you see in full.
           </p>
         </div>
         <CardBand cards={HOW_CARDS} />
@@ -302,28 +302,28 @@ export function PricingView() {
         <div className="grid grid-cols-[1fr_auto] items-center gap-6 rounded-[13px] border border-mv-line bg-white px-6 py-[22px] shadow-[0_1px_2px_rgba(24,24,27,.05)] max-[780px]:grid-cols-1 max-[780px]:gap-4">
           <div>
             <p className={`${eyebrowClass} mb-1`}>
-              Need more than your plan includes?
+              On Premium — need more than the 20 it opens?
             </p>
             <h3 className={`${h3Class} mb-1 text-[19px]`}>
               Add leases one at a time — no pack, no cap.
             </h3>
             <p className="max-w-[72ch] text-[14px] text-mv-muted">
-              Extra leases join the same invoice, prorated from the day you add
-              them. Two more leases is{" "}
+              Add-on leases are a Premium feature. They join the same invoice,
+              prorated from the day you add them, and two more leases is{" "}
               <strong className="font-bold text-mv-ink">
-                {billing === "mo" ? "$3.98 a month" : "$39.98 a year"}
+                {billing === "mo" ? "$3.98 a month" : "$39.80 a year"}
               </strong>
-              . There is no hard ceiling, because past about 25 extra leases
-              Premium simply costs less than the meter — and we tell you rather
-              than let it run.
+              . There is no hard ceiling, but past a few dozen an Enterprise
+              quote usually costs less than the meter — and we tell you rather
+              than let it run. Free and Pro step up a plan instead.
             </p>
           </div>
           <div className="whitespace-nowrap rounded-[13px] border border-mv-mint-edge bg-mv-portal-hero-tint px-5 py-4 text-right max-[780px]:text-left">
             <span className="text-[36px] font-extrabold leading-none tracking-[-.03em] text-mv-green-deep tabular-nums">
-              {billing === "mo" ? "$1.99" : "$19.99"}
+              {billing === "mo" ? "$1.99" : "$19.90"}
             </span>
             <span className="mt-[7px] block text-[12.5px] font-semibold text-mv-muted">
-              per extra lease, per {billing === "mo" ? "month" : "year"}
+              per add-on lease, per {billing === "mo" ? "month" : "year"}
             </span>
           </div>
         </div>
