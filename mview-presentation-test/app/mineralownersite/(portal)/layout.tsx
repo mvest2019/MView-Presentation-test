@@ -8,6 +8,9 @@ import { PortalStateProvider } from "../_components/portal-state-provider";
 import { demoDisclosure } from "../_lib/portal-demo-data";
 import { getSessionUser } from "@/lib/session";
 import "../portal.css";
+/* AFTER `portal.css`, AND UNLAYERED LIKE IT — that is what lets it override
+   the `.app-top` and `#mvPinBar` blocks. See the sheet's own header. */
+import "../portal.onebar.css";
 
 /**
  * THE MINERAL OWNER PORTAL — `/mineralownersite/*`.
