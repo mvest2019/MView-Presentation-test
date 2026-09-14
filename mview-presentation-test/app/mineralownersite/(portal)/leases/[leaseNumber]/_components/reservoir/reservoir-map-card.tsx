@@ -1,12 +1,28 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "../../../../../_components/ui/badge";
 import { Card, CardHeader } from "../../../../../_components/ui/card";
 import { SegmentedControl } from "../../../../../_components/ui/segmented-control";
 import { loadArcgisModules } from "../../../../../_lib/arcgis-loader";
+import { formatCompactVolume } from "../../../_lib/lease-format";
+import {
+  BASEMAPS,
+  RING_MILES,
+  RING_ZOOM,
+  ringCounts,
+  ringSymbols,
+  type Basemap,
+} from "../../_lib/map-shared";
 import type { ReservoirReport } from "../../_lib/reservoir-report";
+import {
+  MapHoverTip,
+  MapResetButton,
+  RingPill,
+  placeTip,
+  type MapTip,
+} from "../map-controls";
 
 /**
  * "WHERE THESE WELLS SIT IN THE ROCK" — the filed holes, on imagery.
@@ -25,14 +41,6 @@ import type { ReservoirReport } from "../../_lib/reservoir-report";
  * first paint. A county-wide view of one well is a picture of Texas.
  */
 
-type Basemap = "satellite" | "topo-vector" | "streets-vector";
-
-const BASEMAPS: { value: Basemap; label: string }[] = [
-  { value: "satellite", label: "Satellite" },
-  { value: "topo-vector", label: "Topographic" },
-  { value: "streets-vector", label: "Street" },
-];
-
 /* The portal's mint, as the SDK wants it: RGBA, not a CSS variable. */
 const MARK = [46, 143, 109] as const;
 
@@ -41,11 +49,21 @@ interface GraphicLike {
 }
 interface LayerLike {
   addMany: (graphics: GraphicLike[]) => void;
+  removeMany: (graphics: GraphicLike[]) => void;
+}
+interface HitResult {
+  graphic?: { attributes?: Record<string, unknown> | null } | null;
 }
 interface ViewLike {
   destroy: () => void;
   goTo: (target: unknown) => Promise<unknown>;
   graphics: LayerLike;
+  /** The view's widget corners. `move` re-homes a default widget by name. */
+  ui: { move: (widget: string, position: string) => void };
+  /** Off, so a hover lands on our own panel instead of Esri's. */
+  popupEnabled: boolean;
+  on: (event: string, handler: (event: unknown) => void) => void;
+  hitTest: (event: unknown) => Promise<{ results: HitResult[] }>;
   when: () => Promise<unknown>;
 }
 interface MapLike {
@@ -68,13 +86,38 @@ type GraphicCtor = new (options: {
 
 export function ReservoirMapCard({ report }: { report: ReservoirReport }) {
   const [basemap, setBasemap] = useState<Basemap>("satellite");
+  const [ring, setRing] = useState<string>("lease");
+  /** The hovered well's tooltip, or null when the pointer is off every well. */
+  const [tip, setTip] = useState<MapTip | null>(null);
   const [failed, setFailed] = useState(false);
 
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLike | null>(null);
   const viewRef = useRef<ViewLike | null>(null);
+  const graphicRef = useRef<GraphicCtor | null>(null);
+  const ringsRef = useRef<GraphicLike[]>([]);
 
   const wells = report.wells;
+  const centre: [number, number] = wells[0]?.surface ?? [-97.35, 29.08];
+
+  /* The rings count OTHER wells, so every hole already drawn here is excluded
+     — otherwise a reservoir with four wells would report four neighbours of
+     itself at every radius. */
+  const neighbours = useMemo(
+    () => ringCounts(centre, new Set(wells.map((well) => well.api))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [wells],
+  );
+
+  const frame = useCallback(
+    (key: string) => {
+      void viewRef.current
+        ?.goTo({ center: centre, zoom: RING_ZOOM[key] ?? 13 })
+        .catch(() => undefined);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [wells],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -99,6 +142,55 @@ export function ReservoirMapCard({ report }: { report: ReservoirReport }) {
           zoom: 13,
         });
         viewRef.current = view;
+        graphicRef.current = Graphic;
+
+        /* Esri homes its zoom widget top-left, where the recentre button goes;
+           and its popup is a widget with dock, collapse and "Zoom to" chrome
+           this map offers nothing for. Both are dealt with the same way as on
+           the well map — see `map-controls.tsx`. */
+        view.ui.move("zoom", "bottom-right");
+        view.popupEnabled = false;
+
+        /* `over` is held here rather than read back off state so the MISS
+           case can be compared without re-subscribing: a pointer-move fires
+           many times a second, and setting state to null on every one of them
+           would re-render the card continuously while the pointer merely
+           crosses the map. */
+        let over = false;
+        const test = (event: unknown): void => {
+          const at = event as { x: number; y: number };
+          void view
+            .hitTest(event)
+            .then(({ results }) => {
+              const found = results.find(
+                (result) => result.graphic?.attributes?.name,
+              );
+              if (!found) {
+                if (over) {
+                  over = false;
+                  setTip(null);
+                }
+                return;
+              }
+              over = true;
+              const it = found.graphic!.attributes as Record<string, string>;
+              setTip({
+                ...placeTip(at.x, at.y, container.current),
+                title: it.name,
+                subtitle: `${it.drilled} · ${it.lease}`,
+                rows: [
+                  { label: "API", value: it.api },
+                  { label: "Gas filed", value: it.gas },
+                  { label: "Open", value: it.open },
+                  { label: "Depth", value: it.depth },
+                ],
+              });
+            })
+            .catch(() => undefined);
+        };
+        view.on("pointer-move", test);
+        /* A touch screen has no hover, so a tap hit-tests the same way. */
+        view.on("click", test);
 
         const graphics: GraphicLike[] = [];
         for (const well of wells) {
@@ -145,10 +237,20 @@ export function ReservoirMapCard({ report }: { report: ReservoirReport }) {
                 color: [255, 255, 255, 0.95],
                 outline: { color: [...MARK, 1], width: 3 },
               },
-              attributes: { name: `Well ${well.name}`, api: well.api },
-              popupTemplate: {
-                title: "{name}",
-                content: `API {api} · ${well.drilled.toLowerCase()} · open ${well.openTopFt.toLocaleString("en-US")}–${well.openBottomFt.toLocaleString("en-US")} ft`,
+              /* EVERY FIELD THE TOOLTIP PRINTS RIDES ON THE MARKER, because
+                 a hit-test hands back the graphic and nothing else — there is
+                 no index to look the well up in from a pointer position. No
+                 `popupTemplate`: Esri's popup is off, see `map-controls.tsx`. */
+              attributes: {
+                name: `Well ${well.name}`,
+                api: well.api,
+                drilled: well.drilled.toLowerCase(),
+                lease: report.lease.number
+                  ? `Lease ${report.lease.number}`
+                  : report.lease.name,
+                open: `${well.openTopFt.toLocaleString("en-US")}–${well.openBottomFt.toLocaleString("en-US")} ft`,
+                depth: `${well.depthFt.toLocaleString("en-US")} ft MD`,
+                gas: `${formatCompactVolume(well.gasFiled)} MCF`,
               },
             }),
           );
@@ -182,6 +284,29 @@ export function ReservoirMapCard({ report }: { report: ReservoirReport }) {
     if (mapRef.current) mapRef.current.basemap = basemap;
   }, [basemap]);
 
+  /* Every ring up to the one chosen — the pills are nested distances, not
+     alternatives, so a reader on "5 mi" is looking at a count that includes the
+     inner wells. Its own effect, so changing the ring redraws two polylines
+     rather than tearing down the view and re-fetching every tile. */
+  useEffect(() => {
+    const view = viewRef.current;
+    const Graphic = graphicRef.current;
+    if (!view || !Graphic) return;
+
+    view.graphics.removeMany(ringsRef.current);
+    ringsRef.current = [];
+
+    const outer = RING_MILES[ring];
+    if (!outer) return;
+
+    const drawn = ringSymbols(centre, outer).map(
+      (shape) => new Graphic(shape),
+    );
+    view.graphics.addMany(drawn);
+    ringsRef.current = drawn;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ring, wells]);
+
   return (
     <Card padded={false} className="mt-4 px-[22px] py-[18px]">
       <CardHeader
@@ -198,7 +323,34 @@ export function ReservoirMapCard({ report }: { report: ReservoirReport }) {
         }
       />
 
-      <div className="mt-3 flex justify-end">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <div
+          role="group"
+          aria-label="How far to look"
+          className="flex flex-wrap gap-1.5"
+        >
+          <RingPill
+            label="This lease"
+            selected={ring === "lease"}
+            onClick={() => {
+              setRing("lease");
+              frame("lease");
+            }}
+          />
+          {neighbours.map((neighbour) => (
+            <RingPill
+              key={neighbour.label}
+              label={neighbour.label}
+              count={neighbour.count}
+              selected={ring === neighbour.label}
+              onClick={() => {
+                setRing(neighbour.label);
+                frame(neighbour.label);
+              }}
+            />
+          ))}
+        </div>
+
         <SegmentedControl
           label="Basemap"
           tone="green"
@@ -208,14 +360,28 @@ export function ReservoirMapCard({ report }: { report: ReservoirReport }) {
         />
       </div>
 
-      <div className="mt-2 overflow-hidden rounded-mv border border-mv-line">
+      <div className="relative mt-2 overflow-hidden rounded-mv border border-mv-line">
         {failed ? (
           <p className="px-4 py-16 text-center text-[13px] text-mv-muted">
             The map could not load its imagery. Everything else on this page is
             unaffected — every well&apos;s filed interval is in the table above.
           </p>
         ) : (
-          <div ref={container} className="h-[520px] w-full" />
+          <>
+            <div
+              ref={container}
+              className={`h-[520px] w-full ${
+                tip ? "[&_.esri-view-surface]:cursor-pointer!" : ""
+              }`.trim()}
+            />
+            {tip && <MapHoverTip tip={tip} />}
+            <MapResetButton
+              onClick={() => {
+                setRing("lease");
+                frame("lease");
+              }}
+            />
+          </>
         )}
       </div>
 
@@ -234,9 +400,6 @@ export function ReservoirMapCard({ report }: { report: ReservoirReport }) {
         </span>
       </div>
 
-      <p className="mt-1.5 text-center text-[11.5px] text-mv-muted">
-        Click a well for its detail · imagery from Esri
-      </p>
     </Card>
   );
 }

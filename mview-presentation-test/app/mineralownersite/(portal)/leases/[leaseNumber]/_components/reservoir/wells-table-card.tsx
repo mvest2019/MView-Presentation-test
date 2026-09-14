@@ -49,7 +49,7 @@ export function WellsTableCard({ report }: { report: ReservoirReport }) {
       />
 
       <TableScroll className="mt-3">
-        <Table minWidth={880}>
+        <Table roomy minWidth={880}>
           <TableHead>
             <TableRow className="bg-mv-portal-wash">
               <TableHeaderCell>Well</TableHeaderCell>

@@ -46,6 +46,11 @@ export function TableScroll({
   /**
    * DROP THE BORDER AND THE RADIUS — for a table that is already inside a card.
    *
+   * WHEN IT IS NOT DROPPED THE RADIUS IS `rounded-md`, not the portal's own
+   * `rounded-mv`. A standalone table sits INSIDE a 12px card, and a 12px box
+   * inside a 12px box reads as a misalignment rather than as nesting; 6px is
+   * the same corner the fact and stat cards on these reports use.
+   *
    * A prop rather than a `className` override, and the reason is the one
    * `button.tsx` records at length: `rounded-none` passed in and the base
    * `rounded-mv` are both single-class utilities, so specificity cannot
@@ -84,7 +89,7 @@ export function TableScroll({
        * scrolling box and its scrollbar stay one component — see `portal-ui.md`
        * on why this folder is Tailwind.
        */
-      className={`relative overflow-x-auto bg-mv-card ${bare ? "" : "rounded-mv border border-mv-line"} [scrollbar-color:var(--color-mv-line-strong)_var(--color-mv-bg)] [scrollbar-width:thin] [&::-webkit-scrollbar-thumb:hover]:bg-mv-muted [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-mv-line-strong [&::-webkit-scrollbar-track]:bg-mv-bg [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar]:w-2 ${className}`.trim()}
+      className={`relative overflow-x-auto bg-mv-card ${bare ? "" : "rounded-md border border-mv-line"} [scrollbar-color:var(--color-mv-line-strong)_var(--color-mv-bg)] [scrollbar-width:thin] [&::-webkit-scrollbar-thumb:hover]:bg-mv-muted [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-mv-line-strong [&::-webkit-scrollbar-track]:bg-mv-bg [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar]:w-2 ${className}`.trim()}
       {...props}
     >
       {children}

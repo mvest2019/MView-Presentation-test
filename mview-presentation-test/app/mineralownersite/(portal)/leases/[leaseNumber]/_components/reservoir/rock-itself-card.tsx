@@ -1,4 +1,3 @@
-import { Badge } from "../../../../../_components/ui/badge";
 import { Card, CardHeader } from "../../../../../_components/ui/card";
 import {
   formatAcres,
@@ -37,18 +36,16 @@ export function RockItselfCard({ report }: { report: ReservoirReport }) {
         title={
           <h3 className="text-[15px] font-bold">{report.name} — the rock itself</h3>
         }
-        action={
-          <Badge tone="slate" size="xs">
-            named from the well roster field name
-          </Badge>
-        }
       />
 
-      <div className="mt-4 grid gap-7 lg:grid-cols-2 lg:divide-x lg:divide-mv-line">
-        <section>
+      {/* `divide-x` draws the rule on the FIRST column's own right border, so
+          the air before it is that column's `pr` and not the grid's `gap-x` —
+          see the same note in `well/wellbore-card.tsx`. */}
+      <div className="mt-4 grid gap-y-8 lg:grid-cols-2 lg:gap-x-0 lg:divide-x lg:divide-mv-line">
+        <section className="lg:pr-[14px]">
           <h4 className="text-[13.5px] font-bold">On the record</h4>
 
-          <dl className="mt-2 grid gap-x-6 sm:grid-cols-2">
+          <dl className="mt-2 grid gap-2 sm:grid-cols-2">
             <Fact label="Reservoir" value={report.name} sub="as the state files it" />
             <Fact
               label="Your wells in it"
@@ -238,7 +235,7 @@ function Fact({
   sub: string;
 }) {
   return (
-    <div className="border-b border-mv-portal-hairline py-2.5">
+    <div className="rounded-md border border-mv-line bg-mv-card px-3.5 py-2.5">
       <dt className="text-[10px] font-bold tracking-[0.08em] text-mv-muted uppercase">
         {label}
       </dt>

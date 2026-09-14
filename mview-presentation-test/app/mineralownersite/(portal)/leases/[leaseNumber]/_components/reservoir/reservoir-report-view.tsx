@@ -2,6 +2,7 @@ import type { LeaseRecord } from "../../../_lib/lease-types";
 import { buildReservoirReport } from "../../_lib/reservoir-report";
 import { ReservoirChartCard } from "./reservoir-chart-card";
 import { ReservoirMapCard } from "./reservoir-map-card";
+import { ReservoirOverviewHeader } from "./reservoir-overview-header";
 import { ReservoirTiles } from "./reservoir-tiles";
 import { RockItselfCard } from "./rock-itself-card";
 import { RockLeftCard } from "./rock-left-card";
@@ -12,6 +13,7 @@ import { WellsTableCard } from "./wells-table-card";
  *
  * ── THE ORDER ──
  *
+ *   header      what this screen is, and whether the rock is still running
  *   tiles       what is in it, what came out, what is left, how much open hole
  *   how much    the same question as two rings
  *   the rock    the state's record on the left, the reading on the right
@@ -32,6 +34,7 @@ export function ReservoirReportView({ lease }: { lease: LeaseRecord }) {
 
   return (
     <div>
+      <ReservoirOverviewHeader report={report} />
       <ReservoirTiles report={report} />
       <RockLeftCard report={report} />
       <RockItselfCard report={report} />
