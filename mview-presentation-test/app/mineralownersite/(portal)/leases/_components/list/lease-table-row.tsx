@@ -44,7 +44,12 @@ export function LeaseTableRow({ lease }: { lease: LeaseRecord }) {
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <Link
             href={href}
-            className="text-[13px] font-bold text-mv-ink no-underline hover:text-mv-green-deep"
+            /* Slate, not ink. The name is bold 13px against 12.5px regular in
+               every other cell, and at near-black (#0d0e17) that weight made a
+               column of ten of them read as ten headings stacked down the
+               table rather than as the rows' first field. One step lighter
+               keeps it clearly the row's title without the block of black. */
+            className="text-[13px] font-bold text-mv-slate no-underline hover:text-mv-green-deep"
           >
             {formatLeaseTitle(lease.name, lease.number)}
           </Link>

@@ -1,40 +1,76 @@
 "use client";
 
 import {
-  SearchField,
-  SelectField,
-} from "../../../../_components/ui/form-controls";
+  ChevronDown,
+  LayoutGrid,
+  List,
+  Search,
+  X,
+} from "lucide-react";
+
 import { gates } from "../../../../_components/ui/portal-gating";
-import { SegmentedControl } from "../../../../_components/ui/segmented-control";
+import {
+  activeFilterCount,
+  emptyLeaseFilters,
+  leaseFilterOptions,
+  type LeaseFilters,
+} from "../../_lib/lease-filters";
 import {
   leasePageSizes,
   leaseSortOptions,
-  type LeaseSortKey,
+  presetKeyFor,
+  sortLabel,
+  type LeaseSort,
 } from "../../_lib/lease-sorting";
 
 /** Which layout the list is drawn in. */
 export type LeaseView = "list" | "grid";
 
 /**
- * SORT, PAGE SIZE, SEARCH AND LAYOUT — the four controls above the list.
+ * EVERYTHING ABOVE THE TABLE — search, sort, page size, layout and five filters.
  *
- * IT OWNS NO STATE. Every value is passed in and every change is handed back up
- * to `LeaseListPanel`, because the table, the grid and the totals row all read
- * the same selection — a toolbar holding its own state would be the second place
- * that selection lives.
+ * ── IT IS THE TOP OF THE TABLE'S OWN CARD, NOT A CARD OF ITS OWN ──
  *
- * TWO ROWS, AND THE SPLIT IS BY WHAT THEY DO. The top row changes the ORDER and
- * the SHAPE of the list; the bottom row changes WHICH LEASES are in it, and the
- * count beside the box is the answer to what was typed. Putting the search on
- * its own line is also what keeps it wide enough to read a lease name back.
+ * The controls and the rows they govern are one object, so they share one
+ * border: search and filters, then the headings, then the rows, then the pager,
+ * with no gap anywhere down the stack. As two cards there was a strip of page
+ * between the filter row and the column headings, which read as two unrelated
+ * panels that happened to be adjacent. `LeaseListPanel` owns the card; this
+ * renders the two rows into it.
  *
- * THE COUNT IS `aria-live` so a screen-reader user who types into the box is
- * told how many leases are left, which is the only feedback a filter gives.
+ * ── TWO ROWS, AND THE SPLIT IS BY WHAT THEY DO ──
  *
- * "SHOW:" IS NOT ON THE PLAIN-LANGUAGE TIER. Sort and search earn their place
- * at every density — an owner looking for one lease is doing that whatever
- * density they read at — but choosing a page length is furniture for a record
- * of ten, and Essentials is the tier that drops furniture.
+ * The top row changes how the list is PRESENTED: what it is sorted by, how much
+ * of it is on screen, and whether it is a table or cards. The bottom row changes
+ * WHICH LEASES ARE IN IT. Mixing them puts "sort by value" beside "only DE WITT"
+ * as if they were the same kind of decision, and a reader hunting for a filter
+ * has to read every control to find it.
+ *
+ * The tinted second row is what makes that split visible without a heading.
+ *
+ * ── IT OWNS NO STATE ──
+ *
+ * Every value is passed in and every change handed back to `LeaseListPanel`,
+ * because the table, the grid and the totals row all read the same selection.
+ * A toolbar holding its own state would be the second place that selection
+ * lives.
+ *
+ * ── THE FILTER ROW IS ALWAYS OPEN ──
+ *
+ * It used to fold away behind a button that also carried a count of active
+ * filters, and both are gone on request. The row is five dropdowns that read
+ * "All …" until somebody changes one, which is its own statement that nothing
+ * is being hidden — and "Clear all" is the one-click way out of a narrowing
+ * somebody has lost track of.
+ *
+ * The count that went with them is not missed: the pager below the table says
+ * "Showing 1–10 of 10 leases" and is `aria-live`, so the same fact still
+ * reaches a screen reader when a filter changes it.
+ *
+ * ── EVERY DROPDOWN IS BUILT FROM THE RECORD ──
+ *
+ * See `lease-filters.ts`. A county this owner holds nothing in would return an
+ * empty table and leave them unable to tell a filter from a fault.
  */
 export function LeaseToolbar({
   sort,
@@ -45,77 +81,318 @@ export function LeaseToolbar({
   onQueryChange,
   view,
   onViewChange,
-  shown,
-  total,
+  filters,
+  onFiltersChange,
 }: {
-  sort: LeaseSortKey;
-  onSortChange: (next: LeaseSortKey) => void;
+  sort: LeaseSort;
+  onSortChange: (next: LeaseSort) => void;
   pageSize: number;
   onPageSizeChange: (next: number) => void;
   query: string;
   onQueryChange: (next: string) => void;
   view: LeaseView;
   onViewChange: (next: LeaseView) => void;
-  shown: number;
-  total: number;
+  filters: LeaseFilters;
+  onFiltersChange: (next: LeaseFilters) => void;
 }) {
-  const searching = query.trim().length > 0;
+  const active = activeFilterCount(filters);
+
+  function set<K extends keyof LeaseFilters>(key: K, value: string): void {
+    onFiltersChange({ ...filters, [key]: value });
+  }
 
   return (
-    <div className="mb-3 flex flex-col gap-2.5">
-      <div className="flex flex-wrap items-center gap-3">
-        <SelectField
-          label="Sort:"
-          value={sort}
-          onChange={(event) => onSortChange(event.target.value as LeaseSortKey)}
+    <>
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+        <label className="relative flex min-w-[240px] flex-1 items-center">
+          <span className="sr-only">Search your leases</span>
+          <Search
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3 h-4 w-4 text-mv-muted"
+          />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="Search lease, number, county, operator or reservoir…"
+            className="w-full rounded-[9px] border border-mv-line bg-mv-card py-2 pr-3 pl-9 text-[13px] text-mv-ink outline-none transition-colors placeholder:text-mv-placeholder hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)]"
+          />
+        </label>
+
+        <ToolbarSelect
+          label="Sort by"
+          value={presetKeyFor(sort) ?? "custom"}
+          onChange={(value) => {
+            const preset = leaseSortOptions.find(
+              (option) => option.value === value,
+            );
+            if (preset) onSortChange(preset.sort);
+          }}
         >
+          {/* AN ORDER REACHED BY CLICKING A HEADING usually has no preset name,
+              and a select cannot show nothing. So it describes itself —
+              "Operator — Z to A" — and disappears again the moment the reader
+              picks a named order. Disabled because picking it would be picking
+              what is already selected. */}
+          {presetKeyFor(sort) === null && (
+            <option value="custom" disabled>
+              {sortLabel(sort)}
+            </option>
+          )}
           {leaseSortOptions.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
           ))}
-        </SelectField>
+        </ToolbarSelect>
 
-        <SelectField
+        <ToolbarSelect
           className={gates("hideInEssentials")}
-          label="Show:"
-          value={pageSize}
-          onChange={(event) => onPageSizeChange(Number(event.target.value))}
+          label="Show"
+          value={String(pageSize)}
+          onChange={(value) => onPageSizeChange(Number(value))}
         >
           {leasePageSizes.map((size) => (
             <option key={size} value={size}>
               {size} per page
             </option>
           ))}
-        </SelectField>
+        </ToolbarSelect>
 
-        <SegmentedControl
-          label="Lease layout"
-          tone="green"
-          className="ml-auto"
-          value={view}
-          onChange={onViewChange}
-          options={[
-            { value: "list", label: "☰ List" },
-            { value: "grid", label: "▦ Grid" },
-          ]}
-        />
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <SearchField
-          label="Search your leases"
-          placeholder="Search — lease, number, county, operator or reservoir…"
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-        />
+        {/* `aria-pressed` on two buttons is the whole accessible story of a
+            segmented control — see `ui/segmented-control.tsx` for why this is
+            not Radix. The icons repeat what the words say, so they are hidden. */}
         <span
-          aria-live="polite"
-          className="text-[12px] tabular-nums text-mv-muted"
+          role="group"
+          aria-label="Lease layout"
+          className="ml-auto inline-flex gap-0.5 rounded-[10px] bg-mv-portal-wash p-[3px]"
         >
-          {searching ? `${shown} of ${total} leases` : `${total} leases`}
+          <ViewButton
+            selected={view === "list"}
+            onClick={() => onViewChange("list")}
+            icon={<List aria-hidden="true" className="h-3.5 w-3.5" />}
+            label="List"
+          />
+          <ViewButton
+            selected={view === "grid"}
+            onClick={() => onViewChange("grid")}
+            icon={<LayoutGrid aria-hidden="true" className="h-3.5 w-3.5" />}
+            label="Grid"
+          />
         </span>
       </div>
-    </div>
+
+      {/*
+        A STRONGER RULE UNDER THE FILTER ROW THAN BETWEEN THE TWO CONTROL ROWS.
+        The search row and the filter row are one block — how the list is
+        presented, and which leases are in it — so the line between them is the
+        light hairline every other divider on the page uses. The line BELOW them
+        separates the controls from the thing they control, which is the one
+        real break in the card, so it is the darker `mv-line-strong`.
+      */}
+      <div className="flex flex-wrap items-center gap-3 border-t border-b border-t-mv-line border-b-mv-line-strong bg-mv-bg px-4 py-3">
+        <FilterField
+          label="County"
+          value={filters.county}
+          allLabel="All counties"
+          options={leaseFilterOptions.county}
+          onChange={(value) => set("county", value)}
+        />
+        <FilterField
+          label="Operator"
+          value={filters.operator}
+          allLabel="All operators"
+          options={leaseFilterOptions.operator}
+          onChange={(value) => set("operator", value)}
+        />
+        <FilterField
+          label="Reservoir"
+          value={filters.reservoir}
+          allLabel="All reservoirs"
+          options={leaseFilterOptions.reservoir}
+          onChange={(value) => set("reservoir", value)}
+        />
+        <FilterField
+          label="Status"
+          value={filters.status}
+          allLabel="All status"
+          options={leaseFilterOptions.status}
+          onChange={(value) => set("status", value)}
+        />
+        <FilterField
+          label="Lease type"
+          value={filters.type}
+          allLabel="All types"
+          options={leaseFilterOptions.type}
+          onChange={(value) => set("type", value)}
+        />
+
+        <div className="ml-auto flex items-center">
+          {/*
+            RED, AND IT IS THE ONLY RED CONTROL ON THE PAGE. Everything else
+            here narrows or reorders and is reversible by doing it again; this
+            one throws away every choice the reader has made in the row at once.
+            The colour is the warning, which is also why it is an outline rather
+            than a fill — a solid red button reads as the thing you are supposed
+            to press.
+
+            DISABLED RATHER THAN HIDDEN WHEN THERE IS NOTHING TO CLEAR. The row
+            keeps its shape as filters come and go, so nothing slides sideways
+            under the pointer the moment somebody picks one — and the red fades
+            with it, so the warning is only on when there is something to lose.
+          */}
+          <button
+            type="button"
+            disabled={active === 0}
+            onClick={() => onFiltersChange(emptyLeaseFilters)}
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-[9px] border border-mv-red bg-mv-card px-3 py-2 text-[12.5px] font-semibold text-mv-red transition-colors hover:bg-mv-red-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-red disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-mv-card"
+          >
+            <X aria-hidden="true" className="h-4 w-4" />
+            Clear all
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/**
+ * A labelled select for the top row — the label beside the control, because
+ * that row reads as a sentence ("sort by production value, show 25 per page").
+ */
+function ToolbarSelect({
+  label,
+  value,
+  onChange,
+  className = "",
+  children,
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className={`flex items-center gap-2 ${className}`.trim()}>
+      <span className="text-[12px] font-semibold whitespace-nowrap text-mv-muted">
+        {label}
+      </span>
+      <SelectControl value={value} onChange={onChange}>
+        {children}
+      </SelectControl>
+    </label>
+  );
+}
+
+/**
+ * A select for the filter row.
+ *
+ * ── THE LABEL IS THERE BUT NOT DRAWN ──
+ *
+ * Each control already says what it filters — "All counties", "All operators" —
+ * so a "County" caption above it repeats the word directly beneath. The row is
+ * five dropdowns that name themselves.
+ *
+ * The `<span>` stays as `sr-only` rather than being deleted, and that is not
+ * ceremony: a `<select>` needs an accessible name, and its first option is not
+ * one. Without it a screen reader announces five unnamed comboboxes whose only
+ * distinguishing feature is the option list inside them.
+ */
+function FilterField({
+  label,
+  value,
+  allLabel,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  /** What the empty value reads as — "All counties", not "All". */
+  allLabel: string;
+  options: readonly string[];
+  onChange: (next: string) => void;
+}) {
+  return (
+    <label className="min-w-[150px] flex-1">
+      <span className="sr-only">{label}</span>
+      <SelectControl value={value} onChange={onChange} block>
+        <option value="">{allLabel}</option>
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </SelectControl>
+    </label>
+  );
+}
+
+/**
+ * The native `<select>` both fields wrap.
+ *
+ * NATIVE, NOT A LISTBOX OF DIVS — the same call `ui/form-controls.tsx` documents
+ * at length: correct keyboard handling, correct screen-reader semantics, and the
+ * platform's own picker on a phone, which is the right control for someone
+ * choosing one of three operators one-handed.
+ */
+function SelectControl({
+  value,
+  onChange,
+  block = false,
+  children,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  block?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className={`relative inline-flex ${block ? "w-full" : ""}`}>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className={`cursor-pointer appearance-none rounded-[9px] border border-mv-line bg-mv-card py-2 pr-9 pl-[10px] text-[12.5px] font-medium text-mv-ink outline-none transition-colors hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)] ${block ? "w-full" : ""}`}
+      >
+        {children}
+      </select>
+      <ChevronDown
+        aria-hidden="true"
+        className="pointer-events-none absolute top-1/2 right-2 h-4 w-4 -translate-y-1/2 text-mv-muted"
+      />
+    </span>
+  );
+}
+
+function ViewButton({
+  selected,
+  onClick,
+  icon,
+  label,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onClick}
+      /* THE SELECTED SEGMENT IS GREEN, LIKE EVERY OTHER "THIS ONE" ON THE PAGE.
+         It was ink, and a black fill was the only one on the tab: the My Leases
+         pill directly above it and the current page in the pager underneath it
+         both say "selected" in brand green, so a third answer in black read as
+         a different KIND of control rather than the same state. */
+      className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border-0 px-3 py-1.5 text-xs font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep ${
+        selected
+          ? "bg-mv-green-deep text-white shadow-mv"
+          : "bg-transparent text-mv-slate hover:text-mv-ink"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }

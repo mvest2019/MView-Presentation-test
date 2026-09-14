@@ -92,7 +92,7 @@ export function PageRevenue() {
               x={PLOT.left - 10}
               y={yAt(value, max) + 4}
               textAnchor="end"
-              className="fill-mv-axis text-[13px] font-semibold"
+              className="fill-mv-axis text-[11px] font-semibold"
             >
               {formatTick(value, true)}
             </text>
@@ -108,7 +108,7 @@ export function PageRevenue() {
         />
         <path
           d={stackPath(revenueSeries.oil, revenueSeries.gas, from, to, max)}
-          className="fill-mv-sand/85"
+          className="fill-mv-oil/85"
         />
 
         <line
@@ -127,7 +127,7 @@ export function PageRevenue() {
             x={xAt(index, from, to)}
             y={AXIS_LABEL_Y}
             textAnchor="middle"
-            className="fill-mv-axis text-[14px]"
+            className="fill-mv-axis text-[11px]"
           >
             {shortMonthLabel(firstMonth + index)}
           </text>
@@ -139,7 +139,7 @@ export function PageRevenue() {
 
       <div className="mt-1 flex flex-wrap gap-4 text-[12px] font-semibold">
         <LegendSwatch className="bg-mv-green-deep/85" label="Gas" />
-        <LegendSwatch className="bg-mv-sand/85" label="Oil" />
+        <LegendSwatch className="bg-mv-oil/85" label="Oil" />
       </div>
 
       <ReportFootnote>

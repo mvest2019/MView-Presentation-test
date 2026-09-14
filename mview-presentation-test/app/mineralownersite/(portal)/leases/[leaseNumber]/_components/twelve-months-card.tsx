@@ -151,7 +151,7 @@ export function TwelveMonthsCard({ report }: { report: LeaseReport }) {
 
 const BAR = {
   gas: { fill: "bg-mv-green-deep/25", mark: "bg-mv-green-deep" },
-  oil: { fill: "bg-mv-sand/25", mark: "bg-mv-sand" },
+  oil: { fill: "bg-mv-oil/25", mark: "bg-mv-oil" },
 } as const;
 
 /**

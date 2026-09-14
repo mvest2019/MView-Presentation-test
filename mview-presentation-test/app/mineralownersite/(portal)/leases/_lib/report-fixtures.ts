@@ -19,6 +19,17 @@ export interface ReportPage {
   /** The anchor a jump chip scrolls to. */
   id: string;
   title: string;
+  /**
+   * A SHORTER NAME FOR THE JUMP NAV, for the two pages whose headings are
+   * sentences.
+   *
+   * The nav used to truncate instead: "What this means for yo…" and "The year
+   * so far, and wh…", which is a label that has stopped naming anything — a
+   * reader cannot tell page 9 from page 12 by a cut-off clause. The heading on
+   * the page itself stays long, because there it has the room and the sentence
+   * is the point.
+   */
+  nav?: string;
 }
 
 /**
@@ -39,10 +50,14 @@ export const REPORT_PAGES: ReportPage[] = [
   { id: "three-year-outlook", title: "Three-year outlook" },
   { id: "development-outlook", title: "Development outlook" },
   { id: "operator-analysis", title: "Operator analysis" },
-  { id: "cash-flow", title: "What this means for your cash flow" },
+  { id: "cash-flow", title: "What this means for your cash flow", nav: "Your cash flow" },
   { id: "prices", title: "Prices this month" },
   { id: "press", title: "Around your operators" },
-  { id: "year-so-far", title: "The year so far, and where this comes from" },
+  {
+    id: "year-so-far",
+    title: "The year so far, and where this comes from",
+    nav: "The year so far",
+  },
 ];
 
 /* ============================================================================

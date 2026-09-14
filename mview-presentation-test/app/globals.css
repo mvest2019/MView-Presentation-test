@@ -249,6 +249,16 @@
   --color-mv-portal-drawer-sub: #9fc9b8;
   --color-mv-portal-drawer-back-hover: #d9efe6;
 
+  /* THE TWO PRODUCTS, WHEREVER THEY ARE DRAWN — a line, a donut ring, a bar,
+     a legend swatch. Gas is the brand green; oil is red.
+
+     OIL HAS A TOKEN OF ITS OWN BECAUSE IT USED TO SHARE ONE. It was drawn in
+     `mv-sand`, which is ALSO the gold notice tone — `notice.tsx`, the claim
+     steps, the map's nearby panel — and those two have nothing to do with each
+     other. Recolouring oil through `mv-sand` would have turned every gold note
+     on the portal red. Change oil here; the gold notes keep `mv-sand`. */
+  --color-mv-oil: #c0392b;
+
   /* Status */
   --color-mv-amber: #b45309;
   --color-mv-down: #c0392b;

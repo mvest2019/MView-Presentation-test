@@ -132,7 +132,7 @@ function LegendKey({ tone, label }: { tone: "gas" | "oil"; label: string }) {
       <span
         aria-hidden="true"
         className={`inline-block h-[3px] w-4 rounded-full ${
-          tone === "gas" ? "bg-mv-green-deep" : "bg-mv-sand"
+          tone === "gas" ? "bg-mv-green-deep" : "bg-mv-oil"
         }`}
       />
       {label}

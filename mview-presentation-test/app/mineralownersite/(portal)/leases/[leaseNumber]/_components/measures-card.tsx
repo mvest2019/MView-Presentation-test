@@ -161,7 +161,7 @@ export function MeasuresCard({ report }: { report: LeaseReport }) {
           </h5>
           <SplitBar
             left={{ label: `Gas ${report.projectedGasPercent.toFixed(1)}%`, percent: report.projectedGasPercent, className: "bg-mv-green-deep text-white" }}
-            right={{ label: `Oil ${report.projectedOilPercent.toFixed(1)}%`, className: "bg-mv-sand text-white" }}
+            right={{ label: `Oil ${report.projectedOilPercent.toFixed(1)}%`, className: "bg-mv-oil text-white" }}
           />
           <p className="mt-2 text-[11.5px] leading-[1.55] text-mv-muted">
             Oil is {report.projectedOilPercent.toFixed(1)}% of the money and{" "}

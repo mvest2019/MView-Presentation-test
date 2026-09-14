@@ -22,9 +22,9 @@ const RING = {
     dot: "bg-mv-green-deep",
   },
   oil: {
-    strong: "stroke-mv-sand",
-    pale: "stroke-mv-sand/25",
-    dot: "bg-mv-sand",
+    strong: "stroke-mv-oil",
+    pale: "stroke-mv-oil/25",
+    dot: "bg-mv-oil",
   },
 } as const;
 

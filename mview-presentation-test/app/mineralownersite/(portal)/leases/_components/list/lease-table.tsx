@@ -1,20 +1,14 @@
-import { EstimateBadge } from "../../../../_components/ui/badge";
 import {
   Table,
   TableBody,
-  TableCell,
   TableHead,
-  TableHeaderCell,
   TableRow,
   TableScroll,
 } from "../../../../_components/ui/table";
-import {
-  formatCompactDollars,
-  formatCount,
-} from "../../_lib/lease-format";
-import { portfolioSummary } from "../../_lib/lease-totals";
+import type { LeaseSort } from "../../_lib/lease-sorting";
 import type { LeaseRecord } from "../../_lib/lease-types";
 import { LeaseTableRow } from "./lease-table-row";
+import { SortableHeader } from "./sortable-header";
 
 /**
  * THE WIDE TABLE — eleven columns and a totals row.
@@ -25,15 +19,16 @@ import { LeaseTableRow } from "./lease-table-row";
  * thing to leave the viewport, and a reader scrolled out to the production
  * columns is otherwise looking at volumes with nothing to attach them to.
  *
- * THE TOTALS ROW IS SUPPRESSED WHILE SEARCHING. A "Total — 10 leases" line under
- * three matching rows is wrong twice over: the count is not the number of rows
- * and the sums are not the sums of what is on screen. Rather than re-total the
- * filtered set — which would print a portfolio value that is not the
- * portfolio's — the row is simply absent until the full list is back.
+ * THERE IS NO TOTALS ROW. It used to close the table with "Total — 10 leases"
+ * and the two money columns summed, and it is gone on request. Nothing is lost:
+ * the value band at the top of the page carries the same two totals, against
+ * the whole record rather than the current page, which is the honest scope for
+ * them — a footer summing one page of a paged table is the version that misleads.
  *
- * THE ESTIMATE CHIP SITS IN THE TOTALS ROW because that is the one place both
- * money columns are added up, and a total is exactly where a projection is most
- * likely to be mistaken for a bank balance.
+ * EVERY HEADING SORTS THE TABLE, and the indicator on each one is what says so
+ * — see `sortable-header.tsx`. The heading and the "Sort by" select above drive
+ * the same `{column, direction}`, so the two can never disagree about how the
+ * rows are ordered.
  *
  * EVERY TIER SHOWS EVERY COLUMN. Four of them were briefly gated by density and
  * that is reverted: the table is the page, and a reader who changes how densely
@@ -42,10 +37,12 @@ import { LeaseTableRow } from "./lease-table-row";
  */
 export function LeaseTable({
   leases,
-  showTotals,
+  sort,
+  onSortChange,
 }: {
   leases: LeaseRecord[];
-  showTotals: boolean;
+  sort: LeaseSort;
+  onSortChange: (next: LeaseSort) => void;
 }) {
   if (leases.length === 0) {
     return (
@@ -57,7 +54,7 @@ export function LeaseTable({
   }
 
   return (
-    <TableScroll>
+    <TableScroll bare>
       <Table minWidth={1240} freezeFirstColumn>
         <TableHead>
           <TableRow className="bg-mv-portal-wash">
@@ -66,19 +63,44 @@ export function LeaseTable({
                 short number or a single word, so the table's own layout
                 algorithm squeezed "MCCABE ETAL GU · Lease 290271" into four
                 lines and left the number columns half empty. */}
-            <TableHeaderCell className="min-w-[270px]">
+            <SortableHeader
+              column="name"
+              sort={sort}
+              onSortChange={onSortChange}
+              className="min-w-[270px]"
+            >
               Lease (no.)
-            </TableHeaderCell>
-            <TableHeaderCell numeric>MVestimate</TableHeaderCell>
-            <TableHeaderCell numeric>County appraised</TableHeaderCell>
-            <TableHeaderCell>County</TableHeaderCell>
-            <TableHeaderCell>Operator</TableHeaderCell>
-            <TableHeaderCell>Reservoir</TableHeaderCell>
-            <TableHeaderCell>Wells</TableHeaderCell>
-            <TableHeaderCell>Decimal interest</TableHeaderCell>
-            <TableHeaderCell numeric>Gas (MCF)</TableHeaderCell>
-            <TableHeaderCell numeric>Oil (BBL)</TableHeaderCell>
-            <TableHeaderCell>Last posted</TableHeaderCell>
+            </SortableHeader>
+            <SortableHeader numeric column="mvestimate" sort={sort} onSortChange={onSortChange}>
+              MVestimate
+            </SortableHeader>
+            <SortableHeader numeric column="county-value" sort={sort} onSortChange={onSortChange}>
+              County appraised
+            </SortableHeader>
+            <SortableHeader column="county" sort={sort} onSortChange={onSortChange}>
+              County
+            </SortableHeader>
+            <SortableHeader column="operator" sort={sort} onSortChange={onSortChange}>
+              Operator
+            </SortableHeader>
+            <SortableHeader column="reservoir" sort={sort} onSortChange={onSortChange}>
+              Reservoir
+            </SortableHeader>
+            <SortableHeader column="wells" sort={sort} onSortChange={onSortChange}>
+              Wells
+            </SortableHeader>
+            <SortableHeader column="interest" sort={sort} onSortChange={onSortChange}>
+              Decimal interest
+            </SortableHeader>
+            <SortableHeader numeric column="gas" sort={sort} onSortChange={onSortChange}>
+              Gas (MCF)
+            </SortableHeader>
+            <SortableHeader numeric column="oil" sort={sort} onSortChange={onSortChange}>
+              Oil (BBL)
+            </SortableHeader>
+            <SortableHeader column="posted" sort={sort} onSortChange={onSortChange}>
+              Last posted
+            </SortableHeader>
           </TableRow>
         </TableHead>
 
@@ -87,31 +109,6 @@ export function LeaseTable({
             <LeaseTableRow key={lease.slug} lease={lease} />
           ))}
 
-          {showTotals && (
-            <TableRow tone="total">
-              <TableCell>Total — {portfolioSummary.leaseCount} leases</TableCell>
-              <TableCell numeric>
-                {formatCompactDollars(portfolioSummary.mvestimate)}
-              </TableCell>
-              <TableCell numeric>
-                {formatCompactDollars(portfolioSummary.countyAppraised)}
-              </TableCell>
-              <TableCell className="whitespace-nowrap">
-                <EstimateBadge />
-              </TableCell>
-              <TableCell />
-              <TableCell />
-              <TableCell>{portfolioSummary.wells}</TableCell>
-              <TableCell />
-              <TableCell numeric>
-                {formatCount(portfolioSummary.gasMcf)}
-              </TableCell>
-              <TableCell numeric>
-                {formatCount(portfolioSummary.oilBbl)}
-              </TableCell>
-              <TableCell />
-            </TableRow>
-          )}
         </TableBody>
       </Table>
     </TableScroll>

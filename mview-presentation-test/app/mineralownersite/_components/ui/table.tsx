@@ -38,13 +38,53 @@ import type { ComponentProps, ReactNode } from "react";
  */
 
 export function TableScroll({
+  bare = false,
   className = "",
   children,
   ...props
-}: { className?: string; children: ReactNode } & ComponentProps<"div">) {
+}: {
+  /**
+   * DROP THE BORDER AND THE RADIUS — for a table that is already inside a card.
+   *
+   * A prop rather than a `className` override, and the reason is the one
+   * `button.tsx` records at length: `rounded-none` passed in and the base
+   * `rounded-mv` are both single-class utilities, so specificity cannot
+   * separate them and Tailwind's own stylesheet order decides which wins. Two
+   * borders drawn a pixel apart is the visible failure; a prop makes it
+   * deterministic.
+   */
+  bare?: boolean;
+  className?: string;
+  children: ReactNode;
+} & ComponentProps<"div">) {
   return (
     <div
-      className={`relative overflow-x-auto rounded-mv border border-mv-line bg-mv-card ${className}`.trim()}
+      /*
+       * THE SCROLLBAR IS STYLED HERE, AND IT IS NOT DECORATION.
+       *
+       * Left alone, this box gets the platform's own bar: on Windows that is a
+       * full-weight dark grey track sitting inside a white card, and because it
+       * is the widest element on the page it reads as a black rule drawn
+       * through the bottom of the table — over the totals row rather than under
+       * it.
+       *
+       * `scrollbar-width: thin` and `scrollbar-color` are the standard
+       * properties and cover Firefox and current Chromium. The
+       * `::-webkit-scrollbar` rules behind them cover the WebKit engines that
+       * still ignore those, and both halves say the same thing: a thin track in
+       * the portal's page grey, and a rounded thumb in its hairline grey that
+       * darkens to the muted ink on hover.
+       *
+       * THE TRACK IS TINTED RATHER THAN TRANSPARENT. Left clear it vanished
+       * against the white card, which made the thumb look like a stray line
+       * instead of a control sitting in a groove — a scrollbar has to read as
+       * something you can grab.
+       *
+       * Written as arbitrary variants rather than a `portal.css` rule so the
+       * scrolling box and its scrollbar stay one component — see `portal-ui.md`
+       * on why this folder is Tailwind.
+       */
+      className={`relative overflow-x-auto bg-mv-card ${bare ? "" : "rounded-mv border border-mv-line"} [scrollbar-color:var(--color-mv-line-strong)_var(--color-mv-bg)] [scrollbar-width:thin] [&::-webkit-scrollbar-thumb:hover]:bg-mv-muted [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-mv-line-strong [&::-webkit-scrollbar-track]:bg-mv-bg [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar]:w-2 ${className}`.trim()}
       {...props}
     >
       {children}
@@ -95,7 +135,29 @@ export function Table({
 
   return (
     <table
-      className={`w-full border-collapse text-[13px] ${frozen}`.trim()}
+      /*
+       * THE HEADER BAND, AND WHY IT NEEDS `!`.
+       *
+       * `portal.css` sets `.mv-portal th { background: #fafbfc }` and that file
+       * is UNLAYERED on purpose — see its own header. Unlayered rules beat
+       * everything inside a cascade layer whatever the specificity, and every
+       * Tailwind utility lives in `@layer utilities`. So a `bg-…` class on the
+       * header row, or on the cells, or on a `[&_thead_th]` variant, all lost
+       * to it silently: the markup said the header was tinted and the header
+       * rendered at #fafbfc, which is near enough to white that the headings
+       * read as a first row rather than as a heading band.
+       *
+       * The important modifier is the way out, and it is applied once here
+       * rather than per table so every portal table's headings sit on the same
+       * band.
+       *
+       * THE HEADING COLOUR IS THE SAME STORY. `.mv-portal th` also sets
+       * `color: var(--muted)`, so `text-mv-ink` on `TableHeaderCell` lost to it
+       * exactly as the background did — the lease table's headings only looked
+       * right because their colour sits on a `<button>` inside the cell, which
+       * that rule cannot reach. Every other portal table stayed grey.
+       */
+      className={`w-full border-collapse text-[13px] [&_thead_th]:bg-mv-portal-wash! [&_thead_th]:text-mv-ink! ${frozen}`.trim()}
       style={{ minWidth }}
     >
       {children}
@@ -168,7 +230,7 @@ export function TableHeaderCell({
   return (
     <th
       scope="col"
-      className={`${CELL_BASE} text-[11px] font-bold tracking-[0.06em] whitespace-nowrap text-mv-muted uppercase ${
+      className={`${CELL_BASE} text-[11px] font-bold tracking-[0.06em] whitespace-nowrap text-mv-ink uppercase ${
         numeric ? "text-right" : "text-left"
       } ${className}`.trim()}
       {...props}

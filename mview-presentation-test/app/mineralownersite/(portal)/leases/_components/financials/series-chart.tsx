@@ -42,6 +42,16 @@ import { shortMonthLabel } from "../../_lib/months";
  * right axis appears only in the combined view; the three single-series views
  * use the left one and say so in the note beside the pills.
  *
+ * ── THE AXIS TYPE IS SET IN VIEWBOX UNITS, WHICH ARE NOT PIXELS ──
+ *
+ * The viewBox is 1000 wide and the SVG is `w-full`, so everything in here is
+ * multiplied by the card's width over 1000 — about 1.26 in the portal's content
+ * column. The axes were written as 13px and 14px and therefore DREW at roughly
+ * 16 and 18, which is body-copy size for labels that are meant to be read past.
+ * They are 11 now, landing near 14 on screen. Anything set inside this file is
+ * a viewBox number: divide by the scale before judging it against the rest of
+ * the page's type.
+ *
  * ── IT IS NOT A `<canvas>` AND IT IS NOT AN IMAGE ──
  *
  * `role="img"` with a written label gives a screen reader the shape in one
@@ -51,7 +61,7 @@ import { shortMonthLabel } from "../../_lib/months";
 
 const STROKE: Record<string, string> = {
   gas: "stroke-mv-green-deep",
-  oil: "stroke-mv-sand",
+  oil: "stroke-mv-oil",
   cash: "stroke-mv-green-deep",
 };
 
@@ -115,8 +125,8 @@ export function SeriesChart({
               x={PLOT.left - 10}
               y={y + 4}
               textAnchor="end"
-              className={`fill-mv-axis text-[13px] font-semibold ${
-                left.tone === "oil" ? "fill-mv-sand" : ""
+              className={`fill-mv-axis text-[11px] font-semibold ${
+                left.tone === "oil" ? "fill-mv-oil" : ""
               }`}
             >
               {formatTick(value, left.money)}
@@ -135,7 +145,7 @@ export function SeriesChart({
             x={PLOT.right + 10}
             y={yAt(axisTicks(leftMax)[step], leftMax) + 4}
             textAnchor="start"
-            className="fill-mv-sand text-[13px] font-semibold"
+            className="fill-mv-oil text-[11px] font-semibold"
           >
             {formatTick(value, right.money)}
           </text>
@@ -198,7 +208,7 @@ export function SeriesChart({
           x={xAt(index, from, to)}
           y={AXIS_LABEL_Y}
           textAnchor="middle"
-          className="fill-mv-axis text-[14px]"
+          className="fill-mv-axis text-[11px]"
         >
           {shortMonthLabel(firstMonth + index)}
         </text>

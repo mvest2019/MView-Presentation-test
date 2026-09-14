@@ -3,13 +3,19 @@
 import { useMemo, useState } from "react";
 
 import {
+  emptyLeaseFilters,
+  type LeaseFilters,
+} from "../../_lib/lease-filters";
+import {
   defaultLeasePageSize,
   defaultLeaseSort,
   selectLeases,
-  type LeaseSortKey,
+  type LeaseSort,
 } from "../../_lib/lease-sorting";
 import type { LeaseRecord } from "../../_lib/lease-types";
+import { Card } from "../../../../_components/ui/card";
 import { LeaseGrid } from "./lease-grid";
+import { LeasePagination } from "./lease-pagination";
 import { LeaseTable } from "./lease-table";
 import { LeaseToolbar, type LeaseView } from "./lease-toolbar";
 import { ReportStackNotice } from "./report-stack-notice";
@@ -34,39 +40,97 @@ import { SourcesCard } from "./sources-card";
  * the moment a reader switched to Grid.
  */
 export function LeaseListPanel({ leases }: { leases: LeaseRecord[] }) {
-  const [sort, setSort] = useState<LeaseSortKey>(defaultLeaseSort);
+  const [sort, setSort] = useState<LeaseSort>(defaultLeaseSort);
   const [pageSize, setPageSize] = useState<number>(defaultLeasePageSize);
   const [query, setQuery] = useState("");
   const [view, setView] = useState<LeaseView>("list");
+  const [filters, setFilters] = useState<LeaseFilters>(emptyLeaseFilters);
+  /* Open by default: the design shows the row, and a reader who can see the
+     dropdowns knows the list can be narrowed without discovering a button. */
+  const [page, setPage] = useState(1);
 
-  const visible = useMemo(
-    () => selectLeases(leases, { sort, query, pageSize }),
-    [leases, sort, query, pageSize],
+  const matched = useMemo(
+    () => selectLeases(leases, { sort, filters, query }),
+    [leases, sort, filters, query],
   );
 
-  const searching = query.trim().length > 0;
+  /*
+   * THE PAGE IS CLAMPED RATHER THAN CORRECTED IN AN EFFECT.
+   *
+   * Narrowing the list can leave the reader on a page that no longer exists —
+   * page 2 of a filter that now matches three leases. Clamping on render shows
+   * the last real page immediately; fixing it in an effect would paint an empty
+   * table for one frame first, and every change handler below already resets to
+   * page one, so this only catches the cases they cannot.
+   */
+  const pageCount = Math.max(1, Math.ceil(matched.length / pageSize));
+  const safePage = Math.min(page, pageCount);
+  const visible = matched.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  /* Every control that changes WHAT is in the list sends the reader back to the
+     first page: staying on page 3 of a freshly filtered list is how somebody
+     concludes a filter returned nothing. */
+  function reset<T>(apply: (next: T) => void): (next: T) => void {
+    return (next) => {
+      setPage(1);
+      apply(next);
+    };
+  }
 
   return (
     <div>
-      <LeaseToolbar
-        sort={sort}
-        onSortChange={setSort}
-        pageSize={pageSize}
-        onPageSizeChange={setPageSize}
-        query={query}
-        onQueryChange={setQuery}
-        view={view}
-        onViewChange={setView}
-        shown={visible.length}
-        total={leases.length}
-      />
+      {/* ONE CARD FROM THE SEARCH BOX TO THE PAGER. The controls and the rows
+          they govern are one object and share one border — see the note in
+          `lease-toolbar.tsx`. The grid is the exception: cards inside a card
+          reads as a box of boxes, so it breaks out below. */}
+      <Card padded={false} className="overflow-hidden">
+        <LeaseToolbar
+          sort={sort}
+          onSortChange={reset(setSort)}
+          pageSize={pageSize}
+          onPageSizeChange={reset(setPageSize)}
+          query={query}
+          onQueryChange={reset(setQuery)}
+          view={view}
+          onViewChange={setView}
+          filters={filters}
+          onFiltersChange={reset(setFilters)}
+        />
 
-      {view === "grid" ? (
-        <LeaseGrid leases={visible} />
-      ) : (
-        /* The totals row is the portfolio's, not the filtered set's — see the
-           note in `LeaseTable`. */
-        <LeaseTable leases={visible} showTotals={!searching} />
+        {view === "list" && (
+          <>
+            <LeaseTable
+              leases={visible}
+              sort={sort}
+              onSortChange={reset(setSort)}
+            />
+            <LeasePagination
+              page={safePage}
+              pageCount={pageCount}
+              pageSize={pageSize}
+              total={matched.length}
+              onPageChange={setPage}
+            />
+          </>
+        )}
+      </Card>
+
+      {view === "grid" && (
+        <>
+          <div className="mt-3.5">
+            <LeaseGrid leases={visible} />
+          </div>
+          <Card padded={false} className="mt-3.5 overflow-hidden">
+            <LeasePagination
+              divided={false}
+              page={safePage}
+              pageCount={pageCount}
+              pageSize={pageSize}
+              total={matched.length}
+              onPageChange={setPage}
+            />
+          </Card>
+        </>
       )}
 
       <ReportStackNotice />

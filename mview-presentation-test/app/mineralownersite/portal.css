@@ -2147,8 +2147,20 @@
   font-size: 12.5px;
 }
 
+/* THE HEADER BAND KEEPS ITS HEIGHT AT EVERY TIER — only the COLUMNS tighten.
+
+   Professional used to take the heading down to 7px vertical with the rows, and
+   that was the density contract applied to the one row it buys nothing on.
+   Tightening a `td` earns screen: twenty rows at 6px are five rows more of the
+   record. There is exactly one `thead` row, so tightening it earns six pixels
+   and costs the heading band its constant height — switch Detailed to Pro and
+   the headings jump, which reads as the table redrawing itself rather than as
+   the rows getting denser.
+
+   The horizontal 10px stays: it is what keeps each heading over the left edge
+   of its own column, and Professional's `td` is at 10px too. */
 .mv-portal.view-pro th {
-  padding: 7px 10px;
+  padding: 10px;
 }
 
 /* Each KPI tile presents itself as a target: the reference's tiles are
