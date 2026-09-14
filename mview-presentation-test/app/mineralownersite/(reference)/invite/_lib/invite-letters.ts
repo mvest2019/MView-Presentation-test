@@ -182,6 +182,13 @@ export function letterFor(input: LetterInput): Letter {
     code: input.code,
     codeLabel: label,
     inviteUrl: `${input.claimUrl}?code=${input.code}`,
+    /* THE ROLL CARRIES A TOWN, NOT A STREET, so the posting block is one line.
+       An empty array is the honest answer for a row with no address, and the
+       printed sheet says so in words rather than leaving a gap where a reader
+       would write one. */
+    addressLines: input.owner.city
+      ? [`${input.owner.city}${input.owner.state ? `, ${input.owner.state}` : ""}`]
+      : [],
     heading: [
       input.leaseName,
       input.leaseNumber ? `Lease ${input.leaseNumber}` : null,

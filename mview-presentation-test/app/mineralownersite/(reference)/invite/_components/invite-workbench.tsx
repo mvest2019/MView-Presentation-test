@@ -147,6 +147,7 @@ export function InviteWorkbench() {
         />
 
         <EmailStep
+          leaseId={lease.leaseId}
           letters={letters}
           chosen={chosen}
           at={at}

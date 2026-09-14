@@ -87,6 +87,16 @@ export interface Letter {
   codeLabel: string;
   /** The claim address with the code on it, for a text message or a chat. */
   inviteUrl: string;
+  /**
+   * The posting block, over as many lines as the roll gives — empty when it
+   * carries no address at all.
+   *
+   * ONLY THE PRINTED LETTER USES IT. The email form leaves it out on purpose:
+   * pasting a cousin's own address back at them reads as a database talking
+   * rather than a relative. See `renderLetters`, which puts it where a window
+   * envelope expects it.
+   */
+  addressLines: string[];
   /** `MCCABE ETAL GU · Lease 290271 · DE WITT County`. */
   heading: string;
   sender: string;

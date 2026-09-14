@@ -2,6 +2,7 @@
 
 import { Fragment } from "react";
 
+import { portalButtonClass } from "../../../_components/ui/button";
 import { Notice } from "../../../_components/ui/notice";
 import { SegmentedControl } from "../../../_components/ui/segmented-control";
 import {
@@ -70,6 +71,7 @@ const GREETINGS: { value: GreetingStyle; label: string }[] = [
  * paper row beside that person's name.
  */
 export function EmailStep({
+  leaseId,
   letters,
   chosen,
   at,
@@ -84,6 +86,8 @@ export function EmailStep({
   onEditing,
   sendNote,
 }: {
+  /** Which lease the letters are for — the download links carry it. */
+  leaseId: string;
   letters: Letter[];
   chosen: CoOwner[];
   at: number;
@@ -98,6 +102,32 @@ export function EmailStep({
   onEditing: (next: boolean) => void;
   sendNote: string;
 }) {
+  /**
+   * THE LETTERS AS A DOCUMENT, AS A URL THE BROWSER CAN OPEN OR SAVE.
+   *
+   * THE WORDING TRAVELS IN THE QUERY STRING, and it has to: the greeting, the
+   * custom opener and any edit to the body live in React state, and a link
+   * cannot see React state. Carrying them means the sheet that prints is the
+   * letter that was on screen when the reader pressed the button, rather than
+   * the standard one.
+   *
+   * `who` NAMES THE OWNERS, defaulting to every one chosen. A letter is
+   * addressed to one person, so the per-owner rows pass a single number and get
+   * a single sheet named after that person; the batch passes none and gets all
+   * of them in one document.
+   */
+  const lettersUrl = (format: "html" | "csv", download: boolean, who?: string[]) => {
+    const params = new URLSearchParams();
+    params.set("lease", leaseId);
+    params.set("owners", (who ?? letters.map((l) => l.ownerNumber)).join(","));
+    params.set("greeting", greeting);
+    if (greeting === "custom" && custom.trim()) params.set("custom", custom.trim());
+    if (body !== DEFAULT_BODY) params.set("body", body.slice(0, BODY_MAX));
+    params.set("format", format);
+    if (download) params.set("dl", "1");
+    return `/api/invite?${params.toString()}`;
+  };
+
   const index = Math.min(at, Math.max(0, letters.length - 1));
   const one = letters[index] ?? null;
   const cautions = letters.filter((letter) => letter.caution).length;
@@ -307,16 +337,60 @@ export function EmailStep({
                   <span className="font-mono text-[12px] tracking-[0.04em] text-mv-slate tabular-nums">
                     {letter.codeLabel}
                   </span>
-                  <span className="ml-auto">
+                  {/* PRINT OPENS, DOWNLOAD SAVES, COPY PASTES — three ways out
+                      of the same letter, because the reader's next move is not
+                      knowable from here. Print is `target="_blank"`: it is a
+                      document, and replacing the page the reader is working in
+                      would lose their ticks. */}
+                  <span className="ml-auto flex flex-wrap items-center gap-2">
                     <CopyButton
                       text={plainText(letter, { postal: true })}
                       label="Copy for post"
-                      title="The same letter with the lease heading and their name above it, ready to paste into a document and print"
+                      title="The same letter with the lease heading and their name above it, ready to paste into a document"
                     />
+                    <a
+                      className={portalButtonClass({ variant: "ghost", size: "sm" })}
+                      href={lettersUrl("html", false, [letter.ownerNumber])}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Print
+                    </a>
+                    <a
+                      className={portalButtonClass({ variant: "ghost", size: "sm" })}
+                      href={lettersUrl("html", true, [letter.ownerNumber])}
+                    >
+                      Download
+                    </a>
                   </span>
                 </li>
               ))}
             </ul>
+
+            {/* AND THE WHOLE SELECTION AT ONCE. The combined document is right
+                for an actual print run — one trip to the printer, a page break
+                between owners — and the spreadsheet is for a reader who mails
+                their own way and wants the codes in a column. */}
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              {letters.length > 1 ? (
+                <a
+                  className={portalButtonClass({ variant: "ghost", size: "sm" })}
+                  href={lettersUrl("html", false)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Print all {letters.length} in one go
+                </a>
+              ) : null}
+              <a
+                className={portalButtonClass({ variant: "ghost", size: "sm" })}
+                href={lettersUrl("csv", true)}
+              >
+                {letters.length === 1
+                  ? "Code as a spreadsheet"
+                  : "All codes as one spreadsheet"}
+              </a>
+            </div>
           </div>
 
           {cautions ? (
