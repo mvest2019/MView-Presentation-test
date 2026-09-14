@@ -44,7 +44,16 @@ export function EstimateExplainer() {
         rather than merely reported, so it is worth saying out loud; `wells`
         comes from the records, so it can never disagree with the band above.
       */}
-      <div className="mt-2 max-w-[68ch] text-[12.5px] leading-[1.65] text-mv-slate">
+      {/*
+        FULL WIDTH, NOT A MEASURE. This used to cap at 68ch, which is the right
+        rule for a column of running prose and the wrong one here: the panel
+        sits between the value band and the change feed, both of which run the
+        whole content width, and a paragraph half that width left an obvious
+        notch in the page. Four sentences do not need a measure to stay
+        readable, and matching the blocks above and below it does more for the
+        reading than the line length does.
+      */}
+      <div className="mt-2 text-[12.5px] leading-[1.65] text-mv-slate">
         <p>
           The MVestimate projects your share of the next six years from the
           decline model and a forward price deck. The county appraises your

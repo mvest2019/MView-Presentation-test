@@ -4,6 +4,7 @@ import {
   SearchField,
   SelectField,
 } from "../../../../_components/ui/form-controls";
+import { gates } from "../../../../_components/ui/portal-gating";
 import { SegmentedControl } from "../../../../_components/ui/segmented-control";
 import {
   leasePageSizes,
@@ -29,6 +30,11 @@ export type LeaseView = "list" | "grid";
  *
  * THE COUNT IS `aria-live` so a screen-reader user who types into the box is
  * told how many leases are left, which is the only feedback a filter gives.
+ *
+ * "SHOW:" IS NOT ON THE PLAIN-LANGUAGE TIER. Sort and search earn their place
+ * at every density — an owner looking for one lease is doing that whatever
+ * density they read at — but choosing a page length is furniture for a record
+ * of ten, and Essentials is the tier that drops furniture.
  */
 export function LeaseToolbar({
   sort,
@@ -71,6 +77,7 @@ export function LeaseToolbar({
         </SelectField>
 
         <SelectField
+          className={gates("hideInEssentials")}
           label="Show:"
           value={pageSize}
           onChange={(event) => onPageSizeChange(Number(event.target.value))}

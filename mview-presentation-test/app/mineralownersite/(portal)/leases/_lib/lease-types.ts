@@ -65,5 +65,6 @@ export interface LeaseChangeItem {
 export interface LeaseSourceRow {
   source: string;
   answers: string;
+  /** How current that record is — a date, or the cadence it is filed on. */
   asOf: string;
 }

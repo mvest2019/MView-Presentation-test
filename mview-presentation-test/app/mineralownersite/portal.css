@@ -1845,6 +1845,28 @@
   max-width: 920px;
 }
 
+/* THE LEASE MODULE OPTS OUT OF BOTH NARROWINGS, and the rule above says why it
+   may: Essentials is capped "so a short page does not sprawl across a wide
+   monitor". My Leases is not a short page. It is an eleven-column table, four
+   full-width charts and a twelve-page report, and at 920px the table scrolls
+   sideways inside its own box while every paragraph beside it wraps early —
+   which reads as a layout accident rather than as a reading width.
+
+   IT STAYS A CAP. Removing the max-width entirely was tried and reverted: the
+   module then set to whatever the window was, and on a wide monitor the
+   monthly report's prose ran line lengths nobody wants to read. 1340px is the
+   Professional width the portal already defines, so the lease module reads at
+   the widest measure the design has rather than at one invented for it.
+
+   `:has()` rather than a class on `.app-body` itself, because the shell is
+   route-agnostic by design and nothing in it should have to know which module
+   is rendering. The page root carries the marker; the shell stays ignorant.
+   Placed after the two tier rules deliberately: all three have the same
+   specificity, so source order is what decides. */
+.mv-portal .app-body:has(> .mv-wide) {
+  max-width: 1340px;
+}
+
 /* Essentials is single-column: the two-column dashboard body is a Detailed and
    Professional layout.
 

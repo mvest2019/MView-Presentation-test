@@ -18,8 +18,13 @@ import { LeaseCountyValueCell, LeaseEstimateCell } from "./lease-value-cell";
  * THE ROW IS NOT A LINK AND THE NAME IS. A `<tr onclick>` gives a mouse user a
  * target and gives a keyboard user nothing — no focus, no Enter, nothing in the
  * tab order and no destination in the status bar. So the identity cell holds a
- * real `<a>`, the chevron at the far end holds a second one for a reader who has
- * scrolled the table sideways past the name, and both go to the same report.
+ * real `<a>`, which is the whole affordance: it has focus, it announces where it
+ * goes, and middle-click opens it in a tab.
+ *
+ * THERE IS NO CHEVRON COLUMN. It used to carry a second link to the same report
+ * for a reader who had scrolled past the name — removed on request. The frozen
+ * first column already keeps the name on screen at every scroll position, which
+ * was the case that second link existed for.
  *
  * THE IDENTITY CELL WRAPS ON PURPOSE. Name, lease number and status chip sit on
  * one flex line; for the two unnumbered units the name is short enough that the
@@ -82,16 +87,6 @@ export function LeaseTableRow({ lease }: { lease: LeaseRecord }) {
         <span className="mt-0.5 block text-right text-[10.5px] text-mv-muted tabular-nums">
           {formatCount(lease.lastPosted.gasMcf)} MCF
         </span>
-      </TableCell>
-
-      <TableCell className="text-right">
-        <Link
-          href={href}
-          aria-label={`Open the report for ${formatLeaseTitle(lease.name, lease.number)}`}
-          className="text-[15px] text-mv-muted no-underline hover:text-mv-green-deep"
-        >
-          <span aria-hidden="true">›</span>
-        </Link>
       </TableCell>
     </TableRow>
   );

@@ -34,6 +34,11 @@ import { LeaseTableRow } from "./lease-table-row";
  * THE ESTIMATE CHIP SITS IN THE TOTALS ROW because that is the one place both
  * money columns are added up, and a total is exactly where a projection is most
  * likely to be mistaken for a bank balance.
+ *
+ * EVERY TIER SHOWS EVERY COLUMN. Four of them were briefly gated by density and
+ * that is reverted: the table is the page, and a reader who changes how densely
+ * they read should not find columns missing from it. Density still governs what
+ * sits AROUND the table — see the page's own note.
  */
 export function LeaseTable({
   leases,
@@ -53,7 +58,7 @@ export function LeaseTable({
 
   return (
     <TableScroll>
-      <Table minWidth={1280} freezeFirstColumn>
+      <Table minWidth={1240} freezeFirstColumn>
         <TableHead>
           <TableRow className="bg-mv-portal-wash">
             {/* THE IDENTITY COLUMN IS GIVEN A FLOOR. Without one the browser
@@ -74,13 +79,6 @@ export function LeaseTable({
             <TableHeaderCell numeric>Gas (MCF)</TableHeaderCell>
             <TableHeaderCell numeric>Oil (BBL)</TableHeaderCell>
             <TableHeaderCell>Last posted</TableHeaderCell>
-            <TableHeaderCell>
-              {/* Visually hidden rather than empty: the column holds a link and
-                  a bare `›` announces as nothing. Safe inside `TableScroll` —
-                  see the note there about `sr-only` being absolutely
-                  positioned. */}
-              <span className="sr-only">Open the lease report</span>
-            </TableHeaderCell>
           </TableRow>
         </TableHead>
 
@@ -111,7 +109,6 @@ export function LeaseTable({
               <TableCell numeric>
                 {formatCount(portfolioSummary.oilBbl)}
               </TableCell>
-              <TableCell />
               <TableCell />
             </TableRow>
           )}

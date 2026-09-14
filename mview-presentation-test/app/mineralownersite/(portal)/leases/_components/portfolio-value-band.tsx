@@ -23,12 +23,18 @@ import { portfolioSummary } from "../_lib/lease-totals";
  * is not optional on this band for the reason `KpiTile` gives: an unqualified
  * dollar figure on a minerals page gets read as an amount somebody will be paid.
  */
-export function PortfolioValueBand() {
+export function PortfolioValueBand({
+  /** The Ultra block renders its own copy directly under the hero — see
+      `ultra-summary.tsx` for why there are two. */
+  className = "mb-3",
+}: {
+  className?: string;
+} = {}) {
   const summary = portfolioSummary;
 
   return (
     <ValueBand
-      className="mb-3"
+      className={className}
       stats={[
         {
           label: "Total · MVestimate",

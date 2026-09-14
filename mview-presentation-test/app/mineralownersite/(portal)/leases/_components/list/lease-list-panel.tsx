@@ -13,6 +13,7 @@ import { LeaseGrid } from "./lease-grid";
 import { LeaseTable } from "./lease-table";
 import { LeaseToolbar, type LeaseView } from "./lease-toolbar";
 import { ReportStackNotice } from "./report-stack-notice";
+import { SourcesCard } from "./sources-card";
 
 /**
  * THE MY LEASES TAB — the toolbar, the list in whichever layout is chosen, and
@@ -27,9 +28,10 @@ import { ReportStackNotice } from "./report-stack-notice";
  * every render, and this component re-renders on every keystroke in the search
  * box. Recomputing it when the layout toggles would be work for nothing.
  *
- * WHY THE FOOTNOTE SITS OUTSIDE BOTH LAYOUTS. It describes what opening a lease
- * gets you, which is true of a card as much as a row — inside `LeaseTable` it
- * would vanish the moment a reader switched to Grid.
+ * WHY THE FOOTNOTE AND THE PROVENANCE CARD SIT OUTSIDE BOTH LAYOUTS. They
+ * describe what opening a lease gets you and where each figure came from, which
+ * is true of a card as much as of a row — inside `LeaseTable` they would vanish
+ * the moment a reader switched to Grid.
  */
 export function LeaseListPanel({ leases }: { leases: LeaseRecord[] }) {
   const [sort, setSort] = useState<LeaseSortKey>(defaultLeaseSort);
@@ -68,6 +70,10 @@ export function LeaseListPanel({ leases }: { leases: LeaseRecord[] }) {
       )}
 
       <ReportStackNotice />
+
+      {/* The table's provenance, attached to the table rather than to the tab
+          strip — see the note in `sources-card.tsx`. */}
+      <SourcesCard />
     </div>
   );
 }
