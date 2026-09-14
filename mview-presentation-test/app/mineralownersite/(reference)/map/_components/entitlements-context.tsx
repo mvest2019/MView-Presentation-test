@@ -10,50 +10,35 @@
  * fifty-odd components that read it, so no prop is threaded through four levels
  * of map chrome.
  *
- * ── TWO TIERS, AND WHY ──
+ * ── TWO TIERS, AND WHICH ONE WINS TODAY ──
  *
- *   ACCOUNT TIER   what the reader has actually paid for. Resolved server-side
- *                  from the session (`entitlementsForUser`), so it is the only
- *                  one that may ever grant anything.
+ *   ACCOUNT TIER   resolved server-side from the session
+ *                  (`entitlementsForUser`). Intended to be what the reader has
+ *                  paid for; today it is an environment default, because no
+ *                  billing table is wired behind it.
  *
- *   DEMO TIER      which tier the portal chrome's density picker is currently
- *                  showing. A preference, set in the browser, worth exactly
- *                  nothing as a claim.
+ *   DEMO TIER      which tier the portal chrome's density picker is showing.
  *
- * THE EFFECTIVE TIER IS THE LOWER OF THE TWO. That is §12.1's "fail down, never
- * up" applied to the one control that could otherwise break it: the picker can
- * only ever show LESS than the account holds, so an Ultra account that selects
- * Pro sees the Ultra map. Set `MAP_TIER_DEFAULT=pro` (server-side, dev only) to
- * raise the account ceiling and demo the whole ladder.
- *
- * Keeping the picker meaningful matters — it is how the four tiers are reviewed
- * and demonstrated in this build — but it is a VIEW of an entitlement, never a
- * source of one.
+ * THE PICKER DECIDES WHAT IS DRAWN, which makes the map behave like every other
+ * portal page — the Dashboard, Alerts, My Leases and the Weekly Report all take
+ * their density straight from the picker. The full reasoning, and the one line
+ * to change when billing lands, is in `resolveMapEntitlements` below.
  */
 
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 
-import {
-  TIERS,
-  TIER_ORDER,
-  type Entitlements,
-  type Tier,
-} from "@/lib/entitlements";
+import { TIERS, type Entitlements, type Tier } from "@/lib/entitlements";
 
 export interface MapEntitlements {
-  /** What to draw. The lower of the account tier and the demo tier. */
+  /** What to draw — the tier the chrome's picker is showing. */
   ent: Entitlements;
-  /** What the account really holds — what a lock chip promises against. */
+  /** What the server resolved for the account. Not a ceiling today; see below. */
   accountTier: Tier;
-  /** True when the picker is showing less than the account holds. */
+  /** True when the picker is showing something other than the account tier. */
   demoting: boolean;
 }
 
 const Ctx = createContext<MapEntitlements | null>(null);
-
-function lower(a: Tier, b: Tier): Tier {
-  return TIER_ORDER.indexOf(a) <= TIER_ORDER.indexOf(b) ? a : b;
-}
 
 /**
  * THE PORTAL'S DENSITY KEY IS NOT THE SPEC'S TIER KEY, in one place only.
@@ -88,7 +73,49 @@ export function resolveMapEntitlements(
   account: Entitlements,
   demoTier: Tier | null,
 ): MapEntitlements {
-  const effective = demoTier ? lower(account.tier, demoTier) : account.tier;
+  /*
+   * THE PICKER DECIDES WHAT IS DRAWN — the same rule every other portal page
+   * follows.
+   *
+   * ── WHAT THIS REPLACED, AND WHY ──
+   *
+   * It used to be `lower(account.tier, demoTier)`: the server resolved what the
+   * account had paid for and the picker could only ever show LESS than that.
+   * Correct for a product with real billing, and wrong for this build, for one
+   * reason — there IS no billing. `subscriptionForUser` returns `null` for
+   * everyone, so the account tier was never a fact about a customer; it was a
+   * fallback constant, and on the production deployment that constant is
+   * `ultra`. Clamping to it meant the four modes collapsed into one and the map
+   * showed two facets whatever the reader chose, while the Dashboard, Alerts,
+   * My Leases and the Weekly Report all changed as expected — because those
+   * read the picker out of `localStorage` and nothing else.
+   *
+   * One product, one behaviour. The map now works like its neighbours: the mode
+   * you pick is the mode you see, everywhere, local and deployed alike.
+   *
+   * ── WHAT TO PUT BACK, AND WHEN ──
+   *
+   * The clamp, on the day `subscriptionForUser` reads a real subscription
+   * table. At that point `account.tier` becomes a FACT about a paying customer
+   * rather than an environment default, and a picker that can raise it is
+   * giving the product away. The line to restore is exactly:
+   *
+   *     const order = TIER_ORDER;
+   *     const effective =
+   *       demoTier && order.indexOf(demoTier) < order.indexOf(account.tier)
+   *         ? demoTier
+   *         : account.tier;
+   *
+   * — the lower of the two, so the picker can show less than the account holds
+   * and never more.
+   *
+   * Nothing is lost in the meantime: spec §8 enforcement does not exist either,
+   * so the caps here have always been rendering hints rather than a gate. The
+   * server seam stays wired and keeps resolving a tier, so the day billing
+   * lands nothing has to be re-plumbed — only this expression changed back.
+   */
+  const effective = demoTier ?? account.tier;
+
   return {
     ent: TIERS[effective],
     accountTier: account.tier,
@@ -101,7 +128,8 @@ export function MapEntitlementsProvider({
   demoTier,
   children,
 }: {
-  /** Server-resolved. The ceiling. */
+  /** Server-resolved. The fallback when there is no picker — see
+      `resolveMapEntitlements` for why it is not a ceiling today. */
   account: Entitlements;
   /** The portal picker's current choice, or null outside the portal. */
   demoTier: Tier | null;
@@ -126,7 +154,7 @@ export function useEntitlements(): Entitlements {
   return useContext(Ctx)?.ent ?? TIERS.ultra;
 }
 
-/** The account tier and whether the picker is currently below it. */
+/** The account tier, and whether the picker is showing something else. */
 export function useEntitlementContext(): MapEntitlements {
   return (
     useContext(Ctx) ?? {
