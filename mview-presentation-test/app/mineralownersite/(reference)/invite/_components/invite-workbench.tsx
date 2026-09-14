@@ -125,7 +125,7 @@ export function InviteWorkbench() {
 
   return (
     <div className="grid grid-cols-1 items-start gap-[18px] min-[1100px]:grid-cols-[minmax(0,1fr)_300px]">
-      <div className="flex flex-col gap-[18px]">
+      <div className="flex flex-col items-stretch gap-[18px]">
         <LeaseStep leases={inviteLeases} lease={lease} onChange={chooseLease} />
 
         <PeopleStep

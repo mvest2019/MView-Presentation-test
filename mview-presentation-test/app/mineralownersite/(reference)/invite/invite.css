@@ -1,0 +1,36 @@
+/*
+ * INVITE CO-OWNERS — one rule, and it widens the page.
+ *
+ * WHAT IT OVERRIDES. `dashboard-reference.css` caps the shell's body:
+ *
+ *     .mv-ref-app .app-body { padding:26px; max-width:1180px; margin:0 auto }
+ *     body .mv-ref-app.view-pro .app-body { max-width:1340px }
+ *
+ * On a wide monitor that centres the content and leaves a band down each side,
+ * which is the whitespace this page was asked to reclaim.
+ *
+ * WHY IT IS SCOPED TO THIS ROUTE AND NOT RAISED IN THAT SHEET. The cap belongs
+ * to every page in the group — the Dashboard, Alerts, Activities, the Weekly
+ * Report — and on those it is doing real work: they are reading pages, and a
+ * 1600px measure of running prose is worse than a 1340px one, not better. This
+ * page is not a reading page. It is a lease picker, a ninety-row owner table
+ * and a letter preview with a rail beside them, and every one of those is
+ * better for the room.
+ *
+ * HOW IT REACHES `.app-body`, WHICH THE PAGE DOES NOT RENDER. `page.tsx` passes
+ * `shellClass="mv-invite-wide"` to `Portal`, which adds it to the shell's root
+ * element — the same mechanism `soon.css` uses, and for the same reason: the
+ * body is an ANCESTOR of `children`, so a page cannot style it from the inside.
+ *
+ * WHY IT WINS. This sheet is imported by the page and is therefore UNLAYERED,
+ * while `dashboard-reference.css` sits in `@layer mv-reference`. Unlayered
+ * styles beat layered ones outright, so no specificity contest is needed — and
+ * in particular this does not have to out-count the `body …view-pro` selector
+ * above, which it would otherwise tie with.
+ *
+ * TO CHANGE THE WIDTH, change the one number below. `none` removes the cap
+ * entirely and lets the page run to the edge of the window.
+ */
+.mv-ref-app.mv-invite-wide .app-body {
+  max-width: 1600px;
+}

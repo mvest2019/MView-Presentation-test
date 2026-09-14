@@ -32,6 +32,8 @@ import type { CreditPlan, FlowStep } from "../_lib/invite-types";
  * those two zeroes are the whole reason the page can be honest about the third
  * rung. Tidying them away would leave the number without its argument.
  */
+/* 70px clears `.app-top`, the reference shell's single 58px bar. It was 112 —
+   the portal shell's two stacked bars, from before this page changed shells. */
 export function InviteRail({
   steps,
   at,
@@ -47,10 +49,10 @@ export function InviteRail({
   const payoff = steps[steps.length - 1];
 
   return (
-    <aside className="flex flex-col gap-3 min-[1100px]:sticky min-[1100px]:top-[112px]">
+    <aside className="flex flex-col items-stretch gap-3 min-[1100px]:sticky min-[1100px]:top-[70px]">
       <Card className="p-4">
         <RailHeading>How to invite</RailHeading>
-        <ol className="m-0 mt-[10px] flex list-none flex-col gap-[10px] p-0">
+        <ol className="m-0 mt-[10px] flex list-none flex-col items-stretch gap-[10px] p-0">
           {mine.map((step) => (
             <RailStep
               key={step.n}
@@ -105,7 +107,7 @@ export function InviteRail({
           </p>
         ) : null}
 
-        <div className="mt-3 flex flex-col gap-1">
+        <div className="mt-3 flex flex-col items-stretch gap-1">
           {(
             [
               ["You send it", "nothing", false],

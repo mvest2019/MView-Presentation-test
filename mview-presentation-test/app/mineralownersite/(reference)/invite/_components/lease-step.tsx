@@ -2,7 +2,11 @@
 
 import { Badge } from "../../../_components/ui/badge";
 import { SelectField } from "../../../_components/ui/form-controls";
-import { formatCompactDollars } from "../../leases/_lib/lease-format";
+/* THE ONLY LINE IN THIS COMPONENT THE MOVE TOUCHED. My Leases is in the
+   other route group now, and `(portal)`/`(reference)` are real directories
+   even though the router treats them as invisible — so this reaches across
+   with the `@/` alias rather than a relative climb that has to count them. */
+import { formatCompactDollars } from "@/app/mineralownersite/(portal)/leases/_lib/lease-format";
 import { peopleOn } from "../_lib/invite-records";
 import type { InviteLease } from "../_lib/invite-types";
 import { StepCard } from "./step-card";

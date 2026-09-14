@@ -297,7 +297,7 @@ export function EmailStep({
             <span className="text-[11px] font-bold tracking-[0.05em] text-mv-muted uppercase">
               Or send it on paper — one letter per person
             </span>
-            <ul className="m-0 mt-2 flex list-none flex-col gap-1.5 p-0">
+            <ul className="m-0 mt-2 flex list-none flex-col items-stretch gap-1.5 p-0">
               {letters.map((letter) => (
                 <li
                   key={letter.ownerNumber}

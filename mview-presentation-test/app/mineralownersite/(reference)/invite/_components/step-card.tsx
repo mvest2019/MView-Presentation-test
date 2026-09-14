@@ -24,6 +24,13 @@ import { Card, CardHeader } from "../../../_components/ui/card";
  * unrelated decisions that get conflated whenever a heading is picked by how
  * big it looks.
  */
+/* `items-*` IS LOAD-BEARING IN THIS ROUTE GROUP, not decoration.
+   `dashboard-reference.css` defines `.mv-ref-app .flex { align-items:center }`,
+   which collides with Tailwind's own `flex`. `globals.css` orders the
+   `mv-reference` layer before `utilities`, so a utility WINS — but only
+   where there is one, and there is none for a property you never set. So
+   an unstated alignment silently becomes `center`: it centred the step
+   discs against whole cards and shrink-wrapped the card columns. */
 export function StepCard({
   n,
   title,
@@ -40,7 +47,7 @@ export function StepCard({
 }) {
   return (
     <Card id={id} className="scroll-mt-28">
-      <div className="flex gap-[14px]">
+      <div className="flex items-start gap-[14px]">
         <span
           aria-hidden="true"
           className="mt-[2px] flex h-7 w-7 flex-none items-center justify-center rounded-full bg-mv-mint text-[13px] font-bold text-mv-green-ink"
