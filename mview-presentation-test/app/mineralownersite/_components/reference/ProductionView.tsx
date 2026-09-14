@@ -50,6 +50,7 @@ import type { ForecastLease, ForecastMonth, ForecastStat } from '../../_lib/refe
 import { MCF, BBL, n0, n1, nShort, usd, usdShort, pctS, pct1, plural } from '../../_lib/reference/fmt';
 import ForecastChart, { Brush, MEASURE, type Measure, type Products } from './ForecastChart';
 import type { ViewProps } from './Dashboard';
+import { Pager, usePaged } from './bits';
 
 /* --------------------------------------------------------------- the window
    Every preset is expressed against the SEAM rather than against an index,
@@ -169,6 +170,20 @@ export default function ProductionView(
     () => windowFor(simple ? 'last24' : 'all', n, f.seam),
   );
   const [pinned, setPinned] = useState<number | null>(null);
+  /* TEN ROWS, THE SAME AS THE DASHBOARD'S TWO LONG LISTS.
+     `usePaged` and `Pager` are the pair that page "Your operators" and "Every
+     lease, every field" — same hook, same control, same ten. This table had no
+     pager at all, and on a large account that is what the page mostly is:
+     measured on a 108-lease record it ran 8,596px of the document's 15,682, so
+     more than half the page was one table the reader has to scroll past to
+     reach the scorecard and the deduction panel below it. The commit that
+     paged the Dashboard's two put the reason plainly — "ten rows keeps every
+     card the same height whatever the account holds" — and it is the same
+     reader doing the same job here.
+
+     THE LEASE `<select>` ABOVE IS NOT PAGED, deliberately: it is how a reader
+     reaches a lease that is not on this page, so it has to keep all of them. */
+  const paged = usePaged(f.leases);
   const chartRef = useRef<HTMLDivElement | null>(null);
 
   /** the series the chart draws: the portfolio, or one lease */
@@ -456,7 +471,9 @@ export default function ProductionView(
                   />
                   <path
                     d="M 13 65 A 52 52 0 0 1 117 65" fill="none"
-                    stroke={k === 'gas' ? 'var(--green-deep)' : '#b8892f'}
+                    /* golden gas, green oil — the same pair the key below,
+                       the year columns and the chart all use */
+                    stroke={k === 'gas' ? '#b8892f' : 'var(--green-deep)'}
                     strokeWidth="10" strokeLinecap="round"
                     strokeDasharray={`${done} ${LEN}`}
                   />
@@ -761,7 +778,7 @@ export default function ProductionView(
               </tr>
             </thead>
             <tbody>
-              {f.leases.map((l) => (
+              {paged.rows.map((l) => (
                 <tr
                   key={l.lease_id}
                   className={leaseId === l.lease_id ? 'on' : undefined}
@@ -873,6 +890,11 @@ export default function ProductionView(
             </tbody>
           </table>
         </div>
+        <Pager
+          page={paged.page} pages={paged.pages} setPage={paged.setPage}
+          start={paged.start} shown={paged.rows.length} total={f.leases.length}
+          label="Lease table pages"
+        />
         <p className="tiny muted" style={{ padding: '8px 2px 2px' }}>
           <strong>Click any row</strong> to put that lease into the chart and the scorecard below.
           Posted volumes are the gross lease month as filed with the state; the dollar columns are

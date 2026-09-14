@@ -59,7 +59,30 @@ export default function DrawerPanel(
     const focusables = () => Array.from(
       el?.querySelectorAll<HTMLElement>('button, [href], input, [tabindex]:not([tabindex="-1"])') ?? [],
     ).filter((n) => !n.hasAttribute('disabled'));
-    focusables()[0]?.focus();
+    /* DEFERRED BY ONE TASK, AND IT HAS TO BE.
+     *
+     * `focus()` is a no-op on an element in a `display: none` subtree, and this
+     * panel is hidden exactly that way — `style={open ? undefined : {display:
+     * 'none'}}` below. Called straight out of this effect the panel was still
+     * hidden, so the focus silently failed and nothing retried it. Measured by
+     * sampling `document.activeElement` across the open: the panel goes
+     * `none` -> `flex` at the microtask boundary and focus stayed on the
+     * TRIGGER at every sample from sync through t+366ms — it never landed and
+     * was never stolen back.
+     *
+     * WHAT THAT COST, and it is not only a nicety: this dialog declares
+     * `aria-modal="true"` and traps Tab below, but the trap only engages once
+     * `document.activeElement` is already inside the panel. With focus left on
+     * the card behind it, Tab walked the page UNDER the open drawer — measured,
+     * the next stop was the next insight card — and a screen reader was never
+     * moved to the dialog it had just opened.
+     *
+     * A TIMEOUT RATHER THAN `requestAnimationFrame`: rAF does not fire while
+     * the tab is in the background, which would leave the focus permanently
+     * unmoved for anyone who opens a drawer and switches away. The handle is
+     * cleared below so a drawer closed within the same tick cannot pull focus
+     * after it has gone. */
+    const focusTimer = window.setTimeout(() => { focusables()[0]?.focus(); }, 0);
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Tab') return;
@@ -72,6 +95,7 @@ export default function DrawerPanel(
     };
     el?.addEventListener('keydown', onKey);
     return () => {
+      window.clearTimeout(focusTimer);
       el?.removeEventListener('keydown', onKey);
       returnTo.current?.focus?.();
     };
