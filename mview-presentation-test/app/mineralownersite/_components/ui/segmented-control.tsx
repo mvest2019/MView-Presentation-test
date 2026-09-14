@@ -26,12 +26,15 @@ export interface SegmentedOption<T extends string> {
 /**
  * The selected segment's fill. `plain` is the original white card; `green` is
  * the brand fill My Leases uses, so its view switch matches the selected tab
- * directly above it. A prop rather than a second component — the geometry,
- * the roles and the keyboard behaviour are identical and only the fill differs.
+ * directly above it; `dark` is the charts' own, which `pill-strip.tsx` explains
+ * — a control that redraws one card rather than changing what a whole panel is
+ * about. A prop rather than a second component: the geometry, the roles and the
+ * keyboard behaviour are identical and only the fill differs.
  */
 const SELECTED_TONES = {
   plain: "bg-mv-card text-mv-ink shadow-mv",
   green: "bg-mv-green-deep text-white shadow-mv",
+  dark: "bg-mv-ink text-white shadow-mv",
 } as const;
 
 export function SegmentedControl<T extends string>({

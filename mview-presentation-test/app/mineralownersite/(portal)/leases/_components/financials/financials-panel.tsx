@@ -15,6 +15,7 @@ import { CHART_MODES, CHART_MODE_COPY, chartTitle, type ChartMode } from "./char
 import { ChartBrush } from "./chart-brush";
 import { FinancialsTiles } from "./financials-tiles";
 import { MonthTable } from "./month-table";
+import { SegmentedControl } from "../../../../_components/ui/segmented-control";
 import { PillStrip } from "./pill-strip";
 import { RangePresets, windowAround } from "./range-presets";
 import { SeriesChart, type ChartSeries } from "./series-chart";
@@ -103,7 +104,7 @@ export function FinancialsPanel() {
 
       <Card padded={false} className="px-[18px] py-4">
         <div className="mb-4 flex flex-wrap items-center gap-3">
-          <PillStrip
+          <SegmentedControl
             label="What to plot"
             tone="dark"
             value={mode}

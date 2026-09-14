@@ -259,6 +259,16 @@
      on the portal red. Change oil here; the gold notes keep `mv-sand`. */
   --color-mv-oil: #c0392b;
 
+  /* CASH IS THE THIRD SERIES AND IT HAD NO COLOUR OF ITS OWN — it was drawn in
+     `mv-green-deep`, which is gas. On a chart with a Gas / Oil / Cash switch
+     that means two of the three modes redraw the same green line against a
+     different axis, and the only thing saying which one you are looking at is
+     the axis label. Blue is the design's, and it is a token rather than
+     `mv-blue` for the reason `mv-oil` is not `mv-sand`: `mv-blue` is the chip
+     tone for a note about the data itself, and a series colour and a status
+     colour that share a variable get changed into each other. */
+  --color-mv-cash: #4a63d8;
+
   /* Status */
   --color-mv-amber: #b45309;
   --color-mv-down: #c0392b;

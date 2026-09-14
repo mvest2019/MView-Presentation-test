@@ -42,13 +42,13 @@ export interface LeaseChartSeries {
 const STROKE = {
   gas: "stroke-mv-green-deep",
   oil: "stroke-mv-oil",
-  cash: "stroke-mv-green-deep",
+  cash: "stroke-mv-cash",
 } as const;
 
 const FILL = {
   gas: "fill-mv-green-deep",
   oil: "fill-mv-oil",
-  cash: "fill-mv-green-deep",
+  cash: "fill-mv-cash",
 } as const;
 
 export function LeaseChart({

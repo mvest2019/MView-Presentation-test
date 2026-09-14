@@ -101,9 +101,29 @@ export function TableScroll({
 export function Table({
   minWidth,
   freezeFirstColumn = false,
+  roomy = false,
   children,
 }: {
   minWidth: number;
+  /**
+   * A TALLER BODY ROW, for a short table of one-line cells.
+   *
+   * The portal's row is built for the lease table, whose cells carry two and
+   * three lines each and are tall whatever the padding says. A table of single
+   * words — the filings list is two rows of six — inherits that padding and
+   * reads as cramped, because 11px above and below one line of type is a
+   * quarter of what it is above and below three.
+   *
+   * IT NEEDS THE `!`, AND THAT IS NOT BELT AND BRACES. `portal.css` sets
+   * `.mv-portal td { padding: 11px 14px }` and that file is unlayered, so it
+   * beats every Tailwind utility whatever the specificity — the `py-[10px]` in
+   * `CELL_BASE` has never actually applied. Only the important modifier gets
+   * past it. See the header-band note below, which is the same story.
+   *
+   * `tbody` ONLY: the heading band's height is set at every density tier and is
+   * not this table's to change.
+   */
+  roomy?: boolean;
   /**
    * PIN THE FIRST COLUMN while the rest scrolls sideways.
    *
@@ -157,7 +177,9 @@ export function Table({
        * right because their colour sits on a `<button>` inside the cell, which
        * that rule cannot reach. Every other portal table stayed grey.
        */
-      className={`w-full border-collapse text-[13px] [&_thead_th]:bg-mv-portal-wash! [&_thead_th]:text-mv-ink! ${frozen}`.trim()}
+      className={`w-full border-collapse text-[13px] [&_thead_th]:bg-mv-portal-wash! [&_thead_th]:text-mv-ink! ${
+        roomy ? "[&_tbody_td]:py-[15px]!" : ""
+      } ${frozen}`.trim()}
       style={{ minWidth }}
     >
       {children}

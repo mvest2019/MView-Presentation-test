@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { Card } from "../../../../_components/ui/card";
 import { KpiTile } from "../../../../_components/ui/kpi-tile";
 import { ChartBrush } from "../../_components/financials/chart-brush";
+import { SegmentedControl } from "../../../../_components/ui/segmented-control";
 import { PillStrip } from "../../_components/financials/pill-strip";
 import { CHART_MODES, CHART_MODE_COPY, type ChartMode } from "../../_components/financials/chart-modes";
 import { financialsSeries } from "../../_lib/financials-series";
@@ -143,7 +144,7 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
 
       <Card padded={false} className="mt-4 px-[18px] py-4">
         <div className="mb-4 flex flex-wrap items-center gap-3">
-          <PillStrip
+          <SegmentedControl
             label="What to plot"
             tone="dark"
             value={mode}

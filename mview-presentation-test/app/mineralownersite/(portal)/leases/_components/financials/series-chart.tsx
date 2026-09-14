@@ -1,7 +1,6 @@
 import {
   AXIS_LABEL_Y,
   CHART,
-  CHIP_Y,
   PLOT,
   axisMax,
   axisTicks,
@@ -52,6 +51,13 @@ import { shortMonthLabel } from "../../_lib/months";
  * a viewBox number: divide by the scale before judging it against the rest of
  * the page's type.
  *
+ * THE AXIS INK IS `mv-muted`, NOT `mv-axis`. `mv-axis` (#98a2b3) is a pale
+ * blue-grey built for a GRIDLINE, and the labels inherited it — which put the
+ * only words on the chart at the weight of the rules behind them. #6b7280 is
+ * the portal's own secondary ink and reads as type rather than as furniture.
+ * The right-hand axis is the exception and keeps the oil colour: those numbers
+ * belong to a series, and the colour is what says which.
+ *
  * ── IT IS NOT A `<canvas>` AND IT IS NOT AN IMAGE ──
  *
  * `role="img"` with a written label gives a screen reader the shape in one
@@ -59,10 +65,21 @@ import { shortMonthLabel } from "../../_lib/months";
  * announces as nothing is the same as a chart that is not there.
  */
 
+/**
+ * THIS CHART ENDS UNDER ITS MONTH LABELS.
+ *
+ * `CHART.height` reserves a band below them for the posted/forecast chips, and
+ * those moved to the top of the plot — so the shared height would leave forty
+ * units of empty box under the months here. Derived from `AXIS_LABEL_Y` rather
+ * than typed as a number, so moving the months moves the floor with them. The
+ * report's own charts still use `CHART.height`: they still draw chips.
+ */
+const PLOT_HEIGHT = AXIS_LABEL_Y + 14;
+
 const STROKE: Record<string, string> = {
   gas: "stroke-mv-green-deep",
   oil: "stroke-mv-oil",
-  cash: "stroke-mv-green-deep",
+  cash: "stroke-mv-cash",
 };
 
 export interface ChartSeries {
@@ -103,11 +120,30 @@ export function SeriesChart({
 
   return (
     <svg
-      viewBox={`0 0 ${CHART.width} ${CHART.height}`}
+      viewBox={`0 0 ${CHART.width} ${PLOT_HEIGHT}`}
       className="w-full"
       role="img"
       aria-label={summary}
     >
+      {/* ── THE MODELLED HALF, WASHED ──
+
+             The dashed lines and the FORECAST chip already say where the
+             filings stop, but both are marks a reader has to notice and read.
+             The wash says it without being read: everything standing on tinted
+             ground is a model. It is drawn FIRST so every gridline, rule and
+             series sits on top of it rather than being interrupted by it, and
+             it matches the lease report's chart, which has had one all along.
+        */}
+      {split && (
+        <rect
+          x={splitX}
+          y={PLOT.top}
+          width={PLOT.right - splitX}
+          height={PLOT.bottom - PLOT.top}
+          className="fill-mv-mint/40"
+        />
+      )}
+
       {/* ── the grid, and the left axis it is labelled by ── */}
       {axisTicks(leftMax).map((value) => {
         const y = yAt(value, leftMax);
@@ -125,7 +161,7 @@ export function SeriesChart({
               x={PLOT.left - 10}
               y={y + 4}
               textAnchor="end"
-              className={`fill-mv-axis text-[11px] font-semibold ${
+              className={`fill-mv-muted text-[10px] font-semibold ${
                 left.tone === "oil" ? "fill-mv-oil" : ""
               }`}
             >
@@ -145,7 +181,7 @@ export function SeriesChart({
             x={PLOT.right + 10}
             y={yAt(axisTicks(leftMax)[step], leftMax) + 4}
             textAnchor="start"
-            className="fill-mv-oil text-[11px] font-semibold"
+            className="fill-mv-oil text-[10px] font-semibold"
           >
             {formatTick(value, right.money)}
           </text>
@@ -208,60 +244,45 @@ export function SeriesChart({
           x={xAt(index, from, to)}
           y={AXIS_LABEL_Y}
           textAnchor="middle"
-          className="fill-mv-axis text-[11px]"
+          className="fill-mv-muted text-[10px]"
         >
           {shortMonthLabel(firstMonth + index)}
         </text>
       ))}
 
-      {/* ── and what each half of them is ── */}
+      {/* ── and what each half of them is ──
+
+             AT THE TOP, ON THE DIVIDER, rather than in two pills under the
+             axis. The label belongs to the line it names: beside it, a reader
+             takes in "this side filed, that side modelled" in the same glance
+             that finds the divider. Under the axis the pills sat below the
+             months, a row away from the thing they described, and had to be
+             matched back up to it.
+
+             The arrows are the half that makes it work — "← POSTED" and
+             "FORECAST →" say which side each word owns. Without them two words
+             either side of a line are just two words near a line.
+        */}
       {split && (
         <>
-          <Chip x={splitX - 46} y={CHIP_Y} tone="slate" text="POSTED" />
-          <Chip x={splitX + 46} y={CHIP_Y} tone="mint" text="FORECAST" />
+          <text
+            x={splitX - 12}
+            y={PLOT.top + 2}
+            textAnchor="end"
+            className="fill-mv-muted text-[10px] font-bold tracking-[0.08em] uppercase"
+          >
+            ← Posted
+          </text>
+          <text
+            x={splitX + 12}
+            y={PLOT.top + 2}
+            textAnchor="start"
+            className="fill-mv-green-deep text-[10px] font-bold tracking-[0.08em] uppercase"
+          >
+            Forecast →
+          </text>
         </>
       )}
     </svg>
-  );
-}
-
-/**
- * One chip under the axis. A `<rect>` plus a `<text>` rather than a
- * `foreignObject`, which does not print reliably and does not scale with the
- * viewBox.
- */
-function Chip({
-  x,
-  y,
-  text,
-  tone,
-}: {
-  x: number;
-  y: number;
-  text: string;
-  tone: "slate" | "mint";
-}) {
-  const width = text.length * 8 + 20;
-  return (
-    <g>
-      <rect
-        x={x - width / 2}
-        y={y - 13}
-        width={width}
-        height={20}
-        rx={6}
-        className={tone === "mint" ? "fill-mv-mint" : "fill-mv-portal-wash"}
-      />
-      <text
-        x={x}
-        y={y + 1}
-        textAnchor="middle"
-        className={`text-[11px] font-bold ${
-          tone === "mint" ? "fill-mv-green-ink" : "fill-mv-slate"
-        }`}
-      >
-        {text}
-      </text>
-    </g>
   );
 }

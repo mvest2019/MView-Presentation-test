@@ -9,7 +9,7 @@ import {
   CHART_MODE_COPY,
   type ChartMode,
 } from "../../../_components/financials/chart-modes";
-import { PillStrip } from "../../../_components/financials/pill-strip";
+import { SegmentedControl } from "../../../../../_components/ui/segmented-control";
 import { RangePresets } from "../../../_components/financials/range-presets";
 import {
   SeriesChart,
@@ -66,7 +66,7 @@ export function WellChartCard({ report }: { report: WellReport }) {
   return (
     <Card padded={false} className="mt-4 px-[18px] py-4">
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <PillStrip
+        <SegmentedControl
           label="What to plot"
           tone="dark"
           value={mode}

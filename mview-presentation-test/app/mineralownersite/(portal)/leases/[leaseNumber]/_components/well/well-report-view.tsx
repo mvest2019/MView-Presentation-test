@@ -3,6 +3,7 @@ import { buildWellReport } from "../../_lib/well-report";
 import { AttachmentsCard, FilingsCard } from "./filings-card";
 import { WellChartCard } from "./well-chart-card";
 import { WellMapCard } from "./well-map-card";
+import { WellOverviewHeader } from "./well-overview-header";
 import { WellTiles } from "./well-tiles";
 import { WellboreCard } from "./wellbore-card";
 
@@ -11,6 +12,7 @@ import { WellboreCard } from "./wellbore-card";
  *
  * ── THE ORDER ──
  *
+ *   header       what this screen is, and whether the hole is still running
  *   tiles        what it filed, what it paid, what is left, how much is open
  *   how much     the same question as two rings
  *   the wellbore the state's record, the hole drawn to scale, the readings
@@ -32,12 +34,13 @@ export function WellReportView({ lease }: { lease: LeaseRecord }) {
 
   return (
     <div>
+      <WellOverviewHeader report={report} />
       <WellTiles report={report} />
       <WellboreCard report={report} />
       <WellChartCard report={report} />
       <FilingsCard report={report} />
       <WellMapCard report={report} />
-      <AttachmentsCard />
+      <AttachmentsCard report={report} />
     </div>
   );
 }
