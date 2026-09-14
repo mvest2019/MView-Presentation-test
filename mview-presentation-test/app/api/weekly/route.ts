@@ -4,6 +4,7 @@
  *   /api/weekly                     the report as JSON
  *   /api/weekly?format=html         one standalone HTML document
  *   /api/weekly?format=html&dl=1    the same, as a download
+ *   &week_ending=YYYY-MM-DD         a PAST issue rather than the latest
  *   /api/weekly?format=csv          the week's filings as a spreadsheet
  *   &sample=1                       the not-claimed version, figures withheld
  *
@@ -56,9 +57,10 @@ async function live(
   member: string,
   format: string,
   download: boolean,
+  weekEnding: string,
 ): Promise<Response> {
   if (format === "html" || format === "csv") {
-    const res = await fetchWeeklyFile(base, member, format, download);
+    const res = await fetchWeeklyFile(base, member, format, download, weekEnding);
     const headers = new Headers({ "Cache-Control": "no-store" });
     const pass = ["content-type", "content-disposition"];
     for (const h of pass) {
@@ -93,13 +95,28 @@ export async function GET(req: Request) {
   const format = (url.searchParams.get("format") ?? "json").toLowerCase();
   const sample = url.searchParams.get("sample") === "1";
   const download = url.searchParams.get("dl") === "1";
+  /* WHICH ISSUE — the archive's per-row download, and nothing else, asks for
+     one. Validated rather than forwarded: this value reaches the service as a
+     query parameter, and a shape it does not expect is a request it has to
+     decide about. An unparseable one is simply dropped, which lands the caller
+     on the latest issue — the same thing they get with no parameter at all.
+
+     IT IS IGNORED ON THE LOCAL PATH BELOW, and that is not an oversight. The
+     capture and the sample are ONE week; `weekly-render.ts` renders
+     `payload.weekly` and there is no other week in the payload to render. A
+     past-issue download is a member-keyed thing or it is nothing, and the
+     archive that offers it is drawn only in the claimed state. */
+  const weekEndingRaw = (url.searchParams.get("week_ending") ?? "").trim();
+  const weekEnding = /^\d{4}-\d{2}-\d{2}$/.test(weekEndingRaw) ? weekEndingRaw : "";
 
   try {
     /* the signed-in member, per request — see `currentMemberTarget`. A
        download is this member's own report or it is the capture; it is never
        an id baked into the deployment. */
     const member = await currentMemberTarget();
-    if (member && !sample) return await live(member.base, member.member, format, download);
+    if (member && !sample) {
+      return await live(member.base, member.member, format, download, weekEnding);
+    }
 
     /* `live: false` — this endpoint reads `payload.weekly` and nothing else,
        so it does not wait on the Alerts and Activity service, and a download

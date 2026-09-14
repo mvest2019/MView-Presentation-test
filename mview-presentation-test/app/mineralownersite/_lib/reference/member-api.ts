@@ -18,6 +18,7 @@ import { apiBase, OwnerApiError, type ApiErrorBody } from './owner-api';
  *   GET /api/v1/dashboard/drawers/{key}?member_id&owner one explainer
  *   GET /api/v1/weekly?member_id                        the whole report
  *   GET /api/v1/weekly?member_id&format=html|csv|email  the three renderings
+ *   GET /api/v1/weekly?member_id&week_ending&format=html  one PAST issue
  *   GET /api/v1/weekly/history?member_id                every issue kept
  *   GET /api/v1/weekly/email                            can this build send
  *   POST /api/v1/weekly/email {member_id,to}            send it
@@ -309,9 +310,17 @@ export function fetchWeeklyEmailCapability(base: string): Promise<WeeklyEmailCap
  */
 export async function fetchWeeklyFile(
   base: string, member: string, format: 'html' | 'csv', dl: boolean,
+  weekEnding?: string,
 ): Promise<Response> {
   const params: Record<string, string> = { member_id: member, format };
   if (dl) params.dl = '1';
+  /* `week_ending` IS WHICH ISSUE, and omitting it means the latest one.
+     The archive's per-row download is the only caller that passes it, and the
+     service names the file after the week it is given — measured:
+     `weekly-report-cog-operating-llc-2026-08-22.html` for 2026-08-22 against
+     `…-2026-09-12.html` with the parameter absent. So an archived issue is the
+     service's own rendering of that week, not this week's report relabelled. */
+  if (weekEnding) params.week_ending = weekEnding;
   const res = await req(base, '/weekly', params, { accept: '*/*' });
   if (!res.ok) await fail('/weekly', res);
   return res;

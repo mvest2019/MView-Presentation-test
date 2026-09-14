@@ -129,6 +129,10 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
   const r = p.weekly;
   const member = usePortalMember();
   const [sending, setSending] = useState(false);
+  /* WHICH ARCHIVED ISSUE IS DOWNLOADING, by its week — not a bare boolean.
+     The archive is a list, so the control has to say WHICH row is working;
+     a shared `true` would put "Downloading…" on every row at once. */
+  const [downloading, setDownloading] = useState<string | null>(null);
 
   const unclaimed = funnel === 'unclaimed';
   const pageOf = (n: number) => r.pages.find((x) => x.n === n) ?? null;
@@ -280,6 +284,90 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
       });
     }
   }, [member?.email, p.owner, unclaimed]);
+
+  /**
+   * ONE ARCHIVED ISSUE, AS A FILE.
+   *
+   * `GET /api/weekly?format=html&dl=1&week_ending=YYYY-MM-DD` — this app's own
+   * route, which forwards to `GET /api/v1/weekly?member_id&week_ending&format=
+   * html&dl=1` with the member resolved server-side. THE ID IS NOT SENT FROM
+   * HERE AND CANNOT BE: it lives in the httpOnly `mv_user` cookie, page
+   * JavaScript cannot read it, and `currentMemberTarget()` reads it per
+   * request — the same path the Dashboard's own payload takes. Nothing is
+   * hardcoded, and a member id the browser could put in a query string is a
+   * member id the browser could change, which is one edited URL away from
+   * downloading somebody else's report.
+   *
+   * FETCH-AND-BLOB RATHER THAN A PLAIN `<a href download>`, and the difference
+   * is the whole of what was asked for. A link hands the request to the
+   * browser and tells this page nothing: no in-flight state, no way to stop a
+   * second click, and — the one that matters — no way to tell a 500 from a
+   * file, because a failed download is a browser-level event this page never
+   * sees. Reading the response here is what makes "Downloading…", the guard
+   * below and an HONEST toast possible: success is claimed only after a 2xx
+   * whose body actually arrived.
+   *
+   * THE FILENAME IS THE SERVICE'S. `content-disposition` is forwarded by the
+   * route and parsed back out here, so the file lands named
+   * `weekly-report-<owner>-<week>.html` exactly as a direct download would.
+   * The fallback only runs if that header ever stops being sent.
+   */
+  const downloadIssue = useCallback(async (iso: string, label: string) => {
+    /* THE GUARD, AND IT IS NOT THE SAME THING AS THE DISABLED ATTRIBUTE. The
+       buttons below all disable while one download is in flight, which stops
+       the mouse; this stops everything else — a double-fire, a keyboard
+       repeat, a click landing in the frame before React has re-rendered. Two
+       requests for one file is two files in the reader's downloads folder. */
+    if (downloading) return;
+    setDownloading(iso);
+    try {
+      const url = `/api/weekly?format=html&dl=1&week_ending=${encodeURIComponent(iso)}`
+        + (qs ? `&${qs}` : '');
+      const res = await fetch(url, { headers: { accept: 'text/html' } });
+      if (!res.ok) {
+        /* THE ROUTE'S OWN REASON WHERE IT HAS ONE. It answers JSON on a
+           failure (`{error, detail}`) and bytes on success, so the body is
+           worth reading before falling back to the status line. */
+        let detail = `The report service answered ${res.status}.`;
+        try {
+          const body = await res.json() as { detail?: string; error?: string };
+          detail = body?.detail || body?.error || detail;
+        } catch { /* not JSON — the status line is all there is */ }
+        throw new Error(detail);
+      }
+      const blob = await res.blob();
+      /* AN EMPTY BODY IS A FAILURE, even behind a 200. Saving a 0-byte file
+         and calling it a download is the same lie as reporting a send that
+         never left. */
+      if (!blob.size) throw new Error('The report came back empty, so nothing was saved.');
+
+      const name = fileNameFrom(res.headers.get('content-disposition'))
+        ?? `weekly-report-${iso}.html`;
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = name;
+      /* IN THE DOCUMENT BEFORE IT IS CLICKED. A detached anchor's click is
+         ignored by Firefox, and the cost of appending is one frame. */
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      /* REVOKED, BUT NOT IN THE SAME TICK — the browser has not finished
+         reading the blob when `click()` returns, and revoking immediately
+         cancels the save on WebKit. */
+      window.setTimeout(() => URL.revokeObjectURL(href), 10_000);
+
+      toast.success('Report downloaded', { description: `Week ending ${label} · ${name}` });
+    } catch (e) {
+      toast.error('Report not downloaded', {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      /* IN `finally`, so a thrown request cannot leave the row stuck reading
+         "Downloading…" with every other row disabled behind it. */
+      setDownloading(null);
+    }
+  }, [downloading, qs]);
 
   return (
     <section data-route="app-briefing" className="active">
@@ -1036,9 +1124,27 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
                   <br />
                   <span className="tiny muted">{it.line}</span>
                 </span>
-                <span className={'chip ' + (it.quiet ? 'chip-slate' : 'chip-mint')}>
-                  {it.quiet ? 'quiet week' : 'active'}
-                </span>
+                {/* THE QUIET/ACTIVE CHIP WAS HERE AND THE DOWNLOAD REPLACES
+                    IT, at the owner's word. What the chip said is not lost:
+                    the line directly to its left is the service's own sentence
+                    for that week — "a quiet week — nothing filed in your
+                    counties" against "1 filing …, 1 on or near your acreage" —
+                    which is the same fact in words rather than in a colour.
+
+                    EVERY ROW DISABLES WHILE ANY ONE IS WORKING, not just the
+                    row that was pressed. Only one download can be in flight
+                    (see the guard in `downloadIssue`), so leaving the others
+                    looking live would be offering a click that silently does
+                    nothing — which is the defect this state exists to prevent,
+                    not a smaller version of it. */}
+                <button
+                  className="btn btn-ghost btn-sm" type="button"
+                  disabled={downloading !== null}
+                  aria-busy={downloading === it.week_ending_iso}
+                  onClick={() => downloadIssue(it.week_ending_iso, it.week_ending_label)}
+                >
+                  {downloading === it.week_ending_iso ? 'Downloading…' : 'Download'}
+                </button>
               </div>
             ))}
           </div>
@@ -1056,6 +1162,30 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
 }
 
 /* ------------------------------------------------------------------ pieces */
+
+/**
+ * The filename out of a `content-disposition`, or null.
+ *
+ * `filename*=UTF-8''…` FIRST, because RFC 5987 says it wins where both are
+ * present, and it is the one that survives a non-ASCII owner name. The plain
+ * `filename=` is the fallback, quoted or bare.
+ *
+ * ANYTHING WITH A PATH SEPARATOR IN IT IS REFUSED. This value decides what the
+ * file is called on the reader's disk, and it arrives over the wire; a header
+ * is not trusted that far even from our own route.
+ */
+function fileNameFrom(header: string | null): string | null {
+  if (!header) return null;
+  const star = /filename\*\s*=\s*(?:UTF-8|utf-8)''([^;]+)/.exec(header);
+  const plain = /filename\s*=\s*"([^"]+)"|filename\s*=\s*([^;]+)/.exec(header);
+  const raw = star
+    ? (() => { try { return decodeURIComponent(star[1]); } catch { return star[1]; } })()
+    : (plain?.[1] ?? plain?.[2] ?? '');
+  const name = raw.trim().replace(/^["']|["']$/g, '');
+  if (!name || /[\\/]/.test(name) || name.includes('..')) return null;
+  return name;
+}
+
 function toneCls(t?: 'up' | 'down' | 'warn'): string {
   return t === 'up' ? 'delta-up' : t === 'down' ? 'delta-down' : '';
 }
