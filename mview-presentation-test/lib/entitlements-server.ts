@@ -131,18 +131,68 @@ function higher(a: Tier, b: Tier): Tier {
  * consumes a tier already goes through here, so wiring the real table is a
  * change to this function and nothing else.
  *
- * UNTIL THEN IT READS ONE ENVIRONMENT VARIABLE, and that is a deliberate,
- * visible placeholder rather than a hardcoded `pro`:
+ * UNTIL THEN THE FALLBACK TIER IS DECIDED BY `fallbackTier()` below, which is
+ * a deliberate, visible placeholder rather than a hardcoded `pro`.
  *
- *   · `MAP_TIER_DEFAULT` sets what a signed-in user without a record gets, so
- *     the four tiers can be exercised end-to-end in dev and on a preview
- *     deployment without a billing system.
- *   · Unset, it is `ultra` — §12.1's answer, and the safe one. A missing
- *     record must never grant Pro.
- *
- * It is read from `process.env` on the SERVER, never `NEXT_PUBLIC_`, so it
- * cannot be set from the browser.
+ * Everything here is read from `process.env` on the SERVER, never
+ * `NEXT_PUBLIC_`, so none of it can be set from the browser.
  */
+/**
+ * What a signed-in user with no subscription record gets.
+ *
+ * ── WHY THIS IS NOT JUST ONE ENVIRONMENT VARIABLE ANY MORE ──
+ *
+ * It was, and the variable lived in `.env`, which `.gitignore` excludes. So it
+ * existed on the machine it was written on and nowhere else: the first preview
+ * deployment resolved every account to `ultra`, the mode picker in the chrome
+ * clamped to it — the effective tier is the LOWER of the account tier and the
+ * picked one — and the map showed two facets and two basemaps whatever the
+ * reader chose. It read as a broken build rather than a missing variable, not
+ * least because the chrome still said PREMIUM PLAN: that chip is the portal's
+ * funnel demo state, a different axis entirely.
+ *
+ * A config step that has to be repeated on every environment, and whose only
+ * symptom when forgotten is a subtly wrong product, is a step that will be
+ * forgotten. So the default now derives itself:
+ *
+ *   1  `MAP_TIER_DEFAULT`, if set, always wins. One variable, still the
+ *      override, for pinning an environment to a particular tier.
+ *
+ *   2  Otherwise the deployment environment decides. `VERCEL_ENV` is set by
+ *      the platform on every deployment — `production`, `preview` or
+ *      `development`. Anything that is NOT production demos the whole ladder
+ *      at `pro`, so a preview link is worth opening; production falls to
+ *      `ultra`.
+ *
+ * ── WHY PREVIEWS MAY GRANT `pro` AND PRODUCTION MAY NOT ──
+ *
+ * §12.1's "fail down, never up" is about a real account whose billing record
+ * could not be read — giving that person Pro is giving away the product. A
+ * preview deployment is a demo of fictional data for the team building it, and
+ * the cost of it opening at Ultra is that nobody can see the work.
+ *
+ * PRODUCTION IS UNCHANGED AND STILL FAILS DOWN. `VERCEL_ENV === "production"`
+ * resolves to `ultra`, as does any host that sets no `VERCEL_ENV` while running
+ * a production build. Neither branch can be reached from the browser.
+ *
+ * Once `subscriptionForUser` reads a real table, none of this runs for a user
+ * who has a record, and it stops mattering.
+ */
+function fallbackTier(): Tier {
+  if (process.env.MAP_TIER_DEFAULT) {
+    return toTier(process.env.MAP_TIER_DEFAULT);
+  }
+
+  /* No `VERCEL_ENV` means somewhere that is not Vercel — a local `next start`,
+     a container, CI. Judge it by the build instead, and treat a production
+     build as production. */
+  const environment =
+    process.env.VERCEL_ENV ??
+    (process.env.NODE_ENV === "production" ? "production" : "development");
+
+  return environment === "production" ? "ultra" : "pro";
+}
+
 export async function entitlementsForUser(
   userId: number,
 ): Promise<Entitlements> {
@@ -152,10 +202,11 @@ export async function entitlementsForUser(
     /* §12.1 — log it. A paying customer landing here is a billing bug, and the
        only thing worse than the downgrade is not knowing it happened. When
        there is an alerting channel this is where it fires. */
+    const tier = fallbackTier();
     console.warn(
-      `[entitlements] no subscription record for user ${userId} — resolving to the entry tier`,
+      `[entitlements] no subscription record for user ${userId} — resolving to "${tier}"`,
     );
-    return TIERS[toTier(process.env.MAP_TIER_DEFAULT)];
+    return TIERS[tier];
   }
 
   return TIERS[tierForSubscription(record)];
