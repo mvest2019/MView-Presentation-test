@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 
+import { PlanCard } from "@/app/pricing/_components/plan-card";
+import { PLANS as PRICING_PLANS } from "@/app/pricing/_components/pricing-content";
 import {
   COMPARE,
   COMPARE_EXTRA,
+  CURRENT_PLAN_ID,
   MINE_COLUMN,
   PLANS,
   TIER_HEADS,
 } from "../_lib/billing-records";
-import { Emphasize } from "./bits";
 
 /**
  * THE FOUR PLAN CARDS, AND THE TABLE UNDER THEM.
@@ -22,59 +24,89 @@ import { Emphasize } from "./bits";
  * plan X include capability Y", which a card cannot do without becoming a
  * table. The source ships both and so does this.
  *
- * ── THE READER'S OWN COLUMN IS MARKED IN BOTH ──
+ * ── THE CARD IS `/pricing`'S OWN, NOT A SECOND ONE ──
  *
- * The card carries the ribbon and the green border; the table runs a mint wash
- * down the whole column. Without it a reader reads ten rows across four columns
- * and has to keep checking which one is theirs.
+ * This page used to draw its own four cards. They already read the right
+ * FIGURES — `billing-records.ts` has taken those from `pricing-content.ts`
+ * since it was built — but they were a different card: a bullet list where the
+ * pricing card has a ruled capacity block, no feature groups, no ribbon system.
+ * Asked for directly, and it closes the one seam this page had: the foot of it
+ * says "Full pricing page →", and a reader who followed that link arrived at
+ * the same four plans wearing different clothes.
  *
- * ── THE CTA THAT IS NOT AN ACTION ──
+ * So `PlanCard` is imported and rendered over `PLANS` from `pricing-content`
+ * — the ladder itself, not a projection of it. A price, a capacity figure or a
+ * whole new tier now reaches this page the moment it reaches `/pricing`, with
+ * nothing here to update.
  *
- * Three of the four foot controls describe a STATE, not a thing to press:
- * "Current plan", "Downgrades at end of term", "Switch to Pro at end of term".
- * They are drawn as buttons because the source draws them as buttons —
- * the row has to line up — and `is-future` makes them inert and dimmed rather
- * than pretending to be pressable. Only Enterprise has somewhere to go.
+ * ── WHAT THIS PAGE STILL ADDS, BECAUSE `/pricing` CANNOT KNOW IT ──
+ *
+ * WHICH ONE IS THEIRS. The reader's tier takes the lifted treatment and its
+ * ribbon is overwritten with "Your current plan", replacing the "Most popular"
+ * a marketing page says to a stranger. `/pricing` is speaking to someone who
+ * has no plan; this page is not.
+ *
+ * AND WHAT PRESSING WOULD DO. Three of the four feet describe a STATE rather
+ * than an offer — "Current plan", "Downgrades at end of term", "Switch to Pro
+ * at end of term" — which is why `PlanCard` takes a `cta`. They are drawn as
+ * buttons so the row lines up, and `is-future` makes them inert and dimmed
+ * rather than pretending to be pressable. Only Enterprise has somewhere to go.
+ *
+ * ── MONTHLY, BECAUSE THAT IS WHAT THE ACCOUNT IS ON ──
+ *
+ * `/pricing` has a monthly/annual switch because a visitor has not chosen yet.
+ * This reader has: `billing="mo"` matches the term they are three months into,
+ * and the annual figure is on every card anyway — `periodMo` carries "or
+ * $999.90/yr" — and again in the table below.
+ *
+ * ── THE READER'S OWN COLUMN IS MARKED IN THE TABLE TOO ──
+ *
+ * A mint wash down the whole column. Without it a reader reads ten rows across
+ * four columns and has to keep checking which one is theirs.
  */
 export function PlanCards() {
   return (
-    <div className="plan-grid" style={{ marginBottom: 18 }}>
-      {PLANS.map((plan) => (
-        <div key={plan.key} className={`plan${plan.current ? " hot" : ""}`}>
-          {plan.current ? (
-            <span className="chip chip-mint" style={{ alignSelf: "flex-start" }}>
-              Your current plan
-            </span>
-          ) : null}
-          <h3>{plan.name}</h3>
-          <div className={`price${plan.price.startsWith("$") ? " num" : ""}`}>
-            {plan.price}
-            {plan.priceNote ? <span>{plan.priceNote}</span> : null}
-          </div>
-          <p className="small muted">
-            <Emphasize text={plan.summary} />
-          </p>
-          <ul>
-            {plan.points.map((point) => (
-              <li key={point.text} className={point.no ? "no" : undefined}>
-                <Emphasize text={point.text} />
-              </li>
-            ))}
-          </ul>
-          {plan.cta.href ? (
-            <Link className="btn btn-ghost cta" href={plan.cta.href}>
-              {plan.cta.label}
-            </Link>
-          ) : (
-            /* `aria-disabled` and not `disabled`: it is a statement about the
-               account, and a disabled control is skipped by a screen reader —
-               which would drop the one line saying what happens at term end. */
-            <span className="btn btn-ghost cta is-future" aria-disabled="true">
-              {plan.cta.label}
-            </span>
-          )}
-        </div>
-      ))}
+    /* The outer box measures, the inner one lays out — see `billing.css`. */
+    <div className="bill-plans">
+      <div className="bill-plans-row">
+        {PRICING_PLANS.map((plan) => {
+          const mine = plan.id === CURRENT_PLAN_ID;
+          /* The foot copy stays where it has always lived. `billing-records`
+             keeps one entry per tier keyed the same way `pricing-content` ids
+             them, so this is a lookup and not a second list to keep in step. */
+          const foot = PLANS.find((tier) => tier.key === plan.id)?.cta;
+
+          return (
+            <PlanCard
+              key={plan.id}
+              billing="mo"
+              plan={
+                mine
+                  ? { ...plan, flag: "Your current plan", emphasis: "popular" }
+                  : plan
+              }
+              cta={
+                foot?.href ? (
+                  <Link className="btn btn-ghost cta" href={foot.href}>
+                    {foot.label}
+                  </Link>
+                ) : (
+                  /* `aria-disabled` and not `disabled`: it is a statement about
+                     the account, and a disabled control is skipped by a screen
+                     reader — which would drop the one line saying what happens
+                     at term end. */
+                  <span
+                    className="btn btn-ghost cta is-future"
+                    aria-disabled="true"
+                  >
+                    {foot?.label}
+                  </span>
+                )
+              }
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -117,7 +149,9 @@ export function CompareTable() {
                     ) : (
                       cell.value
                     )}
-                    {cell.sub ? <div className="tiny muted">{cell.sub}</div> : null}
+                    {cell.sub ? (
+                      <div className="tiny muted">{cell.sub}</div>
+                    ) : null}
                   </td>
                 ))}
               </tr>

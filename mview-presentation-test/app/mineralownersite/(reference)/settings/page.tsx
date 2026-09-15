@@ -7,7 +7,7 @@ import {
 } from "../../_lib/reference/owner-data";
 import type { Payload } from "../../_lib/reference/payload";
 import "./settings.css";
-import "../../shell-move.css";
+import "../../reference-flex-reset.css";
 import "../../page-gutters.css";
 
 import { AccountCards } from "./_components/account-card";

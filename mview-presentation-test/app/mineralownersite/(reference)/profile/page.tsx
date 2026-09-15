@@ -6,7 +6,7 @@ import {
   type OwnerSelection,
 } from "../../_lib/reference/owner-data";
 import type { Payload } from "../../_lib/reference/payload";
-import "../../shell-move.css";
+import "../../reference-flex-reset.css";
 import "../../page-gutters.css";
 
 import { IdentityCard } from "./_components/identity-card";

@@ -45,7 +45,19 @@
   border: 1px solid var(--line); background: #fff; border-radius: 999px;
   color: var(--green-deep); font-family: var(--sans); font-size: 11.5px;
   font-weight: 600; min-height: 32px; padding: 4px 12px; cursor: pointer;
-  margin: 0 0 10px;
+  /* `margin-bottom` ALONE, AND NOT THE `margin: 0 0 10px` SHORTHAND IT WAS.
+     That shorthand also set `margin-top: 0`, and this sheet is page-imported
+     and therefore UNLAYERED — so its zero beat `dashboard-reference.onebar.css`
+     section 5, which is in `@layer mv-reference` and grants every route's first
+     block `margin-top: 16px` precisely so nothing opens flush against the black
+     chrome row. The pill is this page's first block, so it cancelled the rule
+     written for it and sat at 0. MEASURED: `gapAbovePill: 0`.
+
+     Declaring only the bottom lets the shell's 16px through, which is the
+     figure every other route opens at — it is `.mv-greet`'s own margin, so the
+     page now starts level with Alerts, Activities and the Dashboard rather than
+     at a number invented here. */
+  margin-bottom: 10px;
 }
 .mv-ref-app .ppf-why:hover { background: #f0fbf7; }
 .mv-ref-app .ppf-why:focus-visible {
@@ -77,10 +89,72 @@
 /* ===========================================================================
    2 · THE PLAN CARDS
    ======================================================================== */
-.mv-ref-app .plan-grid {
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px; align-items: stretch;
+/* ---------------------------------------------------------------------------
+   THE PLAN ROW. `/pricing`'s own `PlanCard` sits in these cells now — see the
+   note at the top of `plan-compare.tsx`. Only the TRACKS are this page's, and
+   they had to be rewritten to get here.
+
+   THEY ARE CONTAINER QUERIES, NOT MEDIA QUERIES, and that is the whole reason
+   this block exists. `/pricing` drops to two columns under a 1024px VIEWPORT,
+   which is the right rule for a page whose cards have the window to themselves.
+   Here they do not: the portal spends ~236px on the sidebar and, since the
+   gutter change, up to 120px a side on padding. MEASURED at a 1500px viewport,
+   this row is 1039px wide — so a viewport rule would still be drawing four
+   columns at 1024px viewport, where the cells are 245px and the capacity block
+   inside them wraps its own labels.
+
+   `container-type: inline-size` makes the row measure ITSELF, so the count
+   follows the space the cards actually have. The thresholds are the cards':
+   ~250px is where a card's ruled capacity rows stop wrapping, so four wants
+   1040 and two wants 520.
+
+   `align-items: start`, NOT `stretch`: the popular card lifts itself 8px with a
+   transform and the ribbon sits above the top edge, so the row needs the cards
+   at their own heights rather than pinned to a common one. They already line up
+   internally — every block in `PlanCard` carries a `min-h-*` for exactly that.
+   --------------------------------------------------------------------------- */
+.mv-ref-app .bill-plans {
+  container-type: inline-size;
+  margin-bottom: 18px;
 }
+
+/* TWO ELEMENTS, AND IT HAS TO BE TWO. A `@container` query resolves against an
+   element's nearest ANCESTOR container, so an element that declares
+   `container-type` cannot be sized by a query it makes itself — written as one
+   element this matched nothing and the row stayed at a single column at every
+   width. MEASURED before the split: `grid-template-columns: 1005px`. The
+   wrapper measures; the grid inside it responds. */
+.mv-ref-app .bill-plans-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 22px 16px;
+  align-items: start;
+}
+@container (min-width: 560px) {
+  .mv-ref-app .bill-plans-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* 960, AND THE FIGURE IS MEASURED RATHER THAN REASONED. The first draft put
+   this at 1140 on the assumption that the card needed ~270px before its ruled
+   capacity rows began wrapping "Leases per record". Forcing four columns and
+   measuring said otherwise: at 239px per card — which is what this row gives
+   at a 1500px viewport — not one `dt` and not one `dd` wraps on any of the
+   four, and the price keeps its single 38px line.
+
+   That matters because the row cannot get very wide. `.app-body` caps at
+   1360px and the account pages now spend up to 120px a side on gutters, so
+   the row is 1005px at a 1500px viewport and 1086px at 1920px — it never
+   reaches 1140 at any screen size. A threshold above that would have meant
+   two columns forever, which is not what taking `/pricing`'s card was for.
+   960 fires at both. */
+@container (min-width: 960px) {
+  .mv-ref-app .bill-plans-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* The foot `PlanCard` was given. `.btn` is the reference sheet's, and the card
+   puts it in a `mt-auto` block, so all it needs is the full width the pricing
+   card's own link has. */
+.mv-ref-app .bill-plans-row .cta { width: 100%; }
+
 .mv-ref-app .plan {
   background: #fff; border: 1px solid var(--line); border-radius: 14px;
   padding: 22px; display: flex; flex-direction: column; gap: 10px;
@@ -129,11 +203,9 @@
 .mv-ref-app .btn-block { width: 100%; }
 
 @media (max-width: 1024px) {
-  .mv-ref-app .plan-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mv-ref-app .plan .price { font-size: 38px; }
 }
 @media (max-width: 767px) {
-  .mv-ref-app .plan-grid { grid-template-columns: minmax(0, 1fr); }
   .mv-ref-app .plan .price { font-size: 34px; }
 }
 

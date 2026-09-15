@@ -42,7 +42,21 @@ export function Emphasize({ text }: { text: string }) {
  * that is a preference store this route does not have, and inventing one for a
  * single pill would be more machinery than the pill is worth. Closing it closes
  * it for the visit.
+ *
+ * ── IT WAS BRIEFLY DELETED, AND PUT BACK ──
+ *
+ * Reading the pill as clutter because no other page on this shell has one. It
+ * was wanted; what was wanted was ROOM around it — see `.ppf-why` in
+ * `billing.css`. Recorded because the observation that prompted the deletion is
+ * still true and still worth acting on one day: this is a second copy of
+ * `_components/portal-page-purpose.tsx`, which remembers its dismissal per
+ * route and reads its sentence from `PAGE_PURPOSE`. `PortalShell` renders that
+ * one, and these pages wear `Chrome`, so none of them can reach it. Rendering
+ * `<PortalPagePurpose />` in `Chrome` would replace this component and light
+ * the pill on the other six pages too — that is the real fix, and it is a
+ * bigger change than a spacing note should carry.
  */
+
 export function WhyThisPage({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
 

@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import Link from "next/link";
 
 import { buttonClass } from "../../_components/button";
@@ -23,13 +25,31 @@ import {
  * deeper shadow and the -8px offset; Free is marked as the way in with a quiet
  * mint ribbon and a tinted ground instead of a second heavy border, so the two
  * do not compete for the same glance.
+ *
+ * ── THE PORTAL'S BILLING PAGE RENDERS THIS SAME CARD ──
+ *
+ * It used to draw four cards of its own from the same `PLANS` record. Same
+ * figures, different card — which meant a reader who pressed "Full pricing
+ * page" from Billing arrived at the ladder they had just been looking at, drawn
+ * differently, and had to re-find their place. Asked for directly: Billing
+ * takes this card.
+ *
+ * ONE THING IT CANNOT SHARE, and it is the reason for the `cta` prop: the foot.
+ * Here the foot is an offer — "Start free", "Get Premium". On Billing three of
+ * the four feet are a STATEMENT about an account that already has a plan
+ * — "Current plan", "Downgrades at end of term", "Switch to Pro at end of
+ * term" — and only Enterprise has anywhere to go. Passing `cta` replaces the
+ * link; passing nothing keeps the offer, so `/pricing` is untouched by this.
  */
 export function PlanCard({
   plan,
   billing,
+  cta,
 }: {
   plan: Plan;
   billing: BillingMode;
+  /** Replaces the foot link. See the note above on why Billing needs its own. */
+  cta?: ReactNode;
 }) {
   const popular = plan.emphasis === "popular";
   const starter = plan.emphasis === "starter";
@@ -176,15 +196,17 @@ export function PlanCard({
         fighting over the same one, and the winner would be stylesheet order.
       */}
       <div className="mt-auto pt-[18px]">
-        <Link
-          href={plan.ctaHref}
-          className={buttonClass({
-            variant: plan.ctaVariant === "primary" ? "primary" : "dark",
-            className: "w-full",
-          })}
-        >
-          {plan.ctaLabel}
-        </Link>
+        {cta ?? (
+          <Link
+            href={plan.ctaHref}
+            className={buttonClass({
+              variant: plan.ctaVariant === "primary" ? "primary" : "dark",
+              className: "w-full",
+            })}
+          >
+            {plan.ctaLabel}
+          </Link>
+        )}
       </div>
     </div>
   );
