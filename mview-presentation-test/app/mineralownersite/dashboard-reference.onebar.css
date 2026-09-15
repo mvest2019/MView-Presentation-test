@@ -1483,3 +1483,931 @@ body .mv-ref-app section[data-route="app-alerts"] .mv-alwatch .aw-unit {
   font-size: 13px;
   color: var(--slate);
 }
+
+
+/* ============================================================================
+   11 · THE DASHBOARD DEFECT SWEEP
+
+   Everything below answers a numbered row on the Mineral View Site Rebuild
+   defect sheet's Dashboard tab. It lives HERE, in the overrides sheet, for the
+   reason this file exists at all: `dashboard-reference.css` is a verbatim copy
+   of the reference build's sheets, and editing it in place would put local
+   decisions where the next extraction silently reverts them. Each block names
+   its row and what was actually wrong.
+   ============================================================================ */
+
+
+/* ----------------------------------------------------------------------------
+   ROWS 8, 12 AND 18 · THE STRIP'S FIGURES STAY INSIDE THEIR OWN CELLS.
+
+   `.pf-val` carries `white-space: nowrap` and `.pf-cell` is `flex: 1;
+   min-width: 150px`. Between them, a figure wider than its share of the row
+   could not wrap and could not widen its cell, so it ran straight across the
+   divider into the next one: "$1,722,913,593,000" printed over the Producing
+   cell's "of 794", and the "Why this is not a cheque" chips under it sat on
+   top of the sub-lines beside them. Measured on the 794-lease record at 1280px,
+   which is a laptop, not an edge case.
+
+   THE NOWRAP IS RELEASED ONLY WHERE IT WOULD OVERFLOW. `min-width: 0` lets the
+   flex item shrink below its content — the default `auto` is what pinned it
+   open — and the figure may then break between its groups rather than
+   mid-number. A cell whose figure still cannot fit scales the type down one
+   step instead of spilling, via `clamp`, so the number stays readable and stays
+   put.
+
+   Nothing is hidden and nothing is truncated: every digit is still on screen,
+   which is the whole point of the cell.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .pf-strip .pf-cell {
+  min-width: 0;
+  flex: 1 1 200px;
+}
+
+body .mv-ref-app .pf-strip .pf-val,
+body .mv-ref-app .pf-strip .pf-val.big {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: clamp(19px, 2.1vw, 26px);
+}
+
+body .mv-ref-app .pf-strip .pf-label,
+body .mv-ref-app .pf-strip .pf-sub {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The affordance chip is an inline-block inside `.pf-sub`; without this it was
+   measured at its own width and pushed past the cell edge. */
+body .mv-ref-app .pf-strip .ctx-hint {
+  max-width: 100%;
+  white-space: normal;
+}
+
+
+/* ----------------------------------------------------------------------------
+   ROW 10 · THE SELECTED SERIES IS VISIBLY THE SELECTED ONE.
+
+   `LeaseChart` has always added `.on` to whichever of Value / Gas / Oil /
+   Appraised / Reserves is being drawn — and `.chartbtns` has no rule anywhere
+   in this build, so `.on` painted nothing. Five identical buttons, one of them
+   active, no way to tell which: the reader had to read the chart title to find
+   out what they had pressed.
+
+   It takes the same green fill the primary button uses, because that is what
+   "this one is chosen" already looks like everywhere else in this shell.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .chartbtns {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+body .mv-ref-app .chartbtns .btn.on {
+  background: var(--green);
+  color: var(--green-ink) !important;
+  border-color: var(--green);
+  font-weight: 700;
+}
+
+body .mv-ref-app .chartbtns .btn.on:hover {
+  background: var(--green);
+  filter: brightness(1.04);
+}
+
+
+/* ----------------------------------------------------------------------------
+   ROWS 14, 19, 23 AND 50 · ONE MONEY GATE, AND IT COVERS THE MONEY.
+
+   THREE DEFECTS, ONE CAUSE: the gate was written twice — once as an opt-in
+   class and once as a list of elements — and the two disagreed.
+
+     · `state-claimed` blurred `.cl-lock`, the value figures, which is right.
+     · `state-lapsed` blurred `.kpi .k-val`, `.pf-val` and `.u-headline strong`
+       instead. So it covered the gas, the oil and the county appraisal as well
+       (row 23 — the banner claims the account is on the free plan, and a free
+       CLAIMED account shows all three in the clear), while MISSING the Ultra
+       headline, whose figure is not wrapped in a `<strong>`: row 50's second
+       capture is "$68,775" in the clear on a lapsed account.
+     · Neither reached inside the drawer, so "How it is built" printed the
+       covered figure in full one click away (rows 19 and 50).
+
+   The element list is switched off below and `.cl-lock` is the single rule for
+   both states. `DrawerPanel` puts that same class on the money it renders, so
+   the panel covers exactly what the page behind it covers — no more, which
+   keeps the volumes, counts and dates readable as the reference intends, and no
+   less.
+
+   AND IT IS ACTUALLY OPAQUE (row 14). `blur(6px)` under a 26px serif left the
+   digit shapes readable — the capture reads "$3,774,621,256" through it without
+   much effort — because the blur was a fixed pixel radius applied to text of
+   every size. In `em` it scales with the figure, so a headline is covered as
+   thoroughly as a table cell.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app.state-claimed .cl-lock,
+body .mv-ref-app.state-lapsed .cl-lock {
+  filter: blur(0.4em);
+  opacity: .5;
+  -webkit-user-select: none;
+  user-select: none;
+  /* the figure keeps its own box, so nothing reflows when the state changes */
+  display: inline-block;
+  pointer-events: none;
+}
+
+/* The two places the reference deliberately leaves in the clear — the banner
+   and the plan card — keep that exemption in both states. */
+body .mv-ref-app.state-claimed #mvFunnelBar .cl-lock,
+body .mv-ref-app.state-claimed #mvStateCard .cl-lock,
+body .mv-ref-app.state-lapsed #mvFunnelBar .cl-lock,
+body .mv-ref-app.state-lapsed #mvStateCard .cl-lock {
+  filter: none;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* THE ELEMENT-BASED LAPSED GATE IS OFF — see above. `.cl-lock` is now the only
+   rule, and it sits on the same figures in both states.
+
+   `:not(.cl-lock)` IS LOAD-BEARING. The elements this switches off are the very
+   ones that also carry `.cl-lock` — `.pf-val.cl-lock` is the value tile, and
+   `.k-val.cl-lock` is the value KPI — and this selector is heavier than the
+   class rule above and comes after it, so without the exclusion it turned the
+   new gate off everywhere it was needed and lapsed showed every figure in the
+   clear. Caught in test, not in review. */
+body .mv-ref-app.state-lapsed .app-main .kpi .k-val:not(.cl-lock),
+body .mv-ref-app.state-lapsed .app-main .pf-val:not(.cl-lock),
+body .mv-ref-app.state-lapsed .app-main .u-headline:not(.cl-lock) strong {
+  filter: none;
+  opacity: 1;
+}
+
+
+/* ----------------------------------------------------------------------------
+   ROW 38 · THE TILE'S UPSELL LINE IS NO LONGER WRITTEN OVER ITS OWN TEXT.
+
+   Both states painted it with an absolutely-positioned `::after` pinned to
+   `bottom: 6px` inside a tile whose height comes from its content — so it sat
+   ON the last two lines rather than after them, and "What it's worth unlocks
+   with your free 7-day trial" printed across "your interest applied to the
+   six-year projection" and the freshness stamp under it.
+
+   The lapsed one also hardcoded `content: "Portfolio totals cover all 10
+   leases — Premium"`. Ten, for every account, because a `content` string cannot
+   read a number — plainly false on a 794-lease record, and unfixable in CSS.
+
+   `KpiGrid` renders the line as a real element now, in normal flow and with the
+   count read from the payload. Both pseudo-elements are switched off here.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app.state-lapsed .app-main .kpi::after,
+body .mv-ref-app.state-claimed .app-main .kpi:has(.cl-lock)::after {
+  content: none;
+}
+
+body .mv-ref-app .kpi .k-upsell {
+  margin: 10px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .03em;
+  line-height: 1.35;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+body .mv-ref-app .kpi .k-upsell-claimed { color: #2f6fb0; }
+body .mv-ref-app .kpi .k-upsell-lapsed { color: #a8791a; }
+
+
+/* ----------------------------------------------------------------------------
+   ROW 4 · THE EMPTY RECTANGLE AT THE TOP OF AN EXPANDED PANEL.
+
+   `.dx-band` is a flex row of two children: the stat grid, and the spark beside
+   it. The band stretches both to the row height, and `.dx-spark` then pushed
+   its 26px chart to the BOTTOM of a column as tall as a two-row stat grid —
+   leaving sixty-odd pixels of empty card above it, hard against the panel's
+   first figures. That is the blank box the capture rings.
+
+   Centred instead of bottom-aligned, and the column no longer stretches, so the
+   spark sits beside the figures it belongs to and the band is as tall as its
+   content. Nothing is removed: the same chart, the same caption.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .dx-band {
+  align-items: center;
+}
+
+body .mv-ref-app .dx-spark {
+  justify-content: center;
+  align-self: center;
+}
+
+
+/* ----------------------------------------------------------------------------
+   ROW 11 · THE CHART STOPPED JUMPING UNDER THE POINTER.
+
+   `.lc-read` is the readout line above every chart: a flex row that wraps, with
+   the hint pushed right by `margin-left: auto`. The hint's TEXT changes on
+   hover — "hover or arrow-key any period" (29 characters) becomes "14 of 24"
+   (8) — and the value beside it changes width with the figure. At the rail
+   widths this page uses, that was the difference between the row taking two
+   lines and one, so the whole chart below it moved up ~18px the moment the
+   pointer entered and back down when it left. Chase the chart, and it runs.
+
+   `min-height` holds the row at two lines' worth of space at the widths where
+   it can wrap, so the readout can change freely and nothing under it moves. The
+   reference's own `min-height: 26px` is the one-line version of the same idea;
+   this continues it rather than replacing it.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .lc-read {
+  min-height: 42px;
+  align-content: flex-start;
+}
+
+/* The hint is what changes most, so it is also given a floor — at full width
+   the row never wraps and the extra height is not needed. */
+@media (min-width: 1100px) {
+  body .mv-ref-app .lc-read { min-height: 26px; }
+  body .mv-ref-app .lc-read .lc-hint { min-width: 16ch; text-align: right; }
+}
+
+
+/* ----------------------------------------------------------------------------
+   ROW 41 · THE PRICE SPARK READS AS A SCALE AGAIN.
+
+   `.ps-ax` printed "low $2.821" and "high $4.921" as a left-and-right row under
+   the line — two numbers on one baseline, under a chart that plainly puts its
+   high at the top. Read literally, the card showed a high and a low at the same
+   height.
+
+   They are the ends of a VERTICAL scale, so they are laid out as one: the plot
+   and the axis share a grid row, and the two labels are pushed apart inside it.
+   Same two figures, in the two positions that make them mean something.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .price-spark.ps-has-axis {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  align-items: stretch;
+}
+
+body .mv-ref-app .price-spark.ps-has-axis .ps-head {
+  grid-column: 1 / -1;
+}
+
+body .mv-ref-app .price-spark.ps-has-axis .ps-svg {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+body .mv-ref-app .ps-ax.ps-ax-v {
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-top: 0;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+
+/* ----------------------------------------------------------------------------
+   ROW 20 · THE MONTH READOUT STAYS INSIDE THE CARD.
+
+   The Essentials month columns carried their figures on a `title` attribute
+   only. A native tooltip is placed by the browser against the VIEWPORT, so on
+   the last months of a 24-month strip — the ones a reader looks at first — it
+   opened past the right edge of the card and over whatever was beside it.
+
+   `ProdCols` draws its own readout now. `--mc-at` is the hovered month's
+   position as a 0-1 fraction; `left` places it and the `translateX` below pulls
+   it back by its own width, so the box is clamped to the STRIP. `max-width`
+   keeps it inside a narrow rail, and the `title` is still there for a screen
+   reader and for touch-and-hold.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .mcols-wrap { position: relative; }
+body .mv-ref-app .mcols-wrap + .mcols-wrap { margin-top: 14px; }
+body .mv-ref-app .mcols-name {
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  margin: 0 0 4px;
+}
+
+body .mv-ref-app .mcols { position: relative; }
+body .mv-ref-app .mcols .mc.on { background: #1f7f60; }
+body .mv-ref-app .mcols .mc.dim.on { background: #b9c4c0; }
+
+body .mv-ref-app .mc-read {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: calc(var(--mc-at, .5) * 100%);
+  transform: translateX(calc(var(--mc-at, .5) * -100%));
+  max-width: 100%;
+  z-index: 3;
+  pointer-events: none;
+  background: var(--ink, #0d0e17);
+  color: #eaf6f0;
+  border-radius: 7px;
+  padding: 5px 9px;
+  font-size: 10.5px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 3px 12px rgba(4, 35, 26, .25);
+}
+
+body .mv-ref-app .mc-read b { font-weight: 800; }
+
+@media (max-width: 560px) {
+  /* no room for one line at this width; the box wraps rather than clipping */
+  body .mv-ref-app .mc-read { white-space: normal; }
+}
+
+
+/* ============================================================================
+   12 · THE DASHBOARD, ACROSS FOUR CLASSES OF SCREEN
+
+   Desktop · laptop · tablet · phone. The reference already laddered some of
+   this — `.g4` drops to two columns at 1024 and one at 767, `#dashcols` goes
+   to two equal rails between them, the strip goes full-width at 560 — and
+   none of that is touched. What was missing is the band between a desktop and
+   a phone, which is where the defect sheet's row 12 ("page is not responsive")
+   was captured: at 1270px, a laptop, the strip's figures printed over each
+   other and the top row's prices printed over the account controls.
+
+   THE RULE FOR EVERY BLOCK BELOW: nothing is hidden and nothing is dropped.
+   Every section, figure, control and interaction the Dashboard renders at
+   1920px is still rendered, still readable and still operable at 360px. What
+   changes is how many things sit side by side, where a long figure is allowed
+   to break, and how big a tap target is. Where something genuinely cannot fit
+   in a row, it scrolls INSIDE its own box rather than being removed from the
+   page or allowed to escape it.
+   ============================================================================ */
+
+
+/* ----------------------------------------------------------------------------
+   ROW 13 · THE SETTLEMENTS SCROLL INSIDE THEIR OWN BOX INSTEAD OF ESCAPING IT.
+
+   Section 3 above says of the four prices: "they either fit or they scroll."
+   They did neither. `.pin-spot` is a `flex: 1 1 auto; min-width: 0` child, so
+   it SHRANK — measured at 1270px it is 336px wide holding ~700px of content —
+   and its `overflow` was never set, so the overflow was `visible`: BRENT and
+   PROPANE were painted outside their own container, straight across the
+   account-state button, the plan pill and the bell beside them. Measured at
+   1270px, the pinned group's box ends at x=854 and PROPANE ends at x=1214,
+   with the state button starting at x=870. That is the defect sheet's row 13,
+   "Account states overlapping on propane spot price", and it is also why the
+   capture shows the state control sitting on top of the word "PROPANE".
+
+   The scroll the section already promised, actually given to it. The bar is
+   26px of chrome, so a visible scrollbar inside it would be thicker than the
+   text — it is hidden and the strip is dragged, scrolled or tabbed instead,
+   which is how the same pattern behaves everywhere else on this site. Each
+   price snaps, so a drag lands on a whole settlement rather than half of one,
+   and `scroll-padding` keeps the first one clear of the value beside it.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .app-top #mvPinBar .pin-spot {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scroll-padding-left: 4px;
+}
+
+body .mv-ref-app .app-top #mvPinBar .pin-spot::-webkit-scrollbar {
+  display: none;
+}
+
+body .mv-ref-app .app-top #mvPinBar .pin-spot .pin-tk {
+  scroll-snap-align: start;
+  flex: 0 0 auto;
+}
+
+/* Belt and braces on the group itself: whatever a future child does, it cannot
+   be drawn over the controls to its right. */
+body .mv-ref-app .app-top #mvPinBar {
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* The value must not be squeezed to nothing to buy the prices room — it is the
+   headline of the whole shell. It keeps its width and the prices take the
+   remainder. */
+body .mv-ref-app .app-top #mvPinBar .pin-val-wrap,
+body .mv-ref-app .app-top #mvPinBar .pin-claim {
+  flex: 0 0 auto;
+}
+
+
+/* ----------------------------------------------------------------------------
+   THE PORTFOLIO STRIP: FIVE TILES, THEN THREE, THEN TWO, THEN ONE.
+
+   The reference sizes these as `flex: 1; min-width: 150px`, which is five
+   across at any width wide enough — and "wide enough" was measured against the
+   captured ten-lease record, whose largest figure is seven characters. A real
+   portfolio's is fourteen: "$6,033,120,000" needs about 190px of text at the
+   26px serif this tile uses, plus 40px of padding, so a tile under ~230px
+   cannot hold it. At 1280px with the 236px rail, each of five tiles gets 206px
+   — which is where the capture in row 12 was taken.
+
+   THE LADDER IS BY TILE COUNT, not by squeezing type. Three tiles at laptop
+   width is 330px each, which holds the longest figure this data can produce at
+   full size. Below the rail's own breakpoint the content is narrower again and
+   the reference's existing 46%-then-100% rules take over, so this only fills
+   the gap between them.
+
+   `border-right` BECOMES A LOGICAL EDGE. With one row the reference's
+   right-hand divider is correct; once the tiles wrap it drew a line down the
+   middle of the last row and left the wrapped row with no separation from the
+   one above. `border-inline-end` on every tile plus a row rule underneath
+   gives the same look at five across and the right look at three and two.
+   ---------------------------------------------------------------------------- */
+@media (max-width: 1440px) and (min-width: 1025px) {
+  body .mv-ref-app .pf-strip .pf-cell {
+    flex: 1 1 30%;
+    min-width: 230px;
+  }
+}
+
+@media (max-width: 1024px) and (min-width: 768px) {
+  body .mv-ref-app .pf-strip .pf-cell {
+    flex: 1 1 45%;
+    min-width: 220px;
+  }
+}
+
+/* THE DIVIDERS, ONCE THE TILES CAN WRAP.
+
+   The reference draws a `border-right` on every tile but the last, which is
+   exactly right for one row of five and wrong for two rows: it leaves the
+   wrapped row with no rule above it and puts a vertical line down the middle
+   of a short last row. A row rule under each tile answers both, and it is a
+   `box-shadow` rather than a border so it does not change the tile's box and
+   cannot shift the strip's height by a pixel per row.
+
+   ONLY WHERE THE TILES ACTUALLY SHARE A ROW. Below 560 the reference stacks
+   them full width and swaps to its own `border-bottom`, so both of these would
+   be a second horizontal rule on top of that one and a stray vertical line
+   down the right of a full-width tile. Guarded to the widths where a row
+   exists, and the reference's stacked rules are left to own the rest. */
+@media (min-width: 561px) {
+  body .mv-ref-app .pf-strip { row-gap: 0; }
+
+  body .mv-ref-app .pf-strip .pf-cell {
+    box-shadow: 0 1px 0 rgba(255, 255, 255, .09);
+  }
+}
+
+/* The label's 45px floor exists to keep five one-line labels aligned. Once the
+   tiles wrap it is just a gap, so it is released below the full-width layout. */
+@media (max-width: 1440px) {
+  body .mv-ref-app .pf-strip .pf-label { min-height: 0; }
+}
+
+
+/* ----------------------------------------------------------------------------
+   THE TWO RAILS, AND WHEN ONE OF THEM IS A LIE.
+
+   `#dashcols` is `minmax(0,1.42fr) minmax(0,1fr)` — measured by the reference
+   against its own content, and correct while the page is at least ~1100px
+   wide. The reference already collapses it to two equal rails at 1024 and to
+   one at 767. Between 1025 and ~1180 the 1.42/1 split leaves the right rail at
+   about 400px, which is under the 300px-minimum `.prod-pair` grid plus its
+   padding — so the paired gas/oil charts in the right-hand cards stacked while
+   the left-hand ones did not, and the two rails stopped reading as a pair.
+
+   Equal rails from 1180 down, which is the same answer the reference reaches
+   at 1024, applied at the width the content actually needs it.
+   ---------------------------------------------------------------------------- */
+@media (max-width: 1180px) and (min-width: 1025px) {
+  body .mv-ref-app #dashcols {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  }
+}
+
+/* The rails' own gap is 18px inline. At tablet width that is most of a card's
+   padding again; the cards need the room more than the gutter does. */
+@media (max-width: 1024px) {
+  body .mv-ref-app #dashcols { gap: 12px !important; }
+}
+
+
+/* ----------------------------------------------------------------------------
+   THE FOUR KPI TILES AT LAPTOP WIDTH.
+
+   `.g4` is four across until 1024. Each tile carries a label, a figure, a
+   sparkline, two sub-lines, an affordance chip, a freshness stamp and — on a
+   free or lapsed account — the upsell line restored above. At 1280 that is
+   240px of width for eight stacked rows, and the figure is the same 26px
+   serif the strip uses. Three across holds all of it at a readable size; four
+   returns as soon as there is room for it.
+   ---------------------------------------------------------------------------- */
+@media (max-width: 1400px) and (min-width: 1025px) {
+  body .mv-ref-app .app-body .grid.g4 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+
+/* ----------------------------------------------------------------------------
+   EVERY WIDE TABLE SCROLLS, AND SAYS SO.
+
+   "Every lease, every field" is ten columns and is already wrapped in an
+   `overflow-x: auto` div, so it has never broken the page. What it did not do
+   is admit it: on a touch screen a table that is clipped at the edge with no
+   scrollbar and no shadow reads as a table with fewer columns than it has, and
+   the reader never learns that "Gas left" and "Oil left" are there.
+
+   A gradient pinned to the scrolling edge, drawn only while there is more to
+   see, plus momentum scrolling on iOS. The table itself is untouched — same
+   ten columns, same rows, same sort, same pager.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app #rawCard > div[style*="auto"] {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  background:
+    linear-gradient(to right, #fff 30%, rgba(255, 255, 255, 0)) left center,
+    linear-gradient(to left, #fff 30%, rgba(255, 255, 255, 0)) right center,
+    radial-gradient(farthest-side at 0 50%, rgba(13, 26, 21, .14), rgba(13, 26, 21, 0)) left center,
+    radial-gradient(farthest-side at 100% 50%, rgba(13, 26, 21, .14), rgba(13, 26, 21, 0)) right center;
+  background-repeat: no-repeat;
+  background-size: 36px 100%, 36px 100%, 14px 100%, 14px 100%;
+  background-attachment: local, local, scroll, scroll;
+}
+
+body .mv-ref-app #rawCard .tbl {
+  min-width: 760px;
+}
+
+
+/* ----------------------------------------------------------------------------
+   THE GREETING BLOCK AND THE OWNER CHIP.
+
+   `.mv-greet` puts the greeting and the owner chip on one row. The chip holds
+   a name of any length plus a button, so on a narrow screen it either squeezed
+   the heading or pushed itself off the edge. It wraps under the heading
+   instead, which is the reading order anyway.
+
+   THE SWITCH PANEL IS ANCHORED TO THE CHIP, so on a phone it hung off the
+   right of the screen. It becomes a full-width sheet under the chip at that
+   width — same panel, same list, same claim link, all of it reachable.
+   ---------------------------------------------------------------------------- */
+@media (max-width: 1024px) {
+  body .mv-ref-app .mv-greet {
+    flex-wrap: wrap;
+    row-gap: 10px;
+    align-items: flex-start;
+  }
+
+  body .mv-ref-app .mv-greet > div { min-width: 0; flex: 1 1 100%; }
+  body .mv-ref-app .owner-chip { max-width: 100%; }
+  body .mv-ref-app .owner-chip strong { overflow-wrap: anywhere; }
+}
+
+@media (max-width: 640px) {
+  body .mv-ref-app .ownersw-pop {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-width: none;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+}
+
+
+/* ----------------------------------------------------------------------------
+   THE ULTRA CARD ON A NARROW SCREEN.
+
+   One headline, two figures, one button. The two figures are a row that had no
+   wrap rule, so a long value and a long volume pushed the card wider than the
+   column at phone width.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .u-figs { flex-wrap: wrap; }
+body .mv-ref-app .u-fig { min-width: 0; }
+
+@media (max-width: 560px) {
+  body .mv-ref-app .u-headline {
+    font-size: clamp(30px, 11vw, 52px);
+    overflow-wrap: anywhere;
+  }
+
+  body .mv-ref-app .u-figs > .u-fig { flex: 1 1 100%; }
+}
+
+
+/* ----------------------------------------------------------------------------
+   ROWS, BARS AND PAGERS AT TOUCH SIZE.
+
+   Everything in the rails is a `role="button"` row — the setrows, the lease
+   bars, the operator scores, the source rows. They are sized for a pointer,
+   and a 26px pager button is under half the 44px a finger needs. Nothing moves
+   or is removed; the hit areas grow where the input is a finger.
+
+   `.lbar` also stops being a three-column row on a phone: a lease name, a
+   track and a figure in 340px left the name at four characters. The name takes
+   its own line and the bar and the figure share the next one, so every lease
+   is still readable and still tappable.
+   ---------------------------------------------------------------------------- */
+@media (pointer: coarse) {
+  body .mv-ref-app .setrow,
+  body .mv-ref-app .opscore,
+  body .mv-ref-app .srcrow { min-height: 48px; }
+
+  /* the lease and county bars are 23px rows of pure chart; the hit area grows
+     without the bar itself changing height, so the picture is unchanged */
+  body .mv-ref-app .lbar { min-height: 40px; padding-block: 6px; }
+
+  body .mv-ref-app .mv-pager button { min-width: 40px; height: 40px; }
+
+  /* "Switch Owner" and the strip's "+N more" are 24px pills inside running
+     text; both are real controls and both were under half a finger wide */
+  body .mv-ref-app .owner-chip .sw-btn,
+  body .mv-ref-app .pf-more { min-height: 34px; padding-block: 7px; }
+
+  body .mv-ref-app .as-cat { min-height: 40px; }
+
+  body .mv-ref-app .pf-cell { min-height: 92px; }
+}
+
+@media (max-width: 560px) {
+  body .mv-ref-app .lbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "name name" "track val";
+    gap: 4px 8px;
+    align-items: center;
+  }
+
+  body .mv-ref-app .lbar .lb-name {
+    grid-area: name;
+    width: auto;
+    max-width: none;
+    overflow-wrap: anywhere;
+  }
+
+  body .mv-ref-app .lbar .lb-track { grid-area: track; min-width: 0; }
+  body .mv-ref-app .lbar .lb-val,
+  body .mv-ref-app .lbar .lb-zero { grid-area: val; text-align: right; }
+
+  body .mv-ref-app .mv-pager {
+    flex-wrap: wrap;
+    row-gap: 8px;
+    justify-content: center;
+  }
+
+  body .mv-ref-app .mv-pager .pg-count { flex: 1 0 100%; text-align: center; }
+}
+
+
+/* ----------------------------------------------------------------------------
+   THE CHARTS.
+
+   `.prod-pair` is an `auto-fit` grid at 300px, so it needs no breakpoint of
+   its own — one column in a rail, two in a full-width panel. What it did need
+   is a floor under the plot: `.lc-svg` is a fixed 132px, which is right beside
+   a 300px axis and too tall beside a 280px one on a phone, where it ate most
+   of the viewport before the readout was reached.
+
+   The column strips shorten with it, for the same reason. The DATA is
+   unchanged: every month is still drawn, still hoverable and still carries its
+   figure.
+   ---------------------------------------------------------------------------- */
+@media (max-width: 560px) {
+  body .mv-ref-app .lc-svg { height: 104px; }
+  body .mv-ref-app .mcols { height: 84px; }
+  body .mv-ref-app .mcax { font-size: 9px; }
+  body .mv-ref-app .prod-pair { gap: 14px; }
+}
+
+
+/* ----------------------------------------------------------------------------
+   THE ROLLUP'S CATEGORY CHIPS AND THE ALERT STRIP.
+
+   Both are rows of buttons that can be any number long. They wrapped already;
+   what they lacked was a tap height and a wrap point inside a long finding
+   title.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .as-cats { flex-wrap: wrap; gap: 6px; }
+body .mv-ref-app .as-cat { min-height: 32px; }
+body .mv-ref-app .al-mini .al-k,
+body .mv-ref-app .al-mini .al-s { overflow-wrap: anywhere; }
+
+@media (max-width: 767px) {
+  body .mv-ref-app .mv-alsum .as-top { flex-wrap: wrap; row-gap: 8px; }
+  body .mv-ref-app .mv-alsum .as-top > button { width: 100%; }
+}
+
+
+/* ----------------------------------------------------------------------------
+   THE EXPLAINER PANEL ON A SMALL SCREEN.
+
+   The reference already gives it the full viewport width below 767px. Two
+   things it does not do: the metric band's stat grid stays multi-column in a
+   360px sheet, and the panel's own body gets no extra bottom padding, so the
+   last block sat under the phone's bottom nav bar. Both are layout only — the
+   panel's four steps, its evidence list, its charts and its chips are
+   unchanged.
+   ---------------------------------------------------------------------------- */
+@media (max-width: 560px) {
+  body .mv-ref-app .dx-band-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body .mv-ref-app .dx-v { font-size: 17px; }
+  body .mv-ref-app .ctx-body { padding-bottom: 96px; }
+}
+
+
+/* ----------------------------------------------------------------------------
+   THE LAST GUARD: NOTHING MAY SCROLL THE PAGE SIDEWAYS.
+
+   Every block above is a considered answer for one piece of content. This is
+   the catch for the next one: a figure, a lease name or an operator name long
+   enough to beat all of them widens the document and puts a horizontal
+   scrollbar under the whole dashboard, which is the single worst responsive
+   failure because it moves every other thing on the page.
+
+   It is a floor, not a fix — anything caught by it should get a rule of its
+   own above — and it is deliberately scoped to the dashboard's own main
+   column so it cannot affect the Map, which fills the viewport by design.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .app-main { overflow-x: clip; }
+body .mv-ref-app .app-body section[data-route="app"] { min-width: 0; }
+body .mv-ref-app .app-body section[data-route="app"] .card { min-width: 0; }
+
+
+/* ----------------------------------------------------------------------------
+   THE LEASE BARS FIT THEIR RAIL AT EVERY RAIL WIDTH.
+
+   `.lbar` is three fixed columns — a 172px name, a track with a 40px floor and
+   a 108px figure — plus two 9px gaps. That is a 338px minimum, and the rails
+   are narrower than that well before any of the reference's own breakpoints
+   fire: measured at a 1024px viewport the rail gives each bar 320px, so the
+   row overflowed its card by 18px and the value sat over the card's padding.
+   The reference ladders the name down at 900px and 560px, but the rail's width
+   does not follow the VIEWPORT — `#dashcols` splits it, so the narrowest rails
+   on this page happen between 768 and 1180, above both of those breakpoints.
+
+   Made to shrink instead of laddered again, so it is right at any rail width
+   rather than at the three that were measured. The name may now shrink below
+   its basis — it already has `text-overflow: ellipsis` for exactly that — and
+   the track takes all the spare room, so a wide rail looks exactly as it does
+   today. The FIGURE never shrinks: it is the thing the row is for, and a
+   column of right-aligned tabular numbers only reads as a column while they
+   share an edge.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .lbar .lb-name {
+  flex: 0 1 172px;
+  min-width: 0;
+}
+
+body .mv-ref-app .lbar .lb-track {
+  flex: 1 1 48px;
+  min-width: 32px;
+}
+
+body .mv-ref-app .lbar .lb-val,
+body .mv-ref-app .lbar .lb-zero {
+  flex: 0 0 auto;
+  min-width: 96px;
+}
+
+
+/* ============================================================================
+   13 · THE NAVIGATION PANEL A SMALL SCREEN NEVER HAD
+
+   `Chrome` has always rendered a hamburger beside the wordmark, always toggled
+   a `nav` flag with it, and always put `.open` on the rail. Nothing in any
+   stylesheet in this app has ever carried a rule for `.app-side.open` — and
+   `dashboard-reference.css:2267` sets `.app-side { display: none !important }`
+   below 860px. So the class landed on an element that stayed hidden, the
+   control did nothing at any width it was visible at, and the only navigation
+   under 860px was `.mv-bottom`: five destinations of eleven.
+
+   WHAT WAS UNREACHABLE FROM A PHONE. Activities, the Map, Lease Audit, Groups
+   and Invite Co-Owners are rail-only; the bottom bar carries Dashboard,
+   Alerts, My Leases, Production & Forecast and Weekly Report. That is the one
+   thing this responsive pass is not allowed to leave standing — a section that
+   exists on a desktop and cannot be reached on a phone is a feature removed by
+   viewport.
+
+   THE BOTTOM BAR STAYS EXACTLY AS IT IS. It is the right answer for the five
+   things a reader opens most, and it is one tap rather than two. The panel is
+   the way to the other six, which is what the hamburger was always for.
+
+   BELOW 860 ONLY. Above it the rail is on screen as a column of the shell grid
+   and neither the hamburger nor any of this applies.
+   ============================================================================ */
+
+/* THE SCRIM EXISTS ONLY WHERE THE PANEL DOES. `nav` is React state and survives
+   a resize, so a reader who opens the panel on a phone and then widens the
+   window — a desktop browser being dragged, a tablet being turned — would
+   otherwise be left with an unstyled `<button>` sitting in the shell grid
+   beside the rail. Hidden by default and shown by the block below, so the
+   element cannot be seen at any width the panel is not presented at. */
+body .mv-ref-app .app-side-scrim { display: none; }
+
+@media (max-width: 860px) {
+  /* The reference only shows the burger below 767, which leaves the band
+     between 768 and 860 — every iPad in portrait — with the rail hidden and no
+     control to bring it back. It is shown wherever the rail is not. */
+  body .mv-ref-app .app-top .app-hamburger {
+    display: block;
+  }
+
+  /* `display: flex` — the rail is a flex column and `.side-foot` uses
+     `margin-top: auto` against it; `!important` because the rule it is
+     answering is itself `!important`. */
+  body .mv-ref-app .app-side.open {
+    display: flex !important;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(86vw, 296px);
+    height: 100dvh;
+    max-height: 100dvh;
+    z-index: 210;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    /* clear of the phone's own home indicator, so the last row is tappable */
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 2px 0 24px rgba(6, 18, 13, .45);
+    animation: mv-side-in .18s ease-out;
+  }
+
+  /* The dismissal, and the dimming, in one element — see the note in
+     `Chrome.tsx`. It sits under the panel and over everything else, including
+     the bottom bar (z-index 120) and the sticky chrome row. */
+  body .mv-ref-app .app-side-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 205;
+    border: 0;
+    padding: 0;
+    background: rgba(6, 18, 13, .5);
+    cursor: pointer;
+  }
+
+  /* A finger needs the whole row, and the rail's rows are sized for a pointer
+     sitting still. The ROWS grow; nothing is added to or taken from the list. */
+  body .mv-ref-app .app-side.open a.nav-item {
+    min-height: 46px;
+    font-size: 14.5px;
+  }
+}
+
+@keyframes mv-side-in {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+/* A reader who has asked for less motion gets the panel without the slide. It
+   is a 180ms transform, which is exactly the class of thing that setting is
+   for. */
+@media (prefers-reduced-motion: reduce) {
+  body .mv-ref-app .app-side.open { animation: none; }
+}
+
+
+/* ----------------------------------------------------------------------------
+   THE ACCOUNT-STATE MENU FITS THE SCREEN IT OPENS ON.
+
+   `.mv-statemenu` is `position: absolute; right: 0; width: 294px` against a
+   wrapper that sits in the middle of the chrome row. On a 360px phone that
+   wrapper's right edge is at x=236, so the panel opened at x=-58: the left
+   column of every one of the five state rows — the whole of "Not claimed",
+   "Claimed · free", "On trial" — was off the side of the screen, unreadable
+   and, on the rows where the label starts furthest left, untappable. A
+   left-hand overflow does not create a scrollbar, so there was no way to
+   reach it either.
+
+   It becomes a sheet pinned to both edges below 560px, which is the same
+   answer `.ownersw-pop` already gets at 640 and the same one `.mv-menu` gets
+   for free from its own `min(320px, 92vw)`. Fixed rather than absolute so it
+   cannot be clipped by the chrome row it hangs from. Every state, its note and
+   its selected mark are unchanged — this is where the panel is, not what is
+   in it.
+   ---------------------------------------------------------------------------- */
+@media (max-width: 560px) {
+  body .mv-ref-app .mv-statewrap .mv-statemenu.open {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    top: auto;
+    width: auto;
+    max-height: 70vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}

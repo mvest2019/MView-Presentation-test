@@ -29,7 +29,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { Payload } from '../../_lib/reference/payload';
-import { formatLakhs } from '../../_lib/format-lakhs';
 import { usePortalMember } from '../portal-session';
 import {
   n0, n1, usd, usdShort, pctS, vol, volWords, plural, productWord, interest, nShort,
@@ -38,7 +37,6 @@ import {
 import type { Tier } from './bits';
 import { Pager, ProductPair, usePaged } from './bits';
 import { Essentials, ProdCols, Wells, ValueMix } from './panels';
-import { StateCard } from './funnel';
 import { Maturity } from './maturity';
 import { Charts } from './LineChart';
 import { productCharts } from '../../_lib/reference/chart';
@@ -50,7 +48,7 @@ export interface ViewProps {
   funnel: FunnelKey;
   sample: boolean;
   open: (key: string) => void;
-  go: (r: Route) => void;
+  go: (r: Route, params?: Record<string, string | null>) => void;
 }
 
 /** the dashboard also drives the plan card, so it needs the two funnel props */
@@ -68,7 +66,11 @@ interface SeriesDef {
 }
 
 export default function Dashboard(
-  { p, tier, funnel, sample, open, go, trialStarted, setFunnel }: DashProps,
+  /* `trialStarted` and `setFunnel` are still part of `DashProps` — `Portal`
+     passes them and the plan card used to read them. They are accepted and
+     not destructured so the shell's call site is unchanged and the props stay
+     available the moment anything on this page needs the trial stamp again. */
+  { p, tier, funnel, sample, open, go }: DashProps,
 ) {
   const t = p.totals;
   const a = p.as_of;
@@ -84,6 +86,37 @@ export default function Dashboard(
   const member = usePortalMember();
   const top = al.items[0] ?? null;
 
+  /* See the greeting's own note below: the string is held in state so the
+     reader's clock can replace the server's after mount. */
+  const [greet, setGreet] = useState(() => greetLine(p, member?.firstName));
+  useEffect(() => {
+    setGreet(greetLine(p, member?.firstName));
+  }, [p, member?.firstName]);
+
+  /* ---------------------------------------------- EACH FINDING, SHOWN ONCE.
+   *
+   * THREE BLOCKS ON THIS PAGE WERE DRAWING THE SAME ALERTS. The rollup prints
+   * the top finding as a sentence; "What changed" printed `items[0..4]`, which
+   * begins with that same finding; and the alert strip printed `items[0..]`,
+   * which begins with all five of those. So the reader met finding #1 three
+   * times and findings #2-#5 twice, on one screen — the defect sheet's rows 6,
+   * 37 and 53, filed separately because they look different at each tier.
+   *
+   * THE FIX IS A PARTITION, NOT A DELETION. The rollup keeps the top finding,
+   * "What changed" takes the next five, and the strip takes whatever is left.
+   * Every finding the payload carries is still on the page, still opens its own
+   * drawer, and now appears exactly once. A portfolio with a single finding
+   * simply leaves the two lower blocks empty, and each is already gated on its
+   * own list being non-empty.
+   *
+   * `TOP_IN_ROLLUP` is 1 because that is how many the rollup prints — it is
+   * derived from the block above rather than written twice, so changing the
+   * rollup cannot silently reintroduce the overlap. */
+  const TOP_IN_ROLLUP = top ? 1 : 0;
+  const CHANGED_ROWS = 5;
+  const changedItems = al.items.slice(TOP_IN_ROLLUP, TOP_IN_ROLLUP + CHANGED_ROWS);
+  const stripItems = al.items.slice(TOP_IN_ROLLUP + changedItems.length);
+
   return (
     /* `.active` is REQUIRED, not decorative: the prototype ships
        `section[data-route]{display:none}` and only `section[data-route].active`
@@ -91,11 +124,26 @@ export default function Dashboard(
        and the page comes up empty below the pinned bar. */
     <section data-route="app" id="routeApp" className="active">
 
-      {/* ---------- the plan card: what this account state means ---------- */}
-      <StateCard
-        p={p} funnel={funnel} trialStarted={trialStarted}
-        setFunnel={setFunnel} go={go} open={open}
-      />
+      {/* ---------- the plan card: REMOVED, because the chrome already says it.
+           `StateCard` and `FunnelBar` render for the SAME three funnel states —
+           claimed, trial, lapsed — and say the same thing in the same words:
+           the same headline, the same "what Premium adds" paragraph, the same
+           primary button. The bar is sticky chrome directly above this element,
+           so on every one of those three states the reader met the message
+           twice, one line apart. Defect sheet rows 15, 33, 37 and 53 are all
+           that duplication seen from different tiers.
+
+           THE BAR IS THE ONE THAT STAYS, not this card, for two reasons: it is
+           visible from every scroll position rather than only at the top, and
+           it belongs to `Chrome`, so the Weekly Report and the Map keep the
+           same message without the Dashboard having to render its own copy.
+
+           NOTHING IS LOST. The card's primary CTA is the bar's CTA. Its one
+           unique control was a ghost link to Activities or Alerts — and both
+           routes are already reachable from this page: the alerts rollup below
+           carries "Open all alerts →" and "What's going on around you" carries
+           "See all N filings →". The component itself is untouched in
+           `funnel.tsx`; only this call site is gone. */}
 
       {/* ---------- ULTRA: one headline, one status, one action ---------- */}
       {tier === 'ultra' ? <UltraHero p={p} funnel={funnel} open={open} /> : null}
@@ -169,7 +217,25 @@ export default function Dashboard(
           {/* ---------- greeting + page head ---------- */}
           <div className="mv-greet">
             <div>
-              <p className="greet-line">{greetLine(p, member?.firstName)}</p>
+              {/* THE VIEWER'S CLOCK, WITHOUT A HYDRATION MISMATCH.
+
+                  `greetLine` reads `new Date()`, so the server renders the
+                  greeting on the SERVER's clock and the browser re-renders it
+                  on the reader's. Whenever the two straddle a noon, a 5pm or a
+                  midnight the two strings differ and React throws #418,
+                  "Hydration failed because the initial UI does not match what
+                  was rendered on the server" — the defect sheet's row 45,
+                  reported once per load.
+
+                  BOTH HALVES ARE NEEDED. `suppressHydrationWarning` tells React
+                  this one subtree is legitimately time-dependent, which stops
+                  the error; on its own it also freezes the SERVER's wording on
+                  screen, so a reader five time zones away would be wished good
+                  morning at ten at night. The effect re-reads the clock after
+                  mount and writes the reader's own greeting, and React bails
+                  out of the re-render when the two agree — which is most
+                  loads. Nothing flashes, and nothing is wrong. */}
+              <p className="greet-line" suppressHydrationWarning>{greet}</p>
               {/* THE PAID HEADLINE, IN EVERY STATE. "Here is what your dashboard
                   becomes" was the unclaimed variant, and it described the page
                   instead of naming the record on it — the banner above now does
@@ -184,18 +250,26 @@ export default function Dashboard(
                 {/* THE COUNTIES COLLAPSE TO A COUNT once there are more than
                     five of them. Twenty names is not a fact anyone reads — it
                     is a wall the eye skips, and it pushed this line to three
-                    rows. The names are kept on the `title`, so hovering still
-                    answers "which ones", and the map and the leases table both
-                    list them properly. */}
-                {t.counties.length > MAX_COUNTY_NAMES
-                  ? (
-                    <span title={t.counties.join(', ')}>
-                      {t.counties.length} {plural(t.counties.length, 'county', 'counties')}
-                    </span>
-                  )
-                  : t.counties.join(', ')} ·{' '}
+                    rows. The count OPENS, so the names are one click away on
+                    every input — see `NameList`. */}
+                <NameList
+                  names={t.counties} max={MAX_COUNTY_NAMES}
+                  one="county" many="counties"
+                /> ·{' '}
                 {t.operator_count} {plural(t.operator_count, 'operator')}
-                {t.plays.length ? ' · ' + t.plays.join(', ') : ''}
+                {/* THE PLAYS COLLAPSE THE SAME WAY THE COUNTIES DO, and for the
+                    same measured reason. Four play names — "EAGLE FORD SHALE,
+                    GRANITE WASH, HAYNESVILLE/BOSSIER SHALE, PERMIAN BASIN" — is
+                    118 characters at the end of a line that already carries six
+                    facts, and it pushed this subhead onto a third row. */}
+                {t.plays.length
+                  ? (
+                    <>
+                      {' · '}
+                      <NameList names={t.plays} max={MAX_PLAY_NAMES} one="play" many="plays" />
+                    </>
+                  )
+                  : null}
               </p>
             </div>
             {/* ADAPTED · the reference says "Owner:"; this build says
@@ -253,9 +327,16 @@ export default function Dashboard(
                   {(Object.keys(al.counts) as (keyof typeof al.counts)[])
                     .filter((k) => k !== 'all' && al.counts[k])
                     .map((k) => (
+                      /* THE CHIP CARRIES ITS CATEGORY TO THE ALERTS PAGE.
+                         Every one of these called a bare `go('alerts')`, so
+                         "2 Money" landed on the unfiltered list with "All · 9"
+                         active and the reader had to find the Money filter
+                         again — the two counts on screen disagreed the moment
+                         they arrived. The category rides in the query string,
+                         which is where `AlertsView` already looks for it. */
                       <button
                         key={k} className={'as-cat' + (k === 'money' ? ' as-act' : '')}
-                        type="button" onClick={() => go('alerts')}
+                        type="button" onClick={() => go('alerts', { cat: k })}
                       >
                         <b>{al.counts[k]}</b> {CAT_NAME[k] ?? k}
                       </button>
@@ -278,18 +359,23 @@ export default function Dashboard(
             ? (
               <div className="card card-pad simple-hero" style={{ margin: '14px 0' }}>
                 <h3 style={{ marginBottom: 6 }}>Your minerals, in one line</h3>
+                {/* THE PORTFOLIO LINE, NOT THE TOP ALERT.
+
+                    This printed `top.title — top.body`, which is word for word
+                    what the rollup directly above it prints. At Essentials the
+                    two sat one card apart, so the page's first two blocks said
+                    the same sentence twice (defect sheet row 53). The branch
+                    below was already written — it was the fallback for an
+                    account with no findings — and it is the sentence this card
+                    is actually titled for: what the portfolio filed, in one
+                    line. The finding is not lost; it is in the rollup above and
+                    the button below still opens it. */}
                 <p style={{ fontSize: 16, margin: '0 0 10px' }}>
-                  {top
-                    ? <><strong>{top.title}</strong> — {top.body}</>
-                    : (
-                      <>
-                        <strong>
-                          {t.reporting_count} of your {t.lease_count} {plural(t.lease_count, 'lease')}{' '}
-                          filed {pw} in {a.data_month_label}
-                        </strong>{' '}
-                        — {volWords(t.anchor_gas_net, t.anchor_oil_net)} to you.
-                      </>
-                    )}
+                  <strong>
+                    {t.reporting_count} of your {t.lease_count} {plural(t.lease_count, 'lease')}{' '}
+                    filed {pw} in {a.data_month_label}
+                  </strong>{' '}
+                  — {volWords(t.anchor_gas_net, t.anchor_oil_net)} to you.
                 </p>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button
@@ -312,7 +398,7 @@ export default function Dashboard(
             : null}
 
           {/* ---------- what changed ---------- */}
-          {al.count && tier !== 'simple'
+          {changedItems.length && tier !== 'simple'
             ? (
               <div
                 className="card card-pad" id="changedCard"
@@ -326,7 +412,9 @@ export default function Dashboard(
                   <span className="small muted">{al.window_note}</span>
                 </div>
                 <ul className="timeline" style={{ marginTop: 10 }}>
-                  {al.items.slice(0, 5).map((it) => (
+                  {/* `changedItems`, not `al.items.slice(0, 5)` — see the
+                      partition where it is built. */}
+                  {changedItems.map((it) => (
                     <li
                       key={it.id} role="button" tabIndex={0}
                       onClick={() => open('alert:' + it.id)}
@@ -346,10 +434,13 @@ export default function Dashboard(
             : null}
 
           {/* ---------- the alert strip ---------- */}
-          {tier === 'detailed' || tier === 'pro'
+          {(tier === 'detailed' || tier === 'pro') && stripItems.length
             ? (
               <div className="al-strip" id="alStrip">
-                {al.items.map((it) => (
+                {/* `stripItems`, not `al.items` — see the partition above. The
+                    strip used to repeat the five "What changed" rows verbatim
+                    immediately under them. */}
+                {stripItems.map((it) => (
                   <button
                     key={it.id} type="button"
                     className={'al-mini' + (it.severity === 'action' ? ' gold' : '')}
@@ -368,7 +459,7 @@ export default function Dashboard(
 
           {/* ---------- KPI grid ---------- */}
           {tier === 'detailed' || tier === 'pro'
-            ? <KpiGrid p={p} sample={sample} open={open} />
+            ? <KpiGrid p={p} sample={sample} funnel={funnel} open={open} />
             : null}
 
           {/* ---------- two columns ---------- */}
@@ -581,21 +672,37 @@ function PfStrip(
   const t = p.totals;
   const a = p.as_of;
 
-  /* LAKHS, ON THE SAMPLE PAGE ONLY.
-
-     The brief is that the not-claimed dashboard reads its MVestimate and its
-     production figures in lakhs. It is a presentation step and nothing else:
-     `formatLakhs` takes the already-formatted string and hands one back, so no
-     value is restated and a figure it cannot parse comes through untouched
-     rather than as `NaN`. Its own threshold means a figure under one lakh is
-     returned as it was — "17,306" stays "17,306", because "0.17 L" is harder to
-     read and throws away two digits.
-
-     GATED ON `sample`, deliberately. A claimed owner's own money keeps the
-     format their statements and the rest of the product use; only the
-     illustrative record is re-expressed. */
-  const lakhs = (display: string | null) =>
-    (sample && display != null ? formatLakhs(display) : display);
+  /* LAKHS ARE GONE FROM THIS STRIP, and that is the fix for two defects at once.
+   *
+   * WHAT IT DID. `formatLakhs` re-expressed the already-formatted figure in
+   * lakhs — so "$3,178,463,600" was printed as "$31784636 L" and "22,511,490
+   * MCF" as "22511.49 L MCF". Three things were wrong with that on this page:
+   *
+   *   1  IT DROPPED THE GROUPING. The helper divides and calls `toFixed`, which
+   *      returns a bare decimal, so the largest figure on the dashboard came
+   *      out as an unbroken run of digits. That is the defect sheet's row 8,
+   *      "need proper commas".
+   *
+   *   2  IT PUT A CURRENCY SUFFIX ON A VOLUME. A lakh is a grouping for a
+   *      COUNT; "22511.49 L MCF" reads as a unit that does not exist. That is
+   *      row 21's "stray 'L' unit".
+   *
+   *   3  IT WAS APPLIED TO TWO FIGURES OUT OF FORTY. Only the strip's headline
+   *      values went through it — every sub-line, chart, drawer, lease row and
+   *      the pinned bar beside them stayed in US grouping. So one cell read
+   *      "$31784636 L" directly above its own sub-line reading "your share of
+   *      $15150.42B", which is the "internally inconsistent by 1000x" in row
+   *      21: the reader is asked to hold two scales for one quantity.
+   *
+   * WHY REMOVING IT IS THE ROOT-CAUSE FIX AND NOT A PREFERENCE. `fmt.ts` opens
+   * by pinning every formatter to `en-US` and names this exact failure as the
+   * reason: "on an Indian-locale machine $4,548,479 rendered as $45,48,479 —
+   * the lakh grouping. The figures here are US oil-and-gas records quoted in
+   * dollars, mcf and barrels; the grouping belongs to the data, not to the
+   * reader's operating system." The lakh pass reintroduced by hand what that
+   * module exists to prevent. `format-lakhs.ts` itself is untouched and still
+   * exported, so anything that genuinely wants lakhs can still ask for them.
+   */
 
   const cells: React.ReactNode[] = [];
   const cell = (
@@ -617,7 +724,7 @@ function PfStrip(
      state-lapsed and is untouched in trial and paid. Only the VALUE figures carry
      it — a claimed owner keeps every lease, volume and permit, because they
      claimed them. What Premium adds is what they are worth. */
-  cells.push(cell('Your value', lakhs(usd(t.owner_value)),
+  cells.push(cell('Your value', usd(t.owner_value),
     <>your share of {usdShort(t.gross_value)} · range {usdShort(t.owner_value_low)}–{usdShort(t.owner_value_high)}</>,
     'value', 'How it is built', 'big cl-lock'));
 
@@ -630,7 +737,7 @@ function PfStrip(
   if (t.has_gas || t.has_oil) {
     cells.push(cell(`Gas filed in ${a.data_month_label ?? '—'}`,
       t.has_gas
-        ? <>{lakhs(n0(t.anchor_gas_net))}<span className="pf-val-s"> {MCF}</span></>
+        ? <>{n0(t.anchor_gas_net)}<span className="pf-val-s"> {MCF}</span></>
         : <span className="nodata">none</span>,
       t.has_gas
         ? (t.gas_change_pct == null
@@ -648,7 +755,7 @@ function PfStrip(
        the label is just "Oil", which is what an owner's statement calls it. */
     cells.push(cell(`Oil filed in ${a.data_month_label ?? '—'}`,
       t.has_oil
-        ? <>{lakhs(n0(t.anchor_oil_net))}<span className="pf-val-s"> {BBL}</span></>
+        ? <>{n0(t.anchor_oil_net)}<span className="pf-val-s"> {BBL}</span></>
         : <span className="nodata">none</span>,
       t.has_oil
         ? (t.oil_change_pct == null
@@ -666,8 +773,21 @@ function PfStrip(
       'no volume on the record for that month', 'production', 'What that means'));
   }
 
+  /* "ALL 794 LEASES" WAS A CLAIM THE ROLL DOES NOT MAKE.
+     This cell said "roll year 2025 · all 794 leases" while the panel it opens
+     headed its own KPI "LEASES ON THE ROLL — 703": the appraisal roll is a
+     county document and it does not carry a row for every lease the owner
+     holds. Defect sheet row 35, where the same figure appears three ways in
+     one view. `owner.roll_rows` is the count of rows the roll actually
+     returned for this owner, so the cell quotes that and says what it is a
+     count OF; when the roll does cover everything the two are equal and the
+     sentence goes back to being the one that was there. */
+  const rollRows = num(p.owner.roll_rows);
   cells.push(cell('County appraised', usd(t.appraised_value),
-    `roll year ${t.appraised_year} · all ${t.lease_count} ${plural(t.lease_count, 'lease')}`,
+    `roll year ${t.appraised_year} · `
+    + (rollRows && rollRows !== t.lease_count
+      ? `${n0(rollRows)} of your ${n0(t.lease_count)} ${plural(t.lease_count, 'lease')} on the roll`
+      : `all ${t.lease_count} ${plural(t.lease_count, 'lease')}`),
     'appraised', 'Why it differs'));
 
   cells.push(cell('Producing',
@@ -721,28 +841,74 @@ function PfStrip(
 }
 
 /* ============================================================= KPI grid */
-function KpiGrid({ p, sample, open }: { p: Payload; sample: boolean; open: (k: string) => void }) {
+function KpiGrid(
+  { p, sample, funnel, open }:
+  { p: Payload; sample: boolean; funnel: FunnelKey; open: (k: string) => void },
+) {
   const t = p.totals;
+  /**
+   * THE UPSELL LINE IS MARKUP NOW, NOT A `::after`.
+   *
+   * `dashboard-reference.css` painted it with two absolutely-positioned
+   * pseudo-elements pinned to `bottom: 6px` inside the tile. Two things were
+   * wrong with that, and both are on the defect sheet:
+   *
+   *   · IT OVERLAPPED THE TILE'S OWN TEXT (row 38). An absolute box in a tile
+   *     whose height is set by its content sits ON the last lines rather than
+   *     after them, so "What it's worth unlocks with your free 7-day trial"
+   *     printed across "your interest applied to the six-year projection" and
+   *     the freshness stamp below it.
+   *
+   *   · THE LAPSED ONE HARDCODED A LEASE COUNT. `content: "Portfolio totals
+   *     cover all 10 leases — Premium"` — ten, for every account, because a
+   *     `content` string cannot read a number. On the 794-lease record it was
+   *     simply false. A CSS pseudo-element can never be right here; the count
+   *     has to come from the payload, so the line has to be an element.
+   *
+   * In normal flow it takes its own space, so nothing can be written over, and
+   * the two rules in the copy are switched off in the overrides sheet.
+   */
+  const upsell = funnel === 'lapsed'
+    ? `Portfolio totals cover all ${t.lease_count} ${plural(t.lease_count, 'lease')} — Premium`
+    : funnel === 'claimed'
+      ? "What it's worth unlocks with your free 7-day trial"
+      : null;
   const a = p.as_of;
   const r = p.reserves;
   const rad = p.radius['1'];
   const trend = (p.series.months ?? []).map((m) => (t.has_gas ? m.gas_net : m.oil_net));
 
-  /* LAKHS, ON THE SAMPLE PAGE ONLY.
-
-     The brief is that the not-claimed dashboard reads its MVestimate and its
-     production figures in lakhs. It is a presentation step and nothing else:
-     `formatLakhs` takes the already-formatted string and hands one back, so no
-     value is restated and a figure it cannot parse comes through untouched
-     rather than as `NaN`. Its own threshold means a figure under one lakh is
-     returned as it was — "17,306" stays "17,306", because "0.17 L" is harder to
-     read and throws away two digits.
-
-     GATED ON `sample`, deliberately. A claimed owner's own money keeps the
-     format their statements and the rest of the product use; only the
-     illustrative record is re-expressed. */
-  const lakhs = (display: string | null) =>
-    (sample && display != null ? formatLakhs(display) : display);
+  /* LAKHS ARE GONE FROM THIS STRIP, and that is the fix for two defects at once.
+   *
+   * WHAT IT DID. `formatLakhs` re-expressed the already-formatted figure in
+   * lakhs — so "$3,178,463,600" was printed as "$31784636 L" and "22,511,490
+   * MCF" as "22511.49 L MCF". Three things were wrong with that on this page:
+   *
+   *   1  IT DROPPED THE GROUPING. The helper divides and calls `toFixed`, which
+   *      returns a bare decimal, so the largest figure on the dashboard came
+   *      out as an unbroken run of digits. That is the defect sheet's row 8,
+   *      "need proper commas".
+   *
+   *   2  IT PUT A CURRENCY SUFFIX ON A VOLUME. A lakh is a grouping for a
+   *      COUNT; "22511.49 L MCF" reads as a unit that does not exist. That is
+   *      row 21's "stray 'L' unit".
+   *
+   *   3  IT WAS APPLIED TO TWO FIGURES OUT OF FORTY. Only the strip's headline
+   *      values went through it — every sub-line, chart, drawer, lease row and
+   *      the pinned bar beside them stayed in US grouping. So one cell read
+   *      "$31784636 L" directly above its own sub-line reading "your share of
+   *      $15150.42B", which is the "internally inconsistent by 1000x" in row
+   *      21: the reader is asked to hold two scales for one quantity.
+   *
+   * WHY REMOVING IT IS THE ROOT-CAUSE FIX AND NOT A PREFERENCE. `fmt.ts` opens
+   * by pinning every formatter to `en-US` and names this exact failure as the
+   * reason: "on an Indian-locale machine $4,548,479 rendered as $45,48,479 —
+   * the lakh grouping. The figures here are US oil-and-gas records quoted in
+   * dollars, mcf and barrels; the grouping belongs to the data, not to the
+   * reader's operating system." The lakh pass reintroduced by hand what that
+   * module exists to prevent. `format-lakhs.ts` itself is untouched and still
+   * exported, so anything that genuinely wants lakhs can still ask for them.
+   */
 
   const kpi = (
     label: string, val: React.ReactNode, sub: React.ReactNode, chip: string | null,
@@ -765,12 +931,24 @@ function KpiGrid({ p, sample, open }: { p: Payload; sample: boolean; open: (k: s
       </div>
       <div className="k-sub"><span className="ctx-hint">{hint} →</span></div>
       <div className="freshness">{fresh}</div>
+      {/* ON THE TILES THAT ARE ACTUALLY COVERED, AND ONLY THOSE.
+
+          The lapsed pseudo-element had no `:has(.cl-lock)` on it, so it printed
+          this line under all four tiles — including "Leases earning" and
+          "Permits within 1 mile", which lapsed does not cover and never did.
+          A sentence explaining why a figure is hidden, under a figure that is
+          not, is a worse defect than the overlap it was printed in. Now that
+          both states cover the same one thing (see the money gate in the
+          overrides sheet), both use the same test: the tile is locked. */}
+      {upsell && lock
+        ? <div className={'k-upsell k-upsell-' + funnel}>{upsell}</div>
+        : null}
     </div>
   );
 
   return (
     <div className="grid g4" style={{ margin: '14px 0' }} id="kpiGrid">
-      {kpi('Your value', lakhs(usd(t.owner_value)),
+      {kpi('Your value', usd(t.owner_value),
         'your interest applied to the six-year projection',
         'Estimate — not an appraisal', `re-run ${a.estimate_run_label}`,
         'value', 'How it is built', true, 'cl-lock')}
@@ -1003,7 +1181,17 @@ function ProdSeries({ p }: { p: Payload }) {
           opts={{
             gasName: 'Gas to you, by month',
             oilName: 'Oil to you, by month',
-            sub: `${filed.length} of ${s.months.length} months filed`,
+            /* THE SUB-LINE SAYS WHICH MONTHS, not only how many of them.
+               "24 of 24 months filed" is a coverage figure and was the whole
+               of it, so the chart under it did not say what window it draws —
+               the anchor month is in the paragraph above and in the axis, and
+               neither is beside the series the reader is hovering. Defect
+               sheet row 16. The drawer charts already carry the window this
+               way ("24 months to June 2026"), so this is the same sentence the
+               same reader meets one click deeper, and it is built from
+               `as_of`, which every mode and every account state shares. */
+            sub: `${filed.length} of ${s.months.length} months filed`
+              + (p.as_of.data_month_label ? ` · to ${p.as_of.data_month_label}` : ''),
             keyPrefix: 'dash',
           }}
         />
@@ -1026,7 +1214,7 @@ function ProdSeries({ p }: { p: Payload }) {
  */
 function AroundYou(
   { p, tier, open, go }:
-  { p: Payload; tier: Tier; open: (k: string) => void; go: (r: Route) => void },
+  { p: Payload; tier: Tier; open: (k: string) => void; go: (r: Route, params?: Record<string, string | null>) => void },
 ) {
   const ac = p.activities;
   const cmp = ac.compare_90;
@@ -1213,7 +1401,7 @@ function PriceSpark({ hist, k }: { hist: { label: string | null; gas: number; oi
     `${((i / (vals.length - 1)) * 300).toFixed(1)},${(44 - ((v - min) / span) * 38).toFixed(1)}`);
   const dp = k === 'gas' ? 3 : 2;
   return (
-    <div className="price-spark">
+    <div className="price-spark ps-has-axis">
       <div className="ps-head">
         <strong className="small">
           {k === 'gas' ? 'Gas' : 'Oil'} across the last {hist.length} months
@@ -1230,9 +1418,17 @@ function PriceSpark({ hist, k }: { hist: { label: string | null; gas: number; oi
           fill={k === 'gas' ? '#2e8f6d' : '#8a6420'}
         />
       </svg>
-      <div className="ps-ax">
-        <span>low ${min.toFixed(dp)}</span>
-        <span>high ${max.toFixed(dp)}</span>
+      {/* THE TWO BOUNDS SIT WHERE THEY HAPPEN, not side by side under the line.
+          Printed as a row, "low $2.821" and "high $4.921" shared one baseline
+          while the line above plainly put its high at the top — so the card
+          showed a high and a low at the same height and invited the reading
+          that they were equal (defect sheet row 41). They are the ends of a
+          vertical scale, so they are labelled as one: high against the top of
+          the plot, low against the bottom. The same two figures, in the two
+          positions that make them readable. */}
+      <div className="ps-ax ps-ax-v">
+        <span className="ps-hi">high ${max.toFixed(dp)}</span>
+        <span className="ps-lo">low ${min.toFixed(dp)}</span>
       </div>
     </div>
   );
@@ -1253,6 +1449,17 @@ function Operators({ p, open }: { p: Payload; open: (k: string) => void }) {
      — every page would end in a full bar and the comparison the bars exist
      for would be gone. */
   const maxVal = Math.max(1, ...o.operators.map((x) => x.owner_share_value));
+
+  /* one entry per distinct change of hands — see the note on the handover
+     line at the foot of this card */
+  const handoverCount = new Map<string, number>();
+  for (const h of o.handovers) {
+    const k = `${h.from_operator} → ${h.to_operator} (${h.cycle_label})`;
+    handoverCount.set(k, (handoverCount.get(k) ?? 0) + 1);
+  }
+  const handoverLines = [...handoverCount].map(
+    ([k, n]) => (n > 1 ? `${k} on ${n} leases` : k),
+  );
 
   return (
     <div className="card card-pad" id="opCard">
@@ -1306,7 +1513,24 @@ function Operators({ p, open }: { p: Payload; open: (k: string) => void }) {
           ? (
             <p className="tiny muted" style={{ margin: '9px 0 0', paddingTop: 8, borderTop: '1px solid var(--line)' }}>
               Handovers on record:{' '}
-              {o.handovers.slice(0, 3).map((h) => `${h.from_operator} → ${h.to_operator} (${h.cycle_label})`).join(' · ')}
+              {/* ONE LINE PER HANDOVER, NOT PER LEASE IT HAPPENED ON.
+
+                  `handovers` is keyed by lease — `{lease_id, cycle,
+                  from_operator, to_operator}` — and this printed only the two
+                  operators and the month. An operator that sold a package of
+                  leases hands over every one of them in the same month, so the
+                  identical sentence was printed two and three times in a row:
+                  "BLACKBRUSH O & G, LLC → SCOTT SUGG ... (May 2026) ·
+                  BLACKBRUSH O & G, LLC → ... (May 2026)". Defect sheet row 27.
+
+                  The rows are grouped by the sentence they produce, so one
+                  change of hands reads as one change of hands and the lease
+                  count it covers — the fact the repetition was accidentally
+                  standing in for — is stated instead of implied. Nothing is
+                  dropped: the panel behind "why a handover matters" still
+                  lists every lease, and `slice(0, 3)` still limits the line to
+                  three the way it always has. */}
+              {handoverLines.slice(0, 3).join(' · ')}
               {' '}— <button type="button" className="linklike" onClick={() => open('operators')}>
                 why a handover matters →
               </button>
@@ -1407,6 +1631,14 @@ function Watched({ p, open }: { p: Payload; open: (k: string) => void }) {
   const a = p.as_of;
   const r = p.reserves;
   const rad = p.radius;
+  /* THE DECLINE RUN'S OWN UNIVERSE — see the Decline models row below.
+     Clamped to the portfolio, because a service that ever reported more
+     modelled leases than the owner holds must not make the remainder go
+     negative on screen. */
+  const modelUniverse = Math.min(
+    t.lease_count, num(r.modelled_leases) + num(r.unmodelled_leases),
+  );
+  const noModelRecord = Math.max(0, t.lease_count - modelUniverse);
   const rows: [string, string, string, string][] = [
     ['Lease-months read', n0(p.leases.reduce((s, l) => s + l.months_reported, 0)) ?? '0',
       `across ${t.lease_count} ${plural(t.lease_count, 'lease')}, through ${a.data_month_label}`,
@@ -1416,11 +1648,38 @@ function Watched({ p, open }: { p: Payload; open: (k: string) => void }) {
       `inside 1 / 3 / 5 miles · survey rebuilt ${a.radius_rebuild_label ?? '—'}`, 'permits'],
     ['Leases re-valued', n0(t.valued_count) ?? '0',
       `the model re-ran on ${a.estimate_run_label}`, 'value'],
-    ['Decline models', `${n0(r.modelled_leases)} of ${n0(t.lease_count)}`,
-      r.unmodelled_leases
-        ? `${r.unmodelled_leases} not modelled — shown as such, never as 0%`
-        : 'every lease carries a model', 'reserves'],
-    ['Wells located', n0(t.well_count) ?? '0', 'with coordinates, status and depth', 'value'],
+    /* THE THREE FIGURES IN THIS ROW COME OUT RIGHT WHEN A READER SUBTRACTS.
+       It printed `modelled_leases of lease_count` beside "`unmodelled_leases`
+       not modelled", and those are counts of two DIFFERENT sets: 738 of 794,
+       43 not modelled, and 794 − 738 is 56. Defect sheet row 24. The decline
+       run covers the leases the reserves block reached — 738 modelled plus 43
+       not, which is 781 — and the other 13 were never in front of it at all,
+       so quoting the portfolio as the denominator claims a coverage the model
+       does not have.
+
+       The pair that actually belongs together is shown as a pair, and the
+       leases the run never saw are named as their own third figure rather than
+       being folded into "not modelled" — a lease with no model is a different
+       fact from a lease the model could not fit, and the note under the
+       reserves card turns on that distinction. */
+    ['Decline models', `${n0(r.modelled_leases)} of ${n0(modelUniverse)}`,
+      [r.unmodelled_leases
+        ? `${n0(r.unmodelled_leases)} not modelled — shown as such, never as 0%`
+        : 'every lease the run reached carries a model',
+      noModelRecord
+        ? `${n0(noModelRecord)} of your ${n0(t.lease_count)} carry no decline run yet`
+        : null].filter(Boolean).join(' · '), 'reserves'],
+    /* NOT `'value'`. This row counts WELLS and opened "Your value — how it is
+       built", which is the one panel on the list that has nothing to do with
+       it — every sibling maps correctly (lease-months to production, permits
+       to the permit panel, decline models to reserves), so the mismatch read
+       as a broken control rather than a choice. `producing` is the well-record
+       panel this page already uses: it is what the "Your wells" card's own
+       status rows open, so a reader who clicks a well status and a reader who
+       clicks this count now land in the same place. A dedicated well-register
+       drawer would be better still and needs an endpoint — the service
+       advertises no `wells` key today. */
+    ['Wells located', n0(t.well_count) ?? '0', 'with coordinates, status and depth', 'producing'],
     ['Filings near you', n0(p.activities.counts.nearby) ?? '0',
       `permits, completions and status changes in the last ${p.activities.window_months} months`,
       'permits'],
@@ -1455,6 +1714,13 @@ function Reserves({ p, open }: { p: Payload; open: (k: string) => void }) {
   const r = p.reserves;
   const t = p.totals;
   const best = r.probability_best;
+  /* the decline run's own universe, and the leases outside it — the same two
+     figures the "Decline models" row in `Watched` is built on, for the same
+     reason. See the comment there. */
+  const modelUniverse = Math.min(
+    t.lease_count, num(r.modelled_leases) + num(r.unmodelled_leases),
+  );
+  const noModelRecord = Math.max(0, t.lease_count - modelUniverse);
 
   const line = (k: string, v: React.ReactNode, sub: string, ctx: string) => (
     <div
@@ -1486,8 +1752,15 @@ function Reserves({ p, open }: { p: Payload; open: (k: string) => void }) {
           r.probability_avg == null ? 'not modelled' : `${r.probability_avg.toFixed(0)}%`,
           r.probability_avg == null
             ? 'no lease here carries a model — that is not the same as 0%'
-            : `average across the ${r.modelled_leases} modelled ${plural(r.modelled_leases, 'lease')}` +
-              (r.unmodelled_leases ? ` · ${r.unmodelled_leases} excluded as not modelled` : ''),
+            /* THE SAME THREE FIGURES AS THE "Decline models" ROW, and they add
+               up here for the same reason — see that row. This line used to
+               name the modelled and the unmodelled count with no denominator
+               at all, so a reader carried the portfolio's 794 over from the
+               card above and got 781. The run's own universe is stated, and
+               the leases outside it are named as being outside it. */
+            : `average across the ${n0(r.modelled_leases)} modelled of ${n0(modelUniverse)}`
+              + (r.unmodelled_leases ? ` · ${n0(r.unmodelled_leases)} excluded as not modelled` : '')
+              + (noModelRecord ? ` · ${n0(noModelRecord)} carry no decline run yet` : ''),
           'reserves')}
         {best
           ? line('Best-placed lease', `${(best.probability ?? 0).toFixed(0)}%`,
@@ -1509,7 +1782,7 @@ function Reserves({ p, open }: { p: Payload; open: (k: string) => void }) {
 
 /* ========================================================== neighbours */
 function Neighbors(
-  { p, open, go }: { p: Payload; open: (k: string) => void; go: (r: Route) => void },
+  { p, open, go }: { p: Payload; open: (k: string) => void; go: (r: Route, params?: Record<string, string | null>) => void },
 ) {
   const rad = p.radius;
   const ac = p.activities;
@@ -1566,6 +1839,12 @@ function Neighbors(
 function Provenance({ p, open }: { p: Payload; open: (k: string) => void }) {
   const o = p.owner;
   const cov = p.coverage;
+  /* what the sources say they were run over, and what the portfolio holds
+     beyond it — see the heading below */
+  const covOf = Math.max(
+    0, ...Object.values(cov).map((v) => num((v as { of: number }).of)),
+  ) || p.totals.lease_count;
+  const covGap = Math.max(0, p.totals.lease_count - covOf);
   return (
     <div className="card card-pad" id="provCard">
       <h4>Where every number came from</h4>
@@ -1601,11 +1880,30 @@ function Provenance({ p, open }: { p: Payload; open: (k: string) => void }) {
         {o.collapsed_rows
           ? <p className="tiny muted" style={{ margin: '0 0 8px' }}>{o.collapse_note}</p>
           : null}
+        {/* THE HEADING COUNTS THE SAME LEASES THE ROWS UNDER IT COUNT.
+
+            It read "Source coverage of the 794 leases" over a line where every
+            single denominator was 782 — production 782/782, valuation 781/782,
+            radius 707/782 — so the twelve leases between the two numbers were
+            asserted to be covered by the heading and were in none of the
+            figures. Defect sheet row 25.
+
+            The denominator is the sources' own, and where it falls short of
+            the portfolio the shortfall is stated rather than papered over: a
+            lease no source has reached yet is a real and useful fact about
+            this record, and it is the one thing the old heading hid. `outOf`
+            takes the LARGEST `of` the sources report, so a source that covers
+            more than its neighbours cannot make the gap read as bigger than it
+            is; they are equal on every payload seen so far. */}
         <strong className="small">
-          Source coverage of the {p.totals.lease_count} {plural(p.totals.lease_count, 'lease')}
+          Source coverage of {covGap ? '' : 'the '}{n0(covOf)} {plural(covOf, 'lease')}
         </strong>
         <p className="tiny muted" style={{ margin: '4px 0 0' }}>
           {Object.entries(cov).map(([k, v]) => `${k.replace(/_/g, ' ')} ${v.have}/${v.of}`).join(' · ')}
+          {covGap
+            ? ` · ${n0(covGap)} of your ${n0(p.totals.lease_count)} ${plural(p.totals.lease_count, 'lease')} `
+              + 'carry no source row yet'
+            : ''}
         </p>
       </div>
     </div>
@@ -1622,6 +1920,51 @@ const GLYPH: Record<string, string> = {
 
 function num(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
+
+/**
+ * A LIST THAT COLLAPSES TO A COUNT, AND OPENS AGAIN.
+ *
+ * WHAT WAS WRONG. The greeting line collapses its counties past five names and
+ * its plays past two, and the only way back to the names was the `title`
+ * attribute — which is a hover, so it does not exist on a phone, on a tablet,
+ * on a keyboard or to a screen reader that is not in browse mode. The line
+ * therefore read "4 plays" and, for most of the people reading it, that was
+ * all it would ever read. Defect sheet row 9, "More than one playtypes show
+ * only count".
+ *
+ * THE COLLAPSE ITSELF IS KEPT. The measurement behind it has not changed —
+ * twenty county names is a wall, and four play names pushed this subhead onto
+ * a third row — so the default is still the count. What changes is that the
+ * count is now a CONTROL: it says how many, it opens to the names, and it
+ * closes again. Nothing is hidden from anybody; the page simply does not open
+ * with a wall of names on it.
+ *
+ * `title` IS KEPT TOO, because a hover that already worked should go on
+ * working, and it is what a tooltip-reading assistive technology finds.
+ *
+ * A LIST SHORT ENOUGH TO PRINT IS PRINTED, with no control at all — a button
+ * around three words the reader can already see is noise, and this component
+ * is used inside a sentence.
+ */
+function NameList(
+  { names, max, one, many }:
+  { names: string[]; max: number; one: string; many?: string },
+) {
+  const [open, setOpen] = useState(false);
+  if (!names.length) return null;
+  if (names.length <= max) return <>{names.join(', ')}</>;
+  const all = names.join(', ');
+  return (
+    <button
+      type="button" className="linklike name-list" title={all}
+      aria-expanded={open}
+      onClick={() => setOpen((v) => !v)}
+    >
+      {open ? all : `${names.length} ${plural(names.length, one, many)}`}
+      <span aria-hidden="true">{open ? ' ▴' : ' ▾'}</span>
+    </button>
+  );
 }
 
 function ctxForKind(k: string): string {
@@ -1655,6 +1998,17 @@ function metricText(it: { metric: number | null; metric_unit: string | null }): 
  */
 const MAX_COUNTY_NAMES = 5;
 const MAX_OPERATOR_NAMES = 3;
+/**
+ * AND TWO FOR THE PLAYS, which sit at the END of that same sentence.
+ *
+ * The counties get five because they are the line's subject; the plays trail
+ * it, and their names are long — "HAYNESVILLE/BOSSIER SHALE" is one fact and
+ * twenty-five characters. Four of them added 118 characters to a line already
+ * carrying six figures and pushed the subhead onto a third row. Two names is
+ * still an answer ("Eagle Ford and Permian"); past that the count is the more
+ * useful fact and the names stay on the `title`.
+ */
+const MAX_PLAY_NAMES = 2;
 
 /* ============================================================ owner switch */
 /**

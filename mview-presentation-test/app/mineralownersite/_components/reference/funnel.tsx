@@ -20,11 +20,14 @@
  * rest of this build follows for dates.
  */
 import React from 'react';
+import Link from 'next/link';
 import type { Payload } from '../../_lib/reference/payload';
 import { plural } from '../../_lib/reference/fmt';
 import type { FunnelKey, Route } from './Portal';
 
 export const TRIAL_LEN = 7;
+/** Billing & Plan — the route the top bar's plan pill already points at. */
+const BILLING_PATH = '/mineralownersite/soon/billing-and-plan';
 export const LEASE_LOCK_DAYS = 7;
 const PRICE = '$99.95/mo';
 
@@ -41,7 +44,7 @@ interface Props {
   p: Payload | null;
   funnel: FunnelKey;
   trialStarted: string | null;
-  go: (r: Route) => void;
+  go: (r: Route, params?: Record<string, string | null>) => void;
   open: (k: string) => void;
   setFunnel: (f: FunnelKey) => void;
 }
@@ -57,11 +60,32 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
   let cta: string | null = null;
   let snd: string | null = null;
   let onCta: (() => void) | null = null;
+  /**
+   * WHICH PANEL THE SECONDARY LINK OPENS.
+   *
+   * It used to be one expression for all five states —
+   * `open(funnel === 'unclaimed' ? 'identity' : 'value')' — so "What the trial
+   * includes", "Compare plans" and "What I am missing" every one of them opened
+   * "Your value — how it is built". Three different questions, one answer, and
+   * none of them the one asked (defect sheet row 30).
+   *
+   * THE LINK NOW CARRIES ITS OWN TARGET, set beside its own label so the two
+   * cannot drift apart again. Two of the three are plan questions and this
+   * build has a real page for those — the same Billing & Plan the plan pill in
+   * the top bar goes to — so they navigate there rather than opening a panel
+   * about something else. "What I am missing" is a question about the record,
+   * which IS a panel: `value` is the figure a lapsed account has lost, and
+   * that is the one state where the old target was right.
+   */
+  let sndHref: string | null = null;
+  let sndDrawer: string | null = null;
+  let ctaHref: string | null = null;
 
   if (funnel === 'claimed') {
     tag = 'Free plan';
     cta = `Start my ${TRIAL_LEN}-day free trial`;
     snd = 'What the trial includes';
+    sndHref = BILLING_PATH;
     onCta = () => setFunnel('trial');
     msg = (
       <>
@@ -75,6 +99,7 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
     tag = 'Premium trial';
     cta = 'Upgrade to Premium';
     snd = 'Compare plans';
+    sndHref = BILLING_PATH;
     onCta = () => setFunnel('paid');
     msg = (
       <>
@@ -93,10 +118,27 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
     tag = 'Trial ended';
     cta = 'Restore full access';
     snd = 'What I am missing';
-    onCta = () => setFunnel('paid');
+    sndDrawer = 'value';
+    /* RESTORING ACCESS IS A PAYMENT, SO IT GOES WHERE PAYMENTS LIVE.
+       This called `setFunnel('paid')`, which silently re-dressed the page as a
+       paid account without asking for anything — the reader pressed "Restore
+       full access" and the values simply appeared (defect sheet row 49). The
+       destination is the Billing & Plan route the top bar's plan pill already
+       points at; it is the page that will carry the payment step. The demo's
+       own way of reaching the paid state is untouched — the account-state menu
+       in the top bar still switches to it directly, which is what that menu is
+       for. */
+    ctaHref = BILLING_PATH;
     msg = (
       <>
-        Your <b>Premium</b> trial has ended, so your account is on the free plan.{' '}
+        {/* IT NO LONGER CLAIMS TO BE THE FREE PLAN. The banner said "so your
+            account is on the free plan" while this state covers the value
+            figures on a record that a genuinely free — claimed — account shows
+            in the clear, which is the contradiction on defect sheet row 23.
+            Both states now mask the same one thing (see `.cl-lock` in the
+            overrides sheet), and this sentence says what lapsed actually is
+            rather than borrowing another state's name for it. */}
+        Your <b>Premium</b> trial has ended, so your portfolio totals are on hold.{' '}
         <b>One lease stays fully live</b> — pick which below. Your other{' '}
         {Math.max(0, n - 1)} {plural(Math.max(0, n - 1), 'lease')} and their values are on hold,
         and nothing has been deleted.
@@ -118,15 +160,26 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
       <span className="fb-tag">{tag}</span>
       <span className="fb-msg">{msg}</span>
       <span className="fb-act">
-        <button type="button" className="fb-cta btn btn-sm" onClick={() => onCta?.()}>
-          {cta}
-        </button>
-        <button
-          type="button" className="linklike fb-2nd"
-          onClick={() => open(funnel === 'unclaimed' ? 'identity' : 'value')}
-        >
-          {snd}
-        </button>
+        {/* A LINK WHEN IT NAVIGATES, A BUTTON WHEN IT DOES NOT — so a
+            middle-click, a modified click and the browser's own status bar all
+            behave the way the destination deserves. */}
+        {ctaHref
+          ? <Link className="fb-cta btn btn-sm" href={ctaHref}>{cta}</Link>
+          : (
+            <button type="button" className="fb-cta btn btn-sm" onClick={() => onCta?.()}>
+              {cta}
+            </button>
+          )}
+        {sndHref
+          ? <Link className="linklike fb-2nd" href={sndHref}>{snd}</Link>
+          : (
+            <button
+              type="button" className="linklike fb-2nd"
+              onClick={() => open(sndDrawer ?? (funnel === 'unclaimed' ? 'identity' : 'value'))}
+            >
+              {snd}
+            </button>
+          )}
       </span>
     </div>
   );

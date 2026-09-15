@@ -44,7 +44,7 @@
  *      an internal route, so this app's lint rule requires the router-aware
  *      element and `Chrome` already uses it for its own literal-href link.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { Alert, AlertCategory, Payload } from '../../_lib/reference/payload';
 import { n0, plural } from '../../_lib/reference/fmt';
@@ -266,6 +266,36 @@ export default function AlertsView(
     || (lg.production_filings + lg.nearby_filings);
   const [cat, setCat] = useState<AlertCategory | 'all'>('all');
   const [q, setQ] = useState('');
+
+  /**
+   * THE CATEGORY CAN ARRIVE IN THE QUERY STRING.
+   *
+   * The Dashboard's rollup chips — "2 Money", "5 Activity" — used to land here
+   * unfiltered, so the number the reader clicked and the number they arrived at
+   * disagreed on screen. `Portal.go` now writes `?cat=` and this reads it.
+   *
+   * IN AN EFFECT, not in the `useState` initialiser, and for the same reason
+   * `Portal` reads `localStorage` in one: this page has a real server render at
+   * `/mineralownersite/alerts`, so a lazy initialiser touching
+   * `window.location` would make the first client render disagree with the
+   * server's and throw a hydration error. Read after mount, the filter is
+   * applied before anything is painted on the in-shell route change, which is
+   * how the chips reach it, and costs one extra render on a cold link.
+   *
+   * IT ONLY EVER SEEDS. `setCat` from the filter row is the reader's own
+   * choice and this must not fight it, so the effect runs once on mount and
+   * ignores an unknown value rather than falling back to "all" — an
+   * unrecognised `cat` leaves the default alone instead of overriding a
+   * category the reader has since picked.
+   */
+  useEffect(() => {
+    try {
+      const want = new URLSearchParams(window.location.search).get('cat');
+      if (want && CATS.some((c) => c.key === want)) {
+        setCat(want as AlertCategory | 'all');
+      }
+    } catch { /* no URL to read — the default is correct */ }
+  }, []);
 
   const unclaimed = funnel === 'unclaimed';
 

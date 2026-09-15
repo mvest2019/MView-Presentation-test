@@ -25,6 +25,7 @@
  */
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import type { ChartSpec } from '../../_lib/reference/chart';
+import { units } from '../../_lib/reference/fmt';
 
 const VB_W = 600;
 const VB_H = 150;
@@ -135,6 +136,13 @@ export default function LineChart(
   const { x, y, lo, hi } = geom;
   const n = spec.x.length;
   const cursor = hover;
+  /* THE UNIT AS THIS APP SPELLS IT. A spec built here already carries `MCF` or
+     `BBL`; a spec that came down with a drawer carries whatever the service
+     wrote, and the service writes "bbl". Normalised once, here, so the readout,
+     the axis and the accessible label cannot disagree with each other or with
+     the page around them. See `units()` in `fmt.ts` for what is changed and
+     what — `MMBtu` — deliberately is not. */
+  const unit = units(spec.unit);
 
   /* the label for the whole chart when nothing is hovered: the latest reading */
   const lastIdx = (() => {
@@ -175,7 +183,7 @@ export default function LineChart(
                 ? <b className="lc-none">not filed</b>
                 : v === 0 && spec.kind === 'bars'
                   ? <b className="lc-none">none</b>
-                  : <b>{fmt(v, spec.dp)}<u>{spec.unit ? ' ' + spec.unit : ''}</u></b>}
+                  : <b>{fmt(v, spec.dp)}<u>{unit ? ' ' + unit : ''}</u></b>}
             </span>
           );
         })}
@@ -202,9 +210,9 @@ export default function LineChart(
         aria-label={
           `${spec.label}. ${spec.series.map((s) => {
             const v = s.points[lastIdx];
-            return `${s.name} ${v == null ? 'not filed' : fmt(v, spec.dp) + ' ' + spec.unit}`;
+            return `${s.name} ${v == null ? 'not filed' : fmt(v, spec.dp) + ' ' + unit}`;
           }).join(', ')} at ${spec.x[lastIdx]}. Range ${fmt(lo, spec.dp)} to ${fmt(hi, spec.dp)} `
-          + `${spec.unit} across ${n} periods. Use the left and right arrow keys to read each one.`
+          + `${unit} across ${n} periods. Use the left and right arrow keys to read each one.`
         }
         style={onPick ? { cursor: 'pointer' } : undefined}
         onClick={onPick
@@ -370,7 +378,7 @@ export default function LineChart(
         <span>{spec.x[0]}</span>
         <span className="lc-range">
           {geom.isVolume ? 'peak' : 'low'} {fmt(geom.isVolume ? hi : lo, spec.dp)}
-          {geom.isVolume ? '' : ` · high ${fmt(hi, spec.dp)}`} {spec.unit}
+          {geom.isVolume ? '' : ` · high ${fmt(hi, spec.dp)}`} {unit}
         </span>
         <span>{spec.x[n - 1]}</span>
       </div>

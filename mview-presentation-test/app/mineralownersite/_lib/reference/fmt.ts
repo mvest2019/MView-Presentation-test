@@ -22,6 +22,97 @@ const LOCALE = 'en-US';
 export const MCF = 'MCF';
 export const BBL = 'BBL';
 
+/**
+ * THE SAME RULE, APPLIED TO TEXT THIS APP DID NOT WRITE.
+ *
+ * The constants above settle how MCF and BBL are spelled everywhere this code
+ * builds a string. They say nothing about the strings the SERVICE builds — the
+ * drawer prose, the drawer chart specs and the alert copy all arrive as
+ * finished text, and they arrive in lower case: "$/bbl", "peak 114.58 bbl",
+ * "91.48 bbl". So the ticker panel printed "bbl" three times directly under a
+ * dashboard printing "BBL", which is the drift this module's header was
+ * written about, reaching the page from the one direction it could not reach
+ * before. Defect sheet row 3.
+ *
+ * WHAT IS CAPITALISED, AND WHAT IS DELIBERATELY NOT. `bbl`, `mcf` and `boe`
+ * are the three this module owns, and `gal` keeps them company because it is
+ * the propane settlement's unit and sits in the same row as the other three.
+ * `MMBtu` IS LEFT ALONE: that is its correct form — the EIA, every gas
+ * contract and every state filing write it exactly that way, and "MMBTU" would
+ * be a new error rather than a fixed one. Capitalising a unit is only right
+ * where the capitals are the convention.
+ *
+ * WHOLE WORDS ONLY, so "bbls" and a lease named "GALBRAITH" are untouched.
+ */
+const UNIT_CASE: Record<string, string> = {
+  bbl: BBL, mcf: MCF, boe: 'BOE', gal: 'GAL',
+};
+const UNIT_WORD = /\b(bbl|mcf|boe|gal)\b/gi;
+
+/** The units in a piece of text, in the capitals this app writes them in. */
+export function units(text: string): string {
+  return text.replace(UNIT_WORD, (m) => UNIT_CASE[m.toLowerCase()] ?? m);
+}
+
+/**
+ * THE SAME SEAM AGAIN, FOR A BROKEN VERB RATHER THAN A BROKEN UNIT.
+ *
+ * The prices panel reads "…and it is rose 11.62% against a month ago", on all
+ * four settlements: "it is rose" (WTI), "it is rose" (NAT GAS), "it is eased"
+ * (BRENT), "it is rose" (PROPANE). Defect sheet row 48. The shape of the
+ * mistake says what happened upstream — a sentence template whose slot expects
+ * a STATE ("it is up 11.62%") is being filled with the same past-tense VERB the
+ * clause before it uses ("rose 5.11% against the previous session"), so one
+ * template is serving two grammatical positions.
+ *
+ * WHY IT IS FIXED HERE AND NOT LEFT TO THE SERVICE. This is the seam `units`
+ * above already establishes and for the identical reason: the sentence arrives
+ * finished, this app has no other hold on it, and a reader meeting "it is rose"
+ * on a money panel reasonably doubts every figure beside it. The service should
+ * stop emitting it; until it does, the page must not print it. The day the
+ * template is fixed this function stops matching and costs one pass over the
+ * string.
+ *
+ * IT REWRITES A FIXED, CLOSED SET AND NOTHING ELSE. Only "it is" or "they are"
+ * immediately followed by one of the movement verbs the ticker uses is
+ * touched, and each maps to the perfect form of that same verb — the meaning,
+ * the direction and the figure are untouched; only the tense agrees. A verb
+ * this map has not seen is left exactly as it arrived rather than guessed at,
+ * because a wrong verb is worse than an ungrammatical one.
+ */
+const MOVED: Record<string, string> = {
+  rose: 'risen',
+  fell: 'fallen',
+  climbed: 'climbed',
+  eased: 'eased',
+  slipped: 'slipped',
+  gained: 'gained',
+  dropped: 'dropped',
+  jumped: 'jumped',
+  held: 'held',
+};
+const BAD_TENSE =
+  /\b(it|they)\s+(is|are)\s+(rose|fell|climbed|eased|slipped|gained|dropped|jumped|held)\b/gi;
+
+/** Service prose, with the one tense the ticker template gets wrong put right. */
+export function prose(text: string): string {
+  return text.replace(BAD_TENSE, (_m, subject: string, _be: string, verb: string) => {
+    const had = subject.toLowerCase() === 'it' ? 'has' : 'have';
+    return `${subject} ${had} ${MOVED[verb.toLowerCase()] ?? verb}`;
+  });
+}
+
+/**
+ * Everything this module knows about text it did not write, in one call.
+ *
+ * Every surface that renders a finished string from the service should reach
+ * for THIS rather than for `units` or `prose` on their own, so a third repair
+ * lands everywhere the first two already do instead of at one call site.
+ */
+export function serviceText(text: string): string {
+  return prose(units(text));
+}
+
 export function n0(v: number | null | undefined): string | null {
   if (v == null || !Number.isFinite(v)) return null;
   return Math.round(v).toLocaleString(LOCALE);

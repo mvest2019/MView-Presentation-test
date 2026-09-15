@@ -384,7 +384,30 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
     return () => window.removeEventListener('popstate', onPop);
   }, [initialRoute]);
 
-  const go = useCallback((r: Route) => {
+  /**
+   * `params` CARRIES A DESTINATION'S OWN STATE IN THE QUERY STRING.
+   *
+   * Added for the Dashboard's alert category chips: "2 Money" used to call a
+   * bare `go('alerts')` and land on the unfiltered list with "All" active, so
+   * the count the reader clicked and the count they arrived at disagreed. A
+   * chip now passes `{ cat: 'money' }` and `AlertsView` reads it on mount.
+   *
+   * IT MERGES RATHER THAN REPLACES. The owner is in the query string too, and
+   * the note below is explicit that every route change has to keep it — so the
+   * extra keys are written on top of `window.location.search` instead of
+   * standing in for it. A key whose value is null is DELETED, which is what
+   * lets a later navigation clear a filter it does not want.
+   */
+  const go = useCallback((r: Route, params?: Record<string, string | null>) => {
+    const query = (() => {
+      const q = new URLSearchParams(window.location.search);
+      for (const [k, v] of Object.entries(params ?? {})) {
+        if (v == null) q.delete(k);
+        else q.set(k, v);
+      }
+      const str = q.toString();
+      return str ? '?' + str : '';
+    })();
     /* THE FOUR ROUTES THIS SHELL OWNS SWITCH WITHOUT A REQUEST — the
        reference's own arrangement, for the reference's own reason: "a route
        change must not discard a snapshot that took seconds to build". The Map
@@ -401,13 +424,12 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
        were looking at. */
     if (children || !OWNED.includes(r)) {
       setDrawer(null);
-      router.push(ROUTE_PATH[r] + window.location.search);
+      router.push(ROUTE_PATH[r] + query);
       return;
     }
     setRoute(r);
     setDrawer(null);
-    const q = window.location.search;
-    window.history.pushState({ r }, '', ROUTE_PATH[r] + q);
+    window.history.pushState({ r }, '', ROUTE_PATH[r] + query);
     window.scrollTo({ top: 0, behavior: 'auto' });
   }, [router, children]);
 

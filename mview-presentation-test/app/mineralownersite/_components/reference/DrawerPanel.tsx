@@ -35,7 +35,89 @@
 import React, { useEffect, useRef } from 'react';
 import type { Drawer } from '../../_lib/reference/payload';
 import { Html } from './bits';
+import { serviceText } from '../../_lib/reference/fmt';
 import { Charts } from './LineChart';
+
+
+/* ======================================================= the money gate, in here
+ *
+ * THE PANEL USED TO BE A HOLE IN IT. `.cl-lock` covers the value figures on the
+ * page — the strip, the KPI tiles, the Ultra headline, the operator shares —
+ * and this drawer carried none of it. So on a free or a lapsed account "How it
+ * is built" printed, in clear, the exact figure the tile behind it was covering:
+ * the share, its low and high case, the whole-lease value and every per-lease
+ * amount in the evidence. One click, and the gate was gone. Defect sheet rows
+ * 19 and 50.
+ *
+ * WHAT IS COVERED IS MONEY, AND ONLY MONEY — the same rule the page keeps, and
+ * the reference states it: a claimed owner keeps "every lease, volume and
+ * permit, because they claimed them. What Premium adds is what they are worth."
+ * So the volumes, the month counts, the lease counts and the dates in here stay
+ * exactly as they are, and a dollar figure gets the page's own class.
+ *
+ * IT IS DETECTED, NOT LISTED. These strings are built by the service and its
+ * wording changes; a hand-written list of which stats are money would rot
+ * silently and fail open — the failure that matters. `MONEY` matches a currency
+ * figure, so a new panel or a re-worded one is covered the day it ships.
+ */
+const MONEY = /\$\s?\d[\d,]*(?:\.\d+)?\s?[KMB]?\b/g;
+
+/** Is this stat a money figure? */
+function isMoney(v: string): boolean {
+  MONEY.lastIndex = 0;
+  return MONEY.test(v);
+}
+
+/**
+ * Wrap every currency figure in server-built HTML in the page's own gate class.
+ *
+ * TEXT ONLY. The copy carries `<strong>` and `<em>`, so the string is split on
+ * tags and only the text between them is rewritten — a `$` inside an attribute
+ * cannot be reached, and no tag can be broken by the replacement.
+ */
+function lockMoney(html: string): string {
+  return html
+    .split(/(<[^>]*>)/)
+    .map((part) => (part.startsWith('<')
+      ? part
+      /* `serviceText` runs on the TEXT only, for the same reason the money wrap does:
+         a class or an id containing "gal" is not a unit. */
+      : serviceText(part).replace(MONEY, (m) => `<span class="cl-lock">${m}</span>`)))
+    .join('');
+}
+
+
+/**
+ * WHAT A DELIVERY CLASS MEANS, SAID NEXT TO IT.
+ *
+ * The panel's sub-line opens with the alert's class — "Urgent · event June 2026
+ * · detected Sep 10, 2026" — and a reader met the word "Urgent" with nothing to
+ * say what it was claiming (defect sheet row 5). It is easy to read as "this is
+ * an emergency", and that is not what it says: `payload.ts` types
+ * `AlertClass` as "the DELIVERY class, which is a METHOD taxonomy", and the
+ * Alerts page states the same thing in words — "the class decides where an
+ * alert is delivered". So the word is about the CHANNEL, not the severity, and
+ * on its own above a money figure it invites the wrong one of the two.
+ *
+ * The gloss below is that same sentence, per class, in the place the word
+ * actually appears. The class itself is unchanged — it is the service's
+ * taxonomy and the Alerts page filters on it.
+ */
+const CLASS_MEANS: Record<string, string> = {
+  Urgent: 'sent on its own, as soon as it is found',
+  'Important digest': 'gathered into your weekly report',
+  Educational: 'context, kept for you to read when you want it',
+  Community: 'shared by other owners, not from the record',
+};
+
+/** The panel's sub-line, with the leading class explained where it appears. */
+function subLine(sub: string): string {
+  const cut = sub.indexOf(' · ');
+  const klass = cut === -1 ? sub : sub.slice(0, cut);
+  const means = CLASS_MEANS[klass.trim()];
+  if (!means) return sub;
+  return `${klass} — ${means}${cut === -1 ? '' : sub.slice(cut)}`;
+}
 
 const TONE_LABEL: Record<string, string> = {
   money: 'Money',
@@ -49,8 +131,37 @@ export default function DrawerPanel(
   { copy: Drawer | null; onClose: () => void; sample: boolean; sourceNote: string | null },
 ) {
   const panel = useRef<HTMLDivElement | null>(null);
+  const body = useRef<HTMLDivElement | null>(null);
   const returnTo = useRef<HTMLElement | null>(null);
   const open = Boolean(copy);
+
+  /**
+   * EVERY PANEL OPENS AT ITS OWN TOP.
+   *
+   * This drawer is hidden with `display: none` rather than unmounted — see the
+   * focus note below, which depends on that — so the scroll container survives
+   * a close. Read one panel to the bottom, close it, open a different one, and
+   * the second panel opened at the first one's scroll offset: its heading, its
+   * figures and its first two sections were already above the fold, so the
+   * reader was dropped into the middle of an explanation they had not started.
+   * That is the defect sheet's row 7, filed as "show side nav bar page last
+   * info first instead need to go starting at side nav bar".
+   *
+   * KEYED ON `copy.title`, NOT ON `open`. Several of this page's controls swap
+   * the panel's CONTENT without closing it — the alert strip, the KPI tiles and
+   * the setrows all call `open()` again while the drawer is up — so resetting
+   * only on open would have left those switches showing the previous panel's
+   * offset. Anything that changes which panel is on screen resets it.
+   *
+   * `scrollTop` AND NOT `scrollTo({behavior:'smooth'})`: the panel is sliding in
+   * at the same moment, and animating a scroll inside an animating element
+   * reads as a stutter. There is nothing for the reader to follow here — the
+   * top is simply where the panel starts.
+   */
+  useEffect(() => {
+    if (!open) return;
+    if (body.current) body.current.scrollTop = 0;
+  }, [open, copy?.title]);
 
   useEffect(() => {
     if (!open) return;
@@ -121,13 +232,13 @@ export default function DrawerPanel(
         <div className="ctx-head">
           <div style={{ minWidth: 0, flex: '1 1 auto' }}>
             {copy?.tone ? <span className="dx-kind">{TONE_LABEL[tone]}</span> : null}
-            <h3 id="ctxTitle">{copy?.title ?? ''}</h3>
-            <div className="ctx-sub" id="ctxSub">{copy?.sub ?? ''}</div>
+            <h3 id="ctxTitle">{serviceText(copy?.title ?? '')}</h3>
+            <div className="ctx-sub" id="ctxSub">{serviceText(subLine(copy?.sub ?? ''))}</div>
           </div>
           <button type="button" className="ctx-x" onClick={onClose} aria-label="Close">✕</button>
         </div>
 
-        <div className="ctx-body">
+        <div className="ctx-body" ref={body}>
           {copy
             ? (
               <>
@@ -147,14 +258,17 @@ export default function DrawerPanel(
                       <div className="dx-band-grid">
                         {copy.stats.map((st) => (
                           <div className="dx-stat" key={st.label}>
-                            <span className="dx-k">{st.label}</span>
-                            <span className={'dx-v' + (st.tone ? ' t-' + st.tone : '')}>
+                            <span className="dx-k">{serviceText(st.label)}</span>
+                            <span
+                              className={'dx-v' + (st.tone ? ' t-' + st.tone : '')
+                                + (isMoney(st.value) ? ' cl-lock' : '')}
+                            >
                               {st.tone === 'up' ? '▲ ' : st.tone === 'down' ? '▼ ' : ''}
-                              {st.tone === 'up' || st.tone === 'down'
+                              {serviceText(st.tone === 'up' || st.tone === 'down'
                                 ? st.value.replace(/^[+-]/, '')
-                                : st.value}
+                                : st.value)}
                             </span>
-                            {st.sub ? <span className="dx-s">{st.sub}</span> : null}
+                            {st.sub ? <span className="dx-s">{serviceText(st.sub)}</span> : null}
                           </div>
                         ))}
                       </div>
@@ -174,11 +288,11 @@ export default function DrawerPanel(
 
                 {/* ------------------------------------------ the four steps */}
                 <Step n={1} head="What this is">
-                  <Html html={copy.what} className="small" />
+                  <Html html={lockMoney(copy.what)} className="small" />
                 </Step>
 
                 <Step n={2} head="What it means for you">
-                  <Html html={copy.means} className="small" />
+                  <Html html={lockMoney(copy.means)} className="small" />
                 </Step>
 
                 {/* the charts belong with the meaning: they are the picture of
@@ -196,7 +310,7 @@ export default function DrawerPanel(
                         {copy.evidence.map((e, i) => (
                           <li key={i}>
                             <span className="dx-bullet" aria-hidden="true" />
-                            <Html html={e} as="span" />
+                            <Html html={lockMoney(e)} as="span" />
                           </li>
                         ))}
                       </ul>
@@ -208,14 +322,14 @@ export default function DrawerPanel(
                     one that looks like it */}
                 <div className="dx-do">
                   <span className="dx-do-k">What to do</span>
-                  <Html html={copy.next} className="dx-do-t" />
+                  <Html html={lockMoney(copy.next)} className="dx-do-t" />
                 </div>
 
                 {copy.chips.length
                   ? (
                     <div className="ctx-chips">
                       {copy.chips.map((ch) => (
-                        <span key={ch} className="chip chip-est" style={{ marginRight: 6 }}>{ch}</span>
+                        <span key={ch} className="chip chip-est" style={{ marginRight: 6 }}>{serviceText(ch)}</span>
                       ))}
                     </div>
                   )
