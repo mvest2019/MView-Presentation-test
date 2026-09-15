@@ -1,4 +1,4 @@
-import { leaseRecords } from "./lease-records";
+import { allLeaseRecords, isSampleSlug } from "./sample-leases";
 
 /**
  * THE WELLS, FROM THE TEXAS WELL MASTER.
@@ -271,10 +271,29 @@ const WELLS: Omit<WellRecord, "leaseSlug">[] = [
  * without a well is a compile-time hole rather than a page that silently shows
  * nothing.
  */
-export const wellRecords: WellRecord[] = leaseRecords.map((lease, index) => ({
-  leaseSlug: lease.slug,
-  ...WELLS[index],
-}));
+/**
+ * ONE WELL PER LEASE, SAMPLE LEASES INCLUDED.
+ *
+ * `wellsForLease` is keyed by slug and the sample set has its own, so the
+ * sample leases need their own rows here or an unclaimed lease report would
+ * find no wells at all. They reuse the same wellbore shapes — the API is the
+ * only field that identifies anything, and it is replaced.
+ */
+export const wellRecords: WellRecord[] = allLeaseRecords.map((lease, index) => {
+  const well = WELLS[index % WELLS.length];
+  return {
+    leaseSlug: lease.slug,
+    ...well,
+    ...(isSampleSlug(lease.slug)
+      ? {
+          /* A district that does not exist, so a sample API cannot be looked
+             up against a real filing. */
+          api: `42-999-${String(10000 + index).slice(-5)}`,
+          field: `${lease.name.replace(" — Sample", "")} (SAMPLE)`,
+        }
+      : {}),
+  };
+});
 
 /** The wells on one lease. */
 export function wellsForLease(slug: string): WellRecord[] {

@@ -1,4 +1,4 @@
-import { leaseRecords } from "./lease-records";
+import { allLeaseRecords, isSampleSlug } from "./sample-leases";
 import { monthNumber } from "./months";
 import { seededScatter } from "./seeded-scatter";
 
@@ -113,12 +113,26 @@ export interface FinancialsSeries {
   length: number;
 }
 
+/**
+ * BUILT OVER THE SAMPLE LEASES AS WELL AS THE REAL ONES.
+ *
+ * `byLease` is keyed by slug and the sample set carries its own slugs, so
+ * generating both here is what lets every existing `seriesFor(lease.slug)`
+ * lookup resolve for a sample lease with no call site changed.
+ *
+ * THE RECORD-WIDE TOTALS STAY REAL. `gas` and `oil` below are the sums a
+ * portfolio page prints, and they must not gain ten fictional leases — so the
+ * accumulation is gated on the real set while `byLease` takes everything. That
+ * gate is the one line in this function that would be easy to drop and
+ * expensive to miss: without it the Financials tab's totals would be about 3%
+ * high and nothing on screen would say why.
+ */
 function build(): FinancialsSeries {
   const firstMonth = Math.min(
-    ...leaseRecords.map((lease) => monthNumber(lease.firstPosting)),
+    ...allLeaseRecords.map((lease) => monthNumber(lease.firstPosting)),
   );
   const lastPosted = Math.max(
-    ...leaseRecords.map((lease) => monthNumber(lease.lastPosted.month)),
+    ...allLeaseRecords.map((lease) => monthNumber(lease.lastPosted.month)),
   );
   const length = monthNumber(PROJECTION_END) - firstMonth + 1;
 
@@ -126,7 +140,7 @@ function build(): FinancialsSeries {
   const oil = new Array<number>(length).fill(0);
   const byLease: LeaseSeries[] = [];
 
-  leaseRecords.forEach((lease, leaseIndex) => {
+  allLeaseRecords.forEach((lease, leaseIndex) => {
     const start = monthNumber(lease.firstPosting) - firstMonth;
     const anchor = monthNumber(lease.lastPosted.month) - firstMonth;
 
@@ -161,10 +175,14 @@ function build(): FinancialsSeries {
 
       modelGas[index] = gasAtAnchor * Math.exp(-GAS_DECLINE_PER_YEAR * years);
       leaseGas[index] = modelGas[index] * scatter;
-      leaseOil[index] = oilAtAnchor * Math.exp(-OIL_DECLINE_PER_YEAR * years) * oilScatter;
+      leaseOil[index] =
+        oilAtAnchor * Math.exp(-OIL_DECLINE_PER_YEAR * years) * oilScatter;
 
-      gas[index] += leaseGas[index];
-      oil[index] += leaseOil[index];
+      /* Real leases only — see the note on `build`. */
+      if (!isSampleSlug(lease.slug)) {
+        gas[index] += leaseGas[index];
+        oil[index] += leaseOil[index];
+      }
     }
 
     byLease.push({

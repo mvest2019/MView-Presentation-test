@@ -13,7 +13,7 @@ import { leaseReportTab, type LeaseReportTab } from "./report-tabs";
 import { gates } from "../../../../_components/ui/portal-gating";
 import { PrototypeButton } from "../../../../_components/ui/prototype-button";
 import { formatDecimalInterest } from "../../_lib/lease-format";
-import { leaseRecords } from "../../_lib/lease-records";
+import { leaseRecordsFor, routeSlugFor } from "../../_lib/sample-leases";
 import { leaseNeighbours, leaseReportPath } from "../../_lib/lease-routes";
 import type { LeaseRecord } from "../../_lib/lease-types";
 
@@ -49,9 +49,10 @@ export function LeaseReportHeader({
   tab: LeaseReportTab;
 }) {
   const current = leaseReportTab(tab);
+  /* The set this lease belongs to — see `leaseRecordsFor`. */
+  const records = leaseRecordsFor(lease.slug);
   const { previous, next } = leaseNeighbours(lease.slug);
-  const position =
-    leaseRecords.findIndex((entry) => entry.slug === lease.slug) + 1;
+  const position = records.findIndex((entry) => entry.slug === lease.slug) + 1;
 
   return (
     <div>
@@ -140,13 +141,13 @@ export function LeaseReportHeader({
 
         <div className="flex flex-none items-center gap-2">
           <StepLink
-            href={leaseReportPath(previous.slug)}
+            href={leaseReportPath(routeSlugFor(previous))}
             direction="previous"
             name={previous.name}
             number={previous.number}
           />
           <StepLink
-            href={leaseReportPath(next.slug)}
+            href={leaseReportPath(routeSlugFor(next))}
             direction="next"
             name={next.name}
             number={next.number}
@@ -167,7 +168,7 @@ export function LeaseReportHeader({
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <span className="text-[11px] font-bold tracking-[0.08em] text-mv-muted uppercase">
-          Lease {position} of {leaseRecords.length}
+          Lease {position} of {records.length}
         </span>
 
         <LeasePicker slug={lease.slug} />

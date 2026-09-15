@@ -1,14 +1,15 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { usePortalState } from "./portal-state-provider";
+import { writeFunnelState } from "../_lib/funnel-state-store";
 import {
   FUNNEL_LABEL,
   FUNNEL_PLAN,
   FUNNEL_STATES,
+  type FunnelState,
 } from "../_lib/portal-state";
 
 /**
@@ -38,6 +39,7 @@ import {
 export function PortalDemoStateMenu() {
   const { funnelState } = usePortalState();
   const pathname = usePathname();
+  const router = useRouter();
   const params = useSearchParams();
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
@@ -62,10 +64,34 @@ export function PortalDemoStateMenu() {
     };
   }, [open]);
 
-  function hrefFor(state: string): string {
-    const next = new URLSearchParams(params.toString());
-    next.set("state", state);
-    return `${pathname}?${next.toString()}`;
+  /**
+   * PICK A STATE WITHOUT TOUCHING THE URL.
+   *
+   * `writeFunnelState` sets the cookie the provider subscribes to, so every CSS
+   * gate on the page flips immediately. `router.refresh()` then re-renders the
+   * current route on the server, which is what re-reads the cookie and rebuilds
+   * anything chosen server-side — the lease report's record, above all. It is a
+   * refresh of this URL, NOT a navigation: the address bar does not move and no
+   * history entry is added.
+   *
+   * A `?state=` already in the address bar would out-rank the cookie on the
+   * next render, so it is stripped once on the way — that is the only URL write
+   * this control ever does, and it REMOVES a parameter rather than adding one.
+   */
+  function choose(state: FunnelState): void {
+    writeFunnelState(state);
+    setOpen(false);
+
+    if (params.get("state")) {
+      const next = new URLSearchParams(params.toString());
+      next.delete("state");
+      const query = next.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, {
+        scroll: false,
+      });
+      return;
+    }
+    router.refresh();
   }
 
   return (
@@ -91,13 +117,12 @@ export function PortalDemoStateMenu() {
         {FUNNEL_STATES.map((state) => {
           const current = state === funnelState;
           return (
-            <Link
+            <button
               key={state}
-              href={hrefFor(state)}
+              type="button"
               role="menuitemradio"
               aria-checked={current}
-              onClick={() => setOpen(false)}
-              scroll={false}
+              onClick={() => choose(state)}
             >
               <span className="mv-demo-tick" aria-hidden="true">
                 {current ? "✓" : ""}
@@ -112,7 +137,7 @@ export function PortalDemoStateMenu() {
                     Free · no claim yet, Premium trial · 4 days left, and so on. */}
                 <span className="mv-demo-plan">{FUNNEL_PLAN[state]}</span>
               </span>
-            </Link>
+            </button>
           );
         })}
       </div>

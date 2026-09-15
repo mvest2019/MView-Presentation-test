@@ -1,8 +1,17 @@
 import type { Metadata } from "next";
+
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 
 import { portalGate } from "../../../_components/ui/portal-gating";
 import { findLeaseBySlug } from "../_lib/lease-routes";
+import { sampleTwinOf } from "../_lib/sample-leases";
+import { funnelStateFromCookie } from "../../../_lib/funnel-state-store";
+import {
+  normaliseStateParam,
+  STORAGE_KEYS,
+  toFunnelState,
+} from "../../../_lib/portal-state";
 import { CumulativeCard } from "./_components/cumulative-card";
 import { FiguresPanel } from "./_components/figures-panel";
 import { FindingsCard } from "./_components/findings-card";
@@ -86,6 +95,11 @@ export async function generateMetadata({
 }
 
 /** `?report=` — the three reports on one lease. Anything else is the lease. */
+/** `searchParams` hands back a string, an array, or nothing. */
+function firstParam(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 function resolveTab(value: string | string[] | undefined): LeaseReportTab {
   return value === "reservoir" || value === "wells" ? value : "lease";
 }
@@ -95,13 +109,40 @@ export default async function LeaseReportPage({
   searchParams,
 }: PageProps<"/mineralownersite/leases/[leaseNumber]">) {
   const { leaseNumber } = await params;
-  const { report: reportParam } = await searchParams;
+  const { report: reportParam, state: stateParam } = await searchParams;
 
-  const lease = findLeaseBySlug(leaseNumber);
+  const found = findLeaseBySlug(leaseNumber);
   /* A 404 rather than a guess: an unknown lease number in this URL means the
      link is wrong or the record changed, and either way showing somebody
      else's lease would be worse than showing nothing. */
-  if (!lease) notFound();
+  if (!found) notFound();
+
+  /*
+   * ── AN UNCLAIMED VISITOR READS THE SAMPLE OF THIS LEASE, AT THIS URL ──
+   *
+   * The state reaches the server as a COOKIE the demo menu writes — see
+   * `funnel-state-store.ts` — so the whole swap is still one assignment, and
+   * the address bar is not involved at any point.
+   *
+   * THE PATH DOES NOT MOVE, and that is the point. Switching funnel state is a
+   * query change everywhere else in the portal, and the dashboard switches with
+   * no navigation at all; a route that also rewrote the path would make the
+   * state menu behave differently here, and Back would step between two
+   * different leases rather than between two states of one.
+   *
+   * The sample twin carries its own slug so its series and wells resolve — see
+   * `sample-leases.ts`. Links go through `routeSlugFor`, which maps it back, so
+   * that slug never reaches the address bar.
+   */
+  /* The cookie the state menu writes, with `?state=` still winning as a deep
+     link — the same order the provider uses on the client, so the two halves of
+     one page never disagree about which state they are in. */
+  const store = await cookies();
+  const state = stateParam
+    ? toFunnelState(normaliseStateParam(firstParam(stateParam)))
+    : funnelStateFromCookie(store.get(STORAGE_KEYS.funnelState)?.value);
+  const unclaimed = state === "unclaimed";
+  const lease = unclaimed ? sampleTwinOf(found) : found;
 
   const tab = resolveTab(reportParam);
   const report = buildLeaseReport(lease);
@@ -111,9 +152,9 @@ export default async function LeaseReportPage({
       className={`${portalGate.pageRoot} ${portalGate.reportRoot} ${portalGate.wideColumn}`}
     >
       {/* THREE THINGS SURVIVE ULTRA, and each earns it: which lease, what it is
-          worth, and one sentence in place of the body. Strip the first two and
-          the remaining sentence is about an unnamed lease. `ultraKeep` is the
-          portal's own exemption — see the rule in `portal.css`. */}
+            worth, and one sentence in place of the body. Strip the first two and
+            the remaining sentence is about an unnamed lease. `ultraKeep` is the
+            portal's own exemption — see the rule in `portal.css`. */}
       <div className={portalGate.ultraKeep}>
         <LeaseReportHeader lease={lease} tab={tab} />
       </div>
@@ -138,9 +179,9 @@ export default async function LeaseReportPage({
           <ReservesCard report={report} />
           <FindingsCard report={report} />
           {/* NO DENSITY GATES ON THESE THREE. The twelve-month panel and the
-              ranking were hidden at Essentials, and the full-precision record
-              was Professional-only. All three are on the page at every tier
-              now — see the note in `leases/page.tsx`. */}
+                ranking were hidden at Essentials, and the full-precision record
+                was Professional-only. All three are on the page at every tier
+                now — see the note in `leases/page.tsx`. */}
           <TwelveMonthsCard report={report} />
           <MeasuresCard report={report} />
           <PrecisionCard report={report} />

@@ -15,7 +15,6 @@ import {
   formatCompactDollars,
   formatDollars,
 } from "../../_lib/lease-format";
-import { portalGate } from "../../../../_components/ui/portal-gating";
 import type { LeaseReport } from "../_lib/lease-report";
 
 /**
@@ -30,6 +29,24 @@ import type { LeaseReport } from "../_lib/lease-report";
  * reader to compare it with a gross figure they heard somewhere; printing all
  * three makes the comparison the page's rather than theirs.
  *
+ * ── THE CLAIMED-STATE BLUR IS OFF THIS BAND, AND IT LEAKED ANYWAY ──
+ *
+ * Three figures here used to carry `cl-lock`, which blurs them for a reader who
+ * has claimed their record but not started a trial: your share, next month,
+ * next quarter. It is off, and the reason is worth keeping: THE BLUR NEVER
+ * WITHHELD THE NUMBER.
+ *
+ * Under the blurred share sits its own range — "Range $229,575 – $382,625" —
+ * unblurred, which brackets the hidden figure to within a few per cent. Beside
+ * it the gross lease valuation is sharp, and the reader's decimal interest is
+ * printed twice on the same screen; the two multiplied are the same number
+ * again. A gate that hides a figure while three things around it reconstruct it
+ * is not a gate, it is a smudge — and it costs the reader the one number the
+ * page is about.
+ *
+ * `data-mv-portfolio-figure` STAYS ON EVERY FIGURE. That is the LAPSED gate,
+ * which is a different rule for a different state and is not affected.
+ *
  * ── THE SECOND ROW IS THE ONLY PART ANYBODY ACTS ON ──
  *
  * Next month and next quarter, as RANGES. The volumes are the model's and the
@@ -42,7 +59,13 @@ export function ReportBand({ report }: { report: LeaseReport }) {
   const { lease } = report;
 
   return (
-    <div className="@container mt-4 rounded-mv p-[18px] text-white shadow-mv-lg bg-[linear-gradient(160deg,var(--color-mv-ink),var(--color-mv-portal-band-end))]">
+    <div
+      /* See `data-mv-card`: this band draws a gradient and a shadow rather than
+         a border, so the unclaimed state outlines it instead of dashing an edge
+         it does not have. */
+      data-mv-band=""
+      className="@container mt-4 rounded-mv p-[18px] text-white shadow-mv-lg bg-[linear-gradient(160deg,var(--color-mv-ink),var(--color-mv-portal-band-end))]"
+    >
       {/* A RULE BETWEEN THE THREE, not just air. They are three different
           valuations of the same lease — your share, the whole lease, the county
           roll — and a reader has to keep them apart or the band reads as one
@@ -56,7 +79,6 @@ export function ReportBand({ report }: { report: LeaseReport }) {
           value={formatDollars(report.yourValue)}
           caption={`Range ${formatDollars(report.yourValueLow)} – ${formatDollars(report.yourValueHigh)}`}
           emphasis
-          locked
         />
         <Figure
           icon={<TrendingUp />}
@@ -116,7 +138,6 @@ export function ReportBand({ report }: { report: LeaseReport }) {
           label={`Next month · ${report.nextMonthLabel} · your share`}
           value={`${formatDollars(report.nextMonthLow)} – ${formatDollars(report.nextMonthHigh)}`}
           emphasis
-          locked
         />
         <Figure
           icon={<CalendarDays />}
@@ -124,7 +145,6 @@ export function ReportBand({ report }: { report: LeaseReport }) {
           label="Next quarter"
           value={`${formatDollars(report.nextQuarterLow)} – ${formatDollars(report.nextQuarterHigh)}`}
           emphasis
-          locked
         />
 
         <p className="flex gap-2.5 text-[12px] leading-[1.55] text-mv-portal-band-sub">
@@ -180,7 +200,6 @@ function Figure({
   accent = false,
   emphasis = false,
   small = false,
-  locked = false,
 }: {
   icon?: ReactNode;
   label: string;
@@ -190,7 +209,6 @@ function Figure({
   accent?: boolean;
   emphasis?: boolean;
   small?: boolean;
-  locked?: boolean;
 }) {
   return (
     <div
@@ -223,11 +241,15 @@ function Figure({
             <Info aria-hidden="true" className="h-[11px] w-[11px] flex-none" />
           )}
         </p>
+        {/*
+          `data-mv-portfolio-figure` IS THE LAPSED GATE AND IT STAYS. What went
+          is `cl-lock`, the CLAIMED one — see the note at the top of the file.
+        */}
         <p
           data-mv-portfolio-figure=""
           className={`mt-0.5 font-bold tabular-nums ${small ? "text-[19px]" : "text-[25px]"} ${
             emphasis ? "text-mv-green" : ""
-          } ${locked ? portalGate.lockedValue : ""}`.trim()}
+          }`.trim()}
         >
           {value}
         </p>

@@ -1,5 +1,6 @@
 import { leaseRecords } from "./lease-records";
 import type { LeaseRecord } from "./lease-types";
+import { isSampleSlug, sampleLeaseRecords } from "./sample-leases";
 
 /**
  * WHERE A LEASE ROW OPENS, AND HOW THAT URL IS READ BACK.
@@ -23,7 +24,20 @@ import type { LeaseRecord } from "./lease-types";
  * KAISER GAS UNIT and COOK GAS UNIT carry none on their filings, so their slugs
  * are the kebab-cased name on its own. They are matched whole, because for them
  * the name IS the identifier.
+ *
+ * ── A SAMPLE SLUG RESOLVES AGAINST THE SAMPLE SET ──
+ *
+ * `sample-bluestem-ranch` belongs to the ten fictional leases an unclaimed
+ * visitor is shown. Every function below picks its set from the slug rather
+ * than taking a parameter, so a sample URL pages, positions and finds its
+ * neighbours entirely within the sample record — an unclaimed visitor stepping
+ * through "lease 3 of 10" never lands on a real one.
  */
+
+/** Which of the two records a slug belongs to. */
+function setFor(slug: string): LeaseRecord[] {
+  return isSampleSlug(slug) ? sampleLeaseRecords : leaseRecords;
+}
 
 export function leaseReportPath(slug: string): string {
   return `/mineralownersite/leases/${slug}`;
@@ -42,23 +56,23 @@ export function leaseReportPath(slug: string): string {
  */
 export function findLeaseBySlug(slug: string): LeaseRecord | undefined {
   const wanted = decodeURIComponent(slug).toLowerCase();
+  const records = setFor(wanted);
 
-  const exact = leaseRecords.find((lease) => lease.slug === wanted);
+  const exact = records.find((lease) => lease.slug === wanted);
   if (exact) return exact;
 
   /* The leading run of digits, when there is one — "290827-anything" and a bare
      "290827" both resolve to the same lease. */
   const number = /^(\d+)/.exec(wanted)?.[1];
-  return number
-    ? leaseRecords.find((lease) => lease.number === number)
-    : undefined;
+  return number ? records.find((lease) => lease.number === number) : undefined;
 }
 
 /** The lease's position in the record, for the "Lease 3 of 10" pager. */
 export function leasePosition(slug: string): { index: number; total: number } {
+  const records = setFor(slug);
   return {
-    index: leaseRecords.findIndex((lease) => lease.slug === slug),
-    total: leaseRecords.length,
+    index: records.findIndex((lease) => lease.slug === slug),
+    total: records.length,
   };
 }
 
@@ -67,9 +81,10 @@ export function leaseNeighbours(slug: string): {
   previous: LeaseRecord;
   next: LeaseRecord;
 } {
+  const records = setFor(slug);
   const { index, total } = leasePosition(slug);
   return {
-    previous: leaseRecords[(index - 1 + total) % total],
-    next: leaseRecords[(index + 1) % total],
+    previous: records[(index - 1 + total) % total],
+    next: records[(index + 1) % total],
   };
 }

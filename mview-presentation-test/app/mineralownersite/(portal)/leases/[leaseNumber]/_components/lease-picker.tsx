@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { formatCompactDollars } from "../../_lib/lease-format";
-import { leaseRecords } from "../../_lib/lease-records";
+import { leaseRecordsFor, routeSlugFor } from "../../_lib/sample-leases";
 import { leaseReportPath } from "../../_lib/lease-routes";
 
 /**
@@ -49,6 +49,10 @@ export function LeasePicker({ slug }: { slug: string }) {
   const listId = useId();
 
   const [open, setOpen] = useState(false);
+  /* The set this lease belongs to — the real ten, or the sample ten an
+     unclaimed visitor is shown. Picking it from the slug is what stops a
+     sample page listing real leases in its dropdown. */
+  const leaseRecords = leaseRecordsFor(slug);
   const current = leaseRecords.findIndex((entry) => entry.slug === slug);
   /** Which row the keyboard is on — not the chosen one until Enter. */
   const [active, setActive] = useState(Math.max(current, 0));
@@ -87,7 +91,8 @@ export function LeasePicker({ slug }: { slug: string }) {
   function choose(index: number): void {
     setOpen(false);
     const next = leaseRecords[index];
-    if (next && next.slug !== slug) router.push(leaseReportPath(next.slug));
+    if (next && next.slug !== slug)
+      router.push(leaseReportPath(routeSlugFor(next)));
   }
 
   function onKeyDown(event: React.KeyboardEvent): void {
@@ -188,8 +193,8 @@ export function LeasePicker({ slug }: { slug: string }) {
                     {entry.name}
                   </span>
                   <span className="block truncate text-[11px] text-mv-muted">
-                    {entry.number ? `Lease ${entry.number}` : "no lease number"} ·{" "}
-                    {entry.county}
+                    {entry.number ? `Lease ${entry.number}` : "no lease number"}{" "}
+                    · {entry.county}
                   </span>
                 </span>
                 <span className="flex-none text-[12px] font-semibold tabular-nums">
