@@ -1536,11 +1536,40 @@ body .mv-ref-app .pf-strip .pf-sub {
   overflow-wrap: anywhere;
 }
 
-/* The affordance chip is an inline-block inside `.pf-sub`; without this it was
-   measured at its own width and pushed past the cell edge. */
+/* THE AFFORDANCE CHIP: INSIDE THE CELL, AND ON ONE LINE.
+
+   It is an `inline-flex` sitting at the end of `.pf-sub`'s running text, and
+   it was originally measured at its own width with nothing stopping it, so it
+   was pushed past the cell edge — the "buttons go out of the box" this row was
+   filed as. `max-width: 100%` fixed that and `white-space: normal` was added
+   with it, and THAT is the part that was wrong: an atomic inline box whose
+   text may wrap does not move to the next line when it will not fit, it stays
+   where it is and breaks its own label in half. "Why this is not a cheque →"
+   came out as a two-line pill, which reads as a broken control rather than a
+   link.
+
+   ON ITS OWN LINE, AND NEVER BROKEN. `nowrap` is the actual answer to "do not
+   split the label"; giving the chip its own row under the sub-text is what
+   makes that safe, because it then has the whole cell to sit in rather than
+   whatever is left at the end of a sentence. `width: fit-content` keeps the
+   pill the width of its words — a full-width bar would read as a button, and
+   this is a link.
+
+   IT FITS, AND THAT IS MEASURED. The longest label on the strip is "Why this
+   is not a cheque →" at 200px. The narrowest `.pf-sub` anywhere on the ladder
+   is 223px, at 1100px viewport where the row runs three cells across at their
+   230px floor; every other step is wider (286px at 1300, 322px at phone width
+   where the cells go full-bleed). So the chip has room on one line at every
+   width, with the tightest margin being 23px.
+
+   It also matches the KPI tiles, which have always put their hint on a line of
+   its own — so the two blocks of affordances now read the same way. */
 body .mv-ref-app .pf-strip .ctx-hint {
+  display: flex;
+  width: fit-content;
   max-width: 100%;
-  white-space: normal;
+  white-space: nowrap;
+  margin-top: 5px;
 }
 
 
@@ -1657,6 +1686,13 @@ body .mv-ref-app.state-lapsed .app-main .u-headline:not(.cl-lock) strong {
 
    `KpiGrid` renders the line as a real element now, in normal flow and with the
    count read from the payload. Both pseudo-elements are switched off here.
+
+   AND THE CLAIMED SENTENCE IS GONE ALTOGETHER. "What it's worth unlocks with
+   your free 7-day trial" was the page's third copy of the same offer — the
+   free-plan banner opens with it and carries the trial button, and the covered
+   figure has its own "How it is built →". `KpiGrid` no longer produces it, so
+   `.k-upsell-claimed` has nothing left to colour and has gone with it. The
+   `::after` above stays switched off, because the copy still declares it.
    ---------------------------------------------------------------------------- */
 body .mv-ref-app.state-lapsed .app-main .kpi::after,
 body .mv-ref-app.state-claimed .app-main .kpi:has(.cl-lock)::after {
@@ -1675,7 +1711,6 @@ body .mv-ref-app .kpi .k-upsell {
   overflow-wrap: anywhere;
 }
 
-body .mv-ref-app .kpi .k-upsell-claimed { color: #2f6fb0; }
 body .mv-ref-app .kpi .k-upsell-lapsed { color: #a8791a; }
 
 
@@ -1723,11 +1758,54 @@ body .mv-ref-app .lc-read {
   align-content: flex-start;
 }
 
-/* The hint is what changes most, so it is also given a floor — at full width
-   the row never wraps and the extra height is not needed. */
 @media (min-width: 1100px) {
   body .mv-ref-app .lc-read { min-height: 26px; }
-  body .mv-ref-app .lc-read .lc-hint { min-width: 16ch; text-align: right; }
+}
+
+
+/* ----------------------------------------------------------------------------
+   ROW 11, THE OTHER HALF · AND SIDEWAYS TOO.
+
+   The block above holds the row's HEIGHT, which is what moved the chart under
+   it. It does nothing about the row's own contents, and those move as well:
+   the period label is 64.2px wide on "Sep 2026" and 68.7px on "Nov 2026", and
+   the oil figure is 53px on "665 BBL" and 63.6px on "1,568 BBL". `.lc-read` is
+   a flex row, so both of those shove the coloured dot and the figure beside
+   them about 13px left and right on every pointer move. That is the walk still
+   visible on the paid dashboard's oil chart once the vertical jump is gone.
+
+   `LineChart` now measures the widest reading each slot can ever hold and
+   sets it as a `min-width` in `ch` · see "THE READOUT HOLDS STILL" there for
+   why a character count is the right measure and why over-reserving is the
+   safe direction. THESE RULES ARE WHAT MAKE THAT FLOOR APPLY: `min-width` has
+   no effect on an inline box, and all three of these are spans.
+
+   `tabular-nums` ON THE LABEL is what makes the reservation exact rather than
+   approximate — the reference already sets it on the figure, and the label
+   carries a year. `max-width: 100%` is the guard for a narrow rail: a floor
+   must never be able to push a reading past the edge of its own card.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .lc-read .lc-when,
+body .mv-ref-app .lc-read .lc-val b,
+body .mv-ref-app .lc-read .lc-hint {
+  display: inline-block;
+  max-width: 100%;
+}
+
+body .mv-ref-app .lc-read .lc-when {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+body .mv-ref-app .lc-read .lc-val b {
+  white-space: nowrap;
+}
+
+/* Right-aligned, so the edge the eye tracks is the row's own edge and only the
+   sentence inside it changes. Previously this applied above 1100px only, which
+   left every rail and every drawer chart without it. */
+body .mv-ref-app .lc-read .lc-hint {
+  text-align: right;
 }
 
 
@@ -1899,9 +1977,27 @@ body .mv-ref-app .app-top #mvPinBar {
 /* The value must not be squeezed to nothing to buy the prices room — it is the
    headline of the whole shell. It keeps its width and the prices take the
    remainder. */
-body .mv-ref-app .app-top #mvPinBar .pin-val-wrap,
-body .mv-ref-app .app-top #mvPinBar .pin-claim {
+body .mv-ref-app .app-top #mvPinBar .pin-val-wrap {
   flex: 0 0 auto;
+}
+
+/* THE NOT-CLAIMED LINE IS PROSE, AND PROSE WRAPS.
+
+   `.pin-claim` was given the figure's rule because it stands in the figure's
+   place. It is not a figure: it is "Claim your mineral owner record to see
+   what it is worth — what the estimate is →", one sentence with the state's
+   only call to action at the end of it. `flex: 0 0 auto` on a sentence that
+   long meant it could not shrink and could not wrap, so at 1085px it ran under
+   the account controls and `#mvPinBar`'s own `overflow: hidden` cut it off —
+   taking the link with it. The reader in the state the whole funnel starts in
+   lost the one control the row offers them.
+
+   It shrinks and wraps like the sentence it is, and keeps a floor so it cannot
+   be squeezed to one word per line. */
+body .mv-ref-app .app-top #mvPinBar .pin-claim {
+  flex: 1 1 auto;
+  min-width: min(100%, 24ch);
+  white-space: normal;
 }
 
 
@@ -2409,5 +2505,121 @@ body .mv-ref-app .app-side-scrim { display: none; }
     max-height: 70vh;
     overflow-y: auto;
     overscroll-behavior: contain;
+  }
+}
+
+
+/* ============================================================================
+   14 · THE SETTLEMENTS GET A LINE OF THEIR OWN
+
+   ROW 13, PROPERLY THIS TIME. The first pass stopped the prices being PAINTED
+   over the account controls by giving `.pin-spot` the `overflow-x: auto` that
+   section 3 had already promised it. That removed the overlap and left the
+   defect: the strip's scrollbar is hidden, so what the reader actually gets is
+   settlements that are simply not there, with nothing on screen to say they
+   exist. Measured on the paid dashboard, hidden pixels of a 696px strip:
+
+       1440px   198   PROPANE gone, BRENT half gone
+       1600px   140
+       1750px   188   (the 1700px rule hands the provenance note back)
+       1920px    19
+       2185px     0   the first width at which all four actually fit
+
+   Every state is worse than paid except trial: not-claimed hides 448 of the
+   696, which is two of the four settlements plus half of a third. So the
+   one-line arrangement does not hold this content on any monitor anybody is
+   using — it was never a narrow-window problem, and no threshold tuned against
+   a state's label width was going to find one, which is the argument section 3
+   already makes against ladders.
+
+   THE STRIP TAKES ITS OWN LINE, AND THE ROW STOPS COMPETING WITH ITSELF. The
+   value stays on the control line — it is 288px, it is the reason the bar is
+   pinned, and the line has room for it — and the four settlements wrap
+   underneath at full width. Nothing is hidden, nothing scrolls, nothing is
+   dropped, and the state's label width stops mattering to the layout at all.
+
+   IT IS THE DESIGN'S OWN IDIOM, not a new one: `dashboard-reference.css` wraps
+   this same group the same way at 860px, and §3's own bottom block does it at
+   1024. This is that answer applied at the widths where the measurements say
+   it is also needed.
+
+   ABOVE 1024 ONLY. Below it §3's block already gives the WHOLE pinned group a
+   full-width line under the controls, which is the better arrangement there —
+   at 1024 the bar's own line is 721px against the strip's 696px, where
+   wrapping inside the group would leave it about 490px and scrolling again.
+   The two blocks meet exactly at the width each is right for.
+   ============================================================================ */
+/* THE FOUR SETTLEMENTS WRAP RATHER THAN SCROLL — at every width, including the
+   ones §3's own bottom block owns.
+
+   Giving the strip its own line is only half of it. The line it gets is still
+   finite: at 1085px the group has 529px for 696px of settlements, and at 1024
+   §3's full-width line has 419px for them. A strip that scrolls inside that is
+   the same hidden content one level down, so the strip stops being a single
+   row: four tiles across where there is room, two and two where there is not.
+
+   `overflow-x: auto` IS LEFT IN PLACE UNDERNEATH. With wrapping there is
+   normally nothing to scroll — it only comes back into play if one single
+   settlement is ever wider than the whole line, which is the one case wrapping
+   cannot answer, and scrolling still can.
+
+   NOT ON A PHONE, AND THAT IS THE MEASUREMENT TALKING. Below 768px the line is
+   362px against 696px of settlements, so wrapping stacks them four deep and
+   takes the chrome from 107px to 245px — 29% of a 844px screen spent before
+   the greeting. There, horizontal is the right axis: the strip is a swipe with
+   snap points (§12's row 13 block), which is what a ticker on a phone is
+   everywhere else, and the overlap this row is filed about cannot happen at a
+   width where the group already has the bar to itself. */
+@media (min-width: 768px) {
+  .mv-ref-app .app-top #mvPinBar .pin-spot {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+}
+
+/* THE STRIP IS ON ITS OWN ROW AT EVERY WIDTH — §1's `nowrap` is what stopped it.
+
+   `dashboard-reference.css` already wraps this group and gives the strip
+   `flex: 1 1 100%` below 860px; §1 of this sheet set `flex-wrap: nowrap` on
+   `#mvPinBar` with no media query, which outranks it, so that rule has never
+   fired. The result on a phone was the worst case of all: the value takes 288
+   of a 362px line and the four settlements share the remaining 80px — 616 of
+   696 pixels behind a swipe, one price visible at a time.
+
+   Undone here rather than in §1 because §1 is the merge of the two bars into
+   one row and `nowrap` was right for the row it describes; what is wrong is
+   that it was never released where the reference releases it. */
+.mv-ref-app .app-top #mvPinBar {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+/* Full width forces the wrap; `order` is not needed because the strip is
+   already the last child of the group. */
+.mv-ref-app .app-top #mvPinBar .pin-spot {
+  flex: 1 0 100%;
+  width: 100%;
+}
+
+@media (min-width: 1025px) {
+  /* The label is what tells a reader the green figure is theirs. §3 drops it at
+     1300 to buy the strip runway it no longer needs, so it comes back — the
+     same call §3's own 1024 block makes for the same reason. */
+  .mv-ref-app .app-top #mvPinBar .pin-label {
+    display: inline;
+  }
+
+  /* The row is two lines tall now, so the controls centre against a taller
+     box. They sit with the value, which is the line they belong to. */
+  .mv-ref-app .app-top {
+    align-items: flex-start;
+    padding-bottom: 6px;
+  }
+
+  .mv-ref-app .app-top .mv-statewrap,
+  .mv-ref-app .app-top .plan-pill,
+  .mv-ref-app .app-top .bellbtn,
+  .mv-ref-app .app-top .mv-menuwrap {
+    margin-top: 1px;
   }
 }

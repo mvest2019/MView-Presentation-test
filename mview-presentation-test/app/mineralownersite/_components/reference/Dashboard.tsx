@@ -868,11 +868,23 @@ function KpiGrid(
    * In normal flow it takes its own space, so nothing can be written over, and
    * the two rules in the copy are switched off in the overrides sheet.
    */
+  /* THE CLAIMED TILE SAYS NOTHING EXTRA, AND THAT IS THE ASK.
+   *
+   * "What it's worth unlocks with your free 7-day trial" is REMOVED, not
+   * hidden: the sentence is already on the page twice above this grid — the
+   * free-plan banner opens with it and puts the trial button under it, and the
+   * covered figure's own affordance says "How it is built →". A third copy
+   * under every masked tile is the page repeating its own upsell at the reader,
+   * which is what the tile has to stop doing.
+   *
+   * THE LAPSED LINE STAYS. It is not an upsell, it is the answer to "why is
+   * this figure covered when the rest of the page is not" — and it carries the
+   * lease count, which is the fact the reader needs and the one a `content`
+   * string could never get right. Nothing about that state changes here.
+   */
   const upsell = funnel === 'lapsed'
     ? `Portfolio totals cover all ${t.lease_count} ${plural(t.lease_count, 'lease')} — Premium`
-    : funnel === 'claimed'
-      ? "What it's worth unlocks with your free 7-day trial"
-      : null;
+    : null;
   const a = p.as_of;
   const r = p.reserves;
   const rad = p.radius['1'];
