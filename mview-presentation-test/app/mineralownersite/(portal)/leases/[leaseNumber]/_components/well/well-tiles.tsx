@@ -1,3 +1,5 @@
+"use client";
+
 import {
   CalendarDays,
   Droplet,
@@ -7,6 +9,8 @@ import {
   TrendingUp,
 } from "lucide-react";
 
+import { useState } from "react";
+
 import { Card, CardHeader } from "../../../../../_components/ui/card";
 import { KpiTile } from "../../../../../_components/ui/kpi-tile";
 import {
@@ -14,7 +18,16 @@ import {
   formatCompactVolume,
   formatCount,
 } from "../../../_lib/lease-format";
+import {
+  wellAheadExplainer,
+  wellBestMonthExplainer,
+  wellGasExplainer,
+  wellOilExplainer,
+  wellOpenExplainer,
+  wellPaidExplainer,
+} from "../../_lib/explainers-well";
 import type { WellReport } from "../../_lib/well-report";
+import { ExplainerDrawer, type Explainer } from "../explainer-drawer";
 import { Donut, DonutDot, type DotShade } from "../donut";
 
 /**
@@ -52,6 +65,7 @@ import { Donut, DonutDot, type DotShade } from "../donut";
  */
 export function WellTiles({ report }: { report: WellReport }) {
   const { well } = report;
+  const [explainer, setExplainer] = useState<Explainer | null>(null);
 
   return (
     <>
@@ -60,6 +74,7 @@ export function WellTiles({ report }: { report: WellReport }) {
           size="sm"
           flat
           icon={<Flame className="h-[18px] w-[18px]" />}
+          onExplain={() => setExplainer(wellGasExplainer(report))}
           label="Gas filed, this well"
           value={`${formatCompactVolume(report.gasFiled)} MCF`}
           basis="all of its lease's allocated gas"
@@ -68,6 +83,7 @@ export function WellTiles({ report }: { report: WellReport }) {
           size="sm"
           flat
           icon={<Droplet className="h-[18px] w-[18px]" />}
+          onExplain={() => setExplainer(wellOilExplainer(report))}
           label="Oil filed"
           value={`${formatCompactVolume(report.oilFiled)} BBL`}
           basis={`newest filed month ${report.newestFiledMonth}`}
@@ -77,6 +93,7 @@ export function WellTiles({ report }: { report: WellReport }) {
           flat
           locked
           icon={<Receipt className="h-[18px] w-[18px]" />}
+          onExplain={() => setExplainer(wellPaidExplainer(report))}
           label="Paid to you, filed"
           value={formatCompactDollars(report.paidYouFiled)}
           basis="its share of the lease's cash"
@@ -86,6 +103,7 @@ export function WellTiles({ report }: { report: WellReport }) {
           flat
           locked
           icon={<TrendingUp className="h-[18px] w-[18px]" />}
+          onExplain={() => setExplainer(wellAheadExplainer(report))}
           label="Still ahead of it"
           value={formatCompactDollars(report.stillAheadCash)}
           basis={`${formatCompactVolume(report.stillAheadGas)} MCF the model still expects`}
@@ -94,6 +112,7 @@ export function WellTiles({ report }: { report: WellReport }) {
           size="sm"
           flat
           icon={<CalendarDays className="h-[18px] w-[18px]" />}
+          onExplain={() => setExplainer(wellBestMonthExplainer(report))}
           label="Best month it had"
           value={`${formatCompactVolume(report.bestMonthGas)} MCF`}
           basis={report.bestMonth}
@@ -102,6 +121,7 @@ export function WellTiles({ report }: { report: WellReport }) {
           size="sm"
           flat
           icon={<Ruler className="h-[18px] w-[18px]" />}
+          onExplain={() => setExplainer(wellOpenExplainer(report))}
           label="Open over"
           value={`${formatCount(report.openFeet)} ft`}
           basis={`${formatCount(well.openTopFt)}–${formatCount(well.openBottomFt)} ft measured`}
@@ -144,6 +164,11 @@ export function WellTiles({ report }: { report: WellReport }) {
           />
         </div>
       </Card>
+
+      <ExplainerDrawer
+        explainer={explainer}
+        onClose={() => setExplainer(null)}
+      />
     </>
   );
 }

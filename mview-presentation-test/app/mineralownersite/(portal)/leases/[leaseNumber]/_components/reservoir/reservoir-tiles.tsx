@@ -25,7 +25,7 @@ import {
   reservoirOpenExplainer,
   reservoirPaidExplainer,
   reservoirWellsExplainer,
-} from "../../_lib/explainers";
+} from "../../_lib/explainers-reservoir";
 import { ExplainerDrawer, type Explainer } from "../explainer-drawer";
 
 /**
