@@ -1,6 +1,5 @@
-"use client";
-
-import { useEffect, useRef, type ReactNode } from "react";
+import { ArrowRight } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { portalGate } from "./portal-gating";
 
@@ -38,20 +37,25 @@ import { portalGate } from "./portal-gating";
  * It is a prop rather than a change to the base because the other eight places
  * these appear are still drawn against the shadow.
  *
- * `onExplain` MAKES THE WHOLE TILE A BUTTON, which is what `portal.css`'s
- * `.kpi-click` note describes: the reference's tiles open a plain-English
- * explainer in a side panel. Pass it and the tile becomes focusable, announces
- * as a button, and says so on hover; leave it off and the tile is a `div` with
- * no affordance, because a tile that looks pressable and does nothing is worse
- * than one that never offered.
+ * ── `onExplain` PUTS A LINK IN THE CORNER, REVEALED ON HOVER ──
  *
- * IT OPENS ON HOVER, AFTER A PAUSE. The pause is the whole of it: a panel that
- * opens the instant a pointer crosses a tile fires on its way to somewhere
- * else, and a reader moving across a row of six would open six. `HOVER_MS` of
- * stillness is what separates "looking at this" from "passing over it", and the
- * timer is dropped the moment the pointer leaves. Click and Enter still open it
- * with no delay, so a reader who knows what they want does not wait, and a
- * keyboard or touch reader — neither of which hovers — is not locked out.
+ * `portal.css`'s `.kpi-click` note describes tiles that open a plain-English
+ * explainer in a side panel. The panel is that; this is how it is reached, and
+ * the shape of the control is the whole decision:
+ *
+ *   · THE TILE IS NOT THE BUTTON. A 130px-tall card that is one big button
+ *     swallows the text inside it — nothing in it can be selected, and a reader
+ *     copying a figure out to compare with a statement instead opens a panel.
+ *     A figure is for reading; the link beside it is for pressing.
+ *
+ *   · IT APPEARS ON HOVER AND ON FOCUS. Six standing links down a row of six
+ *     tiles is six times the same sentence competing with the figures the row
+ *     exists to show. Revealing it on approach keeps the row quiet and still
+ *     tells a reader who is looking at one tile that there is more behind it.
+ *
+ *   · IT IS ALWAYS THERE FOR A READER WHO CANNOT HOVER. On a touch screen — no
+ *     hover to give — the link is drawn from the start, and it is in the tab
+ *     order either way, so it is never a control only a mouse can find.
  *
  * `locked` opts the FIGURE ALONE into the claimed-state blur — not the label,
  * not the basis line. A claimed-but-unpaid reader should still be able to see
@@ -65,9 +69,6 @@ const FIGURE = {
   sm: "text-[20px]",
 } as const;
 
-/** How long a pointer must rest on a tile before its explainer opens. */
-const HOVER_MS = 450;
-
 export function KpiTile({
   label,
   value,
@@ -78,6 +79,7 @@ export function KpiTile({
   accent = false,
   locked = false,
   onExplain,
+  explainLabel = "How this works",
 }: {
   label: ReactNode;
   value: ReactNode;
@@ -89,42 +91,13 @@ export function KpiTile({
   flat?: boolean;
   /** Opens this figure's explainer. See the note above. */
   onExplain?: () => void;
+  /** The corner link's words. Only read when `onExplain` is passed. */
+  explainLabel?: string;
   accent?: boolean;
   locked?: boolean;
 }) {
-  const Element = onExplain ? "button" : "div";
-
-  /* The hover-intent timer. A ref rather than state because nothing on screen
-     depends on it — re-rendering the tile on every pointer move would be work
-     done for no picture. */
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cancel = (): void => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
-  };
-  useEffect(() => cancel, []);
-
   return (
-    <Element
-      {...(onExplain
-        ? {
-            type: "button" as const,
-            onClick: () => {
-              cancel();
-              onExplain();
-            },
-            /* `pointerenter`, not `mouseenter`: a touch fires the mouse events
-               too, and a tap that opens the panel on the click AND again 450ms
-               later opens it twice. A pointer event says which it was. */
-            onPointerEnter: (event: React.PointerEvent) => {
-              if (event.pointerType !== "mouse") return;
-              cancel();
-              timer.current = setTimeout(onExplain, HOVER_MS);
-            },
-            onPointerLeave: cancel,
-            onPointerDown: cancel,
-          }
-        : {})}
+    <div
       /*
        * `data-mv-kpi` IS THE HOST FOR TWO CAPTIONS THIS COMPONENT NEVER PRINTS.
        * `portal.css` appends one line to a stat tile per funnel state — "What
@@ -136,14 +109,27 @@ export function KpiTile({
        * Tailwind tile is invisible to both rules and neither caption appears.
        */
       data-mv-kpi=""
-      className={`rounded-mv border border-mv-line bg-mv-card px-[18px] py-4 ${
+      className={`group relative rounded-mv border border-mv-line bg-mv-card px-[18px] py-4 ${
         flat ? "" : "shadow-mv"
       } ${accent ? "border-t-[3px] border-t-mv-green" : ""} ${
-        onExplain
-          ? "cursor-pointer text-left transition-colors hover:border-mv-green hover:bg-mv-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
-          : ""
+        onExplain ? "transition-colors hover:border-mv-green/60" : ""
       }`.trim()}
     >
+      {onExplain && (
+        <button
+          type="button"
+          onClick={onExplain}
+          /* `pr-[18px]`'s worth of inset, level with the label it sits beside.
+             `max-w-[55%]` so a long figure and a long link never meet. */
+          className="absolute top-[15px] right-[14px] z-10 inline-flex max-w-[55%] cursor-pointer items-center gap-1 rounded-full px-1.5 py-0.5 text-[10.5px] font-bold text-mv-green-deep opacity-0 transition-opacity group-hover:opacity-100 hover:bg-mv-mint focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-mv-green-deep [@media(hover:none)]:opacity-100"
+        >
+          <span className="truncate underline decoration-mv-green/50 underline-offset-2">
+            {explainLabel}
+          </span>
+          <ArrowRight aria-hidden="true" className="h-3 w-3 flex-none" />
+        </button>
+      )}
+
       <div className={icon ? "flex items-start gap-3.5" : ""}>
         {icon && (
           <span
@@ -157,7 +143,14 @@ export function KpiTile({
         {/* `min-w-0` so a long figure wraps inside the tile rather than pushing
             the icon out of it — a flex child will not shrink without it. */}
         <div className="min-w-0">
-          <div className="text-[11px] font-bold tracking-[0.08em] text-mv-muted uppercase">
+          {/* The link overlays this row, so the label keeps clear of it —
+              always, not on hover, or the label would reflow under the pointer
+              every time the link appeared. */}
+          <div
+            className={`text-[11px] font-bold tracking-[0.08em] text-mv-muted uppercase ${
+              onExplain ? "pr-24" : ""
+            }`.trim()}
+          >
             {label}
           </div>
           <div
@@ -174,6 +167,6 @@ export function KpiTile({
           <div className="text-xs leading-[1.5] text-mv-muted">{basis}</div>
         </div>
       </div>
-    </Element>
+    </div>
   );
 }

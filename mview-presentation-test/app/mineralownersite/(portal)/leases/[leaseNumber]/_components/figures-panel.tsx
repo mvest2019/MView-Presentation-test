@@ -17,7 +17,11 @@ import { LeaseOverviewHeader } from "./lease-overview-header";
 import { ChartBrush } from "../../_components/financials/chart-brush";
 import { SegmentedControl } from "../../../../_components/ui/segmented-control";
 import { PillStrip } from "../../_components/financials/pill-strip";
-import { CHART_MODES, CHART_MODE_COPY, type ChartMode } from "../../_components/financials/chart-modes";
+import {
+  CHART_MODES,
+  CHART_MODE_COPY,
+  type ChartMode,
+} from "../../_components/financials/chart-modes";
 import { financialsSeries } from "../../_lib/financials-series";
 import {
   formatAcres,
@@ -28,7 +32,16 @@ import {
 } from "../../_lib/lease-format";
 import { shortMonthLabel } from "../../_lib/months";
 import { cashAt } from "../../_lib/price-deck";
+import {
+  leaseCountyExplainer,
+  leaseGasExplainer,
+  leaseLastMonthExplainer,
+  leaseShapeExplainer,
+  leaseValueExplainer,
+  leaseYearExplainer,
+} from "../_lib/explainers-lease";
 import type { LeaseReport } from "../_lib/lease-report";
+import { ExplainerDrawer, type Explainer } from "./explainer-drawer";
 import { LeaseChart, type LeaseChartSeries } from "./lease-chart";
 
 /**
@@ -60,11 +73,18 @@ const DEFAULT_WINDOW_MONTHS = 49;
 export function FiguresPanel({ report }: { report: LeaseReport }) {
   const { lease } = report;
   const [scope, setScope] = useState<FigureScope>("share");
+  const [explainer, setExplainer] = useState<Explainer | null>(null);
   const [mode, setMode] = useState<ChartMode>("both");
   const [range, setRange] = useState(() => {
     const behind = Math.round((DEFAULT_WINDOW_MONTHS - 1) * 0.48);
     const from = Math.max(0, financialsSeries.lastPostedIndex - behind);
-    return { from, to: Math.min(from + DEFAULT_WINDOW_MONTHS - 1, financialsSeries.length - 1) };
+    return {
+      from,
+      to: Math.min(
+        from + DEFAULT_WINDOW_MONTHS - 1,
+        financialsSeries.length - 1,
+      ),
+    };
   });
 
   const factor = scope === "share" ? lease.decimalInterest : 1;
@@ -95,7 +115,10 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
     <div>
       <LeaseOverviewHeader lease={lease} />
 
-      <Card padded={false} className="mt-4 flex flex-wrap items-center gap-3 px-[18px] py-3">
+      <Card
+        padded={false}
+        className="mt-4 flex flex-wrap items-center gap-3 px-[18px] py-3"
+      >
         <span className="text-[10.5px] font-bold tracking-[0.08em] text-mv-muted uppercase">
           Figures
         </span>
@@ -122,8 +145,11 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
           size="sm"
           flat
           icon={<CalendarDays className="h-[18px] w-[18px]" />}
+          onExplain={() => setExplainer(leaseLastMonthExplainer(report, scope))}
           label={`${scopeWord(scope)} · last posted month`}
-          value={formatDollars(report.lastMonthShare * scale(scope, lease.decimalInterest))}
+          value={formatDollars(
+            report.lastMonthShare * scale(scope, lease.decimalInterest),
+          )}
           basis={report.lastMonthLabel}
         />
         <KpiTile
@@ -131,14 +157,18 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
           size="sm"
           flat
           icon={<Banknote className="h-[18px] w-[18px]" />}
+          onExplain={() => setExplainer(leaseYearExplainer(report, scope))}
           label={`${scopeWord(scope)} · this year so far`}
-          value={formatDollars(report.yearToDateShare * scale(scope, lease.decimalInterest))}
+          value={formatDollars(
+            report.yearToDateShare * scale(scope, lease.decimalInterest),
+          )}
           basis={`12 filed months to ${report.lastPosting}`}
         />
         <KpiTile
           size="sm"
           flat
           icon={<Flame className="h-[18px] w-[18px]" />}
+          onExplain={() => setExplainer(leaseGasExplainer(report, scope))}
           label={`Gas filed to date · ${scopeWord(scope).toLowerCase()}`}
           value={`${formatCompactVolume(report.gasFiled * scale(scope, lease.decimalInterest))} MCF`}
           basis={`${formatCompactVolume(report.oilFiled * scale(scope, lease.decimalInterest))} BBL of oil · ${report.postedMonths} posted months`}
@@ -148,6 +178,7 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
           size="sm"
           flat
           icon={<TrendingUp className="h-[18px] w-[18px]" />}
+          onExplain={() => setExplainer(leaseValueExplainer(report, scope))}
           label={`Value · ${scopeWord(scope).toLowerCase()}`}
           value={formatCompactDollars(
             report.yourValue * scale(scope, lease.decimalInterest),
@@ -158,6 +189,7 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
           size="sm"
           flat
           icon={<Landmark className="h-[18px] w-[18px]" />}
+          onExplain={() => setExplainer(leaseCountyExplainer(report, scope))}
           label="County appraised · your interest"
           value={formatCompactDollars(report.countyYourInterest)}
           basis={`${report.countyAgreementPercent.toFixed(1)}% of the model's figure`}
@@ -166,6 +198,7 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
           size="sm"
           flat
           icon={<Layers className="h-[18px] w-[18px]" />}
+          onExplain={() => setExplainer(leaseShapeExplainer(report, scope))}
           label="Wells · acres · reservoir"
           value={`${lease.wells} / ${lease.wells}`}
           basis={`${formatAcres(lease.acres)} acres · ${lease.reservoir}`}
@@ -199,8 +232,8 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
         <p className="mt-2 text-[12px] leading-[1.55] text-mv-slate">
           <strong>Drag either handle</strong> to change the window, or use the
           arrow keys once a handle has focus — shift moves a year at a time.
-          Every figure is that net volume multiplied by your own decimal interest
-          on this lease.
+          Every figure is that net volume multiplied by your own decimal
+          interest on this lease.
         </p>
 
         <div className="mt-2">
@@ -213,6 +246,11 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
           />
         </div>
       </Card>
+
+      <ExplainerDrawer
+        explainer={explainer}
+        onClose={() => setExplainer(null)}
+      />
     </div>
   );
 }
