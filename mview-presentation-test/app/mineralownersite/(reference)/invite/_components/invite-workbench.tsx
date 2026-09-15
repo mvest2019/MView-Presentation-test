@@ -33,10 +33,14 @@ import { PeopleStep } from "./people-step";
  * Nothing here writes. The co-owner lists are the static fixture in
  * `_lib/invite-records.ts` rather than a read of the county appraisal roll; the
  * codes are worked out rather than issued; and no invitation is recorded, so
- * there is no sent list, no status and no credit ledger. Two of those three are
- * said on the page in `inviteSender.codeNote` and on the rail — a page that
- * quietly implied a reservation it had not made would be worse than one that is
- * plainly unfinished.
+ * there is no sent list, no status and no credit ledger.
+ *
+ * NONE OF THAT IS SAID ON THE PAGE ANY MORE, and that was asked for. Two
+ * sentences used to say it — `inviteSender.codeNote` in a footnote card, and a
+ * line under "Then they" — and both were this build's own additions with no
+ * counterpart in the reference this page is drawn from. They have gone.
+ * `codeNote` is still on the record and is now unread; it is left there because
+ * it is part of the shape a server would return, not because anything uses it.
  *
  * The shape it hands the letters is already the shape a server would return, so
  * wiring it is replacing one import.
@@ -124,8 +128,15 @@ export function InviteWorkbench() {
   const done = picked.size ? 2 : 1;
 
   return (
-    <div className="grid grid-cols-1 items-start gap-[18px] min-[1100px]:grid-cols-[minmax(0,1fr)_300px]">
-      <div className="flex flex-col items-stretch gap-[18px]">
+    /* `.iv-body` AND `.iv-main`, NOT A TAILWIND GRID — see `invite.css`.
+       The old two-column grid was keyed to a 1100px VIEWPORT, and this page's
+       content box is nearly the same width at 1024px (with the sidebar) as at
+       768px (without it), so the breakpoint fired at the wrong moments. The
+       sheet's version is a container query against the page's own box, and it
+       carries `order: -1` on the rail so a stacked layout puts the steps above
+       the work they introduce rather than below it. */
+    <div className="iv-body">
+      <div className="iv-main">
         <LeaseStep leases={inviteLeases} lease={lease} onChange={chooseLease} />
 
         <PeopleStep

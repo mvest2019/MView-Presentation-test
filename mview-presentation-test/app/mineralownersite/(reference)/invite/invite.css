@@ -1,36 +1,744 @@
 /*
- * INVITE CO-OWNERS — one rule, and it widens the page.
+ * INVITE CO-OWNERS — the page's own sheet.
  *
- * WHAT IT OVERRIDES. `dashboard-reference.css` caps the shell's body:
- *
- *     .mv-ref-app .app-body { padding:26px; max-width:1180px; margin:0 auto }
- *     body .mv-ref-app.view-pro .app-body { max-width:1340px }
- *
- * On a wide monitor that centres the content and leaves a band down each side,
- * which is the whitespace this page was asked to reclaim.
- *
- * WHY IT IS SCOPED TO THIS ROUTE AND NOT RAISED IN THAT SHEET. The cap belongs
- * to every page in the group — the Dashboard, Alerts, Activities, the Weekly
- * Report — and on those it is doing real work: they are reading pages, and a
- * 1600px measure of running prose is worse than a 1340px one, not better. This
- * page is not a reading page. It is a lease picker, a ninety-row owner table
- * and a letter preview with a rail beside them, and every one of those is
- * better for the room.
- *
- * HOW IT REACHES `.app-body`, WHICH THE PAGE DOES NOT RENDER. `page.tsx` passes
- * `shellClass="mv-invite-wide"` to `Portal`, which adds it to the shell's root
- * element — the same mechanism `soon.css` uses, and for the same reason: the
- * body is an ANCESTOR of `children`, so a page cannot style it from the inside.
- *
- * WHY IT WINS. This sheet is imported by the page and is therefore UNLAYERED,
- * while `dashboard-reference.css` sits in `@layer mv-reference`. Unlayered
- * styles beat layered ones outright, so no specificity contest is needed — and
- * in particular this does not have to out-count the `body …view-pro` selector
- * above, which it would otherwise tie with.
- *
- * TO CHANGE THE WIDTH, change the one number below. `none` removes the cap
- * entirely and lets the page run to the edge of the window.
+ * Two things live here: the width override this page asks for, and the
+ * reference build's own invite styles. Both are UNLAYERED — this file is
+ * imported by `page.tsx`, so it sits outside `@layer mv-reference` and beats
+ * `dashboard-reference.css` outright, with no specificity contest.
  */
-.mv-ref-app.mv-invite-wide .app-body {
-  max-width: 1600px;
+
+/*
+ * 1 · THE PAGE TAKES THE SHELL WIDTH IT IS GIVEN.
+ *
+ * There was an override here that lifted `.app-body` from 1340px to 1600px,
+ * on the argument that this page is a tool rather than a reading page and every
+ * part of it is better for the room. It was reverted deliberately: a page that
+ * runs 260px wider than the Dashboard, Alerts and Activities has visibly
+ * narrower side gutters than they do, and on a wide monitor the difference
+ * reads as the page having come loose from the shell rather than as extra
+ * space. Matching the group matters more here than the extra column.
+ *
+ * So there is no width rule in this file at all now, and `page.tsx` passes no
+ * `shellClass`. The page inherits `.mv-ref-app .app-body` — `padding: 26px`,
+ * `max-width: 1180px`, `1340px` at the Pro density, and the group's own narrow
+ * rules below 900px — exactly as its neighbours do.
+ */
+
+/* ===========================================================================
+ * 2 · THE REFERENCE'S OWN INVITE STYLES — ported in full, rescoped.
+ * ===========================================================================
+ *
+ * WHY THIS ARRIVED. The page was rebuilt for this app out of Tailwind
+ * utilities and the `(portal)` group's `mv-*` primitives — `Card`, `Badge`,
+ * `SelectField`, `Table`, `SegmentedControl` — with its type sizes written
+ * inline: `text-[12.5px]`, `text-[26px]`, `text-[11.5px]`, `text-[15px]`.
+ * Everything on it worked. It just did not look like the portal it sits in:
+ * every other page in this route group is drawn by `dashboard-reference.css` —
+ * `.chartbox`, `.chip`, `.btn`, `.small`, `.tiny`, `.num` — so Invite was an
+ * island with its own heading scale, its own greens, its own borders and its
+ * own table furniture.
+ *
+ * These are sections 15 and 15b of the reference build's `src/app/app.css`, the
+ * sheet that draws `/invite` there. Bringing them over is what makes this page
+ * share a type scale with the Dashboard and Alerts rather than approximate one:
+ * every size below is the reference's own number, not a new one.
+ *
+ * THREE THINGS CHANGED IN THE PORT, and nothing else:
+ *
+ *   1  EVERY SELECTOR IS SCOPED TO `.mv-ref-app`, the root element `Portal`
+ *      renders. The reference is a document that is nothing but this portal and
+ *      writes its rules bare; this app also carries the marketing site, so an
+ *      unscoped `.iv-list` or `.iv-link` would reach into it.
+ *      `dashboard-reference.css` is scoped the same way, for the same reason.
+ *
+ *   2  IT IS GREEN, NOT INK — the one deliberate departure. See below.
+ *
+ *   3  THE `lr-*` RULES ARE LEFT BEHIND. They sit between the two invite
+ *      sections in the reference sheet and belong to the lease report.
+ *
+ * -- THE ONE PLACE THIS DOES NOT FOLLOW THE REFERENCE, AND WHY --
+ *
+ * The reference picks everything out in a near-black ink (#223040) and its own
+ * comment gives the reason: "NO PRODUCT COLOUR ANYWHERE HERE. Green is gas and
+ * gold is oil across this site, and nothing on this page is a product." That
+ * rule is sound in the build it was written for.
+ *
+ * IT IS NOT SOUND HERE, because this portal does not reserve green for
+ * products. `dashboard-reference.css` spends green on INTERFACE in a dozen
+ * places: `.btn-primary` is `--green` on `--green-ink`, the Alerts filter pills
+ * light `--mint` when chosen, the Ultra hero status dot is `--green`, and every
+ * link is `--green-deep`. Against that, a page whose numbered steps, selected
+ * segment, ticked rows and code chip were all near-black did not read as
+ * restraint. It read as a page from a different product, which is the thing
+ * this port exists to fix.
+ *
+ * So `--bar-on` is the portal green. Every rule below still reads it through
+ * that one variable, so this is a single line to change back if the reference
+ * rule is ever adopted here too. The marks that carry a SOLID fill use
+ * `--green` on `--green-ink` rather than white on `--green-deep`: that pairing
+ * is `.btn-primary`, and it is what the rest of the portal looks like.
+ *
+ * -- AND THE WEIGHTS ARE THIS PORTAL'S, NOT THE REFERENCE'S --
+ *
+ * The reference sets `font-weight: 800` on nearly every label, figure and
+ * heading on this page, and 600 on its table body. Measured against the pages
+ * this one sits beside, that is a whole step heavier throughout: a table cell
+ * on Activities renders at 400 where this one rendered at 600, and an owner
+ * name inside it reached 900. The page read as shouting.
+ *
+ * So the scale is capped at 700 and the body text sits at 400-600, which is
+ * what `dashboard-reference.css` does. The HIERARCHY is untouched — every
+ * element is still heavier or lighter than its neighbours in the same order,
+ * one notch down. Sizes, colours and spacing are the reference's and are not
+ * touched by this pass.
+ *
+ * EVERY BREAKPOINT IS A CONTAINER QUERY, which is also the reference's, and it
+ * records why: at a 1024px viewport this page's content box is 664px because
+ * the shell spends the rest on its sidebar, and at 768px with no sidebar it is
+ * 669px. Nearly the same column, 256px apart in viewport terms — so a
+ * `@media (max-width: …)` rule fires at the wrong moments on exactly the
+ * layouts it was written for.
+ */
+
+.mv-ref-app .iv {
+  /* THE SIDE SPACE, AND WHERE IT COMES FROM.
+     MEASURED at a 1612px viewport, against the reference serving the same page:
+     its content box is 1200px inside a 1361px main column, leaving ~81px of
+     gutter down each side. This page ran to the shell cap of 1360px and left
+     ~41px, so the cards sat noticeably closer to the chrome than the reference
+     has them.
+     1200px IS THE REFERENCE'S OWN NUMBER — `.wrap` in
+     `mineral-view-owner-full-site.css` is `max-width:1200px;margin:0 auto`, and
+     this page is a `.wrap` there. The cap lives on `.iv` rather than on
+     `.app-body` deliberately: the shell's width belongs to every page in the
+     group and is not this page's to change, and below 1200px this rule simply
+     stops applying, so nothing about the narrow layouts moves. */
+  max-width: 1200px;
+  margin-inline: auto;
+
+  container-type: inline-size;
+  /* WHAT THIS PAGE PICKS THINGS OUT WITH — the portal green, not the reference
+     ink. See the header. Every `var(--bar-on, …)` below resolves through here:
+     the focus rings, the hover borders, the checkbox accent, the ticked row
+     left edge and the rail step marks. */
+  --bar-on: var(--green-deep);
+}
+
+/* ---------------------------------------------------------------- the head */
+.mv-ref-app .iv-top { margin: 18px 0 16px; }
+.mv-ref-app .iv-top > p { max-width: 68ch; margin: 5px 0 0; }
+/* THE PAGE TITLE IS THE SIZE EVERY OTHER PAGE IN THIS GROUP USES.
+   The reference marks it `.pg-title` and styles it nowhere, so it lands on
+   whatever that build's bare `h2` is. Here the element is an `h1` — deliberate:
+   the page's own title is the document's heading and the three step cards are
+   one level under it — and `.mv-ref-app h1` is 44px, which is a marketing
+   headline rather than a page title. Alerts and Activities both draw theirs at
+   24px, so this is 24px: the ask was to match the other pages, and the other
+   pages are the specification. The serif family and the tracking come from the
+   `h1` rule and are left alone. */
+.mv-ref-app .iv-title { font-size: 24px; margin: 2px 0 0; }
+/* AND THE STEP HEADING MATCHES `h4`, which is what the reference uses for it.
+   The element here is an `h2` for the same outline reason — a screen reader
+   navigates levels, not sizes — so the size is restated rather than inherited. */
+.mv-ref-app .iv-h {
+  /* 600, which is what `h2` and `h3` carry in this group. The reference draws
+     this as an `h4`, and `h4` is the one heading level here still set to 700. */
+  font-family: var(--serif); font-size: 15px; font-weight: 600;
+  line-height: 1.18; letter-spacing: -.01em; margin: 0;
+}
+
+/* --------------------------------------------- three numbered steps */
+/* The number sits in its own gutter so the cards read as one flow and not as
+   three unrelated panels. Stacked until the card can afford the gutter. */
+.mv-ref-app .iv-step {
+  display: grid; grid-template-columns: 1fr; gap: 10px 0;
+  align-items: start; margin-bottom: 14px;
+}
+@container (min-width: 520px) {
+  .mv-ref-app .iv-step { grid-template-columns: 46px minmax(0, 1fr); gap: 0 16px; }
+}
+.mv-ref-app .iv-stepno {
+  width: 34px; height: 34px; border-radius: 50%;
+  /* `--green` on `--green-ink`, which is the `.btn-primary` pairing — see the
+     header note on why this is not the reference ink */
+  background: var(--green); color: var(--green-ink);
+  font-size: 15px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.mv-ref-app .iv-stepbody { min-width: 0; }
+
+/* ------------------------------ the lease picker, and what it says */
+.mv-ref-app .iv-sel { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.mv-ref-app .iv-sel > span {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--slate);
+}
+.mv-ref-app .iv-sel select {
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--ink);
+  background: #fff; border: 1px solid var(--line); border-radius: 10px;
+  padding: 9px 12px; max-width: 100%; flex: 1 1 320px;
+}
+/* FOUR COLUMNS FOR FOUR FACTS — two up until there is room for four, and the
+   second row then takes its own left edge and a rule above it. */
+.mv-ref-app .iv-facts {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0;
+  margin: 14px 0 0;
+}
+.mv-ref-app .iv-facts > div {
+  padding: 9px 14px; border-left: 1px solid #eef2f1; min-width: 0;
+}
+.mv-ref-app .iv-facts > div:first-child { padding-left: 0; border-left: 0; }
+.mv-ref-app .iv-facts > div:nth-child(3) { padding-left: 0; border-left: 0; }
+.mv-ref-app .iv-facts > div:nth-child(n+3) {
+  border-top: 1px solid #eef2f1; margin-top: 8px; padding-top: 11px;
+}
+@container (min-width: 560px) {
+  .mv-ref-app .iv-facts { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .mv-ref-app .iv-facts > div:nth-child(3) {
+    padding-left: 14px; border-left: 1px solid #eef2f1;
+  }
+  .mv-ref-app .iv-facts > div:nth-child(n+3) {
+    border-top: 0; margin-top: 0; padding-top: 9px;
+  }
+}
+.mv-ref-app .iv-facts span {
+  display: block; font-size: 9px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--slate);
+}
+.mv-ref-app .iv-facts strong {
+  display: block; font-size: 15px; font-weight: 600; margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------- the body and the rail */
+/* STACKED BY DEFAULT, AND THE RAIL GOES FIRST. A stacked grid stacks in SOURCE
+   order and the rail is written last, so on every narrow layout the steps
+   arrived AFTER the work they exist to introduce. `order: -1` is the fix. */
+.mv-ref-app .iv-body {
+  display: grid; grid-template-columns: 1fr; gap: 16px; align-items: start;
+}
+.mv-ref-app .iv-main { min-width: 0; }
+.mv-ref-app .iv-rail {
+  display: grid; gap: 10px; align-content: start; min-width: 0;
+  order: -1; margin: 0 0 4px; grid-template-columns: 1fr;
+}
+/* two rail cards across as soon as there is room, with the earnings card
+   spanning both and laying its own contents out in a row */
+@container (min-width: 600px) {
+  .mv-ref-app .iv-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mv-ref-app .iv-railcard.earn {
+    grid-column: 1 / -1; display: grid; gap: 4px 18px;
+    grid-template-columns: auto minmax(0, 1fr); align-items: center;
+  }
+  .mv-ref-app .iv-railcard.earn > .iv-railk { grid-column: 1 / -1; }
+  .mv-ref-app .iv-railcard.earn .iv-earnline,
+  .mv-ref-app .iv-railcard.earn .iv-earnnote {
+    grid-column: 1 / -1; margin-top: 6px; padding-top: 8px;
+  }
+  .mv-ref-app .iv-railcard.earn .iv-rungs { margin: 0; }
+}
+/* AND A SIDE RAIL ONLY WHEN THE MAIN COLUMN CAN STILL BREATHE. 288px of rail
+   out of a 664px box leaves 360px for a four-column table, which is what a
+   1024px viewport was doing; 880px of content leaves about 576px. */
+@container (min-width: 880px) {
+  .mv-ref-app .iv-body { grid-template-columns: minmax(0, 1fr) 288px; }
+  .mv-ref-app .iv-rail {
+    order: 0; position: sticky; top: 14px; margin: 0; grid-template-columns: 1fr;
+  }
+  .mv-ref-app .iv-railcard.earn { grid-column: auto; display: block; }
+  .mv-ref-app .iv-railcard.earn .iv-rungs { margin: 11px 0 0; }
+}
+/* a browser without container queries gets the stacked layout at every width,
+   which works — but a genuinely wide viewport should still get the rail */
+@supports not (container-type: inline-size) {
+  @media (min-width: 1240px) {
+    .mv-ref-app .iv-body { grid-template-columns: minmax(0, 1fr) 288px; }
+    .mv-ref-app .iv-rail {
+      order: 0; position: sticky; top: 14px; margin: 0; grid-template-columns: 1fr;
+    }
+    .mv-ref-app .iv-railcard.earn { grid-column: auto; display: block; }
+  }
+}
+.mv-ref-app .iv-railcard {
+  border: 1px solid var(--line); border-radius: 13px; background: #fff;
+  padding: 13px 15px 14px; min-width: 0;
+}
+.mv-ref-app .iv-railcard.soft { background: #fafbfb; }
+.mv-ref-app .iv-railk {
+  display: block; font-size: 9px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--slate); margin: 0 0 9px;
+}
+
+.mv-ref-app .iv-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.mv-ref-app .iv-steps > li {
+  display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 0 10px;
+  align-items: start; padding: 7px 0; position: relative;
+}
+.mv-ref-app .iv-steps > li + li { border-top: 1px solid #f1f4f4; }
+.mv-ref-app .iv-steps > li:first-child { padding-top: 0; }
+.mv-ref-app .iv-steps > li:last-child { padding-bottom: 0; }
+.mv-ref-app .iv-rn {
+  width: 20px; height: 20px; border-radius: 50%; flex: none; display: flex;
+  align-items: center; justify-content: center; font-size: 10px; font-weight: 700;
+  font-variant-numeric: tabular-nums; margin-top: 1px;
+  background: #fff; color: #7d8a92; box-shadow: inset 0 0 0 1px #d3dbd9;
+}
+.mv-ref-app .iv-steps strong {
+  display: block; font-size: 12px; font-weight: 600; color: #37424e; line-height: 1.35;
+}
+.mv-ref-app .iv-steps i {
+  display: block; font-style: normal; font-size: 10.5px; font-weight: 400; line-height: 1.5;
+  color: var(--slate); margin-top: 1px;
+}
+/* DONE, DOING, AND NOT YET — by ink and weight, never by hue. */
+.mv-ref-app .iv-steps > li.done .iv-rn {
+  background: var(--green); color: var(--green-ink); box-shadow: none;
+}
+.mv-ref-app .iv-steps > li.done strong { color: var(--slate); }
+.mv-ref-app .iv-steps > li.now .iv-rn {
+  background: #fff; color: var(--green-deep); box-shadow: inset 0 0 0 2px var(--green);
+}
+.mv-ref-app .iv-steps > li.now strong { color: var(--green-ink); font-weight: 700; }
+/* their lane: nothing here works yet, and the rail says so by drawing back */
+.mv-ref-app .iv-steps.ghost .iv-rn { box-shadow: inset 0 0 0 1px #dfe5e3; color: #98a4ab; }
+.mv-ref-app .iv-steps.ghost strong { font-weight: 600; color: #5d6b74; }
+
+/* ---------------------------------------- what the selection earns */
+/* The zeroes are shown on purpose: "a free month per co-owner" on its own
+   invites a reader to write to every name on the roll, and the two rungs that
+   pay nothing are what stop that. */
+/* RESTING, then EARNING. The reference flips this card to a near-black panel
+   the moment there is something to earn. Here it lights `--mint` behind a
+   `--green` edge instead, which is the same move `.al-row.unreadal` and
+   `.simple-hero` make on the Alerts page: "this one is live" in the portal own
+   language rather than a black rectangle in the middle of a white rail. */
+.mv-ref-app .iv-railcard.earn { background: #f7faf9; }
+.mv-ref-app .iv-railcard.earn.live {
+  background: var(--mint); border-color: var(--green);
+  border-left-width: 4px;
+}
+.mv-ref-app .iv-railcard.earn.live .iv-railk { color: var(--green-deep); }
+.mv-ref-app .iv-earn { display: flex; align-items: baseline; gap: 8px; }
+.mv-ref-app .iv-earn strong {
+  font-size: 34px; font-weight: 700; line-height: 1;
+  font-variant-numeric: tabular-nums; color: var(--ink);
+}
+.mv-ref-app .iv-earn span { font-size: 12px; font-weight: 600; color: #37424e; }
+.mv-ref-app .iv-railcard.earn.live .iv-earn strong { color: var(--green-ink); }
+.mv-ref-app .iv-railcard.earn.live .iv-earn span { color: var(--green-ink); }
+.mv-ref-app .iv-earnline {
+  font-size: 11px; line-height: 1.55; color: var(--slate); margin: 7px 0 0;
+}
+.mv-ref-app .iv-rungs { display: grid; gap: 0; margin: 11px 0 0; }
+.mv-ref-app .iv-rungs > div {
+  display: flex; justify-content: space-between; gap: 10px;
+  padding: 5px 0; border-top: 1px solid #e7ecec;
+}
+.mv-ref-app .iv-rungs span { font-size: 10.5px; color: var(--slate); }
+.mv-ref-app .iv-rungs b {
+  font-size: 10.5px; font-weight: 700; color: #8b959c; white-space: nowrap;
+}
+.mv-ref-app .iv-rungs > div.hit b { color: var(--ink); }
+.mv-ref-app .iv-railcard.earn.live .iv-rungs > div { border-color: rgba(4, 35, 26, .10); }
+.mv-ref-app .iv-railcard.earn.live .iv-rungs span { color: var(--slate); }
+.mv-ref-app .iv-railcard.earn.live .iv-rungs b { color: #6f8a80; }
+.mv-ref-app .iv-railcard.earn.live .iv-rungs > div.hit b { color: var(--green-ink); }
+.mv-ref-app .iv-earnnote {
+  font-size: 10.5px; line-height: 1.55; color: var(--slate);
+  margin: 10px 0 0; padding-top: 9px; border-top: 1px solid #e7ecec;
+}
+.mv-ref-app .iv-earnnote b { color: #37424e; }
+.mv-ref-app .iv-railcard.earn.live .iv-earnnote {
+  color: var(--slate); border-color: rgba(4, 35, 26, .10);
+}
+.mv-ref-app .iv-railcard.earn.live .iv-earnnote b { color: var(--green-ink); }
+
+/* ------------------------------------------------- the owner list */
+/* A FIXED CARD THAT SCROLLS INSIDE ITSELF. It used to show ten rows with the
+   rest behind a button, and pressing that grew the card to every owner on the
+   roll and the page to several screens — so reaching the email underneath meant
+   scrolling past a phone book. One bounded vertical scroller instead: every
+   owner reachable, and step 3 stays where it was.
+   THE HEADER STICKS, because a scrolled list whose columns are off screen is
+   four columns of unlabelled data. */
+.mv-ref-app .iv-list {
+  max-height: 300px; overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid var(--line); border-radius: 11px; background: #fff;
+  /* NO INNER PADDING. The cells carry their own 14px now, so the row rules run
+     the full width of the box the way they do in the design this table is
+     copied from. The reference insets the box instead and lets its hairlines
+     stop short. */
+  padding: 0;
+  /* a scrollbar visible without being loud — the card must LOOK scrollable or
+     nobody scrolls it */
+  scrollbar-width: thin; scrollbar-color: #c2cdca transparent;
+}
+@container (min-width: 560px) {
+  .mv-ref-app .iv-list { max-height: 340px; }
+}
+.mv-ref-app .iv-list thead th {
+  position: sticky; top: 0; z-index: 1; background: #fff;
+  box-shadow: inset 0 -1px 0 var(--line);
+}
+.mv-ref-app .iv-list::-webkit-scrollbar { width: 9px; }
+.mv-ref-app .iv-list::-webkit-scrollbar-track { background: transparent; }
+.mv-ref-app .iv-list::-webkit-scrollbar-thumb {
+  background: #c9d3d0; border-radius: 99px; border: 2px solid #fff;
+}
+.mv-ref-app .iv-list::-webkit-scrollbar-thumb:hover { background: #aab6b2; }
+.mv-ref-app .iv-list tbody tr:last-child > td { border-bottom: 0; }
+/* the row count under it is a fact, not a button that grows the page */
+.mv-ref-app .iv-count { font-size: 11px; font-weight: 600; color: var(--slate); }
+
+.mv-ref-app .iv-find {
+  display: flex; gap: 9px; align-items: center; flex-wrap: wrap; margin: 0 0 4px;
+}
+.mv-ref-app .iv-find input[type="search"] {
+  font: inherit; font-size: 12.5px; padding: 8px 12px;
+  border: 1px solid var(--line); border-radius: 9px;
+  background: #fff; color: var(--ink); flex: 1 1 220px;
+  min-width: 0; max-width: 340px;
+}
+.mv-ref-app .iv-find input[type="search"]:focus-visible {
+  outline: 2px solid var(--bar-on, #223040); outline-offset: 1px;
+}
+
+/* ------------------------------------------- the table inside it */
+/* `.rep-mini` IS THE REFERENCE'S COMPACT TABLE and this app's sheet has no
+   equivalent, so it comes over with the page. It is the same table the lease
+   report draws there, which is why the sizes match the rest of the portal. */
+.mv-ref-app .rep-mini {
+  width: 100%; max-width: 100%; border-collapse: collapse; table-layout: fixed;
+  min-width: 0;
+}
+.mv-ref-app .rep-mini th, .mv-ref-app .rep-mini td { overflow-wrap: anywhere; }
+.mv-ref-app .rep-mini th {
+  text-align: left; font-size: 10.5px; font-weight: 600; color: var(--slate);
+  padding: 6px 10px 6px 0; border-bottom: 1px solid #f1f4f6; width: 42%;
+  vertical-align: top;
+}
+.mv-ref-app .rep-mini thead th {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; width: auto;
+}
+/* 400, WHICH IS WHAT A TABLE CELL WEIGHS EVERYWHERE ELSE IN THIS PORTAL. The
+   reference sets 600 here, so every one of ninety rows arrived semibold and the
+   owner name inside it — a `<strong>` on top of that — reached 900. */
+.mv-ref-app .rep-mini td {
+  font-size: 12px; font-weight: 400; color: var(--ink); padding: 6px 0;
+  border-bottom: 1px solid #f1f4f6; vertical-align: top;
+}
+/* the name's weight is set with the rest of the table below, where the reason
+   it is plain is recorded */
+.mv-ref-app .rep-mini td.right, .mv-ref-app .rep-mini th.right { text-align: right; }
+.mv-ref-app .rep-mini .num { font-variant-numeric: tabular-nums; }
+
+/* ============================================================================
+   THE OWNER TABLE, AT THE PORTAL'S OWN TABLE MEASUREMENTS.
+   ============================================================================
+   The compact `.rep-mini` sizing the reference uses — 12px type in a 6px row —
+   is right for the dense figure tables it was built for and wrong for this one:
+   ninety rows of a person's name, a percentage and a town, which a reader
+   scans looking for a relative. This is the measurement every other table in
+   the portal uses (`_components/ui/table.tsx`): 13px body, 11px tracked
+   uppercase headers, 14px/10px cells, a hairline under every row and none
+   under the last.
+
+   TWO THINGS FROM THAT DESIGN ARE DELIBERATELY NOT COPIED:
+
+     · NO BOLD. That table sets `font-bold` on the header and `font-semibold`
+       on the owner name. Here the header is 600 — enough that an 11px
+       uppercase label still reads as a label rather than as body text — and
+       the NAME is plain, at the same 400 as the rest of the row. The name is
+       already the widest column and the first thing in the row; it does not
+       need weight as well.
+
+     · NO GREY HEADER BAND. That table paints its header row in the wash grey
+       (`bg-mv-portal-wash`) with grey (`text-mv-muted`) type on it. The header
+       here stays white — it is sticky, so white is also what keeps it legible
+       over the rows sliding under it — with a single hairline beneath and the
+       label in `--slate`, which is the portal's near-navy rather than a grey.
+   ============================================================================ */
+.mv-ref-app .iv-tbl { width: 100%; font-size: 13px; }
+.mv-ref-app .iv-tbl th,
+.mv-ref-app .iv-tbl td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.mv-ref-app .iv-tbl td { vertical-align: middle; font-size: 13px; font-weight: 400; }
+.mv-ref-app .iv-tbl thead th {
+  font-size: 11px; font-weight: 600; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--slate); white-space: nowrap;
+  vertical-align: middle;
+}
+/* THE NAME IS NOT BOLD — see the note above. `.rep-mini` and the browser both
+   want to embolden a `<strong>`, and this is the one place that is refused. */
+.mv-ref-app .iv-tbl td strong { font-weight: 400; }
+/* DELIBERATE WIDTHS. `table-layout: fixed` with auto headers split the row
+   evenly and left "OWNER OF RECORD" in 92px — the one column a reader is
+   actually reading. The tick and the share take what they need and the name
+   takes the rest. Re-cut for the 14px cell padding: the tick column is the
+   checkbox plus both gutters. */
+.mv-ref-app .iv-tbl th:nth-child(1) { width: 44px; }
+.mv-ref-app .iv-tbl th:nth-child(3) { width: 78px; }
+.mv-ref-app .iv-tbl th:nth-child(4) { width: 30%; }
+@container (min-width: 560px) {
+  .mv-ref-app .iv-tbl th:nth-child(3) { width: 96px; }
+}
+/* THE SMALLEST PHONE. MEASURED at a 292px container: "OWNER OF RECORD" wants
+   113px in a 106px cell — uppercase with .05em of tracking is wider than the
+   string looks, and at that width the tracking is decoration the column cannot
+   afford. */
+@container (max-width: 360px) {
+  .mv-ref-app .iv-tbl thead th { letter-spacing: 0; font-size: 10px; }
+  .mv-ref-app .iv-tbl th, .mv-ref-app .iv-tbl td { padding: 10px 9px; }
+  .mv-ref-app .iv-tbl th:nth-child(1) { width: 34px; }
+  .mv-ref-app .iv-tbl th:nth-child(3) { width: 62px; }
+}
+.mv-ref-app .iv-cb { width: 44px; padding-right: 0; }
+.mv-ref-app .iv-cb input {
+  width: 16px; height: 16px; accent-color: var(--bar-on, #223040); cursor: pointer;
+  display: block;
+}
+/* A TICKED ROW IS TINTED THE WAY AN UNREAD ALERT IS: a mint wash behind a
+   green left edge, matching `.al-row.unreadal`. The reference grey-on-ink said
+   the same thing in a palette this portal does not use. */
+.mv-ref-app .iv-tbl tbody tr.on > td { background: #f4fdf9; }
+.mv-ref-app .iv-tbl tbody tr.on > td:first-child {
+  box-shadow: inset 2px 0 0 var(--green);
+}
+/* the kind is named only when it is NOT a person: twenty rows each carrying an
+   "Individual" chip is twenty chips saying nothing */
+.mv-ref-app .iv-tag {
+  display: inline-block; font-style: normal; font-size: 9px; font-weight: 700;
+  letter-spacing: .05em; text-transform: uppercase; color: var(--slate);
+  border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px;
+  margin-left: 7px; vertical-align: 1px; white-space: nowrap;
+}
+.mv-ref-app .iv-tag.warn { border-color: #d9c79a; background: #fdfaf3; color: #7a5b18; }
+/* ONE FEWER COLUMN ON A PHONE, not a sideways scrollbar. MEASURED at 375px:
+   four columns want 307px of a 277px card. The town reads better under the name
+   at that width anyway, and exactly one of the two is ever shown. */
+.mv-ref-app .iv-where {
+  display: block; font-style: normal; font-size: 11.5px; color: var(--muted);
+  margin-top: 2px;
+}
+.mv-ref-app .iv-tbl th:nth-child(4), .mv-ref-app .iv-tbl td:nth-child(4) { display: none; }
+@container (min-width: 560px) {
+  .mv-ref-app .iv-where { display: none; }
+  .mv-ref-app .iv-tbl th:nth-child(4),
+  .mv-ref-app .iv-tbl td:nth-child(4) { display: table-cell; }
+}
+/* a heading a screen reader needs and a sighted reader does not: the checkbox
+   column's own label. `sr-only` is not in this group's sheets, so it is defined
+   rather than assumed. */
+.mv-ref-app .iv-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+.mv-ref-app .iv-more {
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 11px 0 0;
+}
+/* a plain word that acts, for the choices that are not the main one */
+.mv-ref-app .iv-link {
+  font: inherit; font-size: 11.5px; font-weight: 600; color: var(--slate);
+  background: none; border: 0; padding: 0; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px;
+  text-decoration-color: #c9d2d0;
+}
+.mv-ref-app .iv-link:hover { color: var(--ink); text-decoration-color: currentColor; }
+.mv-ref-app .iv-link:focus-visible {
+  outline: 2px solid var(--bar-on, #223040); outline-offset: 3px;
+}
+
+/* ------------------- the email, drawn as a mail client */
+/* because that is what the reader is about to paste it into */
+.mv-ref-app .iv-nav { display: inline-flex; align-items: center; gap: 4px; }
+.mv-ref-app .iv-nav > b {
+  font-size: 11px; font-weight: 600; color: var(--slate);
+  font-variant-numeric: tabular-nums; padding: 0 4px; white-space: nowrap;
+}
+.mv-ref-app .iv-nav button {
+  font: inherit; font-size: 15px; line-height: 1; width: 26px; height: 26px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line); border-radius: 8px; background: #fff;
+  color: var(--ink); cursor: pointer;
+}
+.mv-ref-app .iv-nav button:hover { border-color: var(--green); }
+/* a letter that wants a second look says so before it prints */
+.mv-ref-app .iv-warn {
+  border-left: 3px solid #b8892f; background: #fdfaf3; border-radius: 0 8px 8px 0;
+  padding: 9px 13px; font-size: 11.5px; line-height: 1.6; color: #7a5b18;
+  margin: 0 0 12px;
+}
+.mv-ref-app .iv-mail {
+  border: 1px solid var(--line); border-radius: 12px; background: #fff;
+  overflow: hidden;
+}
+.mv-ref-app .iv-mailrow {
+  display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+  padding: 9px 14px; border-bottom: 1px solid #f1f4f4;
+}
+/* 52px, not 44: MEASURED, "SUBJECT" in uppercase with letter-spacing wants
+   49px and was being clipped. */
+.mv-ref-app .iv-mailrow > span {
+  font-size: 9px; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--slate); width: 52px; flex: none;
+}
+.mv-ref-app .iv-mailrow > b { font-size: 12.5px; min-width: 0; overflow-wrap: anywhere; }
+.mv-ref-app .iv-mailrow > i { flex: 1 1 150px; text-align: right; }
+/* ONCE IT HAS WRAPPED IT IS NOT BESIDE ANYTHING, so it stops chasing the right
+   edge and lines up under the name instead. 62px is the 52px label column plus
+   the 10px flex gap. */
+@container (max-width: 520px) {
+  .mv-ref-app .iv-mailrow { align-items: baseline; }
+  .mv-ref-app .iv-mailrow > i { flex: 1 1 100%; text-align: left; margin-left: 62px; }
+}
+.mv-ref-app .iv-mailbody {
+  margin: 0; padding: 15px 17px; background: #fcfdfd;
+  font: inherit; font-size: 12.5px; line-height: 1.75; color: #1f2937;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+  /* the preview is bounded for the same reason the owner list is: a long letter
+     should not push the copy button off the screen */
+  max-height: 300px; overflow-y: auto; overscroll-behavior: contain;
+}
+/* THE CODE IS THE ONE THING THE RECIPIENT HAS TO ACT ON, and it was plain text
+   in a wall of plain text. Marked by ink and a border rather than a highlighter
+   colour. The reference marks it in ink; here it is
+   `--green` on `--green-ink`, for the reason in this file header: on THIS
+   portal green is the interface colour, and the one thing the recipient has to
+   act on should be picked out in the colour the reader has already learned
+   means "press this". */
+.mv-ref-app .iv-hl {
+  background: var(--green); color: var(--green-ink); border-radius: 5px;
+  padding: 1px 7px; font-weight: 700; letter-spacing: .06em;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+/* THE CODE HAS A LINE TO ITSELF IN THE LETTER, so on screen it gets the size to
+   match. In the email that line carries weight by position — plain text has no
+   type sizes — and here it can have both. */
+.mv-ref-app .iv-hl.big {
+  display: inline-block; font-size: 25px; line-height: 1.25;
+  letter-spacing: .1em; padding: 5px 16px; border-radius: 9px; margin: 3px 0 5px;
+}
+@container (max-width: 460px) {
+  .mv-ref-app .iv-hl.big { font-size: 20px; padding: 4px 12px; }
+}
+
+/* ---- ONE BUTTON. There were four, and this is the job. */
+.mv-ref-app .iv-do {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 12px 0 0;
+}
+.mv-ref-app .iv-do .btn-primary { font-size: 13px; padding: 10px 18px; }
+.mv-ref-app .iv-empty {
+  font-size: 12.5px; color: var(--slate); background: #fafbfb;
+  border: 1px dashed var(--line); border-radius: 11px; padding: 22px 18px;
+  text-align: center; margin: 0;
+}
+
+/* the wording lives behind a link: the standard letter is finished, and the
+   textarea was taking half the card from the thing a reader came to copy */
+.mv-ref-app .iv-edit { margin: 12px 0 0; padding: 13px 0 0; border-top: 1px solid #f1f4f4; }
+.mv-ref-app .iv-edit textarea {
+  font: inherit; font-size: 12.5px; line-height: 1.7; width: 100%;
+  border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px;
+  background: #fff; color: var(--ink); resize: vertical;
+}
+.mv-ref-app .iv-edit textarea:focus-visible {
+  outline: 2px solid var(--bar-on, #223040); outline-offset: 1px;
+}
+.mv-ref-app .iv-editnote {
+  font-size: 11.5px; line-height: 1.6; color: var(--slate);
+  margin: 0 0 9px; max-width: 66ch;
+}
+.mv-ref-app .iv-lbl {
+  display: block; font-size: 9.5px; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--slate); margin: 0 0 8px;
+}
+.mv-ref-app .iv-custom {
+  font: inherit; font-size: 13px; width: 100%; margin-top: 8px; padding: 9px 12px;
+  border: 1px solid var(--line); border-radius: 10px;
+}
+.mv-ref-app .iv-chips {
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 8px;
+}
+.mv-ref-app .iv-chipk {
+  font-size: 9px; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--slate);
+}
+.mv-ref-app .iv-tok {
+  font: inherit; font-size: 11px; font-weight: 600; color: var(--ink);
+  background: #f2f5f4; border: 1px solid var(--line); border-radius: 8px;
+  padding: 5px 9px; cursor: pointer; display: inline-flex; gap: 6px;
+  align-items: baseline;
+}
+.mv-ref-app .iv-tok i { font-style: normal; font-weight: 600; font-size: 10px; color: var(--slate); }
+.mv-ref-app .iv-tok:hover { border-color: var(--green); }
+
+/* ---- HOW IT OPENS, ON THE CARD rather than behind an "edit" link: it is the
+   one thing a reader sets before copying, and the wording is the thing most of
+   them never touch. */
+.mv-ref-app .iv-greet {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0 0 11px;
+}
+.mv-ref-app .iv-greet > .iv-lbl { margin: 0; }
+.mv-ref-app .iv-greet .iv-custom { margin: 0; flex: 0 1 200px; }
+
+/* `.ml-segs` IS THE REFERENCE'S SEGMENTED CONTROL, and this app's sheet has no
+   equivalent either. INK WHEN CHOSEN, NOT GREEN: four green things on one
+   screen read as four highlights and therefore as none. */
+.mv-ref-app .ml-segs {
+  display: inline-flex; border: 1px solid #dde4ea; border-radius: 10px; overflow: hidden;
+}
+.mv-ref-app .ml-segs button {
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--slate);
+  background: #fff; border: 0; border-left: 1px solid #eef2f1; padding: 7px 13px;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+}
+.mv-ref-app .ml-segs button:first-child { border-left: 0; }
+/* CHOSEN IS MINT, exactly as `.al-filter button.on` is on the Alerts page: the
+   same kind of control, so the same treatment. The reference sets `--ink` here
+   and explains that green is reserved for products in that build. */
+.mv-ref-app .ml-segs button.on {
+  background: var(--mint); color: var(--green-ink);
+  box-shadow: inset 0 0 0 1px var(--green);
+}
+.mv-ref-app .ml-segs button:disabled { color: #cbd5e1; cursor: not-allowed; }
+.mv-ref-app .ml-segs button:hover:not(.on):not(:disabled) {
+  background: #f6f8f9; color: var(--ink);
+}
+.mv-ref-app .ml-segs button:focus-visible { outline: 2px solid var(--green-deep); outline-offset: -2px; }
+
+/* ---- AND THE OTHER WAYS TO SEND IT, AS ACTIONS.
+   This was three small underlined words sitting under a green button, which is
+   where a reader's eye never goes. Paper is not the main route, but for some of
+   these owners it is the only one, so each way is a thing you press. */
+.mv-ref-app .iv-also { margin: 15px 0 0; padding-top: 13px; border-top: 1px solid #f1f4f4; }
+.mv-ref-app .iv-alsok {
+  display: block; font-size: 9px; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--slate); margin: 0 0 9px;
+}
+.mv-ref-app .iv-alsobtns { display: flex; gap: 8px; flex-wrap: wrap; }
+/* ONE LETTER PER PERSON, ONE ROW PER PERSON, with that person's own code beside
+   their name so the file you save is obviously theirs. */
+.mv-ref-app .iv-each { list-style: none; margin: 0 0 11px; padding: 0; display: grid; gap: 0; }
+.mv-ref-app .iv-each > li {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 0; border-top: 1px solid #f1f4f4;
+}
+.mv-ref-app .iv-each > li:first-child { border-top: 0; padding-top: 0; }
+.mv-ref-app .iv-each > li > b { font-size: 12.5px; min-width: 0; overflow-wrap: anywhere; }
+/* the first action is pushed right, which puts the pair of them together on
+   that edge — the reference's own rule */
+.mv-ref-app .iv-each > li > .btn:first-of-type { margin-left: auto; }
+.mv-ref-app .iv-eachcode {
+  font-size: 11px; font-weight: 700; letter-spacing: .05em;
+  font-variant-numeric: tabular-nums; color: var(--slate);
+  border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px;
+  white-space: nowrap;
+}
+@container (max-width: 460px) {
+  .mv-ref-app .iv-each > li > .btn:first-of-type { margin-left: 0; }
+  .mv-ref-app .iv-each > li { padding: 10px 0; }
 }

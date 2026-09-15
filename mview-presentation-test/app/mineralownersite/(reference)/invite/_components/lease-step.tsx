@@ -1,7 +1,5 @@
 "use client";
 
-import { Badge } from "../../../_components/ui/badge";
-import { SelectField } from "../../../_components/ui/form-controls";
 /* THE ONLY LINE IN THIS COMPONENT THE MOVE TOUCHED. My Leases is in the
    other route group now, and `(portal)`/`(reference)` are real directories
    even though the router treats them as invisible — so this reaches across
@@ -19,9 +17,7 @@ import { StepCard } from "./step-card";
  * Ten leases, one choice, and the choice is not the interesting part of the
  * page — the people are. A card grid for ten near-identical unit names would
  * take a screen to say what one control says in a line, and push step 2 below
- * the fold on a laptop. It is also the control every filter in this repo
- * standardises on; see the note in `portal-ui.md` about why Radix Select was
- * turned down.
+ * the fold on a laptop.
  *
  * ── EACH OPTION CARRIES ITS OWN HEADCOUNT ──
  *
@@ -37,6 +33,15 @@ import { StepCard } from "./step-card";
  * are on it. The money is here because it is the honest answer to "is this one
  * worth the conversation" — a lease worth $11,800 and a lease worth $1.36M
  * deserve different amounts of a reader's evening.
+ *
+ * ── WHAT THE RE-SKIN CHANGED ──
+ *
+ * `SelectField` and a Tailwind `<dl>` grid became `.iv-sel` and `.iv-facts`,
+ * which are the reference's own. The facts strip is the visible difference: it
+ * was four tinted boxes with rounded corners, and it is four columns divided by
+ * hairlines now, reflowing to two on a narrow card. Nothing about what it says
+ * changed, and `<dl>`/`<dt>`/`<dd>` are kept — `.iv-facts` addresses its
+ * children by position and by element, so the list semantics cost nothing.
  */
 export function LeaseStep({
   leases,
@@ -54,30 +59,31 @@ export function LeaseStep({
       n={1}
       title="Pick a lease"
       action={
-        <Badge tone="slate" size="xs">
+        <span className="chip chip-slate" style={{ fontSize: 10 }}>
           {leases.length} on your record
-        </Badge>
+        </span>
       }
     >
-      <SelectField
-        label="Lease"
-        value={lease.leaseId}
-        onChange={(event) => onChange(event.target.value)}
-        aria-label="Which lease to invite the co-owners of"
-        className="flex-wrap"
-      >
-        {leases.map((option) => {
-          const count = peopleOn(option);
-          return (
-            <option key={option.leaseId} value={option.leaseId}>
-              {option.label} — {count} {count === 1 ? "person" : "people"} you
-              could invite
-            </option>
-          );
-        })}
-      </SelectField>
+      <label className="iv-sel">
+        <span>Lease</span>
+        <select
+          value={lease.leaseId}
+          onChange={(event) => onChange(event.target.value)}
+          aria-label="Which lease to invite the co-owners of"
+        >
+          {leases.map((option) => {
+            const count = peopleOn(option);
+            return (
+              <option key={option.leaseId} value={option.leaseId}>
+                {option.label} — {count} {count === 1 ? "person" : "people"} you
+                could invite
+              </option>
+            );
+          })}
+        </select>
+      </label>
 
-      <dl className="m-0 mt-[14px] grid grid-cols-2 gap-[10px] min-[620px]:grid-cols-4">
+      <dl className="iv-facts">
         {(
           [
             ["County", lease.county],
@@ -90,15 +96,12 @@ export function LeaseStep({
             ["People to invite", String(people)],
           ] as [string, string][]
         ).map(([term, value]) => (
-          <div
-            key={term}
-            className="rounded-[10px] bg-mv-portal-wash px-[10px] py-2"
-          >
-            <dt className="text-[10.5px] font-bold tracking-[0.05em] text-mv-muted uppercase">
-              {term}
+          <div key={term}>
+            <dt>
+              <span>{term}</span>
             </dt>
-            <dd className="m-0 mt-[3px] text-[13px] font-semibold text-mv-ink">
-              {value}
+            <dd style={{ margin: 0 }}>
+              <strong>{value}</strong>
             </dd>
           </div>
         ))}

@@ -1,7 +1,5 @@
 import type { ReactNode } from "react";
 
-import { Card, CardHeader } from "../../../_components/ui/card";
-
 /**
  * ONE NUMBERED STEP — the surface all three of this page's cards are built on.
  *
@@ -23,14 +21,24 @@ import { Card, CardHeader } from "../../../_components/ui/card";
  * 15px; the level is the outline a screen reader navigates by, and the two are
  * unrelated decisions that get conflated whenever a heading is picked by how
  * big it looks.
+ *
+ * ── WHAT THE RE-SKIN CHANGED ──
+ *
+ * The card was `<Card>` from the `(portal)` UI kit with a flex row and a
+ * Tailwind disc, which is a different card from the one every other page in
+ * this route group draws. It is `.chartbox .iv-step` now — the reference's own
+ * pair, and `.chartbox` is the same surface the Dashboard's panels sit on — so
+ * the border radius, the shadow and the padding come from the group's sheet
+ * instead of being restated here in utilities.
+ *
+ * THE NUMBER'S GUTTER IS A GRID COLUMN, NOT A FLEX CHILD, and that is what
+ * fixed the alignment note this file used to carry. `.iv-step` is
+ * `grid-template-columns: 46px minmax(0,1fr)` above a container width of 520px
+ * and a single stacked column below it, so the disc drops above the heading on
+ * a narrow card rather than shrinking the column beside it. The old warning
+ * about `.mv-ref-app .flex { align-items:center }` colliding with Tailwind's
+ * `flex` no longer applies, because there is no `flex` here to collide.
  */
-/* `items-*` IS LOAD-BEARING IN THIS ROUTE GROUP, not decoration.
-   `dashboard-reference.css` defines `.mv-ref-app .flex { align-items:center }`,
-   which collides with Tailwind's own `flex`. `globals.css` orders the
-   `mv-reference` layer before `utilities`, so a utility WINS — but only
-   where there is one, and there is none for a property you never set. So
-   an unstated alignment silently becomes `center`: it centred the step
-   discs against whole cards and shrink-wrapped the card columns. */
 export function StepCard({
   n,
   title,
@@ -46,25 +54,20 @@ export function StepCard({
   children: ReactNode;
 }) {
   return (
-    <Card id={id} className="scroll-mt-28">
-      <div className="flex items-start gap-[14px]">
-        <span
-          aria-hidden="true"
-          className="mt-[2px] flex h-7 w-7 flex-none items-center justify-center rounded-full bg-mv-mint text-[13px] font-bold text-mv-green-ink"
-        >
-          {n}
-        </span>
-        <div className="min-w-0 flex-1">
-          <CardHeader
-            className="pb-[10px]"
-            title={
-              <h2 className="m-0 text-[15px] leading-[1.35] font-bold">{title}</h2>
-            }
-            action={action}
-          />
-          {children}
-        </div>
+    <div className="chartbox iv-step" id={id} style={{ scrollMarginTop: 96 }}>
+      <div className="iv-stepno" aria-hidden="true">
+        {n}
       </div>
-    </Card>
+      <div className="iv-stepbody">
+        <div
+          className="between"
+          style={{ flexWrap: "wrap", padding: "0 0 10px" }}
+        >
+          <h2 className="iv-h">{title}</h2>
+          {action}
+        </div>
+        {children}
+      </div>
+    </div>
   );
 }

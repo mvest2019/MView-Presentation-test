@@ -86,9 +86,14 @@ export default async function InviteCoOwnersPage({
   }
 
   return (
-    /* `shellClass` — the shell's body is an ANCESTOR of `children`, so this is
-       the only way the page can widen it. See `invite.css`. */
-    <Portal route={null} initial={initial} shellClass="mv-invite-wide">
+    /* NO `shellClass`. This passed `mv-invite-wide`, which lifted the shell's
+       body from 1340px to 1600px on the argument that a lease picker and a
+       ninety-row table are better for the room. It was reverted: the page then
+       had visibly narrower side gutters than the Dashboard, Alerts and
+       Activities beside it, which on a wide monitor reads as the page having
+       come loose from the shell. It takes the group's width now. See
+       `invite.css`. */
+    <Portal route={null} initial={initial}>
       <InviteView />
     </Portal>
   );

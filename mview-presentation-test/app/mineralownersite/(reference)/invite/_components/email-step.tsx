@@ -2,9 +2,6 @@
 
 import { Fragment } from "react";
 
-import { portalButtonClass } from "../../../_components/ui/button";
-import { Notice } from "../../../_components/ui/notice";
-import { SegmentedControl } from "../../../_components/ui/segmented-control";
 import {
   DEFAULT_BODY,
   firstNameOf,
@@ -69,6 +66,15 @@ const GREETINGS: { value: GreetingStyle; label: string }[] = [
  * copy to two cousins — and then two people hold one identifier. The only place
  * a code appears is in the letter addressed to the person it names, and in the
  * paper row beside that person's name.
+ *
+ * ── WHAT THE RE-SKIN CHANGED ──
+ *
+ * `Notice`, `SegmentedControl` and `portalButtonClass` are gone; the card is
+ * drawn with `.iv-warn`, `.ml-segs`, `.iv-mail`, `.iv-do`, `.iv-edit` and
+ * `.iv-also` — the reference's own. The visible differences are the preview,
+ * which now looks like a mail client rather than a bordered box, and the code,
+ * which is picked out in INK rather than in mint: green is gas and gold is oil
+ * across this site, and a letter is not a product.
  */
 export function EmailStep({
   leaseId,
@@ -139,25 +145,27 @@ export function EmailStep({
       title="Copy the email and send it"
       action={
         letters.length ? (
-          <span className="inline-flex items-center gap-1.5 text-[12px] text-mv-slate">
+          <span className="iv-nav">
             {letters.length > 1 ? (
-              <StepArrow
-                label="Previous letter"
+              <button
+                type="button"
+                aria-label="Previous letter"
                 onClick={() => onAt((index - 1 + letters.length) % letters.length)}
               >
-                ‹
-              </StepArrow>
+                &lsaquo;
+              </button>
             ) : null}
-            <b className="font-semibold tabular-nums">
+            <b>
               {index + 1} of {letters.length}
             </b>
             {letters.length > 1 ? (
-              <StepArrow
-                label="Next letter"
+              <button
+                type="button"
+                aria-label="Next letter"
                 onClick={() => onAt((index + 1) % letters.length)}
               >
-                ›
-              </StepArrow>
+                &rsaquo;
+              </button>
             ) : null}
           </span>
         ) : null
@@ -166,29 +174,34 @@ export function EmailStep({
       {one ? (
         <>
           {one.caution ? (
-            <Notice tone="gold" glyph="!" className="mb-[10px]">
+            <p className="iv-warn">
               <strong>Worth a look first:</strong> {one.caution}
-            </Notice>
+            </p>
           ) : null}
 
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11px] font-bold tracking-[0.05em] text-mv-muted uppercase">
-              Opens with
+          <div className="iv-greet">
+            <span className="iv-lbl">Opens with</span>
+            <span className="ml-segs" role="group" aria-label="How the email opens">
+              {GREETINGS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={greeting === option.value ? "on" : ""}
+                  aria-pressed={greeting === option.value}
+                  onClick={() => onGreeting(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
             </span>
-            <SegmentedControl
-              label="How the email opens"
-              options={GREETINGS}
-              value={greeting}
-              onChange={onGreeting}
-            />
             {greeting === "custom" ? (
               <input
+                className="iv-custom"
                 value={custom}
                 maxLength={60}
                 onChange={(event) => onCustom(event.target.value)}
                 placeholder="Hi cousin"
                 aria-label="Your own greeting"
-                className="min-w-[140px] rounded-[9px] border border-mv-line bg-mv-card px-[10px] py-1.5 text-[12.5px] outline-none transition-colors hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)]"
               />
             ) : null}
           </div>
@@ -197,28 +210,30 @@ export function EmailStep({
               The rule is stated where the choice is made, not discovered in the
               preview three letters later. */}
           {greeting !== "first" && greeting !== "name" && notPeople ? (
-            <p className="m-0 mt-1.5 text-[11.5px] text-mv-muted">
+            <p className="tiny muted" style={{ margin: "0 0 10px" }}>
               {notPeople} of your picks{" "}
               {notPeople === 1 ? "is a company or a trust" : "are companies or trusts"}
-              . Those are always addressed by their own name, whatever you
-              choose here.
+              . Those are always addressed by their own name, whatever you choose
+              here.
             </p>
           ) : null}
 
-          <div className="mt-3 overflow-hidden rounded-mv border border-mv-line">
-            <MailRow label="To">
-              <b className="font-semibold">{one.to}</b>
-              <i className="ml-2 text-[11.5px] font-normal text-mv-muted not-italic">
+          <div className="iv-mail">
+            <div className="iv-mailrow">
+              <span>To</span>
+              <b>{one.to}</b>
+              <i className="tiny muted">
                 you add the address — the roll holds no email
               </i>
-            </MailRow>
-            <MailRow label="Subject">
-              <b className="font-semibold">{subjectFor(one)}</b>
-            </MailRow>
+            </div>
+            <div className="iv-mailrow">
+              <span>Subject</span>
+              <b>{subjectFor(one)}</b>
+            </div>
             <MailBody text={plainText(one)} code={one.codeLabel} />
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="iv-do">
             <CopyButton
               variant="primary"
               size="md"
@@ -242,17 +257,19 @@ export function EmailStep({
                 title="Every chosen letter as one block, each with its own heading and code"
               />
             ) : null}
-            <QuietButton onClick={() => onEditing(!editing)}>
+            <button
+              type="button"
+              className="iv-link"
+              onClick={() => onEditing(!editing)}
+            >
               {editing ? "Done editing" : "Change the wording"}
-            </QuietButton>
+            </button>
           </div>
 
           {editing ? (
-            <div className="mt-3 rounded-mv border border-mv-line bg-mv-portal-explain p-3">
-              <span className="text-[11px] font-bold tracking-[0.05em] text-mv-muted uppercase">
-                What it says
-              </span>
-              <p className="m-0 mt-1 text-[12px] leading-[1.5] text-mv-muted">
+            <div className="iv-edit">
+              <span className="iv-lbl">What it says</span>
+              <p className="iv-editnote">
                 It is your letter — change as much as you like. Each person gets
                 their own name and their own code filled in when you copy it.
               </p>
@@ -262,7 +279,6 @@ export function EmailStep({
                 rows={9}
                 onChange={(event) => onBody(event.target.value)}
                 aria-label="The wording of the email"
-                className="mt-2 w-full resize-y rounded-[9px] border border-mv-line bg-mv-card p-[10px] font-mono text-[12px] leading-[1.6] outline-none transition-colors hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)]"
               />
               {/*
                 THE INSERT BUTTONS SAY WHAT THEY ADD, IN WORDS. They were
@@ -271,10 +287,8 @@ export function EmailStep({
                 template, beside a character counter nobody needs until they are
                 near the limit.
               */}
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] font-bold tracking-[0.05em] text-mv-muted uppercase">
-                  Add
-                </span>
+              <div className="iv-chips">
+                <span className="iv-chipk">Add</span>
                 {(
                   [
                     ["{name}", "their name"],
@@ -286,23 +300,26 @@ export function EmailStep({
                   <button
                     key={token}
                     type="button"
+                    className="iv-tok"
                     onClick={() =>
                       onBody(`${body}${body.endsWith(" ") ? "" : " "}${token}`)
                     }
-                    className="cursor-pointer rounded-full border border-mv-line bg-mv-card px-[10px] py-1 text-[11.5px] font-semibold text-mv-slate transition-colors hover:border-mv-green hover:text-mv-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
                   >
                     {what}
                   </button>
                 ))}
                 {body !== DEFAULT_BODY ? (
-                  <span className="ml-auto">
-                    <QuietButton onClick={() => onBody(DEFAULT_BODY)}>
-                      Start again from the standard letter
-                    </QuietButton>
-                  </span>
+                  <button
+                    type="button"
+                    className="iv-link"
+                    style={{ marginLeft: "auto" }}
+                    onClick={() => onBody(DEFAULT_BODY)}
+                  >
+                    Start again from the standard letter
+                  </button>
                 ) : null}
                 {body.length > BODY_MAX * 0.8 ? (
-                  <span className="text-[11.5px] text-mv-muted">
+                  <span className="tiny muted">
                     {BODY_MAX - body.length} characters left
                   </span>
                 ) : null}
@@ -323,46 +340,40 @@ export function EmailStep({
             and the recipient's name above the greeting, which a printed sheet
             needs and an email to a cousin does not.
           */}
-          <div className="mt-[18px] border-t border-mv-portal-hairline pt-3">
-            <span className="text-[11px] font-bold tracking-[0.05em] text-mv-muted uppercase">
+          <div className="iv-also">
+            <span className="iv-alsok">
               Or send it on paper — one letter per person
             </span>
-            <ul className="m-0 mt-2 flex list-none flex-col items-stretch gap-1.5 p-0">
+            <ul className="iv-each">
               {letters.map((letter) => (
-                <li
-                  key={letter.ownerNumber}
-                  className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-[10px] bg-mv-portal-wash px-[10px] py-[7px] text-[12.5px]"
-                >
-                  <b className="font-semibold">{letter.to}</b>
-                  <span className="font-mono text-[12px] tracking-[0.04em] text-mv-slate tabular-nums">
-                    {letter.codeLabel}
-                  </span>
-                  {/* PRINT OPENS, DOWNLOAD SAVES, COPY PASTES — three ways out
-                      of the same letter, because the reader's next move is not
-                      knowable from here. Print is `target="_blank"`: it is a
-                      document, and replacing the page the reader is working in
-                      would lose their ticks. */}
-                  <span className="ml-auto flex flex-wrap items-center gap-2">
-                    <CopyButton
-                      text={plainText(letter, { postal: true })}
-                      label="Copy for post"
-                      title="The same letter with the lease heading and their name above it, ready to paste into a document"
-                    />
-                    <a
-                      className={portalButtonClass({ variant: "ghost", size: "sm" })}
-                      href={lettersUrl("html", false, [letter.ownerNumber])}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Print
-                    </a>
-                    <a
-                      className={portalButtonClass({ variant: "ghost", size: "sm" })}
-                      href={lettersUrl("html", true, [letter.ownerNumber])}
-                    >
-                      Download
-                    </a>
-                  </span>
+                <li key={letter.ownerNumber}>
+                  <b>{letter.to}</b>
+                  <span className="iv-eachcode">{letter.codeLabel}</span>
+                  {/* PRINT OPENS AND DOWNLOAD SAVES — the reference's two ways
+                      out of a letter, and no third. A "Copy for post" button
+                      stood here as well; it was this build's addition and it
+                      has gone. Print is `target="_blank"`: it is a document,
+                      and replacing the page the reader is working in would lose
+                      their ticks.
+
+                      The first of the two is pushed right by
+                      `.iv-each > li > .btn:first-of-type`, which is the
+                      reference's own rule and can see these because they are
+                      `<a class="btn">` rather than a component. */}
+                  <a
+                    className="btn btn-ghost btn-sm"
+                    href={lettersUrl("html", false, [letter.ownerNumber])}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Print
+                  </a>
+                  <a
+                    className="btn btn-ghost btn-sm"
+                    href={lettersUrl("html", true, [letter.ownerNumber])}
+                  >
+                    Download
+                  </a>
                 </li>
               ))}
             </ul>
@@ -371,10 +382,10 @@ export function EmailStep({
                 for an actual print run — one trip to the printer, a page break
                 between owners — and the spreadsheet is for a reader who mails
                 their own way and wants the codes in a column. */}
-            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            <div className="iv-alsobtns">
               {letters.length > 1 ? (
                 <a
-                  className={portalButtonClass({ variant: "ghost", size: "sm" })}
+                  className="btn btn-ghost btn-sm"
                   href={lettersUrl("html", false)}
                   target="_blank"
                   rel="noreferrer"
@@ -382,10 +393,7 @@ export function EmailStep({
                   Print all {letters.length} in one go
                 </a>
               ) : null}
-              <a
-                className={portalButtonClass({ variant: "ghost", size: "sm" })}
-                href={lettersUrl("csv", true)}
-              >
+              <a className="btn btn-ghost btn-sm" href={lettersUrl("csv", true)}>
                 {letters.length === 1
                   ? "Code as a spreadsheet"
                   : "All codes as one spreadsheet"}
@@ -394,33 +402,20 @@ export function EmailStep({
           </div>
 
           {cautions ? (
-            <p className="m-0 mt-3 border-l-[3px] border-l-mv-sand-line pl-[10px] text-[12px] leading-[1.55] text-mv-muted">
+            <p className="pf2-note">
               {cautions === 1 ? "One of these" : `${cautions} of these`} wants a
               look before it goes — step through them with the arrows above.
             </p>
           ) : null}
         </>
       ) : (
-        <p className="m-0 rounded-mv border border-dashed border-mv-line-strong px-4 py-6 text-center text-[13px] text-mv-muted">
+        <p className="iv-empty">
           Tick somebody in step 2 and their email is written here, ready to copy.
         </p>
       )}
 
-      <p className="m-0 mt-3 border-l-[3px] border-l-mv-line-strong pl-[10px] text-[12px] leading-[1.55] text-mv-muted">
-        {sendNote}
-      </p>
+      <p className="pf2-note">{sendNote}</p>
     </StepCard>
-  );
-}
-
-function MailRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-wrap items-baseline gap-x-2 border-b border-mv-portal-hairline bg-mv-portal-explain px-3 py-2 text-[12.5px]">
-      <span className="w-[52px] flex-none text-[11px] font-bold tracking-[0.05em] text-mv-muted uppercase">
-        {label}
-      </span>
-      <span className="min-w-0">{children}</span>
-    </div>
   );
 }
 
@@ -438,15 +433,13 @@ function MailRow({ label, children }: { label: string; children: React.ReactNode
  */
 function MailBody({ text, code }: { text: string; code: string }) {
   return (
-    <pre className="m-0 max-h-[300px] overflow-y-auto overscroll-contain bg-mv-card p-3 font-mono text-[12px] leading-[1.65] whitespace-pre-wrap text-mv-ink-soft">
+    <pre className="iv-mailbody">
       {text.split("\n").map((line, i) => {
         const key = `${i}-${line.length}`;
         if (line.trim() === code) {
           return (
             <Fragment key={key}>
-              <mark className="rounded-md bg-mv-mint px-1.5 py-px text-[15px] font-bold tracking-[0.06em] text-mv-green-ink">
-                {code}
-              </mark>
+              <mark className="iv-hl big">{code}</mark>
               {"\n"}
             </Fragment>
           );
@@ -465,11 +458,7 @@ function MailBody({ text, code }: { text: string; code: string }) {
             {parts.map((part, j) => (
               <Fragment key={`${key}-${j}`}>
                 {part}
-                {j < parts.length - 1 ? (
-                  <mark className="rounded bg-mv-mint px-1 font-semibold text-mv-green-ink">
-                    {code}
-                  </mark>
-                ) : null}
+                {j < parts.length - 1 ? <mark className="iv-hl">{code}</mark> : null}
               </Fragment>
             ))}
             {"\n"}
@@ -477,44 +466,5 @@ function MailBody({ text, code }: { text: string; code: string }) {
         );
       })}
     </pre>
-  );
-}
-
-function StepArrow({
-  label,
-  onClick,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={onClick}
-      className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-lg border border-mv-line bg-mv-card text-[14px] leading-none text-mv-slate transition-colors hover:border-mv-green hover:text-mv-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
-    >
-      {children}
-    </button>
-  );
-}
-
-function QuietButton({
-  onClick,
-  children,
-}: {
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="cursor-pointer border-0 bg-transparent p-0 text-[12.5px] font-semibold text-mv-green-deep underline underline-offset-2 hover:text-mv-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
-    >
-      {children}
-    </button>
   );
 }
