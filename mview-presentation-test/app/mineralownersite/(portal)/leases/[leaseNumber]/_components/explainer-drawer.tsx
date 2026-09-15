@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
+
+import { ExplainerChartBlock, type ExplainerChart } from "./explainer-chart";
 
 /**
  * THE PLAIN-ENGLISH EXPLAINER, AS A SIDE PANEL.
@@ -64,11 +66,24 @@ export interface ExplainerStat {
   sub?: string;
 }
 
+/**
+ * ONE LINE OF EVIDENCE.
+ *
+ * A plain string is the common case. The object form exists for the rows that
+ * quote the record itself — "MCCABE ETAL GU — $26,453,622, your interest
+ * 0.05138, your share $1,359,187" — where the name at the front and the figure
+ * at the end are what a reader scans for and the middle is the working. Bolding
+ * both ends turns a wall of near-identical sentences into a column of names and
+ * a column of numbers.
+ */
+export type ExplainerBullet =
+  string | { lead?: string; text: string; tail?: string };
+
 export interface ExplainerSection {
   heading: string;
   /** A paragraph, or the bullets for "what this is built on". */
   body?: string;
-  bullets?: string[];
+  bullets?: ExplainerBullet[];
   /** The small right-hand note on the section heading. */
   aside?: string;
 }
@@ -91,6 +106,15 @@ const TONE_LABEL: Record<ExplainerTone, string> = {
   record: "Your record",
 };
 
+/**
+ * WHICH SECTION THE CHARTS FOLLOW.
+ *
+ * Index 1 — "what it means for you". The three sections always answer the same
+ * three questions in the same order, so this is a position in a fixed grammar
+ * rather than a guess about one panel's shape.
+ */
+const CHARTS_AFTER = 1;
+
 const TONE_RULE: Record<ExplainerTone, string> = {
   money: "border-[#d9a441]",
   activity: "border-mv-green",
@@ -104,6 +128,15 @@ export interface Explainer {
   subtitle: string;
   stats?: ExplainerStat[];
   sections: ExplainerSection[];
+  /**
+   * Trends, drawn after the second section.
+   *
+   * AFTER "WHAT IT MEANS FOR YOU" AND BEFORE "WHAT IT IS BUILT ON", which is
+   * the reference's own order and the right one: the charts are the picture of
+   * the sentence above them, and the record below then names the individual
+   * figures. Put first they are decoration; put last they are an appendix.
+   */
+  charts?: ExplainerChart[];
   whatToDo: string;
   tags?: string[];
   footnote?: string;
@@ -195,7 +228,21 @@ export function ExplainerDrawer({
           transform: open ? "translateX(0)" : "translateX(102%)",
           visibility: open ? "visible" : "hidden",
         }}
-        className="fixed top-0 right-0 bottom-0 z-[371] flex w-[min(680px,100vw)] flex-col overflow-hidden bg-mv-bg shadow-[-12px_0_40px_rgba(0,0,0,0.25)] transition-[transform,visibility] duration-[280ms] ease-out motion-reduce:transition-none"
+        /*
+         * `text-mv-ink` IS NOT DECORATION — IT IS THE PANEL REFUSING TO INHERIT.
+         *
+         * This drawer is rendered wherever its opener sits, and one of those
+         * openers is the lease report's DARK BAND, which sets `text-white` on
+         * everything inside it. A fixed panel is still a descendant in the
+         * document tree, so every element in here with no colour of its own
+         * came out white on a near-white card: the chart titles and the chart
+         * readouts vanished completely while the rest of the panel, which does
+         * set its own colours, looked fine.
+         *
+         * Setting the colour at the root fixes it once for every mount point,
+         * rather than once per element that happens to have been noticed.
+         */
+        className="fixed top-0 right-0 bottom-0 z-[371] flex w-[min(680px,100vw)] flex-col overflow-hidden bg-mv-bg text-mv-ink shadow-[-12px_0_40px_rgba(0,0,0,0.25)] transition-[transform,visibility] duration-[280ms] ease-out motion-reduce:transition-none"
       >
         {/* ------------------------------------------------------- the head */}
         <div
@@ -255,50 +302,78 @@ export function ExplainerDrawer({
               )}
 
               {shown.sections.map((section, position) => (
-                <section
-                  key={section.heading}
-                  className="mb-3 rounded-[11px] border border-mv-line bg-mv-card px-3.5 py-3"
-                >
-                  <div className="mb-[7px] flex flex-wrap items-baseline gap-x-[9px] gap-y-1">
-                    <span
-                      aria-hidden="true"
-                      className="inline-flex h-5 w-5 flex-none items-center justify-center self-center rounded-md bg-mv-mint text-[11px] leading-none font-extrabold text-mv-green-ink"
-                    >
-                      {position + 1}
-                    </span>
-                    <h4 className="m-0 text-[13.5px] font-bold text-mv-green-deep">
-                      {section.heading}
-                    </h4>
-                    {section.aside && (
-                      <span className="ml-auto text-[10px] text-mv-muted">
-                        {section.aside}
+                <Fragment key={section.heading}>
+                  <section className="mb-3 rounded-[11px] border border-mv-line bg-mv-card px-3.5 py-3">
+                    <div className="mb-[7px] flex flex-wrap items-baseline gap-x-[9px] gap-y-1">
+                      <span
+                        aria-hidden="true"
+                        className="inline-flex h-5 w-5 flex-none items-center justify-center self-center rounded-md bg-mv-mint text-[11px] leading-none font-extrabold text-mv-green-ink"
+                      >
+                        {position + 1}
                       </span>
+                      <h4 className="m-0 text-[13.5px] font-bold text-mv-green-deep">
+                        {section.heading}
+                      </h4>
+                      {section.aside && (
+                        <span className="ml-auto text-[10px] text-mv-muted">
+                          {section.aside}
+                        </span>
+                      )}
+                    </div>
+
+                    {section.body && (
+                      <p className="m-0 text-[13px] leading-[1.62] text-mv-slate">
+                        {section.body}
+                      </p>
                     )}
-                  </div>
 
-                  {section.body && (
-                    <p className="m-0 text-[13px] leading-[1.62] text-mv-slate">
-                      {section.body}
-                    </p>
-                  )}
+                    {section.bullets && (
+                      <ul className="m-0 flex list-none flex-col p-0">
+                        {section.bullets.map((bullet) => {
+                          const row =
+                            typeof bullet === "string"
+                              ? { text: bullet }
+                              : bullet;
+                          return (
+                            <li
+                              key={`${row.lead ?? ""}${row.text}`}
+                              className="flex items-baseline gap-[9px] border-t border-mv-line py-[7px] text-[12.5px] leading-[1.55] text-mv-slate first:border-t-0 first:pt-0"
+                            >
+                              <span
+                                aria-hidden="true"
+                                className="mt-1.5 h-1.5 w-1.5 flex-none rounded-full bg-mv-green"
+                              />
+                              <span>
+                                {row.lead && (
+                                  <strong className="font-bold text-mv-ink">
+                                    {row.lead}
+                                  </strong>
+                                )}
+                                {row.text}
+                                {row.tail && (
+                                  <strong className="font-bold tabular-nums text-mv-ink">
+                                    {row.tail}
+                                  </strong>
+                                )}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </section>
 
-                  {section.bullets && (
-                    <ul className="m-0 flex list-none flex-col p-0">
-                      {section.bullets.map((bullet) => (
-                        <li
-                          key={bullet}
-                          className="flex items-baseline gap-[9px] border-t border-mv-line py-[7px] text-[12.5px] leading-[1.55] text-mv-slate first:border-t-0 first:pt-0"
-                        >
-                          <span
-                            aria-hidden="true"
-                            className="mt-1.5 h-1.5 w-1.5 flex-none rounded-full bg-mv-green"
-                          />
-                          <span>{bullet}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
+                  {/* THE CHARTS SIT HERE, not under the last section — they
+                      are the picture of the sentence just above them, and the
+                      record below then names the individual figures. Rendered
+                      inside the section loop rather than in a pass of their
+                      own, because a separate pass can only ever put them at
+                      the end. */}
+                  {position === CHARTS_AFTER &&
+                    shown.charts?.map((chart) => (
+                      <ExplainerChartBlock key={chart.title} chart={chart} />
+                    ))}
+                </Fragment>
               ))}
 
               <div className="mt-3.5 rounded-[11px] border border-l-4 border-mv-green bg-[linear-gradient(165deg,#f2fdf8,#ffffff)] px-[15px] py-[13px]">

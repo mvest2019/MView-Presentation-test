@@ -1,3 +1,4 @@
+import { financialsSeries } from "../../_lib/financials-series";
 import {
   formatAcres,
   formatCompactDollars,
@@ -7,7 +8,13 @@ import {
   formatDollars,
 } from "../../_lib/lease-format";
 import { portfolioSummary } from "../../_lib/lease-totals";
-import type { Explainer } from "../_components/explainer-drawer";
+import { monthLabel, shortMonthLabel } from "../../_lib/months";
+import { gasPriceAt, OIL_PRICE } from "../../_lib/price-deck";
+import { demoOwner } from "../../../../_lib/portal-demo-data";
+import type {
+  Explainer,
+  ExplainerBullet,
+} from "../_components/explainer-drawer";
 import type { LeaseReport } from "./lease-report";
 
 /**
@@ -392,5 +399,165 @@ export function leaseShapeExplainer(
     tags: ["public record", "as filed"],
     footnote:
       "Well count, acreage, operator and reservoir as filed with the commission. Filed acreage is the lease's, not your net mineral acres.",
+  };
+}
+
+/* ────────────────────────────── the band's "How it is built" ───────────── */
+
+/**
+ * THE PANEL BEHIND THE DARK BAND'S OWN LINK.
+ *
+ * ── IT IS THE LONGEST ONE IN THE PRODUCT AND IT SHOULD BE ──
+ *
+ * The valuation is the single figure a reader is most likely to act on and the
+ * one least like a filing: no authority published it, nobody has offered it,
+ * and it moves with a price deck this page holds fixed. The six tile panels
+ * answer "what is this number"; this one has to answer "should I believe it",
+ * which needs the trend the model was fitted to and the months it projects —
+ * hence the two charts and the month-by-month evidence.
+ *
+ * ── THE CHARTS ARE THE FILED HISTORY, NOT THE FORECAST ──
+ *
+ * The value is a projection, so the honest thing to show under it is the record
+ * the projection was fitted to. Twenty-four months of what the state actually
+ * posted, at the reader's own decimal, is the evidence for whether the curve
+ * ahead is credible; drawing the forecast itself would be the model vouching
+ * for the model.
+ */
+export function leaseValueBuiltExplainer(report: LeaseReport): Explainer {
+  const { lease } = report;
+  const interest = formatDecimalInterest(lease.decimalInterest);
+
+  /* Twenty-four filed months back from the newest, at the owner's decimal —
+     the window the reference's own charts use. */
+  const series = financialsSeries.byLease.find(
+    (entry) => entry.slug === lease.slug,
+  );
+  const end = series?.filedThroughIndex ?? 0;
+  const start = Math.max(0, end - 23);
+  const labels: string[] = [];
+  for (let index = start; index <= end; index += 1) {
+    /* Short form: twenty-four of these run along one small card, and
+       "September 2025" at either end of it is wider than the plot can
+       spare. The reference prints "Jul 2024". */
+    labels.push(shortMonthLabel(financialsSeries.firstMonth + index));
+  }
+  const slice = (values: number[]): number[] =>
+    values.slice(start, end + 1).map((value) => value * lease.decimalInterest);
+
+  const chartNote =
+    "Your interest applied to each month the state has filed. The value model stores no day-to-day history, so this is the trend that drives it rather than the estimate itself.";
+
+  const shown = report.forward.slice(0, 6);
+  const remaining = report.forward.length - shown.length;
+
+  /* ONE ARRAY, COUNTED WHERE IT IS RENDERED. The aside prints how many
+     lines this section holds, and it used to count a second list written
+     beside it — which was already wrong by one, because the "…and N more"
+     row was in the rendered bullets and not in the tally. */
+  const builtOn: ExplainerBullet[] = [
+    ...shown.map((cell) => ({
+      lead: cell.label,
+      /* Full units, not the compact form: every one of these months
+             rounds to "4K MCF", so the compact figure made six different
+             rows print the same volume. `Math.round` because these are
+             model outputs and carry a fractional tail that `formatCount`
+             would otherwise print as "323.482 BBL". */
+      text: ` — ${formatCount(Math.round(cell.gas))} MCF and ${formatCount(Math.round(cell.oil))} BBL whole-lease, your share `,
+      tail: `${formatDollars(cell.shareLow)} – ${formatDollars(cell.shareHigh)}`,
+    })),
+    ...(remaining > 0
+      ? [`…and ${remaining} more, listed in full on this page.`]
+      : []),
+    {
+      lead: "The deck",
+      text: ` — oil held at $${OIL_PRICE}/BBL and gas on a seasonal strip, so a winter month prices above a spring one on the same volume. A fifth of price movement moves the twelve-month total between `,
+      tail: `${formatCompactDollars(report.forwardLowDeck)} and ${formatCompactDollars(report.forwardHighDeck)}`,
+    },
+    {
+      lead: "The county",
+      text: ` — the appraisal district's own figure for your interest is ${formatDollars(report.countyYourInterest)}, or ${report.countyAgreementPercent.toFixed(1)}% of this one. Two numbers built for different questions, which is why they are printed side by side rather than reconciled.`,
+    },
+    {
+      lead: `Re-run on ${demoOwner.asOf}`,
+      /* PER MCF, NOT PER MMBTU. The reference's own panel quotes a
+             therm-based unit; this deck is struck per thousand cubic feet
+             and the two differ by the gas's heat content, which is not on
+             this record. Printing the reference's unit over this deck's
+             number would be a conversion nobody performed. */
+      text: ` against the model's own price path: oil $${OIL_PRICE.toFixed(2)}/BBL and gas $${gasPriceAt((financialsSeries.firstMonth + end + 1) % 12, end + 1, false).toFixed(3)}/MCF for ${report.nextMonthLabel}.`,
+    },
+  ];
+
+  return {
+    tone: "money",
+    title: "Your value — how it is built",
+    subtitle: `Estimate, not an appraisal · re-run ${demoOwner.asOf}`,
+    stats: [
+      {
+        label: "Your share",
+        /* IN FULL, unlike the three beside it. This is the figure the panel is
+           about and the one a reader writes down; "$1.36M" is the right answer
+           for a supporting stat and the wrong one for the headline. */
+        value: formatDollars(report.yourValue),
+        sub: "over six years",
+      },
+      {
+        label: "Range",
+        value: `${formatCompactDollars(report.yourValueLow)} – ${formatCompactDollars(report.yourValueHigh)}`,
+        sub: "low and high case",
+      },
+      {
+        label: "Whole-lease value",
+        value: formatCompactDollars(report.grossValuation),
+        sub: "before your interest",
+      },
+      {
+        label: "Ranked",
+        value: `${report.rankByValue} of ${report.total}`,
+        sub: `${report.shareOfRecordValue.toFixed(1)}% of your record`,
+      },
+    ],
+    sections: [
+      {
+        heading: "What this is",
+        body: `Your value is ${formatDollars(report.yourValue)}. It is the model's SIX-YEAR cash-flow projection for this lease — what these wells still have to produce, priced on a fixed deck — multiplied by your own interest of ${interest} in it.`,
+      },
+      {
+        heading: "What it means for you",
+        body: `The model values the whole lease at ${formatDollars(report.grossValuation)}; you own a fraction of it, so your share is ${formatDollars(report.yourValue)}. Treat it as a range: the low and high cases put your share between ${formatDollars(report.yourValueLow)} and ${formatDollars(report.yourValueHigh)}. It is a forward-looking estimate of earnings — not an offer, and not a tax value.`,
+      },
+      {
+        heading: "What this is built on",
+        aside: `${builtOn.length} lines from the record`,
+        bullets: builtOn,
+      },
+    ],
+    charts: series
+      ? [
+          {
+            title: "Gas behind your value — your share",
+            window: `24 months to ${report.lastPosting}`,
+            labels,
+            values: slice(series.gas),
+            unit: "MCF",
+            tone: "gas",
+            footnote: chartNote,
+          },
+          {
+            title: "Oil behind your value — your share",
+            window: `24 months to ${report.lastPosting}`,
+            labels,
+            values: slice(series.oil),
+            unit: "BBL",
+            tone: "oil",
+            footnote: chartNote,
+          },
+        ]
+      : undefined,
+    whatToDo:
+      "Nothing to do — it re-runs on its own every night. What moves it is the price path and this lease's production trend, both of which are on this page. The one thing it cannot tell you is whether you were PAID what you were owed; only your own statements show that.",
+    tags: ["Estimate — not an appraisal"],
+    footnote: `Matched on owner number AND name for roll year ${portfolioSummary.rollYear}, never on the number alone — an owner number is a county appraisal key and is reused. It is an estimate of future earnings, it is not an appraisal, and no part of it is an offer from anybody to buy.`,
   };
 }

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { gates, portalGate } from "../../../_components/ui/portal-gating";
+import { portalGate } from "../../../_components/ui/portal-gating";
 import { findLeaseBySlug } from "../_lib/lease-routes";
 import { CumulativeCard } from "./_components/cumulative-card";
 import { FiguresPanel } from "./_components/figures-panel";
@@ -137,13 +137,13 @@ export default async function LeaseReportPage({
           <CumulativeCard report={report} />
           <ReservesCard report={report} />
           <FindingsCard report={report} />
-          <div className={gates("hideInEssentials")}>
-            <TwelveMonthsCard report={report} />
-            <MeasuresCard report={report} />
-          </div>
-          <div className={gates("professionalOnly")}>
-            <PrecisionCard report={report} />
-          </div>
+          {/* NO DENSITY GATES ON THESE THREE. The twelve-month panel and the
+              ranking were hidden at Essentials, and the full-precision record
+              was Professional-only. All three are on the page at every tier
+              now — see the note in `leases/page.tsx`. */}
+          <TwelveMonthsCard report={report} />
+          <MeasuresCard report={report} />
+          <PrecisionCard report={report} />
           <WellsMapCard report={report} />
         </>
       )}

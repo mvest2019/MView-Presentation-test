@@ -1,14 +1,7 @@
 "use client";
 
-import {
-  ChevronDown,
-  LayoutGrid,
-  List,
-  Search,
-  X,
-} from "lucide-react";
+import { ChevronDown, LayoutGrid, List, Search, X } from "lucide-react";
 
-import { gates } from "../../../../_components/ui/portal-gating";
 import {
   activeFilterCount,
   emptyLeaseFilters,
@@ -147,7 +140,6 @@ export function LeaseToolbar({
         </ToolbarSelect>
 
         <ToolbarSelect
-          className={gates("hideInEssentials")}
           label="Show"
           value={String(pageSize)}
           onChange={(value) => onPageSizeChange(Number(value))}

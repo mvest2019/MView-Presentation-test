@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { gates, portalGate } from "../../_components/ui/portal-gating";
+import { portalGate } from "../../_components/ui/portal-gating";
 import { ChangesSinceCard } from "./_components/changes-since-card";
 import { EstimateExplainer } from "./_components/estimate-explainer";
 import { LeasesHeader } from "./_components/leases-header";
@@ -102,14 +102,18 @@ export default async function MyLeasesPage({
 
       <PlainEnglishList />
 
-      <div className={gates("hideInEssentials")}>
-        <LeasesTabs
-          defaultTab={resolveTab(ltab)}
-          leases={<LeaseListPanel leases={leaseRecords} />}
-          financials={<FinancialsPanel />}
-          statements={<MonthlyPanel />}
-        />
-      </div>
+      {/* NO DENSITY GATE. Essentials used to lose the whole tab strip — the
+          table, the financials and the statements — on the reasoning that a
+          plain-language reader is not comparing. The tiers now change how
+          dense a page is, not what is on it: everything is present at
+          Essentials, Detailed and Professional alike. Ultra still replaces the
+          page, which is that tier's whole purpose. */}
+      <LeasesTabs
+        defaultTab={resolveTab(ltab)}
+        leases={<LeaseListPanel leases={leaseRecords} />}
+        financials={<FinancialsPanel />}
+        statements={<MonthlyPanel />}
+      />
     </div>
   );
 }

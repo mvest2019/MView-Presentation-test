@@ -9,7 +9,6 @@ import {
   TableRow,
   TableScroll,
 } from "../../../../_components/ui/table";
-import { gates } from "../../../../_components/ui/portal-gating";
 import { leaseSourceRows } from "../../_lib/lease-sources";
 
 /**
@@ -42,14 +41,13 @@ import { leaseSourceRows } from "../../_lib/lease-sources";
  */
 export function SourcesCard() {
   return (
-    <Card
-      padded={false}
-      className={`mt-4 px-[18px] py-[14px] ${gates("professionalOnly")}`}
-    >
+    <Card padded={false} className="mt-4 px-[18px] py-[14px]">
       <CardHeader
         className="mb-3"
         title={
-          <h3 className="text-[14px] font-bold">Where each figure comes from</h3>
+          <h3 className="text-[14px] font-bold">
+            Where each figure comes from
+          </h3>
         }
         action={
           <Badge tone="slate" size="sm">

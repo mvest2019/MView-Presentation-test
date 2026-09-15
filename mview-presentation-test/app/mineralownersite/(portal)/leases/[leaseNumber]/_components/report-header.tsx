@@ -9,6 +9,7 @@ import {
 import Link from "next/link";
 
 import { LeasePicker } from "./lease-picker";
+import { gates } from "../../../../_components/ui/portal-gating";
 import { PrototypeButton } from "../../../../_components/ui/prototype-button";
 import { formatDecimalInterest } from "../../_lib/lease-format";
 import { leaseRecords } from "../../_lib/lease-records";
@@ -40,7 +41,8 @@ import type { LeaseRecord } from "../../_lib/lease-types";
  */
 export function LeaseReportHeader({ lease }: { lease: LeaseRecord }) {
   const { previous, next } = leaseNeighbours(lease.slug);
-  const position = leaseRecords.findIndex((entry) => entry.slug === lease.slug) + 1;
+  const position =
+    leaseRecords.findIndex((entry) => entry.slug === lease.slug) + 1;
 
   return (
     <div>
@@ -89,7 +91,9 @@ export function LeaseReportHeader({ lease }: { lease: LeaseRecord }) {
 
         <div className="min-w-0 flex-1">
           <div className="min-w-0">
-            <h1 className="text-[26px] leading-tight font-bold">{lease.name}</h1>
+            <h1 className="text-[26px] leading-tight font-bold">
+              {lease.name}
+            </h1>
             <p className="mt-1 text-[12.5px] text-mv-muted">
               {lease.county} County · RRC district 02
               {lease.number ? ` · lease no. ${lease.number}` : ""} ·{" "}
@@ -124,7 +128,18 @@ export function LeaseReportHeader({ lease }: { lease: LeaseRecord }) {
 
         <LeasePicker slug={lease.slug} />
 
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+        {/* GONE AT ULTRA — `hide-u`. The calm density keeps three things on
+            this page: which lease, what it is worth, and one reading of it.
+            This group is none of them. The decimal interest and the status are
+            both restated in the band immediately below, and a report download
+            and a CSV export are the densest controls in the module — the two
+            things a reader at Ultra has most plainly said they are not here
+            for. The header itself is exempt from the Ultra collapse
+            (`mv-u-keep` on the page), so without this the group would be the
+            only dense furniture to survive it. */}
+        <div
+          className={`ml-auto flex flex-wrap items-center gap-2 ${gates("hideInUltra")}`}
+        >
           {/* THE WHOLE GROUP SITS ON THE PICKER'S ROW, not beside the title.
               The title and its four identifying facts are what the page is
               ABOUT; the interest, the status and the two exports are things you
@@ -162,7 +177,6 @@ export function LeaseReportHeader({ lease }: { lease: LeaseRecord }) {
             CSV
           </PrototypeButton>
         </div>
-
       </div>
     </div>
   );

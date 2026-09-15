@@ -1845,26 +1845,53 @@
   max-width: 920px;
 }
 
-/* THE LEASE MODULE OPTS OUT OF BOTH NARROWINGS, and the rule above says why it
-   may: Essentials is capped "so a short page does not sprawl across a wide
-   monitor". My Leases is not a short page. It is an eleven-column table, four
-   full-width charts and a twelve-page report, and at 920px the table scrolls
-   sideways inside its own box while every paragraph beside it wraps early —
-   which reads as a layout accident rather than as a reading width.
+/* ── THE LEASE MODULE GETS ITS OWN WIDTH LADDER, ONE STEP PER DENSITY ──
 
-   IT STAYS A CAP. Removing the max-width entirely was tried and reverted: the
-   module then set to whatever the window was, and on a wide monitor the
-   monthly report's prose ran line lengths nobody wants to read. 1340px is the
-   Professional width the portal already defines, so the lease module reads at
-   the widest measure the design has rather than at one invented for it.
+   IT USED TO BE ONE FLAT NUMBER. `.mv-wide` pinned My Leases to 1340px at
+   every tier, so the density switch — the one control whose whole promise is
+   "how much detail, and how much room for it" — moved type and padding on this
+   module and never moved the measure. Changing from Essentials to Professional
+   redrew the page inside the same column, which reads as the switch being
+   half-wired rather than as a deliberate choice.
+
+   THE NUMBERS ARE `dashboard-reference.css`'s, NOT NEW ONES. That file runs the
+   same ladder on its own `.app-body` — 860 / 1120 / 1360 / 1440 — and the
+   portal is the same product at a different route. Inventing a second set here
+   would mean two answers to "how wide is Professional" inside one design.
+
+   AND THE LADDER IS WHY THE OPT-OUT CAN GO. The rule this replaces existed
+   because the portal's own Essentials cap of 920px was too tight for an
+   eleven-column table: it scrolled sideways inside its own box while every
+   paragraph beside it wrapped early. The dashboard's Essentials is 1120px, two
+   hundred pixels of difference that the table actually needs, so the module can
+   follow the switch without the narrowing that made opting out necessary.
+
+   ULTRA IS LAST, AND THAT ORDER IS LOAD-BEARING. This portal writes
+   `view-ultra view-simple` together — see `viewTierClasses` — so both rules
+   match at Ultra with identical specificity and source order is the only thing
+   deciding. Move the Ultra rule above the Essentials one and Ultra silently
+   renders at 1120px.
 
    `:has()` rather than a class on `.app-body` itself, because the shell is
    route-agnostic by design and nothing in it should have to know which module
-   is rendering. The page root carries the marker; the shell stays ignorant.
-   Placed after the two tier rules deliberately: all three have the same
-   specificity, so source order is what decides. */
+   is rendering. The page root carries the marker; the shell stays ignorant. */
+
+/* Detailed — the tier with no rule of its own above, so this is its width. */
 .mv-portal .app-body:has(> .mv-wide) {
-  max-width: 1340px;
+  max-width: 1360px;
+}
+
+.mv-portal.view-simple .app-body:has(> .mv-wide) {
+  max-width: 1120px;
+}
+
+/* After Essentials — see the note above. */
+.mv-portal.view-ultra .app-body:has(> .mv-wide) {
+  max-width: 860px;
+}
+
+.mv-portal.view-pro .app-body:has(> .mv-wide) {
+  max-width: 1440px;
 }
 
 /* Essentials is single-column: the two-column dashboard body is a Detailed and

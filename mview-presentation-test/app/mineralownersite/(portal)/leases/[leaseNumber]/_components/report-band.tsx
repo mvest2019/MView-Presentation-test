@@ -1,6 +1,4 @@
 import {
-  ArrowRight,
-  ExternalLink,
   CalendarDays,
   Coins,
   Info,
@@ -8,9 +6,15 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
+
+import { HowItIsBuilt } from "./how-it-is-built";
 import type { ReactNode } from "react";
 
-import { formatAcres, formatCompactDollars, formatDollars } from "../../_lib/lease-format";
+import {
+  formatAcres,
+  formatCompactDollars,
+  formatDollars,
+} from "../../_lib/lease-format";
 import { portalGate } from "../../../../_components/ui/portal-gating";
 import type { LeaseReport } from "../_lib/lease-report";
 
@@ -38,13 +42,13 @@ export function ReportBand({ report }: { report: LeaseReport }) {
   const { lease } = report;
 
   return (
-    <div className="mt-4 rounded-mv p-[22px] text-white shadow-mv-lg bg-[linear-gradient(160deg,var(--color-mv-ink),var(--color-mv-portal-band-end))]">
+    <div className="@container mt-4 rounded-mv p-[18px] text-white shadow-mv-lg bg-[linear-gradient(160deg,var(--color-mv-ink),var(--color-mv-portal-band-end))]">
       {/* A RULE BETWEEN THE THREE, not just air. They are three different
           valuations of the same lease — your share, the whole lease, the county
           roll — and a reader has to keep them apart or the band reads as one
           figure quoted three ways. `divide-x` draws on each child's trailing
           edge, so the padding either side of it is set on the children. */}
-      <div className="grid gap-y-5 sm:grid-cols-2 lg:grid-cols-3 lg:gap-x-0 lg:divide-x lg:divide-white/10 [&>*]:lg:px-6 [&>*:first-child]:lg:pl-0 [&>*:last-child]:lg:pr-0">
+      <div className="grid items-start gap-y-5 sm:grid-cols-2 lg:grid-cols-3 lg:gap-x-0 lg:divide-x lg:divide-white/10 [&>*]:lg:px-6 [&>*:first-child]:lg:pl-0 [&>*:last-child]:lg:pr-0">
         <Figure
           icon={<Coins />}
           accent
@@ -73,7 +77,39 @@ export function ReportBand({ report }: { report: LeaseReport }) {
         />
       </div>
 
-      <div className="mt-5 grid gap-y-4 border-t border-white/10 pt-5 lg:grid-cols-[auto_auto_1fr] lg:gap-x-0 lg:divide-x lg:divide-white/10 [&>*]:lg:px-6 [&>*:first-child]:lg:pl-0 [&>*:last-child]:lg:pr-0">
+      {/* ── WHAT IT IS ABOUT TO PAY ──
+
+             THE ROW MEASURES THE BAND, NOT THE TIER AND NOT THE VIEWPORT.
+
+             It keyed on `view-detailed` / `view-pro` for a while and that was
+             wrong in a way worth recording, because it looked right in every
+             test taken at a wide window. A tier sets a MAX width — 1360px at
+             Detailed — and the band only reaches it when the window is wide
+             enough to allow it. In a 1009px window Detailed draws at 957px, the
+             four-column rule still fired, and the caveat got 135px: FOURTEEN
+             lines, in a grid row that stretches every cell to the tallest. The
+             density said "you have room" and the band did not.
+
+             A viewport media query would be the same mistake one level out —
+             the sidebar, the page's own cap and the tier all sit between the
+             window and this element. `@container` asks the only question that
+             actually decides it: how wide is this band right now.
+
+             800px buys a third cell for the caveat; 1120px buys a fourth for
+             the control. Below both, the two figures take a row and the caveat
+             and the control share the one under it — which is the arrangement
+             Ultra gets, because at 796px of content a third column leaves the
+             sentence 188px and SEVEN lines. Tried at 760 and measured; the
+             stack is shorter than the squeeze.
+
+             Both numbers are the band's CONTENT box, which is its own 18px of
+             padding narrower than the box you see.
+
+             THE CONTROL IS ITS OWN CELL AT THE WIDEST STEP, and that is what
+             makes the single line possible: sharing the caveat's cell left the
+             sentence about twenty characters wide, which is where the six-line
+             version came from. */}
+      <div className="mt-4 grid items-center gap-x-6 gap-y-4 border-t border-white/10 pt-4 sm:grid-cols-2 @min-[800px]:grid-cols-[auto_auto_1fr] @min-[800px]:gap-x-0 @min-[1120px]:grid-cols-[auto_auto_1fr_auto] @min-[800px]:[&>*]:px-6 @min-[800px]:[&>*:first-child]:pl-0 @min-[800px]:[&>*:last-child]:pr-0 @min-[800px]:[&>*:nth-child(-n+2)]:border-r [&>*:nth-child(-n+2)]:border-white/10">
         <Figure
           icon={<CalendarDays />}
           small
@@ -90,36 +126,30 @@ export function ReportBand({ report }: { report: LeaseReport }) {
           emphasis
           locked
         />
-        <div className="flex flex-wrap items-center justify-between gap-3 self-center">
-          <p className="flex max-w-[52ch] gap-2.5 text-[11.5px] leading-[1.5] text-mv-portal-band-sub">
-            <span
-              aria-hidden="true"
-              className="mt-[1px] flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border border-white/20"
-            >
-              <Info className="h-[11px] w-[11px]" />
-            </span>
-            <span>
-              Ranges, not numbers: prices are held at the model&apos;s deck and
-              this operator&apos;s deducts are not in the public record.
-            </span>
-          </p>
 
-          {/* A PILL, NOT AN UNDERLINED PHRASE INSIDE THE SENTENCE. It jumps to
-              the twelve-month card that shows the workings, and a reader looking
-              for "where does this number come from" should find a control rather
-              than have to notice a link in the middle of a caveat. */}
-          <a
-            href="#twelve-months"
-            className="inline-flex flex-none items-center gap-2 rounded-full border border-white/25 px-3.5 py-1.5 text-[11.5px] font-semibold text-white no-underline transition-colors hover:bg-white/10"
+        <p className="flex gap-2.5 text-[12px] leading-[1.55] text-mv-portal-band-sub">
+          <span
+            aria-hidden="true"
+            className="mt-[1px] flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border border-white/20"
           >
-            <ExternalLink aria-hidden="true" className="h-[13px] w-[13px]" />
-            How it is built
-            <ArrowRight aria-hidden="true" className="h-[13px] w-[13px]" />
-          </a>
+            <Info className="h-[11px] w-[11px]" />
+          </span>
+          <span>
+            Ranges, not numbers: prices are held at the model&apos;s deck and
+            this operator&apos;s deducts are not in the public record.
+          </span>
+        </p>
+
+        {/* A PILL, NOT AN UNDERLINED PHRASE INSIDE THE SENTENCE — a reader
+            looking for "where does this number come from" should find a
+            control rather than have to notice a link in the middle of a
+            caveat. It opens the valuation's explainer; see the component. */}
+        <div className="flex justify-start self-center @min-[800px]:col-span-3 @min-[800px]:justify-end @min-[800px]:px-0 @min-[1120px]:col-span-1 @min-[1120px]:px-6 @min-[1120px]:pr-0">
+          <HowItIsBuilt report={report} />
         </div>
       </div>
 
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-3.5">
         <p className="flex items-center gap-2 text-[12.5px]">
           <span
             aria-hidden="true"
@@ -172,7 +202,9 @@ function Figure({
         <span
           aria-hidden="true"
           className={`mt-[1px] flex flex-none items-center justify-center rounded-full bg-white/[0.07] text-mv-green ring-1 ring-white/15 ${
-            small ? "h-8 w-8 [&_svg]:h-4 [&_svg]:w-4" : "h-9 w-9 [&_svg]:h-[18px] [&_svg]:w-[18px]"
+            small
+              ? "h-8 w-8 [&_svg]:h-4 [&_svg]:w-4"
+              : "h-9 w-9 [&_svg]:h-[18px] [&_svg]:w-[18px]"
           }`}
         >
           {icon}
@@ -180,29 +212,30 @@ function Figure({
       )}
 
       <div className="min-w-0">
-      <p className="flex items-center gap-1.5 text-[10.5px] font-bold tracking-[0.09em] text-mv-on-head-soft uppercase">
-        {label}
-        {caption && (
-          /* THE GLYPH MARKS THAT THIS FIGURE IS QUALIFIED, and the caption
-             directly under it is the qualification. It carries no tooltip of
-             its own: a second copy of the sentence already on screen would be
-             a control that repeats rather than adds. */
-          <Info aria-hidden="true" className="h-[11px] w-[11px] flex-none" />
-        )}
-      </p>
-      <p
-        data-mv-portfolio-figure=""
-        className={`mt-1 font-bold tabular-nums ${small ? "text-[19px]" : "text-[27px]"} ${
-          emphasis ? "text-mv-green" : ""
-        } ${locked ? portalGate.lockedValue : ""}`.trim()}
-      >
-        {value}
-      </p>
-      {caption && (
-        <p className="mt-1.5 max-w-[34ch] text-[12px] leading-[1.5] text-mv-portal-band-sub">
-          {caption}
+        {/* THE ⓘ SITS WITH THE LABEL, not at the end of the column. It marks
+            that the figure is qualified and the caption underneath is the
+            qualification; `inline-flex` with a gap keeps it against the last
+            word rather than floating to the far right of the cell, which is
+            what made it read as a control the first time round. */}
+        <p className="inline-flex items-center gap-1.5 text-[10.5px] font-bold tracking-[0.09em] text-mv-on-head-soft uppercase">
+          {label}
+          {caption && (
+            <Info aria-hidden="true" className="h-[11px] w-[11px] flex-none" />
+          )}
         </p>
-      )}
+        <p
+          data-mv-portfolio-figure=""
+          className={`mt-0.5 font-bold tabular-nums ${small ? "text-[19px]" : "text-[25px]"} ${
+            emphasis ? "text-mv-green" : ""
+          } ${locked ? portalGate.lockedValue : ""}`.trim()}
+        >
+          {value}
+        </p>
+        {caption && (
+          <p className="mt-1 max-w-[34ch] text-[12px] leading-[1.5] text-mv-portal-band-sub">
+            {caption}
+          </p>
+        )}
       </div>
     </div>
   );

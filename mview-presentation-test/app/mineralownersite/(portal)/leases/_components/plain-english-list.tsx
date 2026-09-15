@@ -2,10 +2,7 @@ import Link from "next/link";
 
 import { Card } from "../../../_components/ui/card";
 import { gates } from "../../../_components/ui/portal-gating";
-import {
-  formatCompactDollars,
-  formatLeaseTitle,
-} from "../_lib/lease-format";
+import { formatCompactDollars, formatLeaseTitle } from "../_lib/lease-format";
 import { leaseRecords } from "../_lib/lease-records";
 import { leaseReportPath } from "../_lib/lease-routes";
 import { portfolioSummary } from "../_lib/lease-totals";
@@ -56,19 +53,27 @@ export function PlainEnglishList() {
           Your {portfolioSummary.leaseCount} leases, in plain English
         </h3>
         <p className="mt-1 text-[12.5px] leading-[1.55] text-mv-muted">
-          {earning.length} are earning · {paused} are paused (paused means little
-          future income is projected — you still own them). Together:{" "}
+          {earning.length} are earning · {paused} are paused (paused means
+          little future income is projected — you still own them). Together:{" "}
           <strong className="text-mv-ink">
             about {formatCompactDollars(portfolioSummary.mvestimate)}
           </strong>{" "}
           projected.
         </p>
 
-        <ul className="mt-3">
+        {/* A RULE BETWEEN THE ROWS AS WELL AS THE TINT. Ten rows of the same
+            shape, each ending in a right-aligned figure, need a horizontal
+            anchor for the eye to carry a name across to its money — the zebra
+            tint alone is too faint to do that work at this row height.
+
+            THE ROUNDING CAME OFF WITH IT. A rounded tinted row sitting on a
+            full-width rule leaves a sliver of card showing at each corner,
+            which reads as the line being broken rather than as a corner. */}
+        <ul className="mt-3 divide-y divide-mv-line border-y border-mv-line">
           {leaseRecords.map((lease) => (
             <li
               key={lease.slug}
-              className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 rounded-md px-2.5 py-2.5 text-[13px] odd:bg-mv-portal-row-tint"
+              className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-2.5 py-2.5 text-[13px] odd:bg-mv-portal-row-tint"
             >
               <span className="min-w-0">
                 <strong>{formatLeaseTitle(lease.name, lease.number)}</strong>

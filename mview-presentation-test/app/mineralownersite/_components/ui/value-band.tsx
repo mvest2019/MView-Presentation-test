@@ -51,7 +51,12 @@ export function ValueBand({
 }) {
   return (
     <div
-      className={`grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] rounded-mv text-white shadow-mv-lg bg-[linear-gradient(160deg,var(--color-mv-ink),var(--color-mv-portal-band-end))] ${className}`.trim()}
+      /* 150, NOT 170. `auto-fit` caps at the number of stats, so nothing
+         changes at the widths where five already fit — it only lowers the
+         point at which the fifth stops wrapping onto a row of its own with
+         three empty columns beside it. That wrap was the band's worst
+         moment and it happened at exactly the Ultra column width. */
+      className={`grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] rounded-mv text-white shadow-mv-lg bg-[linear-gradient(160deg,var(--color-mv-ink),var(--color-mv-portal-band-end))] ${className}`.trim()}
     >
       {stats.map((stat) => (
         <div

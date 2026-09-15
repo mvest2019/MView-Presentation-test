@@ -66,9 +66,12 @@ export function UltraSummary() {
           </>
         }
         note="We check every lease against the public record and will tell you if anything changes."
+        /* THE BAND IS THE CARD'S FOOT, not a second block under it. `rounded-none`
+           and no shadow because it is inside the card now: a drop shadow on a
+           block that meets its parent's edges draws a line where there is no
+           edge. */
+        footer={<PortfolioValueBand className="rounded-none! shadow-none!" />}
       />
-
-      <PortfolioValueBand className="mt-4" />
     </div>
   );
 }
