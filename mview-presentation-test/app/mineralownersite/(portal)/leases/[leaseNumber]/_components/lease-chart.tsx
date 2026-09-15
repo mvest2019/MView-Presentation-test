@@ -56,8 +56,11 @@ export interface LeaseChartSeries {
  * by the card's width over 1000 — about 1.26 in the portal's content column.
  * The axes were written as 13px and 14px and therefore DREW at roughly 16 and
  * 18, which is body-copy size for labels meant to be read past. They are 10
- * now, matching the Financials and well charts; the rotated axis titles keep a
- * step on them at 11, because they name the whole scale rather than one tick.
+ * now, matching the Financials and well charts. The rotated axis titles used to
+ * keep a step on them at 11 — they name a whole scale rather than one tick — but
+ * the viewBox multiplies that to about 14 on screen, which is body copy for two
+ * words nobody reads twice. At 10 they match the ticks they label and still read
+ * as titles, because they are the only bold uppercase type on the chart.
  *
  * THE MONTHS ALSO CHANGED COLOUR. `mv-axis` (#98a2b3) is the token for a
  * GRIDLINE, and the labels had inherited it — which put the only words on the
@@ -201,7 +204,7 @@ export function LeaseChart({
           x={14}
           y={(PLOT.top + PLOT.bottom) / 2}
           textAnchor="middle"
-          className={`text-[11px] font-bold tracking-[0.06em] uppercase ${FILL[left.tone]}`}
+          className={`text-[10px] font-bold tracking-[0.06em] uppercase ${FILL[left.tone]}`}
         >
           {left.title}
         </text>
@@ -211,7 +214,7 @@ export function LeaseChart({
             x={CHART.width - 12}
             y={(PLOT.top + PLOT.bottom) / 2}
             textAnchor="middle"
-            className={`text-[11px] font-bold tracking-[0.06em] uppercase ${FILL[right.tone]}`}
+            className={`text-[10px] font-bold tracking-[0.06em] uppercase ${FILL[right.tone]}`}
           >
             {right.title}
           </text>

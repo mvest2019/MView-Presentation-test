@@ -1,4 +1,4 @@
-import { Droplet, FileText, Info, Layers } from "lucide-react";
+import { Droplet, FileText, Info, Layers, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 
@@ -26,11 +26,34 @@ import { leaseReportPath } from "../../_lib/lease-routes";
 
 export type LeaseReportTab = "lease" | "reservoir" | "wells";
 
-const TABS: { value: LeaseReportTab; label: string; icon: ReactNode }[] = [
-  { value: "lease", label: "Lease report", icon: <FileText /> },
-  { value: "reservoir", label: "Reservoir report", icon: <Layers /> },
-  { value: "wells", label: "Well report", icon: <Droplet /> },
+/**
+ * WHAT EACH TAB IS CALLED AND WHAT IT LOOKS LIKE — EXPORTED, because two other
+ * places on this page need the same two facts: the breadcrumb, which ends in
+ * the name of the report you are actually reading, and the title's own glyph.
+ * Held here rather than copied there, so a tab cannot be renamed in one place
+ * and keep its old name in the other two.
+ *
+ * The icon is the COMPONENT, not an element, because each of the three sites
+ * draws it at its own size — 17px in the tab, 22px beside the title.
+ */
+export const LEASE_REPORT_TABS: {
+  value: LeaseReportTab;
+  label: string;
+  Icon: LucideIcon;
+}[] = [
+  { value: "lease", label: "Lease report", Icon: FileText },
+  { value: "reservoir", label: "Reservoir report", Icon: Layers },
+  { value: "wells", label: "Well report", Icon: Droplet },
 ];
+
+/** The one a page is on. Falls back to the lease report, which is the default. */
+export function leaseReportTab(value: LeaseReportTab) {
+  return (
+    LEASE_REPORT_TABS.find((tab) => tab.value === value) ?? LEASE_REPORT_TABS[0]
+  );
+}
+
+const TABS = LEASE_REPORT_TABS;
 
 export function ReportTabs({
   slug,
@@ -70,20 +93,23 @@ export function ReportTabs({
           />
           <span className="font-bold text-mv-ink">{reservoir}</span>
           <span className="normal-case">
-            first posting <strong className="text-mv-ink">{firstPosting}</strong>{" "}
-            · newest posting{" "}
-            <strong className="text-mv-ink">{lastPosting}</strong>
+            first posting{" "}
+            <strong className="text-mv-ink">{firstPosting}</strong> · newest
+            posting <strong className="text-mv-ink">{lastPosting}</strong>
           </span>
         </p>
 
         <p className="flex items-center gap-2 text-[12px] text-mv-muted">
           <Info aria-hidden="true" className="h-[13px] w-[13px] flex-none" />
-          One lease → one reservoir → its well. Three reports on the same lease —
-          move between them here.
+          One lease → one reservoir → its well. Three reports on the same lease
+          — move between them here.
         </p>
       </div>
 
-      <nav aria-label="Reports on this lease" className="mt-2.5 grid gap-3 sm:grid-cols-3">
+      <nav
+        aria-label="Reports on this lease"
+        className="mt-2.5 grid gap-3 sm:grid-cols-3"
+      >
         {TABS.map((tab) => {
           const selected = tab.value === active;
           return (
@@ -110,14 +136,13 @@ export function ReportTabs({
                   selected ? "text-white" : "text-mv-green-deep"
                 }`}
               >
-                {tab.icon}
+                <tab.Icon />
               </span>
               {tab.label}
             </Link>
           );
         })}
       </nav>
-
     </>
   );
 }

@@ -9,6 +9,7 @@ import {
 import Link from "next/link";
 
 import { LeasePicker } from "./lease-picker";
+import { leaseReportTab, type LeaseReportTab } from "./report-tabs";
 import { gates } from "../../../../_components/ui/portal-gating";
 import { PrototypeButton } from "../../../../_components/ui/prototype-button";
 import { formatDecimalInterest } from "../../_lib/lease-format";
@@ -39,7 +40,15 @@ import type { LeaseRecord } from "../../_lib/lease-types";
  * masthead's markup — a heading, a breadcrumb and two chips — stops being
  * shipped as JavaScript.
  */
-export function LeaseReportHeader({ lease }: { lease: LeaseRecord }) {
+export function LeaseReportHeader({
+  lease,
+  tab,
+}: {
+  lease: LeaseRecord;
+  /** Which of the three reports is open — see `LEASE_REPORT_TABS`. */
+  tab: LeaseReportTab;
+}) {
+  const current = leaseReportTab(tab);
   const { previous, next } = leaseNeighbours(lease.slug);
   const position =
     leaseRecords.findIndex((entry) => entry.slug === lease.slug) + 1;
@@ -70,26 +79,53 @@ export function LeaseReportHeader({ lease }: { lease: LeaseRecord }) {
         <span aria-hidden="true" className="text-mv-muted">
           ›
         </span>
-        <span className="font-bold">Lease report</span>
+        {/* THE REPORT YOU ARE ON, not always the lease one. A breadcrumb
+            whose last crumb names a page you are not reading is worse than no
+            crumb: it is the one element on screen whose entire job is to say
+            where you are. */}
+        <span className="font-bold">{current.label}</span>
       </nav>
 
-      {/* A STEP EITHER SIDE OF THE TITLE, for a reader working through the
-          record rather than jumping to one lease by name — the picker below
-          does that. Both are real links, so middle-click opens a lease in a tab
-          and the status bar names where it goes.
+      {/* ── THE TITLE STARTS WHERE THE PAGE STARTS ──
+
+          The two steppers used to flank it, one either side. Once they carried
+          a lease name they were about 160px wide, and the left one pushed the
+          title 175px in from the margin — so the one word identifying the page
+          was the only thing on it not aligned with the breadcrumb above, the
+          picker below and every card under that. A heading indented past its
+          own page reads as an accident.
+
+          THE PAIR SITS TOGETHER ON THE RIGHT, which is also the better place
+          for them on their own terms: previous and next are one control in two
+          halves, and splitting them across a heading asks the reader to find
+          the second one. For a reader working through the record rather than
+          jumping to a lease by name — the picker below does that. Both are real
+          links, so middle-click opens a lease in a tab and the status bar names
+          where it goes.
 
           THEY WRAP. Past the last lease is the first. A disabled arrow at
           either end is a control that exists to be unusable, and ten leases is
           a ring rather than a queue. */}
-      <div className="flex items-start gap-3">
-        <StepLink
-          href={leaseReportPath(previous.slug)}
-          label={`Previous lease — ${previous.name}`}
-        >
-          <ChevronLeft aria-hidden="true" className="h-[18px] w-[18px]" />
-        </StepLink>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3.5">
+          {/* THE PAGE'S OWN MARK. Every other block on this report opens with a
+              glyph — the five facts under the band, the three report tabs, each
+              figure in the band — and the title was the one thing that began
+              with nothing. It is the ACTIVE TAB's own glyph — a document on
+              the lease report, layers on the reservoir, a droplet on the well —
+              so the mark beside the title always names the report under it.
 
-        <div className="min-w-0 flex-1">
+              MINT-FILLED, not the outlined square the facts strip uses: those
+              five are peers of each other and read as a set, while this one is
+              the page identifying itself. It is `aria-hidden` — the heading
+              beside it already says what the page is. */}
+          <span
+            aria-hidden="true"
+            className="flex h-[46px] w-[46px] flex-none items-center justify-center rounded-xl border border-mv-green/35 bg-mv-mint text-mv-green-deep"
+          >
+            <current.Icon className="h-[22px] w-[22px]" />
+          </span>
+
           <div className="min-w-0">
             <h1 className="text-[26px] leading-tight font-bold">
               {lease.name}
@@ -102,12 +138,20 @@ export function LeaseReportHeader({ lease }: { lease: LeaseRecord }) {
           </div>
         </div>
 
-        <StepLink
-          href={leaseReportPath(next.slug)}
-          label={`Next lease — ${next.name}`}
-        >
-          <ChevronRight aria-hidden="true" className="h-[18px] w-[18px]" />
-        </StepLink>
+        <div className="flex flex-none items-center gap-2">
+          <StepLink
+            href={leaseReportPath(previous.slug)}
+            direction="previous"
+            name={previous.name}
+            number={previous.number}
+          />
+          <StepLink
+            href={leaseReportPath(next.slug)}
+            direction="next"
+            name={next.name}
+            number={next.number}
+          />
+        </div>
       </div>
 
       {/* A RULE UNDER THE TITLE. Above it is what this page is — the lease and
@@ -183,23 +227,87 @@ export function LeaseReportHeader({ lease }: { lease: LeaseRecord }) {
 }
 
 /** One step through the record. A real link, so it behaves like one. */
+/**
+ * STEP TO THE LEASE EITHER SIDE — and SAY WHICH ONE.
+ *
+ * ── A BARE ARROW IS AN UNANSWERED QUESTION ──
+ *
+ * These were two chevrons in circles. On a page whose whole subject is one
+ * named lease out of ten, an arrow that does not say where it goes asks the
+ * reader to press it to find out — and pressing it is a full page navigation
+ * away from the figures they were reading. The name is the difference between
+ * a control you can aim and one you have to try.
+ *
+ * ── THE NAME IS DROPPED BEFORE THE CONTROL IS ──
+ *
+ * Under `lg` the label is hidden and the chevron keeps its own 40px target, so
+ * the pair survives at any width as the circles they used to be. `aria-label`
+ * carries the full sentence either way, so nothing is lost to a screen reader
+ * when the text goes.
+ *
+ * ── THE LEASE NUMBER IS UNDER THE NAME, AND IT IS NOT DECORATION ──
+ *
+ * Six of the ten leases on this record are called MCCABE ETAL GU. Standing on
+ * COOK-KAISER GU, both neighbours read "MCCABE ETAL GU" — two controls with
+ * the same words going to different pages. The number is the only thing that
+ * tells them apart, so it is printed rather than left to the URL.
+ *
+ * It is NULLABLE: a filing without one is real on this record (KAISER GAS
+ * UNIT), and the line is dropped rather than printing "Lease null".
+ *
+ * ── AND THE NAME IS TRUNCATED, NOT WRAPPED ──
+ *
+ * `max-w-[15ch]` with `truncate`: these sit either side of the page title and
+ * a wrapping name on one of them would shift the title off centre and change
+ * the header's height depending on which lease you happened to be on.
+ */
 function StepLink({
   href,
-  label,
-  children,
+  direction,
+  name,
+  number,
 }: {
   href: string;
-  label: string;
-  children: React.ReactNode;
+  direction: "previous" | "next";
+  name: string;
+  /** Null where the filing carries no lease number — see the note above. */
+  number: string | null;
 }) {
+  const isNext = direction === "next";
+  const label = `${isNext ? "Next" : "Previous"} lease — ${name}${
+    number ? `, lease ${number}` : ""
+  }`;
+  const chevron = isNext ? (
+    <ChevronRight aria-hidden="true" className="h-[18px] w-[18px] flex-none" />
+  ) : (
+    <ChevronLeft aria-hidden="true" className="h-[18px] w-[18px] flex-none" />
+  );
+
   return (
     <Link
       href={href}
       aria-label={label}
       title={label}
-      className="mt-1.5 flex h-10 w-10 flex-none items-center justify-center rounded-full border border-mv-line bg-mv-card text-mv-slate no-underline shadow-mv transition-colors hover:border-mv-green hover:text-mv-green-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+      className={`flex h-[46px] flex-none items-center gap-2 rounded-md border border-mv-line bg-mv-card px-3 text-mv-slate no-underline shadow-mv transition-colors hover:border-mv-green hover:text-mv-green-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep ${
+        isNext ? "flex-row-reverse" : ""
+      }`.trim()}
     >
-      {children}
+      {chevron}
+      {/* THE NAME ALONE. A "PREVIOUS" / "NEXT" kicker sat over it for a while
+          and said nothing the chevron beside it was not already saying — two
+          labels for one direction, on a control 40px tall. The name is the
+          part that was missing; the word was not. It is still in the
+          `aria-label`, where a chevron cannot be read. */}
+      <span className="hidden min-w-0 lg:block">
+        <span className="block max-w-[15ch] truncate text-[12px] leading-none font-semibold text-mv-ink">
+          {name}
+        </span>
+        {number && (
+          <span className="mt-[3px] block text-[10px] leading-none text-mv-muted tabular-nums">
+            Lease {number}
+          </span>
+        )}
+      </span>
     </Link>
   );
 }

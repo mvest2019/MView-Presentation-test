@@ -115,7 +115,7 @@ export default async function LeaseReportPage({
           the remaining sentence is about an unnamed lease. `ultraKeep` is the
           portal's own exemption — see the rule in `portal.css`. */}
       <div className={portalGate.ultraKeep}>
-        <LeaseReportHeader lease={lease} />
+        <LeaseReportHeader lease={lease} tab={tab} />
       </div>
       <div className={portalGate.ultraKeep}>
         <ReportBand report={report} />

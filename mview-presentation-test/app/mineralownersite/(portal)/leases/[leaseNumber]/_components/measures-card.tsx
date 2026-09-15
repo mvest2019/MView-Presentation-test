@@ -247,7 +247,15 @@ export function MeasuresCard({ report }: { report: LeaseReport }) {
               />
             </dl>
 
-            <div className="mt-5">
+            {/* A RULE BETWEEN THE THREE BLOCKS OF THIS PANEL. Six ratio cards,
+                then a bar, then another bar — three different kinds of thing
+                under one heading, separated by nothing but margin. At that
+                spacing the second heading read as a caption on the cards above
+                it rather than as the start of something new. The rule is what
+                says the panel has parts. */}
+            <hr className="mt-5 border-t border-mv-line" />
+
+            <div className="mt-4">
               {/* A CLOSED SHAPE, NOT A GAUGE. The gauge glyph is an open arc
                   with a needle, and at 15px beside small-caps type it reads as
                   a circle with a piece cut out of it rather than as a dial. A
@@ -282,7 +290,9 @@ export function MeasuresCard({ report }: { report: LeaseReport }) {
               not a filing — and it is the part a sale would be pricing.
             </Note>
 
-            <div className="mt-5">
+            <hr className="mt-5 border-t border-mv-line" />
+
+            <div className="mt-4">
               <PanelHeading
                 icon={<CircleDollarSign />}
                 text="Where the projected money comes from"
@@ -304,7 +314,8 @@ export function MeasuresCard({ report }: { report: LeaseReport }) {
             <Note tight>
               Oil is {report.projectedOilPercent.toFixed(1)}% of the money and{" "}
               {report.oilYield.toFixed(0)} BBL per thousand MCF of the stream —
-              which is why both prices matter to you, not just the bigger number.
+              which is why both prices matter to you, not just the bigger
+              number.
             </Note>
             <Note tight>
               Every figure here is two figures from this page divided by each
@@ -500,7 +511,10 @@ function Ratio({
   return (
     <div className="rounded-md border border-mv-line px-3 py-2.5">
       <dt className="flex items-center gap-1.5 text-[10px] font-bold tracking-[0.08em] text-mv-muted uppercase">
-        <span aria-hidden="true" className="flex-none [&_svg]:h-[13px] [&_svg]:w-[13px]">
+        <span
+          aria-hidden="true"
+          className="flex-none [&_svg]:h-[13px] [&_svg]:w-[13px]"
+        >
           {icon}
         </span>
         {label}
