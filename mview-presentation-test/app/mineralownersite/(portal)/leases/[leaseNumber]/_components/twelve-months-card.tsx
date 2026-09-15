@@ -72,11 +72,11 @@ export function TwelveMonthsCard({ report }: { report: LeaseReport }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Badge tone="slate" size="xs">
+          <Badge tone="quiet" size="xs">
             <Calendar aria-hidden="true" className="h-3 w-3" />
             {report.trailingFrom} → {report.trailingTo}
           </Badge>
-          <Badge tone="slate" size="xs">
+          <Badge tone="quiet" size="xs">
             <ArrowLeftRight aria-hidden="true" className="h-3 w-3" />
             Filed on the left, projected on the right
           </Badge>

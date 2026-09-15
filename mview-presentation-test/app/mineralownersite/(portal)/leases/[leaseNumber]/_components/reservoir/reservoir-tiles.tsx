@@ -1,3 +1,5 @@
+"use client";
+
 import {
   CalendarRange,
   Droplet,
@@ -6,6 +8,7 @@ import {
   Receipt,
   TrendingUp,
 } from "lucide-react";
+import { useState } from "react";
 
 import { KpiTile } from "../../../../../_components/ui/kpi-tile";
 import {
@@ -15,6 +18,15 @@ import {
 } from "../../../_lib/lease-format";
 import { portfolioSummary } from "../../../_lib/lease-totals";
 import type { ReservoirReport } from "../../_lib/reservoir-report";
+import {
+  reservoirAheadExplainer,
+  reservoirGasExplainer,
+  reservoirOilExplainer,
+  reservoirOpenExplainer,
+  reservoirPaidExplainer,
+  reservoirWellsExplainer,
+} from "../../_lib/explainers";
+import { ExplainerDrawer, type Explainer } from "../explainer-drawer";
 
 /**
  * THE SIX HEADLINES OF A RESERVOIR — what is in it, what has come out, what is
@@ -41,58 +53,73 @@ import type { ReservoirReport } from "../../_lib/reservoir-report";
  * a gross figure.
  */
 export function ReservoirTiles({ report }: { report: ReservoirReport }) {
+  const [explainer, setExplainer] = useState<Explainer | null>(null);
+
   return (
-    <div className="mt-4 grid gap-[18px] sm:grid-cols-2 xl:grid-cols-3">
-      <KpiTile
-        size="sm"
-        flat
-        icon={<Layers className="h-[18px] w-[18px]" />}
-        label="Wells in this rock"
-        value={formatCount(report.wellCount)}
-        basis={`on ${report.leasesWithWells} of your ${portfolioSummary.leaseCount} leases`}
+    <>
+      <div className="mt-4 grid gap-[18px] sm:grid-cols-2 xl:grid-cols-3">
+        <KpiTile
+          size="sm"
+          flat
+          icon={<Layers className="h-[18px] w-[18px]" />}
+          onExplain={() => setExplainer(reservoirWellsExplainer(report))}
+          label="Wells in this rock"
+          value={formatCount(report.wellCount)}
+          basis={`on ${report.leasesWithWells} of your ${portfolioSummary.leaseCount} leases`}
+        />
+        <KpiTile
+          size="sm"
+          flat
+          icon={<Flame className="h-[18px] w-[18px]" />}
+          onExplain={() => setExplainer(reservoirGasExplainer(report))}
+          label="Gas filed from it"
+          value={`${formatCompactVolume(report.gasFiled)} MCF`}
+          basis={`${report.gasFiledPercentOfRecord.toFixed(1)}% of all your allocated gas`}
+        />
+        <KpiTile
+          size="sm"
+          flat
+          icon={<Droplet className="h-[18px] w-[18px]" />}
+          onExplain={() => setExplainer(reservoirOilExplainer(report))}
+          label="Oil filed from it"
+          value={`${formatCompactVolume(report.oilFiled)} BBL`}
+          basis={`newest filed month ${report.newestFiledMonth}`}
+        />
+        <KpiTile
+          locked
+          size="sm"
+          flat
+          icon={<Receipt className="h-[18px] w-[18px]" />}
+          onExplain={() => setExplainer(reservoirPaidExplainer(report))}
+          label="Paid to you, filed"
+          value={formatCompactDollars(report.paidYouFiled)}
+          basis="this rock's share of each lease's cash"
+        />
+        <KpiTile
+          locked
+          size="sm"
+          flat
+          icon={<TrendingUp className="h-[18px] w-[18px]" />}
+          onExplain={() => setExplainer(reservoirAheadExplainer(report))}
+          label="Still ahead of it"
+          value={formatCompactDollars(report.stillAheadCash)}
+          basis={`${formatCompactVolume(report.stillAheadGas)} MCF the model still expects`}
+        />
+        <KpiTile
+          size="sm"
+          flat
+          icon={<CalendarRange className="h-[18px] w-[18px]" />}
+          onExplain={() => setExplainer(reservoirOpenExplainer(report))}
+          label="Open between"
+          value={`${formatCount(report.openTopFt)}–${formatCount(report.openBottomFt)} ft`}
+          basis="measured depth · where the wells are perforated"
+        />
+      </div>
+
+      <ExplainerDrawer
+        explainer={explainer}
+        onClose={() => setExplainer(null)}
       />
-      <KpiTile
-        size="sm"
-        flat
-        icon={<Flame className="h-[18px] w-[18px]" />}
-        label="Gas filed from it"
-        value={`${formatCompactVolume(report.gasFiled)} MCF`}
-        basis={`${report.gasFiledPercentOfRecord.toFixed(1)}% of all your allocated gas`}
-      />
-      <KpiTile
-        size="sm"
-        flat
-        icon={<Droplet className="h-[18px] w-[18px]" />}
-        label="Oil filed from it"
-        value={`${formatCompactVolume(report.oilFiled)} BBL`}
-        basis={`newest filed month ${report.newestFiledMonth}`}
-      />
-      <KpiTile
-        locked
-        size="sm"
-        flat
-        icon={<Receipt className="h-[18px] w-[18px]" />}
-        label="Paid to you, filed"
-        value={formatCompactDollars(report.paidYouFiled)}
-        basis="this rock's share of each lease's cash"
-      />
-      <KpiTile
-        locked
-        size="sm"
-        flat
-        icon={<TrendingUp className="h-[18px] w-[18px]" />}
-        label="Still ahead of it"
-        value={formatCompactDollars(report.stillAheadCash)}
-        basis={`${formatCompactVolume(report.stillAheadGas)} MCF the model still expects`}
-      />
-      <KpiTile
-        size="sm"
-        flat
-        icon={<CalendarRange className="h-[18px] w-[18px]" />}
-        label="Open between"
-        value={`${formatCount(report.openTopFt)}–${formatCount(report.openBottomFt)} ft`}
-        basis="measured depth · where the wells are perforated"
-      />
-    </div>
+    </>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { MapPin } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "../../../../../_components/ui/badge";
@@ -316,7 +317,8 @@ export function ReservoirMapCard({ report }: { report: ReservoirReport }) {
           </h3>
         }
         action={
-          <Badge tone="slate" size="xs">
+          <Badge tone="quiet" size="xs">
+            <MapPin aria-hidden="true" className="h-3 w-3" />
             {report.wellCount} well{report.wellCount === 1 ? "" : "s"} · coloured
             by lease
           </Badge>

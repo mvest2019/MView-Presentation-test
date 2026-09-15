@@ -1,5 +1,6 @@
 "use client";
 
+import { MapPin } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "../../../../_components/ui/badge";
@@ -335,7 +336,8 @@ export function WellsMapCard({ report }: { report: LeaseReport }) {
           <h3 className="text-[15px] font-bold">The wells, on the land itself</h3>
         }
         action={
-          <Badge tone="slate" size="xs">
+          <Badge tone="quiet" size="xs">
+            <MapPin aria-hidden="true" className="h-3 w-3" />
             {lease.county} County · imagery from Esri
           </Badge>
         }

@@ -123,7 +123,13 @@ export default async function LeaseReportPage({
       <UltraNote report={report} />
 
       <LeaseFactsStrip report={report} />
-      <ReportTabs slug={lease.slug} active={tab} />
+      <ReportTabs
+        slug={lease.slug}
+        active={tab}
+        reservoir={lease.reservoir}
+        firstPosting={report.firstPosting}
+        lastPosting={report.lastPosting}
+      />
 
       {tab === "lease" && (
         <>

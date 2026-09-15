@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useEffect, useRef, type ReactNode } from "react";
 
 import { portalGate } from "./portal-gating";
 
@@ -36,6 +38,21 @@ import { portalGate } from "./portal-gating";
  * It is a prop rather than a change to the base because the other eight places
  * these appear are still drawn against the shadow.
  *
+ * `onExplain` MAKES THE WHOLE TILE A BUTTON, which is what `portal.css`'s
+ * `.kpi-click` note describes: the reference's tiles open a plain-English
+ * explainer in a side panel. Pass it and the tile becomes focusable, announces
+ * as a button, and says so on hover; leave it off and the tile is a `div` with
+ * no affordance, because a tile that looks pressable and does nothing is worse
+ * than one that never offered.
+ *
+ * IT OPENS ON HOVER, AFTER A PAUSE. The pause is the whole of it: a panel that
+ * opens the instant a pointer crosses a tile fires on its way to somewhere
+ * else, and a reader moving across a row of six would open six. `HOVER_MS` of
+ * stillness is what separates "looking at this" from "passing over it", and the
+ * timer is dropped the moment the pointer leaves. Click and Enter still open it
+ * with no delay, so a reader who knows what they want does not wait, and a
+ * keyboard or touch reader — neither of which hovers — is not locked out.
+ *
  * `locked` opts the FIGURE ALONE into the claimed-state blur — not the label,
  * not the basis line. A claimed-but-unpaid reader should still be able to see
  * what the tile is about and why it is hidden, which is the whole point of
@@ -48,6 +65,9 @@ const FIGURE = {
   sm: "text-[20px]",
 } as const;
 
+/** How long a pointer must rest on a tile before its explainer opens. */
+const HOVER_MS = 450;
+
 export function KpiTile({
   label,
   value,
@@ -57,6 +77,7 @@ export function KpiTile({
   flat = false,
   accent = false,
   locked = false,
+  onExplain,
 }: {
   label: ReactNode;
   value: ReactNode;
@@ -66,11 +87,44 @@ export function KpiTile({
   size?: keyof typeof FIGURE;
   /** No drop shadow — see the note above. */
   flat?: boolean;
+  /** Opens this figure's explainer. See the note above. */
+  onExplain?: () => void;
   accent?: boolean;
   locked?: boolean;
 }) {
+  const Element = onExplain ? "button" : "div";
+
+  /* The hover-intent timer. A ref rather than state because nothing on screen
+     depends on it — re-rendering the tile on every pointer move would be work
+     done for no picture. */
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancel = (): void => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+  };
+  useEffect(() => cancel, []);
+
   return (
-    <div
+    <Element
+      {...(onExplain
+        ? {
+            type: "button" as const,
+            onClick: () => {
+              cancel();
+              onExplain();
+            },
+            /* `pointerenter`, not `mouseenter`: a touch fires the mouse events
+               too, and a tap that opens the panel on the click AND again 450ms
+               later opens it twice. A pointer event says which it was. */
+            onPointerEnter: (event: React.PointerEvent) => {
+              if (event.pointerType !== "mouse") return;
+              cancel();
+              timer.current = setTimeout(onExplain, HOVER_MS);
+            },
+            onPointerLeave: cancel,
+            onPointerDown: cancel,
+          }
+        : {})}
       /*
        * `data-mv-kpi` IS THE HOST FOR TWO CAPTIONS THIS COMPONENT NEVER PRINTS.
        * `portal.css` appends one line to a stat tile per funnel state — "What
@@ -84,7 +138,11 @@ export function KpiTile({
       data-mv-kpi=""
       className={`rounded-mv border border-mv-line bg-mv-card px-[18px] py-4 ${
         flat ? "" : "shadow-mv"
-      } ${accent ? "border-t-[3px] border-t-mv-green" : ""}`.trim()}
+      } ${accent ? "border-t-[3px] border-t-mv-green" : ""} ${
+        onExplain
+          ? "cursor-pointer text-left transition-colors hover:border-mv-green hover:bg-mv-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+          : ""
+      }`.trim()}
     >
       <div className={icon ? "flex items-start gap-3.5" : ""}>
         {icon && (
@@ -116,6 +174,6 @@ export function KpiTile({
           <div className="text-xs leading-[1.5] text-mv-muted">{basis}</div>
         </div>
       </div>
-    </div>
+    </Element>
   );
 }
