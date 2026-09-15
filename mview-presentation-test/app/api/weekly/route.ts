@@ -5,6 +5,7 @@
  *   /api/weekly?format=html         one standalone HTML document
  *   /api/weekly?format=html&dl=1    the same, as a download
  *   /api/weekly?format=csv          the week's filings as a spreadsheet
+ *   &week_ending=YYYY-MM-DD         a PAST issue from the archive (live only)
  *   &sample=1                       the not-claimed version, figures withheld
  *
  * The HTML form is deliberately a FILE and not a page of this app: every style
@@ -56,9 +57,10 @@ async function live(
   member: string,
   format: string,
   download: boolean,
+  weekEnding?: string,
 ): Promise<Response> {
   if (format === "html" || format === "csv") {
-    const res = await fetchWeeklyFile(base, member, format, download);
+    const res = await fetchWeeklyFile(base, member, format, download, weekEnding);
     const headers = new Headers({ "Cache-Control": "no-store" });
     const pass = ["content-type", "content-disposition"];
     for (const h of pass) {
@@ -93,13 +95,20 @@ export async function GET(req: Request) {
   const format = (url.searchParams.get("format") ?? "json").toLowerCase();
   const sample = url.searchParams.get("sample") === "1";
   const download = url.searchParams.get("dl") === "1";
+  /* a PAST issue from the archive — `YYYY-MM-DD`, the `week_ending_iso` of the
+     row that was clicked. Only the live service keeps past issues, so the
+     parameter is passed through to it and means nothing on the local path,
+     which holds one week and no history. */
+  const weekEnding = url.searchParams.get("week_ending") ?? undefined;
 
   try {
     /* the signed-in member, per request — see `currentMemberTarget`. A
        download is this member's own report or it is the capture; it is never
        an id baked into the deployment. */
     const member = await currentMemberTarget();
-    if (member && !sample) return await live(member.base, member.member, format, download);
+    if (member && !sample) {
+      return await live(member.base, member.member, format, download, weekEnding);
+    }
 
     /* `live: false` — this endpoint reads `payload.weekly` and nothing else,
        so it does not wait on the Alerts and Activity service, and a download

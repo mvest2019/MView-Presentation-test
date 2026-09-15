@@ -38,6 +38,7 @@ import { n0, nShort, pctS, plural } from '../../_lib/reference/fmt';
 import { Band, ProductPair } from './bits';
 import type { ViewProps } from './Dashboard';
 import { usePortalMember } from '../portal-session';
+import { downloadWeeklyReportPdf } from './download-weekly-pdf';
 
 const MARK: Record<Verdict, string> = { good: '✓', watch: '⚑', flag: '⚑', quiet: '·' };
 const CHIP: Record<Verdict, string> = {
@@ -129,6 +130,9 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
   const r = p.weekly;
   const member = usePortalMember();
   const [sending, setSending] = useState(false);
+  /* the archive issue a download is in flight for, or null — one at a time,
+     keyed by the week so only the pressed row reads "Preparing…" */
+  const [dlWeek, setDlWeek] = useState<string | null>(null);
 
   const unclaimed = funnel === 'unclaimed';
   const pageOf = (n: number) => r.pages.find((x) => x.n === n) ?? null;
@@ -280,6 +284,41 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
       });
     }
   }, [member?.email, p.owner, unclaimed]);
+
+  /**
+   * ONE PAST ISSUE, AS A PDF — the archive rows' Download control.
+   *
+   * The week is the row's own `week_ending_iso`, passed as `week_ending` so the
+   * service answers with THAT issue rather than the current one. The member id
+   * is deliberately NOT in this URL: it travels with the session and is
+   * resolved server-side per request (`currentMemberTarget`), for exactly the
+   * reason the email handler above sets out — an id posted by the browser is an
+   * id the browser could change. The route puts it on the upstream call as
+   * `GET /api/v1/weekly?member_id=…&week_ending=…&format=html`.
+   *
+   * The response is the issue as one standalone document; `download-weekly-pdf`
+   * lays it out off-screen, drops the archive section, and saves the rest as a
+   * PDF. Failures speak through the shared toaster, exactly as the send does.
+   */
+  const downloadIssue = useCallback(async (weekIso: string) => {
+    setDlWeek(weekIso);
+    try {
+      const slug = p.owner.ownername
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
+      await downloadWeeklyReportPdf(
+        `/api/weekly?format=html&week_ending=${encodeURIComponent(weekIso)}${qs ? '&' + qs : ''}`,
+        `weekly-report-${slug || 'owner'}-${weekIso}`,
+      );
+    } catch (e) {
+      toast.error('Report not downloaded', {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setDlWeek(null);
+    }
+  }, [p.owner.ownername, qs]);
 
   return (
     <section data-route="app-briefing" className="active">
@@ -1036,8 +1075,20 @@ export default function WeeklyView({ p, tier, funnel, sample, open, go }: ViewPr
                   <br />
                   <span className="tiny muted">{it.line}</span>
                 </span>
-                <span className={'chip ' + (it.quiet ? 'chip-slate' : 'chip-mint')}>
-                  {it.quiet ? 'quiet week' : 'active'}
+                <span className="flex" style={{ gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span className={'chip ' + (it.quiet ? 'chip-slate' : 'chip-mint')}>
+                    {it.quiet ? 'quiet week' : 'active'}
+                  </span>
+                  {/* THAT issue, saved. Disabled while any download is in
+                      flight — the capture stages a full document, and two at
+                      once would race each other for the frame's layout. */}
+                  <button
+                    className="btn btn-ghost btn-sm wr-noprint" type="button"
+                    disabled={dlWeek !== null}
+                    onClick={() => downloadIssue(it.week_ending_iso)}
+                  >
+                    {dlWeek === it.week_ending_iso ? 'Preparing…' : 'Download'}
+                  </button>
                 </span>
               </div>
             ))}

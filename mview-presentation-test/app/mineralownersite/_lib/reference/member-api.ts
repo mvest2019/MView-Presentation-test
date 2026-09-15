@@ -309,8 +309,14 @@ export function fetchWeeklyEmailCapability(base: string): Promise<WeeklyEmailCap
  */
 export async function fetchWeeklyFile(
   base: string, member: string, format: 'html' | 'csv', dl: boolean,
+  weekEnding?: string,
 ): Promise<Response> {
   const params: Record<string, string> = { member_id: member, format };
+  /* `week_ending=YYYY-MM-DD` asks for a PAST issue from the archive rather
+     than the current one — verified against the live service: the returned
+     document is that week's report, titled with that week. Omitted, the
+     service answers with the current issue exactly as before. */
+  if (weekEnding) params.week_ending = weekEnding;
   if (dl) params.dl = '1';
   const res = await req(base, '/weekly', params, { accept: '*/*' });
   if (!res.ok) await fail('/weekly', res);
