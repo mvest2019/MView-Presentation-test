@@ -8,12 +8,22 @@ import { portalGate } from "./portal-gating";
  * The portfolio's headline figures on one dark card, pinned directly under the
  * page title so the dollars are the first thing read on any route that has them.
  *
- * THE THREE FIXED HEIGHTS ARE THE DESIGN, NOT PADDING. `min-h` on the label, the
- * figure and the caption is what makes five stats of different lengths share
- * three baselines. Without them the labels wrapped to one, two or three lines,
- * every figure sat at a different height, and the row read as ragged — logged
- * against the design as OWNER-49 ("the numbers and text are bouncing around")
- * and fixed there by exactly these three rules.
+ * ── THE THREE LINES ALIGN BY SUBGRID, NOT BY FIXED HEIGHTS ──
+ *
+ * Five stats of different label lengths have to share three baselines, or the
+ * row reads as ragged — logged against the design as OWNER-49 ("the numbers and
+ * text are bouncing around"). That was first fixed with a `min-h` on each of
+ * the three lines, and the label's was 45px: three lines' worth.
+ *
+ * IT NEVER NEEDED THREE. Measured across widths, these labels are one line from
+ * 1024px up and two lines between about 640 and 820 — never three. So on every
+ * desktop the band carried roughly thirty pixels of reserved-and-empty space
+ * between each label and its figure, which is the gap this replaces.
+ *
+ * `grid-rows-subgrid` does the same job without the number: each cell shares the
+ * band's three rows, so the label row is exactly as tall as the tallest label
+ * ACTUALLY PRESENT at that width — no dead space at one line, still aligned at
+ * two. Nothing to re-measure when a stat is renamed.
  *
  * `emphasis` COLOURS THE LEAD FIGURE RATHER THAN ENLARGING IT. Same size as its
  * four neighbours, brand green instead of white — the other half of that same
@@ -41,16 +51,18 @@ export function ValueBand({
 }) {
   return (
     <div
-      className={`flex flex-wrap rounded-mv text-white shadow-mv-lg bg-[linear-gradient(160deg,var(--color-mv-ink),var(--color-mv-portal-band-end))] ${className}`.trim()}
+      className={`grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] rounded-mv text-white shadow-mv-lg bg-[linear-gradient(160deg,var(--color-mv-ink),var(--color-mv-portal-band-end))] ${className}`.trim()}
     >
       {stats.map((stat) => (
         <div
           key={stat.label}
-          /* `flex-1` with a 150px floor is what wraps this into two rows on a
-             tablet and five columns on a desktop with no media query. */
-          className="flex min-w-[150px] flex-1 flex-col border-r border-white/10 px-5 pt-[15px] pb-[13px] last:border-r-0"
+          /* `auto-fit` with a 170px floor wraps this into two rows on a tablet
+             and five columns on a desktop with no media query — and
+             `grid-rows-subgrid` is what keeps the three lines aligned across
+             whichever cells end up side by side. */
+          className="row-span-3 grid grid-rows-subgrid border-r border-white/10 px-5 pt-[15px] pb-[13px] last:border-r-0"
         >
-          <div className="min-h-[45px] text-[10.5px] font-bold tracking-[0.09em] text-mv-on-head-soft uppercase">
+          <div className="text-[10.5px] font-bold tracking-[0.09em] text-mv-on-head-soft uppercase">
             {stat.label}
           </div>
           <div
@@ -69,7 +81,7 @@ export function ValueBand({
              * sharp. See `portalGate.lockedValue`.
              */
             data-mv-portfolio-figure=""
-            className={`mt-1 flex min-h-[30px] items-baseline gap-[7px] text-[26px] leading-tight font-bold tabular-nums ${
+            className={`mt-1 flex items-baseline gap-[7px] text-[26px] leading-tight font-bold tabular-nums ${
               stat.emphasis ? "text-mv-green" : ""
             } ${stat.locked ? portalGate.lockedValue : ""}`.trim()}
           >

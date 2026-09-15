@@ -2,7 +2,6 @@ import { Card } from "../../../../_components/ui/card";
 import {
   AXIS_LABEL_Y,
   CHART,
-  CHIP_Y,
   PLOT,
   axisMax,
   formatTick,
@@ -54,7 +53,7 @@ export function CumulativeCard({ report }: { report: LeaseReport }) {
       </p>
 
       <svg
-        viewBox={`0 0 ${CHART.width} ${CHART.height}`}
+        viewBox={`0 0 ${CHART.width} ${AXIS_LABEL_Y + 14}`}
         className="mt-3 w-full"
         role="img"
         aria-label={`Running total of your gas from this lease: ${formatCount(Math.round(report.gasProduced))} MCF filed through ${report.lastPosting}, and a further ${formatCount(Math.round(report.gasReserves))} MCF projected.`}
@@ -73,7 +72,7 @@ export function CumulativeCard({ report }: { report: LeaseReport }) {
               x={PLOT.left - 10}
               y={yAt(value, max) + 4}
               textAnchor="end"
-              className="fill-mv-axis text-[13px] font-semibold"
+              className="fill-mv-muted text-[10px] font-semibold"
             >
               {formatTick(value, false)}
             </text>
@@ -107,14 +106,36 @@ export function CumulativeCard({ report }: { report: LeaseReport }) {
             x={xAt(index, from, to)}
             y={AXIS_LABEL_Y}
             textAnchor="middle"
-            className="fill-mv-axis text-[14px]"
+            className="fill-mv-muted text-[10px]"
           >
             {shortMonthLabel(firstMonth + index)}
           </text>
         ))}
 
-        <Chip x={splitX - 44} y={CHIP_Y} tone="slate" text="FILED" />
-        <Chip x={splitX + 52} y={CHIP_Y} tone="mint" text="PROJECTED" />
+        {/* AT THE TOP, ON THE DIVIDER, rather than in two pills under the axis.
+            The label belongs to the line it names: beside it, a reader takes in
+            "this side filed, that side modelled" in the same glance that finds
+            the divider. Under the axis the pills sat below the months, a row
+            away from the thing they described.
+
+            The arrows are the half that makes it work — two words either side
+            of a line are otherwise just two words near a line. */}
+        <text
+          x={splitX - 12}
+          y={PLOT.top + 2}
+          textAnchor="end"
+          className="fill-mv-muted text-[10px] font-bold tracking-[0.08em] uppercase"
+        >
+          ← Filed
+        </text>
+        <text
+          x={splitX + 12}
+          y={PLOT.top + 2}
+          textAnchor="start"
+          className="fill-mv-green-deep text-[10px] font-bold tracking-[0.08em] uppercase"
+        >
+          Projected →
+        </text>
       </svg>
 
       <p className="mt-3 text-[12.5px] leading-[1.6] text-mv-slate">
@@ -146,38 +167,3 @@ function areaPath(
   return `M${left},${PLOT.bottom}L${points.join("L")}L${right},${PLOT.bottom}Z`;
 }
 
-function Chip({
-  x,
-  y,
-  text,
-  tone,
-}: {
-  x: number;
-  y: number;
-  text: string;
-  tone: "slate" | "mint";
-}) {
-  const width = text.length * 8 + 20;
-  return (
-    <g>
-      <rect
-        x={x - width / 2}
-        y={y - 13}
-        width={width}
-        height={20}
-        rx={6}
-        className={tone === "mint" ? "fill-mv-mint" : "fill-mv-portal-wash"}
-      />
-      <text
-        x={x}
-        y={y + 1}
-        textAnchor="middle"
-        className={`text-[11px] font-bold ${
-          tone === "mint" ? "fill-mv-green-ink" : "fill-mv-slate"
-        }`}
-      >
-        {text}
-      </text>
-    </g>
-  );
-}

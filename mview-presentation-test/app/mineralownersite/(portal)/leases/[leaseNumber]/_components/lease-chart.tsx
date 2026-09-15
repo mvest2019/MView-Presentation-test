@@ -39,16 +39,30 @@ export interface LeaseChartSeries {
   money: boolean;
 }
 
+/*
+ * THE TYPE IN HERE IS IN VIEWBOX UNITS, NOT PIXELS.
+ *
+ * The viewBox is 1000 wide and the SVG is `w-full`, so everything is multiplied
+ * by the card's width over 1000 — about 1.26 in the portal's content column.
+ * The axes were written as 13px and 14px and therefore DREW at roughly 16 and
+ * 18, which is body-copy size for labels meant to be read past. They are 10
+ * now, matching the Financials and well charts; the rotated axis titles keep a
+ * step on them at 11, because they name the whole scale rather than one tick.
+ *
+ * THE MONTHS ALSO CHANGED COLOUR. `mv-axis` (#98a2b3) is the token for a
+ * GRIDLINE, and the labels had inherited it — which put the only words on the
+ * chart at the weight of the rules behind them.
+ */
 const STROKE = {
   gas: "stroke-mv-green-deep",
-  oil: "stroke-mv-sand",
-  cash: "stroke-mv-green-deep",
+  oil: "stroke-mv-oil",
+  cash: "stroke-mv-cash",
 } as const;
 
 const FILL = {
   gas: "fill-mv-green-deep",
-  oil: "fill-mv-sand",
-  cash: "fill-mv-green-deep",
+  oil: "fill-mv-oil",
+  cash: "fill-mv-cash",
 } as const;
 
 export function LeaseChart({
@@ -107,7 +121,7 @@ export function LeaseChart({
               x={PLOT.left - 10}
               y={y + 4}
               textAnchor="end"
-              className={`text-[13px] font-semibold ${FILL[left.tone]}`}
+              className={`text-[10px] font-semibold ${FILL[left.tone]}`}
             >
               {formatTick(value, left.money)}
             </text>
@@ -116,7 +130,7 @@ export function LeaseChart({
                 x={PLOT.right + 10}
                 y={y + 4}
                 textAnchor="start"
-                className={`text-[13px] font-semibold ${FILL[right.tone]}`}
+                className={`text-[10px] font-semibold ${FILL[right.tone]}`}
               >
                 {formatTick(axisTicks(rightMax)[step], right.money)}
               </text>
@@ -131,7 +145,7 @@ export function LeaseChart({
         x={14}
         y={(PLOT.top + PLOT.bottom) / 2}
         textAnchor="middle"
-        className={`text-[13px] font-bold tracking-[0.06em] uppercase ${FILL[left.tone]}`}
+        className={`text-[11px] font-bold tracking-[0.06em] uppercase ${FILL[left.tone]}`}
       >
         {left.title}
       </text>
@@ -141,7 +155,7 @@ export function LeaseChart({
           x={CHART.width - 12}
           y={(PLOT.top + PLOT.bottom) / 2}
           textAnchor="middle"
-          className={`text-[13px] font-bold tracking-[0.06em] uppercase ${FILL[right.tone]}`}
+          className={`text-[11px] font-bold tracking-[0.06em] uppercase ${FILL[right.tone]}`}
         >
           {right.title}
         </text>
@@ -162,7 +176,7 @@ export function LeaseChart({
             x={splitX - 12}
             y={PLOT.top + 2}
             textAnchor="end"
-            className="fill-mv-muted text-[12px] font-bold tracking-[0.08em] uppercase"
+            className="fill-mv-muted text-[10px] font-bold tracking-[0.08em] uppercase"
           >
             ← Posted
           </text>
@@ -170,7 +184,7 @@ export function LeaseChart({
             x={splitX + 12}
             y={PLOT.top + 2}
             textAnchor="start"
-            className="fill-mv-green-deep text-[12px] font-bold tracking-[0.08em] uppercase"
+            className="fill-mv-green-deep text-[10px] font-bold tracking-[0.08em] uppercase"
           >
             Forecast →
           </text>
@@ -217,7 +231,7 @@ export function LeaseChart({
           x={xAt(index, from, to)}
           y={AXIS_LABEL_Y}
           textAnchor="middle"
-          className="fill-mv-axis text-[14px]"
+          className="fill-mv-muted text-[10px]"
         >
           {shortMonthLabel(firstMonth + index)}
         </text>

@@ -70,6 +70,15 @@ export interface ReservoirReport {
   operators: string[];
   filedFrom: string;
   filedTo: string;
+  /**
+   * How many months have actually been posted.
+   *
+   * NOT `to - from + 1`. `to` is the last month of the series and the series
+   * runs past the filed record into the forecast, so that subtraction counts
+   * modelled months as filed ones — which is the one mistake a page about
+   * provenance cannot make.
+   */
+  filedMonthCount: number;
   gasPerFootOpen: number;
   openFeet: number;
   bestMonth: string;
@@ -150,7 +159,8 @@ export function buildReservoirReport(lease: LeaseRecord): ReservoirReport {
       trailingMonths += 1;
     }
   }
-  const trailingAverageGas = trailingMonths > 0 ? trailingGas / trailingMonths : 0;
+  const trailingAverageGas =
+    trailingMonths > 0 ? trailingGas / trailingMonths : 0;
 
   /* ── the wells, biggest filer first ─────────────────────────────────── */
   const wellRows: ReservoirWell[] = wells
@@ -180,7 +190,8 @@ export function buildReservoirReport(lease: LeaseRecord): ReservoirReport {
   const spanMonths = filedThrough - from;
   const decline =
     spanMonths > 11 && series.gas[from] > 0 && wells.length === 1
-      ? (1 - (series.gas[filedThrough] / series.gas[from]) ** (1 / spanMonths)) *
+      ? (1 -
+          (series.gas[filedThrough] / series.gas[from]) ** (1 / spanMonths)) *
         100
       : null;
 
@@ -215,16 +226,19 @@ export function buildReservoirReport(lease: LeaseRecord): ReservoirReport {
     depthFt: Math.round(
       wells.reduce((total, well) => total + well.depthFt, 0) / wells.length,
     ),
-    directionalCount: wells.filter((well) => well.drilled !== "VERTICAL").length,
+    directionalCount: wells.filter((well) => well.drilled !== "VERTICAL")
+      .length,
     averageLateralFt:
       laterals.length > 0
         ? Math.round(
-            laterals.reduce((total, value) => total + value, 0) / laterals.length,
+            laterals.reduce((total, value) => total + value, 0) /
+              laterals.length,
           )
         : null,
     operators: [lease.operator],
     filedFrom: monthLabel(firstMonth + from),
     filedTo: monthLabel(firstMonth + filedThrough),
+    filedMonthCount: filedThrough - from + 1,
     gasPerFootOpen: openFeet > 0 ? gasFiled / openFeet : 0,
     openFeet,
     bestMonth,

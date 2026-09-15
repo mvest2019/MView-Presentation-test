@@ -1,3 +1,4 @@
+import { Scale } from "lucide-react";
 import { Badge } from "../../../../../_components/ui/badge";
 import { Card, CardHeader } from "../../../../../_components/ui/card";
 import {
@@ -42,14 +43,15 @@ export function WellsTableCard({ report }: { report: ReservoirReport }) {
           </h3>
         }
         action={
-          <Badge tone="slate" size="xs">
+          <Badge tone="quiet" size="xs">
+            <Scale aria-hidden="true" className="h-3 w-3" />
             volumes allocated · money split
           </Badge>
         }
       />
 
       <TableScroll className="mt-3">
-        <Table minWidth={880}>
+        <Table roomy minWidth={880}>
           <TableHead>
             <TableRow className="bg-mv-portal-wash">
               <TableHeaderCell>Well</TableHeaderCell>

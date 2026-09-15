@@ -12,7 +12,13 @@
  * scales the whole drawing, text included.
  */
 
-export const CHART = { width: 1000, height: 340 } as const;
+/*
+ * The height ends 5 units under the posted/forecast chips (`CHIP_Y + 7` is
+ * their floor). It used to end 13 under them, and because the SVG is `w-full`
+ * that dead strip scaled UP with the card — about 16px of empty box between the
+ * chips and the row beneath, on top of that row's own margin.
+ */
+export const CHART = { width: 1000, height: 332 } as const;
 
 /**
  * The drawing area inside the axes. `left` and `right` are inset far enough for
@@ -22,9 +28,20 @@ export const CHART = { width: 1000, height: 340 } as const;
  */
 export const PLOT = { left: 56, right: 944, top: 16, bottom: 264 } as const;
 
-/** Where the month labels and the posted/forecast chips sit. */
+/**
+ * Where the month labels and the posted/forecast chips sit.
+ *
+ * THE SIXTEEN UNITS BETWEEN THEM WERE NOT A GAP. A chip's rect runs from
+ * `CHIP_Y - 13` to `CHIP_Y + 7`, so at 306 its top edge landed on 293 — which
+ * is exactly where the month labels' descenders end, three units under their
+ * 290 baseline. "Feb 2026" and the POSTED chip under it were touching.
+ *
+ * At 320 the chip opens at 307, fourteen units clear of the text above it and
+ * thirteen short of the 340 floor. Both numbers are viewBox units: the charts
+ * draw about 1.26 times that in the portal's content column.
+ */
 export const AXIS_LABEL_Y = 290;
-export const CHIP_Y = 306;
+export const CHIP_Y = 320;
 
 /** Five gridlines: the floor, the ceiling and three between. */
 export const TICK_COUNT = 4;

@@ -32,6 +32,16 @@ import { wellRecords, wellsForLease, type WellRecord } from "../../_lib/well-rec
  * with whatever else its operator chose to drill nearby.
  */
 
+/** The scanned paper behind a filing, where the commission holds one. */
+export interface FilingDocument {
+  /** The form's own title — "Permit to Drill, Plug Back or Re-enter". */
+  permitType: string;
+  /** The commission's tracking number for the packet. */
+  tracking: string;
+  /** The day the work the packet covers was done. */
+  filedOn: string;
+}
+
 export interface WellFiling {
   name: string;
   type: string;
@@ -40,6 +50,15 @@ export interface WellFiling {
   /** The perforated interval this filing records, or null where it records none. */
   perforated: string | null;
   fracced: boolean;
+  /**
+   * The document, or null where the record has the filing but not the paper.
+   *
+   * ABOUT HALF THE ROWS IN THIS COLLECTION CARRY ONE, and that is the fact the
+   * Attachments card exists to state: a filing with no document is a gap in
+   * what was scanned, not a filing that was never made. Modelled here rather
+   * than assumed by the card, so the card can say "1 of 2" and mean it.
+   */
+  document: FilingDocument | null;
 }
 
 export interface WellReport {
@@ -146,6 +165,20 @@ function milesBetween(a: [number, number], b: [number, number]): number {
  */
 function buildFilings(well: WellRecord): WellFiling[] {
   const filed = formatDay(well.firstProduction);
+
+  /* DERIVED FROM THE API, NOT DRAWN AT RANDOM, so the same well shows the same
+     packet number on every render and the fixture does not change under a
+     refresh.
+
+     THE MULTIPLY IS NOT DECORATION. The first version was `270000 + (digits %
+     90000)`, and for an API ending in the 300,000s that is the identity — it
+     handed back the API's own last six digits, so the card printed the API
+     twice under two different labels. Scaling by a prime first breaks the
+     correspondence, and the six-digit window is what a commission tracking
+     number looks like. */
+  const digits = Number(well.api.replace(/\D/g, "").slice(-6));
+  const tracking = String(100000 + ((digits * 7919) % 900000));
+
   return [
     {
       name: "Initial Potential",
@@ -154,14 +187,23 @@ function buildFilings(well: WellRecord): WellFiling[] {
       recompleted: filed,
       perforated: `${well.openTopFt.toLocaleString("en-US")}–${well.openBottomFt.toLocaleString("en-US")} ft`,
       fracced: well.drilled !== "VERTICAL",
+      document: {
+        permitType: "Permit to Drill, Plug Back or Re-enter",
+        tracking,
+        filedOn: formatDay(well.spudded),
+      },
     },
     {
+      /* No document on this one ON PURPOSE — it is the state the card's
+         footnote is about, and a fixture where every row has paper would never
+         show it. */
       name: "Well Record Only",
       type: "Producing",
       drilled: filed,
       recompleted: filed,
       perforated: null,
       fracced: false,
+      document: null,
     },
   ];
 }

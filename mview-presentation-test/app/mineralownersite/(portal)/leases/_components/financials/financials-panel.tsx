@@ -15,6 +15,7 @@ import { CHART_MODES, CHART_MODE_COPY, chartTitle, type ChartMode } from "./char
 import { ChartBrush } from "./chart-brush";
 import { FinancialsTiles } from "./financials-tiles";
 import { MonthTable } from "./month-table";
+import { SegmentedControl } from "../../../../_components/ui/segmented-control";
 import { PillStrip } from "./pill-strip";
 import { RangePresets, windowAround } from "./range-presets";
 import { SeriesChart, type ChartSeries } from "./series-chart";
@@ -103,7 +104,7 @@ export function FinancialsPanel() {
 
       <Card padded={false} className="px-[18px] py-4">
         <div className="mb-4 flex flex-wrap items-center gap-3">
-          <PillStrip
+          <SegmentedControl
             label="What to plot"
             tone="dark"
             value={mode}
@@ -137,7 +138,7 @@ export function FinancialsPanel() {
           summary={`${chartTitle(mode, scope)}, ${labelFor(range.from)} to ${labelFor(range.to)}. Filed through ${monthLabel(firstMonth + financialsSeries.lastPostedIndex)}; modelled after that.`}
         />
 
-        <div className="mt-3 mb-2 flex flex-wrap items-center justify-between gap-3">
+        <div className="mt-2 mb-2 flex flex-wrap items-center justify-between gap-3">
           <p className="text-[11.5px] text-mv-muted tabular-nums">
             Showing {labelFor(range.from)} to {labelFor(range.to)} · {months}{" "}
             months of {financialsSeries.length}
@@ -174,7 +175,7 @@ function LegendKey({ tone, label }: { tone: "gas" | "oil"; label: string }) {
       <span
         aria-hidden="true"
         className={`inline-block h-[3px] w-4 rounded-full ${
-          tone === "gas" ? "bg-mv-green-deep" : "bg-mv-sand"
+          tone === "gas" ? "bg-mv-green-deep" : "bg-mv-oil"
         }`}
       />
       {label}

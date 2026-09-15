@@ -1,3 +1,4 @@
+import { ListOrdered } from "lucide-react";
 import { Badge } from "../../../../_components/ui/badge";
 import { Card, CardHeader } from "../../../../_components/ui/card";
 import { DEVELOPMENT_RINGS } from "../../_lib/report-fixtures";
@@ -83,7 +84,8 @@ export function FindingsCard({ report }: { report: LeaseReport }) {
       <CardHeader
         title={<h3 className="text-[15px] font-bold">What this page found</h3>}
         action={
-          <Badge tone="slate" size="xs">
+          <Badge tone="quiet" size="xs">
+            <ListOrdered aria-hidden="true" className="h-3 w-3" />
             most notable first
           </Badge>
         }

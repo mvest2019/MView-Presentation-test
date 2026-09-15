@@ -249,6 +249,26 @@
   --color-mv-portal-drawer-sub: #9fc9b8;
   --color-mv-portal-drawer-back-hover: #d9efe6;
 
+  /* THE TWO PRODUCTS, WHEREVER THEY ARE DRAWN — a line, a donut ring, a bar,
+     a legend swatch. Gas is the brand green; oil is red.
+
+     OIL HAS A TOKEN OF ITS OWN BECAUSE IT USED TO SHARE ONE. It was drawn in
+     `mv-sand`, which is ALSO the gold notice tone — `notice.tsx`, the claim
+     steps, the map's nearby panel — and those two have nothing to do with each
+     other. Recolouring oil through `mv-sand` would have turned every gold note
+     on the portal red. Change oil here; the gold notes keep `mv-sand`. */
+  --color-mv-oil: #c0392b;
+
+  /* CASH IS THE THIRD SERIES AND IT HAD NO COLOUR OF ITS OWN — it was drawn in
+     `mv-green-deep`, which is gas. On a chart with a Gas / Oil / Cash switch
+     that means two of the three modes redraw the same green line against a
+     different axis, and the only thing saying which one you are looking at is
+     the axis label. Blue is the design's, and it is a token rather than
+     `mv-blue` for the reason `mv-oil` is not `mv-sand`: `mv-blue` is the chip
+     tone for a note about the data itself, and a series colour and a status
+     colour that share a variable get changed into each other. */
+  --color-mv-cash: #4a63d8;
+
   /* Status */
   --color-mv-amber: #b45309;
   --color-mv-down: #c0392b;

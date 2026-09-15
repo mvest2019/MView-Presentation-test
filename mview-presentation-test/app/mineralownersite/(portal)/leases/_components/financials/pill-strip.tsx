@@ -5,12 +5,17 @@ import type { ReactNode } from "react";
 /**
  * A ROW OF PILLS WHERE ONE IS CHOSEN — the Financials panel uses two of them.
  *
- * THE TWO TONES ARE NOT DECORATION, THEY ARE DEPTH. The scope switch (Full
- * lease / Your share) is green, matching the module tab strip directly above
- * it, because it changes what the WHOLE PANEL is about. The chart's own strip
- * (Oil & gas / Gas only / Oil only / Cash flow) is near-black, because it only
- * changes what one card draws. Two green strips stacked read as two equals and
- * leave a reader unsure which one they are inside.
+ * THE TONE IS NOT DECORATION, IT IS DEPTH. The scope switch (Full lease / Your
+ * share) is green, matching the module tab strip directly above it, because it
+ * changes what the WHOLE PANEL is about. Two green strips stacked read as two
+ * equals and leave a reader unsure which one they are inside, so a strip that
+ * only redraws one card is near-black instead.
+ *
+ * THE CHART'S OWN STRIP IS NO LONGER ONE OF THESE. "What to plot" moved to
+ * `ui/segmented-control.tsx` — same near-black active state, but as a joined
+ * track rather than four separate pills, which is what a set of alternatives
+ * inside one card should look like. This component now carries the scope
+ * switches alone.
  *
  * A `role="group"` of `aria-pressed` buttons rather than a tablist: these
  * redraw a panel in place, they do not switch between panels, and claiming

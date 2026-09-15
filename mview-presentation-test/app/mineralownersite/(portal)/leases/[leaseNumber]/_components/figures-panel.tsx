@@ -3,8 +3,19 @@
 import { useMemo, useState } from "react";
 
 import { Card } from "../../../../_components/ui/card";
+import {
+  Banknote,
+  CalendarDays,
+  Flame,
+  Landmark,
+  Layers,
+  TrendingUp,
+} from "lucide-react";
+
 import { KpiTile } from "../../../../_components/ui/kpi-tile";
+import { LeaseOverviewHeader } from "./lease-overview-header";
 import { ChartBrush } from "../../_components/financials/chart-brush";
+import { SegmentedControl } from "../../../../_components/ui/segmented-control";
 import { PillStrip } from "../../_components/financials/pill-strip";
 import { CHART_MODES, CHART_MODE_COPY, type ChartMode } from "../../_components/financials/chart-modes";
 import { financialsSeries } from "../../_lib/financials-series";
@@ -82,6 +93,8 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
 
   return (
     <div>
+      <LeaseOverviewHeader lease={lease} />
+
       <Card padded={false} className="mt-4 flex flex-wrap items-center gap-3 px-[18px] py-3">
         <span className="text-[10.5px] font-bold tracking-[0.08em] text-mv-muted uppercase">
           Figures
@@ -106,23 +119,35 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
       <div className="mt-4 grid gap-[18px] sm:grid-cols-2 xl:grid-cols-3">
         <KpiTile
           locked
+          size="sm"
+          flat
+          icon={<CalendarDays className="h-[18px] w-[18px]" />}
           label={`${scopeWord(scope)} · last posted month`}
           value={formatDollars(report.lastMonthShare * scale(scope, lease.decimalInterest))}
           basis={report.lastMonthLabel}
         />
         <KpiTile
           locked
+          size="sm"
+          flat
+          icon={<Banknote className="h-[18px] w-[18px]" />}
           label={`${scopeWord(scope)} · this year so far`}
           value={formatDollars(report.yearToDateShare * scale(scope, lease.decimalInterest))}
           basis={`12 filed months to ${report.lastPosting}`}
         />
         <KpiTile
+          size="sm"
+          flat
+          icon={<Flame className="h-[18px] w-[18px]" />}
           label={`Gas filed to date · ${scopeWord(scope).toLowerCase()}`}
           value={`${formatCompactVolume(report.gasFiled * scale(scope, lease.decimalInterest))} MCF`}
           basis={`${formatCompactVolume(report.oilFiled * scale(scope, lease.decimalInterest))} BBL of oil · ${report.postedMonths} posted months`}
         />
         <KpiTile
           locked
+          size="sm"
+          flat
+          icon={<TrendingUp className="h-[18px] w-[18px]" />}
           label={`Value · ${scopeWord(scope).toLowerCase()}`}
           value={formatCompactDollars(
             report.yourValue * scale(scope, lease.decimalInterest),
@@ -130,11 +155,17 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
           basis={`range ${formatCompactDollars(report.yourValueLow * scale(scope, lease.decimalInterest))} – ${formatCompactDollars(report.yourValueHigh * scale(scope, lease.decimalInterest))}`}
         />
         <KpiTile
+          size="sm"
+          flat
+          icon={<Landmark className="h-[18px] w-[18px]" />}
           label="County appraised · your interest"
           value={formatCompactDollars(report.countyYourInterest)}
           basis={`${report.countyAgreementPercent.toFixed(1)}% of the model's figure`}
         />
         <KpiTile
+          size="sm"
+          flat
+          icon={<Layers className="h-[18px] w-[18px]" />}
           label="Wells · acres · reservoir"
           value={`${lease.wells} / ${lease.wells}`}
           basis={`${formatAcres(lease.acres)} acres · ${lease.reservoir}`}
@@ -143,7 +174,7 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
 
       <Card padded={false} className="mt-4 px-[18px] py-4">
         <div className="mb-4 flex flex-wrap items-center gap-3">
-          <PillStrip
+          <SegmentedControl
             label="What to plot"
             tone="dark"
             value={mode}
