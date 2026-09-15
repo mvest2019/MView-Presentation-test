@@ -162,7 +162,11 @@ const NAV: {
 const ACCOUNT: { label: string; href?: string }[] = [
   { label: 'My Profile', href: '/mineralownersite/profile' },
   { label: 'Settings', href: '/mineralownersite/settings' },
-  { label: 'Billing & Plan' },
+  /* THE MODULE HAS SHIPPED. This row carried no `href`, so the map below sent
+     it to `/soon/billing-and-plan` — a card announcing that Billing & Plan had
+     not opened yet. `(reference)/billing` is that page now, and the slug
+     redirects to it. */
+  { label: 'Billing & Plan', href: '/mineralownersite/billing' },
   { label: 'Contact Us', href: '/contact-us' },
 ];
 

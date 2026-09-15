@@ -232,7 +232,7 @@ function liveValue(value: string): string | null {
 
 /** the published plan, identical for every reader — the only constant here */
 const PLAN_PRICE = {
-  price_month: '$99.95', price_annual: '$999.50',
+  price_month: '$99.99', price_annual: '$999.90',
   price_weekly: '$23', price_weekly_annual: '$19',
 } as const;
 

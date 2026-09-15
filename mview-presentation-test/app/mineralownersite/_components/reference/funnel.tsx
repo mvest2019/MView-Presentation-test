@@ -27,7 +27,7 @@ import type { FunnelKey, Route } from './Portal';
 
 export const TRIAL_LEN = 7;
 export const LEASE_LOCK_DAYS = 7;
-const PRICE = '$99.95/mo';
+const PRICE = '$99.99/mo';
 
 /**
  * WHERE A PLAN QUESTION GOES — the plan ladder, which is a real page.

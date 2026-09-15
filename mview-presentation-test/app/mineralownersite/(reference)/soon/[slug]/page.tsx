@@ -114,12 +114,6 @@ const SECTIONS: Record<string, Section> = {
       "Part of it is live already: how this record was matched is in your profile menu, at the " +
       "top right. The rest is coming.",
   },
-  "billing-and-plan": {
-    title: "Billing & Plan",
-    icon: "mvi-billing",
-    what: "Your plan and payment details.",
-    when: "Coming soon. Nothing here is billed while it is on its way.",
-  },
 };
 
 /**
@@ -147,6 +141,7 @@ const SECTIONS: Record<string, Section> = {
  */
 const LANDED: Record<string, string> = {
   "invite-co-owners": "/mineralownersite/invite",
+  "billing-and-plan": "/mineralownersite/billing",
 };
 
 const FALLBACK: Section = {
