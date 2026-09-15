@@ -158,7 +158,13 @@ export function ActiveLeasePicker() {
         onChange={(event) => pick(event.target.value)}
         title={
           locked
-            ? `Locked until ${new Date(lockedUntil).toLocaleDateString()} — one change per ${LEASE_LOCK_DAYS} days`
+            /* THE LOCALE IS PINNED, like every other formatter on this site —
+               see `_lib/reference/fmt.ts`. Bare `toLocaleDateString()` follows
+               the reader's own locale, so this one date reordered itself to
+               `dd/mm/yyyy` beside a page that is `en-US` throughout. It is not
+               a hydration risk (the lock only exists once `localStorage` has
+               answered, which is after mount) but it is the same rule. */
+            ? `Locked until ${new Date(lockedUntil).toLocaleDateString('en-US')} — one change per ${LEASE_LOCK_DAYS} days`
             : "Choose the one lease that stays fully live"
         }
       >

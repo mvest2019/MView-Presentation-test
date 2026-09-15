@@ -20,6 +20,7 @@
  * rest of this build follows for dates.
  */
 import React from 'react';
+import Link from 'next/link';
 import type { Payload } from '../../_lib/reference/payload';
 import { plural } from '../../_lib/reference/fmt';
 import type { FunnelKey, Route } from './Portal';
@@ -27,6 +28,32 @@ import type { FunnelKey, Route } from './Portal';
 export const TRIAL_LEN = 7;
 export const LEASE_LOCK_DAYS = 7;
 const PRICE = '$99.95/mo';
+
+/**
+ * WHERE A PLAN QUESTION GOES — the plan ladder, which is a real page.
+ *
+ * TWO CONTROLS, ONE WRONG DESTINATION EACH.
+ *
+ * "Restore full access" called `setFunnel('paid')`, which is the demo menu's
+ * own switch: pressing the one button a lapsed reader is offered silently
+ * relabelled the account "Paid" and unlocked every figure on the page without a
+ * plan, a price or a payment ever being shown. That is the prototype
+ * demonstrating its five states; on a build a real member signs into, it is an
+ * entitlement granted by a click.
+ *
+ * The secondary link — "What the trial includes" on the free plan, "Compare
+ * plans" on trial, "What I am missing" once lapsed — opened `drawers.value`,
+ * whose title is "Your value — how it is built". That panel explains how the
+ * VALUATION is computed. It is a good panel and it answers a different
+ * question: all three labels ask what a plan gets you, and none of them is
+ * about the estimate.
+ *
+ * `/pricing#plans` is the page that answers both. It is this app's own plan
+ * ladder, it is where `upgradeHref` in `lib/entitlements.ts` already sends
+ * every other upgrade prompt, and `#plans` is a real anchor on it — so the
+ * reader lands on the comparison rather than at the top of a marketing page.
+ */
+const PLANS_HREF = '/pricing#plans';
 
 /** how far into the trial we are, counted from the stamp the Portal writes */
 export function trialDay(startedIso: string | null): number {
@@ -57,6 +84,8 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
   let cta: string | null = null;
   let snd: string | null = null;
   let onCta: (() => void) | null = null;
+  /** set instead of `onCta` when the CTA is a destination rather than a switch */
+  let ctaHref: string | null = null;
 
   if (funnel === 'claimed') {
     tag = 'Free plan';
@@ -93,7 +122,8 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
     tag = 'Trial ended';
     cta = 'Restore full access';
     snd = 'What I am missing';
-    onCta = () => setFunnel('paid');
+    /* a navigation, not a state flip — see `BILLING_HREF` */
+    ctaHref = PLANS_HREF;
     msg = (
       <>
         Your <b>Premium</b> trial has ended, so your account is on the free plan.{' '}
@@ -118,15 +148,31 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
       <span className="fb-tag">{tag}</span>
       <span className="fb-msg">{msg}</span>
       <span className="fb-act">
-        <button type="button" className="fb-cta btn btn-sm" onClick={() => onCta?.()}>
-          {cta}
-        </button>
-        <button
-          type="button" className="linklike fb-2nd"
-          onClick={() => open(funnel === 'unclaimed' ? 'identity' : 'value')}
-        >
-          {snd}
-        </button>
+        {ctaHref
+          ? (
+            <Link className="fb-cta btn btn-sm" href={ctaHref}>
+              {cta}
+            </Link>
+          )
+          : (
+            <button type="button" className="fb-cta btn btn-sm" onClick={() => onCta?.()}>
+              {cta}
+            </button>
+          )}
+        {/* THE SECONDARY LINK IS A PLAN QUESTION IN EVERY STATE THAT RENDERS
+            ONE — see `PLANS_HREF`. `unclaimed` keeps the identity drawer, and
+            it is unreachable anyway: the bar does not paint in that state. */}
+        {funnel === 'unclaimed'
+          ? (
+            <button type="button" className="linklike fb-2nd" onClick={() => open('identity')}>
+              {snd}
+            </button>
+          )
+          : (
+            <Link className="linklike fb-2nd" href={PLANS_HREF}>
+              {snd}
+            </Link>
+          )}
       </span>
     </div>
   );
@@ -205,10 +251,8 @@ export function StateCard({ p, funnel, trialStarted, setFunnel, go }: Props) {
           You can change which lease is live once every {LEASE_LOCK_DAYS} days.
         </span>
         <div className="sc-row">
-          <a role="button" tabIndex={0} onClick={() => setFunnel('paid')}
-            onKeyDown={(e) => { if (e.key === 'Enter') setFunnel('paid'); }}>
-            Restore full access
-          </a>
+          {/* same destination as the bar's own CTA — see `PLANS_HREF` */}
+          <Link href={PLANS_HREF}>Restore full access</Link>
           <a className="ghost hide-u" role="button" tabIndex={0} onClick={() => go('activities')}
             onKeyDown={(e) => { if (e.key === 'Enter') go('activities'); }}>
             What is still watched →

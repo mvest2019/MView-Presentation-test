@@ -131,11 +131,25 @@ export default function DrawerPanel(
           {copy
             ? (
               <>
+                {/* WHAT THE SAMPLE ACTUALLY DOES TO THESE FIGURES, which is no
+                    longer what this band said.
+                    It read "the figures in this panel are withheld and shown as
+                    •••", which was true while `sampleize` ran every sentence
+                    through `scrub()`. That transform was replaced by
+                    `scaleFigures`: the panel now prints real, legible numbers
+                    drawn from a live record and multiplied by one factor. So
+                    the band promised a masked panel above an unmasked one —
+                    the reader's first test of whether this product tells the
+                    truth, failed on the page that exists to prove it does.
+                    The sentence now describes the transform that runs: the
+                    shape is the record's, the amounts are not the reader's. */}
                 {sample
                   ? (
                     <p className="samp-band" style={{ margin: '0 0 14px' }}>
-                      <strong>Sample view.</strong> The figures in this panel are withheld and shown
-                      as <span aria-label="withheld">•••</span> — claim the record to see them.
+                      <strong>Sample view.</strong> The dates and the shape of every figure below
+                      are read from the live public record, but the names and the amounts belong to
+                      a sample owner and are scaled for illustration — claim your record to see
+                      your own.
                     </p>
                   )
                   : null}

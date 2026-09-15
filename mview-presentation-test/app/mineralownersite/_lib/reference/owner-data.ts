@@ -107,6 +107,31 @@ export interface OwnerSelection {
  */
 const FIXTURE = americanize(raw as unknown as Payload);
 
+/**
+ * THE ONE RECORD THE NOT-CLAIMED PREVIEW IS BUILT FROM, for every reader.
+ *
+ * `sampleize` rewrites a payload into a sample of itself, and it used to be
+ * handed the READER'S OWN snapshot. Anonymised and scaled, so nothing of theirs
+ * was published — but it meant the preview was a different record for every
+ * visitor: different lease count, different counties, different volumes, and
+ * for a member who had claimed something it was visibly their own portfolio
+ * wearing invented names. "This is what your inbox looks like once you claim"
+ * is a promise about the PRODUCT, and it cannot be made from the record of
+ * somebody who has not claimed one.
+ *
+ * So the preview is drawn from the capture instead: one record, ten leases, one
+ * county, a full timeline and every drawer key — the same shop window for
+ * everybody, and the one the copy was written against.
+ *
+ * SERVER ONLY, DELIBERATELY. This module imports 2 MB of JSON. `Portal` is a
+ * client component, so it fetches this through `/api/portfolio/sample` rather
+ * than importing it — an import would put the whole capture in the browser
+ * bundle of every portal route, claimed readers included.
+ */
+export function sampleFixture(): Payload {
+  return FIXTURE;
+}
+
 /** what a caller is willing to wait for */
 export interface PayloadOptions {
   /**

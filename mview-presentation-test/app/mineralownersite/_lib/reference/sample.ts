@@ -211,6 +211,17 @@ const OPERATOR_NAMES = [
  */
 const SAMPLE_OWNER = 'Michael Anderson';
 
+/**
+ * The stand-in for the roll key, and it is deliberately not a number.
+ *
+ * `owner.ownernumber` is already set to this on the owner block; the constant
+ * exists so the copy of it that appears inside prose and stat cells is
+ * substituted with the same string rather than a second invented one. A word
+ * where a figure was is what tells a reader the key is withheld — an invented
+ * six-digit number would read as somebody's real one, and might be.
+ */
+const SAMPLE_OWNER_NUMBER = 'SAMPLE';
+
 /** the first name that goes with it, for the greeting and for `names()` */
 const SAMPLE_FIRST_NAME = 'Michael';
 
@@ -381,11 +392,18 @@ function fillProductProse(text: string, filled: Filled): string {
 export interface SampleResult { payload: Payload; factor: number; note: string }
 
 /**
- * Rewrite a live payload as a sample of itself.
+ * Rewrite a payload as a sample of itself.
  *
  * Structure-preserving on purpose: every component renders the sample through
  * exactly the same code path as the real thing, so the not-claimed view cannot
  * drift away from the claimed one as either changes.
+ *
+ * WHICH PAYLOAD IT IS HANDED IS THE CALLER'S DECISION, AND IT CHANGED. `Portal`
+ * used to pass the reader's own snapshot; it now passes the committed capture,
+ * fetched from `/api/portfolio/sample`, so the preview is ONE record for every
+ * reader rather than a different one per visitor. See that call site for the
+ * reasoning. Nothing in this file depends on which it gets — it is the same
+ * shape either way, which is what made the swap a one-line change.
  */
 export function sampleize(input: Payload): SampleResult {
   /* THE PREVIEW'S OWN RECORD, before anything is renamed or scaled — see
@@ -640,6 +658,31 @@ export function sampleize(input: Payload): SampleResult {
    * operator is still substituted — the leak this line exists to stop — and a
    * stat naming a status, a month or a count is left as the API sent it.
    */
+  /**
+   * AND A LEASE NAME IN A STAT VALUE IS A LEASE NAME.
+   *
+   * MEASURED LEAK, and the loudest one left. `subIfOwnOp` looks up OPERATORS
+   * only, so a cell whose value is one of this owner's own lease names came
+   * through as filed while the title above it was substituted — the two halves
+   * of one row disagreeing about whose record it is:
+   *
+   *   title      "Operator changed on LONE MESQUITE"     (sample)
+   *   stat cell  "LEASE · COOK GAS UNIT"                 (REAL)
+   *   title      "KIOWA SPRING fell 23.7% ..."           (sample)
+   *   stat cell  "LEASE · MCCABE ETAL GU"                (REAL)
+   *
+   * The drawer repeated it, because its stat band is mapped through this same
+   * function. `.no-claim .alx-v` blurs these cells in CSS, which is why it
+   * survived a look at the page — but a blur is paint, and the real name was
+   * in the DOM, in the copy buffer and in the accessibility tree.
+   *
+   * `names()` IS THE RIGHT TOOL AND IT DOES NOT OVERREACH. It replaces only
+   * keys it holds — this owner's own lease names, ids and operator spellings,
+   * and her own name. A neighbour's lease, a county, a status word, a month or
+   * a count carries no key and comes back untouched, which is the same
+   * guarantee `subIfOwnOp` gave and the reason a public row can keep its
+   * figures. It subsumes `subIfOwnOp`, whose operator pass is `opSpellings`.
+   */
   const sampleStat = <T extends { value: string; sub?: string }>(st: T): T => ({
     ...st,
     /* NAMES FIRST, THEN FIGURES, AND NEITHER TEST LOOKS AT THE FIRST
@@ -657,8 +700,8 @@ export function sampleize(input: Payload): SampleResult {
        or a volume unit, so "Feb 23, 2021", "9 of 10" and "▲ 720.0%" pass
        through unchanged. Running both over every value is safe and catches
        the compound case. */
-    value: fig(subIfOwnOp(st.value) ?? st.value),
-    sub: st.sub ? fig(st.sub) : st.sub,
+    value: prose(st.value),
+    sub: st.sub ? prose(st.sub) : st.sub,
   });
 
   /**
@@ -696,6 +739,35 @@ export function sampleize(input: Payload): SampleResult {
     if (real.owner.first_name) {
       out = out.split(real.owner.first_name).join(SAMPLE_FIRST_NAME);
     }
+    /**
+     * AND THE OWNER NUMBER, WHICH IS HALF OF THE IDENTITY.
+     *
+     * MEASURED LEAK. `owner.ownernumber` is replaced with `'SAMPLE'` on the
+     * owner block, but the number is also written into PROSE and into a stat
+     * value by the service — the identity drawer opens "built from the roll
+     * rows carrying owner number 715109 AND the name Platis Sydney Kay" and
+     * puts the same figure on its first cell. Substituting only the name left
+     * the panel reading "Michael Anderson · owner number 715109", and this
+     * drawer's own second paragraph is what explains why that is enough: a
+     * roll key plus a roll year is a public lookup, so the alias was one
+     * search away from the person it was standing in for.
+     *
+     * NEITHER MASKING NOR SCALING REACHES IT. `scrub` is no longer used, and
+     * `scaleFigures` deliberately leaves a bare number alone — it is a count, a
+     * year or a percentage's stem everywhere else in the payload. So the
+     * substitution belongs here, beside the name it travels with.
+     *
+     * BOUNDED, so a longer figure that merely CONTAINS these digits is not
+     * rewritten, and only for a key long enough to be one — a two-digit
+     * district code would match half the numbers on the page.
+     */
+    const realNum = real.owner.ownernumber == null ? '' : String(real.owner.ownernumber).trim();
+    if (realNum.length > 3) {
+      out = out.replace(
+        new RegExp(`(?<![\\w,.])${realNum.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w,.])`, 'g'),
+        SAMPLE_OWNER_NUMBER,
+      );
+    }
     return out;
   };
 
@@ -712,7 +784,7 @@ export function sampleize(input: Payload): SampleResult {
       ownername: SAMPLE_OWNER,
       first_name: SAMPLE_FIRST_NAME,
       initials: 'SO',
-      ownernumber: 'SAMPLE',
+      ownernumber: SAMPLE_OWNER_NUMBER,
       city: null,
       identity_note:
         'This is the sample view. No interests are claimed on this account, so every figure ' +
@@ -867,6 +939,20 @@ export function sampleize(input: Payload): SampleResult {
         /* the sparkline beside them is the same series in shape — scaled, not
            masked, so a sample with a flat line does not read as a dead lease */
         spark: a.spark ? a.spark.map(s) : a.spark,
+        /* AND ITS CAPTION, which names the lease the series belongs to and was
+           riding through on the spread: a row titled "Operator changed on LONE
+           MESQUITE" carried a spark reading "COOK GAS UNIT through the
+           handover". The drawer branch found and fixed this same field; the
+           alert row it is copied from still had it. */
+        spark_label: a.spark_label ? prose(a.spark_label) : a.spark_label,
+        /* the remaining three prose fields on an alert. `next_step` is what
+           the drawer's "What to do" is built from, and `action_label` can name
+           a lease — neither is rendered on the row, which is exactly why they
+           were missed. `lease_id` becomes the sample reference the rest of the
+           preview uses, not a real roll id. */
+        next_step: prose(a.next_step),
+        action_label: a.action_label ? names(a.action_label) : a.action_label,
+        lease_id: a.lease_id ? (leaseRef.get(a.lease_id) ?? a.lease_id) : a.lease_id,
       })),
       notes: real.alerts.notes.map(prose),
     },

@@ -35,10 +35,13 @@
  *
  * TWO ADAPTATIONS, and they are the only differences from the reference's file:
  *
- *   1  THE THREE SETTINGS LINKS point at `/mineralownersite/soon/settings`.
- *      The reference serves that page at `/soon/settings`; this app's copy of
- *      it lives under the portal path, which is where `Chrome` already sends
- *      every other "coming soon" row.
+ *   1  THE THREE SETTINGS LINKS point at this app's REAL Settings page and at
+ *      the Alert preferences card on it — `PREFS_HREF` below. They pointed at
+ *      `/mineralownersite/soon/settings`, which is a slug that page's
+ *      `SECTIONS` map does not carry, so all three landed on its anonymous
+ *      fallback announcing that a module which has in fact shipped has not
+ *      opened yet. The account menu in `Chrome` has pointed at the real page
+ *      all along.
  *
  *   2  THEY ARE `next/link`, not `<a>`. Same destination, same classes; it is
  *      an internal route, so this app's lint rule requires the router-aware
@@ -70,6 +73,19 @@ const ICON: Record<string, string> = {
 const TONE: Record<AlertCategory, string> = {
   money: 'gold', activity: '', models: 'blue', community: '',
 };
+
+/**
+ * WHERE "ALERT PREFERENCES" GOES.
+ *
+ * `/mineralownersite/settings` is a real page in this app and its Alert
+ * preferences card is a real section — `settings-alert-preferences` is the id
+ * `SETTINGS_SECTIONS.alertPrefs` renders and the jump nav already links. The
+ * three links here pointed at `/mineralownersite/soon/settings` instead, which
+ * is a slug that page's `SECTIONS` map does not carry, so every one of them
+ * landed on the anonymous fallback card announcing that a section which has in
+ * fact shipped has not opened yet.
+ */
+const PREFS_HREF = '/mineralownersite/settings#settings-alert-preferences';
 
 const KLASS_CHIP: Record<string, string> = {
   Urgent: 'chip-est',
@@ -246,16 +262,62 @@ function watchLedger(p: Payload): Payload['alerts']['ledger'] {
   });
 }
 
+/**
+ * WHEN AN ALERT HAPPENED, as a number the list can be ordered by.
+ *
+ * The payload carries no ISO timestamp on an alert — only the two labels the
+ * row prints (`event_label` "June 2026" / "Sep 8, 2026", `detected_label`).
+ * Both shapes parse, so the label is the key.
+ *
+ * `detected_label` LEADS, and that is the one judgement in here. It is the day
+ * the finding entered this inbox, which is what "latest first" means to a
+ * reader working through it; `event_label` is the day the filing is ABOUT, and
+ * ordering on it puts a forecast dated February 2030 above everything that
+ * actually happened this week. The event date is still the tie-break, so two
+ * alerts detected on one sweep come out newest-event first.
+ *
+ * An unparseable or missing label sorts to the bottom rather than to the top —
+ * `0`, not `NaN` — because a row with no date is not news.
+ */
+function alertTime(label: string | null): number {
+  if (!label) return 0;
+  const t = Date.parse(label);
+  return Number.isFinite(t) ? t : 0;
+}
+
 export interface AlertsProps extends ViewProps {
   readIds: Set<string>;
   markRead: (ids: string[]) => void;
+  /**
+   * HAS THE BROWSER'S OWN READ-STATE BEEN READ YET?
+   *
+   * `false` on the server and on the first client render, `true` once
+   * `Portal`'s layout effect has loaded `mv.alertsRead` — see that file. Every
+   * unread FIGURE on this page is gated on it, because the server cannot know
+   * what this browser has already opened: rendering the count before the set
+   * arrives paints "Mark all 6 read" over a page the reader marked read last
+   * visit, then corrects itself a beat later. A missing count for one frame is
+   * honest; a wrong one is not.
+   */
+  readReady: boolean;
 }
 
 export default function AlertsView(
-  { p, tier, funnel, sample, open, go, readIds, markRead }: AlertsProps,
+  { p, tier, funnel, sample, open, go, readIds, markRead, readReady }: AlertsProps,
 ) {
   const al = p.alerts;
   const lg = useMemo(() => watchLedger(p), [p]);
+
+  /* NEWEST FIRST — the payload's own order is the builder's, which groups by
+     finding type and so interleaves a 2025 completion between two June 2026
+     rows. An inbox is read top-down and the top is where today belongs. */
+  const items = useMemo(
+    () => [...al.items].sort((x, y) => (
+      alertTime(y.detected_label) - alertTime(x.detected_label)
+      || alertTime(y.event_label) - alertTime(x.event_label)
+    )),
+    [al.items],
+  );
 
   /* EVERY FILING THE SWEEP READ, which is the largest true figure the record
      carries and the one this panel is really selling. `timeline.events` is
@@ -266,29 +328,41 @@ export default function AlertsView(
     || (lg.production_filings + lg.nearby_filings);
   const [cat, setCat] = useState<AlertCategory | 'all'>('all');
   const [q, setQ] = useState('');
+  /* THE UNREAD PILL IS A FILTER, NOT A BUTTON — see the filter row below. */
+  const [unreadOnly, setUnreadOnly] = useState(false);
 
   const unclaimed = funnel === 'unclaimed';
 
   /* the four Ultra lists under its headline — everything except the one the
-     headline is already about, newest first as the payload orders them */
+     headline is already about, newest first */
   const ultraRest = useMemo(
-    () => al.items.filter((x) => x.severity !== 'action').slice(0, 4),
-    [al.items],
+    () => items.filter((x) => x.severity !== 'action').slice(0, 4),
+    [items],
   );
-  const action = al.items.find((x) => x.severity === 'action') ?? null;
+  const action = items.find((x) => x.severity === 'action') ?? null;
+  /* what "ALSO on your record" is counting: everything except the lead card
+     directly above it, which is the action alert when there is one */
+  const restCount = al.count - (action ? 1 : 0);
+
+  const isUnread = (a: Alert) => a.unread && !readIds.has(a.id);
+  /* `readReady` gates the FIGURE, not the predicate: the rows still paint in
+     their read/unread colours from the server's own `unread` flag, and only
+     the counts wait for the browser's set. */
+  const unreadCount = readReady ? items.filter(isUnread).length : 0;
 
   /* the search matches anything the row shows — the redesign's box searches by
      lease, operator, county "or any word in it", so it reads the same strings
      the reader can see rather than a hidden index */
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return al.items.filter((a) => {
+    return items.filter((a) => {
       if (cat !== 'all' && a.category !== cat) return false;
+      if (unreadOnly && !(a.unread && !readIds.has(a.id))) return false;
       if (!needle) return true;
       return [a.title, a.body, a.lead_lease, a.klass, a.event_label, ...a.evidence]
         .filter(Boolean).join(' ').toLowerCase().includes(needle);
     });
-  }, [al.items, cat, q]);
+  }, [items, cat, q, unreadOnly, readIds]);
 
   /* WHAT AN EMPTY PAGE MEANS, asked once. `quiet` is the only state that is a
      RESULT — nothing is filtered and there is nothing to show — and it is the
@@ -296,13 +370,15 @@ export default function AlertsView(
      reader set and can clear, so the card names which one. `catLabel` is null
      on `all` precisely because "All" is not a category a sentence can name. */
   const needle = q.trim();
-  const quiet = cat === 'all' && !needle;
+  const quiet = cat === 'all' && !needle && !unreadOnly;
   const catLabel = cat === 'all'
     ? null
     : CATS.find((c) => c.key === cat)?.label.toLowerCase();
 
-  const isUnread = (a: Alert) => a.unread && !readIds.has(a.id);
-  const unreadCount = al.items.filter(isUnread).length;
+  /* every control that empties the page, cleared together — the "show all N"
+     button in the empty card has to undo the Unread pill too, or it offers to
+     show nine alerts and shows none */
+  const clearFilters = () => { setCat('all'); setQ(''); setUnreadOnly(false); };
 
   return (
     <section data-route="app-alerts" className="active">
@@ -324,9 +400,16 @@ export default function AlertsView(
                 </span>
               </div>
               <span className="cr-act">
-                <button className="btn btn-primary btn-lg" type="button" onClick={() => open('identity')}>
+                {/* THE CLAIM CTA STARTS THE CLAIM, it does not explain it.
+                    This opened `identity` — the "how this record was matched"
+                    drawer — so the one control on the page promising "takes
+                    about two minutes" slid a panel of provenance copy over the
+                    page and left the reader to find the wizard themselves.
+                    `/mineralownersite/claim` is that wizard, and it is where
+                    the sidebar's own "Claim Mineral Owner" row already goes. */}
+                <Link className="btn btn-primary btn-lg" href="/mineralownersite/claim">
                   Claim your record — free, no obligation
-                </button>
+                </Link>
                 <span className="cr-note">Have a family invite code? Enter it during the claim.</span>
               </span>
             </div>
@@ -417,7 +500,12 @@ export default function AlertsView(
               <div className="u-more">
                 <p className="u-more-h">
                   Also on your record{' '}
-                  <span className="u-more-n num">{n0(al.count)}</span>
+                  {/* ALSO means "as well as the card above". The badge printed
+                      `al.count`, the whole inbox — so a nine-alert record with
+                      one action alert showed a 9 over a list of four titles and
+                      a footer reading "and 4 more", which do not add to it. The
+                      lead card is not "also". */}
+                  <span className="u-more-n num">{n0(restCount)}</span>
                 </p>
                 <ul className="u-more-l">
                   {ultraRest.map((x) => (
@@ -432,12 +520,12 @@ export default function AlertsView(
                     </li>
                   ))}
                 </ul>
-                {al.count > ultraRest.length + (action ? 1 : 0)
+                {restCount > ultraRest.length
                   ? (
                     <p className="u-more-f">
                       and{' '}
                       <strong className="num">
-                        {n0(al.count - ultraRest.length - (action ? 1 : 0))}
+                        {n0(restCount - ultraRest.length)}
                       </strong>{' '}
                       more — Essentials and above show the full inbox.
                     </p>
@@ -464,16 +552,44 @@ export default function AlertsView(
               opens the evidence behind it
             </p>
           </div>
-          <div className="flex" style={{ flexWrap: 'wrap', gap: 6 }}>
-            <button
-              className="btn btn-ghost btn-sm" type="button"
-              disabled={!unreadCount}
-              onClick={() => markRead(al.items.filter(isUnread).map((a) => a.id))}
-            >
-              {unreadCount ? `Mark all ${unreadCount} read` : 'All read'}
-            </button>
-            <Link className="btn btn-ghost btn-sm" href="/mineralownersite/soon/settings">Alert preferences</Link>
-          </div>
+          {/* NEITHER CONTROL EXISTS FOR A SAMPLE.
+              Nothing in this list is the reader's, so "Mark all 6 read" marks
+              a stranger's inbox read in this browser, and "Alert preferences"
+              offers to tune the delivery of alerts that are not being
+              delivered. On the not-claimed page there is exactly one thing to
+              do, and the rail above it is already asking. */}
+          {unclaimed
+            ? null
+            : (
+              <div className="flex" style={{ flexWrap: 'wrap', gap: 6 }}>
+                {/* THE COUNT WAITS FOR THE BROWSER'S OWN READ-STATE.
+                    `mv.alertsRead` is client-side by contract, so the server
+                    renders this button from `unread` alone and used to print
+                    "Mark all 6 read" on a page the reader had already cleared,
+                    correcting itself once hydration landed. Held back until
+                    `readReady`, the button appears once and says one thing. */}
+                {readReady
+                  ? (
+                    <button
+                      className="btn btn-ghost btn-sm" type="button"
+                      disabled={!unreadCount}
+                      onClick={() => markRead(items.filter(isUnread).map((a) => a.id))}
+                    >
+                      {unreadCount ? `Mark all ${unreadCount} read` : 'All read'}
+                    </button>
+                  )
+                  : null}
+                {/* THE REAL SETTINGS PAGE, not the coming-soon card.
+                    `/mineralownersite/settings` ships an Alert preferences
+                    card — per type, per channel — and the account menu has
+                    pointed at it all along. These three links were still on
+                    the reference's `/soon/settings`, which has no `settings`
+                    section of its own and so answered with the generic "this
+                    part of the portal has not opened yet" over a page that
+                    had. */}
+                <Link className="btn btn-ghost btn-sm" href={PREFS_HREF}>Alert preferences</Link>
+              </div>
+            )}
         </div>
 
         {/* ---------- the sample badge ---------- */}
@@ -533,7 +649,12 @@ export default function AlertsView(
                   day — including the days it says nothing.
                 </strong>
               </div>
-              <Link className="btn btn-ghost btn-sm" href="/mineralownersite/soon/settings">Choose what reaches you</Link>
+              {/* same destination as "Alert preferences" in the header — the
+                  two controls make the same offer and used to land on two
+                  different-looking answers; and neither belongs on a sample */}
+              {unclaimed
+                ? null
+                : <Link className="btn btn-ghost btn-sm" href={PREFS_HREF}>Choose what reaches you</Link>}
             </div>
 
             <div className="aw-grid">
@@ -688,11 +809,18 @@ export default function AlertsView(
               </button>
             );
           })}
-          {al.items.some(isUnread)
+          {/* THE UNREAD PILL IS A PILL, so it filters like the five beside it.
+              It used to MARK ALL SIX READ instead — the one control in a row of
+              filters that changed the data rather than the view, sitting next
+              to "Mark all N read" in the header which does exactly that and
+              says so. Pressing "Unread · 6" to see the six unread alerts
+              emptied the chip and left the same nine rows on screen, with no
+              way back. Now it narrows to them and presses again to come out. */}
+          {readReady && items.some(isUnread)
             ? (
               <button
-                type="button" className={cat === 'all' && false ? 'on' : ''}
-                onClick={() => markRead(al.items.filter(isUnread).map((a) => a.id))}
+                type="button" className={unreadOnly ? 'on' : ''}
+                onClick={() => setUnreadOnly((v) => !v)} aria-pressed={unreadOnly}
                 title="Unread means the event is newer than the last time notifications went out"
                 style={{ marginLeft: 'auto' }}
               >
@@ -734,7 +862,12 @@ export default function AlertsView(
                   title="Tap — this alert explains itself in a side panel"
                   onClick={() => { markRead([a.id]); open('alert:' + a.id); }}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
+                    /* `e.code` as well as `e.key`: a layout or IME that does
+                       not report a space in `key` still reports `Space` here,
+                       and a row that answers the mouse but not the keyboard is
+                       not a button whatever `role` says. Enter and Space both
+                       activate, measured. */
+                    if (e.key === 'Enter' || e.key === ' ' || e.code === 'Space') {
                       e.preventDefault();
                       markRead([a.id]);
                       open('alert:' + a.id);
@@ -865,12 +998,18 @@ export default function AlertsView(
                         ? (
                           <>
                             No alert matches &ldquo;{q.trim()}&rdquo;
-                            {catLabel ? <> in {catLabel}</> : null}.{' '}
+                            {catLabel ? <> in {catLabel}</> : null}
+                            {unreadOnly ? <> among the unread</> : null}.{' '}
                           </>
                         )
-                        : <>No {catLabel} alert matches.{' '}</>}
-                      <button type="button" className="linklike"
-                        onClick={() => { setCat('all'); setQ(''); }}>
+                        : unreadOnly && !catLabel
+                          ? <>Nothing is unread.{' '}</>
+                          : (
+                            <>
+                              No {unreadOnly ? 'unread ' : ''}{catLabel} alert matches.{' '}
+                            </>
+                          )}
+                      <button type="button" className="linklike" onClick={clearFilters}>
                         show all {al.count} →
                       </button>
                     </>
@@ -925,9 +1064,10 @@ export default function AlertsView(
                 this inbox starts filling with findings about your own leases — production filed,
                 permits nearby, operator handovers, and anything that looks like a payment gap.
               </span>
-              <button className="btn btn-primary" type="button" onClick={() => open('identity')}>
+              {/* same destination as the rail at the top — see its note */}
+              <Link className="btn btn-primary" href="/mineralownersite/claim">
                 Claim your record — free, no obligation
-              </button>
+              </Link>
               <button className="small linklike" type="button" onClick={() => go('activities')}>
                 or explore the public activity meanwhile →
               </button>
@@ -939,7 +1079,7 @@ export default function AlertsView(
         <Band tier={tier} from="detailed">
           <p className="tiny muted" style={{ marginTop: 14 }}>
             Delivery is your call — email, push, or in-app per alert type in{' '}
-            <Link href="/mineralownersite/soon/settings">Settings</Link>. Quiet by design: alerts fire on real events,
+            <Link href={PREFS_HREF}>Settings</Link>. Quiet by design: alerts fire on real events,
             never to look busy. {al.window_note}.
           </p>
         </Band>
