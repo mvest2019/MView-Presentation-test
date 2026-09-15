@@ -115,18 +115,6 @@ export function InviteWorkbench() {
     [lease, picked],
   );
 
-  /*
-   * HOW FAR THE READER HAS ACTUALLY GOT, which is what the rail ticks.
-   *
-   * Step 1 is done on arrival — a lease is always selected, because a picker
-   * with nothing in it would make the whole page an empty state on first paint.
-   * Step 2 is done once anybody is ticked. STEPS 3 AND 4 ARE NEVER TICKED FROM
-   * HERE: copying is a clipboard event this page cannot verify, and sending
-   * happens in a mail client it cannot see. A rail that ticked "sent" because a
-   * button was pressed would be telling the reader something it does not know.
-   */
-  const done = picked.size ? 2 : 1;
-
   return (
     /* `.iv-body` AND `.iv-main`, NOT A TAILWIND GRID — see `invite.css`.
        The old two-column grid was keyed to a 1100px VIEWPORT, and this page's
@@ -175,7 +163,7 @@ export function InviteWorkbench() {
         />
       </div>
 
-      <InviteRail steps={FLOW} at={done} plan={plan} />
+      <InviteRail steps={FLOW} plan={plan} />
     </div>
   );
 }

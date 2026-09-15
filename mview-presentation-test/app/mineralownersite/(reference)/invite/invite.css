@@ -21,7 +21,7 @@
  * So there is no width rule in this file at all now, and `page.tsx` passes no
  * `shellClass`. The page inherits `.mv-ref-app .app-body` — `padding: 26px`,
  * `max-width: 1180px`, `1340px` at the Pro density, and the group's own narrow
- * rules below 900px — exactly as its neighbours do.
+ * rules below 900px — exactly as its neighbors do.
  */
 
 /* ===========================================================================
@@ -88,8 +88,8 @@
  *
  * So the scale is capped at 700 and the body text sits at 400-600, which is
  * what `dashboard-reference.css` does. The HIERARCHY is untouched — every
- * element is still heavier or lighter than its neighbours in the same order,
- * one notch down. Sizes, colours and spacing are the reference's and are not
+ * element is still heavier or lighter than its neighbors in the same order,
+ * one notch down. Sizes, colors and spacing are the reference's and are not
  * touched by this pass.
  *
  * EVERY BREAKPOINT IS A CONTAINER QUERY, which is also the reference's, and it
@@ -290,15 +290,11 @@
   display: block; font-style: normal; font-size: 10.5px; font-weight: 400; line-height: 1.5;
   color: var(--slate); margin-top: 1px;
 }
-/* DONE, DOING, AND NOT YET — by ink and weight, never by hue. */
-.mv-ref-app .iv-steps > li.done .iv-rn {
-  background: var(--green); color: var(--green-ink); box-shadow: none;
-}
-.mv-ref-app .iv-steps > li.done strong { color: var(--slate); }
-.mv-ref-app .iv-steps > li.now .iv-rn {
-  background: #fff; color: var(--green-deep); box-shadow: inset 0 0 0 2px var(--green);
-}
-.mv-ref-app .iv-steps > li.now strong { color: var(--green-ink); font-weight: 700; }
+/* NO `.done` AND NO `.now`. The rail used to fill rungs 1 and 2 green and ring
+   the next one; asked for directly, it no longer marks any step as reached, so
+   `RailStep` emits neither class and the rules that dressed them are gone
+   rather than left here unreachable. Every rung in this lane now takes the
+   `.iv-rn` treatment above, which is the one it already had while pending. */
 /* their lane: nothing here works yet, and the rail says so by drawing back */
 .mv-ref-app .iv-steps.ghost .iv-rn { box-shadow: inset 0 0 0 1px #dfe5e3; color: #98a4ab; }
 .mv-ref-app .iv-steps.ghost strong { font-weight: 600; color: #5d6b74; }
@@ -360,7 +356,7 @@
    scrolling past a phone book. One bounded vertical scroller instead: every
    owner reachable, and step 3 stays where it was.
    THE HEADER STICKS, because a scrolled list whose columns are off screen is
-   four columns of unlabelled data. */
+   four columns of unlabeled data. */
 .mv-ref-app .iv-list {
   max-height: 300px; overflow-y: auto; overscroll-behavior: contain;
   border: 1px solid var(--line); border-radius: 11px; background: #fff;
@@ -453,11 +449,11 @@
        already the widest column and the first thing in the row; it does not
        need weight as well.
 
-     · NO GREY HEADER BAND. That table paints its header row in the wash grey
-       (`bg-mv-portal-wash`) with grey (`text-mv-muted`) type on it. The header
+     · NO GREY HEADER BAND. That table paints its header row in the wash gray
+       (`bg-mv-portal-wash`) with gray (`text-mv-muted`) type on it. The header
        here stays white — it is sticky, so white is also what keeps it legible
        over the rows sliding under it — with a single hairline beneath and the
-       label in `--slate`, which is the portal's near-navy rather than a grey.
+       label in `--slate`, which is the portal's near-navy rather than a gray.
    ============================================================================ */
 .mv-ref-app .iv-tbl { width: 100%; font-size: 13px; }
 .mv-ref-app .iv-tbl th,
@@ -501,7 +497,7 @@
   display: block;
 }
 /* A TICKED ROW IS TINTED THE WAY AN UNREAD ALERT IS: a mint wash behind a
-   green left edge, matching `.al-row.unreadal`. The reference grey-on-ink said
+   green left edge, matching `.al-row.unreadal`. The reference gray-on-ink said
    the same thing in a palette this portal does not use. */
 .mv-ref-app .iv-tbl tbody tr.on > td { background: #f4fdf9; }
 .mv-ref-app .iv-tbl tbody tr.on > td:first-child {
@@ -605,10 +601,10 @@
 }
 /* THE CODE IS THE ONE THING THE RECIPIENT HAS TO ACT ON, and it was plain text
    in a wall of plain text. Marked by ink and a border rather than a highlighter
-   colour. The reference marks it in ink; here it is
+   color. The reference marks it in ink; here it is
    `--green` on `--green-ink`, for the reason in this file header: on THIS
-   portal green is the interface colour, and the one thing the recipient has to
-   act on should be picked out in the colour the reader has already learned
+   portal green is the interface color, and the one thing the recipient has to
+   act on should be picked out in the color the reader has already learned
    means "press this". */
 .mv-ref-app .iv-hl {
   background: var(--green); color: var(--green-ink); border-radius: 5px;

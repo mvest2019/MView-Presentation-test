@@ -27,8 +27,9 @@ import {
   inputClass,
 } from "@/app/_components/auth-shell";
 import { GoogleSignIn } from "@/app/_components/google-sign-in";
-import { normaliseInviteCode } from "@/lib/invite-code";
+import { normalizeInviteCode } from "@/lib/invite-code";
 import { PORTAL_HOME } from "@/lib/routes";
+import { PHONE_PLACEHOLDER, formatPhoneNumber } from "@/lib/phone";
 
 /**
  * Sign up — the design's `route:signup`, wired to the live endpoints.
@@ -67,37 +68,13 @@ import { PORTAL_HOME } from "@/lib/routes";
  */
 const RESEND_COOLDOWN_SECONDS = 300;
 
-/**
- * `5551234567` → `(555) 123-4567`, ported from `formatPhoneNumber` in the live
- * repo's `app/register/_components/RegistrationValidation.ts`.
- *
- * THE TEN-DIGIT CAP IS `slice(6, 10)`. Everything past the tenth digit is
- * discarded rather than rejected, so an 11th keystroke is simply absorbed — which
- * is what stops a bare run of digits sneaking past the control's `maxLength`.
- *
- * Partial input formats as it grows, so the punctuation appears under the caret
- * rather than all at once at the end: "5" → "(5", "5551" → "(555) 1". That is the
- * live behaviour and the reason the opening bracket is unbalanced mid-type.
- *
- * Returns "" for an empty or all-punctuation string, which matters because the
- * field is optional and the schema's checks all short-circuit on "".
- */
-function formatPhoneNumber(value: string): string {
-  const numbers = value.replace(/\D/g, "");
-  if (numbers.length === 0) return "";
-  if (numbers.length <= 3) return `(${numbers}`;
-  if (numbers.length <= 6)
-    return `(${numbers.slice(0, 3)}) ${numbers.slice(3)}`;
-  return `(${numbers.slice(0, 3)}) ${numbers.slice(3, 6)}-${numbers.slice(6, 10)}`;
-}
-
 export function RegisterForm({
   next,
   inviteCode = "",
 }: {
   next: string;
   /**
-   * The code from the invitation link, already normalised to eight digits by
+   * The code from the invitation link, already normalized to eight digits by
    * `app/register/page.tsx`, or "" when there was none.
    *
    * IT IS A DEFAULT VALUE AND NOT A CONTROLLED PROP. The spec requires the
@@ -144,7 +121,7 @@ export function RegisterForm({
          `3159-7778` because that is how eight digits are read back off paper,
          but the box shows `31597778` — the hyphen is punctuation the reader did
          not type and has to work around when editing, and it is not part of the
-         code. `normaliseInviteCode` strips it either way, so somebody who
+         code. `normalizeInviteCode` strips it either way, so somebody who
          copies the hyphenated form off the letter is still accepted.
 
          SET EVEN WHEN THE FIELD IS NOT RENDERED — "" in that case. It costs
@@ -171,7 +148,7 @@ export function RegisterForm({
   });
   const [nameNow, emailRaw, passwordNow, phoneNow] = watched;
   /*
-   * NORMALISED THE SAME WAY THE SCHEMA DOES — trimmed and lower-cased (see the
+   * NORMALIZED THE SAME WAY THE SCHEMA DOES — trimmed and lower-cased (see the
    * note on `email` in `auth-schema.ts`).
    *
    * This was `.trim()` only, which mattered because THIS value, not the parsed
@@ -181,7 +158,7 @@ export function RegisterForm({
    * issued against one spelling and the account created against another, and
    * whether that worked came down to the backend comparing case-insensitively.
    *
-   * With both sides normalised the comparison below no longer needs to lower-case
+   * With both sides normalized the comparison below no longer needs to lower-case
    * anything, but it is kept explicit rather than relying on this line staying as
    * it is.
    */
@@ -299,7 +276,7 @@ export function RegisterForm({
        * were effectively read-only after one wrong code, with no way forward
        * except backspacing through all six.
        *
-       * Emptying them is also the right behaviour on its own terms: a rejected
+       * Emptying them is also the right behavior on its own terms: a rejected
        * code is not a starting point for the next attempt, and the caret belongs
        * where the retype starts. `select()` on focus (below) fixes the same
        * lock-out for the general case — correcting a single digit mid-code —
@@ -347,7 +324,7 @@ export function RegisterForm({
      *
      * The spec is explicit on both halves: a registration that used a code ends
      * in the Portal, and a registration that did not keeps the existing
-     * behaviour untouched. So the override is conditional on the code and
+     * behavior untouched. So the override is conditional on the code and
      * nothing else — `next` is still computed exactly as it was, still
      * leading-slash checked against an open redirect on the server, and still
      * the destination for every visitor who did not come from an invitation.
@@ -362,7 +339,7 @@ export function RegisterForm({
      * attach it to. Dropping a newly signed-in member back on the public finder
      * would ask them to prove who they are twice.
      */
-    const usedCode = normaliseInviteCode(values.inviteCode);
+    const usedCode = normalizeInviteCode(values.inviteCode);
     if (usedCode) {
       window.location.assign(PORTAL_HOME);
       return;
@@ -520,7 +497,7 @@ export function RegisterForm({
                 type="tel"
                 inputMode="tel"
                 autoComplete="tel"
-                placeholder="(555) 555-0123"
+                placeholder={PHONE_PLACEHOLDER}
               />
             );
           }}
@@ -600,7 +577,7 @@ export function RegisterForm({
                   types the hyphen too — an eight-character cap would silently
                   swallow their last digit and then call the result malformed.
                   The spare character absorbs the punctuation;
-                  `normaliseInviteCode` strips it before anything is sent.
+                  `normalizeInviteCode` strips it before anything is sent.
                 */
                 maxLength={9}
                 placeholder="31597778"
@@ -645,7 +622,7 @@ export function RegisterForm({
                center align"). The panel is full width and the label is two words,
                so left-aligned it sat in the corner of a wide green band. The tick
                travels with the text because both are flex children of this row —
-               centring the row centres the pair as a unit rather than the words
+               centering the row centres the pair as a unit rather than the words
                alone. */
             <div className="flex items-center justify-center gap-2 rounded-[10px] border border-mv-mint-line bg-mv-mint px-[14px] py-[11px] text-[14px] font-semibold text-mv-green-deep">
               <span aria-hidden="true">✓</span>
@@ -788,7 +765,7 @@ export function RegisterForm({
                    *
                    * Matching the weight rather than out-shouting it: the row now
                    * has one weight throughout, and "Change email" stays the
-                   * actionable one by being underlined with a hover colour, not by
+                   * actionable one by being underlined with a hover color, not by
                    * being the darker of the two. `tabular-nums` so the seconds
                    * ticking 9→8 does not shift the text width each second.
                    */
@@ -915,7 +892,7 @@ export function RegisterForm({
               · "Free plan includes: 1 owner profile • 1 visible lease • Upgrade
                  at any time."
 
-            Together they were six lines of grey type between the submit button
+            Together they were six lines of gray type between the submit button
             and the sign-in link — the last of them had already been flattened
             from a <ul> on 2026-08-17 to claw back space, which treated the
             symptom. The live register form carries none of it (its only footer is

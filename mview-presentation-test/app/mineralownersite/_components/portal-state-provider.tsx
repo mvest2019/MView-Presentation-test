@@ -79,6 +79,24 @@ export function usePortalState(): PortalStateValue {
   return value;
 }
 
+/**
+ * THE SAME VALUE, OR `null` OUTSIDE THIS PROVIDER — for a component that can
+ * legitimately render under either shell.
+ *
+ * WHY THIS EXISTS. `usePortalState` throws, which is right for a component that
+ * has no meaning without the provider. But `ViewTierSwitch` now renders under
+ * BOTH shells: the `(portal)` one, which has this provider, and `(reference)`,
+ * which has `PortalViewStateProvider` instead. A hook that throws cannot be
+ * called speculatively — and React forbids calling it conditionally — so the
+ * switch needs a reader that answers "not here" rather than raising.
+ *
+ * Mirrors `usePortalViewState()` in `reference/view-state.tsx`, which is
+ * nullable for the same reason and documents it the same way.
+ */
+export function usePortalStateOptional(): PortalStateValue | null {
+  return useContext(PortalStateContext);
+}
+
 export function PortalStateProvider({ children }: { children: ReactNode }) {
   const params = useSearchParams();
 

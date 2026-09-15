@@ -18,14 +18,36 @@ import { profileMeta, type ProfileSection } from "../_lib/profile-data";
  * of composition over the shared `Card`, which is the piece worth sharing, and
  * both routes still get their heading, anchor and id from one record.
  */
+/**
+ * THE CLASS EVERY TEXT BOX ON THIS ROUTE WEARS.
+ *
+ * It was written out in `identity-card.tsx` and nowhere else, until the
+ * change-password panel needed a second set of boxes that had to look identical
+ * to the first. Two copies of a fourteen-utility string is how one of them ends
+ * up with a different focus ring six months from now, so it is named once here
+ * and imported by both.
+ */
+export const PROFILE_INPUT_CLASS =
+  "w-full rounded-[9px] border border-mv-line-strong bg-mv-card px-3 py-[11px] text-sm text-mv-ink outline-none placeholder:text-mv-placeholder focus-visible:border-mv-green focus-visible:outline-2 focus-visible:outline-mv-green";
+
 export function ProfileCardShell({
   section,
   action,
+  className,
   children,
 }: {
   section: ProfileSection;
   /** A link or chip on the right of the heading row. */
   action?: ReactNode;
+  /**
+   * Extra classes for the card box itself. One caller uses it, for one thing:
+   * `IdentityCard` needs `flex flex-col` so its save row can sit on the bottom
+   * edge of a stretched card — see the grid note in `page.tsx`. It is a prop
+   * rather than a default because the other card is the TALL one and has no
+   * spare height to distribute; making every card a flex column would change
+   * how three unrelated blocks lay out to serve a case only one of them has.
+   */
+  className?: string;
   children: ReactNode;
 }) {
   return (
@@ -36,7 +58,9 @@ export function ProfileCardShell({
          heading lands underneath it. `target:` draws the arrival outline, the
          same treatment settings cards get, so a link to `#profile-security`
          marks what it landed on. */
-      className="scroll-mt-24 target:outline-2 target:outline-offset-2 target:outline-mv-green"
+      className={`scroll-mt-24 target:outline-2 target:outline-offset-2 target:outline-mv-green${
+        className ? ` ${className}` : ""
+      }`}
     >
       {action ? (
         <CardHeader title={<ProfileHeading>{section.heading}</ProfileHeading>} action={action} />

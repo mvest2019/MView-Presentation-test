@@ -8,6 +8,7 @@ import {
 import type { Payload } from "../../_lib/reference/payload";
 import { BillingView } from "./_components/billing-view";
 import "./billing.css";
+import "../../page-gutters.css";
 
 /**
  * BILLING & PLAN — `/mineralownersite/billing`.
@@ -80,7 +81,7 @@ export default async function BillingPage({
   }
 
   return (
-    <Portal route={null} initial={initial}>
+    <Portal route={null} initial={initial} shellClass="mv-wide-gutters">
       <BillingView />
     </Portal>
   );

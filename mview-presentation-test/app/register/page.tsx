@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import { INVITE_CODE_PARAM, normaliseInviteCode } from "@/lib/invite-code";
+import { INVITE_CODE_PARAM, normalizeInviteCode } from "@/lib/invite-code";
 import { PORTAL_HOME } from "@/lib/routes";
 import { getSessionUser } from "@/lib/session";
 
@@ -32,12 +32,12 @@ export const metadata: Metadata = {
  * ── `?code=` — ARRIVING FROM AN INVITATION ──
  *
  * `/claim?code=…` is the address printed in every invite letter, and it
- * redirects here carrying the code. This page reads it, normalises it once more
+ * redirects here carrying the code. This page reads it, normalizes it once more
  * — the visitor may also have reached `/register?code=…` directly, by editing
  * the URL or from a link somebody pasted — and hands it to the form as the
  * field's initial value.
  *
- * NORMALISED AND NOT TRUSTED. A value that is not eight digits becomes `null`
+ * NORMALIZED AND NOT TRUSTED. A value that is not eight digits becomes `null`
  * and the field opens empty, so the form can never render a pre-filled code
  * that its own schema would then reject. The visitor can still type one.
  *
@@ -56,7 +56,7 @@ export default async function RegisterPage({
 
   const rawCode = params[INVITE_CODE_PARAM];
   const inviteCode =
-    normaliseInviteCode(Array.isArray(rawCode) ? rawCode[0] : rawCode) ?? "";
+    normalizeInviteCode(Array.isArray(rawCode) ? rawCode[0] : rawCode) ?? "";
 
   return (
     <AuthShell>

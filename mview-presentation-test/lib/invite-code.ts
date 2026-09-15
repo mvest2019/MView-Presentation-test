@@ -19,7 +19,7 @@
  *
  * So a code arrives in at least four forms: from the link (bare), typed off the
  * page (hyphenated), pasted from the email with a stray space, or pasted with
- * the whole `code=` fragment attached. `normalise` accepts all of them and
+ * the whole `code=` fragment attached. `normalize` accepts all of them and
  * returns the eight digits; `format` puts the hyphen back for display.
  *
  * ── WHAT "VALID" MEANS HERE, AND WHAT IT DOES NOT ──
@@ -47,7 +47,7 @@ const DIGITS = 8;
  * length check then runs on what is left, so a nine-digit paste fails rather
  * than being silently truncated to something that looks plausible.
  */
-export function normaliseInviteCode(raw: string | null | undefined): string | null {
+export function normalizeInviteCode(raw: string | null | undefined): string | null {
   if (raw == null) return null;
   const digits = String(raw).replace(/\D/g, "");
   return digits.length === DIGITS ? digits : null;
@@ -60,7 +60,7 @@ export function normaliseInviteCode(raw: string | null | undefined): string | nu
  * the hyphen is punctuation the reader never typed and has to edit around, and
  * it is not part of the code. It stays here because paper is a different
  * medium — eight unbroken digits are easy to lose your place in when copying
- * them off a printed page — and because `normaliseInviteCode` accepts either
+ * them off a printed page — and because `normalizeInviteCode` accepts either
  * form, so the two can differ safely.
  */
 export function formatInviteCode(code: string): string {
@@ -80,7 +80,7 @@ export function isWellFormedInviteCode(raw: string | null | undefined): boolean 
   if (raw == null) return true;
   const trimmed = String(raw).trim();
   if (trimmed === "") return true;
-  return normaliseInviteCode(trimmed) !== null;
+  return normalizeInviteCode(trimmed) !== null;
 }
 
 /** the query parameter the invite letters put the code in */

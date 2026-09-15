@@ -12,7 +12,7 @@ import { CREDIT } from "../(reference)/invite/_lib/invite-flow";
  *   Profile   the balance, and the way through to the other two
  *
  * `profile/page.tsx` carries an explicit warning against exactly this: it says
- * plan and capacity belong to Billing, and that "summarising them here would
+ * plan and capacity belong to Billing, and that "summarizing them here would
  * put a second, staler answer on screen next to that page's real one". The
  * warning is right, and the answer is not to keep credits off the profile — it
  * is to make sure there is only ever ONE answer to copy. That is this file.
@@ -63,7 +63,7 @@ export interface LedgerEntry {
   title: string;
   detail: string;
   balance: string;
-  /** a posting that actually paid — its balance reads in the accent colour */
+  /** a posting that actually paid — its balance reads in the accent color */
   credited?: boolean;
 }
 

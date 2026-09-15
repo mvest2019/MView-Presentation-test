@@ -35,7 +35,7 @@ function MVestimate() {
  * ── THE RENEWAL PANEL IS AN EXAMPLE, AND SAYS SO ──
  *
  * There is no renewal to approve — the term runs to 2027 — so the panel shows
- * the approval a reader WILL be asked for, labelled as an example. That is the
+ * the approval a reader WILL be asked for, labeled as an example. That is the
  * source's own framing and it is load-bearing: the whole argument of this page
  * is that nothing renews without an explicit click, and the way to make that
  * credible is to show the click before it is needed.

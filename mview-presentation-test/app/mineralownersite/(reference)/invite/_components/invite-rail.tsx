@@ -12,13 +12,24 @@ import type { CreditPlan, FlowStep } from "../_lib/invite-types";
  * company: where you are, what is left, and what your cousin will be asked to
  * do — visible the whole way down instead of scrolled past once.
  *
- * ── THE READER'S OWN STEPS TICK; THEIR CO-OWNER'S DO NOT ──
+ * ── THE RAIL READS AS INSTRUCTIONS, NOT AS PROGRESS ──
  *
- * Steps 1-4 are the four things this page can watch happen, so they tick as
- * they happen and the rail is a position rather than a poster. Steps 5-8 are on
- * a claim-by-code flow that does not exist yet, and step 9 needs a credit
- * ledger — so they are drawn hollow, in their own panel, under a heading that
- * says whose they are. Styling all nine alike would promise five.
+ * Steps 1-4 used to tick: the page watched a lease get picked and a name get
+ * ticked and turned rungs 1 and 2 into green check marks, so the card was a
+ * position as much as a list. Asked for directly — show the steps, do not mark
+ * any of them as reached. Every rung now draws its own number, in the one
+ * treatment, and the card says how to invite rather than how far you have got.
+ *
+ * That also ends a small dishonesty the tick had. Only two of the four could
+ * ever be observed — copying is a clipboard event this page cannot verify and
+ * sending happens in a mail client it cannot see — so rungs 3 and 4 were
+ * permanently un-ticked no matter what the reader did, and a list where the
+ * back half can never complete reads as stalled rather than as a recipe.
+ *
+ * Steps 5-8 are on a claim-by-code flow that does not exist yet, and step 9
+ * needs a credit ledger — so they keep their own hollow panel under a heading
+ * that says whose they are. That distinction is about what is BUILT and stays:
+ * styling all nine alike would promise five.
  *
  * That is the same rule the sidebar and `portal-routes.ts` already follow:
  * unbuilt is shown as unbuilt, never as locked or premium, and never as
@@ -34,7 +45,7 @@ import type { CreditPlan, FlowStep } from "../_lib/invite-types";
  * ── WHAT THE RE-SKIN CHANGED ──
  *
  * Three `<Card>`s of Tailwind became `.iv-rail` and three `.iv-railcard`s, and
- * with them the rail's own RESPONSIVE BEHAVIOUR, which the old build did not
+ * with them the rail's own RESPONSIVE BEHAVIOR, which the old build did not
  * have. `.iv-rail` carries `order: -1` so a stacked layout puts the steps ABOVE
  * the work they introduce rather than below it; between a 600px and an 880px
  * container the three cards lay out two across with the earnings card spanning
@@ -47,12 +58,9 @@ import type { CreditPlan, FlowStep } from "../_lib/invite-types";
  */
 export function InviteRail({
   steps,
-  at,
   plan,
 }: {
   steps: FlowStep[];
-  /** How many of the reader's own steps are done — 0 to 4. */
-  at: number;
   plan: CreditPlan;
 }) {
   const mine = steps.filter((step) => step.who === "you" && step.n <= 4);
@@ -65,12 +73,7 @@ export function InviteRail({
         <span className="iv-railk">How to invite</span>
         <ol className="iv-steps">
           {mine.map((step) => (
-            <RailStep
-              key={step.n}
-              step={step}
-              done={step.n <= at}
-              now={step.n === at + 1}
-            />
+            <RailStep key={step.n} step={step} />
           ))}
         </ol>
       </div>
@@ -83,7 +86,7 @@ export function InviteRail({
             the "Then they" heading already say whose steps these are. */}
         <ol className="iv-steps ghost">
           {theirs.map((step) => (
-            <RailStep key={step.n} step={step} done={false} now={false} />
+            <RailStep key={step.n} step={step} />
           ))}
         </ol>
       </div>
@@ -144,7 +147,8 @@ export function InviteRail({
 }
 
 /**
- * One step.
+ * One step: its number and what it asks for. It takes no state, because there
+ * is none left to take — see the rail's note on why nothing ticks.
  *
  * THE GHOST LANE IS THE LIST'S, NOT THE ROW'S. `.iv-steps.ghost` styles every
  * row inside it, so the "not yet" treatment is set once on the `<ol>` that
@@ -155,19 +159,11 @@ export function InviteRail({
  * It is deliberately NOT a lock icon or a dimmed premium treatment: those say
  * "not for you", and the truth here is "not yet, for anybody".
  */
-function RailStep({
-  step,
-  done,
-  now,
-}: {
-  step: FlowStep;
-  done: boolean;
-  now: boolean;
-}) {
+function RailStep({ step }: { step: FlowStep }) {
   return (
-    <li className={done ? "done" : now ? "now" : undefined}>
+    <li>
       <span className="iv-rn" aria-hidden="true">
-        {done ? "✓" : step.n}
+        {step.n}
       </span>
       <div>
         {/* THE TITLE AND NOTHING ELSE. A build-state tag ("in your own mail")

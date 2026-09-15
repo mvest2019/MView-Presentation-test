@@ -8,6 +8,7 @@ import {
 import type { Payload } from "../../_lib/reference/payload";
 import { InviteView } from "./_components/invite-view";
 import "./invite.css";
+import "../../page-gutters.css";
 
 /**
  * INVITE CO-OWNERS — `/mineralownersite/invite`.
@@ -93,7 +94,7 @@ export default async function InviteCoOwnersPage({
        Activities beside it, which on a wide monitor reads as the page having
        come loose from the shell. It takes the group's width now. See
        `invite.css`. */
-    <Portal route={null} initial={initial}>
+    <Portal route={null} initial={initial} shellClass="mv-wide-gutters">
       <InviteView />
     </Portal>
   );

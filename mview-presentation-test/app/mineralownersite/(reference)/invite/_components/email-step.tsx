@@ -282,7 +282,7 @@ export function EmailStep({
               />
               {/*
                 THE INSERT BUTTONS SAY WHAT THEY ADD, IN WORDS. They were
-                labelled with the brace syntax itself — `{name}`, `{code}` —
+                labeled with the brace syntax itself — `{name}`, `{code}` —
                 which means nothing to a reader who has never written a
                 template, beside a character counter nobody needs until they are
                 near the limit.

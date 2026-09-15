@@ -20,7 +20,7 @@ import { useState, type ReactNode } from "react";
  * split is smaller than both and cannot inject anything: the delimiter is the
  * only syntax it knows.
  */
-export function Emphasise({ text }: { text: string }) {
+export function Emphasize({ text }: { text: string }) {
   const parts = text.split("**");
   return (
     <>
@@ -79,7 +79,7 @@ export function WhyThisPage({ children }: { children: ReactNode }) {
  *
  * `<details>` / `<summary>`, which is the source's own choice and the right
  * one: the open state belongs to the browser, it needs no React, and the
- * keyboard and screen-reader disclosure behaviour comes for free. The "▾ show"
+ * keyboard and screen-reader disclosure behavior comes for free. The "▾ show"
  * / "▴ hide" affordance is `summary::after` in `billing.css`, so it cannot fall
  * out of step with whether the section is actually open.
  */

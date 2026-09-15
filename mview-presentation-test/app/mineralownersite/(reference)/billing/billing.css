@@ -150,7 +150,7 @@
 .mv-ref-app .bill-compare th { font-weight: 600; }
 .mv-ref-app .bill-compare td { font-weight: 400; }
 .mv-ref-app .bill-compare td strong { font-weight: 600; }
-/* the grey half-sentence that qualifies a row label, on its own line */
+/* the gray half-sentence that qualifies a row label, on its own line */
 .mv-ref-app .bill-compare td .cmp-note { display: block; margin-top: 2px; }
 
 /* ===========================================================================
@@ -164,8 +164,12 @@
   border: 1px solid var(--line); border-radius: 14px; background: #fff;
   margin-bottom: 14px;
 }
+/* 15px, NOT THE SOURCE'S 14.5. Measured across the group, the portal's body
+   scale is 15 / 13.5 / 13 / 12.5 / 12 and 14.5 is on none of it — it was the
+   one size on this page that belonged to no other. 15px is the shell's own body
+   size, which is what a section heading at this weight should sit on. */
 .mv-ref-app details.bill-fold > summary {
-  cursor: pointer; padding: 13px 16px; font-weight: 600; font-size: 14.5px;
+  cursor: pointer; padding: 13px 16px; font-weight: 600; font-size: 15px;
   color: var(--ink); list-style: none;
   display: flex; justify-content: space-between; align-items: center; gap: 8px;
 }
@@ -189,7 +193,7 @@
 }
 .mv-ref-app .ledger-row:last-of-type { border-bottom: 0; }
 .mv-ref-app .ledger-row strong { font-weight: 600; }
-/* a posting that actually paid reads in the accent; one that did not stays grey,
+/* a posting that actually paid reads in the accent; one that did not stays gray,
    which is the whole point of showing the $0.00 row at all */
 .mv-ref-app .ledger-bal { color: var(--muted); white-space: nowrap; }
 .mv-ref-app .ledger-bal.paid { color: var(--green-deep); }

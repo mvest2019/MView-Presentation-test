@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import { INVITE_CODE_PARAM, normaliseInviteCode } from "@/lib/invite-code";
+import { INVITE_CODE_PARAM, normalizeInviteCode } from "@/lib/invite-code";
 import { getSessionUser } from "@/lib/session";
 
 import { ClaimFinder } from "./_components/claim-finder";
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
  * the prebuilt index in `public/owners/` (no database at runtime), so there is
  * nothing to render on the server beyond the shell. See
  * `_components/claim-finder.tsx` for the engine's provenance and the
- * behaviours it preserves.
+ * behaviors it preserves.
  *
  * ── `?code=` — THE INVITATION LINK LANDS HERE ──
  *
@@ -38,9 +38,9 @@ export const metadata: Metadata = {
  * be a second answer to a question `/register` already answers, and the two
  * would drift.
  *
- * WHY THE CODE IS NORMALISED BEFORE IT IS PASSED ON. A code copied out of an
+ * WHY THE CODE IS NORMALIZED BEFORE IT IS PASSED ON. A code copied out of an
  * email by hand arrives hyphenated, spaced, or with `code=` still attached.
- * `normaliseInviteCode` reduces all of those to the eight digits, and a value
+ * `normalizeInviteCode` reduces all of those to the eight digits, and a value
  * that is NOT a code — a truncated paste, somebody's experiment — returns null
  * and is dropped rather than forwarded, so `/register` never has to render a
  * pre-filled field containing nonsense. The visitor still lands on the sign-up
@@ -51,7 +51,7 @@ export default async function ClaimPage({
 }: PageProps<"/claim">) {
   const params = await searchParams;
   const raw = params[INVITE_CODE_PARAM];
-  const code = normaliseInviteCode(Array.isArray(raw) ? raw[0] : raw);
+  const code = normalizeInviteCode(Array.isArray(raw) ? raw[0] : raw);
   if (code) {
     redirect(`/register?${INVITE_CODE_PARAM}=${code}`);
   }

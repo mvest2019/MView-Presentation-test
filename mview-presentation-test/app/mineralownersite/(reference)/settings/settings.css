@@ -1,0 +1,97 @@
+/*
+ * SETTINGS — the one piece of chrome that did not come with the page.
+ *
+ * WHY THIS FILE EXISTS. Settings moved from the `(portal)` route group to
+ * `(reference)` so it would wear the same header as Alerts, the Dashboard,
+ * Invite and Billing. Almost everything survived: the cards are Tailwind and
+ * the `mv-*` tokens are global, and every density and claim gate kept working
+ * because `dashboard-reference.css` defines `tier-*`, `hide-*` and `nc-only`
+ * with the same semantics `portal.css` did.
+ *
+ * ONE CONTROL DID NOT. The View card's density switch is styled by
+ * `.mv-portal .view-switch` in `portal.css`, and `(reference)` does not load
+ * that sheet. Unstyled, the four tabs collapsed into a run of bare text —
+ * "UltraUltraEssentialsEssentialsDetailedDetailedProfessionalPro", because the
+ * component ships a full and a short label per tier and the rule that hides the
+ * short one had gone with the rest.
+ *
+ * So the switch's rules are ported here, rescoped from `.mv-portal` to
+ * `.mv-ref-app`. They are the same declarations; nothing about the control's
+ * design was changed by the move.
+ *
+ * WHY NOT MOVE THEM INTO `dashboard-reference.css`. That sheet is a
+ * byte-for-byte copy of the reference build's own stylesheets and its whole
+ * value is that a future diff against that reference shows only what the
+ * reference changed — the same argument `invite.css` and `billing.css` make.
+ * This is a page-scoped sheet imported by `page.tsx`, so it is unlayered and
+ * wins without a specificity contest.
+ */
+
+.mv-ref-app .view-switch {
+  display: inline-flex;
+  background: #e8ecf3;
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.mv-ref-app .view-switch button,
+.mv-ref-app .view-switch a {
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--slate);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-decoration: none;
+}
+
+.mv-ref-app .view-switch button:hover,
+.mv-ref-app .view-switch a:hover {
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.mv-ref-app .view-switch button.on,
+.mv-ref-app .view-switch a.on {
+  background: #fff;
+  box-shadow: var(--shadow);
+  color: var(--ink);
+}
+
+/* THE TWO LABELS. The component ships a full and a short label per tier and
+   shows one; the full label is the default. Only Professional actually
+   shortens, to "Pro" — see `VIEW_TIER_ABBR`. Without this rule BOTH render,
+   which is what produced the doubled run of text described above. */
+.mv-ref-app .view-switch .vs-abbr {
+  display: none;
+}
+
+/* THE COMPACT COPY, the one that sits inside a menu rather than on the card.
+   Short labels regardless of window width, because the box it sits in is
+   narrow at every width. `flex: 1 1 auto` and not `flex: 1`: a zero basis gives
+   all four tabs an equal quarter and clips "Essentials" inside its own button. */
+.mv-ref-app .v41-avviews {
+  display: flex;
+  width: 100%;
+  gap: 2px;
+}
+.mv-ref-app .v41-avviews button {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11px;
+  padding: 6px 8px;
+}
+.mv-ref-app .v41-avviews .vs-full {
+  display: none;
+}
+.mv-ref-app .v41-avviews .vs-abbr {
+  display: inline;
+}

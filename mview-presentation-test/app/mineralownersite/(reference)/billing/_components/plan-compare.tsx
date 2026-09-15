@@ -9,7 +9,7 @@ import {
   PLANS,
   TIER_HEADS,
 } from "../_lib/billing-records";
-import { Emphasise } from "./bits";
+import { Emphasize } from "./bits";
 
 /**
  * THE FOUR PLAN CARDS, AND THE TABLE UNDER THEM.
@@ -52,12 +52,12 @@ export function PlanCards() {
             {plan.priceNote ? <span>{plan.priceNote}</span> : null}
           </div>
           <p className="small muted">
-            <Emphasise text={plan.summary} />
+            <Emphasize text={plan.summary} />
           </p>
           <ul>
             {plan.points.map((point) => (
               <li key={point.text} className={point.no ? "no" : undefined}>
-                <Emphasise text={point.text} />
+                <Emphasize text={point.text} />
               </li>
             ))}
           </ul>

@@ -611,7 +611,7 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
       {/* The two axes, readable by anything under the chrome. `tier` and not
           `effTier`: the raw choice, so a surface with its own ceiling rule can
           apply it rather than inherit this one's. See `view-state.tsx`. */}
-      <PortalViewStateProvider tier={tier} funnel={funnel}>
+      <PortalViewStateProvider tier={tier} funnel={funnel} setTier={pickTier}>
       {/* `onOwner` AND `busy` NO LONGER GO TO THE CHROME. The owner-search band
           was their only consumer and it has been removed (see `Chrome`); `load`
           and `busy` are still owned here — `load` for the URL-driven read in the

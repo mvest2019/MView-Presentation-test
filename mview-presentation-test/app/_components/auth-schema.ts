@@ -60,7 +60,7 @@ import {
  * THE WHOLE ADDRESS, local part included. RFC 5321 does technically allow the
  * part before the @ to be case-sensitive, so this is not lossless in the strictest
  * reading — but no mail provider in practice treats "Jane@" and "jane@" as
- * different mailboxes, and normalising is what makes sign-in agree with the
+ * different mailboxes, and normalizing is what makes sign-in agree with the
  * registration that created the account. Doing only the domain would leave exactly
  * the bug being fixed.
  *
@@ -278,7 +278,7 @@ export const registerSchema = z.object({
    *
    * WHAT CHANGED. It is no longer something a visitor is asked to invent: it
    * arrives PRE-FILLED from the invite link they followed
-   * (`/claim?code=…` → `/register?code=…`), it is labelled as an invite code
+   * (`/claim?code=…` → `/register?code=…`), it is labeled as an invite code
    * from a co-owner rather than as a code to verify anything, it sits at the
    * foot of the form away from the email verification block, and it IS sent —
    * `registerAction` threads it to `registerUser`, which posts it as
@@ -347,3 +347,43 @@ export const resetPasswordSchema = z
   });
 
 export type ResetPasswordValues = z.infer<typeof resetPasswordSchema>;
+
+/**
+ * Changing the password while SIGNED IN, from the profile page.
+ *
+ * ── WHY IT IS NOT `resetPasswordSchema` ──
+ *
+ * One field, and it is the one that matters: a reset arrives holding a
+ * single-use token mailed to the address on file, which is the proof of
+ * identity. A change made from inside a live session has no token, so the
+ * current password IS the proof — without it, anyone who finds an unlocked
+ * screen owns the account.
+ *
+ * Everything else is shared rather than retyped, for the reason
+ * `resetPasswordSchema` already gives: a password one form would accept and
+ * another would not is a trap, and the API applies one rule to all of them.
+ *
+ * ── AND WHY THE NEW ONE MUST DIFFER FROM THE OLD ──
+ *
+ * Re-entering the same password is never what the reader meant, and the two
+ * cases where it is submitted are both worth catching: a mis-paste, or someone
+ * who believes they have changed it and has not. The message says which field
+ * to fix; `path` puts it on the new-password box rather than on the current
+ * one, because that is the box to change.
+ */
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Enter your current password."),
+    password: registerSchema.shape.password,
+    confirmPassword: z.string().min(1, "Re-enter the password to confirm it."),
+  })
+  .refine((values) => values.password === values.confirmPassword, {
+    message: "Those passwords do not match.",
+    path: ["confirmPassword"],
+  })
+  .refine((values) => values.password !== values.currentPassword, {
+    message: "The new password must be different from your current one.",
+    path: ["password"],
+  });
+
+export type ChangePasswordValues = z.infer<typeof changePasswordSchema>;

@@ -252,7 +252,7 @@ export interface RegisterInput {
   /**
    * THE INVITATION CODE, when the visitor registered from an invite link.
    *
-   * Eight digits, already normalised by `registerAction` — or `undefined`,
+   * Eight digits, already normalized by `registerAction` — or `undefined`,
    * which is the ordinary case and is NOT the same as an empty string. It is
    * omitted from the payload entirely when absent, so the endpoint can tell
    * "no invitation" from "an invitation that arrived blank".
@@ -887,7 +887,7 @@ export async function verifyCode(
  *
  * DOES NOT REVEAL WHETHER THE ADDRESS EXISTS, and neither does this function.
  * Probed with `nobody@example.com`, which has no account, and the answer was
- * still `{"status_code":200,"data":"SUCCESS"}`. That is the correct behaviour —
+ * still `{"status_code":200,"data":"SUCCESS"}`. That is the correct behavior —
  * a reset form that distinguishes is an enumeration oracle, exactly what was
  * fixed on sign-in — so the caller must show one neutral sentence either way.
  */

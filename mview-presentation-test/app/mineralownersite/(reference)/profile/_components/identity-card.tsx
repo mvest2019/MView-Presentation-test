@@ -1,10 +1,16 @@
+"use client";
+
+import { useState, type ChangeEvent } from "react";
+
+import { formatPhoneNumber } from "@/lib/phone";
+
 import { PortalButton } from "../../../_components/ui/button";
 import {
   PROFILE_SECTIONS,
   identityForm,
   type ProfileField,
 } from "../_lib/profile-data";
-import { ProfileCardShell } from "./profile-shell";
+import { PROFILE_INPUT_CLASS, ProfileCardShell } from "./profile-shell";
 
 /**
  * WHO YOU ARE — the page's only real form.
@@ -17,6 +23,25 @@ import { ProfileCardShell } from "./profile-shell";
  *
  * SOURCE: `PG.members_entity` for name, email and phone; the mailing address is
  * the one that verified the claim.
+ *
+ * ── IT IS A CLIENT COMPONENT NOW, BECAUSE THE CONTROLS ANSWER ──
+ *
+ * Every button on this page rendered enabled and did nothing when pressed —
+ * the whole route was a server-rendered still. Asked for directly. Two things
+ * moved here:
+ *
+ *   THE PHONE BOX FORMATS AS IT IS TYPED, the way the register form's does, off
+ *   the same `formatPhoneNumber` — see `lib/phone.ts` for why there is one copy
+ *   and why it caps at ten digits instead of using `maxLength`.
+ *
+ *   SAVE VALIDATES AND SAYS SO, through the `aria-live` region that was already
+ *   here waiting for it. `identityForm` already carried `idle`, `invalid` and
+ *   `saved` strings for this; none of them is new copy.
+ *
+ * WHAT IT DOES NOT DO IS PRETEND TO PERSIST. `saved` says "(prototype)" in the
+ * record because nothing is written anywhere — there is no profile endpoint in
+ * this repo. A confirmation that claimed the change had been stored would be
+ * the one thing worse than a dead button.
  *
  * BUILD-CONTRACT, and both halves are product rules rather than form
  * decoration:
@@ -59,8 +84,16 @@ import { ProfileCardShell } from "./profile-shell";
  * case where announcements are unreliable.
  */
 export function IdentityCard() {
+  /*
+   * `idle` UNTIL A PRESS, AND BACK TO `idle` ON THE NEXT KEYSTROKE. A "Saved ✓"
+   * left standing over a form the reader has since edited is a false statement
+   * about the current contents, and an "fill in the required fields" left
+   * standing after they have filled them in is nagging. Both clear on input.
+   */
+  const [status, setStatus] = useState<"idle" | "invalid" | "saved">("idle");
+
   return (
-    <ProfileCardShell section={PROFILE_SECTIONS.identity}>
+    <ProfileCardShell section={PROFILE_SECTIONS.identity} className="flex flex-col">
       <p className="mt-1 mb-3 text-[11px] leading-[1.55] text-mv-muted">
         <span aria-hidden="true" className="font-extrabold text-mv-required">
           *
@@ -68,7 +101,28 @@ export function IdentityCard() {
         {identityForm.requiredNote}
       </p>
 
-      <form>
+      {/* `flex-1` TAKES WHATEVER THE ROW IS TALLER THAN THIS CARD. The grid
+          stretches both columns to the height of security, which runs ~260px
+          longer; without this the form would keep its natural height and hand
+          that 260px to the card as blank padding. With it the form owns the
+          slack and `mt-auto` on the save row below spends it, putting the
+          action on the card's bottom edge. At one column, or any width where
+          this card is the taller of the two, there is no slack and both rules
+          are inert — the row sits under the last fieldset exactly as before. */}
+      <form
+        className="flex flex-1 flex-col"
+        /* `noValidate` HANDS VALIDATION TO US, NOT TO THE BROWSER. Without it
+           the browser's own bubble fires first and the live region below never
+           gets a turn, so the page would say one thing and the tooltip
+           another. The `required` attributes stay on the inputs — they are what
+           `checkValidity()` reads, and what a screen reader announces. */
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          setStatus(event.currentTarget.checkValidity() ? "saved" : "invalid");
+        }}
+        onInput={() => setStatus("idle")}
+      >
         {identityForm.groups.map((group) => (
           <fieldset
             key={group.legend}
@@ -83,12 +137,12 @@ export function IdentityCard() {
           </fieldset>
         ))}
 
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-1">
           <span
             aria-live="polite"
             className="text-[11px] leading-[1.5] text-mv-muted"
           >
-            {identityForm.idle}
+            {identityForm[status]}
           </span>
           <PortalButton type="submit" variant="primary" size="sm">
             {identityForm.submit}
@@ -126,8 +180,20 @@ function ProfileInput({ field }: { field: ProfileField }) {
         defaultValue={field.defaultValue}
         placeholder={field.placeholder}
         autoComplete={field.autoComplete}
+        {...(field.type === "tel"
+          ? {
+              inputMode: "tel" as const,
+              /* REWRITTEN IN THE EVENT, BEFORE REACT SEES IT — the same shape
+                 the register form uses. The box is uncontrolled (`defaultValue`
+                 from the record), so there is no state to round-trip through
+                 and no second source of truth for the value. */
+              onChange: (event: ChangeEvent<HTMLInputElement>) => {
+                event.target.value = formatPhoneNumber(event.target.value);
+              },
+            }
+          : null)}
         aria-describedby={field.hint ? `${field.id}-hint` : undefined}
-        className="w-full rounded-[9px] border border-mv-line-strong bg-mv-card px-3 py-[11px] text-sm text-mv-ink outline-none placeholder:text-mv-placeholder focus-visible:border-mv-green focus-visible:outline-2 focus-visible:outline-mv-green"
+        className={PROFILE_INPUT_CLASS}
       />
       {field.hint ? (
         <span id={`${field.id}-hint`} className="text-xs text-mv-muted">

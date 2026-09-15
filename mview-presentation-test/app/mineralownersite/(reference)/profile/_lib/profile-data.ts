@@ -1,3 +1,5 @@
+import { PHONE_PLACEHOLDER } from "@/lib/phone";
+
 /**
  * MY PROFILE — every label, hint, default and heading on the route.
  *
@@ -143,7 +145,7 @@ export const identityForm = {
           label: "Phone",
           type: "tel",
           required: false,
-          placeholder: "(___) ___-____",
+          placeholder: PHONE_PLACEHOLDER,
           autoComplete: "tel",
           hint: "Only used for the SMS summary when it launches — never for sales calls.",
         },
@@ -242,6 +244,10 @@ export interface SecurityRow {
   value?: string;
   /** The control's label, where the row carries a button. */
   action?: string;
+  /** The button opens a panel inside the card rather than going anywhere. A
+   *  row with an `action` and neither `panel` nor a handler has nothing to do,
+   *  and is drawn disabled rather than pretending. */
+  panel?: boolean;
   /** A `role="switch"` row instead of a button row, and its position. */
   toggle?: boolean;
   on?: boolean;
@@ -256,6 +262,14 @@ export const securityRows: SecurityRow[] = [
     hint: "Last changed 4 months ago. A change signs out every other device.",
     value: "••••••••••••",
     action: "Change password",
+    /* IT OPENS A PANEL IN THIS CARD, and does not leave for `/reset-password`.
+       Asked for directly, and it is also the better flow: that route is the
+       FORGOTTEN-password path — it mails a single-use link because the visitor
+       cannot prove who they are. A reader already signed in can, with the
+       password they are about to replace, so sending them out to their inbox
+       to come back would be three minutes and two context switches to reach a
+       form this card has room for. See `changePassword` below. */
+    panel: true,
   },
   {
     id: "security-2fa",
@@ -307,11 +321,73 @@ export const sessions: ProfileSession[] = [
 
 export const sessionsBlock = {
   heading: "Where you are signed in",
-  hint: "Sign out anything you do not recognise, then change your password.",
+  hint: "Sign out anything you do not recognize, then change your password.",
   currentTag: "This device",
   signOutOne: "Sign out",
   signOutAll: "Sign out everywhere else",
 } as const;
+
+/**
+ * THE CHANGE-PASSWORD PANEL — every word of it.
+ *
+ * ── THREE BOXES, AND THE FIRST ONE IS THE POINT ──
+ *
+ * Current, new, confirm. `changePasswordSchema` explains why the current one is
+ * required here and not on the reset route; the confirm box is there because a
+ * typo in a password you cannot see costs you the account.
+ *
+ * ── NO PERMANENT HINT UNDER THE NEW-PASSWORD BOX ──
+ *
+ * The rule — eight characters, an uppercase, a digit, a symbol — is already
+ * the schema message, and it appears under the box the moment it is broken. A
+ * second copy standing there always would be the same sentence twice, and the
+ * one that never changes is the one that goes stale when the rule does.
+ */
+export const changePassword = {
+  legend: "Change your password",
+  fields: [
+    {
+      key: "currentPassword",
+      id: "profile-current-password",
+      label: "Current password",
+      autoComplete: "current-password",
+    },
+    {
+      key: "password",
+      id: "profile-new-password",
+      label: "New password",
+      autoComplete: "new-password",
+    },
+    {
+      key: "confirmPassword",
+      id: "profile-confirm-password",
+      label: "Confirm new password",
+      autoComplete: "new-password",
+    },
+  ],
+  submit: "Update password",
+  cancel: "Cancel",
+  /*
+   * "(prototype)" FOR THE SAME REASON THE PROFILE FORM SAYS IT: nothing is
+   * written anywhere. The second half is not a flourish — the row above this
+   * panel has always said "A change signs out every other device", so the panel
+   * does exactly that to the device list on success. A promise made in a hint
+   * and not kept by the control under it is worse than no hint.
+   */
+  saved:
+    "Password updated (prototype) — every other device has been signed out.",
+} as const satisfies {
+  legend: string;
+  fields: readonly {
+    key: "currentPassword" | "password" | "confirmPassword";
+    id: string;
+    label: string;
+    autoComplete: string;
+  }[];
+  submit: string;
+  cancel: string;
+  saved: string;
+};
 
 export const securityNote = {
   glyph: "ⓘ",

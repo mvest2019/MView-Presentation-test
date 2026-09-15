@@ -54,7 +54,7 @@ const KIND_LABEL: Record<OwnerKind, string> = {
  * `.rep-mini .iv-tbl` inside `.iv-list`, with `.iv-find` over it. Three things
  * the old build did with utilities the sheet now does properly: the header row
  * STICKS while the list scrolls (a scrolled list whose columns are off screen
- * is four columns of unlabelled data), the column widths are deliberate rather
+ * is four columns of unlabeled data), the column widths are deliberate rather
  * than an even `table-layout: fixed` split that left "OWNER OF RECORD" in 92px,
  * and the fourth column swaps for a line under the name below a 560px
  * container instead of both being present and one hidden by a breakpoint

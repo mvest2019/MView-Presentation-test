@@ -3,12 +3,21 @@
  * `mineral-view-owner-full-site.css`: a 40 × 22 track, a 16px knob inset 3px,
  * sliding to 21px when on, grey to green.
  *
- * ── PRESENTATIONAL. IT DOES NOT MOVE YET ──
+ * ── IT MOVES WHEN IT IS GIVEN SOMETHING TO MOVE ──
  *
- * This is the UI pass: the switch renders the position its row's data gives it
- * and nothing happens when it is pressed. It is a real `<button>` rather than a
- * `<div>` so it is already focusable and in the tab order, and so wiring it is
- * adding an `onClick` and a `"use client"` — not rebuilding the control.
+ * `onToggle` is optional, and that is the whole design. A caller that passes it
+ * gets a working switch; a caller that leaves it off gets the presentational
+ * one this started as, which is what every settings card still renders. So the
+ * profile page's two-factor switch could be wired without touching — or
+ * re-testing — the thirty-odd switches on Settings that have no store behind
+ * them yet.
+ *
+ * The prediction the old note made held exactly: wiring was "adding an
+ * `onClick`", and no part of the control had to be rebuilt. There is still no
+ * `"use client"` here, because it does not need one — a component with no hooks
+ * is usable from both sides, and it joins the client bundle by being imported
+ * from a client parent. Adding the directive would drag every settings card
+ * that renders a switch into the bundle with it for nothing.
  *
  * ── WHAT WIRING IT WILL NEED, SO THE SHAPE IS RIGHT NOW ──
  *
@@ -35,11 +44,18 @@ export function SettingToggle({
   id,
   label,
   on,
+  onToggle,
 }: {
   /** `ToggleSetting.id` — the key this row's position will be stored under. */
   id: string;
   label: string;
   on: boolean;
+  /**
+   * Called with the position the switch is moving TO. Leave it off and the
+   * switch is inert, which is still the right state for a row with nothing
+   * behind it — see the note above.
+   */
+  onToggle?: (next: boolean) => void;
 }) {
   return (
     <button
@@ -48,6 +64,11 @@ export function SettingToggle({
       aria-checked={on}
       aria-label={label}
       data-setting={id}
+      onClick={onToggle ? () => onToggle(!on) : undefined}
+      /* NOT `disabled` WHEN THERE IS NO HANDLER, on purpose: a disabled switch
+         says "you may not change this", and the truth on those rows is "this
+         is not connected yet". The `cursor-pointer` and the focus ring stay, so
+         the control still reads and behaves as the real thing it will be. */
       className={`relative h-[22px] w-10 flex-none cursor-pointer rounded-full border-0 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep ${
         on ? "bg-mv-green" : "bg-mv-portal-switch-off"
       }`}
