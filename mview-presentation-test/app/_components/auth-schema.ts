@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  INVITE_CODE_FORMAT_MESSAGE,
+  isWellFormedInviteCode,
+} from "@/lib/invite-code";
 
 /**
  * Shapes for the sign-in and sign-up forms.
@@ -264,9 +268,42 @@ export const registerSchema = z.object({
       "An area code or prefix cannot be a service code like 411 or 911.",
     ),
   mailingAddress: optionalText,
-  /* `inviteCode` WAS HERE and is gone with its field — it read as a second
-     verification code box, the live form has no such field, and nothing ever
-     sent it. See the note in `register-form.tsx`. */
+  /*
+   * `inviteCode` IS BACK, and the objection that removed it is answered rather
+   * than ignored.
+   *
+   * IT WENT because "it read as a second verification code box, the live form
+   * has no such field, and nothing ever sent it". All three were true of a bare
+   * box sitting next to the six-digit email code with nothing behind it.
+   *
+   * WHAT CHANGED. It is no longer something a visitor is asked to invent: it
+   * arrives PRE-FILLED from the invite link they followed
+   * (`/claim?code=…` → `/register?code=…`), it is labelled as an invite code
+   * from a co-owner rather than as a code to verify anything, it sits at the
+   * foot of the form away from the email verification block, and it IS sent —
+   * `registerAction` threads it to `registerUser`, which posts it as
+   * `invite_code`.
+   *
+   * OPTIONAL, AND THAT IS A PRODUCT RULE RATHER THAN A CONVENIENCE. Most people
+   * who register have no code, and a required field here would turn a public
+   * sign-up form into an invitation-only one.
+   *
+   * SHAPE ONLY. Eight digits, checked when something has been typed and
+   * skipped when the box is empty — `isWellFormedInviteCode` returns true for
+   * "". Whether the code EXISTS is the server's question and deliberately not
+   * asked here; see the header of `lib/invite-code.ts` for why an unknown code
+   * must never block an account being created.
+   *
+   * `.optional()` IS LOAD-BEARING, NOT TIDINESS. The field is rendered ONLY
+   * when a code arrived in the URL, so for most visitors the input does not
+   * exist and `register("inviteCode")` is never called. Without `.optional()`
+   * this is a required string, `undefined` fails it, and every ordinary
+   * registration would die on "Please check the details above" with no field to
+   * point at — a whole sign-up form broken by a box that is not on screen.
+   */
+  inviteCode: optionalText
+    .refine(isWellFormedInviteCode, INVITE_CODE_FORMAT_MESSAGE)
+    .optional(),
   terms: z.literal(true, {
     message: "You must agree to the Terms and Privacy Policy.",
   }),

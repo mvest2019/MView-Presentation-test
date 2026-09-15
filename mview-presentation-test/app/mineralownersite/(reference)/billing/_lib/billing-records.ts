@@ -3,6 +3,11 @@ import {
   PLANS as PRICING_PLANS,
   type Plan as PricingPlan,
 } from "@/app/pricing/_components/pricing-content";
+/* THE CREDIT BALANCE AND ITS LEDGER ARE SHARED, not this page's own. Profile
+   shows the balance too, and `profile/page.tsx` warns in its own header against
+   a page carrying "a second, staler answer" to something another page owns.
+   One module, three readers — see `_lib/referral-credits.ts`. */
+import { BALANCE, LEDGER, type LedgerEntry } from "@/app/mineralownersite/_lib/referral-credits";
 
 /**
  * BILLING & PLAN — where every figure on the page comes from.
@@ -344,37 +349,8 @@ export const TERM_STEP_TAILS = [
   " — billing stops automatically",
 ];
 
-export interface LedgerEntry {
-  title: string;
-  detail: string;
-  balance: string;
-  credited?: boolean;
-}
-
-export const LEDGER: LedgerEntry[] = [
-  {
-    title: "+ $100.00 — paid-conversion referral",
-    detail:
-      "Jun 2026 · your referred co-owner became a paid member and cleared the " +
-      "30-day confirmation window",
-    balance: "balance $100.00",
-    credited: true,
-  },
-  {
-    title: "$0.00 — free-account signup (no credit)",
-    detail:
-      "May 2026 · your referred co-owner created a free account — you were " +
-      "connected in your group; credits post only on paid conversion",
-    balance: "balance $0.00",
-  },
-  {
-    title: "No spends yet",
-    detail:
-      "credits spend on services (e.g. a $500 Lease Audit beyond your three " +
-      "included) or auto-apply at your renewal",
-    balance: "—",
-  },
-];
+export { LEDGER };
+export type { LedgerEntry };
 
 export const TERM_END_CHOICES = [
   {
@@ -415,13 +391,13 @@ export const ACCOUNT = {
     "never auto-renews",
   monthlyPrice: `${premium.priceMo}/mo`,
   annualPrice: `${premium.priceYr}/yr`,
-  creditBalance: "$100.00",
+  creditBalance: BALANCE,
   termEndDate: "May 12, 2027",
   otherLeaseCount: 7,
   /** the renewal example's arithmetic, so the three figures cannot disagree */
   renewalExample: {
     annual: premium.priceYr,
-    credit: "$100.00",
+    credit: BALANCE,
     payable: "$899.90",
   },
 } as const;

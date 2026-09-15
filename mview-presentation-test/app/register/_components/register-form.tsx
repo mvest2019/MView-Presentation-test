@@ -27,6 +27,8 @@ import {
   inputClass,
 } from "@/app/_components/auth-shell";
 import { GoogleSignIn } from "@/app/_components/google-sign-in";
+import { normaliseInviteCode } from "@/lib/invite-code";
+import { PORTAL_HOME } from "@/lib/routes";
 
 /**
  * Sign up — the design's `route:signup`, wired to the live endpoints.
@@ -84,12 +86,26 @@ function formatPhoneNumber(value: string): string {
   const numbers = value.replace(/\D/g, "");
   if (numbers.length === 0) return "";
   if (numbers.length <= 3) return `(${numbers}`;
-  if (numbers.length <= 6) return `(${numbers.slice(0, 3)}) ${numbers.slice(3)}`;
+  if (numbers.length <= 6)
+    return `(${numbers.slice(0, 3)}) ${numbers.slice(3)}`;
   return `(${numbers.slice(0, 3)}) ${numbers.slice(3, 6)}-${numbers.slice(6, 10)}`;
 }
 
-export function RegisterForm({ next }: { next: string }) {
-
+export function RegisterForm({
+  next,
+  inviteCode = "",
+}: {
+  next: string;
+  /**
+   * The code from the invitation link, already normalised to eight digits by
+   * `app/register/page.tsx`, or "" when there was none.
+   *
+   * IT IS A DEFAULT VALUE AND NOT A CONTROLLED PROP. The spec requires the
+   * reader to be able to edit or replace it, so it seeds `defaultValues` and
+   * react-hook-form owns it from the first keystroke.
+   */
+  inviteCode?: string;
+}) {
   /*
    * VERIFICATION STATE, held as the two ADDRESSES rather than as booleans.
    *
@@ -124,6 +140,17 @@ export function RegisterForm({ next }: { next: string }) {
       password: "",
       phone: "",
       mailingAddress: "",
+      /* PRE-FILLED WITH THE BARE DIGITS, no hyphen. The letter PRINTS
+         `3159-7778` because that is how eight digits are read back off paper,
+         but the box shows `31597778` — the hyphen is punctuation the reader did
+         not type and has to work around when editing, and it is not part of the
+         code. `normaliseInviteCode` strips it either way, so somebody who
+         copies the hyphenated form off the letter is still accepted.
+
+         SET EVEN WHEN THE FIELD IS NOT RENDERED — "" in that case. It costs
+         nothing and it means `values.inviteCode` is always a string the submit
+         handler can read, rather than sometimes `undefined`. */
+      inviteCode,
     },
   });
 
@@ -232,7 +259,9 @@ export function RegisterForm({ next }: { next: string }) {
     setSending(false);
 
     if (!result.ok) {
-      toast.error(result.message || "Could not send the code. Please try again.");
+      toast.error(
+        result.message || "Could not send the code. Please try again.",
+      );
       return;
     }
 
@@ -257,7 +286,9 @@ export function RegisterForm({ next }: { next: string }) {
     setVerifying(false);
 
     if (!result.ok) {
-      setOtpError(result.message || "Invalid or expired code. Please try again.");
+      setOtpError(
+        result.message || "Invalid or expired code. Please try again.",
+      );
       /*
        * CLEAR THE BOXES AND GO BACK TO THE FIRST ONE (Ryan, 2026-08-19: after a
        * failed attempt "nothing is accepted").
@@ -311,6 +342,31 @@ export function RegisterForm({ next }: { next: string }) {
     }
 
     toast.success("Registration Successful");
+    /*
+     * AN INVITED MEMBER LANDS IN THE PORTAL, whatever `?next=` said.
+     *
+     * The spec is explicit on both halves: a registration that used a code ends
+     * in the Portal, and a registration that did not keeps the existing
+     * behaviour untouched. So the override is conditional on the code and
+     * nothing else — `next` is still computed exactly as it was, still
+     * leading-slash checked against an open redirect on the server, and still
+     * the destination for every visitor who did not come from an invitation.
+     *
+     * IT READS THE SUBMITTED VALUE, not the prop. The reader may have cleared a
+     * pre-filled code or typed one that was never in the URL, and what decides
+     * where they land is what they actually registered with.
+     *
+     * WHY THE PORTAL AND NOT THE CLAIM FINDER, which is where the letter's link
+     * was pointing. The letter invites them to claim a record, and claiming is
+     * IN the portal (`/mineralownersite/claim`) once there is an account to
+     * attach it to. Dropping a newly signed-in member back on the public finder
+     * would ask them to prove who they are twice.
+     */
+    const usedCode = normaliseInviteCode(values.inviteCode);
+    if (usedCode) {
+      window.location.assign(PORTAL_HOME);
+      return;
+    }
     /*
      * ONE FULL NAVIGATION, for the reasons written out at length on sign-in's
      * own handler (`app/login/_components/login-form.tsx`) — this had the same
@@ -473,8 +529,7 @@ export function RegisterForm({ next }: { next: string }) {
         <Field
           label={
             <>
-              Mailing address{" "}
-              <Optional>(optional for now)</Optional>
+              Mailing address <Optional>(optional for now)</Optional>
             </>
           }
           error={errors.mailingAddress?.message}
@@ -490,6 +545,84 @@ export function RegisterForm({ next }: { next: string }) {
             />
           )}
         </Field>
+
+        {/*
+          THE INVITE CODE — SHOWN ONLY TO SOMEBODY WHO ARRIVED WITH ONE.
+
+          THE FIELD IS CONDITIONAL, and that is the whole answer to the
+          objection that deleted it the first time: "it read as a second
+          verification code box". A visitor who came to the form cold never
+          sees it, so it cannot be mistaken for anything — and asking the
+          general public for an invite code on a public sign-up form implies
+          the product is invitation-only, which it is not.
+
+          THE ONLY READER WHO SEES IT IS ONE WHO FOLLOWED AN INVITE LINK, and
+          they arrive with the box already filled in. For them it is not a
+          question but a confirmation: this is the code from your letter, and
+          you may change it or clear it.
+
+          CLEARING IT STILL REGISTERS. The field being conditional does not make
+          it required when present — the schema keeps it optional either way, so
+          somebody who empties the box gets an ordinary account and the ordinary
+          destination.
+
+          POSITION: the foot of the form, below the address and well away from
+          the six-digit email verification block, so the two codes are never
+          adjacent even for the reader who sees both.
+
+          `inputMode="numeric"` and not `type="number"`: the code is a string of
+          digits rather than a quantity, and a number input would offer a
+          spinner, strip a leading zero and accept `1e5`.
+        */}
+        {inviteCode ? (
+          <Field
+            label={
+              <>
+                Invite code <Optional />
+              </>
+            }
+            error={errors.inviteCode?.message}
+            /* ONE HINT, because there is now only one reader. The "leave it empty
+             if nobody invited you" variant went with the unconditional field —
+             nobody who has not been invited reaches this markup. */
+            hint="From the invitation a co-owner sent you. You can change it, or clear it to register without one."
+          >
+            {(props) => (
+              <input
+                {...props}
+                {...register("inviteCode")}
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                /*
+                  NINE, NOT EIGHT, even though the box shows eight digits. The
+                  letter prints `3159-7778`, so a reader typing it off the page
+                  types the hyphen too — an eight-character cap would silently
+                  swallow their last digit and then call the result malformed.
+                  The spare character absorbs the punctuation;
+                  `normaliseInviteCode` strips it before anything is sent.
+                */
+                maxLength={9}
+                placeholder="31597778"
+                /*
+                `defaultValue` ON THE ELEMENT AS WELL AS IN `useForm`, and it is
+                not belt-and-braces — MEASURED, the form's `defaultValues` alone
+                left this box EMPTY. `register()` returns only
+                `{name, onChange, onBlur, ref}`; it puts no `value` or
+                `defaultValue` on the element, so React renders the input with
+                no value and the server HTML ships one with no `value`
+                attribute. The other five fields default to "" so nothing about
+                this was visible until a field had a non-empty default.
+                React sets the initial DOM value from this, the input stays
+                UNCONTROLLED so the reader can edit or clear it freely, and RHF
+                reads the DOM on submit — so the two cannot disagree. Both sides
+                are fed the same expression for that reason.
+              */
+                defaultValue={inviteCode}
+              />
+            )}
+          </Field>
+        ) : null}
 
         {/* NO INVITE CODE FIELD (Ryan, 2026-08-19: "don't show double
             verification code box").
@@ -539,8 +672,8 @@ export function RegisterForm({ next }: { next: string }) {
                   `•` directly. `react/no-unescaped-entities` only objects to
                   straight `"`, `'`, `>` and `}`, so “ ” pass untouched. */}
               <p className="mt-2 inline-block rounded-[6px] bg-mv-mint px-[10px] py-1 text-[11.5px] font-semibold text-mv-green-deep">
-                Click the “Verify Email” button to receive a 6-digit verification
-                code in your email.
+                Click the “Verify Email” button to receive a 6-digit
+                verification code in your email.
               </p>
             </>
           ) : (

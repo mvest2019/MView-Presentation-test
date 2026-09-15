@@ -18,6 +18,8 @@ import {
 } from "@/lib/login-throttle";
 import { endSession, startSession } from "@/lib/session";
 
+import { normaliseInviteCode } from "@/lib/invite-code";
+
 import {
   codeSchema,
   forgotPasswordSchema,
@@ -157,7 +159,7 @@ export async function registerAction(values: unknown): Promise<ActionResult> {
     return { ok: false, message: "Please check the details above." };
   }
 
-  const { fullName, email, password, phone, mailingAddress, terms } =
+  const { fullName, email, password, phone, mailingAddress, terms, inviteCode } =
     parsed.data;
 
   const created = await registerUser({
@@ -167,6 +169,21 @@ export async function registerAction(values: unknown): Promise<ActionResult> {
     phone,
     mailingAddress,
     memberType: DEFAULT_MEMBER_TYPE,
+    /*
+     * THE INVITATION CODE, NORMALISED HERE AND NOWHERE ELSE.
+     *
+     * The field accepts `3159-7778` because that is what the letter prints; the
+     * API is sent the eight digits. `normaliseInviteCode` returns null for
+     * anything that is not eight digits, INCLUDING the empty string, so an
+     * ordinary registration sends no code at all rather than an empty one — the
+     * two are different things to a server deciding whether to post a credit.
+     *
+     * THE SCHEMA HAS ALREADY REFUSED A MALFORMED CODE, so this cannot silently
+     * drop something the reader typed and believed was accepted: a wrong shape
+     * fails at the field with a message, and only a well-formed code or nothing
+     * at all reaches here.
+     */
+    inviteCode: normaliseInviteCode(inviteCode) ?? undefined,
     /* Goes to the API as `tnc`. Taken from the parsed form rather than passed as
        `true`: the schema's `z.literal(true)` means this action cannot get here
        with it unticked, so the two agree — but the value that asserts consent

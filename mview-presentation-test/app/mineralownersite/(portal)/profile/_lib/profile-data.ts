@@ -67,6 +67,22 @@ export const PROFILE_SECTIONS = {
     id: "profile-security",
     heading: "Security & sign-in",
   },
+  /*
+    INVITATIONS SITS WITH IDENTITY AND SIGN-IN, and that needs saying because
+    this page's header argues the opposite for plan and capacity.
+
+    The difference is whose it is. A plan is the ACCOUNT's and Billing owns it,
+    so a summary here would be a second answer to a question another page
+    answers properly. A referral credit is earned by THIS PERSON doing
+    something — writing to a co-owner they know — and the balance is the only
+    part of it that is theirs rather than the subscription's. It belongs beside
+    the person, and the card carries no plan, no price and no term: it shows the
+    balance, the rule, and the two ways out — invite, or read the full ledger.
+  */
+  invitations: {
+    id: "profile-invitations",
+    heading: "Invitations & credits",
+  },
 } as const satisfies Record<string, ProfileSection>;
 
 export const profileMeta = {

@@ -199,7 +199,9 @@ function Claimed({ tier }: { tier: "ultra" | "simple" | "detailed" | "pro" }) {
           <TermRenewal />
         </Fold>
 
-        <Fold title="Credits & term-end decision">
+        {/* `id="credits"` is the anchor the profile card's "See the full
+            ledger" link lands on — see `_lib/referral-credits.ts`. */}
+        <Fold title="Credits & term-end decision" id="credits">
           <CreditsAndTermEnd />
         </Fold>
       </Band>

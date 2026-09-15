@@ -249,6 +249,38 @@ export interface RegisterInput {
    * that would keep saying "accepted" if that gate ever moved.
    */
   acceptedTerms: boolean;
+  /**
+   * THE INVITATION CODE, when the visitor registered from an invite link.
+   *
+   * Eight digits, already normalised by `registerAction` — or `undefined`,
+   * which is the ordinary case and is NOT the same as an empty string. It is
+   * omitted from the payload entirely when absent, so the endpoint can tell
+   * "no invitation" from "an invitation that arrived blank".
+   *
+   * ── THE BACKEND DOES NOT DO ANYTHING WITH THIS YET ──
+   *
+   * `/User/userRegistration` has no `invite_code` parameter today. Sending an
+   * unknown field is safe — the endpoint ignores what it does not read, which
+   * is how `member_type` behaved before it was supported — so the field is
+   * posted now rather than held back, and the client half of the flow is
+   * complete and testable the day the server half lands.
+   *
+   * WHAT THE SERVER HAS TO DO WITH IT, written down so it is not guessed at:
+   *
+   *   1. Resolve the code to the invitation that minted it. Today codes are
+   *      DERIVED rather than issued — `codeFor(leaseId, ownerNumber)` in
+   *      `invite-letters.ts` — so resolving means recomputing the same fold
+   *      over the lease/owner pairs, or an invitation table once one exists.
+   *   2. Record the join, so the inviter's credit can post when this member
+   *      later takes a paid plan. The credit does NOT post at registration:
+   *      `invite-flow.ts` is explicit that a free signup earns nothing.
+   *   3. NEVER FAIL THE REGISTRATION on an unknown or spent code. The person
+   *      still wants an account. Create it, ignore the code, and — if the
+   *      response can carry it — say the code was not applied so the client
+   *      can tell them. `AuthResult` has no field for that yet; add one with
+   *      the endpoint rather than inventing it here.
+   */
+  inviteCode?: string;
 }
 
 /**
@@ -287,6 +319,10 @@ export async function registerUser(input: RegisterInput): Promise<AuthResult> {
       subscriptionid: FREE_SUBSCRIPTION_ID,
       // `tnc`, not `terms` — the API's own field name. See `acceptedTerms`.
       tnc: input.acceptedTerms,
+      /* Spread so the key is ABSENT rather than null when there is no code —
+         see `inviteCode` on `RegisterInput` for why the distinction matters to
+         whoever implements the server side. */
+      ...(input.inviteCode ? { invite_code: input.inviteCode } : {}),
       login_type: "web",
       login_json: {},
       visitorId: await getVisitorId(),

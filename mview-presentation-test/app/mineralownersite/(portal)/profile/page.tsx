@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { gates } from "../../_components/ui/portal-gating";
 import { IdentityCard } from "./_components/identity-card";
 import { IdentityStrip } from "./_components/identity-strip";
+import { InvitationsCard } from "./_components/invitations-card";
 import { SecurityCard } from "./_components/security-card";
 import { ProfileHeader } from "./_components/profile-shell";
 
@@ -20,6 +21,16 @@ import { ProfileHeader } from "./_components/profile-shell";
  * It owns IDENTITY and SIGN-IN: the name, email, phone and mailing address,
  * and how you get into the account. That is the whole scope (user, asked
  * explicitly).
+ *
+ * It also carries INVITATIONS & CREDITS, which looks like an exception to the
+ * rule below and is not. A plan belongs to the account; a referral credit is
+ * earned by this PERSON, by writing to a co-owner they know, and the balance is
+ * the one figure on the billing page that is a consequence of something the
+ * reader did rather than something they bought. The card shows the balance, the
+ * rule and two links — no price, no term, no renewal arithmetic — and every
+ * figure in it comes from `_lib/referral-credits.ts`, which Billing reads too.
+ * One source, so there is no second answer to go stale. See
+ * `_components/invitations-card.tsx`.
  *
  * It does NOT carry your owner records, your plan or your capacity, and their
  * absence is a decision rather than an omission:
@@ -82,6 +93,17 @@ export default function ProfilePage() {
       <div className="grid grid-cols-1 items-start gap-[18px] min-[1024px]:grid-cols-2">
         <IdentityCard />
         <SecurityCard />
+      </div>
+
+      {/*
+        FULL WIDTH AND BELOW THE TWO, not a third column and not squeezed
+        beside them. It is the one card on this page the reader can ACT on
+        without filling in a form, so it wants the width for its balance and
+        its two exits — and it goes last because identity and sign-in are what
+        a reader opens "My profile" to do.
+      */}
+      <div className="mt-[18px]">
+        <InvitationsCard />
       </div>
     </div>
   );
