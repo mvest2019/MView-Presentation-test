@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { PortalLoadOverlay } from "./portal-load-overlay";
 
@@ -19,30 +19,49 @@ import { PortalLoadOverlay } from "./portal-load-overlay";
  * in the page's own background, no sheet of color and no words. The chrome
  * around it never disappears. `PortalLoadOverlay` owns that geometry.
  *
- * WHEN IT HIDES. A beat after hydration, with a fade — there is nothing to
- * wait for beyond the page being alive, because the payload rode the document.
- *
- * IT NEVER STACKS WITH THE REDEEM LOADER. The page renders exactly one of the
- * two: `InviteRedeem` while a code is being redeemed, this veil otherwise.
+ * WHEN IT HIDES — FROM THE SHELL BEING ON SCREEN, NOT FROM A CLOCK. The first
+ * cut faded a fixed beat after hydration, and on a deployment where the shell
+ * arrives late (a failed server payload read means `Portal` fetches it
+ * client-side) the veil was gone before there was anything behind it: a blank
+ * middle, screenshotted. `onHosted` fires when the overlay has re-homed into a
+ * VISIBLE `.app-body`, and the fade counts from THAT. The one clock left is a
+ * ceiling: if the shell never shows at all, the veil lifts anyway rather than
+ * trapping the member behind a spinner over a page that needs its own error to
+ * be read.
  */
 
-/** How long after hydration the veil holds before fading. */
+/** How long after the shell is visibly up the veil holds before fading. */
 const HOLD_MS = 450;
 /** The fade itself — matches the overlay's transition. */
 const FADE_MS = 320;
+/** The ceiling: past this the veil lifts even over a shell that never came. */
+const MAX_VEIL_MS = 8_000;
 
 export function DashboardVeil() {
   const [stage, setStage] = useState<"shown" | "fading" | "gone">("shown");
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const exiting = useRef(false);
 
-  useEffect(() => {
-    const hold = setTimeout(() => setStage("fading"), HOLD_MS);
-    const gone = setTimeout(() => setStage("gone"), HOLD_MS + FADE_MS);
-    return () => {
-      clearTimeout(hold);
-      clearTimeout(gone);
-    };
+  /* Idempotent: `onHosted` and the ceiling can both arrive; the first one
+     starts the exit and the second finds it already under way. */
+  const beginExit = useCallback((delay: number) => {
+    if (exiting.current) return;
+    exiting.current = true;
+    timers.current.push(setTimeout(() => setStage("fading"), delay));
+    timers.current.push(setTimeout(() => setStage("gone"), delay + FADE_MS));
   }, []);
 
+  useEffect(() => {
+    timers.current.push(setTimeout(() => beginExit(0), MAX_VEIL_MS));
+    const held = timers.current;
+    return () => held.forEach(clearTimeout);
+  }, [beginExit]);
+
   if (stage === "gone") return null;
-  return <PortalLoadOverlay fading={stage === "fading"} />;
+  return (
+    <PortalLoadOverlay
+      fading={stage === "fading"}
+      onHosted={() => beginExit(HOLD_MS)}
+    />
+  );
 }

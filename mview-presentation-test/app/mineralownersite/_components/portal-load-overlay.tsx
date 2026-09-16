@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 
 /**
@@ -24,6 +30,18 @@ import { createPortal } from "react-dom";
  * the spinner sits in a sticky, viewport-high band rather than at the true
  * middle of the scroll run, where nobody would see it.
  *
+ * IT KEEPS LOOKING, AND IT INSISTS ON A VISIBLE HOST. The first cut checked
+ * once, a tick after mount — and on a deployment where the shell arrives late
+ * (the payload read fails server-side and `Portal` fetches it client-side, or
+ * the shell's own `in-app` class has not landed and `.app-shell` is still
+ * `display:none`) that one look missed, so the loader stayed a full-viewport
+ * sheet with the spinner centred on the WINDOW instead of the content area —
+ * screenshotted on the Vercel deployment. Worse, portalling into a container
+ * that is still `display:none` would make the loader itself invisible: a blank
+ * page. So the poll runs until it finds `.app-body` RENDERED — `offsetWidth`
+ * says so — and only then re-homes; `onHosted` tells the caller the shell is
+ * actually on screen, which is what the veil times its exit from.
+ *
  * Before hydration — and in the odd render where the shell is not on the page
  * — it falls back to a fixed sheet in the same quiet background. That is the
  * price of being IN THE SERVER HTML, which is the whole point: the unclaimed
@@ -37,43 +55,73 @@ import { createPortal } from "react-dom";
  * the member sees the whole shell around a quiet loading pane (screenshotted
  * the other way: a blank white strip where the sidebar belonged), and the only
  * thing the sheet ever hides is route content.
+ *
+ * AND THE FALLBACK STARTS WHERE IT WILL END. Centring the fixed sheet on the
+ * viewport put the spinner left of the content area's middle, and the re-home
+ * then JUMPED it to the true centre — "it show one side and after some time
+ * show middle", accurately. So the fallback leaves the sidebar's 236px alone
+ * from the first server-rendered frame, by CSS, at the same `1024px`
+ * breakpoint the reference sheet hides the sidebar under — the spinner starts
+ * at the content middle and the re-home changes nothing a reader can see. The
+ * one number this borrows from `dashboard-reference.css` is that 236px column;
+ * the sheet is a frozen reference copy, and the poll corrects any drift a beat
+ * later anyway.
  */
 
 /** `body`'s own background — the loader is the page resting, not a new color. */
 const PAGE_BG = "rgb(246, 247, 249)";
 
+/** How often the overlay looks for a rendered `.app-body` to live in. */
+const HOST_POLL_MS = 150;
+
 export function PortalLoadOverlay({
   fading = false,
+  onHosted,
   children,
 }: {
   /** Fade the overlay out; the caller unmounts it when the fade lands. */
   fading?: boolean;
+  /** Called once, when the overlay has re-homed into a VISIBLE `.app-body` —
+   *  i.e. the shell is genuinely on screen behind the loader. */
+  onHosted?: () => void;
   /** Status lines under the spinner. Nothing = just the spinner. */
   children?: ReactNode;
 }) {
   const [host, setHost] = useState<HTMLElement | null>(null);
+  const onHostedRef = useRef(onHosted);
+  useEffect(() => {
+    onHostedRef.current = onHosted;
+  });
 
   useEffect(() => {
-    /* A macrotask after mount, so the shell rendered beside this component has
-       its DOM up — and so the state write is not synchronous in the effect.
-       A `requestAnimationFrame` was the first cut and it was wrong in a way
-       that matters: browsers suspend animation frames entirely for a hidden
-       page, so a dashboard opened in a background tab would never re-home the
-       overlay at all. A timeout fires regardless of visibility. */
-    const timer = setTimeout(() => {
+    /* Timers, never `requestAnimationFrame`: browsers suspend animation frames
+       entirely for a hidden page, so a dashboard opened in a background tab
+       would never re-home the overlay at all. */
+    const look = () => {
       const body = document.querySelector<HTMLElement>(".app-body");
-      if (!body) return;
+      /* RENDERED, not merely present — see the header. `offsetWidth` is 0 for
+         as long as any ancestor keeps it `display:none`. */
+      if (!body || body.offsetWidth === 0) return false;
       if (getComputedStyle(body).position === "static") {
         body.style.position = "relative";
       }
       setHost(body);
-    }, 0);
-    return () => clearTimeout(timer);
+      onHostedRef.current?.();
+      return true;
+    };
+    const timer = setInterval(() => {
+      if (look()) clearInterval(timer);
+    }, HOST_POLL_MS);
+    return () => clearInterval(timer);
   }, []);
 
   const sheet: CSSProperties = {
-    position: host ? "absolute" : "fixed",
-    inset: 0,
+    /* The fallback's `left` comes from the class below, NOT from `inset` —
+       an inline `inset` would outrank the media query that keeps the sidebar's
+       column clear. */
+    ...(host
+      ? { position: "absolute" as const, inset: 0 }
+      : { position: "fixed" as const, top: 0, right: 0, bottom: 0 }),
     zIndex: 40,
     background: PAGE_BG,
     opacity: fading ? 0 : 1,
@@ -82,11 +130,21 @@ export function PortalLoadOverlay({
   };
 
   const node = (
-    <div role="status" aria-live="polite" data-mv-load-overlay style={sheet}>
+    <div
+      role="status"
+      aria-live="polite"
+      data-mv-load-overlay
+      className={host ? undefined : "mv-plo-fixed"}
+      style={sheet}
+    >
       <style>
         {"@keyframes mvPortalSpin{to{transform:rotate(360deg)}}" +
           /* The sidebar above the fixed fallback — see the header note. */
-          ".mv-ref-app .app-side{z-index:41}"}
+          ".mv-ref-app .app-side{z-index:41}" +
+          /* The fallback starts where it will end — see the header note. The
+             1024px line is the reference sheet's own sidebar breakpoint. */
+          ".mv-plo-fixed{left:0}" +
+          "@media (min-width:1025px){.mv-plo-fixed{left:236px}}"}
       </style>
       <div
         style={{
