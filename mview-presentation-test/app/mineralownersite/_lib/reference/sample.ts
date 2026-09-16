@@ -488,6 +488,49 @@ export function sampleize(input: Payload): SampleResult {
       leaseName.set(head, nm(i));
     }
   });
+  /**
+   * AND EVERY OTHER LEASE THIS RECORD CLAIMS AS ITS OWN (defect #10).
+   *
+   * The map above is built from `real.leases` ALONE, and `names()` is a lookup
+   * rather than a mint: a name the map has never seen comes back exactly as it
+   * arrived. So the guarantee the not-claimed page makes — "the names belong to
+   * a sample owner rather than to you" — held only for leases that happened to
+   * be in that one array.
+   *
+   * THE REPORTED SHAPE. An alert titled "Operator changed on LONE MESQUITE"
+   * (aliased, because the lead lease was in `leases`) carried a stat cell
+   * reading "LEASE: COOK GAS UNIT" and a spark captioned "COOK GAS UNIT through
+   * the handover" — the real name, on the same card, because that lease reached
+   * the page through the alert rather than through the table. One row, both
+   * halves of the substitution, disagreeing.
+   *
+   * WHAT IS SWEPT: the fields where the payload names a lease it has already
+   * attributed to THIS OWNER — an alert's lead lease, a timeline event flagged
+   * `is_mine`, an activity row under `mine`. Each is registered against the next
+   * alias in the list, so a lease named in three places is one sample lease in
+   * all three.
+   *
+   * WHAT IS NOT SWEPT, deliberately: neighbours, county rows and any other
+   * public-record name. Those are not the reader's information, they are the
+   * point of the panel that prints them, and `activities`' own comment above
+   * records the same decision for operators. Substituting them would empty the
+   * sample rather than anonymise it.
+   */
+  let extra = real.leases.length;
+  const alsoOwn = (name: string | null | undefined) => {
+    const v = (name ?? '').trim();
+    if (!v || v.length <= 3 || leaseName.has(v)) return;
+    leaseName.set(v, nm(extra));
+    const head = v.split(/\s+/)[0];
+    if (head && head.length > 3 && head !== v && !leaseName.has(head)) {
+      leaseName.set(head, nm(extra));
+    }
+    extra += 1;
+  };
+  real.alerts?.items?.forEach((a) => alsoOwn(a.lead_lease));
+  real.timeline?.events?.forEach((e) => { if (e.is_mine) alsoOwn(e.lease_name); });
+  real.activities?.mine?.forEach((i) => alsoOwn(i.lease_name));
+
   /* A SAMPLE ID FOR A REAL LEASE ID — see `names()`.
      Lettered, not numbered: `scrub()` masks every digit in a sentence, so
      "SMPL-3" rendered as "SMPL•••". A letter is not a figure, so it survives
@@ -1813,7 +1856,7 @@ export function sampleize(input: Payload): SampleResult {
 }
 
 /* ---------------------------------------------------------------- selftest */
-export function selftest() {
+export function selftest(fixture?: Payload) {
   const lines: string[] = [];
   let ok = true;
   const chk = (name: string, cond: boolean, got?: unknown) => {
@@ -1917,6 +1960,53 @@ export function selftest() {
     for (const [from, to] of spellings) out = out.split(from).join(to);
     return !/HURD|LTD/.test(out);
   })());
+
+  /* --------------------------------------------------------- defect #10 */
+  /**
+   * THE ALIAS MAP MUST KNOW EVERY LEASE THE RECORD CALLS ITS OWN.
+   *
+   * `names()` is a LOOKUP, not a mint: a lease name the map has never seen
+   * comes back exactly as it arrived. So the not-claimed page's promise — "the
+   * names belong to a sample owner rather than to you" — is only as good as the
+   * set of names registered, and that set used to be `real.leases` alone. A
+   * lease that reached the page through an ALERT instead of the table was
+   * printed as filed, which is what QA measured: a row titled "Operator changed
+   * on LONE MESQUITE" carrying a stat cell reading "LEASE: COOK GAS UNIT".
+   *
+   * RUN AGAINST THE REAL CAPTURE, not a hand-built stub. The first version of
+   * this check assembled a minimal payload and `sampleize` threw on the first
+   * field it did not carry — a test that fails for its own reasons tells you
+   * nothing about the transform. The caller passes the fixture; the check
+   * copies it, moves one alert onto a lease the table does NOT list, and
+   * asserts that name does not survive the transform.
+   *
+   * Skipped, not failed, when no fixture is passed: `selftest()` is imported by
+   * client code that has no business pulling 2 MB of JSON in behind it.
+   */
+  if (fixture) {
+    const probe = 'ZZ PROBE LEASE UNIT';
+    const copy = JSON.parse(JSON.stringify(fixture)) as Payload;
+    const tableNames = new Set(copy.leases.map((l) => l.lease_name));
+    chk('the probe name is genuinely absent from the table',
+      !tableNames.has(probe), [...tableNames].slice(0, 4));
+
+    const a = copy.alerts.items[0];
+    if (a) {
+      a.lead_lease = probe;
+      a.title = `Operator changed on ${probe}`;
+      a.spark_label = `${probe} through the handover`;
+      a.stats = [{ label: 'Lease', value: probe }, ...(a.stats ?? [])];
+      a.evidence = [`${probe} — 3,998 MCF of gas`, ...(a.evidence ?? [])];
+    }
+
+    const out = JSON.stringify(sampleize(copy).payload);
+    chk('an alert-only lease name is aliased, not printed (defect #10)',
+      a ? !out.includes(probe) : false);
+    chk('the roll key never survives the sample (defect #10)',
+      !out.includes(String(fixture.owner.ownernumber)));
+    chk('the roll name never survives the sample (defect #10)',
+      !fixture.owner.ownername || !out.includes(fixture.owner.ownername));
+  }
 
   return { name: 'not-claimed sample view', ok, lines };
 }

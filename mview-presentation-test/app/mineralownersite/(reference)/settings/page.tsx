@@ -24,6 +24,7 @@ import {
   SettingsHeader,
   UnclaimedSettingsNotice,
 } from "./_components/settings-header";
+import { SettingsHashTarget } from "./_components/hash-target";
 import { SettingsJumpNav } from "./_components/settings-jump-nav";
 import { UltraSettings } from "./_components/ultra-settings";
 import { ViewCard } from "./_components/view-card";
@@ -149,6 +150,11 @@ export default async function SettingsPage({
   return (
     <Portal route={null} initial={initial} shellClass="mv-wide-gutters">
       <section data-route="app-settings" className="active">
+        {/* THE FRAGMENT IN THE URL IS AN INSTRUCTION — see `SettingsHashTarget`.
+            "Alert preferences" on the Alerts page links 2,400px down this page,
+            and a client navigation can commit before the card exists. */}
+        <SettingsHashTarget />
+
         {/* v9 — the no-claim banner. `nc-only` and deliberately NOT `nc-swap`. */}
         <UnclaimedSettingsNotice />
 

@@ -77,6 +77,11 @@ import DrawerPanel from './DrawerPanel';
 import Loader, { type Step } from './Loader';
 import ProductionView from './ProductionView';
 import { PortalViewStateProvider } from './view-state';
+import { usePortalPrefs, writePortalPref } from './prefs-context';
+import {
+  PORTAL_FUNNEL_COOKIE,
+  PORTAL_TIER_COOKIE,
+} from '../../_lib/reference/portal-prefs';
 
 export type Route = 'dashboard' | 'alerts' | 'activities' | 'leases'
   | 'production' | 'weekly' | 'map';
@@ -215,7 +220,13 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
      claimed a record yet — read as "That did not load" and was offered a
      reload that answers the same way every time. */
   const [errorCode, setErrorCode] = useState<string | null>(null);
-  const [tier, setTier] = useState<Tier>('detailed');
+  /* THE REQUEST'S OWN ANSWER FIRST — see `prefs-context.tsx`. `pref.tier` is
+     the density cookie, which the server read and rendered with, so opening on
+     it is what makes the server's tree and this one agree. `null` means the
+     request carried nothing, and then `'detailed'` is the same default the
+     server used. */
+  const pref = usePortalPrefs();
+  const [tier, setTier] = useState<Tier>(pref.tier ?? 'detailed');
   /* ADAPTED 5 · THE FUNNEL STATE OPENS ON WHAT THE RECORD SAYS, not on a
      constant. It used to start at `'paid'` for everybody, so a visitor with
      nothing claimed was shown a paid dashboard, and the one thing this state
@@ -234,10 +245,17 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
      inventing an entitlement. The demo menu and its `localStorage` memory are
      left exactly as they were, and they still override this. */
   const [funnel, setFunnel] = useState<FunnelKey>(
-    /* `?.length === 0` and not `!length`: the capture has no such field, and
+    /* THE COOKIE OUTRANKS THE RECORD HERE, because the menu always did. This
+       state is the demo switch, `pickFunnel` persists it, and a reader who
+       chose "Lapsed" last visit must not be put back on `paid` by a claim
+       signal they have already overridden. With no cookie the record decides,
+       exactly as before.
+
+       `?.length === 0` and not `!length`: the capture has no such field, and
        "this source does not say" must keep the old default rather than
        declaring the record unclaimed. Only an explicitly EMPTY list flips it. */
-    initial?.owner.claimed_owners?.length === 0 ? 'unclaimed' : 'paid',
+    pref.funnel
+      ?? (initial?.owner.claimed_owners?.length === 0 ? 'unclaimed' : 'paid'),
   );
   /* a string is a key into `data.drawers`; an object is a panel built by a
      view from one specific record — the Activities timeline builds one per
@@ -268,6 +286,38 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
    * is honest, a figure briefly wrong is not.
    */
   const [readReady, setReadReady] = useState(false);
+  /**
+   * HAS THE READER'S OWN DENSITY AND STATE BEEN READ YET? — the flash this
+   * closes, and it is the same argument as `readReady` one field up.
+   *
+   * `tier` opens at `'detailed'` and `funnel` at whatever the claim signal
+   * says, because the server has to render SOMETHING and it cannot see
+   * `localStorage`. The reader's actual choice arrives a moment later, in the
+   * layout effect below. Between those two moments the browser paints a whole
+   * page at the wrong density: the reported shape was "after refresh the page
+   * shows pro mode for some time and then shows ultra or essentials".
+   *
+   * That is not a slow render, it is the server's guess held on screen for the
+   * length of a hydration — and unlike a wrong FIGURE, a wrong DENSITY moves
+   * every heading on the page when it corrects, so the reader loses their
+   * place. QA asked for a loader or a skeleton, which is the honest answer:
+   * the shell says it is still deciding rather than deciding wrongly.
+   *
+   * `false` on the server AND on the first client render, so hydration matches
+   * exactly; flipped in the same LAYOUT effect that reads the preference, so
+   * the real page paints in the frame hydration commits rather than one frame
+   * later. See `SHELL_SKELETON` at the foot of this file for what shows
+   * meanwhile.
+   */
+  const [prefsReady, setPrefsReady] = useState(
+    /* THE SKELETON IS FOR READERS THE REQUEST COULD NOT DESCRIBE. A cookie
+       means the server has already rendered this reader's own density, so
+       there is nothing to wait for and nothing that can flash — showing them
+       blocks would be a regression dressed as a fix. Only a reader with no
+       cookie, whose `localStorage` may still hold a choice from before the
+       cookie existed, has a wrong density on screen worth covering. */
+    pref.tier != null,
+  );
   const seq = useRef(0);
   const router = useRouter();
 
@@ -294,18 +344,37 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
      `localStorage` reads, which is not enough to be worth a frame of jank. */
   useLayoutEffect(() => {
     try {
+      /* AND THE MIGRATION, which is the only reason this still reads `tier`
+         and `funnel` at all. A reader who chose a density before the cookie
+         existed has it in `localStorage` and nowhere the server can see, so
+         their first visit renders the default, corrects here, and WRITES THE
+         COOKIE — after which every later request is served at the right
+         density with no skeleton and no correction. A reader who already had
+         the cookie takes the same path and changes nothing: the value read is
+         the value already on screen, and `setTier` with an equal value is a
+         no-op. */
       const t = localStorage.getItem('mv.tier') as Tier | null;
-      if (t && PERSONAS.some((p) => p.key === t)) setTier(t);
+      if (t && PERSONAS.some((p) => p.key === t)) {
+        setTier(t);
+        writePortalPref(PORTAL_TIER_COOKIE, t);
+      }
       const f = localStorage.getItem('mv.funnel') as FunnelKey | null;
-      if (f && FUNNEL.some((s) => s.key === f)) setFunnel(f);
+      if (f && FUNNEL.some((s) => s.key === f)) {
+        setFunnel(f);
+        writePortalPref(PORTAL_FUNNEL_COOKIE, f);
+      }
       setTrialStarted(localStorage.getItem('mv.trialStart'));
       const r = JSON.parse(localStorage.getItem(READ_KEY) ?? '[]') as unknown;
       if (Array.isArray(r)) setReadIds(new Set(r.filter((x): x is string => typeof x === 'string')));
     } catch { /* private mode — nothing read yet is the correct default */ }
     /* OUTSIDE THE `try`. A browser that throws on `localStorage` still has a
        read-state — the empty one — and holding `readReady` at false there would
-       hide the count for the whole visit rather than for a frame. */
+       hide the count for the whole visit rather than for a frame. And a browser
+       that throws still has a DENSITY — the default one — so `prefsReady` has
+       to flip for the same reason: a private window must get the page, not the
+       skeleton, for the rest of the visit. */
     setReadReady(true);
+    setPrefsReady(true);
   }, []);
 
   /**
@@ -345,12 +414,19 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
       return next;
     });
   }, []);
+  /* BOTH STORES, ALWAYS TOGETHER — see `prefs-context.tsx`. `localStorage`
+     stays the reader's record of the choice; the cookie is the copy the SERVER
+     can read, and it is what lets the next request render this density
+     directly instead of guessing and correcting. Writing one without the other
+     is what would put the flash back. */
   const pickTier = useCallback((t: Tier) => {
     setTier(t);
     try { localStorage.setItem('mv.tier', t); } catch { /* ignore */ }
+    writePortalPref(PORTAL_TIER_COOKIE, t);
   }, []);
   const pickFunnel = useCallback((f: FunnelKey) => {
     setFunnel(f);
+    writePortalPref(PORTAL_FUNNEL_COOKIE, f);
     try {
       localStorage.setItem('mv.funnel', f);
       /* Stamp the trial the first time it starts, so "4 days left" counts down
@@ -592,7 +668,14 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
 
   const view = (
     children ??
-    (!data ? null
+    /* THE DENSITY IS NOT KNOWN YET — see `prefsReady`. Every surface below
+       branches on `effTier`, so rendering one before the reader's own choice
+       has been read paints the server's guess and then re-lays the whole page
+       out when it corrects. The skeleton holds the shape for that one frame.
+       `children` is exempt: a page that brought its own view (the Map) does
+       not read the density at all. */
+    (!prefsReady ? <ShellSkeleton />
+      : !data ? null
       : route === 'weekly'
         ? <WeeklyView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
         : route === 'alerts'
@@ -651,7 +734,10 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
         {/* The copy no longer says "search for a name above" — there is no
             search box above it any more. The owner comes from the URL or from
             the default read, so a reload is the honest suggestion. */}
-        {!children && !data && !error && !busy ? <ErrorCard detail="No owner is loaded yet. Reload the page, or open a link that names one." /> : null}
+        {/* `prefsReady` too: until the density is known the skeleton is what is
+            on screen, and "no owner is loaded" under it would be a second,
+            contradictory answer to the same question. */}
+        {prefsReady && !children && !data && !error && !busy ? <ErrorCard detail="No owner is loaded yet. Reload the page, or open a link that names one." /> : null}
       </Chrome>
       </PortalViewStateProvider>
 
@@ -661,6 +747,42 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
         copy={copy} onClose={() => setDrawer(null)}
         sample={sample} sourceNote={data?.owner.identity_note ?? null}
       />
+    </div>
+  );
+}
+
+/**
+ * WHAT IS ON SCREEN WHILE THE DENSITY IS STILL UNKNOWN — see `prefsReady`.
+ *
+ * It is a SKELETON and not a spinner, and the difference matters here: the
+ * thing being waited for is a layout, so the honest placeholder is the shape
+ * of a layout. A spinner in the middle of an empty column would say "this page
+ * is loading its data", which is a different and untrue claim — the payload is
+ * already here, it is the reader's own choice of density that is not.
+ *
+ * It holds roughly the height the real page opens at, so the scroll position
+ * does not jump when the tree lands. `aria-busy` and the visually-hidden line
+ * say the same thing to a screen reader, which sees no skeleton at all.
+ *
+ * ONE FRAME, USUALLY. `prefsReady` flips in a layout effect, so this is
+ * replaced before the browser paints the hydrated tree; what it actually
+ * covers is the gap between the server's HTML arriving and hydration running,
+ * which on a cold load is the only window the wrong density was ever visible
+ * in.
+ */
+function ShellSkeleton() {
+  return (
+    <div className="mv-shellskel" aria-busy="true" aria-live="polite">
+      <span className="sr-only">Loading your view</span>
+      <div className="sk-line sk-head" />
+      <div className="sk-line sk-sub" />
+      <div className="sk-card" />
+      <div className="sk-row">
+        <div className="sk-card sk-sm" />
+        <div className="sk-card sk-sm" />
+        <div className="sk-card sk-sm" />
+      </div>
+      <div className="sk-card" />
     </div>
   );
 }

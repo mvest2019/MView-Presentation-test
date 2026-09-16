@@ -87,20 +87,21 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
   /** set instead of `onCta` when the CTA is a destination rather than a switch */
   let ctaHref: string | null = null;
 
-  if (funnel === 'claimed') {
-    tag = 'Free plan';
-    cta = `Start my ${TRIAL_LEN}-day free trial`;
-    snd = 'What the trial includes';
-    onCta = () => setFunnel('trial');
-    msg = (
-      <>
-        Your record is claimed — <b>all {n} of your {plural(n, 'lease')}</b> are here and stay
-        here. What each one is <b>worth to you</b> is the part Premium adds, along with your weekly
-        report, the owner community and the monthly production report printed and mailed.{' '}
-        <b>Try all of it free for {TRIAL_LEN} days.</b>
-      </>
-    );
-  } else if (funnel === 'trial') {
+  /* CLAIMED · FREE CARRIES NO BANNER (defect #26).
+     It used to open with "Your record is claimed — all N of your leases are
+     here and stay here ... Try all of it free for 7 days", a trial CTA and a
+     "What the trial includes" link, pinned above every portal route. QA asked
+     for the text and both buttons to go, and the reason holds: a reader who
+     has just claimed is being sold to before they have seen what they claimed,
+     on every page, with no way to dismiss it. The upgrade path is not lost —
+     the account menu and the plans page both carry it, and `PLANS_HREF` is
+     still one click from the chrome.
+
+     `paid` and `unclaimed` already returned null here, for the reasons the
+     note below gives; `claimed` now joins them, which leaves `trial` and
+     `lapsed` as the only two states with a bar — the two that are actually
+     time-bound and so have something a reader needs to act on. */
+  if (funnel === 'trial') {
     tag = 'Premium trial';
     cta = 'Upgrade to Premium';
     snd = 'Compare plans';
@@ -134,13 +135,12 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
     );
   }
 
-  /* NEITHER `paid` NOR `unclaimed` GETS A BANNER, for opposite reasons.
+  /* `paid`, `unclaimed` AND `claimed` GET NO BANNER, for three reasons.
      `paid` has nothing to sell and nothing on hold, and a bar that says
      "everything is fine" is one the reader learns to skip. `unclaimed` already
      carries the claim message twice — the pinned bar line and the claim rail at
-     the top of the dashboard — and `mvfunnelstates.css` reveals #mvFunnelBar
-     only in claimed/trial/lapsed anyway, so a third copy would be markup that
-     never paints. */
+     the top of the dashboard. `claimed` was removed at QA's request; see the
+     note above the `trial` branch. */
   if (!tag) return null;
 
   return (

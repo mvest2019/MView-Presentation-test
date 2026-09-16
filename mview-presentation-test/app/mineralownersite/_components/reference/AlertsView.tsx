@@ -279,6 +279,67 @@ function watchLedger(p: Payload): Payload['alerts']['ledger'] {
  * An unparseable or missing label sorts to the bottom rather than to the top —
  * `0`, not `NaN` — because a row with no date is not news.
  */
+/**
+ * A COUNTY-WIDE FINDING NAMES ITS COUNTIES; IT DOES NOT LIST THEM ALL.
+ *
+ * A reader whose record spans the Permian gets alerts built over every county
+ * they hold in, and the service names each one. That is correct data and
+ * unreadable copy: one row's title ran
+ *
+ *   "284 new wells completed in ANDREWS, BORDEN, BURLESON, CROCKETT,
+ *    CULBERSON, DAWSON, FREESTONE, GLASSCOCK, GRAYSON, GRIMES, HOWARD, IRION,
+ *    JONES, LEE, LEON, LIBERTY, LOVING, MARTIN, MIDLAND, PECOS, REEVES,
+ *    UPTON, WINKLER"
+ *
+ * and the stat cell under it repeated the same 23 names, so a card whose job
+ * is to say "284 wells" spent four lines saying where. QA asked for the first
+ * few and a "(…)" carrying the rest on hover.
+ *
+ * WHAT COUNTS AS A RUN: four or more comma-separated ALL-CAPS tokens. Three or
+ * fewer are left alone — "ANDREWS, MARTIN, MIDLAND" is shorter than the
+ * ellipsis that would replace it — and the threshold is on the run, not on the
+ * string, so a title that merely contains a capitalised word is untouched.
+ *
+ * NOTHING IS REWORDED (§13). The kept names are the server's own, in the
+ * server's own order, and the hidden ones are on the element's `title` rather
+ * than dropped: the fact is still on the page, it is just not all of it at
+ * once.
+ */
+const KEEP_COUNTIES = 3;
+const COUNTY_RUN = /\b[A-Z][A-Z'.-]*(?:\s+[A-Z][A-Z'.-]*)*(?:,\s*[A-Z][A-Z'.-]*(?:\s+[A-Z][A-Z'.-]*)*){3,}/;
+
+function FoldCounties({ text }: { text: string | null | undefined }): React.ReactElement | null {
+  const src = String(text ?? '');
+  if (!src) return null;
+  const m = COUNTY_RUN.exec(src);
+  if (!m) return <>{src}</>;
+
+  const names = m[0].split(/,\s*/);
+  if (names.length <= KEEP_COUNTIES + 1) return <>{src}</>;
+
+  const kept = names.slice(0, KEEP_COUNTIES).join(', ');
+  const rest = names.slice(KEEP_COUNTIES);
+  const before = src.slice(0, m.index);
+  const after = src.slice(m.index + m[0].length);
+
+  return (
+    <>
+      {before}
+      {kept}{' '}
+      <span
+        className="al-ell"
+        title={rest.join(', ')}
+        tabIndex={0}
+        role="note"
+        aria-label={`and ${rest.length} more: ${rest.join(', ')}`}
+      >
+        (…)
+      </span>
+      {after}
+    </>
+  );
+}
+
 function alertTime(label: string | null): number {
   if (!label) return 0;
   const t = Date.parse(label);
@@ -649,12 +710,13 @@ export default function AlertsView(
                   day — including the days it says nothing.
                 </strong>
               </div>
-              {/* same destination as "Alert preferences" in the header — the
-                  two controls make the same offer and used to land on two
-                  different-looking answers; and neither belongs on a sample */}
-              {unclaimed
-                ? null
-                : <Link className="btn btn-ghost btn-sm" href={PREFS_HREF}>Choose what reaches you</Link>}
+              {/* NO SECOND PREFERENCES CONTROL (defect, Alerts sheet).
+                  This was "Choose what reaches you", pointing at the same
+                  `PREFS_HREF` as "Alert preferences" in the header a few
+                  hundred pixels above it. Two buttons, one destination, one
+                  offer — and this one sat inside the panel arguing what the
+                  subscription buys, where a control that navigates away is the
+                  last thing the panel wants. The header keeps the link. */}
             </div>
 
             <div className="aw-grid">
@@ -886,7 +948,7 @@ export default function AlertsView(
                           : a.severity === 'important'
                             ? <span className="al-sev s-imp">Important</span>
                             : null}
-                        {a.title}
+                        <FoldCounties text={a.title} />
                       </strong>
                       <span className="tiny muted" style={{ marginRight: 6 }}>
                         <Band tier={tier} from="pro">
@@ -930,11 +992,15 @@ export default function AlertsView(
                                 {st.tone === 'up' ? '▲ ' : st.tone === 'down' ? '▼ ' : ''}
                                 {/* `shown` is the value with its empty halves
                                     removed — see `liveValue` */}
-                                {st.tone === 'up' || st.tone === 'down'
-                                  ? shown.replace(/^[+-]/, '')
-                                  : shown}
+                                <FoldCounties
+                                  text={st.tone === 'up' || st.tone === 'down'
+                                    ? shown.replace(/^[+-]/, '')
+                                    : shown}
+                                />
                               </span>
-                              {st.sub ? <span className="alx-s">{st.sub}</span> : null}
+                              {st.sub
+                                ? <span className="alx-s"><FoldCounties text={st.sub} /></span>
+                                : null}
                             </div>
                           ))}
                           {/* the series beside the figures, only where one
