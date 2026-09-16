@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { INVITE_REDEEM_PARAM, normalizeInviteCode } from "@/lib/invite-code";
 import { getSessionUser } from "@/lib/session";
+import { DashboardVeil } from "../_components/dashboard-veil";
 import { InviteRedeem } from "../_components/invite-redeem";
 import Portal from "../_components/reference/Portal";
 import {
@@ -110,9 +111,15 @@ export default async function MineralOwnerDashboard({
 
   return (
     <>
+      {/* Exactly one loader per entry: the redeem loader when a code is being
+          looked up and claimed (it owns the page for the whole flow), the load
+          veil on every other dashboard entry — both in the server HTML, so the
+          unclaimed state can never be the first paint. */}
       {user && redeemCode ? (
         <InviteRedeem memberId={user.id} code={redeemCode} />
-      ) : null}
+      ) : (
+        <DashboardVeil />
+      )}
       <Portal route="dashboard" initial={initial} />
     </>
   );

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { formatInviteCode } from "@/lib/invite-code";
 import { PORTAL_HOME } from "@/lib/routes";
+import { PortalLoadOverlay } from "./portal-load-overlay";
 
 /**
  * THE INVITE CODE'S LANDING — the redeem half of Invite Co-Owners.
@@ -47,18 +48,20 @@ import { PORTAL_HOME } from "@/lib/routes";
  * explaining, with the manual claim flow one link away. The invitation is a
  * shortcut, not a gate.
  *
- * ── WHILE IT WORKS, IT IS A FULL-PAGE LOADER, NOT A CORNER CARD ──
+ * ── WHILE IT WORKS, IT IS A LOADER OVER THE DASHBOARD'S OWN SPACE ──
  *
  * The dashboard behind this component was server-rendered BEFORE the claim
  * existed, so for the seconds the lookup and the claim take it says "claim
  * your record" — the one thing the invitation just promised would not be
  * asked. A member's first look at the portal must not be the product telling
- * them they own nothing. So the working phases cover the page with a loader
- * that says what is actually happening, and the dashboard only shows through
- * once there is either a claimed record behind the reload or a failure worth
- * reading. The overlay is in the SERVER HTML too — the phase starts at
- * "looking" rather than null — so the unclaimed dashboard cannot flash in the
- * gap before hydration.
+ * them they own nothing. So the working phases cover the CONTENT AREA — the
+ * region right of the sidebar, under the top bar, in the page's own quiet
+ * background; see `PortalLoadOverlay` (requested: not a full-page sheet of
+ * color) — with a spinner and a line saying what is actually happening, and
+ * the dashboard only shows through once there is either a claimed record
+ * behind the reload or a failure worth reading. The overlay is in the SERVER
+ * HTML too — the phase starts at "looking" rather than null — so the
+ * unclaimed dashboard cannot flash in the gap before hydration.
  */
 
 const CLAIM_BASE =
@@ -300,42 +303,12 @@ export function InviteRedeem({
     );
 
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 80,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-        /* Opaque on purpose: what it covers is a dashboard saying "claim your
-           record", which is the one sentence this flow exists to spare them. */
-        background: "#0d1524",
-        color: "#f4f6fa",
-        textAlign: "center",
-      }}
-    >
-      <style>{"@keyframes mvInviteSpin{to{transform:rotate(360deg)}}"}</style>
+    <PortalLoadOverlay>
       <div style={{ maxWidth: 460 }}>
-        <span
-          aria-hidden="true"
-          style={{
-            display: "inline-block",
-            width: 34,
-            height: 34,
-            borderRadius: "50%",
-            border: "3px solid rgba(244, 246, 250, .25)",
-            borderTopColor: "#f4f6fa",
-            animation: "mvInviteSpin .8s linear infinite",
-          }}
-        />
         <p
           style={{
-            margin: "18px 0 6px",
-            fontSize: 17,
+            margin: "0 0 6px",
+            fontSize: 16,
             fontWeight: 600,
             letterSpacing: ".01em",
           }}
@@ -344,10 +317,17 @@ export function InviteRedeem({
             ? "Welcome — your record is claimed."
             : "Setting up your minerals"}
         </p>
-        <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6, opacity: 0.85 }}>
+        <p
+          style={{
+            margin: 0,
+            fontSize: 13.5,
+            lineHeight: 1.6,
+            color: "#51606d",
+          }}
+        >
           {line}
         </p>
       </div>
-    </div>
+    </PortalLoadOverlay>
   );
 }

@@ -72,11 +72,14 @@ type Endpoint = keyof typeof GET_PARAMS;
  * The write-shaped calls, per endpoint: which methods exist, which body fields
  * may pass, and whether the session's `member_id` is injected.
  *
- * `lookup` TAKES NO `member_id` — the schema is strict and would 400 on the
- * extra field, and the call is about the CODE, not the caller: it resolves an
- * invite code to the owner name and address the redeem flow claims with. The
- * session is still required to reach it, so a signed-out visitor cannot use
- * this route to turn codes into names and addresses.
+ * `lookup` CARRIES `member_id` NOW (requested) — the redeeming member's own,
+ * from the session like everywhere else, so the service can tie the lookup to
+ * who is redeeming. The dev deployment measured on 2026-09-16 still REFUSES
+ * the key (`VALIDATION_ERROR · Unrecognized key(s) in object: 'member_id'` —
+ * the schemas are strict), so `writeThrough` retries that one refusal without
+ * the field: today's backend keeps answering, and the moment the schema
+ * accepts the key the retry stops firing on its own. Delete the retry once the
+ * backend has shipped it.
  */
 const WRITES: Record<
   string,
@@ -91,7 +94,7 @@ const WRITES: Record<
   },
   lookup: {
     POST: ["invite_code"],
-    withMemberId: false,
+    withMemberId: true,
   },
 };
 
@@ -202,11 +205,36 @@ async function writeThrough(
   }
   if (write.withMemberId) body.member_id = user.id;
 
-  return forward(`${BASE}/api/v1/invite/${endpoint}`, {
-    method,
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const send = (payload: Record<string, unknown>) =>
+    forward(`${BASE}/api/v1/invite/${endpoint}`, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+  const response = await send(body);
+
+  /* THE `lookup` COMPAT RETRY — see the note on `WRITES`. Only the one exact
+     refusal is retried: a strict-schema 400 naming `member_id` as the unknown
+     key. Every other answer, error or not, passes through untouched. */
+  if (
+    endpoint === "lookup" &&
+    write.withMemberId &&
+    response.status === 400
+  ) {
+    const text = await response.text();
+    if (text.includes("Unrecognized key") && text.includes("member_id")) {
+      const { member_id: _dropped, ...withoutMember } = body;
+      void _dropped;
+      return send(withoutMember);
+    }
+    return new NextResponse(text, {
+      status: 400,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  return response;
 }
 
 export async function POST(
