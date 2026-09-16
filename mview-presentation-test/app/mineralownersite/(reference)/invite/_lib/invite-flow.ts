@@ -2,7 +2,7 @@ import type {
   CreditPlan,
   CreditPolicy,
   FlowStep,
-  InviteLease,
+  OwnerKind,
 } from "./invite-types";
 
 /**
@@ -143,40 +143,26 @@ export const CREDIT: CreditPolicy = {
  * may have good reason to write to the operator; they will never get a month
  * for it, and a figure that counted them would be a promise this page cannot
  * keep.
+ *
+ * IT COUNTS THE CURRENT SELECTION AND NOTHING ELSE NOW. The fixture build
+ * cross-checked every pick against the owner's other nine leases and named the
+ * repeats; the roll now arrives one lease at a time from the invite API, so
+ * the browser never holds every lease's roster to check against. `repeat`
+ * stays in the shape — empty — and the rail keeps the "one month per person,
+ * ever" sentence, which is the rule the repeat count was illustrating.
  */
 export function creditPlan(
-  leases: InviteLease[],
-  leaseId: string,
-  picked: string[],
+  chosen: { kind: OwnerKind }[],
   policy: CreditPolicy = CREDIT,
 ): CreditPlan {
-  const here = leases.find((lease) => lease.leaseId === leaseId);
-  const chosenSet = new Set(picked);
-  const rows = (here?.owners ?? []).filter((owner) =>
-    chosenSet.has(owner.ownerNumber),
-  );
-  const eligible = rows.filter((owner) => owner.kind !== "operator");
-
-  /* Who among them the reader also holds a lease with elsewhere. */
-  const elsewhere = leases.filter((lease) => lease.leaseId !== leaseId);
-  const repeat = eligible
-    .filter((owner) =>
-      elsewhere.some((lease) =>
-        lease.owners.some((other) => other.ownerNumber === owner.ownerNumber),
-      ),
-    )
-    .map((owner) => owner.ownerNumber);
-  const repeatLeases = elsewhere.filter((lease) =>
-    lease.owners.some((other) => repeat.includes(other.ownerNumber)),
-  ).length;
-
+  const eligible = chosen.filter((owner) => owner.kind !== "operator");
   const months = eligible.length * policy.monthsOnPaid;
 
   return {
-    chosen: rows.length,
+    chosen: chosen.length,
     eligible: eligible.length,
-    repeat,
-    repeatLeases,
+    repeat: [],
+    repeatLeases: 0,
     monthsMax: months,
     /*
      * THREE STATES, NOT TWO. Nothing ticked and nothing eligible both come out
@@ -187,7 +173,7 @@ export function creditPlan(
      * to say about it.
      */
     line:
-      rows.length === 0
+      chosen.length === 0
         ? "Tick a co-owner and this says what it could earn you."
         : months === 0
           ? "The working-interest party cannot register as a mineral owner, so " +

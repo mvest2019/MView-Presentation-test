@@ -1,0 +1,511 @@
+import type { GreetingStyle, OwnerKind } from "../_lib/invite-types";
+
+/**
+ * THE INVITE PAGE'S ENTIRE API LAYER — all five backend calls, in one file, in
+ * its own folder, exactly as the claim flow arranges its `_api/claim-api.ts`.
+ *
+ * ── IT CALLS `/api/invite/*` ON OUR OWN ORIGIN, NEVER THE BACKEND ──
+ *
+ * The invite service lives on `MINERALVIEW_API_BASE_URL`, which is server-only
+ * on purpose, and every call needs a `member_id` this page must not be trusted
+ * to choose. `app/api/invite/[endpoint]/route.ts` supplies both: it reads the
+ * member off the session cookie and forwards to the service. What this module
+ * knows is the three same-origin paths and the shapes that come back.
+ *
+ * ── WIRE SHAPES IN, VIEW SHAPES OUT ──
+ *
+ * The contract's responses are snake_case and carry far more than the page
+ * reads (`identity_basis`, `roll_rows`, raw address blocks). Each fetcher maps
+ * to a small camelCase view type here, so a contract field renaming reaches one
+ * file — and so the components never learn a shape they would then depend on.
+ *
+ * TWO CONTRACT RULES ARE ENFORCED IN THE MAPPING, where they cannot be
+ * forgotten by a component:
+ *
+ *   `owner_key` IS THE IDENTITY — never an array index, never the bare number.
+ *   The list is sorted by share, so an index addresses a different person the
+ *   moment the roll changes, and some owners have no number at all. Every view
+ *   type carries `ownerKey` and every tick and code keys off it.
+ *
+ *   A NULL SHARE IS "NOT FILED", NEVER 0%. `sharePct` stays null through the
+ *   mapping and the row renders the words.
+ *
+ * ── ERRORS ARRIVE IN ONE ENVELOPE AND LEAVE AS ONE ERROR TYPE ──
+ *
+ * Everything — the backend's own errors, the proxy's not-signed-in, a dead
+ * network — surfaces as `InviteApiError` with a `code` the workbench can
+ * branch on (`INVITE_NO_CLAIM` → the claim-first notice) and a `message`
+ * readable enough to show verbatim.
+ */
+
+/* ============================================================================
+   ERRORS
+   ============================================================================ */
+
+export class InviteApiError extends Error {
+  /** The backend's error code — `INVITE_NO_CLAIM`, `RATE_LIMITED`, … — or a
+   *  transport code of our own (`UNREACHABLE`, `BAD_SHAPE`). */
+  readonly code: string;
+  readonly status: number;
+
+  constructor(code: string, status: number, message: string) {
+    super(message);
+    this.name = "InviteApiError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
+/** The one envelope every error uses — see the contract's Errors table. */
+interface ErrorEnvelope {
+  error?: {
+    statusCode?: number;
+    code?: string;
+    message?: string;
+  };
+}
+
+/** 60s, matching the proxy's own ceiling on the upstream call. */
+const TIMEOUT_MS = 60_000;
+
+async function request<T>(
+  url: string,
+  what: string,
+  init?: RequestInit & { signal?: AbortSignal },
+): Promise<T> {
+  const timeout = AbortSignal.timeout(TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      cache: "no-store",
+      ...init,
+      signal: init?.signal
+        ? AbortSignal.any([timeout, init.signal])
+        : timeout,
+    });
+  } catch (cause) {
+    /* A caller's own abort must not be reported as an outage — it re-throws so
+       the effect that cancelled can recognise its own signal. */
+    if (init?.signal?.aborted) throw cause;
+    throw new InviteApiError(
+      "UNREACHABLE",
+      0,
+      `Could not reach the service to ${what}.`,
+    );
+  }
+
+  if (res.status === 204) return undefined as T;
+
+  if (!res.ok) {
+    let envelope: ErrorEnvelope | null = null;
+    try {
+      envelope = (await res.json()) as ErrorEnvelope;
+    } catch {
+      /* fall through to the generic sentence */
+    }
+    throw new InviteApiError(
+      envelope?.error?.code ?? "UPSTREAM_FAILED",
+      res.status,
+      envelope?.error?.message ?? `The service could not ${what} (${res.status}).`,
+    );
+  }
+
+  try {
+    return (await res.json()) as T;
+  } catch {
+    throw new InviteApiError(
+      "BAD_SHAPE",
+      res.status,
+      "The service sent an unreadable reply.",
+    );
+  }
+}
+
+/* ============================================================================
+   VIEW SHAPES — what the components read
+   ============================================================================ */
+
+/** One lease the member has claimed — the step 1 dropdown's row. */
+export interface LeaseChoice {
+  /** `02_290271` — passed straight back on every later call. */
+  leaseId: string;
+  /** Ready to render in the dropdown as-is, per the contract. */
+  label: string;
+  leaseName: string;
+  leaseNumber: string | null;
+  /** Every county the lease was claimed under — a lease can straddle a line. */
+  counties: string[];
+  /** The claimed identity this lease came through. */
+  ownerName: string | null;
+  /** A decimal (`0.05138` = 5.138%), or null when the roll filed nothing. */
+  decimalInterest: number | null;
+}
+
+/** One other owner of record on the chosen lease — the step 2 checkbox row. */
+export interface RollCoOwner {
+  /** The stable handle. THE identity — see the module header. */
+  ownerKey: string;
+  ownerNumber: string | null;
+  name: string;
+  kind: OwnerKind;
+  city: string | null;
+  state: string | null;
+  /** Percent (`0.1777` = 0.1777%), or null when the roll filed no interest. */
+  sharePct: number | null;
+}
+
+/** The step 2 list plus the whole-lease tallies the card prints. */
+export interface LeaseRoster {
+  owners: RollCoOwner[];
+  /** Whole-lease counts, even when a filter narrowed `owners`. */
+  counts: {
+    owners: number;
+    people: number;
+    companies: number;
+    trusts: number;
+    operators: number;
+  };
+  /** The contract's ready-to-render sentence about the roll read. */
+  note: string | null;
+  /** True when the lease holds more rows than this page of them. */
+  truncated: boolean;
+}
+
+/** One written email, exactly as the service rendered it. */
+export interface InviteEmailView {
+  ownerKey: string;
+  to: string;
+  kind: OwnerKind;
+  greeting: string;
+  heading: string;
+  subject: string;
+  /** `31597778` / `3159-7778` — display always uses the label. */
+  code: string;
+  codeLabel: string;
+  inviteUrl: string;
+  sender: string;
+  /** Greeting through signature, for the on-screen preview. */
+  bodyText: string;
+  /** Subject + blank line + body. THE COPY BUTTON'S PAYLOAD, verbatim. */
+  copyText: string;
+  /** Why this one wants a second look before it goes out, or null. */
+  caution: string | null;
+}
+
+/** What one POST changed — the emails minted plus anything that could not be. */
+export interface RecordOutcome {
+  emails: InviteEmailView[];
+  /** Owners the roll no longer carries for this lease — untick, show the note. */
+  notOnRoll: { requested: string; note: string | null }[];
+}
+
+/** The recorded state for one lease — restores ticks after a reload. */
+export interface InviteSnapshot {
+  emails: InviteEmailView[];
+  /** Every email in one block, for "Copy all N". */
+  copyAll: string | null;
+}
+
+/** The three wording choices every render of the emails depends on. */
+export interface InviteWording {
+  greeting: GreetingStyle;
+  custom: string;
+  /** The letter template. Null sends nothing and takes the service's default. */
+  body: string | null;
+}
+
+/* ============================================================================
+   WIRE SHAPES — only what the mappers touch
+   ============================================================================ */
+
+interface WireLease {
+  lease_id?: string;
+  label?: string;
+  lease_name?: string;
+  lease_number?: string | null;
+  county?: string;
+  counties?: string[];
+  owner?: { name?: string; owner_number?: string } | null;
+  decimal_interest?: number | null;
+}
+
+interface WireLeasesResponse {
+  leases?: WireLease[];
+  page?: { total?: number };
+}
+
+interface WireOwner {
+  owner_key?: string;
+  owner_number?: string | null;
+  name?: string;
+  kind?: string;
+  city?: string | null;
+  address?: { city?: string | null; state?: string | null } | null;
+  share?: { percent?: number | null } | null;
+}
+
+interface WireOwnersResponse {
+  owners?: WireOwner[];
+  page?: { total?: number };
+  counts?: {
+    owners?: number;
+    people?: number;
+    companies?: number;
+    trusts?: number;
+    operators?: number;
+  };
+  note?: string | null;
+}
+
+interface WireEmail {
+  owner_key?: string;
+  to?: string;
+  kind?: string;
+  greeting?: string;
+  heading?: string;
+  subject?: string;
+  code?: string;
+  code_label?: string;
+  invite_url?: string;
+  sender?: string;
+  body_text?: string;
+  copy_text?: string;
+  caution?: string | null;
+}
+
+interface WirePostResponse {
+  results?: {
+    requested?: string;
+    status?: "invited" | "already_invited" | "not_on_roll";
+    email?: WireEmail | null;
+    note?: string | null;
+  }[];
+}
+
+interface WireGetInvitesResponse {
+  invited?: { active?: boolean }[];
+  emails?: WireEmail[];
+  copy_all?: string | null;
+}
+
+/* ============================================================================
+   MAPPERS
+   ============================================================================ */
+
+const KINDS: readonly OwnerKind[] = ["person", "company", "trust", "operator"];
+
+/** An unrecognised kind renders as a company: greeted by its own name and
+ *  never promised a credit — the two failure modes that matter. */
+function kindOf(raw: string | undefined): OwnerKind {
+  return KINDS.includes(raw as OwnerKind) ? (raw as OwnerKind) : "company";
+}
+
+function toEmailView(wire: WireEmail): InviteEmailView | null {
+  if (!wire.owner_key || !wire.copy_text) return null;
+  return {
+    ownerKey: wire.owner_key,
+    to: wire.to ?? "",
+    kind: kindOf(wire.kind),
+    greeting: wire.greeting ?? "",
+    heading: wire.heading ?? "",
+    subject: wire.subject ?? "",
+    code: wire.code ?? "",
+    codeLabel: wire.code_label ?? wire.code ?? "",
+    inviteUrl: wire.invite_url ?? "",
+    sender: wire.sender ?? "",
+    bodyText: wire.body_text ?? "",
+    copyText: wire.copy_text,
+    caution: wire.caution ?? null,
+  };
+}
+
+/** The wording as query parameters — GET re-renders without writing anything. */
+function wordingParams(params: URLSearchParams, wording: InviteWording): void {
+  if (wording.greeting !== "first") params.set("greeting", wording.greeting);
+  if (wording.greeting === "custom" && wording.custom.trim())
+    params.set("custom", wording.custom.trim());
+  if (wording.body !== null) params.set("body", wording.body);
+}
+
+/* ============================================================================
+   THE FIVE CALLS
+   ============================================================================ */
+
+/** Step 1 — GET /invite/leases. One row per claimed lease. */
+export async function fetchInviteLeases(options?: {
+  q?: string;
+  limit?: number;
+  offset?: number;
+  signal?: AbortSignal;
+}): Promise<{ leases: LeaseChoice[]; total: number }> {
+  const params = new URLSearchParams();
+  if (options?.q?.trim()) params.set("q", options.q.trim());
+  params.set("limit", String(options?.limit ?? 500));
+  if (options?.offset) params.set("offset", String(options.offset));
+
+  const data = await request<WireLeasesResponse>(
+    `/api/invite/leases?${params}`,
+    "list your claimed leases",
+    { signal: options?.signal },
+  );
+
+  const leases = (data.leases ?? [])
+    .filter((lease) => typeof lease.lease_id === "string")
+    .map((lease) => ({
+      leaseId: lease.lease_id as string,
+      label: lease.label ?? lease.lease_name ?? (lease.lease_id as string),
+      leaseName: lease.lease_name ?? "",
+      leaseNumber: lease.lease_number ?? null,
+      counties: lease.counties?.length
+        ? lease.counties
+        : lease.county
+          ? [lease.county]
+          : [],
+      ownerName: lease.owner?.name ?? null,
+      decimalInterest: lease.decimal_interest ?? null,
+    }));
+
+  return { leases, total: data.page?.total ?? leases.length };
+}
+
+/** Step 2 — GET /invite/owners. Everyone else on the roll for one lease. */
+export async function fetchLeaseRoster(
+  leaseId: string,
+  options?: { limit?: number; signal?: AbortSignal },
+): Promise<LeaseRoster> {
+  const params = new URLSearchParams({
+    lease: leaseId,
+    limit: String(options?.limit ?? 500),
+  });
+
+  const data = await request<WireOwnersResponse>(
+    `/api/invite/owners?${params}`,
+    "read the co-owner roll",
+    { signal: options?.signal },
+  );
+
+  const owners = (data.owners ?? [])
+    .filter((owner) => typeof owner.owner_key === "string")
+    .map((owner) => ({
+      ownerKey: owner.owner_key as string,
+      ownerNumber: owner.owner_number ?? null,
+      name: owner.name ?? "",
+      kind: kindOf(owner.kind),
+      city: owner.city ?? owner.address?.city ?? null,
+      state: owner.address?.state ?? null,
+      sharePct: owner.share?.percent ?? null,
+    }));
+
+  const counts = {
+    owners: data.counts?.owners ?? owners.length,
+    people: data.counts?.people ?? 0,
+    companies: data.counts?.companies ?? 0,
+    trusts: data.counts?.trusts ?? 0,
+    operators: data.counts?.operators ?? 0,
+  };
+
+  return {
+    owners,
+    counts,
+    note: data.note ?? null,
+    truncated: (data.page?.total ?? owners.length) > owners.length,
+  };
+}
+
+/**
+ * Step 3 — POST /invite/co-owners. Records the ticks, mints the codes, returns
+ * the written emails.
+ *
+ * `already_invited` IS A SUCCESS: the box was ticked before and the email
+ * carries the code issued then, so it lands in `emails` beside the fresh ones.
+ * Only `not_on_roll` is reported separately — it is the one status where there
+ * is no email to show.
+ */
+export async function recordInvites(
+  leaseId: string,
+  ownerKeys: string[],
+  wording: InviteWording,
+): Promise<RecordOutcome> {
+  const body: Record<string, unknown> = {
+    lease: leaseId,
+    owners: ownerKeys,
+    greeting: wording.greeting,
+  };
+  if (wording.greeting === "custom" && wording.custom.trim())
+    body.custom = wording.custom.trim();
+  if (wording.body !== null) body.body = wording.body;
+
+  const data = await request<WirePostResponse>(
+    "/api/invite/co-owners",
+    "record the invites",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+
+  const emails: InviteEmailView[] = [];
+  const notOnRoll: RecordOutcome["notOnRoll"] = [];
+  for (const result of data.results ?? []) {
+    if (result.status === "not_on_roll") {
+      notOnRoll.push({
+        requested: result.requested ?? "",
+        note: result.note ?? null,
+      });
+      continue;
+    }
+    const email = result.email ? toEmailView(result.email) : null;
+    if (email) emails.push(email);
+  }
+  return { emails, notOnRoll };
+}
+
+/**
+ * GET /invite/co-owners — restore the ticks after a reload, and re-render
+ * every email under different wording WITHOUT writing anything: the codes are
+ * already reserved, so re-rendering cannot change them.
+ *
+ * `invited[i]` and `emails[i]` are index-aligned, and the pairing is used to
+ * keep only ACTIVE rows — the contract's own known gap is that inactive
+ * co-owners can appear in `emails` unmarked, and an email carrying a revoked
+ * code must never reach the copy button.
+ */
+export async function fetchInvites(
+  leaseId: string,
+  wording: InviteWording,
+  signal?: AbortSignal,
+): Promise<InviteSnapshot> {
+  const params = new URLSearchParams({ lease: leaseId });
+  wordingParams(params, wording);
+
+  const data = await request<WireGetInvitesResponse>(
+    `/api/invite/co-owners?${params}`,
+    "load your recorded invites",
+    { signal },
+  );
+
+  const invited = data.invited ?? [];
+  const emails = (data.emails ?? [])
+    .filter((_, index) => invited[index]?.active !== false)
+    .map(toEmailView)
+    .filter((email): email is InviteEmailView => email !== null);
+
+  return { emails, copyAll: data.copy_all ?? null };
+}
+
+/**
+ * DELETE /invite/co-owners — untick. Deactivates, never deletes: the code may
+ * already be in a sent email, and re-ticking later returns the same one. A 204
+ * means the end state is correct, including for a box that was never ticked.
+ */
+export async function revokeInvites(
+  leaseId: string,
+  ownerKeys: string[],
+): Promise<void> {
+  await request<void>("/api/invite/co-owners", "withdraw the invite", {
+    method: "DELETE",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ lease: leaseId, owners: ownerKeys }),
+  });
+}

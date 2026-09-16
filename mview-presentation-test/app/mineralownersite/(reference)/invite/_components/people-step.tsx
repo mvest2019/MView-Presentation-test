@@ -2,7 +2,8 @@
 
 import { useMemo } from "react";
 
-import type { CoOwner, InviteLease, OwnerKind } from "../_lib/invite-types";
+import type { LeaseRoster, RollCoOwner } from "../_api/invite-api";
+import type { OwnerKind } from "../_lib/invite-types";
 import { StepCard } from "./step-card";
 
 /** What each kind of party is called, when the page has to say it out loud. */
@@ -14,55 +15,49 @@ const KIND_LABEL: Record<OwnerKind, string> = {
 };
 
 /**
- * STEP 2 · WHO TO WRITE TO.
+ * STEP 2 · WHO TO WRITE TO — the appraisal roll, read live per lease.
  *
- * ── A FIXED-HEIGHT CARD THAT SCROLLS INSIDE ITSELF ──
+ * ── EVERY ROW IS ADDRESSED BY `ownerKey`, NEVER BY POSITION ──
  *
- * The list used to show ten rows with the rest behind a "show all" button, and
- * pressing it grew the card to every owner on the roll and the page to several
- * screens — so reaching step 3 meant scrolling past a phone book. One card of
- * fixed height with its own scroller puts every owner within reach and leaves
- * the email where it was. The count underneath is then a fact rather than a
- * button: "24 owners · scroll the list".
+ * The list arrives sorted by share, so an index names a different person the
+ * moment the roll changes, and some owners carry no owner number at all. The
+ * key is the row's identity for the tick, the POST and the DELETE alike.
+ *
+ * ── A TICK IS A WRITE NOW, so a row in flight holds still ──
+ *
+ * The service records the invite and mints the code before the box shows as
+ * ticked. While that round trip is out, the row's checkbox is disabled — a
+ * second click during it would race the first, and the honest state of that
+ * box is "being decided".
  *
  * ── WHAT IS TICKED RISES TO THE TOP ──
  *
  * A row that disappears under a filter while its tick survives is a letter the
- * reader can neither see nor take back. Nothing is ever hidden from the
- * selection here: the chosen are simply sorted first, so a tick made forty rows
- * down is still findable after the search box is typed in. This is the one
- * piece of ordering that overrides "largest share first", and it is worth the
- * inconsistency.
+ * reader can neither see nor take back. The chosen sort first, always.
  *
- * ── PEOPLE ONLY, UNTIL ASKED ──
+ * ── PEOPLE ONLY, UNTIL ASKED; THE OPERATOR IS SET APART ──
  *
- * Companies, trusts and the operator are real rows on the roll and are not
- * hidden — a reader who knows the operator is on it and cannot find it assumes
- * the list is broken. They are behind one link because the page's question is
- * "who do you actually know", and an LLC in Midland is never the answer.
+ * Companies, trusts and the operator are real rows and are not hidden — they
+ * are behind one link because the page's question is "who do you actually
+ * know". The operator's tag is toned as a warning: a working-interest party
+ *pays to drill and is not a fellow mineral owner.
  *
- * ── THE KIND IS SAID ONLY WHEN IT IS NOT A PERSON ──
+ * ── A NULL SHARE SAYS "NOT FILED", NEVER 0% ──
  *
- * Twenty rows each carrying an "Individual" chip is twenty chips saying
- * nothing. The tag appears on the rows where it changes what the reader should
- * do, and the operator's is toned as a warning because inviting it is almost
- * certainly a mistake.
+ * The roll filing no interest is a fact about the roll, and rendering it as a
+ * zero would rank a real owner as worthless.
  *
- * ── WHAT THE RE-SKIN CHANGED ──
+ * ── THE COUNTS COME FROM THE SERVICE ──
  *
- * The `(portal)` `Table` kit and `SearchField` became the reference's
- * `.rep-mini .iv-tbl` inside `.iv-list`, with `.iv-find` over it. Three things
- * the old build did with utilities the sheet now does properly: the header row
- * STICKS while the list scrolls (a scrolled list whose columns are off screen
- * is four columns of unlabeled data), the column widths are deliberate rather
- * than an even `table-layout: fixed` split that left "OWNER OF RECORD" in 92px,
- * and the fourth column swaps for a line under the name below a 560px
- * container instead of both being present and one hidden by a breakpoint
- * keyed to the viewport.
+ * `counts` always describes the WHOLE lease even when a filter narrows the
+ * list, and `note` is the contract's own ready-to-render sentence about what
+ * was read and what was left out. Both are printed rather than re-derived.
  */
 export function PeopleStep({
-  lease,
+  roster,
+  rosterError,
   picked,
+  busy,
   onToggle,
   onClear,
   query,
@@ -70,34 +65,39 @@ export function PeopleStep({
   showAll,
   onShowAll,
 }: {
-  lease: InviteLease;
+  /** Null while the roll is being read. */
+  roster: LeaseRoster | null;
+  rosterError: string | null;
   picked: Set<string>;
-  onToggle: (ownerNumber: string, on: boolean) => void;
+  /** Owner keys whose POST/DELETE is still in flight. */
+  busy: Set<string>;
+  onToggle: (ownerKey: string, on: boolean) => void;
   onClear: () => void;
   query: string;
   onQuery: (next: string) => void;
   showAll: boolean;
   onShowAll: (next: boolean) => void;
 }) {
-  const others = lease.owners.filter((owner) => owner.kind !== "person").length;
+  const owners = useMemo(() => roster?.owners ?? [], [roster]);
+  const others = owners.filter((owner) => owner.kind !== "person").length;
 
   const matching = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return lease.owners.filter((owner) => {
+    return owners.filter((owner) => {
       if (!showAll && owner.kind !== "person") return false;
       if (!needle) return true;
       return (
         owner.name.toLowerCase().includes(needle) ||
         (owner.city ?? "").toLowerCase().includes(needle) ||
-        owner.ownerNumber.includes(needle)
+        (owner.ownerNumber ?? "").includes(needle)
       );
     });
-  }, [lease, query, showAll]);
+  }, [owners, query, showAll]);
 
   const shown = useMemo(
     () => [
-      ...matching.filter((owner) => picked.has(owner.ownerNumber)),
-      ...matching.filter((owner) => !picked.has(owner.ownerNumber)),
+      ...matching.filter((owner) => picked.has(owner.ownerKey)),
+      ...matching.filter((owner) => !picked.has(owner.ownerKey)),
     ],
     [matching, picked],
   );
@@ -149,34 +149,50 @@ export function PeopleStep({
             </tr>
           </thead>
           <tbody>
-            {shown.map((owner) => (
-              <OwnerRow
-                key={owner.ownerNumber}
-                owner={owner}
-                on={picked.has(owner.ownerNumber)}
-                onToggle={onToggle}
-              />
-            ))}
-            {shown.length === 0 ? (
+            {roster === null ? (
               <tr>
-                <td colSpan={4} className="tiny muted" style={{ padding: "14px 10px" }}>
-                  Nothing matches that.
-                  {!showAll && others
-                    ? " Some owners of record are companies or trusts — show them below."
-                    : ""}
+                <td
+                  colSpan={4}
+                  className="tiny muted"
+                  style={{ padding: "14px 10px" }}
+                >
+                  {rosterError ?? "Reading the appraisal roll…"}
                 </td>
               </tr>
-            ) : null}
+            ) : (
+              <>
+                {shown.map((owner) => (
+                  <OwnerRow
+                    key={owner.ownerKey}
+                    owner={owner}
+                    on={picked.has(owner.ownerKey)}
+                    pending={busy.has(owner.ownerKey)}
+                    onToggle={onToggle}
+                  />
+                ))}
+                {shown.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={4}
+                      className="tiny muted"
+                      style={{ padding: "14px 10px" }}
+                    >
+                      Nothing matches that.
+                      {!showAll && others
+                        ? " Some owners of record are companies or trusts — show them below."
+                        : ""}
+                    </td>
+                  </tr>
+                ) : null}
+              </>
+            )}
           </tbody>
         </table>
       </div>
 
       <div className="iv-more">
-        {/* EVERY OWNER IS IN THAT CARD, and the card is a fixed height — so
-            this is a fact rather than a button that grows the page to several
-            screens. "· scroll the list" is unconditional, as the reference has
-            it: a threshold on it would leave the one instruction the card needs
-            appearing and disappearing as the reader types in the search box. */}
+        {/* EVERY LOADED OWNER IS IN THAT CARD, and the card is a fixed height —
+            so this is a fact rather than a button that grows the page. */}
         <span className="iv-count">
           {matching.length} {matching.length === 1 ? "owner" : "owners"}
           {query.trim() ? " matching" : ""} · scroll the list
@@ -201,7 +217,19 @@ export function PeopleStep({
         </span>
       </div>
 
-      {showAll && lease.owners.some((owner) => owner.kind === "operator") ? (
+      {/* THE SERVICE'S OWN SENTENCE about the roll read — how many rows, which
+          year, what was collapsed or left out. It already accounts for the
+          whole lease, so nothing here re-counts it. */}
+      {roster?.note ? <p className="pf2-note">{roster.note}</p> : null}
+      {roster?.truncated ? (
+        <p className="tiny muted" style={{ margin: "4px 0 0" }}>
+          This lease has more owners of record than one page of the roll —
+          showing the first {owners.length} of {roster.counts.owners}, largest
+          share first.
+        </p>
+      ) : null}
+
+      {showAll && owners.some((owner) => owner.kind === "operator") ? (
         <p className="pf2-note">
           The roll includes the working-interest party — the operator, who pays
           to drill rather than owning the minerals. Inviting them into a private
@@ -216,15 +244,21 @@ export function PeopleStep({
 function OwnerRow({
   owner,
   on,
+  pending,
   onToggle,
 }: {
-  owner: CoOwner;
+  owner: RollCoOwner;
   on: boolean;
-  onToggle: (ownerNumber: string, on: boolean) => void;
+  pending: boolean;
+  onToggle: (ownerKey: string, on: boolean) => void;
 }) {
   const where = owner.city
     ? `${owner.city}${owner.state ? `, ${owner.state}` : ""}`
     : null;
+  const share =
+    owner.sharePct != null
+      ? `${owner.sharePct.toFixed(owner.sharePct < 1 ? 3 : 1)}%`
+      : null;
 
   return (
     <tr className={on ? "on" : undefined}>
@@ -232,12 +266,11 @@ function OwnerRow({
         <input
           type="checkbox"
           checked={on}
+          disabled={pending}
           /* NAMED WITH THE PERSON, not "row 12". A checkbox column is
-             unreadable to a screen reader without it, and "Invite MCCABE
-             CORLISS K" is also the confirmation a sighted reader gets from the
-             row they are on. */
+             unreadable to a screen reader without it. */
           aria-label={`Invite ${owner.name}`}
-          onChange={(event) => onToggle(owner.ownerNumber, event.target.checked)}
+          onChange={(event) => onToggle(owner.ownerKey, event.target.checked)}
         />
       </td>
       <td>
@@ -247,17 +280,20 @@ function OwnerRow({
             {KIND_LABEL[owner.kind]}
           </i>
         ) : null}
-        {/* THE TOWN, FOR A NARROW SCREEN ONLY. Below a 560px container the
-            fourth column does not fit, and one fewer column is the right answer
-            rather than a sideways scrollbar inside a card that already scrolls
-            down. CSS shows exactly one of these two at any width. */}
+        {/* THE TOWN, FOR A NARROW SCREEN ONLY. CSS shows exactly one of these
+            two at any width. */}
         <i className="iv-where">{where ?? "no address on the roll"}</i>
       </td>
       <td className="right num">
-        {owner.interestPct != null ? `${owner.interestPct.toFixed(1)}%` : "—"}
+        {/* "not filed", NEVER 0% — the roll filed no interest for this row. */}
+        {share ?? <span className="tiny muted">not filed</span>}
       </td>
       <td>
-        {where ? <span>{where}</span> : <span className="tiny muted">no address on the roll</span>}
+        {where ? (
+          <span>{where}</span>
+        ) : (
+          <span className="tiny muted">no address on the roll</span>
+        )}
       </td>
     </tr>
   );
