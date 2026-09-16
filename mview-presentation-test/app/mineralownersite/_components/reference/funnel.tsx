@@ -82,17 +82,31 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
   let ctaHref: string | null = null;
 
   if (funnel === 'claimed') {
+    /* NO TRIAL IS OFFERED, SO NONE IS ADVERTISED.
+     *
+     * This state used to close with "Try all of it free for 7 days", a
+     * "Start my 7-day free trial" button and a "What the trial includes" link.
+     * The product does not have a seven-day trial — the free plan is simply the
+     * free plan — so all three are gone rather than reworded: an offer the
+     * reader cannot take is worse than no offer, and a button that starts
+     * something that does not exist is worse again.
+     *
+     * WHAT THE BANNER STILL DOES, and it is the whole of its job in this state:
+     * it says the record is claimed, that every lease is here and stays here,
+     * and which one thing Premium adds. That is true on the free plan and is
+     * what a reader on it needs to know.
+     *
+     * NO REPLACEMENT CTA. Dropping one call to action and putting another in
+     * its place would be a decision about what this plan should sell, which is
+     * not this change; the banner is informational here and `FunnelBar` renders
+     * no action group when neither a button nor a link is set.
+     */
     tag = 'Free plan';
-    cta = `Start my ${TRIAL_LEN}-day free trial`;
-    snd = 'What the trial includes';
-    sndHref = BILLING_PATH;
-    onCta = () => setFunnel('trial');
     msg = (
       <>
         Your record is claimed — <b>all {n} of your {plural(n, 'lease')}</b> are here and stay
         here. What each one is <b>worth to you</b> is the part Premium adds, along with your weekly
-        report, the owner community and the monthly production report printed and mailed.{' '}
-        <b>Try all of it free for {TRIAL_LEN} days.</b>
+        report, the owner community and the monthly production report printed and mailed.
       </>
     );
   } else if (funnel === 'trial') {
@@ -159,28 +173,43 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
     <div id="mvFunnelBar" role="status">
       <span className="fb-tag">{tag}</span>
       <span className="fb-msg">{msg}</span>
-      <span className="fb-act">
-        {/* A LINK WHEN IT NAVIGATES, A BUTTON WHEN IT DOES NOT — so a
-            middle-click, a modified click and the browser's own status bar all
-            behave the way the destination deserves. */}
-        {ctaHref
-          ? <Link className="fb-cta btn btn-sm" href={ctaHref}>{cta}</Link>
-          : (
-            <button type="button" className="fb-cta btn btn-sm" onClick={() => onCta?.()}>
-              {cta}
-            </button>
-          )}
-        {sndHref
-          ? <Link className="linklike fb-2nd" href={sndHref}>{snd}</Link>
-          : (
-            <button
-              type="button" className="linklike fb-2nd"
-              onClick={() => open(sndDrawer ?? (funnel === 'unclaimed' ? 'identity' : 'value'))}
-            >
-              {snd}
-            </button>
-          )}
-      </span>
+      {/* THE ACTION GROUP ONLY EXISTS WHERE THERE IS AN ACTION.
+
+          The free plan no longer offers anything to press (see the `claimed`
+          branch above), and `.fb-act` is a flex item with its own gap and, at
+          640px, `width: 100%` — so rendered empty it would take a row of the
+          banner and push the message off it on a phone. Each control is also
+          gated on its own label, so a state can carry one without the other. */}
+      {cta || snd
+        ? (
+          <span className="fb-act">
+            {/* A LINK WHEN IT NAVIGATES, A BUTTON WHEN IT DOES NOT — so a
+                middle-click, a modified click and the browser's own status bar
+                all behave the way the destination deserves. */}
+            {cta
+              ? (ctaHref
+                ? <Link className="fb-cta btn btn-sm" href={ctaHref}>{cta}</Link>
+                : (
+                  <button type="button" className="fb-cta btn btn-sm" onClick={() => onCta?.()}>
+                    {cta}
+                  </button>
+                ))
+              : null}
+            {snd
+              ? (sndHref
+                ? <Link className="linklike fb-2nd" href={sndHref}>{snd}</Link>
+                : (
+                  <button
+                    type="button" className="linklike fb-2nd"
+                    onClick={() => open(sndDrawer ?? (funnel === 'unclaimed' ? 'identity' : 'value'))}
+                  >
+                    {snd}
+                  </button>
+                ))
+              : null}
+          </span>
+        )
+        : null}
     </div>
   );
 }

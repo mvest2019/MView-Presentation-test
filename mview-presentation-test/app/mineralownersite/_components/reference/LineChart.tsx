@@ -25,7 +25,7 @@
  */
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import type { ChartSpec } from '../../_lib/reference/chart';
-import { units } from '../../_lib/reference/fmt';
+import { spanLabel, units } from '../../_lib/reference/fmt';
 
 const VB_W = 600;
 const VB_H = 150;
@@ -218,7 +218,12 @@ export default function LineChart(
     <div className="lc">
       <div className="lc-head">
         <strong>{spec.label}</strong>
-        <span>{spec.sub}</span>
+        {/* `spanLabel` turns the service's "24 months to June 2026" into "Last
+            24 months through June 2026" and leaves every other span it writes
+            alone — see `fmt.ts`. Applied here because this is the one element
+            that renders a chart's span, so every chart on every surface gets
+            the same wording from one place. */}
+        <span>{spanLabel(spec.sub)}</span>
       </div>
 
       {/* the readout: the exact figures for whatever the pointer is on */}

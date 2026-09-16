@@ -49,6 +49,48 @@ const UNIT_CASE: Record<string, string> = {
 };
 const UNIT_WORD = /\b(bbl|mcf|boe|gal)\b/gi;
 
+/**
+ * THE WINDOW A CHART COVERS, SAID IN FULL.
+ *
+ * The service labels a chart's span "24 months to June 2026". Two words are
+ * doing too much work there: "to" reads as a deadline rather than as the end of
+ * a range, and nothing says the window looks BACKWARDS from that month — which
+ * is the one thing a reader needs before they read the line. The same six
+ * strings appear under every chart on the Dashboard: the four in the "Your
+ * value" and "Production filed" panels, and the caption under the sparkline in
+ * the metric band above them.
+ *
+ * SPELLED THE WAY THE PAGE ALREADY SPEAKS: "Last 24 months through June 2026".
+ * "Through" is the word the rest of this product uses for an inclusive end —
+ * the greeting reads "Your minerals, through June 2026" and the freshness
+ * stamps read "through {month}" — so this stops being the one place that says
+ * it differently.
+ *
+ * NARROW ON PURPOSE. The pattern is anchored, and it wants MONTHS and nothing
+ * else, so the neighbouring spans the same field carries are left exactly as
+ * the service wrote them: "130 trading days to 2026-09-01", "68 filed months ·
+ * first produced June 2020", "within 1, 3 and 5 miles". Measured against the
+ * live payload, it matches six strings and no others.
+ *
+ * DONE AT THE RENDER BOUNDARY, like `units` above and for the same reason: the
+ * text is the service's and this is a presentation step, so nothing upstream
+ * is restated and a string that does not match comes through untouched.
+ *
+ * DELIBERATELY NOT INSIDE `serviceText`, whose note below says a third repair
+ * belongs there. That note is right about repairs — a lower-case unit or a
+ * broken tense is wrong wherever it appears. This is not a repair: it is the
+ * wording of ONE label, and `serviceText` is read by every finished string on
+ * every surface. Kept to the two elements that render a chart's span, which
+ * is every place this label is shown; fold it in the day a second kind of
+ * string needs the same sentence.
+ */
+const MONTH_SPAN = /^(\d+) months to (.+)$/;
+
+/** A chart's span label, with the direction of the window made explicit. */
+export function spanLabel(text: string): string {
+  return text.replace(MONTH_SPAN, (_m, n, end) => `Last ${n} months through ${end}`);
+}
+
 /** The units in a piece of text, in the capitals this app writes them in. */
 export function units(text: string): string {
   return text.replace(UNIT_WORD, (m) => UNIT_CASE[m.toLowerCase()] ?? m);
@@ -135,6 +177,45 @@ export function usdShort(v: number | null | undefined): string | null {
   if (a >= 1e6) return '$' + (v / 1e6).toFixed(2) + 'M';
   if (a >= 1e3) return '$' + Math.round(v / 1e3).toLocaleString(LOCALE) + 'K';
   return '$' + Math.round(v);
+}
+
+/**
+ * A LARGE DOLLAR FIGURE, SCALED TO MILLIONS OR BILLIONS.
+ *
+ * FOR ONE FIGURE: the county appraised value. It is the largest number on the
+ * dashboard — an appraisal roll covers the whole lease at 100%, not the owner's
+ * share of it — so on a real portfolio it runs to thirteen characters,
+ * "$6,033,120,000", which is wider than the tile it sits in and wraps
+ * mid-number against the tile beside it. Every other money figure on the page
+ * is the owner's own share and is an order of magnitude shorter.
+ *
+ * WHY NOT `usdShort`, WHICH ALREADY SCALES. Two reasons, and the first is the
+ * one that matters: `usdShort` is read by the lease table, the value ranges,
+ * the operator shares and "Where your value sits", so changing what it returns
+ * would restyle figures this change is explicitly not about. The second is that
+ * it pins two decimals — "$1.00M" — and the brief is "1,000,000 -> 1M".
+ *
+ * TRAILING ZEROS GO, SIGNIFICANT ONES STAY: 1,000,000 reads "$1M",
+ * 6,033,120,000 reads "$6.03B", 1,500,000 reads "$1.5M". Two decimals is the
+ * most it will print, which holds a billion figure to three significant digits
+ * — enough to compare two counties, and the exact figure is one click away in
+ * the "Why it differs" panel, which is unchanged.
+ *
+ * UNDER A MILLION IT IS LEFT ALONE. "$0.83M" is harder to read than "$834,120"
+ * and throws away two digits, which is the same argument `nShort` makes at its
+ * own threshold.
+ */
+export function usdScaled(v: number | null | undefined): string | null {
+  if (v == null || !Number.isFinite(v)) return null;
+  const a = Math.abs(v);
+  if (a >= 1e9) return '$' + trimZeros(v / 1e9) + 'B';
+  if (a >= 1e6) return '$' + trimZeros(v / 1e6) + 'M';
+  return usd(v);
+}
+
+/** Up to two decimals, with a trailing ".00" or ".x0" cut back. */
+function trimZeros(n: number): string {
+  return n.toFixed(2).replace(/\.?0+$/, '');
 }
 
 export function nShort(v: number | null | undefined): string | null {

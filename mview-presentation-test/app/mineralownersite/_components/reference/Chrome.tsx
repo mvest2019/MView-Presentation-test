@@ -843,11 +843,34 @@ export default function Chrome(c: ChromeProps) {
  * value: the prototype's own comment records that this strip once random-walked
  * from a hardcoded $68.78 WTI seed while the real settlement was $84.38.
  */
+/**
+ * WHICH SETTLEMENTS THIS ROW CARRIES — three, not the four the payload sends.
+ *
+ * PROPANE IS DROPPED HERE, at the owner's request, and this is the only place
+ * it is dropped. `spot-prices.ts` still reads all four and the payload still
+ * carries all four, so the prices explainer — which is written about the whole
+ * set and is built by the service — is unchanged, and so is anything else that
+ * reads `ticker.items`. This is a decision about what the chrome row shows.
+ *
+ * IT ALSO BUYS THE ROW ITS WIDTH BACK. The four settlements are 696px and the
+ * row has never had that much to give them at any ordinary window size; three
+ * is what lets the reference's own ladder in `dashboard-reference.onebar.css`
+ * §3 — the note at 1700, the range at 1500, the label at 1300, the whole group
+ * onto its own line at 1024 — hold the row on one line again, which is the
+ * arrangement this bar is meant to have.
+ *
+ * BY KEY, NOT BY LABEL. `SpotKey` is the payload's own identifier; the label is
+ * display text and changing "PROPANE" to "Propane" upstream would silently put
+ * it back.
+ */
+const HIDDEN_IN_CHROME: ReadonlySet<string> = new Set(['propane']);
+
 function PriceStrip({ ticker, open }: { ticker: Payload['ticker']; open: (k: string) => void }) {
-  if (!ticker || !ticker.items.length) return <span className="spacer" />;
+  const items = (ticker?.items ?? []).filter((q) => !HIDDEN_IN_CHROME.has(q.key));
+  if (!items.length) return <span className="spacer" />;
   return (
     <div className="pin-spot">
-      {ticker.items.map((q) => (
+      {items.map((q) => (
         <span
           key={q.key} className="pin-tk tk-click" role="button" tabIndex={0}
           onClick={() => open('prices')}

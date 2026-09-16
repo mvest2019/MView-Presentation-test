@@ -20,7 +20,7 @@
  */
 import React, { useMemo } from 'react';
 import type { Payload } from '../../_lib/reference/payload';
-import { n0, usd, usdShort, pct0, vol, plural, productWord, MCF, BBL } from '../../_lib/reference/fmt';
+import { n0, usd, usdShort, usdScaled, pct0, vol, plural, productWord, MCF, BBL } from '../../_lib/reference/fmt';
 import { Pager, usePaged } from './bits';
 import type { Route } from './Portal';
 
@@ -100,7 +100,7 @@ export function Essentials(
         <>
           The model puts your share at <strong>{usd(t.owner_value)}</strong> over six years, in a
           range of {usdShort(t.owner_value_low)} to {usdShort(t.owner_value_high)}. The county
-          separately appraised the same interests at <strong>{usd(t.appraised_value)}</strong> for
+          separately appraised the same interests at <strong>{usdScaled(t.appraised_value)}</strong> for
           roll year {t.appraised_year} — the two answer different questions, so them disagreeing is
           normal. Still to come, as your share:{' '}
           <strong>{vol(t.reserves_gas_net, t.reserves_oil_net, true)}</strong>

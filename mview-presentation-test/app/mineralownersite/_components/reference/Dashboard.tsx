@@ -31,7 +31,7 @@ import Link from 'next/link';
 import type { Payload } from '../../_lib/reference/payload';
 import { usePortalMember } from '../portal-session';
 import {
-  n0, n1, usd, usdShort, pctS, vol, volWords, plural, productWord, interest, nShort,
+  n0, n1, usd, usdShort, usdScaled, pctS, vol, volWords, plural, productWord, interest, nShort,
   MCF, BBL,
 } from '../../_lib/reference/fmt';
 import type { Tier } from './bits';
@@ -573,7 +573,7 @@ function UltraHero(
       </h1>
       <p className="u-status">
         {unclaimed
-          ? `Appraised at ${usd(t.appraised_value)} on the ${t.appraised_year} roll. Claiming is free.`
+          ? `Appraised at ${usdScaled(t.appraised_value)} on the ${t.appraised_year} roll. Claiming is free.`
           : `Your share across ${t.lease_count} ${plural(t.lease_count, 'lease')}. ` +
             `${t.reporting_count} filed ${productWord(t.has_gas, t.has_oil)} in ${a.data_month_label} — ` +
             `${volWords(t.anchor_gas_net, t.anchor_oil_net)} to you.`}
@@ -746,8 +746,25 @@ function PfStrip(
         : (t.reserves_gas_net > 0
           ? `no gas has ever been filed — the model still forecasts ${nShort(t.reserves_gas_net)} ${MCF}`
           : 'no gas has ever been filed on these leases'),
-      'production', 'Why this is not a cheque'));
+      'production', 'Why not a cheque'));
 
+    /* "WHY NOT A CHEQUE", NOT "WHY THIS IS NOT A CHEQUE".
+
+       Same question, eight characters shorter, and the shorter one is what
+       fits. These two cells carried the longest affordance label in the strip
+       by a wide margin — 24 characters against "What paused means" at 17,
+       "How it is built" at 15 and "Why it differs" at 14 — and the pill drew
+       past its own tile and over the divider into the cell beside it. The
+       chip is on its own line inside a tile that is 220px of content at the
+       width the strip runs five across, and the label has to fit that at
+       whatever width the reader's own font renders it; the four siblings do,
+       and this one did not.
+
+       NOTHING IS LOST FROM THE QUESTION. The subject is the figure directly
+       above the label — the volume filed that month — so "this" was pointing
+       at something already on screen and in the reader's eye. The panel it
+       opens is unchanged, and it is the panel that answers at length: a state
+       filing is a production fact, not a payment. */
     /* THE FIGURE IS THE FIX HERE, not the wording. This cell read
        "no oil has ever been filed" for a record holding 1.9M barrels of it,
        because the volume was being taken from a column the state leaves empty
@@ -765,7 +782,7 @@ function PfStrip(
           ? `nothing filed that month — the model forecasts `
             + `${nShort(t.reserves_oil_net)} ${BBL} ahead`
           : 'no oil on the record for that month'),
-      'production', 'Why this is not a cheque'));
+      'production', 'Why not a cheque'));
   }
   if (!t.has_gas && !t.has_oil) {
     cells.push(cell(`Filed in ${a.data_month_label ?? '—'}`,
@@ -783,7 +800,11 @@ function PfStrip(
      count OF; when the roll does cover everything the two are equal and the
      sentence goes back to being the one that was there. */
   const rollRows = num(p.owner.roll_rows);
-  cells.push(cell('County appraised', usd(t.appraised_value),
+  /* `usdScaled`, NOT `usd` — this one tile and the four other places the same
+     figure appears. See `usdScaled` in `fmt.ts`: the appraisal roll covers the
+     whole lease at 100%, so it is the longest figure on the page and the only
+     one that does not fit its tile. Nothing else in this strip changes. */
+  cells.push(cell('County appraised', usdScaled(t.appraised_value),
     `roll year ${t.appraised_year} · `
     + (rollRows && rollRows !== t.lease_count
       ? `${n0(rollRows)} of your ${n0(t.lease_count)} ${plural(t.lease_count, 'lease')} on the roll`
@@ -1111,7 +1132,11 @@ function seriesDefs(t: Payload['totals']): Record<SeriesKey, SeriesDef> {
     oil: { key: 'anchor_oil_net', fmt: (v) => `${n0(v)} ${BBL}`, cls: 'oil', name: 'Oil',
       title: 'Oil filed to you, by lease',
       note: 'your share of the last month each lease filed' },
-    appraised: { key: 'appraised_value', fmt: (v) => usd(v) ?? '—', cls: 'amber',
+    /* the bar labels, the hover title and the "total" line, all through the
+       same formatter the tile uses — this series IS the county appraised
+       value, and a ten-lease roll puts a thirteen-character figure at the end
+       of every bar. */
+    appraised: { key: 'appraised_value', fmt: (v) => usdScaled(v) ?? '—', cls: 'amber',
       name: 'Appraised', title: 'County appraised value, by lease',
       note: 'the appraisal roll’s own figure' },
     reserves: gasReserves
@@ -1600,7 +1625,10 @@ function RawTable({ p, open }: { p: Payload; open: (k: string) => void }) {
                 <td>{l.operator_name ?? '—'}</td>
                 <td>{interest(l.interest_value)}</td>
                 <td style={{ textAlign: 'right' }} className="num">{usdShort(l.owner_value)}</td>
-                <td style={{ textAlign: 'right' }} className="num">{usdShort(l.appraised_value)}</td>
+                {/* the appraised column moves to `usdScaled` with the rest of
+                    this figure; `usdShort` beside it still serves "Your value",
+                    which is a different quantity and is unchanged. */}
+                <td style={{ textAlign: 'right' }} className="num">{usdScaled(l.appraised_value)}</td>
                 <td>
                   {l.anchor_label ?? 'never'}
                   {l.months_behind ? <span className="tiny muted"> · {l.months_behind}m behind</span> : null}

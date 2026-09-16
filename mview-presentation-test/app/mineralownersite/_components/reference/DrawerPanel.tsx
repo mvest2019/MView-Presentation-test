@@ -35,7 +35,7 @@
 import React, { useEffect, useRef } from 'react';
 import type { Drawer } from '../../_lib/reference/payload';
 import { Html } from './bits';
-import { serviceText } from '../../_lib/reference/fmt';
+import { serviceText, spanLabel } from '../../_lib/reference/fmt';
 import { Charts } from './LineChart';
 
 
@@ -276,8 +276,10 @@ export default function DrawerPanel(
                         ? (
                           <div className="dx-spark">
                             <BandSpark values={copy.spark} />
+                            {/* the same span wording as the charts below it —
+                                see `spanLabel` in `fmt.ts` */}
                             {copy.spark_label
-                              ? <span className="dx-sparkcap">{copy.spark_label}</span>
+                              ? <span className="dx-sparkcap">{spanLabel(copy.spark_label)}</span>
                               : null}
                           </div>
                         )
