@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import { INVITE_CODE_PARAM, normalizeInviteCode } from "@/lib/invite-code";
+import {
+  INVITE_CODE_PARAM,
+  INVITE_REDEEM_PARAM,
+  normalizeInviteCode,
+} from "@/lib/invite-code";
 import { PORTAL_HOME } from "@/lib/routes";
 import { getSessionUser } from "@/lib/session";
 
@@ -48,15 +52,25 @@ export const metadata: Metadata = {
 export default async function RegisterPage({
   searchParams,
 }: PageProps<"/register">) {
-  if (await getSessionUser()) redirect(PORTAL_HOME);
-
   const params = await searchParams;
-  const requested = Array.isArray(params.next) ? params.next[0] : params.next;
-  const next = requested && /^\/(?!\/)/.test(requested) ? requested : PORTAL_HOME;
-
   const rawCode = params[INVITE_CODE_PARAM];
   const inviteCode =
     normalizeInviteCode(Array.isArray(rawCode) ? rawCode[0] : rawCode) ?? "";
+
+  /* A visitor who ALREADY has a session skips this page — but their invitation
+     must not be dropped on the way out. The code rides the redirect under the
+     portal's own parameter, so the redeem flow (`InviteRedeem`) still looks it
+     up and claims their record, the same as if they had just registered. */
+  if (await getSessionUser()) {
+    redirect(
+      inviteCode
+        ? `${PORTAL_HOME}?${INVITE_REDEEM_PARAM}=${inviteCode}`
+        : PORTAL_HOME,
+    );
+  }
+
+  const requested = Array.isArray(params.next) ? params.next[0] : params.next;
+  const next = requested && /^\/(?!\/)/.test(requested) ? requested : PORTAL_HOME;
 
   return (
     <AuthShell>

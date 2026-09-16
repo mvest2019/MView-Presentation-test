@@ -139,6 +139,17 @@ export function RegisterForm({
   // whole component. `useWatch` subscribes to the one field instead.
   const agreed = useWatch({ control, name: "terms" });
 
+  /*
+   * THE GOOGLE BUTTON NEEDS THE CODE TOO. The email path reads the code at
+   * submit, but "Continue with Google" never submits this form — its whole
+   * point is skipping it — so the invitation would be dropped on the floor for
+   * exactly the visitor the letter sent here. Watched live rather than taken
+   * from the prop, for the submit handler's own reason: the reader may have
+   * cleared the pre-fill or typed a code that was never in the URL, and what
+   * decides where they land is what is in the box when they press the button.
+   */
+  const inviteCodeNow = useWatch({ control, name: "inviteCode" });
+
   /* Watched because the verification block reacts to them as they are typed:
      these four gate the Verify Email button, and the address decides whether an
      existing confirmation still counts. */
@@ -379,7 +390,19 @@ export function RegisterForm({
           from the Google token, so there is no separate "sign up with Google". */}
       {/* A toast, for the reason sign-in's carries — these are Google and API
           faults, not anything about this form. */}
-      <GoogleSignIn onError={(message) => toast.warning(message)} />
+      {/* AN INVITED VISITOR LANDS IN THE PORTAL WITH THEIR CODE, exactly as the
+          email path does at submit — the redeem flow (`InviteRedeem`) then
+          looks the code up and claims their record for them. Without a code
+          the button keeps its existing destination untouched. */}
+      <GoogleSignIn
+        next={(() => {
+          const code = normalizeInviteCode(inviteCodeNow);
+          return code
+            ? `${PORTAL_HOME}?${INVITE_REDEEM_PARAM}=${code}`
+            : undefined;
+        })()}
+        onError={(message) => toast.warning(message)}
+      />
 
       {/* Lower case on purpose — `OrDivider` sets `uppercase`. */}
       <OrDivider label="or with email" />
