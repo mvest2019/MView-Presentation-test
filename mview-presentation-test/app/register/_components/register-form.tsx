@@ -27,7 +27,7 @@ import {
   inputClass,
 } from "@/app/_components/auth-shell";
 import { GoogleSignIn } from "@/app/_components/google-sign-in";
-import { normalizeInviteCode } from "@/lib/invite-code";
+import { INVITE_REDEEM_PARAM, normalizeInviteCode } from "@/lib/invite-code";
 import { PORTAL_HOME } from "@/lib/routes";
 import { PHONE_PLACEHOLDER, formatPhoneNumber } from "@/lib/phone";
 
@@ -341,7 +341,13 @@ export function RegisterForm({
      */
     const usedCode = normalizeInviteCode(values.inviteCode);
     if (usedCode) {
-      window.location.assign(PORTAL_HOME);
+      /* THE CODE RIDES ALONG. The portal's own page runs the redeem flow —
+         lookup, then the automatic claim — off this parameter, which is the
+         letter's promise ("your leases come across on their own") kept. See
+         `InviteRedeem` and `INVITE_REDEEM_PARAM` for both halves. */
+      window.location.assign(
+        `${PORTAL_HOME}?${INVITE_REDEEM_PARAM}=${usedCode}`,
+      );
       return;
     }
     /*

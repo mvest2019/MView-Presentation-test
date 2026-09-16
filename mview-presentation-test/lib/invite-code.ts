@@ -86,6 +86,17 @@ export function isWellFormedInviteCode(raw: string | null | undefined): boolean 
 /** the query parameter the invite letters put the code in */
 export const INVITE_CODE_PARAM = "code";
 
+/**
+ * The parameter a code travels to the PORTAL under, after registration.
+ *
+ * A different name from `INVITE_CODE_PARAM` on purpose: `?code=` on `/register`
+ * means "pre-fill the field", while `?invite=` on `/mineralownersite` means
+ * "this member just registered off an invitation — look the code up and claim
+ * their record for them". One name for both would make the dashboard treat any
+ * stray `?code=` as an instruction to write a claim.
+ */
+export const INVITE_REDEEM_PARAM = "invite";
+
 /** the message shown when the shape is wrong — one string, two call sites */
 export const INVITE_CODE_FORMAT_MESSAGE =
   "An invite code is eight digits, like 31597778. Leave it empty if you do not have one.";

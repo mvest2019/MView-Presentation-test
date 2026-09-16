@@ -68,11 +68,32 @@ const GET_PARAMS = {
 
 type Endpoint = keyof typeof GET_PARAMS;
 
-/** The body fields POST and DELETE may carry — both exist only on co-owners. */
-const BODY_FIELDS = {
-  POST: ["lease", "owners", "greeting", "custom", "body", "sender"],
-  DELETE: ["lease", "owners"],
-} as const;
+/**
+ * The write-shaped calls, per endpoint: which methods exist, which body fields
+ * may pass, and whether the session's `member_id` is injected.
+ *
+ * `lookup` TAKES NO `member_id` — the schema is strict and would 400 on the
+ * extra field, and the call is about the CODE, not the caller: it resolves an
+ * invite code to the owner name and address the redeem flow claims with. The
+ * session is still required to reach it, so a signed-out visitor cannot use
+ * this route to turn codes into names and addresses.
+ */
+const WRITES: Record<
+  string,
+  Partial<Record<"POST" | "DELETE", readonly string[]>> & {
+    withMemberId: boolean;
+  }
+> = {
+  "co-owners": {
+    POST: ["lease", "owners", "greeting", "custom", "body", "sender"],
+    DELETE: ["lease", "owners"],
+    withMemberId: true,
+  },
+  lookup: {
+    POST: ["invite_code"],
+    withMemberId: false,
+  },
+};
 
 /** A failure of our own, in the backend's envelope so the page parses one shape. */
 function fail(statusCode: number, code: string, message: string): NextResponse {
@@ -155,11 +176,13 @@ async function writeThrough(
   method: "POST" | "DELETE",
 ): Promise<NextResponse> {
   const { endpoint } = await ctx.params;
-  if (endpoint !== "co-owners")
+  const write = WRITES[endpoint];
+  const fields = write?.[method];
+  if (!write || !fields)
     return fail(
       404,
       "INVITE_UNKNOWN_ENDPOINT",
-      "Only /invite/co-owners accepts writes.",
+      `That invite endpoint takes no ${method}.`,
     );
 
   const user = await getSessionUser();
@@ -174,12 +197,12 @@ async function writeThrough(
   }
 
   const body: Record<string, unknown> = {};
-  for (const key of BODY_FIELDS[method]) {
+  for (const key of fields) {
     if (incoming[key] !== undefined) body[key] = incoming[key];
   }
-  body.member_id = user.id;
+  if (write.withMemberId) body.member_id = user.id;
 
-  return forward(`${BASE}/api/v1/invite/co-owners`, {
+  return forward(`${BASE}/api/v1/invite/${endpoint}`, {
     method,
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),

@@ -202,8 +202,6 @@ export interface RecordOutcome {
 /** The recorded state for one lease — restores ticks after a reload. */
 export interface InviteSnapshot {
   emails: InviteEmailView[];
-  /** Every email in one block, for "Copy all N". */
-  copyAll: string | null;
 }
 
 /** The three wording choices every render of the emails depends on. */
@@ -327,28 +325,48 @@ function wordingParams(params: URLSearchParams, wording: InviteWording): void {
   if (wording.body !== null) params.set("body", wording.body);
 }
 
+/**
+ * "Copy all N" as one block — BUILT HERE, NOT FETCHED.
+ *
+ * The service returns a `copy_all` too, but only for the call that produced
+ * it: after a tick the accurate one would cost a second round trip, and that
+ * round trip was most of what made a tick feel slow. The separator format is
+ * the service's own (and the reference build's before it): a rule naming the
+ * recipient and code, so a reader working down twenty pastes can see where one
+ * letter ends.
+ */
+export function buildCopyAll(emails: InviteEmailView[]): string | null {
+  if (emails.length < 2) return null;
+  return emails
+    .map((email, index) =>
+      [
+        `----- ${index + 1} of ${emails.length} · to ${email.to}  (code ${email.codeLabel}) -----`,
+        "",
+        `Subject: ${email.subject}`,
+        "",
+        email.bodyText,
+      ].join("\n"),
+    )
+    .join("\n\n\n");
+}
+
 /* ============================================================================
    THE FIVE CALLS
    ============================================================================ */
 
-/** Step 1 — GET /invite/leases. One row per claimed lease. */
-export async function fetchInviteLeases(options?: {
-  q?: string;
-  limit?: number;
-  offset?: number;
-  signal?: AbortSignal;
-}): Promise<{ leases: LeaseChoice[]; total: number }> {
-  const params = new URLSearchParams();
-  if (options?.q?.trim()) params.set("q", options.q.trim());
-  params.set("limit", String(options?.limit ?? 500));
-  if (options?.offset) params.set("offset", String(options.offset));
+/**
+ * ONE PAGE OF LEASES IS 100 ROWS, NOT 500. The 500-row read was measured at
+ * 1.7–2.2s and 153KB on the dev service and it was the page's first paint
+ * waiting for it; 100 answers in a fraction of that, and the search box covers
+ * the rest of a 3,529-lease record — which the one-shot 500 never did.
+ */
+export const LEASES_PAGE = 100;
 
-  const data = await request<WireLeasesResponse>(
-    `/api/invite/leases?${params}`,
-    "list your claimed leases",
-    { signal: options?.signal },
-  );
-
+/** The wire→view mapping, exported so the server-side prefetch shares it. */
+export function mapLeasesResponse(data: WireLeasesResponse): {
+  leases: LeaseChoice[];
+  total: number;
+} {
   const leases = (data.leases ?? [])
     .filter((lease) => typeof lease.lease_id === "string")
     .map((lease) => ({
@@ -366,6 +384,27 @@ export async function fetchInviteLeases(options?: {
     }));
 
   return { leases, total: data.page?.total ?? leases.length };
+}
+
+/** Step 1 — GET /invite/leases. One row per claimed lease. */
+export async function fetchInviteLeases(options?: {
+  q?: string;
+  limit?: number;
+  offset?: number;
+  signal?: AbortSignal;
+}): Promise<{ leases: LeaseChoice[]; total: number }> {
+  const params = new URLSearchParams();
+  if (options?.q?.trim()) params.set("q", options.q.trim());
+  params.set("limit", String(options?.limit ?? LEASES_PAGE));
+  if (options?.offset) params.set("offset", String(options.offset));
+
+  const data = await request<WireLeasesResponse>(
+    `/api/invite/leases?${params}`,
+    "list your claimed leases",
+    { signal: options?.signal },
+  );
+
+  return mapLeasesResponse(data);
 }
 
 /** Step 2 — GET /invite/owners. Everyone else on the roll for one lease. */
@@ -491,7 +530,7 @@ export async function fetchInvites(
     .map(toEmailView)
     .filter((email): email is InviteEmailView => email !== null);
 
-  return { emails, copyAll: data.copy_all ?? null };
+  return { emails };
 }
 
 /**

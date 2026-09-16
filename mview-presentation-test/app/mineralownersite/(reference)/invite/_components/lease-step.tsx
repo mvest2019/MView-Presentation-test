@@ -45,16 +45,33 @@ export function LeaseStep({
   total,
   lease,
   peopleCount,
+  leaseQuery,
+  onLeaseQuery,
+  searching,
   onChange,
 }: {
+  /** The options on offer right now — page one, or the search's answer. */
   leases: LeaseChoice[];
   /** Every claimed lease, even the ones past this page of the list. */
   total: number;
   lease: LeaseChoice;
   /** Individuals on the chosen lease, or null while the roll is being read. */
   peopleCount: number | null;
+  /** The type-ahead — matched server-side against ALL claimed leases. */
+  leaseQuery: string;
+  onLeaseQuery: (next: string) => void;
+  searching: boolean;
   onChange: (leaseId: string) => void;
 }) {
+  /* THE SELECTION SURVIVES THE SEARCH. The option list is whatever the
+     type-ahead answered, and the chosen lease may match none of it — a
+     `<select>` whose value is missing from its options silently shows the
+     first row, so the chosen lease is pinned on top whenever the list lost
+     it. */
+  const options = leases.some((option) => option.leaseId === lease.leaseId)
+    ? leases
+    : [lease, ...leases];
+
   return (
     <StepCard
       n={1}
@@ -65,6 +82,19 @@ export function LeaseStep({
         </span>
       }
     >
+      {total > leases.length ? (
+        <div className="iv-find">
+          <input
+            type="search"
+            value={leaseQuery}
+            onChange={(event) => onLeaseQuery(event.target.value)}
+            placeholder={`Search all ${total} leases — a name, number or county`}
+            aria-label="Search your claimed leases"
+          />
+          {searching ? <span className="tiny muted">searching…</span> : null}
+        </div>
+      ) : null}
+
       <label className="iv-sel">
         <span>Lease</span>
         <select
@@ -72,7 +102,7 @@ export function LeaseStep({
           onChange={(event) => onChange(event.target.value)}
           aria-label="Which lease to invite the co-owners of"
         >
-          {leases.map((option) => (
+          {options.map((option) => (
             <option key={option.leaseId} value={option.leaseId}>
               {option.label}
             </option>
@@ -82,7 +112,9 @@ export function LeaseStep({
 
       {total > leases.length ? (
         <p className="tiny muted" style={{ margin: "6px 0 0" }}>
-          Showing the first {leases.length} of your {total} claimed leases.
+          {leaseQuery.trim()
+            ? `${leases.length} ${leases.length === 1 ? "lease matches" : "leases match"} — the dropdown holds the results.`
+            : `The dropdown holds your first ${leases.length}; the search reaches all ${total}.`}
         </p>
       ) : null}
 

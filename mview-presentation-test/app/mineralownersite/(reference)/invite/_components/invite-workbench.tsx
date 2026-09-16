@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  buildCopyAll,
   fetchInviteLeases,
   fetchInvites,
   fetchLeaseRoster,
@@ -15,6 +16,7 @@ import {
   type LeaseChoice,
   type LeaseRoster,
 } from "../_api/invite-api";
+import type { PrefetchedLeases } from "../_api/invite-prefetch";
 import { CREDIT, creditPlan, FLOW } from "../_lib/invite-flow";
 import { DEFAULT_BODY } from "../_lib/invite-letters";
 import { inviteSender } from "../_lib/invite-records";
@@ -28,77 +30,105 @@ import { PeopleStep } from "./people-step";
 /**
  * THE ONE PIECE OF STATE ON THIS PAGE, and the three cards that read it.
  *
- * ── WIRED TO THE INVITE API NOW — the fixture pass this replaced is gone ──
+ * Wired to `/api/v1/invite/*` through the same-origin forwarder — see
+ * `_api/invite-api.ts` for the contract rules the shapes enforce. Ticking
+ * POSTs and shows the minted code; unticking DELETEs (deactivates, never
+ * deletes); ticks and codes survive a reload; wording re-renders through GET
+ * without writing.
  *
- * Everything the three steps print comes off `/api/v1/invite/*` through the
- * same-origin forwarder (see `_api/invite-api.ts`): the leases are the
- * member's CLAIMED leases, the people are the county appraisal roll, and the
- * codes are ISSUED — minted and reserved by the service the moment a box is
- * ticked, not worked out from a hash. That changes what a tick means:
+ * ── WHERE THE TIME GOES, AND HOW THIS FILE SPENDS AS LITTLE AS POSSIBLE ──
  *
- *   TICKING WRITES. `POST /invite/co-owners` records the invite and returns
- *   the written email; `already_invited` comes back for a box ticked in an
- *   earlier session and is a SUCCESS carrying the code issued then. The tick
- *   only appears once the service has answered — a checkbox that ticked
- *   optimistically would show a letter whose code did not exist yet.
+ * Every call to the service is ~half a second; what made the first pass feel
+ * slow was STACKING them. Four rules keep the stack flat:
  *
- *   UNTICKING DEACTIVATES, NEVER DELETES. The code may already be in a sent
- *   email; re-ticking the same person returns the same code.
+ *   THE FIRST PAGE OF LEASES RIDES THE DOCUMENT. `page.tsx` prefetches it in
+ *   parallel with the shell payload and hands it down as `initialLeases`, so
+ *   on the happy path step 1 is filled at first paint and the only mount-time
+ *   fetch left is the chosen lease's roll.
  *
- *   THE TICKS SURVIVE A RELOAD. `GET /invite/co-owners` restores them per
- *   lease, which the fixture build could not do — it had nowhere to write.
+ *   A TICK IS ONE ROUND TRIP AND THE BOX MOVES FIRST. The checkbox flips
+ *   optimistically (`pending` overlays the recorded state), the POST's own
+ *   response supplies the email, and a failure flips it back with the reason.
+ *   The re-read that used to follow every write is gone — "Copy all" is built
+ *   client-side from the emails on hand (`buildCopyAll`), which was the only
+ *   thing the re-read still paid for.
  *
- * ── EVERY WRITE ENDS IN A RE-READ ──
+ *   A ROLL ALREADY READ IS NOT READ AGAIN. Rosters cache per lease for the
+ *   session; switching back to a lease is instant, and only the recorded
+ *   invites — the part that can change — are re-fetched.
  *
- * After each POST/DELETE the workbench re-fetches the recorded state rather
- * than splicing the response into local arrays. One extra round trip buys the
- * property that matters: `emails` and `copy_all` are always the server's own
- * index-aligned answer, so the "Copy all" block can never carry a code the
- * previous click just revoked.
+ *   ONLY TYPING IS DEBOUNCED. A greeting is a click with intent and re-renders
+ *   at once; the 600ms wait belongs to the textarea, where every keystroke
+ *   would otherwise be a request.
  *
- * ── THE WORDING RE-RENDERS WITHOUT WRITING ──
+ * ── THE LETTER ON SCREEN IS ADDRESSED BY KEY, NOT BY INDEX ──
  *
- * Greeting, custom opener and the letter body re-render through the GET —
- * debounced, because it fires per keystroke in the editor. Codes are already
- * reserved, so re-rendering cannot change them; a failed re-render keeps the
- * previous emails rather than reporting an outage.
+ * `atKey` names the owner whose letter step 3 shows; the index is derived at
+ * render. The list reorders as ticks land and unticks remove rows, and an
+ * index would silently show a different cousin's letter when it did.
  *
  * ── WHY THE LEASE SWITCH RESETS IN THE EVENT, NOT IN AN EFFECT ──
  *
- * Same reason as ever: a `useEffect` keyed on the lease renders the new lease
- * once with the old letters still up before clearing them — a flash of
- * somebody else's letter in step 3. The load itself is an effect (it is
- * async); the SYNCHRONOUS reset of what is on screen happens in the handler.
+ * A `useEffect` keyed on the lease renders the new lease once with the old
+ * letters still up before clearing them — a flash of somebody else's letter in
+ * step 3. The load is an effect (it is async); the SYNCHRONOUS reset of what
+ * is on screen happens in the handler.
  */
 
-/** The contract's page ceiling — one read covers all but the largest members. */
-const PAGE_LIMIT = 500;
+/** The contract's page ceiling for one roll read. */
+const ROSTER_LIMIT = 500;
 
-/** How long the editor may go quiet before the emails re-render. */
-const REWORD_DEBOUNCE_MS = 600;
+/** How long the letter editor may go quiet before the emails re-render. */
+const BODY_DEBOUNCE_MS = 600;
+/** A greeting click, by contrast, is intent — only a beat, to coalesce two. */
+const CLICK_DEBOUNCE_MS = 120;
+/** The lease search box — a type-ahead against all 3,529, not a local filter. */
+const LEASE_SEARCH_DEBOUNCE_MS = 350;
 
 type LeasesState =
   | { phase: "loading" }
   | { phase: "error"; code: string; message: string }
   | { phase: "ready"; leases: LeaseChoice[]; total: number };
 
-export function InviteWorkbench() {
-  const [leasesState, setLeasesState] = useState<LeasesState>({
-    phase: "loading",
-  });
+export function InviteWorkbench({
+  initialLeases,
+}: {
+  /** The server-prefetched first page, or null when the client must ask. */
+  initialLeases: PrefetchedLeases | null;
+}) {
+  const [leasesState, setLeasesState] = useState<LeasesState>(() =>
+    initialLeases
+      ? {
+          phase: "ready",
+          leases: initialLeases.leases,
+          total: initialLeases.total,
+        }
+      : { phase: "loading" },
+  );
   /** Bumped by the retry button — the load effect depends on it. */
   const [loadAttempt, setLoadAttempt] = useState(0);
 
-  const [leaseId, setLeaseId] = useState<string | null>(null);
+  /* THE SELECTED LEASE IS AN OBJECT, NOT A LOOKUP. The dropdown's option list
+     changes under the reader as they search, and the selection must survive
+     matching none of the current options. */
+  const [lease, setLease] = useState<LeaseChoice | null>(
+    initialLeases?.leases[0] ?? null,
+  );
+  const [leaseQuery, setLeaseQuery] = useState("");
+  const [leaseResults, setLeaseResults] = useState<LeaseChoice[] | null>(null);
+  const [searchingLeases, setSearchingLeases] = useState(false);
+
   const [roster, setRoster] = useState<LeaseRoster | null>(null);
   const [rosterError, setRosterError] = useState<string | null>(null);
+  /** Rolls already read this session, by lease id. */
+  const rosterCache = useRef(new Map<string, LeaseRoster>());
 
-  /** The recorded invites for the current lease — the server's own answer. */
+  /** The recorded invites for the current lease. */
   const [emails, setEmails] = useState<InviteEmailView[]>([]);
-  const [copyAll, setCopyAll] = useState<string | null>(null);
-
-  /** Owner keys with a POST/DELETE in flight — their checkboxes hold still. */
-  const [busy, setBusy] = useState<Set<string>>(() => new Set());
+  /** Optimistic overlay: owner key → the state its checkbox is moving to. */
+  const [pending, setPending] = useState<Map<string, boolean>>(
+    () => new Map(),
+  );
   /** The last thing a write had to say — a not-on-roll note, a rate limit. */
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -108,44 +138,39 @@ export function InviteWorkbench() {
   const [custom, setCustom] = useState("");
   const [body, setBody] = useState(DEFAULT_BODY);
   const [editing, setEditing] = useState(false);
-  const [at, setAt] = useState(0);
+  const [atKey, setAtKey] = useState<string | null>(null);
   const [rewording, setRewording] = useState(false);
 
-  /*
-   * THE WORDING TRAVELS ON EVERY CALL, read through a ref where an effect or
-   * handler needs "whatever it is right now" without re-running on each
-   * keystroke. `body` is sent even unedited: the preview, the editor and the
-   * copy button must all be the same letter, and the only way to guarantee
-   * that is for the text in the textarea to be the text the service renders.
-   */
   const wording: InviteWording = useMemo(
     () => ({ greeting, custom, body }),
     [greeting, custom, body],
   );
   const wordingRef = useRef(wording);
-  const leaseIdRef = useRef(leaseId);
+  const leaseIdRef = useRef(lease?.leaseId ?? null);
   const emailCountRef = useRef(emails.length);
   /* Written in an effect, not during render (the hooks lint rule). Declared
      FIRST so the refs are current before any later effect in the same commit
      reads them. */
   useEffect(() => {
     wordingRef.current = wording;
-    leaseIdRef.current = leaseId;
+    leaseIdRef.current = lease?.leaseId ?? null;
     emailCountRef.current = emails.length;
   });
 
-  /* ---- load the claimed leases once, and again on retry ------------------ */
+  /* ---- load the claimed leases when the server could not ----------------- */
   useEffect(() => {
+    /* The prefetch already answered; the effect exists for the miss and for
+       the retry button. */
+    if (initialLeases && loadAttempt === 0) return;
     const controller = new AbortController();
     (async () => {
       try {
         const { leases, total } = await fetchInviteLeases({
-          limit: PAGE_LIMIT,
           signal: controller.signal,
         });
         if (controller.signal.aborted) return;
         setLeasesState({ phase: "ready", leases, total });
-        setLeaseId(leases[0]?.leaseId ?? null);
+        setLease((current) => current ?? leases[0] ?? null);
       } catch (error) {
         if (controller.signal.aborted) return;
         setLeasesState({
@@ -159,25 +184,67 @@ export function InviteWorkbench() {
       }
     })();
     return () => controller.abort();
-  }, [loadAttempt]);
+  }, [initialLeases, loadAttempt]);
+
+  /* A cleared search box restores page one AT THE KEYSTROKE — state moved by
+     an event moves in the event, not in an effect chasing it. */
+  const handleLeaseQuery = useCallback((next: string) => {
+    setLeaseQuery(next);
+    if (!next.trim()) {
+      setLeaseResults(null);
+      setSearchingLeases(false);
+    }
+  }, []);
+
+  /* ---- the lease type-ahead — every claimed lease, not just page one ------ */
+  useEffect(() => {
+    const needle = leaseQuery.trim();
+    if (!needle) return;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setSearchingLeases(true);
+      try {
+        const { leases } = await fetchInviteLeases({
+          q: needle,
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        setLeaseResults(leases);
+      } catch {
+        /* A failed search leaves the previous options standing — the reader
+           can still pick, and the next keystroke tries again. */
+      } finally {
+        if (!controller.signal.aborted) setSearchingLeases(false);
+      }
+    }, LEASE_SEARCH_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [leaseQuery]);
 
   /* ---- a new lease is a new roll and a new set of recorded invites ------- */
+  const leaseId = lease?.leaseId ?? null;
   useEffect(() => {
     if (!leaseId) return;
     const controller = new AbortController();
+    const cached = rosterCache.current.get(leaseId) ?? null;
     (async () => {
       try {
         const [nextRoster, snapshot] = await Promise.all([
-          fetchLeaseRoster(leaseId, {
-            limit: PAGE_LIMIT,
-            signal: controller.signal,
-          }),
+          /* The roll of a lease barely moves within a session; the recorded
+             invites are the part a reload or another device can change. */
+          cached ??
+            fetchLeaseRoster(leaseId, {
+              limit: ROSTER_LIMIT,
+              signal: controller.signal,
+            }),
           fetchInvites(leaseId, wordingRef.current, controller.signal),
         ]);
         if (controller.signal.aborted) return;
+        rosterCache.current.set(leaseId, nextRoster);
         setRoster(nextRoster);
         setEmails(snapshot.emails);
-        setCopyAll(snapshot.copyAll);
       } catch (error) {
         if (controller.signal.aborted) return;
         setRosterError(
@@ -192,37 +259,50 @@ export function InviteWorkbench() {
 
   /*
    * A NEW LEASE IS A NEW LIST OF PEOPLE, so nothing carries over. The reset is
-   * synchronous and in the event — see the header.
+   * synchronous and in the event — see the header. The cached roll, when there
+   * is one, goes up in the same event for the same reason: rendering the new
+   * lease with the OLD roll for a frame is the exact flash the reset avoids.
    */
   const chooseLease = (nextLeaseId: string) => {
     if (nextLeaseId === leaseId) return;
-    setLeaseId(nextLeaseId);
-    setRoster(null);
+    const options = leaseResults ?? (leasesState.phase === "ready" ? leasesState.leases : []);
+    const next =
+      options.find((candidate) => candidate.leaseId === nextLeaseId) ?? null;
+    if (!next) return;
+    setLease(next);
+    setRoster(rosterCache.current.get(nextLeaseId) ?? null);
     setRosterError(null);
     setEmails([]);
-    setCopyAll(null);
+    setPending(new Map());
     setNotice(null);
     setQuery("");
     setShowAll(false);
-    setAt(0);
+    setAtKey(null);
   };
 
-  /* ---- wording changed → re-render the recorded emails, debounced -------- */
+  /* ---- wording changed → re-render the recorded emails -------------------- */
+  /* Its own ref, written INSIDE this effect: `wordingRef` is synced by an
+     earlier effect in the same commit, so by the time this one runs it can no
+     longer say which field moved. */
+  const previousBodyRef = useRef(body);
   useEffect(() => {
-    const lease = leaseIdRef.current;
-    if (!lease || emailCountRef.current === 0) return;
+    /* Only the textarea earns the long wait — see the constants. */
+    const delay =
+      body !== previousBodyRef.current ? BODY_DEBOUNCE_MS : CLICK_DEBOUNCE_MS;
+    previousBodyRef.current = body;
+    const currentLease = leaseIdRef.current;
+    if (!currentLease || emailCountRef.current === 0) return;
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       setRewording(true);
       try {
         const snapshot = await fetchInvites(
-          lease,
+          currentLease,
           { greeting, custom, body },
           controller.signal,
         );
         if (controller.signal.aborted) return;
         setEmails(snapshot.emails);
-        setCopyAll(snapshot.copyAll);
       } catch {
         /* The previous rendering stays up. A failed re-render is a stale
            greeting, not a failed invite, and it corrects itself on the next
@@ -230,43 +310,41 @@ export function InviteWorkbench() {
       } finally {
         if (!controller.signal.aborted) setRewording(false);
       }
-    }, REWORD_DEBOUNCE_MS);
+    }, delay);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
   }, [greeting, custom, body]);
 
-  /* ---- tick and untick ---------------------------------------------------- */
+  /* ---- tick and untick — one round trip, box first ------------------------ */
 
-  /** Re-read the recorded state — every write's last step. */
-  const refresh = useCallback(async (lease: string) => {
-    const snapshot = await fetchInvites(lease, wordingRef.current);
-    /* The reader may have switched lease while the write was in flight. */
-    if (leaseIdRef.current !== lease) return null;
-    setEmails(snapshot.emails);
-    setCopyAll(snapshot.copyAll);
-    return snapshot;
+  const setPendingFor = useCallback((keys: string[], to: boolean | null) => {
+    setPending((previous) => {
+      const next = new Map(previous);
+      for (const key of keys) {
+        if (to === null) next.delete(key);
+        else next.set(key, to);
+      }
+      return next;
+    });
   }, []);
 
   const toggle = useCallback(
     async (ownerKey: string, on: boolean) => {
-      const lease = leaseIdRef.current;
-      if (!lease) return;
-      setBusy((previous) => {
-        if (previous.has(ownerKey)) return previous;
-        const next = new Set(previous);
-        next.add(ownerKey);
-        return next;
-      });
+      const currentLease = leaseIdRef.current;
+      if (!currentLease) return;
+      /* The box flips NOW; the service catches up or the box flips back. */
+      setPendingFor([ownerKey], on);
       setNotice(null);
       try {
         if (on) {
           const outcome = await recordInvites(
-            lease,
+            currentLease,
             [ownerKey],
             wordingRef.current,
           );
+          if (leaseIdRef.current !== currentLease) return;
           if (outcome.notOnRoll.length) {
             setNotice(
               outcome.notOnRoll[0].note ??
@@ -274,16 +352,24 @@ export function InviteWorkbench() {
                   "lease, so no invite was recorded.",
             );
           }
-          const snapshot = await refresh(lease);
-          if (snapshot) {
-            const index = snapshot.emails.findIndex(
-              (email) => email.ownerKey === ownerKey,
-            );
-            if (index >= 0) setAt(index);
+          if (outcome.emails.length) {
+            setEmails((previous) => [
+              ...previous.filter(
+                (email) =>
+                  !outcome.emails.some(
+                    (fresh) => fresh.ownerKey === email.ownerKey,
+                  ),
+              ),
+              ...outcome.emails,
+            ]);
+            setAtKey(ownerKey);
           }
         } else {
-          await revokeInvites(lease, [ownerKey]);
-          await refresh(lease);
+          await revokeInvites(currentLease, [ownerKey]);
+          if (leaseIdRef.current !== currentLease) return;
+          setEmails((previous) =>
+            previous.filter((email) => email.ownerKey !== ownerKey),
+          );
         }
       } catch (error) {
         setNotice(
@@ -292,25 +378,22 @@ export function InviteWorkbench() {
             : "That change did not go through. Try again.",
         );
       } finally {
-        setBusy((previous) => {
-          const next = new Set(previous);
-          next.delete(ownerKey);
-          return next;
-        });
+        setPendingFor([ownerKey], null);
       }
     },
-    [refresh],
+    [setPendingFor],
   );
 
   const clearAll = useCallback(async () => {
-    const lease = leaseIdRef.current;
+    const currentLease = leaseIdRef.current;
     const keys = emails.map((email) => email.ownerKey);
-    if (!lease || keys.length === 0) return;
-    setBusy(new Set(keys));
+    if (!currentLease || keys.length === 0) return;
+    setPendingFor(keys, false);
     setNotice(null);
     try {
-      await revokeInvites(lease, keys);
-      await refresh(lease);
+      await revokeInvites(currentLease, keys);
+      if (leaseIdRef.current !== currentLease) return;
+      setEmails([]);
     } catch (error) {
       setNotice(
         error instanceof Error
@@ -318,16 +401,31 @@ export function InviteWorkbench() {
           : "That change did not go through. Try again.",
       );
     } finally {
-      setBusy(new Set());
+      setPendingFor(keys, null);
     }
-  }, [emails, refresh]);
+  }, [emails, setPendingFor]);
 
   /* ---- derived ------------------------------------------------------------ */
 
-  const picked = useMemo(
-    () => new Set(emails.map((email) => email.ownerKey)),
-    [emails],
-  );
+  /** Recorded state with the optimistic overlay on top. */
+  const picked = useMemo(() => {
+    const keys = new Set(emails.map((email) => email.ownerKey));
+    for (const [key, to] of pending) {
+      if (to) keys.add(key);
+      else keys.delete(key);
+    }
+    return keys;
+  }, [emails, pending]);
+
+  const busy = useMemo(() => new Set(pending.keys()), [pending]);
+
+  const copyAll = useMemo(() => buildCopyAll(emails), [emails]);
+
+  const at = useMemo(() => {
+    if (!atKey) return 0;
+    const index = emails.findIndex((email) => email.ownerKey === atKey);
+    return index >= 0 ? index : 0;
+  }, [emails, atKey]);
 
   const plan = useMemo(() => creditPlan(emails, CREDIT), [emails]);
 
@@ -387,20 +485,22 @@ export function InviteWorkbench() {
   }
 
   const { leases, total } = leasesState;
-  if (leases.length === 0) return <UnclaimedInviteNotice />;
+  if (leases.length === 0 && !lease) return <UnclaimedInviteNotice />;
 
-  const lease =
-    leases.find((candidate) => candidate.leaseId === leaseId) ?? leases[0];
+  const shownLease = lease ?? leases[0];
 
   return (
     /* `.iv-body` AND `.iv-main`, NOT A TAILWIND GRID — see `invite.css`. */
     <div className="iv-body">
       <div className="iv-main">
         <LeaseStep
-          leases={leases}
+          leases={leaseResults ?? leases}
           total={total}
-          lease={lease}
+          lease={shownLease}
           peopleCount={roster?.counts.people ?? null}
+          leaseQuery={leaseQuery}
+          onLeaseQuery={handleLeaseQuery}
+          searching={searchingLeases}
           onChange={chooseLease}
         />
 
@@ -428,7 +528,7 @@ export function InviteWorkbench() {
           copyAll={copyAll}
           rewording={rewording}
           at={at}
-          onAt={setAt}
+          onAt={(next) => setAtKey(emails[next]?.ownerKey ?? null)}
           greeting={greeting}
           onGreeting={setGreeting}
           custom={custom}

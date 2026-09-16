@@ -1,5 +1,6 @@
 "use client";
 
+import type { PrefetchedLeases } from "../_api/invite-prefetch";
 import { usePortalViewState } from "../../../_components/reference/view-state";
 import { gates } from "../../../_components/ui/portal-gating";
 import { InviteHeader, UnclaimedInviteNotice } from "./invite-header";
@@ -48,7 +49,12 @@ import { InviteWorkbench } from "./invite-workbench";
  * were. They are inert in this group, and they are what the page goes back to
  * wearing if it ever returns to the portal shell.
  */
-export function InviteView() {
+export function InviteView({
+  initialLeases,
+}: {
+  /** The server-prefetched first page of leases — see `invite-prefetch.ts`. */
+  initialLeases: PrefetchedLeases | null;
+}) {
   const view = usePortalViewState();
   const claimed = view === null || view.funnel !== "unclaimed";
 
@@ -71,7 +77,7 @@ export function InviteView() {
   return (
     <div className={`iv ${gates("pageRoot")}`}>
       <InviteHeader />
-      <InviteWorkbench />
+      <InviteWorkbench initialLeases={initialLeases} />
     </div>
   );
 }
