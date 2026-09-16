@@ -214,9 +214,17 @@ export const navSections: PortalNavSection[] = [
   {
     heading: "Community",
     items: [
-      { label: "Groups", icon: "groups", navKey: "app-groups" },
-      // `app-invite` landed. The module is the Community section's first real
-      // destination; Groups is still unbuilt and stays a plain label.
+      // `app-groups` landed. The row takes its `href` and stops being a plain
+      // label — the one change this file's header says a module needs when its
+      // page lands. See `(reference)/groups/page.tsx`.
+      {
+        label: "Groups",
+        icon: "groups",
+        href: "/mineralownersite/groups",
+        navKey: "app-groups",
+      },
+      // `app-invite` landed too, and is the Community section's other real
+      // destination.
       {
         label: "Invite Co-Owners",
         icon: "invite",

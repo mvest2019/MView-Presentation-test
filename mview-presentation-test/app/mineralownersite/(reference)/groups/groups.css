@@ -1,0 +1,494 @@
+/*
+ * GROUPS — the page's own sheet.
+ *
+ * UNLAYERED, like `invite.css`: this file is imported by `page.tsx`, so it sits
+ * outside `@layer mv-reference` and beats `dashboard-reference.css` outright
+ * with no specificity contest.
+ *
+ * ── IT BORROWS, IT DOES NOT RE-STATE ──
+ *
+ * Every surface on this page is one of the group's own: `.chartbox` is the card
+ * the Dashboard's panels sit on, `.kpi` is the tile its figures sit in, `.chip`
+ * and its three tones are the badges, `.notice` and its four tones are the
+ * banners, `.btn`/`.btn-primary`/`.btn-ghost`/`.btn-sm` are the buttons, and
+ * `.small`/`.tiny`/`.muted`/`.num` are the type scale. NOTHING below re-declares
+ * a font size, a border or a shadow that one of those already carries — what is
+ * here is the layout those pieces are arranged in, and the few parts this page
+ * has that no other page does: a directory row, a post, a comment thread.
+ *
+ * That is deliberate and it is the lesson `invite.css` records at length: a page
+ * built out of its own sizes and its own greens works perfectly and still reads
+ * as an island. The colours below are all variables — `--green`, `--green-ink`,
+ * `--green-deep`, `--line`, `--muted`, `--slate`, `--mint`, `--red` — so this
+ * page changes when the portal does.
+ *
+ * ── EVERY BREAKPOINT IS A CONTAINER QUERY ──
+ *
+ * The reference's reasoning, and it is measured: at a 1024px viewport this
+ * page's content box is ~664px because the shell spends the rest on its
+ * sidebar, and at 768px with no sidebar it is ~669px. Nearly the same column,
+ * 256px apart in viewport terms — so a `@media (max-width: …)` rule fires at
+ * the wrong moments on exactly the layouts it was written for. `.gr` carries
+ * `container-type: inline-size` and everything below measures THAT.
+ *
+ * `@supports not (container-type…)` at the bottom gives an old browser the
+ * stacked layout at every width, plus the two-column layout on a genuinely wide
+ * viewport.
+ */
+
+.mv-ref-app .gr {
+  /* 1200px is the reference `.wrap` width Invite also takes, so the two
+     Community pages have the same gutters as each other and as the Dashboard. */
+  max-width: 1200px;
+  margin-inline: auto;
+  container-type: inline-size;
+}
+
+/* ============================================================ the head */
+
+.mv-ref-app .gr-top { margin: 18px 0 16px; }
+.mv-ref-app .gr-top > p { max-width: 74ch; margin: 5px 0 0; }
+/* THE PAGE TITLE IS THE SIZE EVERY OTHER PAGE IN THIS GROUP USES. `h1` here is
+   44px — a marketing headline. Alerts, Activities and Invite draw theirs at
+   24px; the element stays an `h1` because the page's title is the document's
+   heading, and only the size is restated. */
+.mv-ref-app .gr-pagetitle { font-size: 24px; margin: 2px 0 0; }
+/* And a section heading matches `h4`, which is the size the group's own cards
+   use. The elements are `h2`/`h3` for the outline a screen reader navigates. */
+.mv-ref-app .gr-h,
+.mv-ref-app .gr-title {
+  font-family: var(--serif); font-weight: 600; line-height: 1.18;
+  letter-spacing: -.01em; margin: 0;
+}
+.mv-ref-app .gr-h { font-size: 15px; }
+.mv-ref-app .gr-title { font-size: 20px; margin: 2px 0 0; }
+.mv-ref-app .gr-kicker {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--green-deep); margin: 0;
+}
+.mv-ref-app .gr-k {
+  display: block; font-size: 9.5px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--slate); margin: 0 0 8px;
+}
+
+.mv-ref-app .gr-notice { margin: 0 0 16px; }
+.mv-ref-app .gr-stats { margin: 0 0 18px; }
+/* The locked tile is a state, not a figure, so its value is not tabular and it
+   is toned back — it should read as "there is something here" rather than
+   competing with the counts beside it. */
+.mv-ref-app .gr-locked { background: #fafbfb; }
+.mv-ref-app .gr-locked .k-val { font-size: 20px; color: var(--muted); }
+
+.mv-ref-app .gr-foot { margin: 18px 0 4px; max-width: 78ch; }
+
+/* ==================================================== the two columns */
+
+/* STACKED BY DEFAULT, DIRECTORY FIRST. That is the source order and it is the
+   right order on a phone: choose a room, then read it. */
+.mv-ref-app .gr-body {
+  display: grid; grid-template-columns: 1fr; gap: 16px; align-items: start;
+}
+.mv-ref-app .gr-main { min-width: 0; display: grid; gap: 14px; align-content: start; }
+
+/* A SIDE RAIL ONLY WHEN THE MAIN COLUMN CAN STILL BREATHE. 300px of directory
+   out of a 664px box would leave 350px for a post; 900px of content leaves
+   ~585px, which is a readable measure. */
+@container (min-width: 900px) {
+  .mv-ref-app .gr-body { grid-template-columns: 300px minmax(0, 1fr); gap: 18px; }
+  .mv-ref-app .gr-dir { position: sticky; top: 14px; }
+  /* The list takes the height it can see and scrolls the rest, so the panel
+     beside it is never pushed down by a portfolio with thirty groups in it. */
+  .mv-ref-app .gr-dirlist { max-height: calc(100vh - 260px); }
+}
+
+/* ========================================================= the directory */
+
+.mv-ref-app .gr-dir {
+  background: #fff; border: 1px solid var(--line); border-radius: var(--r);
+  box-shadow: var(--shadow); padding: 14px 14px 10px; min-width: 0;
+}
+.mv-ref-app .gr-dirhead {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap; margin: 0 0 10px;
+}
+.mv-ref-app .gr-find { margin: 0 0 10px; }
+.mv-ref-app .gr-find input[type="search"],
+.mv-ref-app .gr-newform input,
+.mv-ref-app .gr-inviteform input,
+.mv-ref-app .gr-commentform input,
+.mv-ref-app .gr-replyform input,
+.mv-ref-app .gr-composer textarea {
+  font: inherit; font-size: 13px; width: 100%; color: var(--ink);
+  background: #fff; border: 1px solid #cbd5e1; border-radius: 9px;
+  padding: 9px 11px; min-width: 0;
+}
+.mv-ref-app .gr-composer textarea { resize: vertical; line-height: 1.5; }
+.mv-ref-app .gr-find input[type="search"]:focus,
+.mv-ref-app .gr-newform input:focus,
+.mv-ref-app .gr-inviteform input:focus,
+.mv-ref-app .gr-commentform input:focus,
+.mv-ref-app .gr-replyform input:focus,
+.mv-ref-app .gr-composer textarea:focus {
+  outline: 2px solid var(--green); border-color: var(--green); outline-offset: 0;
+}
+
+/* THE FILTERS ARE PILLS, NOT A SELECT. Three or four short words that the
+   reader switches between constantly — the Alerts page's own filter row. */
+.mv-ref-app .gr-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.mv-ref-app .gr-filter {
+  font: inherit; font-size: 11.5px; font-weight: 600; line-height: 1.3;
+  border: 1px solid var(--line); background: #fff; color: var(--slate);
+  border-radius: 999px; padding: 4px 11px; cursor: pointer;
+}
+.mv-ref-app .gr-filter:hover { background: var(--bg); }
+.mv-ref-app .gr-filter.on {
+  background: var(--mint); border-color: #bfe9d8; color: var(--green-ink);
+}
+
+.mv-ref-app .gr-dirlist {
+  max-height: 320px; overflow-y: auto; overscroll-behavior: contain;
+  margin-inline: -6px; padding-inline: 6px;
+}
+.mv-ref-app .gr-dirlist::-webkit-scrollbar { width: 8px; }
+.mv-ref-app .gr-dirlist::-webkit-scrollbar-track { background: transparent; }
+.mv-ref-app .gr-dirlist::-webkit-scrollbar-thumb {
+  background: #e2e8f0; border-radius: 999px;
+}
+.mv-ref-app .gr-dirlist::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+
+.mv-ref-app .gr-dirsec {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted); margin: 10px 0 6px;
+  display: flex; align-items: center; gap: 6px;
+}
+.mv-ref-app .gr-dirsec:first-child { margin-top: 0; }
+.mv-ref-app .gr-dirsec .num {
+  background: var(--bg); border-radius: 999px; padding: 1px 7px;
+  color: var(--slate); font-size: 10px;
+}
+
+/* ---------------------------------------------------------- one row */
+
+.mv-ref-app .gr-row {
+  display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px;
+  width: 100%; text-align: left; font: inherit; cursor: pointer;
+  background: none; border: 1px solid transparent; border-radius: 10px;
+  padding: 8px 9px; margin: 0 0 2px; align-items: start;
+}
+.mv-ref-app .gr-row:hover { background: var(--bg); }
+.mv-ref-app .gr-row.on {
+  background: var(--mint); border-color: #bfe9d8;
+}
+.mv-ref-app .gr-rowicon {
+  width: 30px; height: 30px; border-radius: 9px; display: flex;
+  align-items: center; justify-content: center;
+  background: #eef2f7; color: var(--slate);
+}
+/* THE PADLOCK IS GREEN AND THE GLOBE IS SLATE, and that is the one colour
+   decision on this page that carries meaning rather than emphasis: private is
+   the state a reader must never mistake, so it is the one that is picked out. */
+.mv-ref-app .gr-rowicon.private { background: var(--mint); color: var(--green-deep); }
+.mv-ref-app .gr-rowbody { min-width: 0; display: block; }
+.mv-ref-app .gr-rowname {
+  display: block; font-size: 13.5px; font-weight: 600; color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.mv-ref-app .gr-rowmeta { display: block; margin-top: 1px; }
+.mv-ref-app .gr-rowtags {
+  display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px;
+}
+.mv-ref-app .gr-rowtags:empty { display: none; }
+
+.mv-ref-app .gr-newform {
+  border: 1px solid var(--line); border-radius: 10px; background: #fafbfb;
+  padding: 11px 12px; margin: 0 0 10px; display: grid; gap: 7px;
+}
+
+/* ====================================================== the group head */
+
+.mv-ref-app .gr-head { padding: 16px 18px 14px; }
+.mv-ref-app .gr-headtop {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 12px;
+  align-items: start;
+}
+@container (min-width: 560px) {
+  .mv-ref-app .gr-headtop { grid-template-columns: 40px minmax(0, 1fr) auto; }
+}
+.mv-ref-app .gr-headicon {
+  width: 40px; height: 40px; border-radius: 11px; display: flex;
+  align-items: center; justify-content: center;
+  background: #eef2f7; color: var(--slate);
+}
+.mv-ref-app .gr-headicon.private { background: var(--mint); color: var(--green-deep); }
+.mv-ref-app .gr-headicon .gr-i { width: 20px; height: 20px; }
+.mv-ref-app .gr-headtext { min-width: 0; }
+.mv-ref-app .gr-badges {
+  display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0 0;
+}
+.mv-ref-app .gr-about { margin: 12px 0 0; max-width: 74ch; }
+
+/* WHO RUNS IT, AND THE LEASE IT CAME FROM — both are an icon in a gutter and a
+   sentence beside it, because both are explanations rather than controls. */
+.mv-ref-app .gr-admins,
+.mv-ref-app .gr-leaselink {
+  display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px;
+  align-items: start; margin: 10px 0 0; padding: 9px 11px;
+  background: #fafbfb; border: 1px solid var(--line); border-radius: 9px;
+  line-height: 1.5;
+}
+.mv-ref-app .gr-admins .gr-i,
+.mv-ref-app .gr-leaselink .gr-i { margin-top: 1px; }
+
+/* ======================================================= admin tools */
+
+.mv-ref-app .gr-admin { padding: 16px 18px 16px; border-color: #bfe9d8; }
+.mv-ref-app .gr-adminhead {
+  display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 11px;
+  align-items: start; padding: 0 0 12px; border-bottom: 1px solid #f0f1f4;
+}
+.mv-ref-app .gr-adminbadge {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--green); color: var(--green-ink);
+  display: flex; align-items: center; justify-content: center;
+}
+.mv-ref-app .gr-adminblock { padding: 13px 0 0; }
+.mv-ref-app .gr-adminblock + .gr-adminblock { border-top: 1px solid #f0f1f4; margin-top: 13px; }
+.mv-ref-app .gr-adminblock > p { margin: 6px 0 0; }
+
+.mv-ref-app .gr-inviteform { display: flex; flex-wrap: wrap; gap: 8px; }
+.mv-ref-app .gr-inviteform input { flex: 1 1 220px; }
+.mv-ref-app .gr-error { color: var(--red); margin: 6px 0 0; }
+
+.mv-ref-app .gr-invites { list-style: none; margin: 9px 0 0; padding: 0; display: grid; gap: 6px; }
+.mv-ref-app .gr-invites li {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 7px 10px; background: #fafbfb; border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.mv-ref-app .gr-memberlist { list-style: none; margin: 0; padding: 0; }
+.mv-ref-app .gr-memberlist li {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  padding: 8px 0; border-bottom: 1px solid #f0f1f4;
+}
+.mv-ref-app .gr-memberlist li:last-child { border-bottom: 0; }
+.mv-ref-app .gr-membername {
+  display: flex; flex-direction: column; min-width: 0; flex: 1 1 140px;
+}
+.mv-ref-app .gr-membername .small { overflow-wrap: anywhere; }
+.mv-ref-app .gr-removebtn { margin-left: auto; }
+
+.mv-ref-app .gr-danger-zone { }
+.mv-ref-app .gr-dangerbtn { color: var(--red) !important; border-color: #f3c8c8; margin-top: 9px; }
+.mv-ref-app .gr-dangerbtn:hover { background: var(--red-bg); }
+.mv-ref-app .gr-danger {
+  background: var(--red); color: #fff !important; border-color: var(--red);
+}
+.mv-ref-app .gr-danger:hover { filter: brightness(1.06); }
+.mv-ref-app .gr-confirmbox { margin-top: 9px; }
+.mv-ref-app .gr-confirmbtns {
+  display: inline-flex; gap: 8px; flex-wrap: wrap; margin-left: auto;
+  align-items: center;
+}
+.mv-ref-app .gr-confirmbox .gr-confirmbtns { display: flex; margin: 9px 0 0; }
+
+/* ============================================================ the feed */
+
+.mv-ref-app .gr-feed { display: grid; gap: 12px; }
+.mv-ref-app .gr-posts { display: grid; gap: 12px; }
+
+.mv-ref-app .gr-composer { padding: 14px 16px 12px; }
+.mv-ref-app .gr-composerrow {
+  display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px;
+  align-items: start;
+}
+.mv-ref-app .gr-composerfoot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap; margin: 9px 0 0; padding-left: 44px;
+}
+@container (max-width: 460px) {
+  .mv-ref-app .gr-composerfoot { padding-left: 0; }
+}
+
+.mv-ref-app .gr-post {
+  background: #fff; border: 1px solid var(--line); border-radius: var(--r);
+  box-shadow: var(--shadow); padding: 14px 16px 10px;
+}
+.mv-ref-app .gr-posthead {
+  display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 10px;
+  align-items: start;
+}
+.mv-ref-app .gr-postwho { min-width: 0; }
+.mv-ref-app .gr-postname {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  line-height: 1.3;
+}
+.mv-ref-app .gr-postname strong { font-size: 13.5px; font-weight: 700; overflow-wrap: anywhere; }
+.mv-ref-app .gr-postbody {
+  margin: 10px 0 0; font-size: 14px; line-height: 1.6; color: var(--ink);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------- the action row */
+
+.mv-ref-app .gr-acts {
+  display: flex; gap: 4px; flex-wrap: wrap; margin: 11px 0 0;
+  padding: 8px 0 0; border-top: 1px solid #f0f1f4;
+}
+.mv-ref-app .gr-act {
+  display: inline-flex; align-items: center; gap: 6px; font: inherit;
+  font-size: 12.5px; font-weight: 600; color: var(--slate);
+  background: none; border: 1px solid transparent; border-radius: 9px;
+  /* 34px tall with the padding below — the portal's own tap-target floor, so a
+     thumb on a phone hits Like rather than the post body. */
+  padding: 7px 10px; cursor: pointer; line-height: 1.2;
+}
+.mv-ref-app .gr-act:hover:not([disabled]) { background: var(--bg); }
+.mv-ref-app .gr-act.on { color: var(--green-deep); background: var(--mint); }
+.mv-ref-app .gr-act[disabled] { opacity: .5; cursor: not-allowed; }
+.mv-ref-app .gr-count {
+  font-size: 11.5px; color: var(--muted); font-weight: 600;
+}
+.mv-ref-app .gr-act.on .gr-count { color: var(--green-deep); }
+
+.mv-ref-app .gr-iconbtn {
+  background: none; border: 1px solid transparent; border-radius: 8px;
+  color: var(--muted); cursor: pointer; padding: 6px; line-height: 0;
+}
+.mv-ref-app .gr-iconbtn:hover { background: var(--red-bg); color: var(--red); }
+
+.mv-ref-app .gr-confirm {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 10px 0 0; padding: 9px 11px; border-radius: 9px;
+  background: var(--red-bg); color: #7f1d1d;
+}
+
+/* ------------------------------------------------- comments and replies */
+
+.mv-ref-app .gr-thread {
+  margin: 10px 0 0; padding: 11px 0 2px; border-top: 1px solid #f0f1f4;
+  display: grid; gap: 11px;
+}
+.mv-ref-app .gr-comment,
+.mv-ref-app .gr-reply {
+  display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 9px;
+  align-items: start;
+}
+.mv-ref-app .gr-commentbody { min-width: 0; }
+.mv-ref-app .gr-comment > .gr-commentbody > p,
+.mv-ref-app .gr-reply p { margin: 3px 0 0; line-height: 1.55; overflow-wrap: anywhere; }
+/* THE REPLY IS INDENTED BY A RULE, NOT BY PADDING ALONE. One level, and the
+   line is what says "under that comment" at a width where 18px of indent is
+   not enough to read as nesting. */
+.mv-ref-app .gr-reply {
+  margin: 9px 0 0; padding: 0 0 0 11px; border-left: 2px solid var(--line);
+}
+.mv-ref-app .gr-commentform,
+.mv-ref-app .gr-replyform {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.mv-ref-app .gr-replyform { margin: 8px 0 0; }
+.mv-ref-app .gr-commentform input,
+.mv-ref-app .gr-replyform input { flex: 1 1 180px; }
+.mv-ref-app .gr-empty { margin: 0; }
+
+.mv-ref-app .gr-nothing { padding: 18px 18px 16px; }
+.mv-ref-app .gr-nothing p { margin: 0 0 4px; }
+.mv-ref-app .gr-members { padding: 14px 16px 12px; }
+
+/* ============================================================== ultra */
+
+.mv-ref-app .gr-ultra { display: grid; gap: 14px; max-width: 760px; margin: 18px 0 0; }
+.mv-ref-app .gr-hero { padding: 20px 20px 18px; }
+.mv-ref-app .gr-heroline {
+  font-family: var(--serif); font-size: 34px; font-weight: 700;
+  line-height: 1.1; margin: 6px 0 4px;
+}
+.mv-ref-app .gr-ultralist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.mv-ref-app .gr-ultralist .gr-row {
+  border-color: var(--line); background: #fff; padding: 11px 12px;
+  align-items: center; box-shadow: var(--shadow);
+}
+.mv-ref-app .gr-ultralist .gr-row:hover { background: var(--bg); }
+.mv-ref-app .gr-back { margin: 0 0 2px; }
+
+/* ============================================================= shared */
+
+/* The avatar disc. `.avatar` in the group's sheet is 32px and always green;
+   these come in two sizes and are toned back, because a feed with forty green
+   discs in it is a feed of discs. */
+.mv-ref-app .gr-av {
+  width: 34px; height: 34px; border-radius: 50%; flex: none;
+  background: #e8ecf3; color: var(--slate);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11.5px; font-weight: 700; letter-spacing: .02em;
+}
+.mv-ref-app .gr-av-sm { width: 26px; height: 26px; font-size: 10px; }
+.mv-ref-app .gr-i { width: 16px; height: 16px; flex: none; }
+.mv-ref-app .gr-chip { font-size: 10px; padding: 2px 8px; }
+.mv-ref-app .gr-id { font-size: 10.5px; }
+
+/* A quiet text button — the group's `.linklike`, without the underline, for the
+   places where a control sits inside a list row. */
+.mv-ref-app .gr-link {
+  display: inline-flex; align-items: center; gap: 5px; background: none;
+  border: 0; padding: 4px 2px; margin: 0; font: inherit; font-size: 12px;
+  font-weight: 600; color: var(--green-deep); cursor: pointer;
+}
+.mv-ref-app .gr-link:hover:not([disabled]) { text-decoration: underline; }
+.mv-ref-app .gr-link[disabled] { color: var(--muted); cursor: not-allowed; }
+
+/* Visible to a screen reader, not to the eye — for the icon-only delete
+   control, whose `title` a screen reader may or may not announce. */
+.mv-ref-app .gr-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* Focus is never removed, only replaced — every control on this page is
+   reachable by keyboard and the ring is the group's own green. */
+.mv-ref-app .gr-row:focus-visible,
+.mv-ref-app .gr-act:focus-visible,
+.mv-ref-app .gr-filter:focus-visible,
+.mv-ref-app .gr-link:focus-visible,
+.mv-ref-app .gr-iconbtn:focus-visible {
+  outline: 2px solid var(--green); outline-offset: 2px;
+}
+
+/* ====================================== narrow, and very narrow */
+
+@container (max-width: 520px) {
+  .mv-ref-app .gr-headtop { grid-template-columns: 34px minmax(0, 1fr); }
+  .mv-ref-app .gr-headicon { width: 34px; height: 34px; }
+  .mv-ref-app .gr-title { font-size: 18px; }
+  .mv-ref-app .gr-posthead { grid-template-columns: 30px minmax(0, 1fr) auto; }
+  .mv-ref-app .gr-av { width: 30px; height: 30px; font-size: 11px; }
+  /* The action row keeps its three controls on one line at 360px by dropping
+     the counts to the icon's own line rather than wrapping the row. */
+  .mv-ref-app .gr-act { padding: 7px 8px; gap: 5px; }
+}
+
+/* THE LABELS GO ONLY WHEN THEY GENUINELY WILL NOT FIT, and 330px is where that
+   is — measured, not guessed. A 375px phone gives this page a ~347px container,
+   in which Like · Comment · Share and their counts come to ~310px and fit on
+   one line; the word is worth keeping, because an icon-only heart is the one
+   control on the page a reader has to recognise rather than read. Below 330px
+   (a 360px-wide phone in a split view, or a 320px device) the row would wrap to
+   two lines, and icons with their counts are the better trade. The label stays
+   in the document for the screen reader either way. */
+@container (max-width: 330px) {
+  .mv-ref-app .gr-act span:not(.gr-count) { position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .mv-ref-app .gr-act { padding: 8px 10px; }
+}
+
+/* A browser without container queries gets the stacked layout at every width,
+   which works — but a genuinely wide viewport should still get the two
+   columns. */
+@supports not (container-type: inline-size) {
+  @media (min-width: 1240px) {
+    .mv-ref-app .gr-body { grid-template-columns: 300px minmax(0, 1fr); gap: 18px; }
+    .mv-ref-app .gr-dir { position: sticky; top: 14px; }
+    .mv-ref-app .gr-dirlist { max-height: calc(100vh - 260px); }
+  }
+}

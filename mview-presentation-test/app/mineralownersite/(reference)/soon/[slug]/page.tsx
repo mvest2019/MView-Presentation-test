@@ -23,10 +23,10 @@ import "./soon.css";
  * them would print a false statement about a page sitting one click away.
  * Production & Forecast had an entry here until that page was ported, and it
  * was removed then rather than left to contradict the sidebar; Invite Co-Owners
- * went the same way when `(portal)/invite` landed. The two that genuinely do
- * not exist here — Lease Audit and Groups — keep the reference's own
- * description of what the module is, and the two account rows keep theirs. The
- * back buttons point at this app's paths.
+ * went the same way when `(portal)/invite` landed, and Groups when
+ * `(reference)/groups` did. The one that genuinely does not exist here — Lease
+ * Audit — keeps the reference's own description of what the module is, and the
+ * account row keeps its own. The back buttons point at this app's paths.
  *
  * ADAPTED — IT SAYS "COMING SOON", AND IT LOOKS LIKE THE PRODUCT. Two fixes to
  * one page, and they are the same fix:
@@ -98,14 +98,6 @@ const SECTIONS: Record<string, Section> = {
       "out of the ground, never what reached you. It needs your statements, so it arrives with " +
       "statement upload.",
   },
-  groups: {
-    title: "Groups",
-    icon: "mvi-groups",
-    what: "A private space per lease for the other owners in it.",
-    when:
-      "Being built. Your leases and the owners on them are already on the roll, which is what " +
-      "this needs to open.",
-  },
   "my-profile": {
     title: "My Profile",
     icon: "mvi-user",
@@ -142,6 +134,7 @@ const SECTIONS: Record<string, Section> = {
 const LANDED: Record<string, string> = {
   "invite-co-owners": "/mineralownersite/invite",
   "billing-and-plan": "/mineralownersite/billing",
+  groups: "/mineralownersite/groups",
 };
 
 const FALLBACK: Section = {

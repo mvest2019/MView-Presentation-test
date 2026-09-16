@@ -145,7 +145,19 @@ const NAV: {
   { key: 'production', label: 'Production & Forecast', icon: 'mvi-trend' },
   { key: 'weekly', label: 'Weekly Report', icon: 'mvi-mail' },
   { sec: 'Services', key: null, label: 'Lease Audit', icon: 'mvi-audit' },
-  { sec: 'Community', key: null, label: 'Groups', icon: 'mvi-groups' },
+  /* ADAPTED — Groups went the way Map and Invite Co-Owners did when their
+     modules landed: the reference tags it `soon`, this app has the page, so the
+     row is a real link and loses the tag. It is an `href` row rather than a
+     `key` row because the shell does not own that route — it is a page of its
+     own wearing this chrome through `Portal`'s `children`, exactly as Invite
+     is. See `(reference)/groups/page.tsx`. */
+  {
+    sec: 'Community',
+    key: null,
+    label: 'Groups',
+    icon: 'mvi-groups',
+    href: '/mineralownersite/groups',
+  },
   /* ADAPTED — Invite Co-Owners is a `soon` row in the reference and a built
      module here, so it takes an `href` and loses the tag, the same way Map did.
      It is an `href` row rather than a `key` row because the page lives in the
