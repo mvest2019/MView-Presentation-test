@@ -26,7 +26,7 @@
  *
  * 3. The neighbours card carries the feed's own filings, not just ring counts.
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { Payload } from '../../_lib/reference/payload';
 import { usePortalMember } from '../portal-session';
@@ -2095,11 +2095,78 @@ function OwnerSwitch({ p }: { p: Payload }) {
     };
   }, [open]);
 
-  const active = p.owner.ownername;
-  /* The active record is in this list too — it is filtered out rather than
-     assumed to be first, because the endpoint does not promise an order. */
-  const others = (p.owner.claimed_owners ?? []).filter((o) => o !== active);
-  const counties = p.totals.counties ?? [];
+  /**
+   * THE LIST IS THE SERVICE'S, NOT THE PAYLOAD'S.
+   *
+   * This read `p.owner.claimed_owners` — a bare array of names on the dashboard
+   * payload, with no lease counts, no counties and no marker for which one is
+   * active, so the panel had to assume the active record was `owner.ownername`
+   * and could show nothing about the others. `GET /owners/claimed` answers with
+   * the whole set and says which is active itself.
+   *
+   * `member_id` IS NOT SENT FROM HERE. `/api/owners/claimed` reads it from the
+   * session on the server, the same way every other member-keyed read in this
+   * app resolves it — the cookie is httpOnly, so this component could not send
+   * it even if it should, and it should not.
+   *
+   * FETCHED WHEN THE PANEL OPENS, not on mount: it is one request per reader
+   * who actually asks the question, and the chip above it already names the
+   * active record from the payload. Asked once and kept, so re-opening the
+   * panel does not re-fetch.
+   */
+  const [rows, setRows] = useState<ClaimedOwner[] | null>(null);
+  const [listErr, setListErr] = useState(false);
+  const [saving, setSaving] = useState<string | null>(null);
+  const asked = useRef(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/owners/claimed', { cache: 'no-store' });
+      const body = (await res.json()) as ClaimedResponse;
+      if (!res.ok) throw new Error('claimed list failed');
+      setRows(Array.isArray(body?.owners) ? body.owners : []);
+      setListErr(false);
+    } catch {
+      setListErr(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open || asked.current) return;
+    asked.current = true;
+    void load();
+  }, [open, load]);
+
+  /**
+   * MAKE THE CLICKED RECORD ACTIVE.
+   *
+   * The name is what identifies the record to the service — see
+   * `/api/owners/active`, which explains why the member id is the session's and
+   * not the row's, and why the forward upstream is a `PATCH`.
+   *
+   * THE LIST IS RE-READ RATHER THAN PATCHED IN PLACE, so the tick moves because
+   * the service says it moved and not because this component assumed it would.
+   */
+  const choose = useCallback(async (ownername: string) => {
+    if (saving) return;
+    setSaving(ownername);
+    try {
+      const res = await fetch('/api/owners/active', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ownername }),
+      });
+      if (res.ok) await load();
+    } catch { /* the row simply stays where it was */ } finally {
+      setSaving(null);
+    }
+  }, [saving, load]);
+
+  /* The chip keeps naming the payload's owner until the list arrives, so the
+     header does not flicker; once it has, the service's own `is_active` is
+     what the panel marks. */
+  const active = rows?.find((o) => o.is_active)?.ownername ?? p.owner.ownername;
+  const others = (rows ?? []).filter((o) => !o.is_active);
 
   return (
     <span className="owner-chip mv-ownersw" ref={box}>
@@ -2114,10 +2181,17 @@ function OwnerSwitch({ p }: { p: Payload }) {
       {open ? (
         <div className="ownersw-pop" role="dialog" aria-label="Switch the active owner record">
           <h4>Switch the active owner record</h4>
+          {/* CUT FROM 183 CHARACTERS TO 92, SAME MEANING.
+
+              What it dropped is the list of examples — "a spouse, a family
+              trust, an inherited interest" — which is 61 characters spent
+              illustrating a point the rows underneath make by simply being
+              there. What it keeps is the only thing a reader needs before
+              pressing one: that the choice reaches every page, and which
+              pages. */}
           <p className="ownersw-lede">
-            One account can hold several owner records — a spouse, a family trust,
-            an inherited interest. Switching swaps <strong>which record fills every
-            page</strong>: dashboard, leases, map, alerts and reports.
+            Switching changes <strong>which record fills every page</strong> —
+            dashboard, leases, map, alerts and reports.
           </p>
 
           {/* THE LIST SCROLLS, THE PANEL DOES NOT. This account holds eight
@@ -2127,32 +2201,51 @@ function OwnerSwitch({ p }: { p: Payload }) {
               there. Capping the list keeps the heading, the button and the
               seven-day note on screen whatever the account holds. */}
           <div className="ownersw-list">
+          {/* THE ACTIVE ROW IS THE ONE THE SERVICE MARKS `is_active`, and its
+              figures are that row's own. While the list is still loading it
+              falls back to the payload, so the panel opens filled rather than
+              blank. */}
           <div className="ownersw-rec is-active">
             <div className="ownersw-name">
               {active}
               <span className="ownersw-now">✓ Active now</span>
             </div>
             <div className="ownersw-meta">
-              {p.owner.ownernumber ? <>{p.owner.ownernumber} · </> : null}
-              {p.totals.lease_count} {plural(p.totals.lease_count, 'lease')}
-              {counties.length ? <> · {counties.join(', ')}</> : null}
+              <OwnerMeta
+                row={rows?.find((o) => o.is_active) ?? null}
+                fallbackLeases={p.totals.lease_count}
+              />
             </div>
           </div>
 
+          {/* EVERY OTHER CLAIMED RECORD, AND EACH ONE IS A CONTROL NOW. The
+              rows used to read "Claimed · waiting its turn" because there was
+              no endpoint to switch to them; there is one, so a row does what it
+              looks like it does. */}
           {others.length
             ? others.map((o) => (
-              <div className="ownersw-rec" key={o}>
-                <div className="ownersw-name">{o}</div>
-                {/* NOT A BUTTON. See the header: there is no endpoint to switch
-                    to this record yet, and a row that looks clickable and is
-                    not is worse than a row that plainly waits. */}
-                <div className="ownersw-meta">Claimed · waiting its turn</div>
-              </div>
+              <button
+                type="button" className="ownersw-rec ownersw-pick" key={o.ownername}
+                disabled={saving !== null}
+                aria-busy={saving === o.ownername}
+                onClick={() => { void choose(o.ownername); }}
+              >
+                <div className="ownersw-name">{o.ownername}</div>
+                <div className="ownersw-meta">
+                  {saving === o.ownername
+                    ? 'Making this the active record…'
+                    : <OwnerMeta row={o} />}
+                </div>
+              </button>
             ))
             : (
               <p className="ownersw-empty">
-                No other owner records on this account yet — claim one below and it
-                appears here, ready to switch to.
+                {listErr
+                  ? 'Your other claimed records could not be read just now.'
+                  : rows === null
+                    ? 'Reading your claimed records…'
+                    : 'No other owner records on this account yet — claim one below '
+                      + 'and it appears here, ready to switch to.'}
               </p>
             )}
           </div>
@@ -2160,15 +2253,73 @@ function OwnerSwitch({ p }: { p: Payload }) {
           <Link className="ownersw-cta" href="/mineralownersite/claim">
             + Claim another owner record — free
           </Link>
-
-          <p className="ownersw-foot">
-            You can change the active record <strong>once every 7 days</strong>.
-            Claimed records are never removed by switching — they just wait their
-            turn.
-          </p>
         </div>
       ) : null}
     </span>
+  );
+}
+
+/** one claimed record, as `GET /api/v1/owners/claimed` returns it */
+interface ClaimedOwner {
+  ownername: string;
+  ownernumber: string | number | null;
+  is_active: boolean;
+  lease_count: number;
+  county_count: number;
+  counties: string[];
+  claimed_at: string | null;
+  /** OPTIONAL BECAUSE THE SERVICE DOES NOT SEND IT YET — see `OwnerMeta`. */
+  address?: string | null;
+}
+
+interface ClaimedResponse {
+  member_id: number | null;
+  active: string | null;
+  count: number;
+  owners: ClaimedOwner[];
+}
+
+/**
+ * A record's own one-line summary — its address and how many leases it holds.
+ *
+ * STRAIGHT OFF THE RESPONSE. Both figures are the ROW'S, so a record the page
+ * is not currently showing still describes itself correctly; before this, the
+ * one row that had a summary borrowed the dashboard's own lease count and
+ * counties, which are the ACTIVE record's and belong to no other row.
+ *
+ * THE ROLL NUMBER AND THE COUNTY LIST ARE GONE, as asked: the row now names the
+ * record and says where it is and how big it is, which is what a reader picking
+ * between records actually needs. The roll number is an internal key and the
+ * counties are a detail the dashboard itself carries once a record is active.
+ *
+ * THE ADDRESS IS READ BUT THE SERVICE DOES NOT YET SEND IT.
+ * `GET /api/v1/owners/claimed` returns exactly `ownername`, `ownernumber`,
+ * `is_active`, `lease_count`, `county_count`, `counties` and `claimed_at` —
+ * measured, no address field on any row, and no city either. The appraisal-roll
+ * SEARCH endpoint does carry `address`, but it answers per owner-and-county
+ * rather than per claimed record, so one claimed owner matches many rows there
+ * and none of them is "the" address.
+ *
+ * So this reads `address` off the row and prints it when it is there. Nothing
+ * is invented and nothing is fetched twice; the day the endpoint adds the
+ * field, the line fills in with no further change here.
+ */
+function OwnerMeta(
+  { row, fallbackLeases }: {
+    row: ClaimedOwner | null;
+    fallbackLeases?: number;
+  },
+) {
+  const address = row?.address?.trim() || null;
+  const leases = row ? row.lease_count : fallbackLeases;
+  const hasLeases = typeof leases === 'number';
+  if (!address && !hasLeases) return null;
+  return (
+    <>
+      {address ? <>{address}</> : null}
+      {address && hasLeases ? ' · ' : null}
+      {hasLeases ? <>{n0(leases)} {plural(leases, 'lease')}</> : null}
+    </>
   );
 }
 

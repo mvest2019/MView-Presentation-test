@@ -488,13 +488,62 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
   }, []);
 
   /* ------------------------------------------------------- the sample view */
-  /* Not claimed means the reader has not proved these interests are theirs, so
-     the payload is rewritten as a sample of itself — same shape, same code path,
-     real dates, illustrative figures. Memoised on the payload identity: the
-     transform walks every lease and month, and re-running it on each keystroke
-     in the search box was measurable. */
+  /**
+   * NOT CLAIMED IS ONE FIXED RECORD, THE SAME FOR EVERY READER.
+   *
+   * `sampleize` renames and scales, but it MAPS OVER the payload it is given —
+   * so while it was given `live`, the preview inherited the shape of whatever
+   * record the page had loaded for that member: ten leases for one reader,
+   * 1,555 for another, every figure their own multiplied by a thousand. Two
+   * not-claimed readers saw two different products, and a "sample" was being
+   * derived from one member's private data. Defect sheet rows 51 and 54.
+   *
+   * The base is now `/api/portfolio?sample=1`, which answers with the committed
+   * capture and reads nothing about who is asking — see `getSamplePayload`. One
+   * record, identical on every request, for every user and every session.
+   *
+   * FETCHED RATHER THAN IMPORTED. The capture is 2 MB and is server-only today;
+   * pulling it into this client component would put all of it in the bundle
+   * every reader downloads, claimed or not. One cacheable request, made only
+   * when somebody actually enters the not-claimed state, costs nothing to the
+   * readers who never do.
+   *
+   * MEMOISED ON THE BASE, as before: the transform walks every lease and month,
+   * and re-running it on each keystroke in the search box was measurable.
+   */
+  const [sampleBase, setSampleBase] = useState<Payload | null>(null);
+  const [sampleBusy, setSampleBusy] = useState(false);
+  /* ASKED ONCE, IN A REF, AND THE DEPENDENCY LIST IS JUST `sample`.
+   *
+   * The first version of this guarded on `sampleBusy` and listed it as a
+   * dependency, which deadlocked: setting it re-ran the effect, the re-run's
+   * cleanup invalidated the request that was still in flight, and the `finally`
+   * that clears the flag was inside that invalidated closure — so the flag
+   * stayed true and the loader never came down. Measured: two 200s on the
+   * network panel and a page that never rendered.
+   *
+   * A ref is the right shape for "has this been asked for yet": it is not
+   * render state, nothing should re-render when it changes, and it cannot make
+   * the effect re-enter itself. */
+  const sampleAsked = useRef(false);
+  useEffect(() => {
+    if (!sample || sampleAsked.current) return;
+    sampleAsked.current = true;
+    setSampleBusy(true);
+    fetch('/api/portfolio?sample=1')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setSampleBase(d as Payload); })
+      /* A FAILURE LEAVES THE PREVIEW EMPTY RATHER THAN FALLING BACK TO `live`.
+         Falling back is what this change exists to stop: it would put one
+         member's own record on screen under a "sample" banner, which is the
+         leak, not a graceful degradation. The shell already has an honest
+         place to say nothing loaded. */
+      .catch(() => { /* reported by the empty state below */ })
+      .finally(() => setSampleBusy(false));
+  }, [sample]);
+
   const shown = useMemo(
-    () => (live && sample ? sampleize(live) : null), [live, sample]);
+    () => (sampleBase && sample ? sampleize(sampleBase) : null), [sampleBase, sample]);
   const data: Payload | null = sample ? (shown?.payload ?? null) : live;
 
   /* Drop ids the payload no longer carries — see `markRead`. Runs on every
@@ -591,11 +640,14 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
         {/* The copy no longer says "search for a name above" — there is no
             search box above it any more. The owner comes from the URL or from
             the default read, so a reload is the honest suggestion. */}
-        {!children && !data && !error && !busy ? <ErrorCard detail="No owner is loaded yet. Reload the page, or open a link that names one." /> : null}
+        {!children && !data && !error && !busy && !sampleBusy ? <ErrorCard detail="No owner is loaded yet. Reload the page, or open a link that names one." /> : null}
       </Chrome>
       </PortalViewStateProvider>
 
-      <Loader on={busy} name={loadingName} steps={STEPS} />
+      {/* `sampleBusy` too: entering the not-claimed state fetches its fixed
+          base record, and without this the page showed the "nothing loaded"
+          card for the length of that request. */}
+      <Loader on={busy || sampleBusy} name={loadingName} steps={STEPS} />
 
       <DrawerPanel
         copy={copy} onClose={() => setDrawer(null)}

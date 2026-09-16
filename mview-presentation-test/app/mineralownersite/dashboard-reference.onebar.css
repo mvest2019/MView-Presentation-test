@@ -2536,3 +2536,92 @@ body .mv-ref-app .app-body > section[data-route="app"] > .ultra-hero {
   margin-top: 16px;
   padding-top: 28px;
 }
+
+
+/* ----------------------------------------------------------------------------
+   ROW 55 · A SIDE PANEL KEEPS ITS SCROLL TO ITSELF.
+
+   "After the side navigation reaches the end, further scrolling propagates to
+   the main page, causing the page content to scroll."
+
+   TWO ELEMENTS ANSWER TO "THE SIDE NAVIGATION" ON THIS PAGE, and both do it.
+   The sheet uses the phrase for the EXPLAINER PANEL — row 7 is "show side nav
+   bar page last info first", which is this drawer — and it is also the plain
+   reading of the left rail. Both are scroll ports beside a long document, both
+   carried the browser default `overscroll-behavior: auto`, and both were
+   measured chaining, so both are contained here rather than guessing which the
+   capture shows.
+
+     .ctx-body    the explainer panel's scrolling body. Reproduced at 1440x1000:
+                  panel read to its end (708px of travel), page parked at the
+                  top, one scroll gesture over the panel — the page behind it
+                  moved 500px while the panel stayed open on top of it. This is
+                  the worse of the two: the reader is inside a modal, and what
+                  moves is the page they cannot see.
+
+     .app-side    the navigation rail. `height: 100vh; overflow-y: auto`, 73px
+                  of overflow at 768px tall; same gesture, page moved 400px.
+
+   `contain` RATHER THAN `none`. `contain` stops the scroll crossing the
+   boundary and leaves the browser's own end-of-scroll feedback — the rubber
+   band on a Mac, the glow on Android — intact inside the panel, so the reader
+   still gets the signal that the content has ended. `none` would suppress that
+   as well, which is a second change nobody asked for.
+
+   THE PAGE IS NOT LOCKED, and that is deliberate. `body.ctx-open { overflow:
+   hidden }` would also stop the page moving when the pointer is over the SCRIM
+   rather than over the panel — a related but different complaint, and one that
+   removes the page's scrollbar and shifts the layout under the drawer unless
+   that is compensated too. The defect is about what happens when a panel
+   reaches ITS end, and that is what this fixes.
+
+   `.ctx-drawer` is `overflow: hidden` and so is not a scroll port today; it is
+   included because it is the element the panel's own height is set on, and a
+   future change that lets it scroll should not reintroduce this.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .ctx-body,
+body .mv-ref-app .ctx-drawer,
+body .mv-ref-app .app-side {
+  overscroll-behavior: contain;
+}
+
+
+/* ----------------------------------------------------------------------------
+   A CLAIMED RECORD IS A CONTROL NOW, SO IT HAS TO LOOK AND BEHAVE LIKE ONE.
+
+   The rows in the Switch Owner panel used to be inert `<div>`s reading "Claimed
+   · waiting its turn", because there was no endpoint to switch to them. There
+   is one, so each row is a `<button>` — which is a real control for a keyboard
+   and a screen reader, not just something with a click handler on it.
+
+   THE LOOK IS THE ROW'S OWN, UNCHANGED. A button brings a browser default
+   background, border, font, padding and centre alignment with it; all of that
+   is reset here so the row keeps exactly the box `.ownersw-rec` already gave
+   it. What is ADDED is only what a control needs and a div did not: a pointer,
+   a hover, a focus ring, and a disabled state while a switch is in flight.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .ownersw-rec.ownersw-pick {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+
+body .mv-ref-app .ownersw-rec.ownersw-pick:hover:not(:disabled) {
+  border-color: var(--green);
+  background: #f7fdfb;
+}
+
+body .mv-ref-app .ownersw-rec.ownersw-pick:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+body .mv-ref-app .ownersw-rec.ownersw-pick:disabled {
+  opacity: .6;
+  cursor: progress;
+}
