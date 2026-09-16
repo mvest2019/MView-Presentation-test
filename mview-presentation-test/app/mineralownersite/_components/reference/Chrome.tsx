@@ -756,10 +756,18 @@ export default function Chrome(c: ChromeProps) {
             position rather than two and this is it. `#mvFunnelBar` is
             display:none by default and revealed per state by
             mvfunnelstates.css, so `paid` correctly shows nothing at all. */}
-        <FunnelBar
-          p={c.p} funnel={c.funnel} trialStarted={c.trialStarted}
-          setFunnel={c.setFunnel} go={c.go} open={c.open}
-        />
+        {/* NOT ON ACTIVITIES (defect #22): QA asked for the plan text and its
+            buttons to come off that page — the feed is the content there, and
+            the same plan message still meets the reader on every other route
+            and on the dashboard state card. */}
+        {c.route === 'activities'
+          ? null
+          : (
+            <FunnelBar
+              p={c.p} funnel={c.funnel} trialStarted={c.trialStarted}
+              setFunnel={c.setFunnel} go={c.go} open={c.open}
+            />
+          )}
 
         <div className="app-body">
           {c.children}

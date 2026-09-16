@@ -239,7 +239,11 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
        declaring the record unclaimed. Only an explicitly EMPTY list flips it. */
     initial?.owner.claimed_owners?.length === 0 ? 'unclaimed' : 'paid',
   );
-  const [drawer, setDrawer] = useState<string | null>(null);
+  /* a string is a key into `data.drawers`; an object is a panel built by a
+     view from one specific record — the Activities timeline builds one per
+     event so the detail matches the card that was clicked (defects #12-#14,
+     #17) */
+  const [drawer, setDrawer] = useState<string | DrawerCopy | null>(null);
   const [loadingName, setLoadingName] = useState<string | null>(null);
   const [trialStarted, setTrialStarted] = useState<string | null>(null);
   /* WHICH ALERTS THIS READER HAS OPENED — see `markRead` below for why it
@@ -269,14 +273,15 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
 
   /* ---------------------------------------------------- the derived flags */
   const sample = funnel === 'unclaimed';
-  /* THE UNCLAIMED VIEW IS ALWAYS THE FULLEST ONE.
-     Someone deciding whether to claim is looking at a shop window: the point is
-     to show everything the record becomes, so the density preference is
-     overridden to `pro` while nothing is claimed. The persona buttons keep
-     their own state and take effect the moment the record is claimed.
-     Declared here rather than beside the render because the class effect
-     below reads it. */
-  const effTier: Tier = funnel === 'unclaimed' ? 'pro' : tier;
+  /* ONE UI FOR EVERY ACCOUNT STATE (defect #6). Unclaimed used to override
+     the density to `pro` as a shop window, so the sample page carried card
+     paragraphs and tables that vanished the moment the record was claimed —
+     QA read that as two different UIs for the same page. The density now
+     follows the reader's own choice in every state; what marks the sample is
+     the labeling (claim rail, sample badges, amber borders), not a different
+     layout. Declared here rather than beside the render because the class
+     effect below reads it. */
+  const effTier: Tier = tier;
 
   /* ------------------------------------------------------ persisted choice */
   /* Density and funnel state are the reader's own preference, not data, so they
@@ -559,7 +564,10 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
   }, [data?.alerts.items]);
 
   const openDrawer = useCallback((key: string) => setDrawer(key), []);
-  const copy: DrawerCopy | null = drawer ? (data?.drawers?.[drawer] ?? null) : null;
+  const openEventDrawer = useCallback((d: DrawerCopy) => setDrawer(d), []);
+  const copy: DrawerCopy | null = typeof drawer === 'string'
+    ? (data?.drawers?.[drawer] ?? null)
+    : drawer;
 
   /* Esc closes the drawer wherever focus is — a panel that can only be closed
      by hitting its own button is a trap for a keyboard user. */
@@ -595,7 +603,12 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
             />
           )
           : route === 'activities'
-            ? <ActivitiesView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
+            ? (
+              <ActivitiesView
+                p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go}
+                openEvent={openEventDrawer}
+              />
+            )
             : route === 'production'
               ? <ProductionView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
               : (

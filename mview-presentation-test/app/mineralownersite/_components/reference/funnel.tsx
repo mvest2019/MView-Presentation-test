@@ -107,12 +107,12 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
     onCta = () => setFunnel('paid');
     msg = (
       <>
-        <b>{left} {plural(left, 'day')} left</b>{' '}
-        <span className="fb-pips" aria-hidden="true">
-          {Array.from({ length: TRIAL_LEN }, (_, i) => (
-            <i key={i} className={i < day ? 'spent' : ''} />
-          ))}
-        </span>{' '}
+        {/* NO DAY PIPS (defect #23). The seven dots — one per trial day, all
+            of them solid on day 0 — read as a masked value ("********"), the
+            same visual language the sample tier uses for hidden figures. The
+            day count is already in words right here, so the dots carried
+            nothing a reader could use. */}
+        <b>{left} {plural(left, 'day')} of {TRIAL_LEN} left</b>{' '}
         — this is <b>the full Premium plan</b>: all {n} of your {plural(n, 'lease')}, the value on
         each, the owner community, your weekly report and the monthly mailed report. Keep it for{' '}
         <b>{PRICE}</b>.
