@@ -69,10 +69,15 @@ export function productCharts(
   const x = months.map((m) => m.label ?? m.cycle ?? '');
   const out: ChartSpec[] = [];
 
-  const gas = months.map((m) => (Number.isFinite(m.gas) ? m.gas : 0));
-  const oil = months.map((m) => (Number.isFinite(m.oil) ? m.oil : 0));
+  /* AN UNFILED MONTH IS A GAP, NOT A ZERO (defect sheet #17). This used to
+     coerce the not-filed marker (NaN, or the API's null) to 0, which drew a
+     cliff to zero after the last reported month — the chart said production
+     stopped when the truth is the state has not filed yet. `null` is what
+     `LineChart` breaks the line at. */
+  const gas = months.map((m) => (Number.isFinite(m.gas) ? m.gas : null));
+  const oil = months.map((m) => (Number.isFinite(m.oil) ? m.oil : null));
 
-  if (gas.some((v) => v > 0)) {
+  if (gas.some((v) => v != null && v > 0)) {
     out.push({
       key: opts.keyPrefix + ':gas',
       label: opts.gasName, sub: opts.sub, unit: MCF, dp: 0, x,
@@ -80,7 +85,7 @@ export function productCharts(
       footnote: opts.footnote,
     });
   }
-  if (oil.some((v) => v > 0)) {
+  if (oil.some((v) => v != null && v > 0)) {
     out.push({
       key: opts.keyPrefix + ':oil',
       label: opts.oilName, sub: opts.sub, unit: BBL, dp: 0, x,
@@ -133,7 +138,7 @@ export function selftest() {
       { label: 'a', cycle: '1', gas: 5, oil: 0 },
       { label: 'b', cycle: '2', gas: Number.NaN, oil: 0 },
       { label: 'c', cycle: '3', gas: 7, oil: 0 },
-    ], { gasName: 'G', oilName: 'O', sub: '', keyPrefix: 'k' })[0].series[0].points[1] === 0);
+    ], { gasName: 'G', oilName: 'O', sub: '', keyPrefix: 'k' })[0].series[0].points[1] === null);
 
   return { name: 'chart data builder', ok, lines };
 }

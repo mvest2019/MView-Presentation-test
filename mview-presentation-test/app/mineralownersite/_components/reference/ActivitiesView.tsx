@@ -472,11 +472,20 @@ export default function ActivitiesView(
     setJump((j) => j + 1);
   };
 
-  /* one event, one panel — built from the clicked row (see `eventDrawer`);
-     the kind-key drawer stays as the fallback where `openEvent` is absent */
+  /* ONE EVENT, ONE PANEL. The API's own `event.detail` is rendered when the
+     row carries it (the backend now sends each row's facts — dev note on
+     sheet #12-#14); whatever it leaves out is filled from the row by
+     `eventDrawer`, which is also the whole panel on a capture taken before
+     `detail` existed. The kind-key explainer is never opened from a row. */
   const openRow = (e: TimelineEvent) => {
-    if (openEvent) openEvent(eventDrawer(e, p.drawers?.[e.ctx] ?? null));
-    else open(e.ctx);
+    if (!openEvent) { open(e.ctx); return; }
+    const built = eventDrawer(e, p.drawers?.[e.ctx] ?? null);
+    if (!e.detail) { openEvent(built); return; }
+    const sent = Object.fromEntries(
+      Object.entries(e.detail).filter(([, v]) =>
+        v != null && (Array.isArray(v) ? v.length > 0 : v !== '')),
+    );
+    openEvent({ ...built, ...sent });
   };
 
   return (
@@ -1508,7 +1517,10 @@ function Row(
               {stats
                 .map((s) => ({ s, shown: liveValue(s.value) }))
                 .filter((x): x is { s: typeof x.s; shown: string } => x.shown !== null)
-                .slice(0, tier === 'pro' ? 4 : 3).map(({ s, shown }) => (
+                /* four at every tier (sheet #26): a well-status row now
+                   carries status, API number, operator and county, and a cap
+                   of three cut the status itself off the row */
+                .slice(0, 4).map(({ s, shown }) => (
                 <div className="tl-stat" key={s.label}>
                   <span className="tl-k">{s.label}</span>
                   <span className={'tl-v' + (s.tone ? ' t-' + s.tone : '')}>
