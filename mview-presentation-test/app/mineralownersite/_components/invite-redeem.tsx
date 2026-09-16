@@ -43,9 +43,22 @@ import { PORTAL_HOME } from "@/lib/routes";
  * ── FAILURE NEVER BLOCKS THE PORTAL ──
  *
  * A dead code (404 `INVITE_CODE_NOT_FOUND` — expired, revoked, mistyped) or a
- * refused claim leaves the dashboard fully usable and this banner explaining,
- * with the manual claim flow one link away. The invitation is a shortcut, not
- * a gate.
+ * refused claim leaves the dashboard fully usable and a corner banner
+ * explaining, with the manual claim flow one link away. The invitation is a
+ * shortcut, not a gate.
+ *
+ * ── WHILE IT WORKS, IT IS A FULL-PAGE LOADER, NOT A CORNER CARD ──
+ *
+ * The dashboard behind this component was server-rendered BEFORE the claim
+ * existed, so for the seconds the lookup and the claim take it says "claim
+ * your record" — the one thing the invitation just promised would not be
+ * asked. A member's first look at the portal must not be the product telling
+ * them they own nothing. So the working phases cover the page with a loader
+ * that says what is actually happening, and the dashboard only shows through
+ * once there is either a claimed record behind the reload or a failure worth
+ * reading. The overlay is in the SERVER HTML too — the phase starts at
+ * "looking" rather than null — so the unclaimed dashboard cannot flash in the
+ * gap before hydration.
  */
 
 const CLAIM_BASE =
@@ -99,7 +112,8 @@ export function InviteRedeem({
   /** Already normalized — eight bare digits. */
   code: string;
 }) {
-  const [phase, setPhase] = useState<Phase | null>(null);
+  /* "looking" FROM THE FIRST SERVER BYTE — see the header's loader note. */
+  const [phase, setPhase] = useState<Phase>({ step: "looking" });
   const ran = useRef(false);
 
   useEffect(() => {
@@ -118,8 +132,6 @@ export function InviteRedeem({
     }
 
     (async () => {
-      setPhase({ step: "looking" });
-
       /* ---- 1 · the code → the owner of record ---------------------------- */
       let owner: { name: string; address: string | null };
       try {
@@ -228,63 +240,114 @@ export function InviteRedeem({
     })();
   }, [code, memberId]);
 
-  if (!phase) return null;
+  /* ---- failed: the dashboard shows through, a corner card explains ------- */
+  if (phase.step === "failed") {
+    return (
+      /* Fixed and self-styled: this renders BESIDE the portal shell, not
+         inside it, and must not depend on which route group's sheet loads. */
+      <div
+        role="status"
+        aria-live="polite"
+        style={{
+          position: "fixed",
+          right: 18,
+          bottom: 18,
+          zIndex: 80,
+          maxWidth: 420,
+          padding: "14px 16px",
+          borderRadius: 10,
+          background: "#101828",
+          color: "#f4f6fa",
+          boxShadow: "0 12px 32px rgba(9, 14, 24, .45)",
+          fontSize: 13,
+          lineHeight: 1.5,
+        }}
+      >
+        <strong>Your invitation could not be redeemed.</strong> {phase.message}{" "}
+        <Link
+          href="/mineralownersite/claim"
+          style={{ color: "#9fd3ff", textDecoration: "underline" }}
+        >
+          Claim your record yourself
+        </Link>{" "}
+        — it takes a couple of minutes.
+      </div>
+    );
+  }
+
+  /* ---- working or done: the loader owns the page -------------------------- */
+  const line =
+    phase.step === "looking" ? (
+      <>Checking your invite code {formatInviteCode(code)}…</>
+    ) : phase.step === "claiming" ? (
+      <>
+        Your invitation is for <strong>{phase.ownerName}</strong> — claiming
+        that record for you…
+      </>
+    ) : phase.step === "claimed" ? (
+      <>
+        <strong>{phase.ownerName}</strong>
+        {phase.leases
+          ? ` came across with ${phase.leases} ${phase.leases === 1 ? "lease" : "leases"}.`
+          : " is now on your account."}{" "}
+        Loading your minerals…
+      </>
+    ) : (
+      <>
+        <strong>{phase.ownerName}</strong> is already on your account — nothing
+        to claim twice. Loading your minerals…
+      </>
+    );
 
   return (
-    /* Fixed and self-styled: this renders BESIDE the portal shell, not inside
-       it, and must not depend on which route group's sheet happens to load. */
     <div
       role="status"
       aria-live="polite"
       style={{
         position: "fixed",
-        right: 18,
-        bottom: 18,
+        inset: 0,
         zIndex: 80,
-        maxWidth: 420,
-        padding: "14px 16px",
-        borderRadius: 10,
-        background: "#101828",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+        /* Opaque on purpose: what it covers is a dashboard saying "claim your
+           record", which is the one sentence this flow exists to spare them. */
+        background: "#0d1524",
         color: "#f4f6fa",
-        boxShadow: "0 12px 32px rgba(9, 14, 24, .45)",
-        fontSize: 13,
-        lineHeight: 1.5,
+        textAlign: "center",
       }}
     >
-      {phase.step === "looking" ? (
-        <>Checking your invite code {formatInviteCode(code)}…</>
-      ) : phase.step === "claiming" ? (
-        <>
-          Your invitation is for <strong>{phase.ownerName}</strong> — claiming
-          that record for you…
-        </>
-      ) : phase.step === "claimed" ? (
-        <>
-          <strong>Welcome — your record is claimed.</strong>{" "}
-          {phase.ownerName}
-          {phase.leases
-            ? ` came across with ${phase.leases} ${phase.leases === 1 ? "lease" : "leases"}.`
-            : " is now on your account."}{" "}
-          Loading your minerals…
-        </>
-      ) : phase.step === "already" ? (
-        <>
-          <strong>{phase.ownerName}</strong> is already on your account —
-          nothing to claim twice. Loading your minerals…
-        </>
-      ) : (
-        <>
-          <strong>Your invitation could not be redeemed.</strong>{" "}
-          {phase.message}{" "}
-          <Link
-            href="/mineralownersite/claim"
-            style={{ color: "#9fd3ff", textDecoration: "underline" }}
-          >
-            Claim your record yourself
-          </Link>{" "}
-          — it takes a couple of minutes.
-        </>
-      )}
+      <style>{"@keyframes mvInviteSpin{to{transform:rotate(360deg)}}"}</style>
+      <div style={{ maxWidth: 460 }}>
+        <span
+          aria-hidden="true"
+          style={{
+            display: "inline-block",
+            width: 34,
+            height: 34,
+            borderRadius: "50%",
+            border: "3px solid rgba(244, 246, 250, .25)",
+            borderTopColor: "#f4f6fa",
+            animation: "mvInviteSpin .8s linear infinite",
+          }}
+        />
+        <p
+          style={{
+            margin: "18px 0 6px",
+            fontSize: 17,
+            fontWeight: 600,
+            letterSpacing: ".01em",
+          }}
+        >
+          {phase.step === "claimed" || phase.step === "already"
+            ? "Welcome — your record is claimed."
+            : "Setting up your minerals"}
+        </p>
+        <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6, opacity: 0.85 }}>
+          {line}
+        </p>
+      </div>
     </div>
   );
 }
