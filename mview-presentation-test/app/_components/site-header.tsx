@@ -93,10 +93,6 @@ const panelItem =
    toolbar and this header stop each carrying their own copy. */
 const ctaMint = buttonClass({ variant: "mint", size: "lg" });
 const ctaPrimary = buttonClass({ variant: "primary", size: "lg" });
-/* The neutral header button — Dashboard. Same `lg` geometry as the two above so
-   the three line up; the `outline` variant keeps it off the funnel's two fills.
-   See the note at its call site. */
-const ctaOutline = buttonClass({ variant: "outline", size: "lg" });
 
 export function SiteHeader({ user }: { user: SessionUser | null }) {
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
@@ -375,74 +371,18 @@ export function SiteHeader({ user }: { user: SessionUser | null }) {
               all. See the drawer below.
             */}
             {/*
-              DASHBOARD — the route into the Mineral Owner Portal.
-
-              It sits in the actions cluster rather than in `barNav`, because
-              `barNav` is the marketing destinations and this is not one: it is
-              the door out of the marketing site and into the signed-in product,
-              which is the same class of thing as Sign in and the portal link
-              below.
-
-              SHOWN IN BOTH AUTH STATES, which is a deliberate departure from the
-              design. The prototype's header only offers its dashboard CTA to a
-              signed-in owner (`data-auth="in"`). This was asked for as a plain
-              addition to the top navigation with no auth condition attached, and
-              the reference screenshot supplied with the request is the SIGNED-OUT
-              bar — so hiding it there would have satisfied neither. It is the
-              quiet link treatment, not a CTA, so it does not compete with "Find
-              your record" or "Free account" for a visitor who has not signed up.
-
-              Worth revisiting once the portal is behind a real auth boundary: at
-              that point a signed-out visitor clicking this should meet a sign-in
-              page, and the honest thing may be to hide it again. The portal's own
-              layout notes the same gap.
-
-              A BUTTON NOW (requested), on the shared `outline` variant at `lg` —
-              the size the other two header CTAs use, so all three sit on one
-              baseline with the same radius and padding. `outline` specifically,
-              and not a filled variant: the bar already has one primary green
-              ("Find your record") and one mint ("Free account"), which are the
-              two funnel steps. A third fill would put three competing CTAs in a
-              64px row. The neutral white-on-line button reads as a control
-              rather than a link while leaving the funnel's hierarchy intact, and
-              every colour in it is already in the design system.
+              NO "Dashboard" BUTTON IN THE SIGNED-OUT BAR ANY MORE (Pragati,
+              2026-09-17: "do not show dashboard button if user not login").
+              An earlier request had put an outline "Dashboard" here for the
+              signed-out visitor, with a note that it was worth revisiting once
+              the portal sat behind a real auth boundary. It does now — see
+              `proxy.ts` — so that link no longer went anywhere a signed-out
+              visitor could see; it bounced them to /login, which "Sign in" two
+              buttons over already does honestly. The signed-in bar keeps
+              "Go to your portal →" below, the design's own `data-auth="in"`
+              dashboard CTA, so no state offers a dead door and none says the
+              same destination twice.
             */}
-            {/*
-              SIGNED OUT ONLY, and that is a narrowing of what the paragraph
-              above describes (Pragati, 2026-09-11: "show here only one
-              button").
-
-              IT AND "Go to your portal →" ARE THE SAME DESTINATION. Both are
-              `href="/mineralownersite"`, one immediately after the other, so a
-              signed-in visitor was offered the identical journey twice — and as
-              two DIFFERENT treatments, an outline button beside a filled green
-              one, which reads as two different places rather than one place
-              named twice. It also put a second primary green in the row next to
-              "Find your record", which is precisely the three-competing-CTAs
-              problem the note above says the outline treatment existed to
-              avoid.
-
-              WHY THIS ONE GIVES WAY, rather than the portal link: "Dashboard"
-              was added unconditionally because the reference screenshot
-              supplied with the request was the SIGNED-OUT bar, and that is the
-              state it was really for. The design's own dashboard CTA is
-              `data-auth="in"` only, and for a signed-in owner that CTA is
-              "Go to your portal →" — already in place, already the primary
-              action, already carrying the words the design asked for. So the
-              signed-out bar keeps exactly what was requested, and the signed-in
-              bar stops saying it twice.
-            */}
-            {!user && (
-              <Link
-                href="/mineralownersite"
-                aria-current={
-                  isCurrent("/mineralownersite") ? "page" : undefined
-                }
-                className={`${ctaOutline} whitespace-nowrap max-[1139px]:hidden`}
-              >
-                Dashboard
-              </Link>
-            )}
             {user ? (
               <>
                 <Link
@@ -574,22 +514,12 @@ export function SiteHeader({ user }: { user: SessionUser | null }) {
             ),
           )}
 
-          {/* The bar's Dashboard link hides at 1139px along with everything else
-              in the actions cluster, so the sheet has to carry it or there is no
-              route into the portal on a phone or an iPad — the same reasoning
-              that moved "Free account" down here.
-
-              AND IT IS SIGNED-OUT ONLY HERE TOO, for the reason written out at
-              the bar's copy of this link. The sheet carried the same pair of
-              rows to the same route — "Dashboard" and then "Go to your portal
-              →" a few lines below — so the duplicate was on a phone as well,
-              and fixing only the bar would have left it there. */}
+          {/* The sheet used to carry the bar's signed-out "Dashboard" link
+              too; it went the same day and for the same reason the bar's copy
+              did — see the note there. Signed out, the sheet's routes into the
+              account are "Sign in" and "Free account" below; signed in, the
+              portal link is "Go to your portal →". */}
           <SheetDivider />
-          {!user && (
-            <SheetLink href="/mineralownersite" onNavigate={closeDrawer}>
-              Dashboard
-            </SheetLink>
-          )}
 
           {user ? (
             <>

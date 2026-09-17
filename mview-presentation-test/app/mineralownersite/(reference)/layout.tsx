@@ -59,9 +59,10 @@ import "../dashboard-reference.layer.css";
  *     to be forked to carry a value it never uses. One read in this layout, one
  *     context, `Portal.tsx` untouched. See `portal-session.tsx`.
  *
- *     READING IS NOT GATING. Nothing is redirected on a null: this layout is no
- *     more an auth boundary than the other group's, and a signed-out visitor
- *     still gets the whole shell.
+ *     READING IS NOT GATING. The sign-in gate for the whole portal lives in
+ *     `proxy.ts` at the app root — a request with no session never reaches
+ *     this layout. A null here (a race, an expired cookie mid-render) still
+ *     renders the shell rather than redirecting, same as the other group's.
  *
  *   · nothing else. The shell is `Chrome`, and `Chrome` is rendered by
  *     `Portal`, which each page renders with its own `route` prop. That is the
