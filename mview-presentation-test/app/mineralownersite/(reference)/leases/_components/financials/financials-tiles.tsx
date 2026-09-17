@@ -43,7 +43,26 @@ export function FinancialsTiles({
   const owner = SCOPE_COPY[scope].possessive;
 
   return (
-    <div className="mb-4 grid gap-[18px] sm:grid-cols-2 lg:grid-cols-3">
+    /* ── THREE ACROSS ON A PHONE, BY SCROLLING ──
+     *
+     * Stacked, the three tiles ran to about 380px before the chart even began —
+     * a whole screen of headline with nothing under it. A horizontal strip puts
+     * the first one in view at full size and the second half in view behind it,
+     * which is what tells a reader there are more without a control saying so.
+     *
+     * `[display:flex]` AND NOT `flex`, for the reason the grid card records at
+     * length: `dashboard-reference.css` styles `.flex` as its own helper and
+     * sets `flex-wrap: wrap` on it below 768px, which would wrap these back
+     * into a stack and leave the scroller with nothing to scroll.
+     *
+     * The children are sized from here with `[&>*]`, because `KpiTile` takes no
+     * `className` — and it should not grow one for a layout decision its caller
+     * is making.
+     *
+     * Everything reverts at `sm`: two columns, then three at `lg`, no scroller,
+     * no snapping.
+     */
+    <div className="mb-4 [display:flex] snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [&>*]:min-w-[250px] [&>*]:shrink-0 [&>*]:snap-start sm:mb-4 sm:[display:grid] sm:snap-none sm:grid-cols-2 sm:gap-[18px] sm:overflow-visible sm:pb-0 sm:[&>*]:min-w-0 lg:grid-cols-3">
       <KpiTile
         accent
         /* The claimed-but-unpaid blur covers the money and leaves the volume

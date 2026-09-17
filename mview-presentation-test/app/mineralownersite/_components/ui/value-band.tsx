@@ -51,12 +51,29 @@ export function ValueBand({
 }) {
   return (
     <div
-      /* 150, NOT 170. `auto-fit` caps at the number of stats, so nothing
-         changes at the widths where five already fit — it only lowers the
-         point at which the fifth stops wrapping onto a row of its own with
-         three empty columns beside it. That wrap was the band's worst
-         moment and it happened at exactly the Ultra column width. */
-      className={`grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] rounded-mv text-white shadow-mv-lg bg-[linear-gradient(160deg,var(--color-mv-ink),var(--color-mv-portal-band-end))] ${className}`.trim()}
+      /*
+       * `[display:grid]` AND NOT `grid`, WHICH IS THE WHOLE REASON THIS BAND
+       * WORKS ON A PHONE.
+       *
+       * `dashboard-reference.css` styles `.grid` as one of its OWN layout
+       * helpers, and under 768px it carries:
+       *
+       *   .mv-ref-app .app-body .grid { grid-template-columns: minmax(0,1fr)
+       *                                 !important }
+       *
+       * Tailwind's `grid` utility is the same class name, so the band matched
+       * it and every phone got one column — five tiles stacked into a 500px
+       * tower above the page. The arbitrary property emits `display:grid`
+       * under a class name the reference sheet does not know, so the band's own
+       * `auto-fit` decides again. `!important` in an earlier cascade layer is
+       * the alternative and it would have to guess this element's template.
+       *
+       * 140, NOT 150 OR 170. `auto-fit` caps at the number of stats, so nothing
+       * changes at the widths where five already fit — the floor only decides
+       * when a tile stops wrapping onto a row of its own. 140 is what puts TWO
+       * across a 375px phone rather than one.
+       */
+      className={`[display:grid] grid-cols-[repeat(auto-fit,minmax(140px,1fr))] overflow-hidden rounded-mv text-white shadow-mv-lg bg-[linear-gradient(160deg,var(--color-mv-ink),var(--color-mv-portal-band-end))] ${className}`.trim()}
     >
       {stats.map((stat) => (
         <div
@@ -65,7 +82,7 @@ export function ValueBand({
              and five columns on a desktop with no media query — and
              `grid-rows-subgrid` is what keeps the three lines aligned across
              whichever cells end up side by side. */
-          className="row-span-3 grid grid-rows-subgrid border-r border-white/10 px-5 pt-[15px] pb-[13px] last:border-r-0"
+          className="row-span-3 [display:grid] grid-rows-subgrid border-r border-b border-white/10 px-4 pt-3 pb-2.5 last:border-r-0 sm:px-5 sm:pt-[15px] sm:pb-[13px]"
         >
           <div className="text-[10.5px] font-bold tracking-[0.09em] text-mv-on-head-soft uppercase">
             {stat.label}
@@ -86,7 +103,7 @@ export function ValueBand({
              * sharp. See `portalGate.lockedValue`.
              */
             data-mv-portfolio-figure=""
-            className={`mt-1 flex items-baseline gap-[7px] text-[26px] leading-tight font-bold tabular-nums ${
+            className={`mt-1 flex items-baseline gap-[7px] text-[21px] leading-tight font-bold tabular-nums sm:text-[26px] ${
               stat.emphasis ? "text-mv-green" : ""
             } ${stat.locked ? portalGate.lockedValue : ""}`.trim()}
           >

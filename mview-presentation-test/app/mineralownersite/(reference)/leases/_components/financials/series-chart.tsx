@@ -180,16 +180,46 @@ export function SeriesChart({
   }
 
   return (
-    <div className="relative">
-      {readout && <ReadoutCard readout={readout} from={from} to={to} />}
+    /* ── IT SCROLLS ON A PHONE RATHER THAN SHRINKING ──
+     *
+     * The drawing is a 1000-unit viewBox on a `w-full` svg, so every number in
+     * it — the axis labels at `text-[10px]`, the 1px rules, the dashes — is
+     * multiplied by the card's width over 1000. On the portal's desktop column
+     * that scale is about 1.26 and a label lands at ~12.6px. On a 375px phone
+     * the card is about 315px wide, the scale is 0.32, and the same label is
+     * drawn at THREE pixels: the chart is not small, it is illegible, and no
+     * amount of squinting recovers a month from it.
+     *
+     * A floor plus a scroller is the whole fix. 720 puts the labels back near
+     * 7px and asks a phone for about two screens of sideways scroll, which is
+     * the same bargain the lease table already makes. Above `sm` the card is
+     * wider than the floor, so the scroller never engages and nothing about the
+     * desktop chart changes.
+     *
+     * ── AND THE AXIS TYPE IS SET IN VIEWBOX UNITS, SO IT IS SET TWICE ──
+     *
+     * 7px was still small. The labels cannot be sized in rendered pixels — they
+     * are inside the viewBox and multiplied by the same scale as everything
+     * else — so the breakpoint has to compensate for the scale rather than
+     * state a size: 14 units below `sm`, where the scale is a fixed 0.72
+     * against the 720 floor, and 10 units above it, where the scale is 1.2 or
+     * more. Both land near 10-13px on screen.
+     *
+     *   phone   14 x 0.72 = 10.1px
+     *   laptop  10 x 1.21 = 12.1px
+     *   desktop 10 x 1.29 = 12.9px
+     */
+    <div className="overflow-x-auto sm:overflow-x-visible">
+      <div className="relative min-w-[720px] sm:min-w-0">
+        {readout && <ReadoutCard readout={readout} from={from} to={to} />}
 
-      <svg
-        viewBox={`0 0 ${CHART.width} ${PLOT_HEIGHT}`}
-        className="w-full"
-        role="img"
-        aria-label={summary}
-      >
-        {/* ── THE MODELLED HALF, WASHED ──
+        <svg
+          viewBox={`0 0 ${CHART.width} ${PLOT_HEIGHT}`}
+          className="w-full"
+          role="img"
+          aria-label={summary}
+        >
+          {/* ── THE MODELLED HALF, WASHED ──
 
              The dashed lines and the FORECAST chip already say where the
              filings stop, but both are marks a reader has to notice and read.
@@ -198,120 +228,120 @@ export function SeriesChart({
              series sits on top of it rather than being interrupted by it, and
              it matches the lease report's chart, which has had one all along.
         */}
-        {split && (
-          <rect
-            x={splitX}
-            y={PLOT.top}
-            width={PLOT.right - splitX}
-            height={PLOT.bottom - PLOT.top}
-            className="fill-mv-mint/40"
-          />
-        )}
+          {split && (
+            <rect
+              x={splitX}
+              y={PLOT.top}
+              width={PLOT.right - splitX}
+              height={PLOT.bottom - PLOT.top}
+              className="fill-mv-mint/40"
+            />
+          )}
 
-        {/* ── the grid, and the left axis it is labelled by ── */}
-        {axisTicks(leftMax).map((value) => {
-          const y = yAt(value, leftMax);
-          return (
-            <g key={`l${value}`}>
-              <line
-                x1={PLOT.left}
-                x2={PLOT.right}
-                y1={y}
-                y2={y}
-                className="stroke-mv-line"
-                strokeWidth={1}
-              />
-              <text
-                x={PLOT.left - 10}
-                y={y + 4}
-                textAnchor="end"
-                className={`fill-mv-muted text-[10px] font-semibold ${
-                  left.tone === "oil" ? "fill-mv-oil" : ""
-                }`}
-              >
-                {formatTick(value, left.money)}
-              </text>
-            </g>
-          );
-        })}
+          {/* ── the grid, and the left axis it is labelled by ── */}
+          {axisTicks(leftMax).map((value) => {
+            const y = yAt(value, leftMax);
+            return (
+              <g key={`l${value}`}>
+                <line
+                  x1={PLOT.left}
+                  x2={PLOT.right}
+                  y1={y}
+                  y2={y}
+                  className="stroke-mv-line"
+                  strokeWidth={1}
+                />
+                <text
+                  x={PLOT.left - 10}
+                  y={y + 4}
+                  textAnchor="end"
+                  className={`fill-mv-muted text-[14px] font-semibold sm:text-[10px] ${
+                    left.tone === "oil" ? "fill-mv-oil" : ""
+                  }`}
+                >
+                  {formatTick(value, left.money)}
+                </text>
+              </g>
+            );
+          })}
 
-        {/* ── the second axis, unlabelled by gridlines of its own: two sets of
+          {/* ── the second axis, unlabelled by gridlines of its own: two sets of
              horizontal rules at different intervals is unreadable, so the right
              axis borrows the left's five positions ── */}
-        {right &&
-          axisTicks(rightMax).map((value, step) => (
+          {right &&
+            axisTicks(rightMax).map((value, step) => (
+              <text
+                key={`r${step}`}
+                x={PLOT.right + 10}
+                y={yAt(axisTicks(leftMax)[step], leftMax) + 4}
+                textAnchor="start"
+                className="fill-mv-oil text-[14px] font-semibold sm:text-[10px]"
+              >
+                {formatTick(value, right.money)}
+              </text>
+            ))}
+
+          {/* ── filed | modelled ── */}
+          {split && (
+            <line
+              x1={splitX}
+              x2={splitX}
+              y1={PLOT.top}
+              y2={PLOT.bottom}
+              className="stroke-mv-line-strong"
+              strokeWidth={1}
+              strokeDasharray="4 4"
+            />
+          )}
+
+          {plotted.map(({ series, max }) => (
+            <g key={series.label} fill="none" strokeWidth={2.4}>
+              <path
+                d={linePath(
+                  series.values,
+                  from,
+                  Math.min(lastPostedIndex, to),
+                  from,
+                  to,
+                  max,
+                )}
+                className={STROKE[series.tone]}
+                strokeLinejoin="round"
+              />
+              {/* STARTS AT THE LAST FILED MONTH, NOT THE ONE AFTER IT — the two
+              paths share that point, so the line continues rather than jumping
+              the width of a month at the join. */}
+              <path
+                d={linePath(
+                  series.values,
+                  Math.max(lastPostedIndex, from),
+                  to,
+                  from,
+                  to,
+                  max,
+                )}
+                className={STROKE[series.tone]}
+                strokeDasharray="7 6"
+                strokeOpacity={0.45}
+                strokeLinejoin="round"
+              />
+            </g>
+          ))}
+
+          {/* ── the months ── */}
+          {labelIndices(from, to).map((index) => (
             <text
-              key={`r${step}`}
-              x={PLOT.right + 10}
-              y={yAt(axisTicks(leftMax)[step], leftMax) + 4}
-              textAnchor="start"
-              className="fill-mv-oil text-[10px] font-semibold"
+              key={index}
+              x={xAt(index, from, to)}
+              y={AXIS_LABEL_Y}
+              textAnchor="middle"
+              className="fill-mv-muted text-[14px] sm:text-[10px]"
             >
-              {formatTick(value, right.money)}
+              {shortMonthLabel(firstMonth + index)}
             </text>
           ))}
 
-        {/* ── filed | modelled ── */}
-        {split && (
-          <line
-            x1={splitX}
-            x2={splitX}
-            y1={PLOT.top}
-            y2={PLOT.bottom}
-            className="stroke-mv-line-strong"
-            strokeWidth={1}
-            strokeDasharray="4 4"
-          />
-        )}
-
-        {plotted.map(({ series, max }) => (
-          <g key={series.label} fill="none" strokeWidth={2.4}>
-            <path
-              d={linePath(
-                series.values,
-                from,
-                Math.min(lastPostedIndex, to),
-                from,
-                to,
-                max,
-              )}
-              className={STROKE[series.tone]}
-              strokeLinejoin="round"
-            />
-            {/* STARTS AT THE LAST FILED MONTH, NOT THE ONE AFTER IT — the two
-              paths share that point, so the line continues rather than jumping
-              the width of a month at the join. */}
-            <path
-              d={linePath(
-                series.values,
-                Math.max(lastPostedIndex, from),
-                to,
-                from,
-                to,
-                max,
-              )}
-              className={STROKE[series.tone]}
-              strokeDasharray="7 6"
-              strokeOpacity={0.45}
-              strokeLinejoin="round"
-            />
-          </g>
-        ))}
-
-        {/* ── the months ── */}
-        {labelIndices(from, to).map((index) => (
-          <text
-            key={index}
-            x={xAt(index, from, to)}
-            y={AXIS_LABEL_Y}
-            textAnchor="middle"
-            className="fill-mv-muted text-[10px]"
-          >
-            {shortMonthLabel(firstMonth + index)}
-          </text>
-        ))}
-
-        {/* ── and what each half of them is ──
+          {/* ── and what each half of them is ──
 
              AT THE TOP, ON THE DIVIDER, rather than in two pills under the
              axis. The label belongs to the line it names: beside it, a reader
@@ -324,40 +354,40 @@ export function SeriesChart({
              "FORECAST →" say which side each word owns. Without them two words
              either side of a line are just two words near a line.
         */}
-        {split && (
-          <>
-            <text
-              x={splitX - 12}
-              y={PLOT.top + 2}
-              textAnchor="end"
-              className="fill-mv-muted text-[10px] font-bold tracking-[0.08em] uppercase"
-            >
-              ← Posted
-            </text>
-            <text
-              x={splitX + 12}
-              y={PLOT.top + 2}
-              textAnchor="start"
-              className="fill-mv-green-deep text-[10px] font-bold tracking-[0.08em] uppercase"
-            >
-              Forecast →
-            </text>
-          </>
-        )}
+          {split && (
+            <>
+              <text
+                x={splitX - 12}
+                y={PLOT.top + 2}
+                textAnchor="end"
+                className="fill-mv-muted text-[10px] font-bold tracking-[0.08em] uppercase"
+              >
+                ← Posted
+              </text>
+              <text
+                x={splitX + 12}
+                y={PLOT.top + 2}
+                textAnchor="start"
+                className="fill-mv-green-deep text-[10px] font-bold tracking-[0.08em] uppercase"
+              >
+                Forecast →
+              </text>
+            </>
+          )}
 
-        {readout && (
-          <ReadoutMarks
-            readout={readout}
-            from={from}
-            to={to}
-            points={plotted.map(({ series, max }) => ({
-              tone: series.tone as "gas" | "oil" | "cash",
-              y: yAt(series.values[readout.index] ?? 0, max),
-            }))}
-          />
-        )}
+          {readout && (
+            <ReadoutMarks
+              readout={readout}
+              from={from}
+              to={to}
+              points={plotted.map(({ series, max }) => ({
+                tone: series.tone as "gas" | "oil" | "cash",
+                y: yAt(series.values[readout.index] ?? 0, max),
+              }))}
+            />
+          )}
 
-        {/*
+          {/*
           THE HIT AREA, AND IT HAS TO BE LAST.
           An svg child is only hit-tested where it is painted, so a pointer
           between two lines lands on nothing at all — the handlers cannot go on
@@ -366,17 +396,18 @@ export function SeriesChart({
           the pointer everywhere, the other nowhere. Last in the tree so it sits
           over the series rather than under them.
         */}
-        <rect
-          aria-hidden="true"
-          x={PLOT.left}
-          y={PLOT.top}
-          width={PLOT.right - PLOT.left}
-          height={PLOT.bottom - PLOT.top}
-          fill="transparent"
-          onPointerMove={track}
-          onPointerLeave={() => setReadout(null)}
-        />
-      </svg>
+          <rect
+            aria-hidden="true"
+            x={PLOT.left}
+            y={PLOT.top}
+            width={PLOT.right - PLOT.left}
+            height={PLOT.bottom - PLOT.top}
+            fill="transparent"
+            onPointerMove={track}
+            onPointerLeave={() => setReadout(null)}
+          />
+        </svg>
+      </div>
     </div>
   );
 }

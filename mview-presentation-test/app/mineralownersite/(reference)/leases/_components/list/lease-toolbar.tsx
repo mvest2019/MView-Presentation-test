@@ -102,8 +102,16 @@ export function LeaseToolbar({
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-        <label className="relative flex min-w-[240px] flex-1 items-center">
+      {/* ── THE CONTROL ROW, WHICH IS FOUR ROWS ON A PHONE AND WAS FIVE ──
+
+          Left to wrap on its own the four controls each took a line, and the
+          layout button pair — pushed right by `ml-auto` — landed alone on the
+          last one with 200px of empty card beside it. Below `sm` the search and
+          the sort each take a full row deliberately (they are the two that need
+          the width), and "Show" and the layout pair share the last one, which
+          is what `ml-auto` was always for. */}
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
+        <label className="relative flex w-full items-center sm:w-auto sm:min-w-[240px] sm:flex-1">
           <span className="sr-only">Search your leases</span>
           <Search
             aria-hidden="true"
@@ -119,6 +127,7 @@ export function LeaseToolbar({
         </label>
 
         <ToolbarSelect
+          fill
           label="Sort by"
           value={presetKeyFor(sort) ?? "custom"}
           onChange={(value) => {
@@ -260,31 +269,39 @@ function ToolbarSelect({
   onChange,
   className = "",
   options,
+  fill = false,
 }: {
   label: string;
   value: string;
   onChange: (next: string) => void;
   className?: string;
   options: readonly SelectOption[];
+  /** Take the whole row on a phone — for the one whose value is a sentence. */
+  fill?: boolean;
 }) {
   return (
     /* A `<span>` AND NOT A `<label>`. The control is a button, and a `<label>`
        wrapping a button does not name it — `LeaseSelect` carries its own
        `aria-labelledby` instead, so the visible word here is decoration and
        must not claim to be the label. */
-    <span className={`flex items-center gap-2 ${className}`.trim()}>
+    <span
+      className={`flex items-center gap-2 ${fill ? "w-full sm:w-auto" : ""} ${className}`.trim()}
+    >
       <span
         aria-hidden="true"
         className="text-[12px] font-semibold whitespace-nowrap text-mv-muted"
       >
         {label}
       </span>
-      <LeaseSelect
-        label={label}
-        value={value}
-        options={options}
-        onChange={onChange}
-      />
+      <span className={fill ? "min-w-0 grow sm:grow-0" : ""}>
+        <LeaseSelect
+          label={label}
+          value={value}
+          options={options}
+          onChange={onChange}
+          block={fill}
+        />
+      </span>
     </span>
   );
 }

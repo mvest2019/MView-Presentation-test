@@ -219,7 +219,7 @@ function FinancialsView({ data }: { data: LeaseFinancials }) {
             `ml-auto` rather than `justify-between`: the note beside the mode
             switch is prose and changes length with the mode, so pinning the
             presets to the right edge is what keeps them still as it does. */}
-        <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="mb-3 flex flex-wrap items-center gap-2 sm:mb-4 sm:gap-3">
           <SegmentedControl
             label="What to plot"
             tone="dark"

@@ -50,7 +50,10 @@ export function windowAround(
   /* Clamped as a PAIR, so a window that runs off either end slides back inside
      rather than being squashed — asking for ten years and getting six because
      the record ended is not what the button says. */
-  const from = Math.max(0, Math.min(lastPostedIndex - behind, length - 1 - span));
+  const from = Math.max(
+    0,
+    Math.min(lastPostedIndex - behind, length - 1 - span),
+  );
   return { from, to: from + span };
 }
 
@@ -70,7 +73,10 @@ export function RangePresets({
     <div
       role="group"
       aria-label="How much of the record to show"
-      className="flex flex-wrap gap-1.5"
+      /* See the note in `ui/tabs.tsx` on the reference sheet's 44px touch-target
+         floor — it is what sets a button's height on a phone here too, and
+         `min-h-8` below is what answers it. */
+      className="flex flex-wrap gap-1 sm:gap-1.5"
     >
       {PRESETS.map((preset) => {
         const width = preset.months === "all" ? length : preset.months;
@@ -80,8 +86,10 @@ export function RangePresets({
             key={preset.label}
             type="button"
             aria-pressed={selected}
-            onClick={() => onChange(windowAround(width, lastPostedIndex, length))}
-            className={`cursor-pointer rounded-lg border px-[11px] py-[5px] text-[11.5px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep ${
+            onClick={() =>
+              onChange(windowAround(width, lastPostedIndex, length))
+            }
+            className={`min-h-8 cursor-pointer rounded-lg border px-2 py-0.5 text-[11px] font-semibold sm:min-h-0 sm:px-[11px] sm:py-[5px] sm:text-[11.5px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep ${
               selected
                 ? "border-mv-green-deep bg-mv-green-deep text-white"
                 : "border-mv-line bg-mv-card text-mv-slate hover:bg-mv-bg"
