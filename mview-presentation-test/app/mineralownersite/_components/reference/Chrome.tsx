@@ -187,6 +187,10 @@ export interface ChromeProps {
      render. `Portal` still owns both (`load` for the URL-driven read on mount,
      `busy` for the Loader); they simply no longer reach the chrome. */
   open: (key: string) => void;
+  /** the settlements as last polled, or null before the first answer — owned by
+   *  `Portal` so the bar and the prices explainer cannot disagree, which is the
+   *  same argument as `readIds` below. See `useSpotPrices` there. */
+  spot: SpotQuote[] | null;
   /** the alerts this reader has opened, owned by `Portal` so the rail badge
    *  and the Alerts page cannot disagree — see `markRead` there */
   readIds: Set<string>;
@@ -611,7 +615,7 @@ export default function Chrome(c: ChromeProps) {
                 </div>
               )}
 
-            <PriceStrip ticker={c.p?.ticker ?? null} open={c.open} />
+            <PriceStrip ticker={c.p?.ticker ?? null} spot={c.spot} open={c.open} />
 
             {c.p
               ? (
@@ -865,8 +869,57 @@ export default function Chrome(c: ChromeProps) {
  */
 const HIDDEN_IN_CHROME: ReadonlySet<string> = new Set(['propane']);
 
-function PriceStrip({ ticker, open }: { ticker: Payload['ticker']; open: (k: string) => void }) {
-  const items = (ticker?.items ?? []).filter((q) => !HIDDEN_IN_CHROME.has(q.key));
+/**
+ * THE FIELDS THIS STRIP RENDERS, and only those.
+ *
+ * `Payload['ticker']['items'][number]` is wider than this — it also declares
+ * `value`, `prev`, `low`, `high`, `change_30d_pct` and a required `history` —
+ * and it is structurally assignable to this, so the server-rendered seed and
+ * the polled response can both feed the same component.
+ *
+ * DECLARED SEPARATELY BECAUSE THE PAYLOAD TYPE IS WRONG ABOUT `history`: it
+ * marks it required, and neither `/api/v1/dashboard` nor
+ * `/api/v1/dashboard/prices` sends it (measured against the live service on
+ * both routes). Typing the poll as `Payload['ticker']` would therefore be a
+ * claim about the response that the response does not honour. Correcting the
+ * payload type is a separate change with its own callers to check, so this
+ * names what is actually read instead.
+ *
+ * EXPORTED BECAUSE `Portal` DOES THE POLLING. The strip renders these; it does
+ * not fetch them. See `useSpotPrices` there for why the two had to move apart.
+ */
+export type SpotQuote = {
+  key: string;
+  label: string;
+  display: string;
+  unit: string;
+  desc: string;
+  as_of: string;
+  change_pct: number | null;
+  error: string | null;
+};
+
+/**
+ * THE LIVE SETTLEMENTS ARRIVE AS A PROP, and this component fetches nothing.
+ *
+ * It polled `/api/prices` itself at first, on its own 10s interval, and that is
+ * exactly what put a different WTI in the bar from the one in the panel below
+ * it. The explainer is read from a SECOND endpoint, and that read lives in
+ * `Portal` because `Portal` owns the drawer. Two independent timers meant two
+ * reads at two different moments, and since the service advances its snapshot
+ * every ten seconds or so, the panel froze at whatever the price was when it
+ * opened while the bar above it kept moving.
+ *
+ * One timer now drives both, in `Portal`, and it issues the two requests
+ * together — see the note there. `seed` remains the server-rendered
+ * `Payload.ticker`, so the first paint is unchanged and there is no empty frame
+ * before the first poll answers.
+ */
+function PriceStrip(
+  { ticker, spot, open }:
+  { ticker: Payload['ticker']; spot: SpotQuote[] | null; open: (k: string) => void },
+) {
+  const items = (spot ?? ticker?.items ?? []).filter((q) => !HIDDEN_IN_CHROME.has(q.key));
   if (!items.length) return <span className="spacer" />;
   return (
     <div className="pin-spot">

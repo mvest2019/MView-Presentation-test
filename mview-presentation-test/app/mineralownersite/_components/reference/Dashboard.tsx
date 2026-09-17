@@ -28,6 +28,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { createPortal } from 'react-dom';
 import type { Payload } from '../../_lib/reference/payload';
 import { usePortalMember } from '../portal-session';
 import {
@@ -53,6 +54,13 @@ export interface ViewProps {
 
 /** the dashboard also drives the plan card, so it needs the two funnel props */
 export interface DashProps extends ViewProps {
+  /**
+   * Re-read this member's payload and resolve once it is in state.
+   *
+   * Supplied by `Portal`, which owns the payload. The switch flow AWAITS it —
+   * see `applySwitch` for why a resolvable request replaced `router.refresh()`.
+   */
+  reloadActiveOwner: () => Promise<boolean>;
   trialStarted: string | null;
   setFunnel: (f: FunnelKey) => void;
 }
@@ -70,7 +78,7 @@ export default function Dashboard(
      passes them and the plan card used to read them. They are accepted and
      not destructured so the shell's call site is unchanged and the props stay
      available the moment anything on this page needs the trial stamp again. */
-  { p, tier, funnel, sample, open, go }: DashProps,
+  { p, tier, funnel, sample, open, go, reloadActiveOwner }: DashProps,
 ) {
   const t = p.totals;
   const a = p.as_of;
@@ -85,6 +93,91 @@ export default function Dashboard(
      browser. `null` when nobody is signed in, which `greetLine` handles. */
   const member = usePortalMember();
   const top = al.items[0] ?? null;
+
+  /**
+   * SWITCHING TO ANOTHER RECORD — the loader, and nothing else about the page.
+   *
+   * WHAT STAYS ON SCREEN IS THE PREVIOUS OWNER'S PAGE. Nothing below is
+   * unmounted, hidden or blanked while the new record is read: a page that
+   * empties itself the moment a control is pressed reads as if the control
+   * broke it, and for the length of the request there is nothing better to put
+   * there. The reader keeps what they were looking at, under a loader that
+   * says what is happening.
+   *
+   * AND THE NEW OWNER'S DATA IS NOT BOUND UNTIL IT ARRIVES — which is the same
+   * statement from the other side. `p` is still the previous record for the
+   * whole of the wait, so every figure below is still that record's; the swap
+   * happens in one render when the refresh lands.
+   *
+   * THE TRANSITION IS OWNED HERE rather than in `OwnerSwitch` because this is
+   * the component that survives the swap and renders the loader; the panel
+   * below only reports what the reader pressed.
+   */
+  const [switchingTo, setSwitchingTo] = useState<string | null>(null);
+  const switching = switchingTo !== null;
+
+  /* WHERE THE LOADER IS PORTALLED — see the overlay below for why it cannot
+     render in place.
+     LOOKED UP IN THE EVENT, AND HELD AS STATE. The server has no `document`,
+     so it cannot be resolved during render; an effect that set it tripped
+     `set-state-in-effect`; and a ref cannot be READ during render at all. A
+     `setState` from an event handler is none of those things. */
+  const [shellRoot, setShellRoot] = useState<HTMLElement | null>(null);
+
+  /* Pressed: the loader goes up before the request leaves, so the wait the
+     reader sees is the whole wait rather than only the render after it. */
+  const beginSwitch = useCallback((ownername: string) => {
+    setShellRoot(document.querySelector<HTMLElement>('.mv-ref-app'));
+    setSwitchingTo(ownername);
+  }, []);
+  const cancelSwitch = useCallback(() => setSwitchingTo(null), []);
+
+  /**
+   * THE WAIT ENDS WHEN THE DATA LANDS — not when a transition says so.
+   *
+   * THE DEFECT THIS REPLACES. This used to be
+   * `startTransition(() => router.refresh())`, with the loader keyed on the
+   * transition's `isPending`. `router.refresh()` returns void, so `isPending`
+   * tracks React's own render and not the round trip behind it: on a large
+   * record it settled seconds before the new payload arrived. The loader came
+   * down over the PREVIOUS owner's figures, which then sat there — measured at
+   * ten to eleven seconds on a 100+ lease record — until the refresh finally
+   * delivered and the page changed under the reader with no warning.
+   *
+   * `reloadActiveOwner()` RESOLVES WHEN THE PAYLOAD IS IN STATE, so the wait
+   * is the real wait. Clearing `switchingTo` immediately after it means React
+   * batches the new payload and the end of the loading state into ONE render:
+   * the loader lifts and the new owner's dashboard is already underneath it.
+   * There is no window in which one owner's figures are on screen without the
+   * loader over them.
+   *
+   * NO TIMER UNDER IT. The previous version needed a failsafe because its
+   * completion signal was a guess; an awaited request either resolves or
+   * rejects, and both are handled here.
+   */
+  const applySwitch = useCallback(async () => {
+    try {
+      await reloadActiveOwner();
+    } finally {
+      setSwitchingTo(null);
+    }
+  }, [reloadActiveOwner]);
+
+  /**
+   * A BELT-AND-BRACES CLEAR, if the record changes by any other route.
+   *
+   * ADJUSTED DURING RENDER, NOT IN AN EFFECT — React's own recommendation for
+   * "reset state when a prop changes": React re-runs this component with the
+   * new state before anything is painted, so the loader and the new record
+   * never both reach the screen. In an effect it would paint the loader once
+   * OVER the new data and then remove it, which is a visible flash and what
+   * the `set-state-in-effect` rule warns about.
+   */
+  const [shownOwner, setShownOwner] = useState(p.owner.ownername);
+  if (shownOwner !== p.owner.ownername) {
+    setShownOwner(p.owner.ownername);
+    setSwitchingTo(null);
+  }
 
   /* See the greeting's own note below: the string is held in state so the
      reader's clock can replace the server's after mount. */
@@ -123,6 +216,49 @@ export default function Dashboard(
        is shown. Without it the whole dashboard renders into a hidden element
        and the page comes up empty below the pinned bar. */
     <section data-route="app" id="routeApp" className="active">
+      {/* `.mv-loader` IS THE SHELL THIS APP ALREADY LOADS BEHIND — fixed,
+          full-page, centred over a scrim (`dashboard-reference.css:1006`), with
+          `.mv-load-mark`'s three-dot spinner in its card. Reused rather than
+          re-drawn so a wait looks the same wherever the reader meets one. It
+          does NOT carry the owner-read loader's progress bar, elapsed timer and
+          roll-scan footnote: this wait is short, and the message is the whole
+          of what there is to say. */}
+      {/* PORTALLED TO THE BODY, AND IT HAS TO BE.
+
+          `.mv-loader` is `position: fixed; inset: 0`, which is measured against
+          the VIEWPORT only while no ancestor establishes a containing block.
+          The route section around this one does: `section[data-route].active`
+          carries a `transform` for its enter animation, and a transformed
+          ancestor becomes the containing block for every fixed descendant.
+          Rendered in place the overlay sized itself to the section — measured
+          1114x5110 at a 1440x900 viewport, so the card sat two thousand pixels
+          down the page instead of in the middle of the screen.
+
+          This is why the shell's own `Loader` centres correctly and this one
+          did not: `Portal` renders it OUTSIDE the section. A portal puts this
+          one in the same place without moving the component that owns it.
+
+          THE TARGET IS THE SHELL ROOT, NOT `document.body`. Every rule in these
+          sheets is scoped under `.mv-ref-app` — that is how the reference's
+          stylesheets are kept off the rest of the site — so an overlay in the
+          body would be unstyled markup. `.mv-ref-app` is the element `Portal`
+          renders its own loader inside, it is not transformed, and there is
+          exactly one of it. */}
+      {switching && shellRoot
+        ? createPortal(
+          <div className="mv-loader mv-loader-switch" role="status" aria-live="polite">
+            <div className="mv-loader-card">
+              {/* A SPINNER, NOT `.mv-load-mark`'s three bouncing dots — and it
+                  is its own element rather than a restyling of that one,
+                  because the dots belong to the owner-read loader and must
+                  keep working there. */}
+              <span className="mv-spin" aria-hidden="true" />
+              <h3>Loading…</h3>
+            </div>
+          </div>,
+          shellRoot,
+        )
+        : null}
 
       {/* ---------- the plan card: REMOVED, because the chrome already says it.
            `StateCard` and `FunnelBar` render for the SAME three funnel states —
@@ -285,7 +421,13 @@ export default function Dashboard(
                 sources card. What the chip lacked was the thing an account
                 with more than one claimed record actually needs: a way to see
                 which of them is filling the page. */}
-            <OwnerSwitch p={p} />
+            <OwnerSwitch
+              p={p}
+              unclaimed={unclaimed}
+              onSwitchBegin={beginSwitch}
+              onSwitchApply={applySwitch}
+              onSwitchCancel={cancelSwitch}
+            />
           </div>
 
           {/* the sample badge moved to the top of the page — see SAMPLE
@@ -2075,7 +2217,35 @@ const MAX_PLAY_NAMES = 2;
  * which does exist. When the API can take an owner, each row becomes the
  * control; nothing else here has to change.
  */
-function OwnerSwitch({ p }: { p: Payload }) {
+function OwnerSwitch(
+  { p, unclaimed, onSwitchBegin, onSwitchApply, onSwitchCancel }: {
+    p: Payload;
+    /**
+     * NOT CLAIMED HAS NOTHING TO SWITCH TO, so it is not offered the control.
+     *
+     * The record on screen in that state is the FIXED SAMPLE — one fictional
+     * capture, identical for every reader, served by `/api/portfolio?sample=1`
+     * and deliberately unrelated to whoever is signed in. Switching is an
+     * action on the member's own claimed records, so offering it here would
+     * either do nothing to the page in front of them or replace a sample they
+     * were told is a sample with somebody's real minerals.
+     *
+     * THE CHIP ITSELF STAYS. "Mineral Owner: <name>" is a label, not a control
+     * — it answers "whose figures am I looking at", which is the one question
+     * the sample state most needs answered. Only the button is withheld, and
+     * with it the panel: `open` starts false and nothing but that button ever
+     * sets it, so the popup below cannot be reached and the
+     * `/api/owners/claimed` read it triggers is never made.
+     */
+    unclaimed: boolean;
+    /** the row was pressed — put the loader up before the request goes out */
+    onSwitchBegin: (ownername: string) => void;
+    /** the service accepted it — re-read the page, resolving when it is ready */
+    onSwitchApply: () => Promise<void>;
+    /** it did not go through — take the loader down again */
+    onSwitchCancel: () => void;
+  },
+) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
 
@@ -2150,17 +2320,41 @@ function OwnerSwitch({ p }: { p: Payload }) {
   const choose = useCallback(async (ownername: string) => {
     if (saving) return;
     setSaving(ownername);
+    /* THE PANEL GOES FIRST, THEN THE LOADER — in that order, and both before
+       the request leaves.
+
+       It used to close on the way OUT, after the POST and the list re-read had
+       both returned, so the reader pressed a row and the dropdown sat open on
+       top of the page for the whole round trip with only a "Making this the
+       active record…" line inside it. The press is the decision; the panel has
+       nothing left to offer once it is made. */
+    setOpen(false);
+    onSwitchBegin(ownername);
     try {
       const res = await fetch('/api/owners/active', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ownername }),
       });
-      if (res.ok) await load();
-    } catch { /* the row simply stays where it was */ } finally {
+      if (!res.ok) { onSwitchCancel(); return; }
+
+      /* THE PANEL'S OWN LIST IS REFRESHED FIRST, and it is cheap — it decides
+         which row carries the tick the next time the panel opens. The page
+         payload after it is the long one, and it is what the loader is
+         covering. */
+      await load();
+
+      /* AWAITED. `applySwitch` re-reads the member's payload and resolves when
+         it is in state; the loader stays up until it does. Not awaiting this
+         is the whole of the defect it replaced — see `applySwitch`. */
+      await onSwitchApply();
+    } catch {
+      /* the row simply stays where it was */
+      onSwitchCancel();
+    } finally {
       setSaving(null);
     }
-  }, [saving, load]);
+  }, [saving, load, onSwitchBegin, onSwitchApply, onSwitchCancel]);
 
   /* The chip keeps naming the payload's owner until the list arrives, so the
      header does not flicker; once it has, the service's own `is_active` is
@@ -2171,12 +2365,14 @@ function OwnerSwitch({ p }: { p: Payload }) {
   return (
     <span className="owner-chip mv-ownersw" ref={box}>
       Mineral Owner: <strong>{active}</strong>
-      <button
-        type="button" className="sw-btn" aria-expanded={open} aria-haspopup="dialog"
-        onClick={() => setOpen((v) => !v)}
-      >
-        Switch Owner ▾
-      </button>
+      {unclaimed ? null : (
+        <button
+          type="button" className="sw-btn" aria-expanded={open} aria-haspopup="dialog"
+          onClick={() => setOpen((v) => !v)}
+        >
+          Switch Owner ▾
+        </button>
+      )}
 
       {open ? (
         <div className="ownersw-pop" role="dialog" aria-label="Switch the active owner record">
@@ -2207,7 +2403,12 @@ function OwnerSwitch({ p }: { p: Payload }) {
               blank. */}
           <div className="ownersw-rec is-active">
             <div className="ownersw-name">
-              {active}
+              {/* THE NAME IS ITS OWN ELEMENT so the badge can sit beside it.
+                  As a bare text node it was an anonymous flex item, which
+                  cannot take a `min-width`, so a long record name — "Addison
+                  Sidney Tennille Smith" — could not shrink and pushed
+                  "✓ Active now" onto a second line. */}
+              <span className="ownersw-nm">{active}</span>
               <span className="ownersw-now">✓ Active now</span>
             </div>
             <div className="ownersw-meta">
@@ -2238,16 +2439,33 @@ function OwnerSwitch({ p }: { p: Payload }) {
                 </div>
               </button>
             ))
-            : (
-              <p className="ownersw-empty">
-                {listErr
-                  ? 'Your other claimed records could not be read just now.'
-                  : rows === null
-                    ? 'Reading your claimed records…'
+            : rows === null && !listErr
+              ? (
+                /* STILL READING THE LIST — placeholder rows, not a blank panel.
+                   The panel opens instantly and the request behind it does not,
+                   so a line of text left the reader looking at an empty box and
+                   no sign of how much was coming. These are the row's own shape
+                   at the row's own height, so nothing moves when the real ones
+                   replace them. Three, because that is the commonest number of
+                   claimed records — not a measurement of this account's. */
+                <div aria-hidden="true">
+                  {[0, 1, 2].map((i) => (
+                    <div className="ownersw-rec ownersw-skel" key={i}>
+                      <div className="ownersw-skel-line ownersw-skel-name" />
+                      <div className="ownersw-skel-line ownersw-skel-meta" />
+                    </div>
+                  ))}
+                  <p className="ownersw-empty" role="status">Reading your claimed records…</p>
+                </div>
+              )
+              : (
+                <p className="ownersw-empty">
+                  {listErr
+                    ? 'Your other claimed records could not be read just now.'
                     : 'No other owner records on this account yet — claim one below '
                       + 'and it appears here, ready to switch to.'}
-              </p>
-            )}
+                </p>
+              )}
           </div>
 
           <Link className="ownersw-cta" href="/mineralownersite/claim">

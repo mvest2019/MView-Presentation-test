@@ -2568,12 +2568,20 @@ body .mv-ref-app .app-body > section[data-route="app"] > .ultra-hero {
    still gets the signal that the content has ended. `none` would suppress that
    as well, which is a second change nobody asked for.
 
-   THE PAGE IS NOT LOCKED, and that is deliberate. `body.ctx-open { overflow:
-   hidden }` would also stop the page moving when the pointer is over the SCRIM
-   rather than over the panel — a related but different complaint, and one that
-   removes the page's scrollbar and shifts the layout under the drawer unless
-   that is compensated too. The defect is about what happens when a panel
-   reaches ITS end, and that is what this fixes.
+   THE PAGE IS ALSO LOCKED NOW — see the block below, which was added later.
+   This rule was once the whole answer, and the note here used to record that
+   locking the page was deliberately NOT done: it is a related but different
+   complaint (the pointer over the SCRIM rather than over the panel), and it
+   removes the page's scrollbar and shifts the layout unless that is
+   compensated. It was then asked for directly, and the compensation is what
+   the block below is mostly about.
+
+   THIS RULE IS STILL NEEDED WITH THE LOCK IN PLACE, and is not redundant. The
+   lock is carried by a class that only goes on while a drawer is open, whereas
+   `.app-side` is a scroll port on every page with no drawer open at all — row
+   55 is about that rail as much as about the panel. Containment is also the
+   right behaviour INSIDE the panel regardless: it is what leaves the browser's
+   own end-of-scroll feedback intact rather than letting the gesture escape.
 
    `.ctx-drawer` is `overflow: hidden` and so is not a scroll port today; it is
    included because it is the element the panel's own height is set on, and a
@@ -2583,6 +2591,158 @@ body .mv-ref-app .ctx-body,
 body .mv-ref-app .ctx-drawer,
 body .mv-ref-app .app-side {
   overscroll-behavior: contain;
+}
+
+
+/* ----------------------------------------------------------------------------
+   A DRAWER IS A MODAL, SO THE PAGE UNDER IT HOLDS STILL.
+
+   "Whenever any right-side drawer is opened, lock the background page so it
+   cannot scroll; only the drawer content scrolls; restore on close."
+
+   ONE PAIR OF RULES COVERS EVERY DRAWER, because the shell has exactly one.
+   Every explainer on every route — the eleven flat panels, the twelve `pf_*`,
+   and each `lease:*`, `well:*` and `alert:*` — is the same `.ctx-drawer` with
+   different copy in it. `Portal` puts these classes on while that panel is
+   open and takes them off when it closes; nothing else in the shell is a
+   right-side panel, so there is no second mechanism to keep in step.
+
+   THE LOCK IS ON THE ROOT, NOT ON `body`, AND THAT WAS MEASURED. Either one
+   stops the page — `body` works because the root's overflow is `visible`, so
+   the viewport inherits its overflow from the body — but `scrollbar-gutter` is
+   only honoured on the root. Declared on `body` it is ignored, and the page
+   still jumps 15px the moment its scrollbar is taken away. Both declarations
+   therefore sit on `html`, where the measured shift is zero: content and top
+   row stay at x=1425 at 1440x900, exactly where they are with no drawer open.
+
+   `.mv-ctx-gutter` IS SEPARATE BECAUSE THE GUTTER MUST NOT ALWAYS BE RESERVED.
+   `scrollbar-gutter: stable` reserves the track on any container that is not
+   `overflow: visible` — including a short page that never had a scrollbar,
+   where reserving one would shift the layout the other way. `Portal` measures
+   `innerWidth - clientWidth` BEFORE applying the lock and adds this second
+   class only when a classic scrollbar was really there. A touch device, or a
+   Mac without a mouse attached, measures 0 and gets the lock alone, which is
+   what those platforms need: an overlay scrollbar occupies no layout space, so
+   there is nothing to give back.
+
+   `@media screen` BECAUSE A CLIPPED ROOT PRINTS AS ONE PAGE. The reference
+   sheet already treats "printing with a panel open" as a real thing to get
+   right — its own `@media print` block hides `.ctx-drawer` and `.ctx-scrim` so
+   the PAGE is what comes out — and `overflow: hidden` on the root would have
+   truncated that printout to whatever fits one sheet. The lock is a screen
+   behaviour, so it says so.
+
+   WHAT IS NOT HERE. No saved-and-restored `scrollTop`, and no `position: fixed`
+   on the body. Clipping the root leaves the scroll offset untouched, so the
+   reader returns to exactly where they were; the `position: fixed` technique
+   would have to restore that by hand, and gets it wrong the moment anything
+   else moves the page. `.ctx-body` keeps its own `overflow-y: auto`, so the
+   panel's content is the one thing that still scrolls.
+   ---------------------------------------------------------------------------- */
+@media screen {
+  html.mv-ctx-lock {
+    overflow: hidden;
+  }
+
+  html.mv-ctx-lock.mv-ctx-gutter {
+    scrollbar-gutter: stable;
+  }
+}
+
+
+/* ----------------------------------------------------------------------------
+   THE POINTER GOES WHERE THE CLICK GOES.
+
+   FOUR CONTROLS WORK BUT DO NOT SAY SO, all of them measured in the browser by
+   reading the computed cursor and then actually operating the element. Nothing
+   here is a guess about what "looks clickable"; each one was clicked, and each
+   one did something.
+
+   1 · THE "WHAT CHANGED" TIMELINE ROWS, on the Dashboard. `Dashboard.tsx`
+       renders them `<li role="button" tabIndex={0} onClick={open('alert:'+id)}>`
+       and clicking one opens that finding's panel — verified, it opens "255 new
+       wells completed in DE WITT". The sheet's rule is keyed on a DIFFERENT
+       marker: `.timeline li[data-ctx]`, an attribute these rows do not carry, so
+       all five showed the plain arrow. The sheet already treats `role="button"`
+       as the marker for this row elsewhere — `.timeline li[role="button"]:hover
+       strong` underlines it — so the cursor now reads the same attribute the
+       hover state does, rather than a second one that is not set.
+
+   2 · THE PINNED VALUE, IN TWO OF THE FIVE PERSONAS. `.pin-val-wrap` is
+       `role="button"` with an `onClick` in EVERY state (`Chrome.tsx`), and
+       clicking it opens "Your value — how it is built" in every state — tested
+       in all four that render it. But `state-claimed` and `state-lapsed` both
+       set `cursor: default` on it, so a free or lapsed reader saw an arrow over
+       a control that works, while trial and paid readers saw the pointer. The
+       value is COVERED in those states, which is presumably what those rules
+       were reaching for; covering the figure does not disable the control that
+       explains it, and the explainer is exactly what a reader in those states
+       most needs to reach.
+
+   3 · THE FORECAST BRUSH, on Production & Forecast. Two `input[type="range"]`
+       sliders in `.pf2-brush`, dragged to set the window, both showing the
+       plain arrow — the browser's default for a range input, which is wrong for
+       anything a reader is meant to grab.
+
+   4 · THE LEASE PICKER'S LABEL, beside them. `.pf2-sel` is a `<label>` wrapping
+       the caption and the `<select>`; clicking the caption operates the select,
+       which already shows the pointer itself. The label now matches the control
+       it belongs to.
+
+   WHAT WAS DELIBERATELY LEFT ALONE, having been checked and found correct:
+
+     `.gloss`        `cursor: help`, and it should be. It is a definition that
+                     appears on hover or focus, not a click target. `help` is a
+                     more specific and more truthful answer than either pointer
+                     or default, and flattening it would lose information.
+
+     `.lc-svg`       `crosshair` for scrubbing, and `LineChart` sets an inline
+                     `cursor: pointer` ONLY when it is given an `onPick`. So the
+                     chart already says exactly whether it is clickable; its 45
+                     hit rectangles inherit that, correctly.
+
+     disabled things `.btn[disabled]`, `.mv-pager button:disabled` and
+                     `.al-filter button[disabled]` already resolve to
+                     `not-allowed` or `default`. Nothing to do.
+
+   THE OTHER DIRECTION — A POINTER OVER NOTHING — HAPPENS ONCE, on the Weekly
+   Report. `.leaselist .li` carries `cursor: pointer`, and the archive rows it
+   styles ("Week ending Aug 29, 2026 — 8 filings in DE WITT") are plain `<div>`s
+   in `WeeklyView`: no handler, no `role`, no `tabindex`, nothing inside them to
+   press. Clicked, they do nothing — verified. Six rows advertising a click that
+   was never wired. `.leaselist` appears exactly ONCE in this shell, and it is
+   that list, so turning the rule off is precise rather than broad.
+
+   AND NO BLANKET `cursor: default` RULE BEYOND IT. That one list aside, a sweep
+   of every visible element across the Dashboard, Alerts, Activities, Production
+   & Forecast and the Weekly Report, the sidebar and top bar, and an open
+   explainer panel, found nothing else showing a pointer without being
+   clickable. A catch-all would be a rule with no defect behind it, and it would
+   have to fight `help`, `text` and `crosshair` — three cursors this page uses
+   on purpose.
+
+   THE HOVER TINT ON THOSE ROWS IS LEFT AS IT IS. `.leaselist .li:hover` lifts
+   the background, which is the same false promise the cursor was making; it is
+   a styling change rather than a cursor one, so it is not taken here.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .timeline li[role="button"] {
+  cursor: pointer;
+}
+
+/* AFTER the two state rules in the copy, and in the same layer, so source order
+   is all this needs — see this sheet's header. */
+body .mv-ref-app.state-claimed #mvPinBar .pin-val-wrap,
+body .mv-ref-app.state-lapsed #mvPinBar .pin-val-wrap {
+  cursor: pointer;
+}
+
+body .mv-ref-app .pf2-sel,
+body .mv-ref-app .pf2-brush input[type="range"] {
+  cursor: pointer;
+}
+
+body .mv-ref-app .leaselist .li {
+  cursor: default;
 }
 
 
@@ -2624,4 +2784,139 @@ body .mv-ref-app .ownersw-rec.ownersw-pick:focus-visible {
 body .mv-ref-app .ownersw-rec.ownersw-pick:disabled {
   opacity: .6;
   cursor: progress;
+}
+
+
+/* ----------------------------------------------------------------------------
+   THE "ACTIVE NOW" BADGE SITS BESIDE THE NAME, NOT UNDER IT.
+
+   `.ownersw-name` is a `flex-wrap: wrap` row holding the record name and the
+   badge. The name was a bare text node, so it became an ANONYMOUS flex item —
+   and an anonymous item cannot be given `min-width: 0`, so it refused to shrink
+   below its content and pushed the badge onto a line of its own. Short names
+   never showed it; "Addison Sidney Tennille Smith" did.
+
+   The name is an element now (see `OwnerSwitch`), so it can shrink and wrap
+   inside its own box, and the badge is pushed to the end of the first line —
+   the position the capture rings. `flex: none` on the badge was already there
+   and is what keeps it from being squeezed in turn.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .ownersw-name {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+
+body .mv-ref-app .ownersw-nm {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+body .mv-ref-app .ownersw-now {
+  margin-left: auto;
+}
+
+
+/* ----------------------------------------------------------------------------
+   THE OWNER-SWITCH LOADER.
+
+   The same `.mv-loader` shell the owner read uses — fixed, centred, over a
+   scrim — with only a spinner and one line in its card. The owner-read loader's
+   card is padded for four blocks (mark, heading, step line, progress bar and a
+   three-line footnote); this one holds two, so the padding comes in to match
+   what is actually in it. Nothing else about the shell changes, which is the
+   point of reusing it.
+   ---------------------------------------------------------------------------- */
+/* NO CARD BEHIND IT. `.mv-loader-card` is a white panel with padding and a
+   drop shadow — right for the owner-read loader, which holds five blocks of
+   copy, and a box around eight words here. Stripped back to the spinner and
+   the line itself, sitting on the scrim.
+
+   THE TEXT TURNS LIGHT WITH IT. Off the white panel it is reading against
+   `rgba(9, 20, 16, .62)`, so the reference's near-black heading colour would
+   be all but invisible. */
+body .mv-ref-app .mv-loader-switch .mv-loader-card {
+  background: none;
+  box-shadow: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+body .mv-ref-app .mv-loader-switch .mv-loader-card h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #eaf6f0;
+  text-shadow: 0 1px 2px rgba(4, 35, 26, .45);
+}
+
+/* The spinner. A ring with one lit quarter, which reads as motion at any size
+   and needs no image. `currentColor` is not used — the ring's dim track and
+   its lit arc are two different values. */
+body .mv-ref-app .mv-loader-switch .mv-spin {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, .25);
+  border-top-color: var(--green);
+  animation: mv-spin 0.8s linear infinite;
+}
+
+@keyframes mv-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* A STOPPED SPINNER READS AS A HANG, so it is slowed rather than frozen —
+   still the one signal on screen that the page is working. */
+@media (prefers-reduced-motion: reduce) {
+  body .mv-ref-app .mv-loader-switch .mv-spin { animation-duration: 2.4s; }
+}
+
+
+/* ----------------------------------------------------------------------------
+   PLACEHOLDER ROWS WHILE THE CLAIMED LIST IS BEING READ.
+
+   The panel opens the instant it is pressed and `GET /api/owners/claimed` does
+   not, so the box stood empty but for one line of text. These stand in at the
+   real row's shape and height, so the panel does not resize when the records
+   arrive.
+
+   THEY REUSE `.ownersw-rec`, so the border, radius, padding and spacing are the
+   row's own and cannot drift from it — only the two bars inside are new.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app .ownersw-rec.ownersw-skel {
+  pointer-events: none;
+}
+
+body .mv-ref-app .ownersw-skel-line {
+  border-radius: 5px;
+  background: linear-gradient(90deg, #e7ecea 25%, #f4f7f6 37%, #e7ecea 63%);
+  background-size: 400% 100%;
+  animation: mv-ownersw-sheen 1.4s ease-in-out infinite;
+}
+
+body .mv-ref-app .ownersw-skel-name {
+  height: 12px;
+  width: 62%;
+  margin: 2px 0 9px;
+}
+
+body .mv-ref-app .ownersw-skel-meta {
+  height: 9px;
+  width: 84%;
+}
+
+@keyframes mv-ownersw-sheen {
+  from { background-position: 100% 50%; }
+  to { background-position: 0 50%; }
+}
+
+/* A shimmer is decoration; flat grey still reads as "not here yet". */
+@media (prefers-reduced-motion: reduce) {
+  body .mv-ref-app .ownersw-skel-line {
+    animation: none;
+    background: #e7ecea;
+  }
 }
