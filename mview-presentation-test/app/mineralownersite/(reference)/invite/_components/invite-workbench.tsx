@@ -32,8 +32,12 @@ import { PeopleStep } from "./people-step";
  * Wired to `/api/v1/invite/*` through the same-origin forwarder — see
  * `_api/invite-api.ts` for the contract rules the shapes enforce. Ticking
  * POSTs and shows the minted code; unticking DELETEs (deactivates, never
- * deletes); ticks and codes survive a reload; wording re-renders through GET
- * without writing.
+ * deletes); wording re-renders through GET without writing.
+ *
+ * A RELOAD STARTS WITH NOTHING TICKED. The recorded invites are deliberately
+ * NOT read back on arrival — see the roll effect below for what that does and
+ * does not change. Within the session the selection survives a lease switch,
+ * from memory rather than from a re-read.
  *
  * ── WHERE THE TIME GOES, AND HOW THIS FILE SPENDS AS LITTLE AS POSSIBLE ──
  *
@@ -226,28 +230,35 @@ export function InviteWorkbench({
     };
   }, [leaseQuery]);
 
-  /* ---- a new lease is a new roll and a new set of recorded invites ------- */
+  /* ---- a new lease is a new roll ----------------------------------------- */
+  /*
+   * THE ROLL ONLY. A RELOAD NO LONGER RESTORES THE TICKS (asked for
+   * 2026-09-17): this effect used to `fetchInvites` alongside the roster and
+   * put every previously recorded invite back on screen, so opening the page
+   * began with boxes already ticked and letters already in step 3.
+   *
+   * WHAT THAT DOES AND DOES NOT CHANGE. The invites are still RECORDED — the
+   * codes were minted and reserved when they were ticked, and they stay that
+   * way; this only stops the page presenting them as a live selection on
+   * arrival. Re-ticking someone invited earlier is the contract's
+   * `already_invited`, which comes back with the code issued the first time,
+   * so nobody's code moves because the page forgot them.
+   */
   const leaseId = lease?.leaseId ?? null;
   useEffect(() => {
     if (!leaseId) return;
     const controller = new AbortController();
     const cached = rosterCache.current.get(leaseId) ?? null;
+    if (cached) return;
     (async () => {
       try {
-        const [nextRoster, snapshot] = await Promise.all([
-          /* The roll of a lease barely moves within a session; the recorded
-             invites are the part a reload or another device can change. */
-          cached ??
-            fetchLeaseRoster(leaseId, {
-              limit: ROSTER_LIMIT,
-              signal: controller.signal,
-            }),
-          fetchInvites(leaseId, wordingRef.current, controller.signal),
-        ]);
+        const nextRoster = await fetchLeaseRoster(leaseId, {
+          limit: ROSTER_LIMIT,
+          signal: controller.signal,
+        });
         if (controller.signal.aborted) return;
         rosterCache.current.set(leaseId, nextRoster);
         setRoster(nextRoster);
-        setEmails(snapshot.emails);
       } catch (error) {
         if (controller.signal.aborted) return;
         setRosterError(
@@ -259,6 +270,20 @@ export function InviteWorkbench({
     })();
     return () => controller.abort();
   }, [leaseId]);
+
+  /*
+   * WHAT WAS TICKED THIS SESSION, PER LEASE — memory, not a re-read.
+   *
+   * The reload starting empty is the point; stepping away to another lease and
+   * back is NOT a reload, and losing the selection there would be the page
+   * forgetting something the reader did a moment ago in front of them. So the
+   * letters are kept in a ref, which a refresh throws away with the rest of the
+   * JavaScript and a lease switch does not.
+   */
+  const invitesCache = useRef(new Map<string, InviteEmailView[]>());
+  useEffect(() => {
+    if (leaseId) invitesCache.current.set(leaseId, emails);
+  }, [leaseId, emails]);
 
   /*
    * A NEW LEASE IS A NEW LIST OF PEOPLE, so nothing carries over. The reset is
@@ -275,7 +300,8 @@ export function InviteWorkbench({
     setLease(next);
     setRoster(rosterCache.current.get(nextLeaseId) ?? null);
     setRosterError(null);
-    setEmails([]);
+    /* Whatever was ticked on THAT lease earlier in this session, or nothing. */
+    setEmails(invitesCache.current.get(nextLeaseId) ?? []);
     setPending(new Map());
     setNotice(null);
     setQuery("");
