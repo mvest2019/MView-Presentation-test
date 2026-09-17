@@ -8,10 +8,7 @@ import { PortalButton } from "../../../_components/ui/button";
 import { Notice } from "../../../_components/ui/notice";
 import { FutureTag, SettingRow } from "../../settings/_components/setting-row";
 import { SettingToggle } from "../../settings/_components/setting-toggle";
-import {
-  changePasswordAction,
-  refreshProfileAction,
-} from "../_lib/profile-actions";
+import { changePasswordAction } from "../_lib/profile-actions";
 import type { PasswordInfo } from "../_lib/profile-api";
 import {
   PROFILE_SECTIONS,
@@ -84,9 +81,9 @@ import { PROFILE_INPUT_CLASS, ProfileCardShell } from "./profile-shell";
  * session you were using to secure the account.
  */
 export function SecurityCard({ password }: { password: PasswordInfo | null }) {
-  /* the live profile, so a save in the identity card — or the refresh after a
-     password change — moves this card's facts without re-rendering the route */
-  const { profile: live, update: publishProfile } = useProfileLive();
+  /* the live profile, so a save in the identity card moves this card's facts
+     without re-rendering the route */
+  const { profile: live } = useProfileLive();
   const passwordInfo = live ? live.password : password;
   const [twoFactor, setTwoFactor] = useState(
     () => securityRows.find((row) => row.toggle)?.on ?? false,
@@ -112,30 +109,25 @@ export function SecurityCard({ password }: { password: PasswordInfo | null }) {
   /*
    * THE PASSWORD ROW, off `GET /users/me` — and off NOTHING ELSE.
    *
-   *   · `last_changed_label` is the server's pre-formatted "4 months ago" —
-   *     rendered, never re-derived in the browser;
-   *   · `last_changed_at: null` with `set: true` renders as "not recorded",
-   *     and NEVER falls back to `member_since` — that is the account's
-   *     creation date, a different fact that would be shown as the answer;
+   *   · THERE IS NO "LAST CHANGED" LINE ANY MORE. The contract's second
+   *     revision dropped `last_changed_*` outright — `members_entity` records
+   *     that a password exists and nothing about when — so the row's hint is
+   *     its own copy, never a date, and never `member_since` (a different
+   *     fact wearing the answer's clothes);
    *   · `set: false` is the Google account: no password exists, the button is
    *     disabled, and the row says the API's own `unavailable_reason`. Left
    *     enabled, the PUT would answer 409 `USERS_PASSWORD_NOT_SET` and the
    *     reader would be told to fix a password they have never had;
    *   · `password: null` — the read failed — leaves the button ENABLED with
    *     the row's own copy hint. The gate exists for the one account shape the
-   *     API has NAMED as passwordless, not for outages: disabling here made a
-   *     broken GET block every password change even when the PUT would have
-   *     worked (user, 2026-09-17). If a Google account does slip through, the
-   *     PUT's 409 lands in the panel as the same sentence the gate would have
-   *     shown.
+   *     API has NAMED as passwordless, not for outages (user, 2026-09-17). If
+   *     a Google account does slip through, the PUT's 409 lands in the panel
+   *     as the same sentence the gate would have shown.
    */
-  const passwordHint = passwordInfo
-    ? passwordInfo.set
-      ? passwordInfo.last_changed_label
-        ? passwordCopy.lastChanged(passwordInfo.last_changed_label)
-        : passwordCopy.notRecorded
-      : (passwordInfo.unavailable_reason ?? passwordCopy.notRecorded)
-    : null;
+  const passwordHint =
+    passwordInfo && !passwordInfo.set
+      ? (passwordInfo.unavailable_reason ?? passwordCopy.noPassword)
+      : null;
   const canChangePassword = passwordInfo?.set !== false;
 
   return (
@@ -192,17 +184,13 @@ export function SecurityCard({ password }: { password: PasswordInfo | null }) {
                 onCancel={() => setPasswordOpen(false)}
                 onSaved={(message) => {
                   /* the hint above this panel promises "signs out every other
-                     device" — the on-screen list keeps that promise locally */
+                     device" — the on-screen list keeps that promise locally.
+                     Nothing is re-fetched: the contract carries no "last
+                     changed" fact any more, so the row has nothing new to
+                     learn from a GET. */
                   signOutOthers();
                   setPasswordOpen(false);
                   setAnnouncement(message);
-                  /* the fresh "Last changed …" label needs a GET (the PUT's
-                     response carries none) — one quick fetch into the live
-                     context, NOT `router.refresh()`, which would wait on the
-                     chrome's owner scan before the hint moved */
-                  void refreshProfileAction().then((r) => {
-                    if (r.ok) publishProfile(r.profile);
-                  });
                 }}
               />
             ) : null}

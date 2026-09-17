@@ -250,7 +250,28 @@ export const identityForm = {
  * it is invented.
  */
 export const identityStrip = {
-  photoNote: "Profile photos arrive with the community module.",
+  /*
+    THE UPLOAD CONTROL'S COPY. The strip said "Profile photos arrive with the
+    community module." for as long as no upload endpoint existed; §11 of the
+    contract's second revision shipped one (PUT /users/me/profile-image), so
+    the note is replaced by the control it promised. The two client-side
+    checks mirror the API's own rules — four formats, 2 MB measured on the
+    file itself (which IS the decoded size) — so an oversized file is refused
+    before the request, not after (contract checklist).
+  */
+  changePhoto: "Change photo",
+  uploading: "Uploading…",
+  /*
+    NO STANDING FORMAT/SIZE HINT under the button — removed on request (user,
+    2026-09-17). The rules still reach the reader two ways: the file picker
+    itself only offers the four formats (the input's `accept`), and a file
+    that breaks a rule gets the specific sentence below, at the moment it
+    matters, instead of a caption everyone else reads forever.
+  */
+  photoWrongType: "Choose a PNG, JPEG, GIF or WebP image.",
+  photoTooBig: "That file is over 2 MB. Resize it and try again.",
+  photoReadFailed: "That file could not be read. Try choosing it again.",
+  photoSaved: "Photo updated ✓",
 } as const;
 
 /* ============================================================================
@@ -284,19 +305,19 @@ export const securityRows: SecurityRow[] = [
     id: "security-password",
     label: "Password",
     /*
-      THE UI PASS'S HINT, RESTORED ON REQUEST (user, 2026-09-17: "don't change
-      this UI"). It is the FALLBACK only: whenever `GET /users/me` answered,
-      `security-card.tsx` replaces it with the live "Last changed …" line built
-      from `password.last_changed_label` — a pre-formatted server string,
-      rendered rather than re-derived.
+      "LAST CHANGED 4 MONTHS AGO" IS GONE FOR GOOD — the contract's second
+      revision removed the field outright ("There is no 'last changed' date —
+      drop that line from the screen"): the database records that a password
+      EXISTS and nothing about when, so any date here would be an invented fact
+      about the reader's account, and `member_since` is a different fact. This
+      supersedes the earlier restore of the prototype sentence.
 
-      Two caveats the next reader should know it carries: the "4 months ago" is
-      the prototype figure (shown only when the record could not be read), and
-      "signs out every other device" is honoured by the on-screen device list
-      below — the API itself invalidates no server-side sessions yet
-      (PROFILE-API-FRONTEND.md §5).
+      "Signs out every other device" stays because the on-screen device list
+      below honours it locally — the API itself invalidates no server-side
+      sessions yet (§5). On a Google account the whole hint is replaced by the
+      API's own `unavailable_reason` in `security-card.tsx`.
     */
-    hint: "Last changed 4 months ago. A change signs out every other device.",
+    hint: "A change signs out every other device.",
     /* the mask is shown only when the API says a password exists — see
        `security-card.tsx`; unqualified it would claim one on a Google account */
     value: "••••••••••••",
@@ -438,13 +459,11 @@ export const changePassword = {
   saved: string;
 };
 
-/** the password row's live hint, from the server's pre-formatted label */
+/** the password row's copy for the no-password account */
 export const passwordCopy = {
-  lastChanged: (label: string) => `Last changed ${label}.`,
-  /* `last_changed_at: null` with `set: true` means NOT RECORDED — never shown
-     as `member_since`, which is a different fact (the day the account was
-     created) wearing the answer's clothes */
-  notRecorded: "Last changed: not recorded.",
+  /* the fallback when the API says `set: false` but sends no
+     `unavailable_reason` sentence of its own */
+  noPassword: "This account has no password to change.",
   /** the disabled button's tooltip on a Google account (user, 2026-09-17:
    *  say WHY it is disabled where the reader's pointer already is). Names the
    *  control they actually pressed at sign-up — "Continue with Google" — where

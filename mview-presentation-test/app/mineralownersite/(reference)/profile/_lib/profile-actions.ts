@@ -10,6 +10,7 @@ import {
   patchProfile,
   profileApiBase,
   putPassword,
+  putProfileImage,
   sendEmailCode,
   verifyEmailCode,
   type ProfilePatch,
@@ -161,6 +162,18 @@ function failure(e: unknown, doing: string): ProfileActionFailure {
         ...base,
         message: `We could not reach the profile service to ${doing}. Please try again shortly.`,
       };
+    case "USERS_IMAGE_INVALID": {
+      /* `details.how` is written FOR THE MEMBER and says which rule the file
+         broke — not an image, not base64, empty, truncated, or over 2 MB —
+         so it is the sentence to show (§11's refusal table) */
+      const d = e.details as unknown;
+      const how =
+        d && typeof d === "object" && "how" in d ? (d as { how?: unknown }).how : null;
+      return {
+        ...base,
+        message: typeof how === "string" && how ? how : e.message,
+      };
+    }
     case "VALIDATION_ERROR": {
       /* on VALIDATION_ERROR — and only there — `details` is an array of
          {path, message}; everywhere else it is an object or absent */
@@ -186,22 +199,50 @@ function failure(e: unknown, doing: string): ProfileActionFailure {
   }
 }
 
+/* ---------------------------------------------------------------- the photo */
+
 /**
- * `GET /users/me`, for the one write whose response carries no profile — the
- * password change — so the screen can pick up the fresh `last_changed_label`
- * without re-rendering the route (which would wait on the chrome's owner
- * scan). The profile writes never need this: they answer with the profile.
+ * `PUT /users/me/profile-image`, then the fresh `GET` in the same action.
+ *
+ * The PUT answers with the file's facts (`content_type`, `bytes`, `replaced`)
+ * but NOT with a profile — and what the screen needs is the new
+ * `profile_image_url`, whose `v` moved with the write. Rather than have the
+ * browser rebuild that URL by hand (§11: treat it as opaque), this action
+ * re-reads the profile and returns it whole, so the caller publishes it to
+ * `ProfileLive` exactly like every other write. If the GET after a successful
+ * PUT fails, the upload still happened — the result says so rather than
+ * reporting the upload itself as failed.
+ *
+ * `image` is the `data:` URL off `FileReader.readAsDataURL`; it is passed
+ * through, never logged, never echoed.
  */
-export async function refreshProfileAction(): Promise<ProfileActionResult> {
+export async function uploadProfileImageAction(
+  image: string,
+): Promise<ProfileActionResult> {
   const memberId = await requireMember();
   if (memberId == null) return SIGNED_OUT;
   const base = profileApiBase();
   if (!base) return NOT_CONFIGURED;
+
+  if (typeof image !== "string" || !image) {
+    return { ok: false, message: "Choose an image file to upload." };
+  }
+
+  try {
+    await putProfileImage(base, memberId, image);
+  } catch (e) {
+    return failure(e, "upload your photo");
+  }
+
   try {
     const profile = await fetchProfile(base, memberId);
-    return { ok: true, changed: [], profile };
-  } catch (e) {
-    return failure(e, "refresh your profile");
+    return { ok: true, changed: ["profile_image_url"], profile };
+  } catch {
+    return {
+      ok: false,
+      message:
+        "The photo was uploaded, but the page could not re-read your profile. Reload to see it.",
+    };
   }
 }
 

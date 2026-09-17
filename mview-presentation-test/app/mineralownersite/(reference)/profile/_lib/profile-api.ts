@@ -62,13 +62,17 @@ export interface MailingAddress {
 export interface PasswordInfo {
   /** false on a Google account — the change-password button must gate on this */
   set: boolean;
-  /** ISO-8601, or null meaning "not recorded" — which is NOT an error and NOT
-   *  `member_since` */
-  last_changed_at: string | null;
-  /** pre-formatted server-side ("4 months ago") — render, never re-derive */
-  last_changed_label: string | null;
   /** the sentence to show where the change control would be, when `set` is false */
   unavailable_reason: string | null;
+  /*
+   * NO `last_changed_at` / `last_changed_label` ANY MORE. The contract's
+   * second revision (PROFILE-API-FRONTEND 1.md §2, 2026-09-17) dropped them:
+   * `members_entity` records that a password EXISTS and nothing about when it
+   * was written, so the API cannot answer "last changed 4 months ago" — and
+   * the column an earlier revision added for it is what 500ed every GET. The
+   * screen's "last changed" line went with them, and it must NOT fall back to
+   * `member_since`, which is a different fact.
+   */
 }
 
 export interface UserProfile {
@@ -83,14 +87,16 @@ export interface UserProfile {
   /** null when not stored, never "" */
   phone: string | null;
   /**
-   * The member's uploaded photo, when the backend sends one. NOT in the v1
-   * contract (`PROFILE-API-FRONTEND.md` documents no photo field or upload
-   * endpoint) — declared optional ahead of the backend's photo change (user,
-   * 2026-09-17) so the avatar starts showing it the day the field appears.
-   * Free-form on the wire; run it through `safePhotoUrl` (in
-   * `_lib/safe-photo-url.ts`, shared with the client) before an `<img>`.
+   * The avatar photo's URL, SERVER-BUILT, cache-buster (`v`) and all — null
+   * when none has been uploaded, which is the signal to fall back to the
+   * letter. Treat it as OPAQUE: do not reassemble it from `member_id` and do
+   * not strip its `v`, which is what makes a replaced photo repaint (§2/§11).
+   *
+   * It is root-relative to the API'S OWN ORIGIN, which the browser never
+   * learns — the strip renders it through this app's `/api/profile-image`
+   * proxy, passing the whole URL through untouched.
    */
-  profile_pic?: string | null;
+  profile_image_url: string | null;
   mailing_address: MailingAddress;
   password: PasswordInfo;
   member_since: string;
@@ -280,6 +286,42 @@ export async function sendEmailCode(
     body: { email, username },
   });
   await decode<unknown>(route, res);
+}
+
+/** what `PUT /users/me/profile-image` answers (§11) */
+export interface ProfileImageResult {
+  member_id: number;
+  /** decided by the API from the file's own first bytes — the `data:` prefix's
+   *  claim is ignored, and this is what the GET will serve it as */
+  content_type: string;
+  /** the DECODED size stored, not the length of the base64 sent */
+  bytes: number;
+  updated_at: string;
+  /** true when it took the place of an existing photo */
+  replaced: boolean;
+}
+
+/**
+ * `PUT /users/me/profile-image` — upload or replace the avatar (§11).
+ *
+ * `image` is base64 — bare, or the `data:…;base64,` URL exactly as
+ * `FileReader.readAsDataURL()` produces it. The API accepts PNG, JPEG, GIF and
+ * WebP only, decides the type from the bytes (an SVG is refused — it can carry
+ * script and would be served from the API's own origin), and caps the DECODED
+ * size at 2 MB. One photo per member: a second upload replaces the first, and
+ * there is no DELETE yet. The bytes are never logged here and never echoed
+ * back by the API.
+ */
+export async function putProfileImage(
+  base: string,
+  memberId: number,
+  image: string,
+): Promise<ProfileImageResult> {
+  const res = await req(base, "/users/me/profile-image", {
+    method: "PUT",
+    body: { member_id: memberId, image },
+  });
+  return decode<ProfileImageResult>("/users/me/profile-image", res);
 }
 
 export async function verifyEmailCode(

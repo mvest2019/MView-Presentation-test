@@ -5,8 +5,10 @@ through to the `/soon/` placeholder. Built to the Settings route's conventions:
 server components, content in `_lib/`, presentation in `_components/`, and the
 portal's shared primitives.
 
-**The identity and password halves are LIVE against `mineralview-api`'s users
-module** (`PROFILE-API-FRONTEND.md`, backend branch `feat/users-profile`):
+**The identity, password and avatar halves are LIVE against `mineralview-api`'s
+users module** (`PROFILE-API-FRONTEND 1.md` — the contract's SECOND revision,
+which added the photo (§11) and removed the password's `last_changed_*` fields;
+backend branch `feat/users-profile`):
 
 - `GET /users/me` renders the strip, seeds the form, and drives the password
   row (`_lib/profile-api.ts`, fetched in `page.tsx` off the session cookie);
@@ -18,7 +20,18 @@ module** (`PROFILE-API-FRONTEND.md`, backend branch `feat/users-profile`):
   showing the sign-in address. The inline code panel lives in git history;
 - `PUT /users/me/password` backs the change-password panel, gated on
   `password.set` so a Google account (which has no password) gets a disabled
-  button and the API's own `unavailable_reason` instead of a 409.
+  button, the API's own `unavailable_reason`, and a tooltip naming "Continue
+  with Google". **There is no "last changed" line** — the API cannot answer it
+  and `member_since` is a different fact;
+- `PUT /users/me/profile-image` backs the strip's **Change photo** control:
+  client-checked (the API's four formats, 2 MB — a file's size IS the decoded
+  size), uploaded as the `FileReader` data-URL, then the fresh profile is
+  re-read so the new `profile_image_url` (new `v`) paints immediately. The
+  avatar renders that server-built URL **through `app/api/profile-image`**, a
+  same-origin proxy that passes it through untouched — the browser never
+  learns the API host — and only serves the session's own member. Null URL →
+  the first name's letter (user's rule); no DELETE exists, so no remove
+  control.
 
 `member_id` comes from the session cookie in exactly one place
 (`_lib/profile-actions.ts`), ready to be deleted when the auth guard moves
