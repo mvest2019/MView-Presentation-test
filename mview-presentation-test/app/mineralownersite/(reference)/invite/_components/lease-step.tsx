@@ -75,10 +75,10 @@ export function LeaseStep({
   return (
     <StepCard
       n={1}
-      title="Pick a lease"
+      title="Select a Lease"
       action={
         <span className="chip chip-slate" style={{ fontSize: 10 }}>
-          {total} on your record
+          {total} {total === 1 ? "lease" : "leases"} on your record
         </span>
       }
     >
@@ -128,7 +128,7 @@ export function LeaseStep({
             ["Your interest", formatInterest(lease.decimalInterest)],
             /* An ellipsis, not a zero, while the roll is still being read —
                "0 people" is an answer, and it is not yet this one. */
-            ["People to invite", peopleCount === null ? "…" : String(peopleCount)],
+            ["Co-owners to invite", peopleCount === null ? "…" : String(peopleCount)],
           ] as [string, string][]
         ).map(([term, value]) => (
           <div key={term}>

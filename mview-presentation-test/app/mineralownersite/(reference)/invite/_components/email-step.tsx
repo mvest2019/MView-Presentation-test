@@ -17,10 +17,10 @@ import { StepCard } from "./step-card";
 const BODY_MAX = 2000;
 
 const GREETINGS: { value: GreetingStyle; label: string }[] = [
-  { value: "first", label: "First name" },
-  { value: "name", label: "Name as filed" },
-  { value: "family", label: "Dear family" },
-  { value: "custom", label: "Your words" },
+  { value: "first", label: "First Name" },
+  { value: "name", label: "Name on Record" },
+  { value: "family", label: "Family Greeting" },
+  { value: "custom", label: "Custom Greeting" },
 ];
 
 /**
@@ -85,12 +85,17 @@ export function EmailStep({
   onGreeting: (next: GreetingStyle) => void;
   custom: string;
   onCustom: (next: string) => void;
-  body: string;
-  onBody: (next: string) => void;
+  /** The reader's own wording, or NULL for the service's default letter. */
+  body: string | null;
+  onBody: (next: string | null) => void;
   editing: boolean;
   onEditing: (next: boolean) => void;
   sendNote: string;
 }) {
+  /* What the editor shows: the reader's edit, or the standard letter as the
+     starting point. Only an actual edit travels to the service — null keeps
+     the wording the service's own. */
+  const draft = body ?? DEFAULT_BODY;
   const index = Math.min(at, Math.max(0, emails.length - 1));
   const one = emails[index] ?? null;
   const cautions = emails.filter((email) => email.caution).length;
@@ -99,7 +104,7 @@ export function EmailStep({
   return (
     <StepCard
       n={3}
-      title="Copy the email and send it"
+      title="Review and Send Invitation"
       action={
         emails.length ? (
           <span className="iv-nav">
@@ -140,7 +145,7 @@ export function EmailStep({
           ) : null}
 
           <div className="iv-greet">
-            <span className="iv-lbl">Opens with</span>
+            <span className="iv-lbl">Greeting style</span>
             <span className="ml-segs" role="group" aria-label="How the email opens">
               {GREETINGS.map((option) => (
                 <button
@@ -190,7 +195,8 @@ export function EmailStep({
               <span>To</span>
               <b>{one.to}</b>
               <i className="tiny muted">
-                you add the address — the roll holds no email
+                enter the recipient&rsquo;s email address — not available in
+                appraisal records
               </i>
             </div>
             <div className="iv-mailrow">
@@ -209,7 +215,9 @@ export function EmailStep({
               text={one.copyText}
               label={(() => {
                 const given = givenNameOf(one);
-                return given ? `Copy this email — for ${given}` : "Copy this email";
+                return given
+                  ? `Copy invitation for ${given}`
+                  : "Copy this invitation";
               })()}
             />
             {emails.length > 1 && copyAll ? (
@@ -225,7 +233,7 @@ export function EmailStep({
               className="iv-link"
               onClick={() => onEditing(!editing)}
             >
-              {editing ? "Done editing" : "Change the wording"}
+              {editing ? "Done customizing" : "Customize invitation"}
             </button>
           </div>
 
@@ -237,11 +245,11 @@ export function EmailStep({
                 their own name and their own code filled in when you copy it.
               </p>
               <textarea
-                value={body}
+                value={draft}
                 maxLength={BODY_MAX}
                 rows={9}
                 onChange={(event) => onBody(event.target.value)}
-                aria-label="The wording of the email"
+                aria-label="The wording of the invitation"
               />
               {/*
                 THE INSERT BUTTONS SAY WHAT THEY ADD, IN WORDS. The tokens are
@@ -262,25 +270,27 @@ export function EmailStep({
                     type="button"
                     className="iv-tok"
                     onClick={() =>
-                      onBody(`${body}${body.endsWith(" ") ? "" : " "}${token}`)
+                      onBody(`${draft}${draft.endsWith(" ") ? "" : " "}${token}`)
                     }
                   >
                     {what}
                   </button>
                 ))}
-                {body !== DEFAULT_BODY ? (
+                {body !== null ? (
+                  /* Back to NULL, not to the local template — the service's own
+                     default letter returns on the next render. */
                   <button
                     type="button"
                     className="iv-link"
                     style={{ marginLeft: "auto" }}
-                    onClick={() => onBody(DEFAULT_BODY)}
+                    onClick={() => onBody(null)}
                   >
                     Start again from the standard letter
                   </button>
                 ) : null}
-                {body.length > BODY_MAX * 0.8 ? (
+                {draft.length > BODY_MAX * 0.8 ? (
                   <span className="tiny muted">
-                    {BODY_MAX - body.length} characters left
+                    {BODY_MAX - draft.length} characters left
                   </span>
                 ) : null}
               </div>
@@ -294,7 +304,9 @@ export function EmailStep({
             at a time without stepping the preview.
           */}
           <div className="iv-also">
-            <span className="iv-alsok">Each person&rsquo;s own letter and code</span>
+            <span className="iv-alsok">
+              Personalized invitation and unique code
+            </span>
             <ul className="iv-each">
               {emails.map((email) => (
                 <li key={email.ownerKey}>
@@ -304,7 +316,7 @@ export function EmailStep({
                     size="sm"
                     text={email.copyText}
                     label="Copy"
-                    title={`The email for ${email.to}, subject line included`}
+                    title={`The invitation for ${email.to}, subject line included`}
                   />
                 </li>
               ))}
@@ -320,7 +332,8 @@ export function EmailStep({
         </>
       ) : (
         <p className="iv-empty">
-          Tick somebody in step 2 and their email is written here, ready to copy.
+          Select a co-owner in step 2 and their invitation is prepared here,
+          ready to copy.
         </p>
       )}
 

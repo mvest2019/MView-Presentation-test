@@ -79,7 +79,7 @@ export function InviteRail({
       </div>
 
       <div className="iv-railcard soft">
-        <span className="iv-railk">Then they</span>
+        <span className="iv-railk">What happens next</span>
         {/* NOTHING BETWEEN THE HEADING AND THE LIST. A sentence sat here saying
             these four steps are not built yet. It was this build's addition,
             the reference carries no such line, and the hollow step marks and
@@ -92,10 +92,12 @@ export function InviteRail({
       </div>
 
       <div className={`iv-railcard earn${plan.monthsMax ? " live" : ""}`}>
-        <span className="iv-railk">What you earn</span>
+        <span className="iv-railk">Your referral reward</span>
         <div className="iv-earn">
           <strong className="num">{plan.monthsMax}</strong>
-          <span>free {plan.monthsMax === 1 ? "month" : "months"}</span>
+          <span>
+            complimentary {plan.monthsMax === 1 ? "month" : "months"}
+          </span>
         </div>
         {/*
           THE SENTENCE EARNS ITS SPACE IN ONE STATE ONLY. With nothing ticked a
@@ -107,10 +109,10 @@ export function InviteRail({
         <div className="iv-rungs">
           {(
             [
-              ["You send it", "nothing", false],
-              ["They join free", "nothing", false],
+              ["Invitation sent", "no reward", false],
+              ["They register for free", "no reward", false],
               [
-                "They go paid",
+                "They upgrade to a paid plan",
                 `+${CREDIT.monthsOnPaid} ${CREDIT.monthsOnPaid === 1 ? "month" : "months"}`,
                 true,
               ],
@@ -124,7 +126,8 @@ export function InviteRail({
         </div>
 
         <p className="iv-earnnote">
-          {payoff.detail} One month per person, ever — not per lease.
+          {payoff.detail} The reward is granted once per person, regardless of
+          the number of leases associated with their account.
           {plan.repeat.length ? (
             <>
               {" "}

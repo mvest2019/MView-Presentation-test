@@ -146,21 +146,26 @@ export function greetingFor(
  * a template should not have to learn brace syntax to add a cousin's name.
  */
 export const DEFAULT_BODY =
-  "We both own a share of {lease}, and I have just been through what the " +
-  "state’s own records say about it — the wells on it, what they have " +
-  "produced, who is operating them, and what the county has it valued at.\n\n" +
-  "I keep all of it in one place now, on a site called Mineral View, and it " +
-  "let me bring the other owners in. Opening your own account is free, and " +
-  "claiming your record does not change legal ownership of anything — it only " +
-  "means you can see the same figures I can.\n\n" +
-  "Here is your own invite code:\n\n" +
+  "We are both listed as owners associated with {lease}. I recently reviewed " +
+  "the available public records for this property through Mineral View, " +
+  "including well information, production history, operator details, and " +
+  "appraisal data.\n\n" +
+  "Mineral View brings this information together in one place, making it " +
+  "easier for mineral owners to review records associated with their " +
+  "interests. Creating an account is free, and claiming your record in " +
+  "Mineral View does not change or affect legal ownership. It simply connects " +
+  "your account with the ownership record identified for you.\n\n" +
+  "Your unique invitation code is:\n\n" +
   "{code}\n\n" +
-  "Enter it at {url} and your leases come across on their own, so there is " +
-  "nothing for you to look up. The code is yours alone, and it claims your own " +
-  "share and nothing else.\n\n" +
-  "Once you are in, we are in the same private group — so we can compare what " +
-  "we are each being paid, follow the same production month by month, and " +
-  "share the cost of a professional review if we ever decide we want one.";
+  "Enter this code when registering with Mineral View at {url}. Once your " +
+  "ownership record is verified, Mineral View can identify the lease records " +
+  "associated with that record, so you do not need to search for each lease " +
+  "individually.\n\n" +
+  "Your invitation code is unique to you and should only be used to access " +
+  "your associated ownership record.\n\n" +
+  "Once registered, you can review available information related to your " +
+  "mineral interests, monitor production activity, and access other relevant " +
+  "property records in one place.";
 
 /** One letter, for one owner. */
 export function letterFor(input: LetterInput): Letter {
@@ -242,7 +247,7 @@ export function plainText(letter: Letter, options?: { postal?: boolean }): strin
  * as a mailshot, and this letter's one advantage is that it is not one.
  */
 export function subjectFor(letter: Letter): string {
-  return `Our minerals on ${letter.heading.split(" · ")[0]}`;
+  return `Mineral ownership information for ${letter.heading.split(" · ")[0]}`;
 }
 
 /**
