@@ -74,16 +74,13 @@ interface Props {
 }
 
 /* ============================================================ the top bar */
-export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
+export function FunnelBar({ p, funnel, open }: Props) {
   const n = p?.totals.lease_count ?? 0;
-  const day = trialDay(trialStarted);
-  const left = Math.max(0, TRIAL_LEN - day);
 
   let tag: string | null = null;
   let msg: React.ReactNode = null;
   let cta: string | null = null;
   let snd: string | null = null;
-  let onCta: (() => void) | null = null;
   /**
    * WHERE THE SECONDARY LINK GOES.
    *
@@ -113,29 +110,18 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
      still one click from the chrome.
 
      `paid` and `unclaimed` already returned null here, for the reasons the
-     note below gives; `claimed` now joins them, which leaves `trial` and
-     `lapsed` as the only two states with a bar — the two that are actually
-     time-bound and so have something a reader needs to act on. */
-  if (funnel === 'trial') {
-    tag = 'Premium trial';
-    cta = 'Upgrade to Premium';
-    snd = 'Compare plans';
-    sndHref = PLANS_HREF;
-    onCta = () => setFunnel('paid');
-    msg = (
-      <>
-        {/* NO DAY PIPS (defect #23). The seven dots — one per trial day, all
-            of them solid on day 0 — read as a masked value ("********"), the
-            same visual language the sample tier uses for hidden figures. The
-            day count is already in words right here, so the dots carried
-            nothing a reader could use. */}
-        <b>{left} {plural(left, 'day')} of {TRIAL_LEN} left</b>{' '}
-        — this is <b>the full Premium plan</b>: all {n} of your {plural(n, 'lease')}, the value on
-        each, the owner community, your weekly report and the monthly mailed report. Keep it for{' '}
-        <b>{PRICE}</b>.
-      </>
-    );
-  } else if (funnel === 'lapsed') {
+     note below gives; `claimed` now joins them.
+
+     TRIAL CARRIES NO BANNER EITHER, and it went the way `claimed`'s did: QA
+     boxed the whole message — "7 days left … this is the full Premium plan …
+     Keep it for $99.99/mo" — and asked for the text to go. The same argument
+     holds: a reader who has just started the trial is being sold to on every
+     route for all seven days, and the day count, the plan contents and the
+     upgrade are all still one click away — `#mvStateCard` on the Dashboard
+     says all of it, and the account menu and `/pricing#plans` carry the
+     upgrade. That leaves `lapsed` as the only state with a bar — the one
+     where something the reader had has actually stopped. */
+  if (funnel === 'lapsed') {
     tag = 'Trial ended';
     cta = 'Restore full access';
     snd = 'What I am missing';
@@ -193,14 +179,11 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
             {/* A LINK WHEN IT NAVIGATES, A BUTTON WHEN IT DOES NOT — so a
                 middle-click, a modified click and the browser's own status bar
                 all behave the way the destination deserves. */}
-            {cta
-              ? (ctaHref
-                ? <Link className="fb-cta btn btn-sm" href={ctaHref}>{cta}</Link>
-                : (
-                  <button type="button" className="fb-cta btn btn-sm" onClick={() => onCta?.()}>
-                    {cta}
-                  </button>
-                ))
+            {/* the one remaining CTA navigates (`ctaHref`); the button branch
+                went with the trial banner, whose `setFunnel` switch was its
+                only caller */}
+            {cta && ctaHref
+              ? <Link className="fb-cta btn btn-sm" href={ctaHref}>{cta}</Link>
               : null}
             {/* THE SECONDARY LINK IS A PLAN QUESTION IN EVERY STATE THAT SETS
                 `sndHref` — see the note beside its declaration. `unclaimed` is

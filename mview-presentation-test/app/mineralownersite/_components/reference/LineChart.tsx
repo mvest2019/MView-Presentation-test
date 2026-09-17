@@ -44,11 +44,40 @@ function fmt(v: number, dp: number): string {
  * index, and the chart says so in its own hint line rather than leaving the
  * reader to discover it.
  */
+/**
+ * THE PRODUCT COLOURS ARE PINNED AT THE RENDER BOUNDARY (QA defect: oil is
+ * `#b8892F`, gas is `#2E8F6D`).
+ *
+ * A spec built in this app already carries that pair — `chart.ts` sets it —
+ * but a spec that came down inside a DRAWER carries whatever colour the
+ * service composed, and the service still sends the pair the other way round
+ * on some panels, so the right-side drawer's gas chart drew golden over a page
+ * whose gas is green. Normalised once, here, exactly like `units()` two lines
+ * down: every SVG in the app renders through this component, so the drawer and
+ * the page it opens over cannot disagree. Matched on the series NAME, whole
+ * word, so 'Gas'/'Oil' are repaired and a price series ('WTI', 'BRENT') keeps
+ * the colour it was sent with.
+ */
+const PRODUCT_COLOUR: Record<string, string> = { gas: '#2e8f6d', oil: '#b8892f' };
+
+function withProductColours(spec: ChartSpec): ChartSpec {
+  let touched = false;
+  const series = spec.series.map((s) => {
+    const want = PRODUCT_COLOUR[s.name.trim().toLowerCase()];
+    if (!want || s.colour.toLowerCase() === want) return s;
+    touched = true;
+    return { ...s, colour: want };
+  });
+  /* the same object when nothing changed, so memos keyed on the spec hold */
+  return touched ? { ...spec, series } : spec;
+}
+
 export default function LineChart(
-  { spec, onPick }: { spec: ChartSpec; onPick?: (index: number) => void },
+  { spec: rawSpec, onPick }: { spec: ChartSpec; onPick?: (index: number) => void },
 ) {
   const [hover, setHover] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const spec = useMemo(() => withProductColours(rawSpec), [rawSpec]);
 
   const geom = useMemo(() => {
     const all = spec.series.flatMap((s) => s.points).filter((v): v is number => v != null);

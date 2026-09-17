@@ -106,6 +106,55 @@ export interface OwnerSelection {
  * import and every request reads the result.
  */
 const FIXTURE = americanize(raw as unknown as Payload);
+repairForecastNets(FIXTURE.forecast);
+
+/**
+ * A FILED MONTH'S NET CANNOT EQUAL ITS GROSS WHILE A REMOVAL IS FILED AGAINST
+ * IT — and on a handful of months the service says exactly that.
+ *
+ * Measured on this record (and confirmed against the live Mongo by QA):
+ * lease 02_290271 @ 202606 arrives `gas_gross 77,818 · gas_net 77,818 ·
+ * removed 3,357`, while the disposition filing itself says 3,357 MCF of that
+ * month never reached the sales meter — so the true net is gross − removed
+ * (the DB's own figure, 74,464, differs only by the filing's sub-MCF
+ * rounding). The same shape sits on ~15 portfolio months (202606, 202604,
+ * 202407, 201911–202011). "After removal" is the measure a royalty is read
+ * against, so an unreduced net is the one figure on the page that overstates
+ * what the reader is paid on.
+ *
+ * REPAIRED AT THE SEAM, for both sources: the committed capture (above) and
+ * the live `/production/forecast` response (in `buildMemberPayload`), because
+ * both carry it — it is the service's own join that drops the deduction on
+ * those months, and this module is the one place that knows where a figure
+ * comes from. `gas_share` is `gas_net × interest` on every clean month, so it
+ * is re-derived from the repaired net; the portfolio month's share comes down
+ * by the sum of its leases' corrections, which is the same identity the clean
+ * months already satisfy.
+ *
+ * NARROW ON PURPOSE: only a FILED month, only where `removed > 0`, and only
+ * where net still equals gross — a month the service already reduced is left
+ * exactly as it answered.
+ */
+function repairForecastNets(f: Payload['forecast']): void {
+  /* per cycle, how much owner share the lease repairs removed */
+  const shareDelta = new Map<string, number>();
+  for (const l of f.leases) {
+    for (const m of l.months) {
+      if (m.forecast || m.removed == null || !(m.removed > 0)) continue;
+      if (m.gas_net !== m.gas_gross) continue;
+      m.gas_net = Math.max(0, m.gas_gross - m.removed);
+      const before = m.gas_share;
+      m.gas_share = m.gas_net * l.interest;
+      shareDelta.set(m.cycle, (shareDelta.get(m.cycle) ?? 0) + (before - m.gas_share));
+    }
+  }
+  for (const m of f.months) {
+    if (m.forecast || m.removed == null || !(m.removed > 0)) continue;
+    if (m.gas_net !== m.gas_gross) continue;
+    m.gas_net = Math.max(0, m.gas_gross - m.removed);
+    m.gas_share = Math.max(0, m.gas_share - (shareDelta.get(m.cycle) ?? 0));
+  }
+}
 
 /**
  * THE ONE RECORD THE NOT-CLAIMED PREVIEW IS BUILT FROM, for every reader.
@@ -379,6 +428,10 @@ async function buildMemberPayload(base: string, member: string): Promise<Payload
       return null;
     }),
   ]);
+
+  /* the same net repair the capture gets at module load — see the note on
+     `repairForecastNets`: the live service carries the identical fault */
+  repairForecastNets(forecast);
 
   /* THE CURRENT ISSUE IS DROPPED, and that is the whole of the mapping.
      `/weekly/history` returns the issue this report IS alongside the ones
