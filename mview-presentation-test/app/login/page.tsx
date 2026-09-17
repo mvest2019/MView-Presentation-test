@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 
 import { PORTAL_HOME } from "@/lib/routes";
-import { getSessionUser } from "@/lib/session";
 
 import { AuthShell } from "../_components/auth-shell";
 import { LoginForm } from "./_components/login-form";
@@ -35,8 +33,29 @@ export const metadata: Metadata = {
  * what stops that happening again: see `lib/routes.ts`.
  */
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
-  if (await getSessionUser()) redirect(PORTAL_HOME);
-
+  /*
+   * NO SESSION CHECK HERE ANY MORE — `proxy.ts` redirects a signed-in GET off
+   * this page before it renders, and the redirect() that used to sit here was
+   * the LAST piece of the blank-page bug (Pragati, 2026-09-17, screenshot:
+   * signed-in header over an empty band at `/login?next=…`, "Rendering…").
+   *
+   * WHY IT HAD TO GO: signing in is a server-action POST to THIS route, and
+   * the proxy passes POSTs through on purpose — bouncing them would break the
+   * sign-in itself. `startSession` sets a cookie, and a cookie set in an
+   * action makes Next RE-RENDER the current page inside that same POST
+   * response — at which point a session exists, this redirect() fired, and
+   * the client followed it as a soft navigation: `/login` committed with an
+   * EMPTY page slot and held it for the whole portal build, racing the form's
+   * own full `window.location.assign(next)`. Without it, the re-render just
+   * shows the form again ("Signed in — loading your portal…") and the assign
+   * does one clean full navigation, old page on screen until the portal is
+   * ready.
+   *
+   * A signed-in visitor can now only reach this render through a non-GET or
+   * with the proxy out of the picture; they get the form, and signing in
+   * again simply refreshes their session. That is a better failure than a
+   * blank page.
+   */
   const params = await searchParams;
   const requested = Array.isArray(params.next) ? params.next[0] : params.next;
   const next = requested && /^\/(?!\/)/.test(requested) ? requested : PORTAL_HOME;
