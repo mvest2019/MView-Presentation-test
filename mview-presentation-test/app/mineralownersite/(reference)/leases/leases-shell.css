@@ -191,6 +191,16 @@
 .mv-portal.no-claim [data-mv-card] {
   border-color: var(--mv-sample, #b8892f);
   border-style: dashed;
+  /* 2px, WHICH IS THE WEIGHT THE OTHER PAGES USE. The reference dashes its
+     cards at their own 1px, but the edge a reader actually reads the state
+     from on the Dashboard and Alerts is the 2px one — `.smp-badge` is
+     `2px dashed #d9a441`. At 1px the dashes are so short they read as a
+     hairline rather than as a deliberate placeholder edge.
+
+     NOTHING MOVES. `.mv-ref-app *` sets `box-sizing: border-box`, so the extra
+     pixel comes out of the card's padding rather than its outer size: the card
+     occupies the same box and its neighbours keep their spacing. */
+  border-width: 2px;
 }
 
 /* A KPI TILE IS THE SAME RULE ON THREE EDGES, NOT FOUR.
@@ -208,6 +218,11 @@
   border-right-style: dashed;
   border-bottom-style: dashed;
   border-left-style: dashed;
+  /* The same 2px as the cards, on the three edges that are edges. The top is
+     left at its 3px green accent — see above. */
+  border-right-width: 2px;
+  border-bottom-width: 2px;
+  border-left-width: 2px;
 }
 
 /* ONE WIDTH FOR EVERY MODE WHILE NOTHING IS CLAIMED — the DETAILED width.
@@ -442,5 +457,37 @@ body .mv-ref-app.mv-leases-shell.no-claim .app-body {
      the `mv-map-reset` block. */
   .mv-ref-app .mv-portal.no-claim .hide-s {
     display: block !important;
+  }
+}
+
+/* ============================================================================
+   ROOM UNDER THE BAR
+   ============================================================================
+
+   `.app-body` opens with 26px of top padding on a desktop and 18px on a phone,
+   and the top bar above it is STICKY — so the first thing on the page sits that
+   far below a black edge it will later scroll underneath. On the Dashboard the
+   first block is a card, and a card's own padding carries the gap. My Leases
+   opens with bare type — an `<h1>` on the list, a breadcrumb on the report —
+   which has no padding of its own, so the title met the bar almost flush.
+
+   Reported twice: once against the report's breadcrumb, once against the list's
+   title.
+
+   SCOPED BY `mv-leases-shell`, the class `Portal`'s `shellClass` puts on the
+   shell root for these two pages and no others, so the Dashboard, Alerts, the
+   Weekly Report, Production and the Map keep the spacing they were designed
+   with. Unlayered, so it beats the reference sheet's own value without needing
+   `!important`.
+   ============================================================================ */
+body .mv-ref-app.mv-leases-shell .app-body {
+  padding-top: 40px;
+}
+
+/* A phone gives the column 18px and needs the extra less — the bar is shorter
+   and the title is smaller — but flush is still flush. */
+@media (max-width: 767px) {
+  body .mv-ref-app.mv-leases-shell .app-body {
+    padding-top: 26px;
   }
 }
