@@ -305,6 +305,46 @@ function watchLedger(p: Payload): Payload['alerts']['ledger'] {
  * than dropped: the fact is still on the page, it is just not all of it at
  * once.
  */
+/**
+ * A PERCENTAGE STOPS BEING A PERCENTAGE SOMEWHERE AROUND TEN-FOLD.
+ *
+ * DEFECT #31, filed as "verify this value, percentage should be 1 to 100%".
+ * The value is not wrong — MOHICAN UNIT filed 2 MCF in May and 48,778 MCF in
+ * June, which really is a rise of 2,438,800% — and clamping it to 100% would
+ * replace a true figure with a false one. The problem is that nobody can read
+ * seven digits of percent. "▲ 2438800.0%" carries no sense of scale at all; it
+ * reads as a glitch, which is how it was reported.
+ *
+ * So the FIGURE is kept and the UNIT is changed: past ten-fold, a ratio is what
+ * a reader actually understands, and "24,389×" says the same thing in four
+ * characters. Below that a percentage still reads fine and is left alone —
+ * "23.7%" and "18.8%" are the normal case and the threshold is well clear of
+ * them.
+ *
+ * ONLY RISES. A fall cannot pass -100%, so a large negative percentage is a
+ * data fault rather than a big number and must be left visible as filed
+ * instead of being quietly re-expressed.
+ *
+ * WHY THE TITLE TOO. The server writes the same number into the sentence —
+ * "gas rose 2438800.0% from May 2026 to June 2026" — so formatting only the
+ * stat cell would leave the unreadable figure as the loudest thing on the row.
+ * This changes how a number is spelled, not what it says, which is the same
+ * latitude `liveValue` already takes with the cells beside it.
+ */
+const PERCENT = /(-?\d[\d,]*(?:\.\d+)?)\s*%/g;
+/** ten-fold — past here a percentage has more digits than meaning */
+const PCT_AS_RATIO_AT = 1000;
+
+function foldBigPercent(text: string): string {
+  return text.replace(PERCENT, (whole, num: string) => {
+    const v = Number(num.replace(/,/g, ''));
+    if (!Number.isFinite(v) || v < PCT_AS_RATIO_AT) return whole;
+    /* +2,438,800% means the new month is 24,389 times the old one */
+    const ratio = 1 + v / 100;
+    return `${Math.round(ratio).toLocaleString('en-US')}\u00d7`;
+  });
+}
+
 const KEEP_COUNTIES = 3;
 const COUNTY_RUN = /\b[A-Z][A-Z'.-]*(?:\s+[A-Z][A-Z'.-]*)*(?:,\s*[A-Z][A-Z'.-]*(?:\s+[A-Z][A-Z'.-]*)*){3,}/;
 
@@ -338,6 +378,21 @@ function FoldCounties({ text }: { text: string | null | undefined }): React.Reac
       {after}
     </>
   );
+}
+
+/**
+ * Is this label a date still ahead of us?
+ *
+ * Only the forecast alerts answer yes — a filing cannot be filed in the
+ * future — so this is the test for "this is a horizon, not an event". It
+ * reuses `alertTime`'s parse so the two cannot disagree about what a label
+ * means, and an unparseable or missing label is NOT ahead: a row with no
+ * readable date should be left exactly as it is rather than labelled on a
+ * guess.
+ */
+function isAhead(label: string | null): boolean {
+  const t = alertTime(label);
+  return t > 0 && t > Date.now();
 }
 
 function alertTime(label: string | null): number {
@@ -380,13 +435,26 @@ export default function AlertsView(
     [al.items],
   );
 
-  /* EVERY FILING THE SWEEP READ, which is the largest true figure the record
-     carries and the one this panel is really selling. `timeline.events` is
-     the whole matched feed — the reader's own leases, their rings and their
-     counties — before any filter narrows it. Falls back to the ledger's own
-     counts if the feed is not loaded. */
-  const readCount = p.timeline.events.length
-    || (lg.production_filings + lg.nearby_filings);
+  /* WHAT THE RECENT FEED HOLDS — `timeline.events`, the matched feed across
+     the reader's own leases, their rings and their counties before any filter
+     narrows it.
+
+     THE FALLBACK IS GONE, and removing it is half of defect #21. It used to
+     read `|| (production_filings + nearby_filings)`, which is the ALL-TIME
+     count — a different window entirely — printed under this cell's label. So
+     a payload whose feed had not loaded showed an all-time total where a
+     recent-feed figure belongs, and the two ledger cells then reported the
+     same span twice at different magnitudes. The cell is omitted instead when
+     there is no feed: the all-time figure is already in its own cell two
+     blocks down, correctly labelled, and a missing cell is honest where a
+     mislabelled one is not.
+
+     This is also why the cell cannot look "impossible" any more. QA's note —
+     "the filings read cell cannot be smaller than its own 80,922 production
+     filings subset" — was true of the label, not of the number: 323 really is
+     the recent feed and 80,922 really is all time. Neither is a subset of the
+     other, and both now say which window they are. */
+  const feedCount = p.timeline.events.length;
   const [cat, setCat] = useState<AlertCategory | 'all'>('all');
   const [q, setQ] = useState('');
   /* THE UNREAD PILL IS A FILTER, NOT A BUTTON — see the filter row below. */
@@ -742,12 +810,33 @@ export default function AlertsView(
                   figure, not the same one inflated — 897 filings really were
                   read, and `mine_count` says how many landed on the reader's
                   own leases, so the caption cannot overstate what is theirs. */}
+              {feedCount
+                ? (
               <div>
                 <span className="aw-n num">
-                  {n0(readCount)}{' '}
-                  {/* the unit tail rides inside `.aw-n`, so it has to be a class
-                      rather than an inline font-size */}
-                  <span className="aw-unit">filings read</span>
+                  {n0(feedCount)}{' '}
+                  {/* THE WINDOW IS PART OF THE FIGURE (defects #21 and #33).
+                      This cell and the production cell two blocks down both
+                      read "filings read" and they count different things over
+                      different windows: this one is `timeline.events`, the
+                      RECENT feed, and that one is every production filing on
+                      the record. Side by side and identically labelled they
+                      looked like one number reported twice and disagreeing —
+                      "323 filings read" beside "80,922 production filings
+                      read", on a member whose every other ledger figure had
+                      scaled with the record. QA read the small one as a
+                      leftover constant from the 10-lease sample, which is
+                      exactly what a smaller-than-its-own-subset figure looks
+                      like.
+
+                      Neither number was wrong; neither said which window it
+                      was for. Both now do, in the label rather than in the
+                      caption, because the label is what is read beside the
+                      figure.
+
+                      The unit tail rides inside `.aw-n`, so it has to be a
+                      class rather than an inline font-size. */}
+                  <span className="aw-unit">filings read in the recent feed</span>
                 </span>
                 <span className="aw-cap">
                   Matched against your <strong className="num">{n0(lg.leases)}</strong>{' '}
@@ -775,12 +864,19 @@ export default function AlertsView(
                     : null} within about a mile of them.
                 </span>
               </div>
+                )
+                : null}
               <div>
-                <span className="aw-n num">{n0(lg.production_filings)}</span>
+                {/* the other half of #33 — this is the WHOLE record, not the
+                    recent feed, and the two cells now say so */}
+                <span className="aw-n num">
+                  {n0(lg.production_filings)}{' '}
+                  <span className="aw-unit">production filings, all time</span>
+                </span>
                 <span className="aw-cap">
-                  Production filings read on your leases, each checked against what your
-                  record&rsquo;s own model expected. {n0(lg.nearby_filings)} permit and completion{' '}
-                  filings read next door.
+                  Read across your leases since the record begins, each one checked against
+                  what your record&rsquo;s own model expected. {n0(lg.nearby_filings)} permit and
+                  completion filings read next door.
                 </span>
               </div>
               <div>
@@ -948,7 +1044,7 @@ export default function AlertsView(
                           : a.severity === 'important'
                             ? <span className="al-sev s-imp">Important</span>
                             : null}
-                        <FoldCounties text={a.title} />
+                        <FoldCounties text={foldBigPercent(a.title)} />
                       </strong>
                       <span className="tiny muted" style={{ marginRight: 6 }}>
                         <Band tier={tier} from="pro">
@@ -962,6 +1058,20 @@ export default function AlertsView(
                         </span>
                       </span>
                       <span className="tiny muted num">
+                        {/* A DATE IN THIS SLOT MEANS "WHEN THIS HAPPENED", and
+                            for one kind of alert it does not (defect #36). A
+                            new-well probability is modelled over a horizon, so
+                            its `event_label` is "February 2030" — printed bare,
+                            in the same position where every other row prints
+                            the month a filing landed, it reads as a data fault,
+                            which is how it was reported alongside the same
+                            row's "detected May 11, 2026".
+                            The date is not changed, only named: a horizon is
+                            marked as one, and the row stops claiming something
+                            happened in 2030. Anything at or before today is
+                            untouched, so the normal case reads exactly as it
+                            did. */}
+                        {isAhead(a.event_label) ? 'forecast · ' : ''}
                         {a.event_label ?? a.detected_label ?? '—'} · {a.channels}
                       </span>
                     </div>
@@ -993,13 +1103,19 @@ export default function AlertsView(
                                 {/* `shown` is the value with its empty halves
                                     removed — see `liveValue` */}
                                 <FoldCounties
-                                  text={st.tone === 'up' || st.tone === 'down'
-                                    ? shown.replace(/^[+-]/, '')
-                                    : shown}
+                                  text={foldBigPercent(
+                                    st.tone === 'up' || st.tone === 'down'
+                                      ? shown.replace(/^[+-]/, '')
+                                      : shown,
+                                  )}
                                 />
                               </span>
                               {st.sub
-                                ? <span className="alx-s"><FoldCounties text={st.sub} /></span>
+                                ? (
+                                <span className="alx-s">
+                                  <FoldCounties text={foldBigPercent(st.sub)} />
+                                </span>
+                              )
                                 : null}
                             </div>
                           ))}
