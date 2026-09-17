@@ -1,14 +1,11 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 
 import { Card } from "../../../_components/ui/card";
 import { Notice } from "../../../_components/ui/notice";
 import { portalGate } from "../../../_components/ui/portal-gating";
-import { usePortalViewState } from "../../../_components/reference/view-state";
-import { fetchLeaseList, LeasesApiError } from "../_api/leases-api";
-import { sampleLeaseRecords } from "../_lib/sample-leases";
-import type { LeaseRecord } from "../_lib/lease-types";
+import { useLeasesData } from "./leases-data";
 import { LeaseListPanel } from "./list/lease-list-panel";
 import { LeasesTabs, type LeaseTab } from "./leases-tabs";
 import { PlainEnglishList } from "./plain-english-list";
@@ -62,48 +59,17 @@ export function LeaseListSection({
   financials: ReactNode;
   statements: ReactNode;
 }) {
-  const view = usePortalViewState();
-  const unclaimed = view?.funnel === "unclaimed";
-
-  const [loaded, setLoaded] = useState<LeaseRecord[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    /* Nothing to read for a visitor with no claim — the sample stands in, and
-       it is already in the bundle. */
-    if (unclaimed) return;
-
-    const controller = new AbortController();
-    let live = true;
-
-    fetchLeaseList(controller.signal)
-      .then((list) => {
-        if (live) setLoaded(list.leases);
-      })
-      .catch((cause: unknown) => {
-        if (controller.signal.aborted || !live) return;
-        setError(
-          cause instanceof LeasesApiError
-            ? cause.message
-            : "Could not load your leases.",
-        );
-      });
-
-    return () => {
-      live = false;
-      controller.abort();
-    };
-  }, [unclaimed]);
-
-  /* THE SAMPLE IS NOT A FALLBACK FOR A FAILED READ. It is what an unclaimed
-     visitor is shown on purpose; putting it up when a claimed member's request
-     fails would tell them their record holds ten leases it does not. */
-  const leases = unclaimed ? sampleLeaseRecords : loaded;
+  /* THE RECORD, FROM THE ONE READ THE PAGE MAKES. This owned the fetch until
+     the value band and the header needed the same answer; it moved up to
+     `leases-data.tsx` so all four blocks read one response. What is left here
+     is the two renderings and the three states. */
+  const data = useLeasesData();
+  const leases = data?.leases ?? null;
 
   if (!leases) {
-    return error ? (
+    return data?.error ? (
       <Notice tone="amber" glyph="⚠">
-        {error}
+        {data.error}
       </Notice>
     ) : (
       <LeasesLoading />

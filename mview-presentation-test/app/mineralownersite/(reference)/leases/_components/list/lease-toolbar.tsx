@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, LayoutGrid, List, Search, X } from "lucide-react";
+import { LayoutGrid, List, Search, X } from "lucide-react";
 
 import {
   activeFilterCount,
@@ -8,6 +8,7 @@ import {
   type LeaseFilterOptions,
   type LeaseFilters,
 } from "../../_lib/lease-filters";
+import { LeaseSelect, type SelectOption } from "./lease-select";
 import {
   leasePageSizes,
   leaseSortOptions,
@@ -126,35 +127,31 @@ export function LeaseToolbar({
             );
             if (preset) onSortChange(preset.sort);
           }}
-        >
-          {/* AN ORDER REACHED BY CLICKING A HEADING usually has no preset name,
-              and a select cannot show nothing. So it describes itself —
-              "Operator — Z to A" — and disappears again the moment the reader
-              picks a named order. Disabled because picking it would be picking
-              what is already selected. */}
-          {presetKeyFor(sort) === null && (
-            <option value="custom" disabled>
-              {sortLabel(sort)}
-            </option>
-          )}
-          {leaseSortOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </ToolbarSelect>
+          /* AN ORDER REACHED BY CLICKING A HEADING usually has no preset name,
+             and the control cannot show nothing. So it describes itself —
+             "Operator — Z to A" — and disappears again the moment the reader
+             picks a named order. Disabled because picking it would be picking
+             what is already selected. */
+          options={[
+            ...(presetKeyFor(sort) === null
+              ? [{ value: "custom", label: sortLabel(sort), disabled: true }]
+              : []),
+            ...leaseSortOptions.map((option) => ({
+              value: option.value,
+              label: option.label,
+            })),
+          ]}
+        />
 
         <ToolbarSelect
           label="Show"
           value={String(pageSize)}
           onChange={(value) => onPageSizeChange(Number(value))}
-        >
-          {leasePageSizes.map((size) => (
-            <option key={size} value={size}>
-              {size} per page
-            </option>
-          ))}
-        </ToolbarSelect>
+          options={leasePageSizes.map((size) => ({
+            value: String(size),
+            label: `${size} per page`,
+          }))}
+        />
 
         {/* `aria-pressed` on two buttons is the whole accessible story of a
             segmented control — see `ui/segmented-control.tsx` for why this is
@@ -262,23 +259,33 @@ function ToolbarSelect({
   value,
   onChange,
   className = "",
-  children,
+  options,
 }: {
   label: string;
   value: string;
   onChange: (next: string) => void;
   className?: string;
-  children: React.ReactNode;
+  options: readonly SelectOption[];
 }) {
   return (
-    <label className={`flex items-center gap-2 ${className}`.trim()}>
-      <span className="text-[12px] font-semibold whitespace-nowrap text-mv-muted">
+    /* A `<span>` AND NOT A `<label>`. The control is a button, and a `<label>`
+       wrapping a button does not name it — `LeaseSelect` carries its own
+       `aria-labelledby` instead, so the visible word here is decoration and
+       must not claim to be the label. */
+    <span className={`flex items-center gap-2 ${className}`.trim()}>
+      <span
+        aria-hidden="true"
+        className="text-[12px] font-semibold whitespace-nowrap text-mv-muted"
+      >
         {label}
       </span>
-      <SelectControl value={value} onChange={onChange}>
-        {children}
-      </SelectControl>
-    </label>
+      <LeaseSelect
+        label={label}
+        value={value}
+        options={options}
+        onChange={onChange}
+      />
+    </span>
   );
 }
 
@@ -311,51 +318,16 @@ function FilterField({
   onChange: (next: string) => void;
 }) {
   return (
-    <label className="min-w-[150px] flex-1">
-      <span className="sr-only">{label}</span>
-      <SelectControl value={value} onChange={onChange} block>
-        <option value="">{allLabel}</option>
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </SelectControl>
-    </label>
-  );
-}
-
-/**
- * The native `<select>` both fields wrap.
- *
- * NATIVE, NOT A LISTBOX OF DIVS — the same call `ui/form-controls.tsx` documents
- * at length: correct keyboard handling, correct screen-reader semantics, and the
- * platform's own picker on a phone, which is the right control for someone
- * choosing one of three operators one-handed.
- */
-function SelectControl({
-  value,
-  onChange,
-  block = false,
-  children,
-}: {
-  value: string;
-  onChange: (next: string) => void;
-  block?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <span className={`relative inline-flex ${block ? "w-full" : ""}`}>
-      <select
+    <span className="min-w-[150px] flex-1">
+      <LeaseSelect
+        label={label}
         value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={`cursor-pointer appearance-none rounded-[9px] border border-mv-line bg-mv-card py-2 pr-9 pl-[10px] text-[12.5px] font-medium text-mv-ink outline-none transition-colors hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)] ${block ? "w-full" : ""}`}
-      >
-        {children}
-      </select>
-      <ChevronDown
-        aria-hidden="true"
-        className="pointer-events-none absolute top-1/2 right-2 h-4 w-4 -translate-y-1/2 text-mv-muted"
+        onChange={onChange}
+        block
+        options={[
+          { value: "", label: allLabel },
+          ...options.map((option) => ({ value: option, label: option })),
+        ]}
       />
     </span>
   );

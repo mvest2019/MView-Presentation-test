@@ -55,8 +55,24 @@ export function LeaseGrid({ leases }: { leases: LeaseRecord[] }) {
             href={leaseReportPath(lease.slug)}
             className="group flex h-full flex-col rounded-mv border border-mv-line bg-mv-card p-[18px] text-mv-ink no-underline shadow-mv transition-shadow hover:shadow-[0_4px_16px_rgba(4,35,26,.12)]"
           >
+            {/* ── THE TITLE IS ALWAYS TWO LINES TALL ──
+
+                It was as tall as the name made it, so a one-line name and a
+                two-line name put every figure below them at a different height
+                — and a row of cards whose money, facts and footers each sit at
+                their own level is the thing that reads as broken, even when
+                nothing is wrong with any single card.
+
+                `line-clamp-2` caps it and `min-h` reserves it, so the block is
+                the same height whether the name needs one line or three. The
+                `title` attribute carries the full name for the rare one that is
+                clipped — a truncated lease name must still be readable
+                somewhere. */}
             <span className="flex items-start justify-between gap-2">
-              <strong className="text-[13px] tracking-[0.01em]">
+              <strong
+                title={lease.name}
+                className="line-clamp-2 min-h-[36px] text-[13px] leading-[18px] tracking-[0.01em]"
+              >
                 {lease.name}
               </strong>
               <Badge tone="mint" size="xs" className="flex-none">
@@ -138,18 +154,30 @@ export function LeaseGrid({ leases }: { leases: LeaseRecord[] }) {
   );
 }
 
-/** One label-over-value pair. Muted caption, ink figure — the card's unit. */
-function Fact({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
+/**
+ * One label-over-value pair. Muted caption, ink figure — the card's unit.
+ *
+ * ── EVERY VALUE RESERVES TWO LINES ──
+ *
+ * One operator is "Burlington Resources O&G Co, LP" and wraps; the next is
+ * "Hilcorp" and does not. Left to size themselves, the pair sharing a row came
+ * out at different heights, the next pair started lower in one card than in its
+ * neighbour, and the three fact rows drifted further apart down the card. Two
+ * lines is what the longest of these fields actually needs, so reserving it
+ * costs one line of white space on the short ones and buys every card the same
+ * internal grid.
+ *
+ * CLAMPED AS WELL AS RESERVED, with the full text on `title`: a third line
+ * would put the height back where it started.
+ */
+function Fact({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <span className="block">
       <span className="block text-[10px] text-mv-muted">{label}</span>
-      <span className="mt-[1px] block text-[11.5px] font-semibold tabular-nums">
+      <span
+        title={typeof value === "string" ? value : undefined}
+        className="mt-[1px] line-clamp-2 block min-h-[30px] text-[11.5px] leading-[15px] font-semibold tabular-nums"
+      >
         {value}
       </span>
     </span>

@@ -1,9 +1,11 @@
+"use client";
+
 import { ValueBand } from "../../../_components/ui/value-band";
 import {
   formatCompactDollars,
   formatCompactVolume,
 } from "../_lib/lease-format";
-import { portfolioSummary } from "../_lib/lease-totals";
+import { useLeasesData } from "./leases-data";
 
 /**
  * THE DARK BAND — the five figures the page exists to give, above everything
@@ -30,7 +32,22 @@ export function PortfolioValueBand({
 }: {
   className?: string;
 } = {}) {
-  const summary = portfolioSummary;
+  /* THE RECORD'S OWN FIGURES, from the one read the page makes — see
+     `leases-data.tsx`. Every one is the service's `totals` block rather than a
+     sum of the rows on screen, so a filter narrowing the table below does not
+     restate the headline above it.
+
+     NOTHING IS DRAWN UNTIL THEY ARRIVE. The band is five large figures and it
+     is the first thing a reader looks at; showing the fixture's $4.44M for a
+     second and then the record's real number is worse than showing a blank
+     band, because the first figure is the one that gets remembered. The band
+     keeps its shape meanwhile so the page below does not jump. */
+  const totals = useLeasesData()?.totals ?? null;
+
+  const blank = "—";
+  const countyCaption = totals
+    ? `all ${totals.leaseCount} interest${totals.leaseCount === 1 ? "" : "s"}${totals.rollYear ? `, ${totals.rollYear} roll` : ""}`
+    : "";
 
   return (
     <ValueBand
@@ -38,7 +55,7 @@ export function PortfolioValueBand({
       stats={[
         {
           label: "Total · MVestimate",
-          value: formatCompactDollars(summary.mvestimate),
+          value: totals ? formatCompactDollars(totals.ownerValue) : blank,
           emphasis: true,
           /* The claimed-but-unpaid gate covers this one figure and no other on
              the band — the county roll is a public document and the counts are
@@ -48,22 +65,24 @@ export function PortfolioValueBand({
         },
         {
           label: "County appraised",
-          value: formatCompactDollars(summary.countyAppraised),
-          caption: `all ${summary.leaseCount} interests, ${summary.rollYear} roll`,
+          value: totals ? formatCompactDollars(totals.appraisedValue) : blank,
+          caption: countyCaption,
         },
         {
           label: "Wells · Reservoirs",
-          value: `${summary.wells} · ${summary.reservoirs}`,
-          caption: `${summary.horizontalWells} drilled sideways`,
+          value: totals
+            ? `${totals.wellCount} · ${totals.reservoirCount}`
+            : blank,
+          caption: totals ? `${totals.deviatedCount} drilled sideways` : "",
         },
         {
           label: "Gas filed to date",
-          value: formatCompactVolume(summary.gasMcf),
+          value: totals ? formatCompactVolume(totals.gasToDate) : blank,
           caption: "MCF · all leases, gross",
         },
         {
           label: "Operators · Counties",
-          value: `${summary.operators} · ${summary.counties}`,
+          value: totals ? `${totals.operators} · ${totals.counties}` : blank,
           caption: "named on the production filings",
         },
       ]}

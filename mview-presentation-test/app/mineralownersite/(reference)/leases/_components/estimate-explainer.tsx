@@ -1,4 +1,6 @@
-import { portfolioSummary } from "../_lib/lease-totals";
+"use client";
+
+import { useLeasesData } from "./leases-data";
 
 /**
  * "HOW THE MVESTIMATE AND THE COUNTY FIGURE DIFFER" — the derivation behind the
@@ -17,6 +19,8 @@ import { portfolioSummary } from "../_lib/lease-totals";
  * them on the row.
  */
 export function EstimateExplainer() {
+  const totals = useLeasesData()?.totals ?? null;
+
   return (
     <details className="group mb-3.5">
       <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-[13px] font-bold text-mv-green-deep [&::-webkit-details-marker]:hidden">
@@ -58,9 +62,16 @@ export function EstimateExplainer() {
           The MVestimate projects your share of the next six years from the
           decline model and a forward price deck. The county appraises your
           interest for tax, on last year&apos;s roll. They answer different
-          questions, so a gap between them is normal — and a large one is worth a
-          look rather than an error. The well roster and the well master agree:{" "}
-          {portfolioSummary.wells} wells.
+          questions, so a gap between them is normal — and a large one is worth
+          a look rather than an error.
+          {/* THE ROSTER COUNT IS THE RECORD'S, from the same read the band and
+              the table use — it sat one sentence under a band already showing
+              the member's own figure and disagreed with it. Dropped entirely
+              while the read is out rather than printed as a guess: the sentence
+              above is complete without it. */}
+          {totals
+            ? ` The well roster and the well master agree: ${totals.wellCount} well${totals.wellCount === 1 ? "" : "s"}.`
+            : ""}
         </p>
       </div>
     </details>

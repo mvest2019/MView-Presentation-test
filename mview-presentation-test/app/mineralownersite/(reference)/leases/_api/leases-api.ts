@@ -185,12 +185,31 @@ export async function fetchLeaseList(
     Array.isArray(page.leases) ? page.leases : [],
   );
 
+  const t = first.totals ?? {};
+
   return {
     leases: wire.map(toLeaseRecord),
     ownerName: first.owner_name ?? "",
     /** What the SERVICE says the record holds, whatever the cap let through. */
     total: first.page_info?.total ?? wire.length,
-    rollYear: first.totals?.roll_year ?? null,
+    /* OFF THE FIRST PAGE, because `totals` describes the whole record and every
+       page carries the same copy of it — see `LeaseTotals`. */
+    totals: {
+      leaseCount: num(t.lease_count),
+      wellCount: num(t.well_count),
+      reservoirCount: num(t.reservoir_count),
+      counties: num(t.counties),
+      operators: num(t.operators),
+      deviatedCount: num(t.deviated_count),
+      gasToDate: num(t.gas_to_date),
+      ownerValue: num(t.owner_value),
+      appraisedValue: num(t.appraised_value),
+      /* NOT `num()`: 0 is not a year, and the caption drops the phrase rather
+         than printing "0 roll". */
+      rollYear:
+        typeof t.roll_year === "number" && t.roll_year > 0 ? t.roll_year : null,
+      rosterNote: t.roster_note ?? "",
+    },
   };
 }
 
@@ -256,8 +275,42 @@ export interface LeaseList {
   ownerName: string;
   /** How many leases the service says the record holds. */
   total: number;
-  /** The appraisal year the county column is quoted from. */
+  /** The record's own headline figures — see `LeaseTotals`. */
+  totals: LeaseTotals;
+}
+
+/**
+ * THE WHOLE RECORD'S FIGURES, which are NOT the sum of the leases on screen.
+ *
+ * Every one of these comes from the service's `totals` block rather than being
+ * added up here, and that distinction is the point: `totals` describes the
+ * entire record — all 782 leases — while the list this page holds is whatever
+ * the paging and the filters left in it. Summing the rows would quietly change
+ * the headline every time a reader typed in the search box.
+ *
+ * `rollYear` is nullable because the county column's caption names it ("all 4
+ * interests, 2025 roll") and a caption that says "undefined roll" is worse than
+ * one that omits the year.
+ */
+export interface LeaseTotals {
+  /** How many leases are on the record. */
+  leaseCount: number;
+  wellCount: number;
+  reservoirCount: number;
+  counties: number;
+  operators: number;
+  /** Wells drilled sideways — the "2 drilled sideways" caption. */
+  deviatedCount: number;
+  /** MCF filed to date, gross, across every lease. */
+  gasToDate: number;
+  /** The owner's share of the model's valuation, in dollars. */
+  ownerValue: number;
+  /** The county's appraised value for the same interests, in dollars. */
+  appraisedValue: number;
+  /** The appraisal year the county figure is quoted from. */
   rollYear: number | null;
+  /** The service's own sentence about the roster count, when it sends one. */
+  rosterNote: string;
 }
 
 /* ============================================================================
@@ -289,7 +342,19 @@ interface WireLease {
 interface WireLeaseList {
   leases?: WireLease[];
   owner_name?: string;
-  totals?: { roll_year?: number };
+  totals?: {
+    lease_count?: number;
+    well_count?: number;
+    reservoir_count?: number;
+    counties?: number;
+    operators?: number;
+    deviated_count?: number;
+    gas_to_date?: number;
+    owner_value?: number;
+    appraised_value?: number;
+    roll_year?: number;
+    roster_note?: string;
+  };
   page_info?: { total?: number; total_pages?: number };
 }
 

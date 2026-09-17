@@ -1,4 +1,6 @@
+import type { LeaseTotals } from "../_api/leases-api";
 import { leaseRecords } from "./lease-records";
+import type { LeaseRecord } from "./lease-types";
 
 /**
  * EVERY PORTFOLIO-WIDE FIGURE ON THE PAGE, DERIVED ONCE.
@@ -38,3 +40,39 @@ export const portfolioSummary = {
   /** The appraisal year the county column is quoted from. */
   rollYear: 2025,
 } as const;
+
+/**
+ * THE SAME FIGURES, SUMMED FROM WHATEVER SET IS BEING SHOWN.
+ *
+ * `portfolioSummary` above is this over the fixture, computed once at module
+ * load. This is the function behind it, for the one caller that has a different
+ * set in hand: the UNCLAIMED state, which shows the sample leases and needs a
+ * band whose five figures agree with the list underneath them.
+ *
+ * ── IT IS NOT USED FOR A CLAIMED RECORD, AND MUST NOT BE ──
+ *
+ * There the figures come from the service's own `totals` block, which describes
+ * the WHOLE record — every lease, not the page of them this browser happens to
+ * be holding. Summing rows there would quietly restate the headline every time
+ * a filter narrowed the table. See `LeaseTotals` in `_api/leases-api.ts`.
+ *
+ * TWO FIELDS ARE STATED RATHER THAN SUMMED, for the reason the note at the top
+ * of this file gives about `horizontalWells`: how a well was drilled and which
+ * year the county roll is from are facts about the well master and the county,
+ * and neither is in a lease record to be added up.
+ */
+export function totalsFromRecords(leases: LeaseRecord[]): LeaseTotals {
+  return {
+    leaseCount: leases.length,
+    wellCount: sum(leases.map((lease) => lease.wells)),
+    reservoirCount: distinct(leases.map((lease) => lease.reservoir)),
+    counties: distinct(leases.map((lease) => lease.county)),
+    operators: distinct(leases.map((lease) => lease.operator)),
+    deviatedCount: portfolioSummary.horizontalWells,
+    gasToDate: sum(leases.map((lease) => lease.production.gasMcf)),
+    ownerValue: sum(leases.map((lease) => lease.mvestimate)),
+    appraisedValue: sum(leases.map((lease) => lease.countyAppraised)),
+    rollYear: portfolioSummary.rollYear,
+    rosterNote: "",
+  };
+}

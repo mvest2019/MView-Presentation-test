@@ -390,3 +390,57 @@ body .mv-ref-app.mv-leases-shell.no-claim .app-body {
   opacity: 0.42;
   user-select: none;
 }
+
+/* ============================================================================
+   NOT CLAIMED IS ONE PAGE, WHATEVER THE DENSITY SAYS
+   ============================================================================
+
+   `LeasesPortalRoot` already renders DETAILED in this state whatever the avatar
+   menu says, so in principle none of these can fire. This states it in CSS as
+   well, because the cost of the two disagreeing is not a slightly different
+   page — it is NO LEASE LIST AT ALL, and that is worth making impossible rather
+   than unlikely.
+
+   ── HOW THAT HAPPENS, AND WHY IT IS NOT OBVIOUS ──
+
+   Two stylesheets gate on the same five class names off two different roots.
+   `Portal` forces the SHELL to Professional while nothing is claimed; the
+   module renders its own density on the wrapper. Let those two disagree — the
+   shell at `view-pro`, the wrapper at `view-simple` — and:
+
+     `.mv-ref-app:not(.view-simple) .tier-s`  hides the plain-English list,
+        because the SHELL is not Essentials;
+     `.mv-portal.view-simple .hide-s`         hides the tab strip and table,
+        because the WRAPPER is.
+
+   Each rule is doing exactly its job, and between them every lease on the page
+   disappears — the header, the band and the change feed render, and the page
+   simply stops. Reported from Essentials, unclaimed.
+
+   ── WHY `base`, AND WHY `!important` ──
+
+   The reference sheet's gates are `!important`, and important declarations
+   invert the layer order: an important rule in an EARLIER layer beats one in a
+   later layer and beats every unlayered rule. `base` is earlier than
+   `mv-reference`, which makes it the only place an answer can be written. See
+   the same reasoning, at more length, in the `mv-map-reset` block above.
+
+   THE THREE RULES ARE THE STATE'S OWN ANSWER, not a density's: while nothing is
+   claimed this page has ONE shape, so the Essentials list is off, the Ultra
+   card is off, and the table is on — at Ultra, Essentials, Detailed and
+   Professional alike.
+   ============================================================================ */
+@layer base {
+  .mv-ref-app .mv-portal.no-claim .tier-s,
+  .mv-ref-app .mv-portal.no-claim .tier-u {
+    display: none !important;
+  }
+
+  /* Every element that carries `hide-s` in this module is a bare wrapper
+     `<div>` whose only job is to be gated — the module's own convention, and
+     the reason `block` is the right value. See the note on the same choice in
+     the `mv-map-reset` block. */
+  .mv-ref-app .mv-portal.no-claim .hide-s {
+    display: block !important;
+  }
+}
