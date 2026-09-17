@@ -2,11 +2,11 @@
    import in `lease-step.tsx`. This is still the one place the page reads the
    leases fixture, so pointing it at a database later remains a single-file
    change. */
-import { formatLeaseTitle } from "@/app/mineralownersite/(portal)/leases/_lib/lease-format";
+import { formatLeaseTitle } from "@/app/mineralownersite/(reference)/leases/_lib/lease-format";
 import {
   leaseOwnerRecord,
   leaseRecords,
-} from "@/app/mineralownersite/(portal)/leases/_lib/lease-records";
+} from "@/app/mineralownersite/(reference)/leases/_lib/lease-records";
 import type { CoOwner, InviteLease, OwnerKind } from "./invite-types";
 
 /**

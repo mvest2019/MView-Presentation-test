@@ -18,10 +18,17 @@
  *   headings to `font-size:inherit`, strips link colour and zeroes margins —
  *   run over the reference sheet, it would flatten the whole Dashboard.
  *
- *   `mv-map-reset` sits just above it, and holds one thing: the map's undo of
- *   the reference's form-control reset. See `(reference)/map/map-shell.css`.
- *   It has to beat `mv-reference` and still lose to `utilities`, which is
- *   exactly one slot, and this is it.
+ *   `mv-map-reset` sits just above it, and holds one thing: the undo of the
+ *   reference's form-control reset, for the Tailwind-built pages that wear the
+ *   reference chrome. It has to beat `mv-reference` and still lose to
+ *   `utilities`, which is exactly one slot, and this is it.
+ *
+ *   TWO PAGES USE IT NOW — `(reference)/map/map-shell.css` and
+ *   `(reference)/leases/leases-shell.css`, each scoping the undo to its own
+ *   subtree. The name is the Map's, from when it was the only one; it is left
+ *   alone because renaming a layer means editing the statement below, which has
+ *   to be the first thing in the first stylesheet. A third page that is built
+ *   in Tailwind and rendered inside `Portal` will want this slot too.
  *
  *   BEFORE `utilities`, so a Tailwind class CAN override it. That is the point.
  *   `dashboard-reference.css` scopes ~600 rules to `.mv-ref-app`, and around

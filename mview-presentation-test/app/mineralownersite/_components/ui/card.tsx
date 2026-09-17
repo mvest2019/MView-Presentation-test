@@ -43,6 +43,14 @@ export function Card({
 } & ComponentProps<"div">) {
   return (
     <div
+      /*
+       * `data-mv-card` IS A HOOK FOR RULES THIS COMPONENT NEVER APPLIES — the
+       * same arrangement `KpiTile` uses with `data-mv-kpi`. A Tailwind card
+       * has no stable class name for `portal.css` to select, so a state rule
+       * that has to reach every card on a route has nothing to aim at. The
+       * unclaimed state's dashed sample border is the first such rule.
+       */
+      data-mv-card=""
       className={`rounded-mv border border-mv-line bg-mv-card shadow-mv ${
         padded ? "p-[22px]" : ""
       } ${

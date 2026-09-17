@@ -22,10 +22,16 @@ import "../portal.onebar.css";
  * `portal.css` for the design system. Nothing outside imports from here, and
  * the only thing this tree reaches out for is the shared logo config.
  *
- * ADDING A MODULE means adding a folder — `alerts/page.tsx`, `leases/page.tsx` —
- * and giving that row its `href` in `_lib/portal-nav.ts`. The shell, both
- * pinned bars, the sidebar, the drawer and the tab bar all come from this
- * layout, so no new module restructures anything or re-implements chrome.
+ * WHAT IS STILL IN THIS GROUP: the claim flow and Settings. Everything else —
+ * the Dashboard, the Weekly Report, Alerts, Activities, Production, the Map and
+ * now My Leases — renders through `Portal` in `(reference)`, so they all wear
+ * one header from one file. A new module belongs there unless it has a reason
+ * not to; see the note at the top of `(reference)/layout.tsx`.
+ *
+ * ADDING A MODULE HERE means adding a folder and giving that row its `href` in
+ * `_lib/portal-nav.ts`. The shell, both pinned bars, the sidebar, the drawer
+ * and the tab bar all come from this layout, so no new module restructures
+ * anything or re-implements chrome.
  *
  * SEO. The route stays `mineralownersite` because it is descriptive and stable,
  * as asked. Every page under it is `noindex, nofollow`: this is a signed-in
@@ -34,21 +40,21 @@ import "../portal.onebar.css";
  * covers the whole subtree, so a module added later inherits it and cannot
  * accidentally ship indexable.
  *
- * WHAT THIS LAYOUT IS NOT: an auth boundary. The portal is reachable by anyone
- * with the URL, and the demo record it prints is fictional, so nothing private
- * is exposed today. The moment it shows a real owner's figures it needs a
- * server-side check here and an API that authorises each read — see the note at
- * the foot of `_lib/portal-state.ts` and the warning in `lib/session.ts`.
+ * WHAT THIS LAYOUT IS STILL NOT: the auth boundary. The portal is gated now —
+ * a request with no `mv_user` session is redirected to `/login` — but that
+ * gate lives in `proxy.ts` at the app root, not here: the proxy runs on every
+ * request, where a layout only re-runs when the server renders it, so an
+ * expired cookie is caught even on a client navigation between portal routes.
+ * The cookie it checks is unsigned (see `lib/session.ts`), so the gate keeps
+ * honest visitors out; per-read authorisation still belongs to the API.
  *
  * IT DOES READ THE SESSION, and reading is not gating. `getSessionUser()` is
  * awaited here so the chrome can print the member's own name, email and picture
  * instead of the demo persona's, and the value goes into
  * `PortalSessionProvider` because the cookie is httpOnly and the shell is a
- * client component. NOTHING IS REDIRECTED ON A NULL — a signed-out visitor still
- * gets the whole portal, as before, with the demo identity in the account menu.
- * Adding a redirect here would be the auth boundary this paragraph says the
- * layout is not, and it needs the API-side authorisation described above rather
- * than a cookie check.
+ * client component. A null still renders rather than redirecting — the proxy
+ * means one should never reach here, but a layout that 500'd or bounced on a
+ * race would be worse than one that quietly shows the demo identity.
  *
  * The marketing header and footer from the root layout still wrap this, so a
  * visitor keeps one way back to the public site. The portal's own sidebar foot
