@@ -62,7 +62,13 @@ export function LeaseTableRow({ lease }: { lease: LeaseRecord }) {
         </span>
       </TableCell>
 
-      <TableCell numeric>
+      {/* `data-mv-lease-estimate` IS A HOOK FOR A RULE THIS CELL NEVER APPLIES,
+          the same arrangement `ui/card.tsx` records for `data-mv-card`. On the
+          free tier the per-lease MVestimate is the part Premium buys, so the
+          whole cell — the figure and the "earning · projection" basis under it
+          — is withheld. Which states withhold it is `leases-shell.css`'s
+          decision to make, not this component's. */}
+      <TableCell numeric data-mv-lease-estimate="">
         <LeaseEstimateCell lease={lease} />
       </TableCell>
 

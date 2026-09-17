@@ -19,10 +19,16 @@ import "../portal.css";
  * `portal.css` for the design system. Nothing outside imports from here, and
  * the only thing this tree reaches out for is the shared logo config.
  *
- * ADDING A MODULE means adding a folder — `alerts/page.tsx`, `leases/page.tsx` —
- * and giving that row its `href` in `_lib/portal-nav.ts`. The shell, both
- * pinned bars, the sidebar, the drawer and the tab bar all come from this
- * layout, so no new module restructures anything or re-implements chrome.
+ * WHAT IS STILL IN THIS GROUP: the claim flow and Settings. Everything else —
+ * the Dashboard, the Weekly Report, Alerts, Activities, Production, the Map and
+ * now My Leases — renders through `Portal` in `(reference)`, so they all wear
+ * one header from one file. A new module belongs there unless it has a reason
+ * not to; see the note at the top of `(reference)/layout.tsx`.
+ *
+ * ADDING A MODULE HERE means adding a folder and giving that row its `href` in
+ * `_lib/portal-nav.ts`. The shell, both pinned bars, the sidebar, the drawer
+ * and the tab bar all come from this layout, so no new module restructures
+ * anything or re-implements chrome.
  *
  * SEO. The route stays `mineralownersite` because it is descriptive and stable,
  * as asked. Every page under it is `noindex, nofollow`: this is a signed-in

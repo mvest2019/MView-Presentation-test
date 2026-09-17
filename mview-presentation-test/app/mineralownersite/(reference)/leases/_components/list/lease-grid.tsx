@@ -77,10 +77,21 @@ export function LeaseGrid({ leases }: { leases: LeaseRecord[] }) {
               {lease.number ? `Lease ${lease.number}` : ""}
             </span>
 
-            <span className="mt-2.5 block text-[26px] leading-none font-extrabold text-mv-green-deep tabular-nums">
+            {/* THE SAME FIGURE THE TABLE WITHHOLDS, so it carries the same
+                hook — the grid is a second view of one list, not a way round
+                it. See the note on the cell in `lease-table-row.tsx`. The
+                caption is marked too: "Estimated revenue" over a blurred number
+                reads as a label for nothing. */}
+            <span
+              data-mv-lease-estimate=""
+              className="mt-2.5 block text-[26px] leading-none font-extrabold text-mv-green-deep tabular-nums"
+            >
               {formatCompactDollars(lease.mvestimate)}
             </span>
-            <span className="mt-[5px] block text-[10.5px] text-mv-muted">
+            <span
+              data-mv-lease-estimate=""
+              className="mt-[5px] block text-[10.5px] text-mv-muted"
+            >
               Estimated revenue
             </span>
 

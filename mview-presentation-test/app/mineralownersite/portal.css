@@ -532,8 +532,23 @@
   overflow-wrap: anywhere;
 }
 
+/* ANCHORS AND BUTTONS BOTH, and the buttons are not a variant — they are the
+   same row rendered by an element that does not navigate.
+
+   The demo state menu stopped being five links when the funnel state came out
+   of the URL: picking a state writes a cookie and refreshes, so the rows became
+   `<button role="menuitemradio">`. Selectors that named only `a` then matched
+   nothing, and every row in both menus collapsed to a 0px-wide inline-block of
+   unstyled text. A `role` is what a row IS; the tag is only how it got there,
+   so both tags are listed on every rule below.
+
+   THE FOUR RESET PROPERTIES are what an `<a>` never needed: a button carries a
+   UA background, border, font and width of its own, and `display: flex` alone
+   leaves it shrink-wrapped and centred in the middle of the panel. */
 .mv-portal .v41-avmenu a[role="menuitem"],
-.mv-portal .v41-avmenu a[role="menuitemradio"] {
+.mv-portal .v41-avmenu a[role="menuitemradio"],
+.mv-portal .v41-avmenu button[role="menuitem"],
+.mv-portal .v41-avmenu button[role="menuitemradio"] {
   display: flex;
   align-items: center;
   gap: 9px;
@@ -545,8 +560,20 @@
   text-decoration: none;
 }
 
+.mv-portal .v41-avmenu button[role="menuitem"],
+.mv-portal .v41-avmenu button[role="menuitemradio"] {
+  width: 100%;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .mv-portal .v41-avmenu a[role="menuitem"]:hover,
-.mv-portal .v41-avmenu a[role="menuitemradio"]:hover {
+.mv-portal .v41-avmenu a[role="menuitemradio"]:hover,
+.mv-portal .v41-avmenu button[role="menuitem"]:hover,
+.mv-portal .v41-avmenu button[role="menuitemradio"]:hover {
   background: #f0faf5;
   text-decoration: none;
 }
@@ -584,7 +611,8 @@
   padding-top: 4px;
 }
 
-.mv-portal .mv-demo-menu a[role="menuitemradio"] {
+.mv-portal .mv-demo-menu a[role="menuitemradio"],
+.mv-portal .mv-demo-menu button[role="menuitemradio"] {
   align-items: flex-start;
   gap: 8px;
   font-weight: 600;
@@ -613,7 +641,8 @@
   line-height: 1.35;
 }
 
-.mv-portal .mv-demo-menu a[role="menuitemradio"][aria-checked="true"] {
+.mv-portal .mv-demo-menu a[role="menuitemradio"][aria-checked="true"],
+.mv-portal .mv-demo-menu button[role="menuitemradio"][aria-checked="true"] {
   background: var(--mint);
 }
 

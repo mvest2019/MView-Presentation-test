@@ -3,9 +3,12 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 
+import Portal from "../../../_components/reference/Portal";
 import { portalGate } from "../../../_components/ui/portal-gating";
+import { LeasesPortalRoot } from "../_components/leases-portal-root";
 import { findLeaseBySlug } from "../_lib/lease-routes";
 import { sampleTwinOf } from "../_lib/sample-leases";
+import { loadShellPayload } from "../_lib/shell-payload";
 import { funnelStateFromCookie } from "../../../_lib/funnel-state-store";
 import {
   normaliseStateParam,
@@ -31,6 +34,12 @@ import { buildLeaseReport } from "./_lib/lease-report";
 
 /**
  * THE LEASE REPORT — `/mineralownersite/leases/290827-mccabe-etal-gu`.
+ *
+ * ── IT WEARS THE SAME CHROME AS EVERY OTHER PAGE ──
+ *
+ * Like the list it opens from, this renders `Portal` with `route="leases"` and
+ * brings its own body through `children`. One header file for the whole portal;
+ * see the note in `leases/page.tsx` and in `_components/leases-portal-root.tsx`.
  *
  * ── THE URL CARRIES THE NUMBER AND THE NAME ──
  *
@@ -94,12 +103,14 @@ export async function generateMetadata({
   };
 }
 
-/** `?report=` — the three reports on one lease. Anything else is the lease. */
+export const dynamic = "force-dynamic";
+
 /** `searchParams` hands back a string, an array, or nothing. */
 function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
+/** `?report=` — the three reports on one lease. Anything else is the lease. */
 function resolveTab(value: string | string[] | undefined): LeaseReportTab {
   return value === "reservoir" || value === "wells" ? value : "lease";
 }
@@ -120,24 +131,28 @@ export default async function LeaseReportPage({
   /*
    * ── AN UNCLAIMED VISITOR READS THE SAMPLE OF THIS LEASE, AT THIS URL ──
    *
-   * The state reaches the server as a COOKIE the demo menu writes — see
-   * `funnel-state-store.ts` — so the whole swap is still one assignment, and
-   * the address bar is not involved at any point.
+   * The state reaches the server as a COOKIE — see `funnel-state-store.ts` — so
+   * the whole swap is still one assignment, and the address bar is not involved
+   * at any point. The shared shell keeps its own copy in `localStorage`, which
+   * no server can read, so `LeasesPortalRoot` mirrors it into the cookie and
+   * re-renders whenever the two disagree.
    *
-   * THE PATH DOES NOT MOVE, and that is the point. Switching funnel state is a
-   * query change everywhere else in the portal, and the dashboard switches with
-   * no navigation at all; a route that also rewrote the path would make the
-   * state menu behave differently here, and Back would step between two
-   * different leases rather than between two states of one.
+   * THE PATH DOES NOT MOVE, and that is the point. Switching funnel state
+   * changes no URL anywhere in the portal; a route that rewrote the path would
+   * make the state menu behave differently here, and Back would step between
+   * two different leases rather than between two states of one.
    *
    * The sample twin carries its own slug so its series and wells resolve — see
    * `sample-leases.ts`. Links go through `routeSlugFor`, which maps it back, so
    * that slug never reaches the address bar.
    */
-  /* The cookie the state menu writes, with `?state=` still winning as a deep
-     link — the same order the provider uses on the client, so the two halves of
-     one page never disagree about which state they are in. */
-  const store = await cookies();
+  /* The chrome's owner snapshot and this page's own state read, in parallel.
+     `?state=` still wins as a deep link — the same order the shell uses, so the
+     two halves of one page never disagree about which state they are in. */
+  const [initial, store] = await Promise.all([
+    loadShellPayload(searchParams),
+    cookies(),
+  ]);
   const state = stateParam
     ? toFunnelState(normaliseStateParam(firstParam(stateParam)))
     : funnelStateFromCookie(store.get(STORAGE_KEYS.funnelState)?.value);
@@ -148,50 +163,55 @@ export default async function LeaseReportPage({
   const report = buildLeaseReport(lease);
 
   return (
-    <div
-      className={`${portalGate.pageRoot} ${portalGate.reportRoot} ${portalGate.wideColumn}`}
-    >
-      {/* THREE THINGS SURVIVE ULTRA, and each earns it: which lease, what it is
-            worth, and one sentence in place of the body. Strip the first two and
-            the remaining sentence is about an unnamed lease. `ultraKeep` is the
-            portal's own exemption — see the rule in `portal.css`. */}
-      <div className={portalGate.ultraKeep}>
-        <LeaseReportHeader lease={lease} tab={tab} />
-      </div>
-      <div className={portalGate.ultraKeep}>
-        <ReportBand report={report} />
-      </div>
-      <UltraNote report={report} />
+    <Portal route="leases" initial={initial} shellClass="mv-leases-shell">
+      <LeasesPortalRoot serverFunnelState={state}>
+        <div
+          className={`${portalGate.pageRoot} ${portalGate.reportRoot} ${portalGate.wideColumn}`}
+        >
+          {/* THREE THINGS SURVIVE ULTRA, and each earns it: which lease, what it
+              is worth, and one sentence in place of the body. Strip the first
+              two and the remaining sentence is about an unnamed lease.
+              `ultraKeep` is the portal's own exemption — see the rule in
+              `portal.css`. */}
+          <div className={portalGate.ultraKeep}>
+            <LeaseReportHeader lease={lease} tab={tab} />
+          </div>
+          <div className={portalGate.ultraKeep}>
+            <ReportBand report={report} />
+          </div>
+          <UltraNote report={report} />
 
-      <LeaseFactsStrip report={report} />
-      <ReportTabs
-        slug={lease.slug}
-        active={tab}
-        reservoir={lease.reservoir}
-        firstPosting={report.firstPosting}
-        lastPosting={report.lastPosting}
-      />
+          <LeaseFactsStrip report={report} />
+          <ReportTabs
+            slug={lease.slug}
+            active={tab}
+            reservoir={lease.reservoir}
+            firstPosting={report.firstPosting}
+            lastPosting={report.lastPosting}
+          />
 
-      {tab === "lease" && (
-        <>
-          <FiguresPanel report={report} />
-          <CumulativeCard report={report} />
-          <ReservesCard report={report} />
-          <FindingsCard report={report} />
-          {/* NO DENSITY GATES ON THESE THREE. The twelve-month panel and the
-                ranking were hidden at Essentials, and the full-precision record
-                was Professional-only. All three are on the page at every tier
-                now — see the note in `leases/page.tsx`. */}
-          <TwelveMonthsCard report={report} />
-          <MeasuresCard report={report} />
-          <PrecisionCard report={report} />
-          <WellsMapCard report={report} />
-        </>
-      )}
+          {tab === "lease" && (
+            <>
+              <FiguresPanel report={report} />
+              <CumulativeCard report={report} />
+              <ReservesCard report={report} />
+              <FindingsCard report={report} />
+              {/* NO DENSITY GATES ON THESE THREE. The twelve-month panel and the
+                  ranking were hidden at Essentials, and the full-precision
+                  record was Professional-only. All three are on the page at
+                  every tier now — see the note in `leases/page.tsx`. */}
+              <TwelveMonthsCard report={report} />
+              <MeasuresCard report={report} />
+              <PrecisionCard report={report} />
+              <WellsMapCard report={report} />
+            </>
+          )}
 
-      {tab === "reservoir" && <ReservoirReportView lease={lease} />}
+          {tab === "reservoir" && <ReservoirReportView lease={lease} />}
 
-      {tab === "wells" && <WellReportView lease={lease} />}
-    </div>
+          {tab === "wells" && <WellReportView lease={lease} />}
+        </div>
+      </LeasesPortalRoot>
+    </Portal>
   );
 }
