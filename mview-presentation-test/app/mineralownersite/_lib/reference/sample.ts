@@ -457,8 +457,35 @@ export function sampleize(input: Payload): SampleResult {
      where it was — 56 BBL reads 56,000 BBL, 14,477 MCF reads 14,477,000 MCF —
      so the preview scales without disguising the shape of the record. */
   const f = 1000;
-  const nm = (i: number) => LEASE_NAMES[i % LEASE_NAMES.length];
-  const op = (i: number) => OPERATOR_NAMES[i % OPERATOR_NAMES.length];
+  /**
+   * ONE SAMPLE NAME PER REAL ONE — AT ANY PORTFOLIO SIZE.
+   *
+   * Both pools were read with a bare modulo, so the twenty-first lease was
+   * given the first lease's name and the ninth operator the first operator's.
+   * The captured record holds ten leases and three operators, which is why it
+   * never showed here; a real one holds 794 leases across 57 operators, so the
+   * not-claimed page printed forty leases called BLUESTEM RANCH and seven
+   * operators called ALTON BASIN OPERATING — in the lease table, in the value
+   * chart, in the operator list and in every alert that names one. Defect
+   * sheet row 22, "Duplicate operators and duplicate leases in Not claimed".
+   *
+   * IT IS NOT A LONGER LIST. A pool of 794 names is the same bug postponed to
+   * the next bigger record, and this transform's contract is that the sample
+   * is a faithful SHAPE of the real portfolio — 794 distinct leases have to
+   * read as 794 distinct leases. The pool now supplies the name and the pass
+   * number supplies a designator, which is how the roll itself distinguishes
+   * repeated names: "PECAN BEND", then "PECAN BEND 2", "PECAN BEND 3". Unique
+   * for every index, stable for a given index, and still a plausible name.
+   *
+   * The first pass is unsuffixed so a small record — every record this app has
+   * shipped against so far — reads exactly as it did before.
+   */
+  const fromPool = (pool: string[], i: number): string => {
+    const pass = Math.floor(i / pool.length);
+    return pass === 0 ? pool[i] : `${pool[i % pool.length]} ${pass + 1}`;
+  };
+  const nm = (i: number) => fromPool(LEASE_NAMES, i);
+  const op = (i: number) => fromPool(OPERATOR_NAMES, i);
 
   const s = (v: number | null | undefined): number =>
     typeof v === 'number' && Number.isFinite(v) ? Math.round(v * f * 100) / 100 : 0;
@@ -534,10 +561,24 @@ export function sampleize(input: Payload): SampleResult {
   /* A SAMPLE ID FOR A REAL LEASE ID — see `names()`.
      Lettered, not numbered: `scrub()` masks every digit in a sentence, so
      "SMPL-3" rendered as "SMPL•••". A letter is not a figure, so it survives
-     and the reader gets a legible reference. */
+     and the reader gets a legible reference.
+
+     IT CARRIES ON PAST Z. `i % 26` handed the twenty-seventh lease the first
+     lease's reference, which is the same defect as the repeated names above
+     and worse, because a reference is what a reader uses to tell two rows with
+     similar names apart. Counting in letters gives AA, AB … for as many leases
+     as the record holds, and the first twenty-six are unchanged. */
   const leaseRef = new Map<string, string>();
-  real.leases.forEach((l, i) =>
-    leaseRef.set(l.lease_id, 'SMPL-' + String.fromCharCode(65 + (i % 26))));
+  const letters = (i: number): string => {
+    let out = '';
+    let n = i;
+    do {
+      out = String.fromCharCode(65 + (n % 26)) + out;
+      n = Math.floor(n / 26) - 1;
+    } while (n >= 0);
+    return out;
+  };
+  real.leases.forEach((l, i) => leaseRef.set(l.lease_id, 'SMPL-' + letters(i)));
 
   let opi = 0;
 
@@ -605,8 +646,36 @@ export function sampleize(input: Payload): SampleResult {
     if (v.trim().length < 4) return v;
     return registerOp(v);
   };
-  const subLease = (v: string | null): string | null =>
-    v ? (leaseName.get(v) ?? nm(seedOf(v) % LEASE_NAMES.length)) : v;
+  /**
+   * A LEASE NAME THE MAP HAS NEVER SEEN GETS THE NEXT FREE SAMPLE NAME.
+   *
+   * The fallback used to hash the real name into the pool — `nm(seedOf(v) %
+   * LEASE_NAMES.length)` — which hands out a name the map has very likely
+   * already given to one of the owner's own leases. Two unrelated leases then
+   * read as the same lease, which is the duplicate in row 22 arriving by a
+   * second route: the alert feed and the ring panel both name leases that are
+   * not in `real.leases`.
+   *
+   * Registered instead, exactly as `registerOp` does for a company: the next
+   * index after the owner's own leases, remembered so the same real name keeps
+   * the same sample name everywhere it appears, and unique because `nm` is now
+   * unique for every index.
+   *
+   * IN ITS OWN MAP, NOT IN `leaseName`. Two places read `leaseName.has(...)`
+   * as the question "is this one of HER leases" — `publicRow` and the ring
+   * neighbours — so anything written into it stops being an answer to that
+   * question. `foreignLease` keeps the memo without moving that line.
+   */
+  const foreignLease = new Map<string, string>();
+  let leasei = real.leases.length;
+  const subLease = (v: string | null): string | null => {
+    if (!v) return v;
+    const seen = leaseName.get(v) ?? foreignLease.get(v);
+    if (seen) return seen;
+    const made = nm(leasei++);
+    foreignLease.set(v, made);
+    return made;
+  };
 
   /**
    * Is this one of the OWNER'S OWN operators, under any spelling?

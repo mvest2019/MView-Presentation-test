@@ -74,6 +74,7 @@ import WeeklyView from './WeeklyView';
 import AlertsView from './AlertsView';
 import ActivitiesView from './ActivitiesView';
 import DrawerPanel from './DrawerPanel';
+import type { SpotQuote } from './Chrome';
 import Loader, { type Step } from './Loader';
 import ProductionView from './ProductionView';
 import { PortalViewStateProvider } from './view-state';
@@ -87,6 +88,108 @@ export type Route = 'dashboard' | 'alerts' | 'activities' | 'leases'
   | 'production' | 'weekly' | 'map';
 
 /** the five funnel states, in funnel order — the prototype's own sequence */
+/** the brief's interval, and the only thing on this page that repeats */
+const SPOT_POLL_MS = 10_000;
+
+/* ------------------------------------------- long name lists in a drawer */
+/**
+ * PAST THREE NAMES, A LIST IS A COUNT.
+ *
+ * WHAT THIS FIXES. The service composes each explainer's prose itself, and for
+ * a portfolio of any size it spells the whole county list into the middle of a
+ * sentence: "284 wells have been completed and reported in ANDREWS, BORDEN,
+ * BURLESON, CROCKETT, CULBERSON, DAWSON, FREESTONE, GLASSCOCK, GRAYSON,
+ * GRIMES, HOWARD, IRION, JONES, LEE, LEON, LIBERTY, LOVING, MARTIN, MIDLAND,
+ * PECOS, REEVES, UPTON, WINKLER in the last 24 months." Twenty-three names is
+ * not a fact a reader takes in; the number is. Measured on the live record,
+ * that exact list is inlined in four places across the drawers — `completions`
+ * and `status` in their opening line, and the `alert:completions` and
+ * `alert:permits-filed` panels in their titles.
+ *
+ * IT MATCHES THE PAYLOAD'S OWN LIST, VERBATIM, AND NOTHING ELSE. `totals`
+ * carries `counties` and `operator_names`, which are the same arrays the
+ * service builds that sentence from, so the whole joined string is searched
+ * for as one literal and swapped for its count.
+ *
+ * A PATTERN WOULD HAVE BEEN WRONG, and this is not a theoretical objection.
+ * The obvious alternative — collapse any run of comma-separated capitalised
+ * words — rewrites things that are not name lists at all: `alert:permits-filed`
+ * has the evidence row "JETTA OPERATING COMPANY, INC., New Drill", where the
+ * commas are inside ONE operator's name and the run is three "items" long.
+ * Matching the known list exactly cannot misfire on prose it was not meant to
+ * touch, and cannot collapse a list of two counties that happens to sit beside
+ * two other capitalised words.
+ *
+ * THE CONSEQUENCE, STATED: where the service composes a DIFFERENT selection —
+ * a subset, another order, another separator — nothing matches and the text is
+ * left exactly as it came. That is the intended trade. Leaving a sentence
+ * untouched is a much smaller fault than rewriting one this did not understand.
+ *
+ * AT THE DRAWER, NOT AT THE PAYLOAD, so this reaches every right-side panel —
+ * the eleven flat ones, the twelve `pf_*`, and each `lease:*`, `well:*` and
+ * `alert:*` — and reaches nothing else. The Dashboard page has its own, older
+ * answer to the same problem in `NameList`, which collapses the greeting line's
+ * counties at five and its operators at three and gives the reader a control to
+ * expand them; that is untouched, and so are the alert cards on the Alerts page
+ * whose titles these drawers borrow.
+ */
+const MAX_DRAWER_NAMES = 3;
+
+function collapseList(text: string, names: string[], many: string): string {
+  if (names.length <= MAX_DRAWER_NAMES) return text;
+  const joined = names.join(', ');
+  if (!joined || !text.includes(joined)) return text;
+  return text.split(joined).join(`${names.length} ${many}`);
+}
+
+/**
+ * One panel with its county and operator lists reduced to counts.
+ *
+ * Returns the SAME object when nothing matched, so a panel the service wrote
+ * without a list in it keeps its identity across renders — `DrawerPanel` keys
+ * its scroll reset on `copy.title`, and there is no reason to hand it a new
+ * object to compare.
+ */
+function collapseNames(
+  d: DrawerCopy | null, counties: string[], operators: string[],
+): DrawerCopy | null {
+  if (!d) return null;
+  if (counties.length <= MAX_DRAWER_NAMES && operators.length <= MAX_DRAWER_NAMES) return d;
+  const fix = (t: string) =>
+    collapseList(collapseList(t, counties, 'counties'), operators, 'operators');
+
+  let touched = false;
+  const one = (t: string) => { const v = fix(t); if (v !== t) touched = true; return v; };
+
+  const next: DrawerCopy = {
+    ...d,
+    title: one(d.title),
+    sub: one(d.sub),
+    what: one(d.what),
+    means: one(d.means),
+    next: one(d.next),
+    evidence: d.evidence.map(one),
+    chips: d.chips.map(one),
+    /* THE STATS BAND TOO, AND IT WAS THE ONE PLACE THIS FIRST MISSED.
+       `AlertStat` looked like a label and a figure — nothing a list would fit
+       in — so it was left out. It is where the list is most visible: the
+       completions and permits panels put the whole thing in `sub` under the
+       count ("Wells completed / 284 / in ANDREWS, BORDEN, ..."), and the
+       `completions` panel has a third tile whose `value` IS the bare list.
+       So all three text fields go through, and `tone` is carried across
+       untouched by the spread. */
+    ...(d.stats
+      ? { stats: d.stats.map((st) => ({
+        ...st,
+        label: one(st.label),
+        value: one(st.value),
+        ...(st.sub === undefined ? {} : { sub: one(st.sub) }),
+      })) }
+      : {}),
+  };
+  return touched ? next : d;
+}
+
 export const FUNNEL = [
   { key: 'unclaimed', label: 'Not claimed',
     note: 'Nothing is claimed yet, so every figure is a sample.' },
@@ -493,7 +596,30 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
     return () => window.removeEventListener('popstate', onPop);
   }, [initialRoute]);
 
-  const go = useCallback((r: Route) => {
+  /**
+   * `params` CARRIES A DESTINATION'S OWN STATE IN THE QUERY STRING.
+   *
+   * Added for the Dashboard's alert category chips: "2 Money" used to call a
+   * bare `go('alerts')` and land on the unfiltered list with "All" active, so
+   * the count the reader clicked and the count they arrived at disagreed. A
+   * chip now passes `{ cat: 'money' }` and `AlertsView` reads it on mount.
+   *
+   * IT MERGES RATHER THAN REPLACES. The owner is in the query string too, and
+   * the note below is explicit that every route change has to keep it — so the
+   * extra keys are written on top of `window.location.search` instead of
+   * standing in for it. A key whose value is null is DELETED, which is what
+   * lets a later navigation clear a filter it does not want.
+   */
+  const go = useCallback((r: Route, params?: Record<string, string | null>) => {
+    const query = (() => {
+      const q = new URLSearchParams(window.location.search);
+      for (const [k, v] of Object.entries(params ?? {})) {
+        if (v == null) q.delete(k);
+        else q.set(k, v);
+      }
+      const str = q.toString();
+      return str ? '?' + str : '';
+    })();
     /* THE FOUR ROUTES THIS SHELL OWNS SWITCH WITHOUT A REQUEST — the
        reference's own arrangement, for the reference's own reason: "a route
        change must not discard a snapshot that took seconds to build". The Map
@@ -510,13 +636,12 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
        were looking at. */
     if (children || !OWNED.includes(r)) {
       setDrawer(null);
-      router.push(ROUTE_PATH[r] + window.location.search);
+      router.push(ROUTE_PATH[r] + query);
       return;
     }
     setRoute(r);
     setDrawer(null);
-    const q = window.location.search;
-    window.history.pushState({ r }, '', ROUTE_PATH[r] + q);
+    window.history.pushState({ r }, '', ROUTE_PATH[r] + query);
     window.scrollTo({ top: 0, behavior: 'auto' });
   }, [router, children]);
 
@@ -560,6 +685,46 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
     }
   }, []);
 
+  /**
+   * RE-READ THIS MEMBER'S PAYLOAD, AND RESOLVE WHEN IT IS IN STATE.
+   *
+   * WHY NOT `router.refresh()`. That was the first answer here and it is the
+   * wrong tool for a caller that has to KNOW when the data landed. `refresh()`
+   * returns void: wrapped in `startTransition`, `isPending` tracks React's own
+   * render, not the round trip behind it, so on a large record it settled
+   * seconds before the new payload arrived. Anything keyed on it — a loader,
+   * a disabled control — came down over the PREVIOUS owner's figures and sat
+   * there until the refresh finally delivered. Measured on a 100+ lease
+   * record: ten to eleven seconds of the old owner's dashboard after the
+   * loading state had already ended.
+   *
+   * An awaited fetch has no such gap. It resolves exactly once `setLive` has
+   * been called, so a caller can hold its loading state across the whole wait
+   * and drop it in the same tick the data becomes renderable — React batches
+   * that `setLive` with whatever the caller sets next, so the new payload and
+   * the end of the wait reach the screen in ONE render rather than two.
+   *
+   * NO PARAMETERS, DELIBERATELY. `/api/portfolio` resolves a signed-in member
+   * through `currentMemberTarget()` and answers with whichever record is
+   * ACTIVE, so after the active record has been changed this reads the new one
+   * by asking for nothing. `load()` beside it is the owner-PICKER's path and
+   * writes `?owner=` into the address bar; this must not, because the member's
+   * active record is not a URL-selected owner.
+   */
+  const reloadActiveOwner = useCallback(async (): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/portfolio', { cache: 'no-store' });
+      if (!res.ok) return false;
+      const data = (await res.json()) as Payload;
+      setLive(data);
+      /* the open drawer belongs to the record that is going away */
+      setDrawer(null);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
   /* If the server could not build the first payload, retry from the client
      instead of showing a dead page. */
   useEffect(() => {
@@ -576,50 +741,63 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
 
   /* ------------------------------------------------------- the sample view */
   /**
+  /**
    * ONE SAMPLE RECORD, THE SAME ONE FOR EVERY READER.
    *
    * Not claimed means the reader has not proved these interests are theirs, so
    * the payload is rewritten as a sample of itself — same shape, same code
    * path, real dates, illustrative figures.
    *
-   * WHAT CHANGED: WHICH PAYLOAD IS REWRITTEN. `sampleize(live)` rewrote the
-   * READER'S OWN snapshot. Nothing of theirs was published — the transform
-   * substitutes every name and number — but the preview was then a different
-   * record for every visitor, and for a member who had claimed something it was
-   * their own portfolio wearing invented lease names. The page says "this is
-   * what your alert inbox looks like once you claim your record", which is a
-   * promise about the PRODUCT; it cannot be made out of the record of somebody
-   * who has not claimed one.
+   * WHAT CHANGED: WHICH PAYLOAD IS REWRITTEN. `sampleize` renames and scales,
+   * but it MAPS OVER the payload it is given — and it was given `live`, the
+   * READER'S OWN snapshot. Nothing of theirs was published, since the transform
+   * substitutes every name and number, but the preview was then a different
+   * record for every visitor: ten leases for one reader, 1,555 for another,
+   * every figure their own multiplied by a thousand. The page says "this is
+   * what your record looks like once you claim it", which is a promise about
+   * the PRODUCT; it cannot be made out of the record of somebody who has not
+   * claimed one. Defect sheet rows 51 and 54.
    *
    * So the preview is drawn from the committed capture — ten leases, one
    * county, a full timeline, every drawer key — served by
    * `/api/portfolio/sample`. See that route for why it is a fetch and not an
-   * import: the capture is 2 MB and this is a client component.
+   * import: the capture is 2 MB and this is a client component, so importing it
+   * would put all of it in the bundle every reader downloads, claimed or not.
    *
-   * IT FALLS BACK TO `live` WHILE THE FETCH IS IN FLIGHT, and that is safe
-   * rather than merely convenient: the fallback is still `sampleize`d, so it is
-   * anonymised and scaled exactly as before. The reader sees the old behaviour
-   * for the length of one cached request and then the canonical record. What
-   * they never see is an unsampled figure.
+   * IT DOES NOT FALL BACK TO `live`, AND THAT IS THE POINT OF THE FIX. A failed
+   * read leaves the preview empty rather than quietly serving the per-reader
+   * version again — "the same record for every user, independent of member_id,
+   * user, session or API data" is the requirement, and a fallback that is
+   * per-reader on the unhappy path does not meet it. The shell already has an
+   * honest place to say nothing loaded.
    *
-   * Memoised on payload identity: the transform walks every lease and month,
-   * and re-running it on each keystroke in the search box was measurable.
+   * ASKED ONCE, IN A REF, AND THE DEPENDENCY LIST IS JUST `sample`. Guarding on
+   * the busy flag and listing it as a dependency deadlocked: setting it re-ran
+   * the effect, the re-run's cleanup invalidated the request still in flight,
+   * and the `finally` that clears the flag was inside that invalidated closure —
+   * so the flag stayed true and the loader never came down. A ref is the right
+   * shape for "has this been asked for yet": it is not render state, and it
+   * cannot make the effect re-enter itself.
+   *
+   * MEMOISED ON THE SOURCE: the transform walks every lease and month, and
+   * re-running it on each keystroke in the search box was measurable.
    */
   const [fixture, setFixture] = useState<Payload | null>(null);
+  const [sampleBusy, setSampleBusy] = useState(false);
+  const sampleAsked = useRef(false);
+
   useEffect(() => {
-    if (!sample || fixture) return;
-    let alive = true;
+    if (!sample || sampleAsked.current) return;
+    sampleAsked.current = true;
+    setSampleBusy(true);
     fetch('/api/portfolio/sample')
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (alive && j) setFixture(j as Payload); })
-      /* a failed read leaves `fixture` null, which falls back to `live` — the
-         preview is then per-reader again, which is the old behaviour and not a
-         leak. A sample page is not worth an error card. */
-      .catch(() => { /* fall back to `live` */ });
-    return () => { alive = false; };
-  }, [sample, fixture]);
+      .then((j) => { if (j) setFixture(j as Payload); })
+      .catch(() => { /* reported by the empty state below */ })
+      .finally(() => setSampleBusy(false));
+  }, [sample]);
 
-  const sampleSource = sample ? (fixture ?? live) : null;
+  const sampleSource = sample ? fixture : null;
   const shown = useMemo(
     () => (sampleSource ? sampleize(sampleSource) : null), [sampleSource]);
   const data: Payload | null = sample ? (shown?.payload ?? null) : live;
@@ -640,11 +818,150 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
   }, [data?.alerts.items]);
 
   const openDrawer = useCallback((key: string) => setDrawer(key), []);
-  const openEventDrawer = useCallback((d: DrawerCopy) => setDrawer(d), []);
-  const copy: DrawerCopy | null = typeof drawer === 'string'
-    ? (data?.drawers?.[drawer] ?? null)
-    : drawer;
 
+  /* ----------------------------------- the settlements, and their explainer */
+  /**
+   * ONE TIMER READS BOTH, AND THAT IS THE WHOLE POINT OF THIS BLOCK.
+   *
+   * WHAT WENT WRONG. The strip polled `/api/prices` from its own interval
+   * inside `Chrome`, and the panel read `/api/drawers/prices` once, when it
+   * opened. Two timers, two moments. The service advances its price snapshot
+   * about every ten seconds (measured: `fetched_iso` moved 05:38:21 ->
+   * 05:38:31 -> 05:38:41 -> 05:38:57), so within one tick of opening the panel
+   * the bar had moved on and the panel had not — `WTI $102.23` over the strip
+   * and `WTI $102.16` in the explainer it had just been opened from, and it
+   * stayed wrong for as long as the panel was up, because nothing re-read it.
+   *
+   * THE TWO ENDPOINTS WERE NEVER THE PROBLEM. Fetched at the same instant they
+   * agree exactly — three simultaneous pairs, all three identical on all three
+   * settlements — because both are served from the same cached snapshot
+   * upstream. So the fix is not to reconcile two answers, it is to stop asking
+   * at two different times.
+   *
+   * HENCE ONE `read()`, ISSUING BOTH REQUESTS IN THE SAME `Promise.all`, and it
+   * lives here rather than in `Chrome` because this is where `drawer` is: the
+   * poller has to know whether the panel is open to know whether the second
+   * request is worth making. The strip gets its values from here as a prop.
+   *
+   * THE EXPLAINER IS ONLY READ WHILE IT IS ON SCREEN. `pricesOpen` is in the
+   * dependency list, so opening the panel rebuilds the timer and fires an
+   * immediate paired read — the panel does not sit on stale copy waiting up to
+   * ten seconds for the next tick, and the bar re-syncs in the same breath.
+   * Closing it drops the second request again. No other Dashboard read is
+   * repeated at any point.
+   *
+   * THE PAYLOAD'S OWN COPY STAYS ON SCREEN UNTIL THE FRESH ONE ARRIVES, and on
+   * a failure too. `owner-data.ts` already fetched all eleven flat explainers
+   * from this same endpoint during the payload build, so the fallback is not a
+   * different kind of answer, only an older one — and a panel that opens with
+   * its content already in it is the behaviour every other panel has. A spinner
+   * here, or an error card over a readable explainer, would be the worse page.
+   *
+   * KEYED ON THE OWNER IT WAS READ FOR. The explainer endpoint takes
+   * `member_id`, so a cached copy belongs to whoever was active when it
+   * answered; switching owner makes it somebody else's. Comparing the name is
+   * self-contained here — clearing it from the owner-switch path instead would
+   * put a second place in this file that has to remember this cache exists.
+   *
+   * A FAILED POLL KEEPS THE LAST GOOD SETTLEMENTS AND SAYS NOTHING. Every value
+   * ever shown is one the service really returned, carrying its own `as_of` in
+   * the tooltip, so nothing is invented and nothing is extrapolated — which is
+   * the line `spot-prices.ts` draws, and draws for good reason: what it
+   * replaced was a hardcoded seed pushed through a random walk. Not updating
+   * for a tick is not the same act as manufacturing a number, and blanking the
+   * bar on a transient 502 would take a true settlement off the screen and put
+   * nothing in its place.
+   *
+   * NO OVERLAPPING REQUESTS, and the guard is a LOCAL rather than a ref. A ref
+   * outlives the effect while the timer it guards does not, which breaks on the
+   * first render under React's development double-invoke: the first effect
+   * starts a request, its cleanup aborts it, the second effect runs before that
+   * abort has rejected and finds the flag still raised, so it returns WITHOUT
+   * ASKING — and the strip then has no live settlements until the 10s tick,
+   * which is precisely the delay in front of the first call that must not be
+   * there. A local is scoped to exactly the run that owns the timer.
+   *
+   * TORN DOWN WITH THE COMPONENT, and the open requests with it: `clearInterval`
+   * stops the timer, `abort()` drops whatever is in flight, and `mounted` stops
+   * a reply that was already decoding from setting state on a dead tree. All
+   * three, because each covers a moment the other two do not.
+   */
+  const [spot, setSpot] = useState<SpotQuote[] | null>(null);
+  const [priceCopy, setPriceCopy] =
+    useState<{ owner: string; drawer: DrawerCopy } | null>(null);
+  const ownerName = data?.owner.ownername ?? '';
+  const pricesOpen = drawer === 'prices';
+
+  useEffect(() => {
+    let mounted = true;
+    let busy = false;
+    const ac = new AbortController();
+
+    const read = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        /* TOGETHER, NOT ONE AFTER THE OTHER. Both are served from the same
+           upstream snapshot, so issuing them in parallel is what makes the bar
+           and the panel quote the same three numbers. */
+        const [stripRes, panelRes] = await Promise.all([
+          fetch('/api/prices', { cache: 'no-store', signal: ac.signal }),
+          pricesOpen
+            ? fetch('/api/drawers/prices', { cache: 'no-store', signal: ac.signal })
+            : null,
+        ]);
+        const strip = stripRes.ok
+          ? ((await stripRes.json()) as { items?: SpotQuote[] })
+          : null;
+        const panel = panelRes?.ok
+          ? ((await panelRes.json()) as { drawer?: DrawerCopy | null })
+          : null;
+        if (!mounted) return;
+        /* AN EMPTY LIST IS NOT AN ANSWER TO BIND. `ok_count` can be zero
+           upstream, and replacing three real settlements with nothing would
+           empty the bar on a bad read — the same argument as the catch. */
+        if (strip?.items?.length) setSpot(strip.items);
+        /* `drawer: null` is what the route answers for a signed-out reader —
+           it has nothing newer, so the payload's copy goes on rendering. */
+        if (panel?.drawer) setPriceCopy({ owner: ownerName, drawer: panel.drawer });
+      } catch {
+        /* aborted, offline, or unparseable — the last good values stand */
+      } finally {
+        busy = false;
+      }
+    };
+
+    void read();
+    const timer = setInterval(() => { void read(); }, SPOT_POLL_MS);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+      ac.abort();
+    };
+  }, [pricesOpen, ownerName]);
+
+  /* A PANEL A VIEW BUILT ITSELF, rather than a key into `data.drawers`. The
+     Activities timeline composes one per event so the detail matches the card
+     that was clicked (defects #12-#14, #17); it arrives already complete, so
+     there is nothing to look up and the string branches below do not apply. */
+  const openEventDrawer = useCallback((d: DrawerCopy) => setDrawer(d), []);
+
+  const rawCopy: DrawerCopy | null = !drawer
+    ? null
+    : typeof drawer !== 'string'
+      ? drawer
+      : drawer === 'prices'
+        ? ((priceCopy?.owner === ownerName ? priceCopy.drawer : null)
+          ?? data?.drawers?.prices ?? null)
+        : (data?.drawers?.[drawer] ?? null);
+
+  /* every panel goes through the same reduction — see `collapseNames` */
+  const counties = data?.totals.counties;
+  const operatorNames = data?.totals.operator_names;
+  const copy = useMemo(
+    () => collapseNames(rawCopy, counties ?? [], operatorNames ?? []),
+    [rawCopy, counties, operatorNames],
+  );
   /* Esc closes the drawer wherever focus is — a panel that can only be closed
      by hitting its own button is a trap for a keyboard user. */
   const wrap = useRef<HTMLDivElement | null>(null);
@@ -659,10 +976,58 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
     const el = wrap.current;
     document.body.classList.add('ctx-open');
     el?.classList.add('ctx-open');
+
+    /* THE PAGE BEHIND THE PANEL IS HELD STILL WHILE IT IS OPEN.
+     *
+     * ONE LOCK FOR EVERY DRAWER, because there is only one drawer. Each of the
+     * explainers — the eleven flat ones, the twelve `pf_*`, every `lease:*`,
+     * `well:*` and `alert:*` panel — is the SAME `DrawerPanel` with different
+     * copy in it, opened through this one piece of state. So locking here is
+     * what makes the behaviour identical across all of them, and there is no
+     * second panel anywhere in this shell to keep in step: `.ctx-drawer` and
+     * `.ctx-scrim` are the only fixed right-side elements the reference sheet
+     * declares.
+     *
+     * THE MEASUREMENT HAS TO HAPPEN BEFORE THE CLASS GOES ON, which is the
+     * whole reason this is not two lines of CSS. Taking the page's overflow
+     * away takes its scrollbar with it, and on a platform with a CLASSIC
+     * scrollbar that hands 15px back to the layout: measured at 1440x900, the
+     * content and the top row both jumped from x=1425 to x=1440 the instant
+     * `overflow: hidden` applied. A modal that shoves the page sideways as it
+     * opens is a worse defect than the one being fixed, and it is exactly why
+     * the note in `onebar.css` declined this lock when row 55 was fixed.
+     *
+     * `scrollbar-gutter: stable` IS THE COMPENSATION, and it goes on the ROOT.
+     * Measured all four ways: `overflow: hidden` on `html` or on `body` both
+     * stop the page (`body` works because the root's overflow is `visible`, so
+     * the viewport takes its overflow from the body) — but the gutter is only
+     * honoured on `html`. On `body` it is ignored and the 15px jump stays. So
+     * both declarations sit on the root element, and the shift measures zero.
+     *
+     * THE GUTTER IS CONDITIONAL, and that is what makes this right on a phone.
+     * `scrollbar-gutter` reserves the track whenever the container is not
+     * `overflow: visible` — including on a page that never had a scrollbar to
+     * begin with, where reserving one would shift the layout the OTHER way. So
+     * the class is added only when a classic scrollbar was actually measured.
+     * Overlay scrollbars — every touch platform, and macOS unless a mouse is
+     * attached — measure 0 and get the lock with no gutter, which is correct:
+     * an overlay scrollbar takes no layout space, so there is nothing to
+     * give back.
+     */
+    const root = document.documentElement;
+    const gutter = window.innerWidth - root.clientWidth;
+    root.classList.add('mv-ctx-lock');
+    if (gutter > 0) root.classList.add('mv-ctx-gutter');
+
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.classList.remove('ctx-open');
       el?.classList.remove('ctx-open');
+      /* THE PAGE SCROLLS AGAIN, AND FROM WHERE IT LEFT OFF. `overflow: hidden`
+         on the root clips the page without unsetting `scrollTop`, so nothing
+         has to be saved and restored here — the reader is returned to the same
+         position they opened the panel from. */
+      root.classList.remove('mv-ctx-lock', 'mv-ctx-gutter');
     };
   }, [drawer]);
 
@@ -698,6 +1063,7 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
                 <Dashboard
                   p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go}
                   trialStarted={trialStarted} setFunnel={pickFunnel}
+                  reloadActiveOwner={reloadActiveOwner}
                 />
               ))
   );
@@ -717,7 +1083,7 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
         p={data} route={route} go={go} tier={tier} setTier={pickTier} readIds={readIds}
         readReady={readReady}
         funnel={funnel} setFunnel={pickFunnel} sample={sample}
-        open={openDrawer}
+        open={openDrawer} spot={spot}
         sampleNote={shown?.note ?? null} trialStarted={trialStarted}
       >
         {error
@@ -736,12 +1102,18 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
             the default read, so a reload is the honest suggestion. */}
         {/* `prefsReady` too: until the density is known the skeleton is what is
             on screen, and "no owner is loaded" under it would be a second,
-            contradictory answer to the same question. */}
-        {prefsReady && !children && !data && !error && !busy ? <ErrorCard detail="No owner is loaded yet. Reload the page, or open a link that names one." /> : null}
+            contradictory answer to the same question. `sampleBusy` is the same
+            argument for the not-claimed preview: entering that state fetches
+            its fixed base record, and without the guard this card showed for
+            the length of that request. */}
+        {prefsReady && !children && !data && !error && !busy && !sampleBusy ? <ErrorCard detail="No owner is loaded yet. Reload the page, or open a link that names one." /> : null}
       </Chrome>
       </PortalViewStateProvider>
 
-      <Loader on={busy} name={loadingName} steps={STEPS} />
+      {/* `sampleBusy` too: entering the not-claimed state fetches its fixed
+          base record, and without this the page showed the "nothing loaded"
+          card for the length of that request. */}
+      <Loader on={busy || sampleBusy} name={loadingName} steps={STEPS} />
 
       <DrawerPanel
         copy={copy} onClose={() => setDrawer(null)}

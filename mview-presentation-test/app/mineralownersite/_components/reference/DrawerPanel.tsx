@@ -35,6 +35,7 @@
 import React, { useEffect, useRef } from 'react';
 import type { Drawer } from '../../_lib/reference/payload';
 import { Html } from './bits';
+import { serviceText, spanLabel } from '../../_lib/reference/fmt';
 import { Charts } from './LineChart';
 
 /**
@@ -128,7 +129,7 @@ export function lockFigures(html: string): string {
     .split(/(<[^>]*>)/)
     .map((part, i) => (i % 2 === 1
       ? part
-      : part.replace(FIGURE, (m) => (isValue(m)
+      : serviceText(part).replace(FIGURE, (m) => (isValue(m)
         ? '<span class="cl-fig">' + m + '</span>'
         : m))))
     .join('');
@@ -163,6 +164,38 @@ function LockFigures({ text }: { text: string }) {
   return <>{out}</>;
 }
 
+/**
+ * WHAT A DELIVERY CLASS MEANS, SAID NEXT TO IT.
+ *
+ * The panel's sub-line opens with the alert's class — "Urgent · event June 2026
+ * · detected Sep 10, 2026" — and a reader met the word "Urgent" with nothing to
+ * say what it was claiming (defect sheet row 5). It is easy to read as "this is
+ * an emergency", and that is not what it says: `payload.ts` types
+ * `AlertClass` as "the DELIVERY class, which is a METHOD taxonomy", and the
+ * Alerts page states the same thing in words — "the class decides where an
+ * alert is delivered". So the word is about the CHANNEL, not the severity, and
+ * on its own above a money figure it invites the wrong one of the two.
+ *
+ * The gloss below is that same sentence, per class, in the place the word
+ * actually appears. The class itself is unchanged — it is the service's
+ * taxonomy and the Alerts page filters on it.
+ */
+const CLASS_MEANS: Record<string, string> = {
+  Urgent: 'sent on its own, as soon as it is found',
+  'Important digest': 'gathered into your weekly report',
+  Educational: 'context, kept for you to read when you want it',
+  Community: 'shared by other owners, not from the record',
+};
+
+/** The panel's sub-line, with the leading class explained where it appears. */
+function subLine(sub: string): string {
+  const cut = sub.indexOf(' · ');
+  const klass = cut === -1 ? sub : sub.slice(0, cut);
+  const means = CLASS_MEANS[klass.trim()];
+  if (!means) return sub;
+  return `${klass} — ${means}${cut === -1 ? '' : sub.slice(cut)}`;
+}
+
 const TONE_LABEL: Record<string, string> = {
   money: 'Money',
   activity: 'Activity',
@@ -175,8 +208,37 @@ export default function DrawerPanel(
   { copy: Drawer | null; onClose: () => void; sample: boolean; sourceNote: string | null },
 ) {
   const panel = useRef<HTMLDivElement | null>(null);
+  const body = useRef<HTMLDivElement | null>(null);
   const returnTo = useRef<HTMLElement | null>(null);
   const open = Boolean(copy);
+
+  /**
+   * EVERY PANEL OPENS AT ITS OWN TOP.
+   *
+   * This drawer is hidden with `display: none` rather than unmounted — see the
+   * focus note below, which depends on that — so the scroll container survives
+   * a close. Read one panel to the bottom, close it, open a different one, and
+   * the second panel opened at the first one's scroll offset: its heading, its
+   * figures and its first two sections were already above the fold, so the
+   * reader was dropped into the middle of an explanation they had not started.
+   * That is the defect sheet's row 7, filed as "show side nav bar page last
+   * info first instead need to go starting at side nav bar".
+   *
+   * KEYED ON `copy.title`, NOT ON `open`. Several of this page's controls swap
+   * the panel's CONTENT without closing it — the alert strip, the KPI tiles and
+   * the setrows all call `open()` again while the drawer is up — so resetting
+   * only on open would have left those switches showing the previous panel's
+   * offset. Anything that changes which panel is on screen resets it.
+   *
+   * `scrollTop` AND NOT `scrollTo({behavior:'smooth'})`: the panel is sliding in
+   * at the same moment, and animating a scroll inside an animating element
+   * reads as a stutter. There is nothing for the reader to follow here — the
+   * top is simply where the panel starts.
+   */
+  useEffect(() => {
+    if (!open) return;
+    if (body.current) body.current.scrollTop = 0;
+  }, [open, copy?.title]);
 
   useEffect(() => {
     if (!open) return;
@@ -247,13 +309,13 @@ export default function DrawerPanel(
         <div className="ctx-head">
           <div style={{ minWidth: 0, flex: '1 1 auto' }}>
             {copy?.tone ? <span className="dx-kind">{TONE_LABEL[tone]}</span> : null}
-            <h3 id="ctxTitle">{copy?.title ?? ''}</h3>
-            <div className="ctx-sub" id="ctxSub">{copy?.sub ?? ''}</div>
+            <h3 id="ctxTitle">{serviceText(copy?.title ?? '')}</h3>
+            <div className="ctx-sub" id="ctxSub">{serviceText(subLine(copy?.sub ?? ''))}</div>
           </div>
           <button type="button" className="ctx-x" onClick={onClose} aria-label="Close">✕</button>
         </div>
 
-        <div className="ctx-body">
+        <div className="ctx-body" ref={body}>
           {copy
             ? (
               <>
@@ -287,20 +349,22 @@ export default function DrawerPanel(
                       <div className="dx-band-grid">
                         {copy.stats.map((st) => (
                           <div className="dx-stat" key={st.label}>
-                            <span className="dx-k">{st.label}</span>
-                            <span className={'dx-v' + (st.tone ? ' t-' + st.tone : '')}>
+                            <span className="dx-k">{serviceText(st.label)}</span>
+                            <span
+                              className={'dx-v' + (st.tone ? ' t-' + st.tone : '')}
+                            >
                               {st.tone === 'up' ? '▲ ' : st.tone === 'down' ? '▼ ' : ''}
                               {/* the figures inside, not the cell — see
                                   `LockFigures` for why a band value is not
                                   always a number */}
                               <LockFigures
-                                text={st.tone === 'up' || st.tone === 'down'
+                                text={serviceText(st.tone === 'up' || st.tone === 'down'
                                   ? st.value.replace(/^[+-]/, '')
-                                  : st.value}
+                                  : st.value)}
                               />
                             </span>
                             {st.sub
-                              ? <span className="dx-s"><LockFigures text={st.sub} /></span>
+                              ? <span className="dx-s"><LockFigures text={serviceText(st.sub)} /></span>
                               : null}
                           </div>
                         ))}
@@ -309,8 +373,10 @@ export default function DrawerPanel(
                         ? (
                           <div className="dx-spark">
                             <BandSpark values={copy.spark} />
+                            {/* the same span wording as the charts below it —
+                                see `spanLabel` in `fmt.ts` */}
                             {copy.spark_label
-                              ? <span className="dx-sparkcap">{copy.spark_label}</span>
+                              ? <span className="dx-sparkcap">{spanLabel(copy.spark_label)}</span>
                               : null}
                           </div>
                         )
@@ -370,7 +436,7 @@ export default function DrawerPanel(
                   ? (
                     <div className="ctx-chips">
                       {copy.chips.map((ch) => (
-                        <span key={ch} className="chip chip-est" style={{ marginRight: 6 }}>{ch}</span>
+                        <span key={ch} className="chip chip-est" style={{ marginRight: 6 }}>{serviceText(ch)}</span>
                       ))}
                     </div>
                   )

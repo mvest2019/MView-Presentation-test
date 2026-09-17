@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { getSpotPrices } from "../_lib/spot-prices";
+import { PinnedSpotStrip } from "./pinned-spot-strip";
 import { formatLakhs } from "../_lib/format-lakhs";
 import { portfolio } from "../_lib/portal-demo-data";
 
@@ -30,12 +30,14 @@ import { portfolio } from "../_lib/portal-demo-data";
  *   lapsed     the value blurs, exactly like every other all-ten-lease figure
  *   trial/paid the value in full
  *
- * A SERVER COMPONENT. Every variant above is a CSS gate, so there is nothing
- * for the client to decide and this bar ships no JavaScript.
+ * A SERVER COMPONENT, and every variant above is still a CSS gate. The ONE
+ * piece that now ships JavaScript is the spot strip: it polls the same
+ * `/api/prices` the Dashboard's top nav polls, so the two cannot disagree. See
+ * `PinnedSpotStrip` for why the static file it used to read had to go — the
+ * short version is that the two strips were showing WTI two months and $16.58
+ * apart.
  */
 export async function PinnedValueBar() {
-  const spot = await getSpotPrices();
-
   return (
     <div
       id="mvPinBar"
@@ -89,47 +91,18 @@ export async function PinnedValueBar() {
         <Link href="/claim">Claim now →</Link>
       </span>
 
-      {/* THE SPOT STRIP — real EIA settlements, and FAIL CLOSED.
-          `getSpotPrices` returns null on a missing file, unreadable JSON or zero
-          usable rows, and this renders NOTHING in that case: no spinner, no
-          zeros, no last-known value. A missing strip is honest; a confident
+      {/* THE SPOT STRIP — the live settlements, and FAIL CLOSED.
+
+          It renders nothing until the endpoint answers and nothing at all if it
+          never does: no spinner, no zeros, no last-known value, and above all
+          no stale seed painted first. A missing strip is honest; a confident
           wrong one is the defect this replaced. See `spot-prices.ts` for the
-          $15.50-wrong random walk that made the rule.
+          $15.50-wrong random walk that made the rule, and `PinnedSpotStrip`
+          for why the file that rule was written about is no longer the source.
 
-          No arrows and no percentages: one settlement is a value, not a change.
-
-          The fourth slot is PROPANE (Mont Belvieu), not gasoline — EIA
-          publishes no retail gasoline series at this cadence, and propane is
-          the NGL anchor a mineral owner is actually paid on. */}
-      {spot && (
-        <div className="pin-spot">
-          {spot.items.map((item) => (
-            <span
-              key={item.key}
-              className={`pin-tk${
-                // Ultra's contract is two prices, so Brent and propane fold
-                // away there — the calm view does not carry four numbers.
-                item.key === "brent" || item.key === "propane" ? " hide-u" : ""
-              }`}
-              data-mv-spot={item.key}
-              title={item.title}
-            >
-              <span className="sym">{item.label}</span>
-              <span className="num mv-spot-val">{item.display}</span>
-            </span>
-          ))}
-          {/* NOT Professional-only. An earlier pass made this stamp
-              Professional-density, which left Essentials readers seeing the
-              prices with no provenance at all. It carries the settlement date
-              and the "not live prices" basis, so it shows in every density —
-              the values may never appear without the label that qualifies them.
-              The series runs about eight days behind. */}
-          <span className="pin-note" title={`${spot.stamp} · ${spot.basis}`}>
-            <span className="pin-note-date">{spot.stamp}</span>
-            <span className="pin-note-basis"> · {spot.basis}</span>
-          </span>
-        </div>
-      )}
+          No arrows and no percentages here: one settlement is a value, not a
+          change. */}
+      <PinnedSpotStrip />
     </div>
   );
 }

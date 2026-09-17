@@ -729,6 +729,42 @@ function withAlertDrawers(
   return out;
 }
 
+/**
+ * THE NOT-CLAIMED PREVIEW'S BASE RECORD — one record, the same for everybody.
+ *
+ * WHY THIS EXISTS. `sampleize` rewrites a payload into a sample of itself, and
+ * until now the payload it rewrote was the READER'S OWN — whichever record the
+ * page had loaded for that member. It renames and it scales, but it maps over
+ * the live arrays, so the shape underneath stayed the reader's: a member with
+ * ten leases previewed ten, a member with 1,555 previewed 1,555, and every
+ * figure was that member's own multiplied by a thousand. Two not-claimed
+ * readers therefore saw two different products, and the "sample" was a
+ * derivative of private data rather than a fixed illustration. Defect sheet
+ * rows 51 and 54.
+ *
+ * WHAT IT RETURNS. The committed capture, and nothing else — no session read,
+ * no `member_id`, no live blocks, no owner from the query string. `FIXTURE` is
+ * a constant in the bundle, so the preview cannot vary by user, by request or
+ * by what the upstream service is doing; a second reader gets byte-identical
+ * content.
+ *
+ * WHY THE CAPTURE RATHER THAN A HAND-WRITTEN RECORD. `Payload` is forty-odd
+ * blocks and every surface under the shell reads some of them; a literal would
+ * be thousands of lines to maintain and would drift out of the type the moment
+ * the contract moved. The capture is already static, already committed,
+ * already type-checked against `Payload`, and is already what this app serves
+ * when no API is configured. `sampleize` then renames and scales it exactly as
+ * before, so the preview looks the way it always did — it simply no longer
+ * looks different to each reader.
+ *
+ * IT IS NOT A CLAIMED READER'S PATH. Nothing here is reachable from the
+ * claimed states: `Portal` asks for this only while the funnel is `unclaimed`,
+ * and a claimed reader's own payload is untouched.
+ */
+export async function getSamplePayload(): Promise<Payload> {
+  return FIXTURE;
+}
+
 /** the reference's `selectionFrom(url)`, reading the same four parameters */
 export function selectionFrom(url: URL): OwnerSelection {
   const q = url.searchParams;

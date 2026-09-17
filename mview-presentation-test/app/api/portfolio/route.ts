@@ -25,6 +25,7 @@ import { NextResponse } from "next/server";
 import { OwnerApiError } from "@/app/mineralownersite/_lib/reference/owner-api";
 import {
   getOwnerPayload,
+  getSamplePayload,
   selectionFrom,
 } from "@/app/mineralownersite/_lib/reference/owner-data";
 
@@ -52,7 +53,29 @@ export const revalidate = 0;
 
 export async function GET(req: Request) {
   try {
-    const payload = await getOwnerPayload(selectionFrom(new URL(req.url)));
+    const url = new URL(req.url);
+
+    /* `?sample=1` — THE NOT-CLAIMED PREVIEW'S BASE RECORD.
+     *
+     * It answers with the committed capture and nothing else: no session, no
+     * `member_id`, no live blocks, no owner from the query string. That is the
+     * whole point — the preview has to be the same record for every reader, and
+     * the only way to guarantee that is for this branch to read nothing about
+     * who is asking. See `getSamplePayload`.
+     *
+     * CACHED, UNLIKE EVERY OTHER ANSWER FROM THIS ROUTE. The rest is one
+     * owner's own figures and carries `no-store` for that reason; this is a
+     * constant in the bundle, identical on every request, and the reader who
+     * switches in and out of the not-claimed state should not pay for it twice.
+     * `immutable` is honest here: when the capture changes, the deployment
+     * changes with it. */
+    if (url.searchParams.get("sample") === "1") {
+      return NextResponse.json(await getSamplePayload(), {
+        headers: { "Cache-Control": "public, max-age=3600, immutable" },
+      });
+    }
+
+    const payload = await getOwnerPayload(selectionFrom(url));
     return NextResponse.json(payload, {
       headers: { "Cache-Control": "no-store" },
     });

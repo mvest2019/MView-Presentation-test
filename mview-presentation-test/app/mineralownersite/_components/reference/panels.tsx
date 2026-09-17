@@ -20,14 +20,14 @@
  */
 import React, { useMemo } from 'react';
 import type { Payload } from '../../_lib/reference/payload';
-import { n0, usd, usdShort, pctS, vol, plural, MCF, BBL } from '../../_lib/reference/fmt';
+import { n0, usd, usdShort, usdScaled, pct0, vol, plural, productWord, MCF, BBL } from '../../_lib/reference/fmt';
 import { Pager, usePaged } from './bits';
 import type { Route } from './Portal';
 
 /* ============================================================= Essentials */
 export function Essentials(
   { p, sample, open, go }:
-  { p: Payload; sample: boolean; open: (k: string) => void; go: (r: Route) => void },
+  { p: Payload; sample: boolean; open: (k: string) => void; go: (r: Route, params?: Record<string, string | null>) => void },
 ) {
   const t = p.totals;
   const a = p.as_of;
@@ -100,12 +100,21 @@ export function Essentials(
         <>
           The model puts your share at <strong>{usd(t.owner_value)}</strong> over six years, in a
           range of {usdShort(t.owner_value_low)} to {usdShort(t.owner_value_high)}. The county
-          separately appraised the same interests at <strong>{usd(t.appraised_value)}</strong> for
+          separately appraised the same interests at <strong>{usdScaled(t.appraised_value)}</strong> for
           roll year {t.appraised_year} — the two answer different questions, so them disagreeing is
           normal. Still to come, as your share:{' '}
           <strong>{vol(t.reserves_gas_net, t.reserves_oil_net, true)}</strong>
+          {/* `pct0`, NOT `pctS`. `pctS` signs every value because it was written
+              for a CHANGE — "gas moved +7.6% against last month". A probability
+              is not a change, and printed as "+41%" it invites the reader to
+              look for what it rose from. Every other surface renders this same
+              field unsigned — the Detailed and Pro "Reserves & new-well
+              outlook" card and the reserves drawer both show "41%" — so this
+              was also the only place on the product where one number read two
+              ways. `pct1`/`pct0` exist in `fmt.ts` for exactly this
+              distinction; its own comment names it. */}
           {r.probability_avg != null
-            ? <>, with a {pctS(r.probability_avg, 0)} average chance of a new well.</>
+            ? <>, with a {pct0(r.probability_avg)} average chance of a new well.</>
             : <>.</>}
         </>
       ),
@@ -118,10 +127,21 @@ export function Essentials(
       body: ac.counts.nearby
         ? (
           <>
+            {/* THE BREAKDOWN HAS TO ADD UP TO THE TOTAL IT FOLLOWS.
+                This said "3,174 filings ... — 2900 permits and 265 completions",
+                and 2900 + 265 is 3165, not 3174 (defect sheet row 40). Nothing
+                was miscounted: the feed carries THREE kinds — permits,
+                completions and well-status changes — and the sentence named
+                two of them while quoting the total of all three. The
+                Detailed/Pro card one tier up has always said so in its own
+                subhead ("Permits, completions and well-status changes filed
+                near your acreage"); only this sentence dropped the third.
+                `counts.status` is the same field that card reads. */}
             <strong>{n0(ac.counts.nearby)} {plural(ac.counts.nearby, 'filing')}</strong> near your
             acreage in the last {ac.window_months} months — {ac.counts.permits}{' '}
-            {plural(ac.counts.permits, 'permit')} and {ac.counts.completions}{' '}
-            {plural(ac.counts.completions, 'completion')} in {ac.counties.join(', ')}.{' '}
+            {plural(ac.counts.permits, 'permit')}, {ac.counts.completions}{' '}
+            {plural(ac.counts.completions, 'completion')} and {ac.counts.status}{' '}
+            well-status {plural(ac.counts.status, 'change')} in {ac.counties.join(', ')}.{' '}
             {ac.compare_90.change_pct != null
               ? <>That is {ac.compare_90.change_pct > 0 ? 'busier' : 'quieter'} than the 90 days
                   before it. </>
@@ -184,7 +204,10 @@ export function Essentials(
           sentence cannot show as well as a picture */}
       <div className="card card-pad" style={{ margin: '14px 0 0' }}>
         <div className="between" style={{ flexWrap: 'wrap' }}>
-          <h4>Your {t.has_gas ? 'gas' : 'oil'}, month by month</h4>
+          {/* `productWord`, not a gas/oil ternary — the card draws a strip per
+              product now, so a both-products owner was reading "Your gas,
+              month by month" over a pair of charts. */}
+          <h4>Your {productWord(t.has_gas, t.has_oil)}, month by month</h4>
           <span className="chip chip-slate" style={{ fontSize: 10 }}>
             {filed.length} of {p.series.months.length} months filed
           </span>
@@ -206,30 +229,96 @@ export function Essentials(
   );
 }
 
-/** the bare month columns, shared by Essentials and the Detailed trend card */
+/**
+ * The bare month columns, shared by Essentials and the Detailed trend card.
+ *
+ * ONE STRIP PER PRODUCT THE RECORD CARRIES, not one for whichever came first.
+ * This read `has_gas ? 'gas_net' : 'oil_net'` and drew a single strip, so an
+ * owner holding BOTH — 575 leases filing oil and gas — was shown their gas and
+ * never told what happened to their oil (defect sheet row 39). The Detailed and
+ * Pro tiers have always drawn both through `ProductPair`, so Essentials was
+ * also the only tier where a product could vanish between densities.
+ *
+ * MCF AND BBL STILL NEVER SHARE AN AXIS. They are different quantities and one
+ * scale for both either flattens the oil to nothing or blows the gas off the
+ * top — `chart.ts` states the rule and this keeps it: each product gets its own
+ * strip, its own peak and its own axis line.
+ *
+ * THE READOUT IS THE CARD'S OWN, not a `title` attribute. A native tooltip is
+ * placed by the browser and ran outside the card on the last months of the
+ * series (row 20); this one is drawn inside the strip and clamped to it, so the
+ * figure for the newest month is readable where the newest month actually is.
+ * The `title` is KEPT as well, because it is what a screen reader and a
+ * touch-and-hold still reach.
+ */
 export function ProdCols({ p }: { p: Payload }) {
   const s = p.series;
-  const key = p.totals.has_gas ? 'gas_net' : 'oil_net';
-  const unit = p.totals.has_gas ? MCF : BBL;
-  const max = Math.max(1, ...s.months.map((m) => m[key]));
+  const t = p.totals;
+  /* Both when both were filed, otherwise the one that was — and gas first,
+     which is the order every other pair on this page uses. */
+  const series: { key: 'gas_net' | 'oil_net'; unit: string; name: string }[] = [];
+  if (t.has_gas) series.push({ key: 'gas_net', unit: MCF, name: 'Gas' });
+  if (t.has_oil) series.push({ key: 'oil_net', unit: BBL, name: 'Oil' });
+  if (!series.length) series.push({ key: 'gas_net', unit: MCF, name: 'Gas' });
+
   return (
     <>
-      <div className="mcols">
-        {s.months.map((m) => (
+      {series.map((sr) => (
+        <ProdColStrip
+          key={sr.key} months={s.months} field={sr.key} unit={sr.unit}
+          name={sr.name} labelled={series.length > 1}
+        />
+      ))}
+    </>
+  );
+}
+
+/** one product's strip of months, with the card's own hover readout */
+function ProdColStrip(
+  { months, field, unit, name, labelled }:
+  { months: Payload['series']['months']; field: 'gas_net' | 'oil_net';
+    unit: string; name: string; labelled: boolean },
+) {
+  const [at, setAt] = React.useState<number | null>(null);
+  const max = Math.max(1, ...months.map((m) => m[field]));
+  const hovered = at != null ? months[at] : null;
+
+  return (
+    <div className="mcols-wrap">
+      {labelled
+        ? <div className="mcols-name tiny muted">{name} · {unit}</div>
+        : null}
+      <div className="mcols" onMouseLeave={() => setAt(null)}>
+        {months.map((m, i) => (
           <span
             key={m.cycle}
-            className={'mc' + (m[key] > 0 ? '' : ' dim')}
-            style={{ height: Math.max((m[key] / max) * 100, m[key] > 0 ? 2 : 1).toFixed(1) + '%' }}
-            title={`${m.label} · ${n0(m[key])} ${unit} to you · ${m.leases} ${plural(m.leases, 'lease')} filing`}
+            className={'mc' + (m[field] > 0 ? '' : ' dim') + (at === i ? ' on' : '')}
+            style={{ height: Math.max((m[field] / max) * 100, m[field] > 0 ? 2 : 1).toFixed(1) + '%' }}
+            onMouseEnter={() => setAt(i)}
+            title={`${m.label} · ${n0(m[field])} ${unit} to you · ${m.leases} ${plural(m.leases, 'lease')} filing`}
           />
         ))}
+        {/* CLAMPED TO THE STRIP by `--mc-at`, a 0-1 position the stylesheet
+            turns into a `left` with its own translate — so the card, and not
+            the viewport, is what the readout has to fit inside. */}
+        {hovered
+          ? (
+            <span
+              className="mc-read"
+              style={{ '--mc-at': months.length > 1 ? (at as number) / (months.length - 1) : 0.5 } as React.CSSProperties}
+            >
+              <b>{hovered.label}</b> · {n0(hovered[field])} {unit} to you ·{' '}
+              {hovered.leases} {plural(hovered.leases, 'lease')} filing
+            </span>
+          )
+          : null}
       </div>
       <div className="mcax">
-        <span>{s.months[0]?.label}</span>
+        <span>{months[0]?.label}</span>
         <span>peak {n0(max)} {unit}</span>
-        <span>{s.months[s.months.length - 1]?.label}</span>
+        <span>{months[months.length - 1]?.label}</span>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -263,6 +352,24 @@ export function Wells({ p, open }: { p: Payload; open: (k: string) => void }) {
     const k = (w.status ?? 'not recorded').toUpperCase();
     byStatus.set(k, (byStatus.get(k) ?? 0) + 1);
   }
+  /* The four commonest statuses, then one row for everything else — see the
+     note at the rows themselves. `TOP_STATUSES` is named rather than inlined
+     because the tail row's wording depends on the same number. */
+  const TOP_STATUSES = 4;
+  const ranked = [...byStatus.entries()].sort((a, b) => b[1] - a[1]);
+  const head = ranked.slice(0, TOP_STATUSES);
+  const tail = ranked.slice(TOP_STATUSES);
+  const statusRows: { key: string; count: number; note: string; title?: string }[] =
+    head.map(([k, v]) => ({ key: k, count: v, note: 'as the state records it' }));
+  if (tail.length) {
+    statusRows.push({
+      key: 'OTHER STATUSES',
+      count: tail.reduce((n, [, v]) => n + v, 0),
+      note: `${tail.length} further ${plural(tail.length, 'status')} the state records`,
+      title: tail.map(([k, v]) => `${k} — ${v}`).join(' · '),
+    });
+  }
+
   const deepest = all.filter((w) => w.depth_ft).sort((a, b) => (b.depth_ft ?? 0) - (a.depth_ft ?? 0))[0];
   const newest = all.filter((w) => w.spud_iso)
     .sort((a, b) => (b.spud_iso ?? '').localeCompare(a.spud_iso ?? ''))[0];
@@ -319,17 +426,34 @@ export function Wells({ p, open }: { p: Payload; open: (k: string) => void }) {
         )
         : null}
 
-      {[...byStatus.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => (
+      {/* THE ROWS SUM TO THE COUNT IN THE CHIP.
+
+          `.slice(0, 4)` printed the four commonest statuses and silently threw
+          the rest away, so the card headed "1513 wells" listed 1139 + 256 + 46
+          + 41 = 1482 and the missing 31 were nowhere — no row, no note, no
+          "other" (defect sheet row 26). A reader adding up a short list of
+          counts under a stated total is doing the one thing this card invites,
+          and the answer did not come out.
+
+          THE CAP ITSELF IS KEPT, because it is what holds this card to the
+          height of its neighbours in the rail — the same argument `usePaged`
+          makes for the operators list. What changes is that the tail is
+          declared instead of dropped: everything past the top four is rolled
+          into one row that names how many statuses it stands for, so the
+          column always adds to the total and nothing is hidden. Its `title`
+          lists them, and the well list itself is one click away. */}
+      {statusRows.map((r) => (
         <div
-          className="setrow" key={k} role="button" tabIndex={0}
+          className="setrow" key={r.key} role="button" tabIndex={0}
+          title={r.title}
           onClick={() => open('producing')}
           onKeyDown={(e) => { if (e.key === 'Enter') open('producing'); }}
         >
           <div style={{ minWidth: 0 }}>
-            <strong className="small">{k}</strong>
-            <div className="tiny muted">as the state records it</div>
+            <strong className="small">{r.key}</strong>
+            <div className="tiny muted">{r.note}</div>
           </div>
-          <span className="num small" style={{ fontWeight: 800 }}>{v}</span>
+          <span className="num small" style={{ fontWeight: 800 }}>{r.count}</span>
         </div>
       ))}
 

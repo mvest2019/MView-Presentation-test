@@ -68,7 +68,7 @@ interface Props {
   p: Payload | null;
   funnel: FunnelKey;
   trialStarted: string | null;
-  go: (r: Route) => void;
+  go: (r: Route, params?: Record<string, string | null>) => void;
   open: (k: string) => void;
   setFunnel: (f: FunnelKey) => void;
 }
@@ -84,6 +84,21 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
   let cta: string | null = null;
   let snd: string | null = null;
   let onCta: (() => void) | null = null;
+  /**
+   * WHERE THE SECONDARY LINK GOES.
+   *
+   * It used to be one expression for all five states —
+   * `open(funnel === 'unclaimed' ? 'identity' : 'value')` — so "What the trial
+   * includes", "Compare plans" and "What I am missing" every one of them opened
+   * "Your value — how it is built". Three different questions, one answer, and
+   * none of them the one asked (defect sheet row 30).
+   *
+   * THE LINK NOW CARRIES ITS OWN TARGET, set beside its own label so the two
+   * cannot drift apart again. Every state that asks a PLAN question goes to
+   * `PLANS_HREF`; `unclaimed` keeps the identity drawer, because "is this
+   * really me" is a question about the record and a panel is the right answer.
+   */
+  let sndHref: string | null = null;
   /** set instead of `onCta` when the CTA is a destination rather than a switch */
   let ctaHref: string | null = null;
 
@@ -105,6 +120,7 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
     tag = 'Premium trial';
     cta = 'Upgrade to Premium';
     snd = 'Compare plans';
+    sndHref = PLANS_HREF;
     onCta = () => setFunnel('paid');
     msg = (
       <>
@@ -123,11 +139,28 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
     tag = 'Trial ended';
     cta = 'Restore full access';
     snd = 'What I am missing';
-    /* a navigation, not a state flip — see `BILLING_HREF` */
+    sndHref = PLANS_HREF;
+    /* RESTORING ACCESS IS A PAYMENT, SO IT GOES WHERE PAYMENTS LIVE.
+       This called `setFunnel('paid')`, which silently re-dressed the page as a
+       paid account without asking for anything — the reader pressed "Restore
+       full access" and the values simply appeared (defect sheet row 49).
+       `/pricing#plans` is this app's own plan ladder and the destination
+       `upgradeHref` in `lib/entitlements.ts` already uses for every other
+       upgrade prompt, so the reader lands on the comparison rather than on a
+       placeholder. The demo's own way of reaching the paid state is untouched —
+       the account-state menu in the top bar still switches to it directly,
+       which is what that menu is for. */
     ctaHref = PLANS_HREF;
     msg = (
       <>
-        Your <b>Premium</b> trial has ended, so your account is on the free plan.{' '}
+        {/* IT NO LONGER CLAIMS TO BE THE FREE PLAN. The banner said "so your
+            account is on the free plan" while this state covers the value
+            figures on a record that a genuinely free — claimed — account shows
+            in the clear, which is the contradiction on defect sheet row 23.
+            Both states now mask the same one thing (see `.cl-lock` in the
+            overrides sheet), and this sentence says what lapsed actually is
+            rather than borrowing another state's name for it. */}
+        Your <b>Premium</b> trial has ended, so your portfolio totals are on hold.{' '}
         <b>One lease stays fully live</b> — pick which below. Your other{' '}
         {Math.max(0, n - 1)} {plural(Math.max(0, n - 1), 'lease')} and their values are on hold,
         and nothing has been deleted.
@@ -147,33 +180,46 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
     <div id="mvFunnelBar" role="status">
       <span className="fb-tag">{tag}</span>
       <span className="fb-msg">{msg}</span>
-      <span className="fb-act">
-        {ctaHref
-          ? (
-            <Link className="fb-cta btn btn-sm" href={ctaHref}>
-              {cta}
-            </Link>
-          )
-          : (
-            <button type="button" className="fb-cta btn btn-sm" onClick={() => onCta?.()}>
-              {cta}
-            </button>
-          )}
-        {/* THE SECONDARY LINK IS A PLAN QUESTION IN EVERY STATE THAT RENDERS
-            ONE — see `PLANS_HREF`. `unclaimed` keeps the identity drawer, and
-            it is unreachable anyway: the bar does not paint in that state. */}
-        {funnel === 'unclaimed'
-          ? (
-            <button type="button" className="linklike fb-2nd" onClick={() => open('identity')}>
-              {snd}
-            </button>
-          )
-          : (
-            <Link className="linklike fb-2nd" href={PLANS_HREF}>
-              {snd}
-            </Link>
-          )}
-      </span>
+      {/* THE ACTION GROUP ONLY EXISTS WHERE THERE IS AN ACTION.
+
+          The free plan no longer offers anything to press (see the `claimed`
+          branch above), and `.fb-act` is a flex item with its own gap and, at
+          640px, `width: 100%` — so rendered empty it would take a row of the
+          banner and push the message off it on a phone. Each control is also
+          gated on its own label, so a state can carry one without the other. */}
+      {cta || snd
+        ? (
+          <span className="fb-act">
+            {/* A LINK WHEN IT NAVIGATES, A BUTTON WHEN IT DOES NOT — so a
+                middle-click, a modified click and the browser's own status bar
+                all behave the way the destination deserves. */}
+            {cta
+              ? (ctaHref
+                ? <Link className="fb-cta btn btn-sm" href={ctaHref}>{cta}</Link>
+                : (
+                  <button type="button" className="fb-cta btn btn-sm" onClick={() => onCta?.()}>
+                    {cta}
+                  </button>
+                ))
+              : null}
+            {/* THE SECONDARY LINK IS A PLAN QUESTION IN EVERY STATE THAT SETS
+                `sndHref` — see the note beside its declaration. `unclaimed` is
+                the one that is not, and it keeps the identity drawer. */}
+            {snd
+              ? (sndHref
+                ? <Link className="linklike fb-2nd" href={sndHref}>{snd}</Link>
+                : (
+                  <button
+                    type="button" className="linklike fb-2nd"
+                    onClick={() => open(funnel === 'unclaimed' ? 'identity' : 'value')}
+                  >
+                    {snd}
+                  </button>
+                ))
+              : null}
+          </span>
+        )
+        : null}
     </div>
   );
 }
