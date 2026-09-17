@@ -1,12 +1,7 @@
-import {
-  formatCompactDollars,
-  formatCompactVolume,
-  formatCount,
-  formatDollars,
-} from "../../_lib/lease-format";
 import type { MonthlyReport } from "../../_lib/monthly-report";
 import { operatorMonth, operatorRollups } from "../../_lib/operator-rollup";
 import { ReportFacts, ReportPageCard } from "./report-page";
+import { useReport } from "./report-context";
 
 /**
  * PAGE 8 · OPERATOR ANALYSIS — who runs these leases, and how much sits behind
@@ -25,6 +20,7 @@ import { ReportFacts, ReportPageCard } from "./report-page";
  * which is the right relationship to offer for a judgement this consequential.
  */
 export function PageOperators({ report }: { report: MonthlyReport }) {
+  const { fmt } = useReport();
   const rollups = operatorRollups();
 
   return (
@@ -49,7 +45,7 @@ export function PageOperators({ report }: { report: MonthlyReport }) {
                   </span>
                 </div>
                 <span className="text-[16px] font-bold tabular-nums">
-                  {formatCompactDollars(operator.value)}
+                  {fmt.compactDollars(operator.value)}
                 </span>
               </div>
 
@@ -64,13 +60,13 @@ export function PageOperators({ report }: { report: MonthlyReport }) {
                     { label: "Running since", value: operator.runningSince },
                     {
                       label: "Filed to date on your leases",
-                      value: `${formatCompactVolume(operator.filedGas)} MCF gas, ${formatCompactVolume(operator.filedOil)} BBL oil`,
+                      value: `${fmt.compactVolume(operator.filedGas)} MCF gas, ${fmt.compactVolume(operator.filedOil)} BBL oil`,
                     },
                     {
                       label: "Your value behind them",
                       value: (
                         <>
-                          <strong>{formatDollars(operator.value)}</strong> ·{" "}
+                          <strong>{fmt.dollars(operator.value)}</strong> ·{" "}
                           {operator.valuePercent.toFixed(1)}% of your record
                         </>
                       ),
@@ -81,10 +77,11 @@ export function PageOperators({ report }: { report: MonthlyReport }) {
                 <div className="space-y-3 text-[13px] leading-[1.6]">
                   <p className="text-mv-slate">
                     {operator.name} runs {operator.leaseCount} of your leases
-                    across {operator.counties.length} county and {operator.wells}{" "}
-                    well{operator.wells === 1 ? "" : "s"}. Those leases have
-                    filed {formatCompactVolume(operator.filedGas)} MCF of gas and{" "}
-                    {formatCompactVolume(operator.filedOil)} BBL of oil since they
+                    across {operator.counties.length} county and{" "}
+                    {operator.wells} well{operator.wells === 1 ? "" : "s"}.
+                    Those leases have filed{" "}
+                    {fmt.compactVolume(operator.filedGas)} MCF of gas and{" "}
+                    {fmt.compactVolume(operator.filedOil)} BBL of oil since they
                     started
                     {operator.runningSince === "not recorded"
                       ? "."
@@ -95,8 +92,8 @@ export function PageOperators({ report }: { report: MonthlyReport }) {
                     {operator.valuePercent.toFixed(1)}% of your modelled value
                     sits behind this operator, and they carry {month.filed} of{" "}
                     {month.total} filings for {report.month}, worth{" "}
-                    {formatCount(Math.round(month.gas))} MCF and{" "}
-                    {formatCount(Math.round(month.oil))} BBL to you.{" "}
+                    {fmt.count(Math.round(month.gas))} MCF and{" "}
+                    {fmt.count(Math.round(month.oil))} BBL to you.{" "}
                     {operator.leaseCount > 1
                       ? "Several leases behind one operator means one company's decisions move more of your income than any single well does."
                       : "A single lease with a single operator: your exposure here is to one company's choices about one piece of acreage."}

@@ -90,7 +90,9 @@ export function ReportList({ items }: { items: ReactNode[] }) {
  */
 export function ReportFootnote({ children }: { children: ReactNode }) {
   return (
-    <p className="mt-3 text-[11.5px] leading-[1.55] text-mv-muted">{children}</p>
+    <p className="mt-3 text-[11.5px] leading-[1.55] text-mv-muted">
+      {children}
+    </p>
   );
 }
 

@@ -42,7 +42,9 @@ export function PagePrices() {
             <p className="mt-0.5 text-[11.5px] font-semibold tabular-nums">
               <span
                 className={
-                  price.changePercent >= 0 ? "text-mv-green-deep" : "text-mv-down"
+                  price.changePercent >= 0
+                    ? "text-mv-green-deep"
+                    : "text-mv-down"
                 }
               >
                 {price.changePercent >= 0 ? "+" : ""}

@@ -298,8 +298,18 @@ function buildYears(): ReportYear[] {
 
 const YEARS = buildYears();
 
-export function buildMonthlyReport(index: number): MonthlyReport {
-  const rows = leaseRecords.map((lease) => buildLeaseRow(lease, index));
+/**
+ * `leases` DEFAULTS TO THE RECORD AND IS PASSED THE SAMPLE WHEN NOTHING IS
+ * CLAIMED, so the report names the same ten leases the list and the value band
+ * are showing in that state rather than a third set. Everything below reads the
+ * parameter; `seriesFor` resolves a sample slug to its own series, which is
+ * what `sample-leases.ts` gives them their own slugs for.
+ */
+export function buildMonthlyReport(
+  index: number,
+  leases: LeaseRecord[] = leaseRecords,
+): MonthlyReport {
+  const rows = leases.map((lease) => buildLeaseRow(lease, index));
   const filed = rows.filter((row) => row.filed);
 
   const yourGas = filed.reduce((total, row) => total + row.yourGas, 0);
@@ -313,7 +323,7 @@ export function buildMonthlyReport(index: number): MonthlyReport {
   const yearAgo = index - 12;
   const yearAgoShare =
     yearAgo >= 0
-      ? leaseRecords.reduce((total, lease) => {
+      ? leases.reduce((total, lease) => {
           const series = seriesFor(lease.slug);
           return yearAgo <= series.filedThroughIndex
             ? total + cashFor(series, yearAgo, lease.decimalInterest)
@@ -346,7 +356,8 @@ export function buildMonthlyReport(index: number): MonthlyReport {
     topLease: {
       title: top?.title ?? "",
       gasPercent: yourGas > 0 ? ((top?.yourGas ?? 0) / yourGas) * 100 : 0,
-      sharePercent: yourShare > 0 ? ((top?.yourShare ?? 0) / yourShare) * 100 : 0,
+      sharePercent:
+        yourShare > 0 ? ((top?.yourShare ?? 0) / yourShare) * 100 : 0,
     },
     steepestFall: byChange[0] ?? null,
     steepestRise: byChange[byChange.length - 1] ?? null,

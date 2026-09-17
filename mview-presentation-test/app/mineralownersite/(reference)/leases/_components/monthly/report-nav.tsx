@@ -103,7 +103,9 @@ export function ReportNav() {
           >
             <span
               className={`inline-flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full text-[10px] font-bold tabular-nums ${
-                current ? "bg-white/20 text-white" : "bg-mv-mint text-mv-green-ink"
+                current
+                  ? "bg-white/20 text-white"
+                  : "bg-mv-mint text-mv-green-ink"
               }`}
             >
               {position + 1}

@@ -1,8 +1,7 @@
-import { formatCompactDollars, formatCompactVolume, formatCount, formatDollars } from "../../_lib/lease-format";
-import { portfolioSummary } from "../../_lib/lease-totals";
 import type { MonthlyReport } from "../../_lib/monthly-report";
 import { threeYearOutlook } from "../../_lib/report-outlook";
 import { ReportHeading, ReportList, ReportPageCard } from "./report-page";
+import { useReport } from "./report-context";
 
 /**
  * PAGE 1 · EXECUTIVE SUMMARY — the month in three readings.
@@ -20,6 +19,7 @@ import { ReportHeading, ReportList, ReportPageCard } from "./report-page";
  * to be told.
  */
 export function PageExecutive({ report }: { report: MonthlyReport }) {
+  const { fmt, summary } = useReport();
   const fall = report.vsYearAgoPercent;
 
   return (
@@ -34,12 +34,12 @@ export function PageExecutive({ report }: { report: MonthlyReport }) {
           <ReportHeading>Portfolio</ReportHeading>
           <ReportList
             items={[
-              `${portfolioSummary.leaseCount} leases across ${portfolioSummary.counties} county, run by ${portfolioSummary.operators} operators, with ${portfolioSummary.wells} wells on the roster.`,
-              `${portfolioSummary.leaseCount} of them were producing at the last posted month, and ${report.filedCount} filed for ${report.month} itself.`,
+              `${fmt.num(summary.leaseCount)} leases across ${fmt.num(summary.counties)} county, run by ${fmt.num(summary.operators)} operators, with ${fmt.num(summary.wells)} wells on the roster.`,
+              `${fmt.num(summary.leaseCount)} of them were producing at the last posted month, and ${fmt.num(report.filedCount)} filed for ${report.month} itself.`,
               <>
                 Your modelled value across the whole record is{" "}
-                {formatCompactDollars(portfolioSummary.mvestimate)}, held at your
-                own decimal interest on every lease rather than one blended rate.
+                {fmt.compactDollars(summary.mvestimate)}, held at your own
+                decimal interest on every lease rather than one blended rate.
               </>,
             ]}
           />
@@ -50,10 +50,10 @@ export function PageExecutive({ report }: { report: MonthlyReport }) {
           <ReportList
             items={[
               <>
-                {formatDollars(report.yourShare)} to you:{" "}
-                {formatCount(Math.round(report.yourGas))} MCF of gas and{" "}
-                {formatCount(Math.round(report.yourOil))} BBL of oil, off{" "}
-                {formatCompactVolume(report.wholeGas)} MCF filed on the whole
+                {fmt.dollars(report.yourShare)} to you:{" "}
+                {fmt.count(Math.round(report.yourGas))} MCF of gas and{" "}
+                {fmt.count(Math.round(report.yourOil))} BBL of oil, off{" "}
+                {fmt.compactVolume(report.wholeGas)} MCF filed on the whole
                 leases.
               </>,
               <>
@@ -84,8 +84,10 @@ export function PageExecutive({ report }: { report: MonthlyReport }) {
                 one.
               </>,
               <>
-                {report.leaseCount - report.filedCount} lease
-                {report.leaseCount - report.filedCount === 1 ? " did" : "s did"}{" "}
+                {fmt.num(report.leaseCount - report.filedCount)} lease
+                {report.leaseCount - report.filedCount === 1
+                  ? " did"
+                  : "s did"}{" "}
                 not file this month. Give it two more cycles before treating a
                 gap as a stoppage; the state posts late far more often than a
                 well stops.

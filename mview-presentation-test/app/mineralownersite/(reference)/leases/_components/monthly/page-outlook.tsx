@@ -1,11 +1,7 @@
 import { KpiTile } from "../../../../_components/ui/kpi-tile";
-import { formatCompactDollars, formatDollars } from "../../_lib/lease-format";
 import { threeYearOutlook } from "../../_lib/report-outlook";
-import {
-  ReportFootnote,
-  ReportList,
-  ReportPageCard,
-} from "./report-page";
+import { ReportFootnote, ReportList, ReportPageCard } from "./report-page";
+import { useReport } from "./report-context";
 
 /**
  * PAGE 6 · THREE-YEAR OUTLOOK — where the model has this by the end of the curve.
@@ -27,6 +23,7 @@ import {
  * forecast of prices, which it is not and could not be.
  */
 export function PageOutlook() {
+  const { fmt } = useReport();
   const outlook = threeYearOutlook;
 
   return (
@@ -52,7 +49,7 @@ export function PageOutlook() {
           accent
           locked
           label="Your share a month"
-          value={`${formatCompactDollars(outlook.shareStart)} → ${formatCompactDollars(outlook.shareEnd)}`}
+          value={`${fmt.compactDollars(outlook.shareStart)} → ${fmt.compactDollars(outlook.shareEnd)}`}
           basis={`${signed(outlook.shareChangePercent)} at the model's price deck`}
         />
         <KpiTile
@@ -77,8 +74,8 @@ export function PageOutlook() {
             the same way.
           </>,
           <>
-            Your share runs from {formatDollars(outlook.shareStart)} a month to{" "}
-            {formatDollars(outlook.shareEnd)}, down{" "}
+            Your share runs from {fmt.dollars(outlook.shareStart)} a month to{" "}
+            {fmt.dollars(outlook.shareEnd)}, down{" "}
             {Math.abs(outlook.shareChangePercent).toFixed(1)}%. Price is held at
             the model&apos;s deck throughout, so this is the volume decline
             showing through, not a forecast of the market.
@@ -86,8 +83,9 @@ export function PageOutlook() {
           <>
             Across the three years oil carries{" "}
             {outlook.oilRevenuePercent.toFixed(1)}% of your money and gas{" "}
-            {outlook.gasRevenuePercent.toFixed(1)}% — a split that rarely matches
-            the split of the volume, and the reason both prices matter to you.
+            {outlook.gasRevenuePercent.toFixed(1)}% — a split that rarely
+            matches the split of the volume, and the reason both prices matter
+            to you.
           </>,
         ]}
       />

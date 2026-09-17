@@ -20,6 +20,9 @@ import { PageRevenue } from "./page-revenue";
 import { PageSideBySide } from "./page-side-by-side";
 import { PageYear } from "./page-year";
 import { ReportHeader } from "./report-header";
+import { ReportProvider } from "./report-context";
+import { usePortalViewState } from "../../../../_components/reference/view-state";
+import { sampleLeaseRecords } from "../../_lib/sample-leases";
 
 /**
  * MONTHLY REPORTS — twelve pages about one month, on one screen.
@@ -51,34 +54,45 @@ export function MonthlyPanel() {
   /* Rebuilt only when the month changes: the builder walks ten leases across a
      twelve-month trailing window for each, which is not work to repeat on an
      unrelated re-render. */
-  const report = useMemo(() => buildMonthlyReport(index), [index]);
+  /* WHOSE RECORD THIS IS. The shell's own funnel state, the same one the lease
+     list and the value band read — so all three tabs agree about whether this
+     visitor has claimed anything. Unclaimed gets the sample identities and
+     withheld figures; see `report-context.tsx`. */
+  const unclaimed = usePortalViewState()?.funnel === "unclaimed";
+
+  const report = useMemo(
+    () => buildMonthlyReport(index, unclaimed ? sampleLeaseRecords : undefined),
+    [index, unclaimed],
+  );
 
   return (
-    <div>
-      <ReportHeader
-        report={report}
-        monthOptions={months}
-        onMonthChange={setIndex}
-      />
+    <ReportProvider unclaimed={unclaimed}>
+      <div>
+        <ReportHeader
+          report={report}
+          monthOptions={months}
+          onMonthChange={setIndex}
+        />
 
-      <PageExecutive report={report} />
-      <PageMonth report={report} />
-      <PageRevenue />
-      <PageLeaseAnalysis report={report} />
-      <PageSideBySide report={report} />
-      <PageOutlook />
-      <PageDevelopment />
-      <PageOperators report={report} />
-      <PageCashFlow report={report} />
-      <PagePrices />
-      <PagePress />
-      <PageYear report={report} />
+        <PageExecutive report={report} />
+        <PageMonth report={report} />
+        <PageRevenue />
+        <PageLeaseAnalysis report={report} />
+        <PageSideBySide report={report} />
+        <PageOutlook />
+        <PageDevelopment />
+        <PageOperators report={report} />
+        <PageCashFlow report={report} />
+        <PagePrices />
+        <PagePress />
+        <PageYear report={report} />
 
-      <p className="mt-4 text-center text-[11.5px] text-mv-muted">
-        Twelve pages · built from the Texas public record. Production figures are
-        what the operator reported to the state; a statement is a different
-        document and will not match this to the penny.
-      </p>
-    </div>
+        <p className="mt-4 text-center text-[11.5px] text-mv-muted">
+          Twelve pages · built from the Texas public record. Production figures
+          are what the operator reported to the state; a statement is a
+          different document and will not match this to the penny.
+        </p>
+      </div>
+    </ReportProvider>
   );
 }

@@ -76,9 +76,9 @@ export function PageDevelopment() {
                 The model&apos;s chance of a new well is not one number across
                 these leases: {best.lease} scores {best.percent.toFixed(1)}% and{" "}
                 {worst.lease} scores {worst.percent.toFixed(1)}% —{" "}
-                {bands.veryPoor} very poor, {bands.average} average, {bands.good}{" "}
-                good, {bands.veryGood} very good. Treating the portfolio as one
-                score would describe none of them.
+                {bands.veryPoor} very poor, {bands.average} average,{" "}
+                {bands.good} good, {bands.veryGood} very good. Treating the
+                portfolio as one score would describe none of them.
               </>,
               <>
                 {inner.permits} standing permits and {inner.leases} neighbouring

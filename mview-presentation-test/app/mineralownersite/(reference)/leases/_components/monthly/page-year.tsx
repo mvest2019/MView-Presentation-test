@@ -7,9 +7,9 @@ import {
   TableRow,
   TableScroll,
 } from "../../../../_components/ui/table";
-import { formatCount, formatDollars } from "../../_lib/lease-format";
 import type { MonthlyReport } from "../../_lib/monthly-report";
 import { ReportList, ReportPageCard } from "./report-page";
+import { useReport } from "./report-context";
 
 /**
  * PAGE 12 · THE YEAR SO FAR, AND WHERE THIS COMES FROM.
@@ -39,6 +39,7 @@ import { ReportList, ReportPageCard } from "./report-page";
 const YEARS_SHOWN = 6;
 
 export function PageYear({ report }: { report: MonthlyReport }) {
+  const { fmt } = useReport();
   const years = report.years.slice(0, YEARS_SHOWN);
 
   return (
@@ -75,12 +76,12 @@ export function PageYear({ report }: { report: MonthlyReport }) {
                       )}
                     </TableCell>
                     <TableCell numeric>
-                      {formatCount(Math.round(year.gas))}
+                      {fmt.count(Math.round(year.gas))}
                     </TableCell>
                     <TableCell numeric>
-                      {formatCount(Math.round(year.oil))}
+                      {fmt.count(Math.round(year.oil))}
                     </TableCell>
-                    <TableCell numeric>{formatDollars(year.share)}</TableCell>
+                    <TableCell numeric>{fmt.dollars(year.share)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -104,11 +105,11 @@ export function PageYear({ report }: { report: MonthlyReport }) {
               interest — never a blended rate applied across the portfolio.
             </li>
             <li>
-              <strong>Projected past the boundary.</strong> The state runs two to
-              three months behind, so the filed record ends at {report.month}.
-              Past that the decline model carries each lease forward at a fixed
-              price deck, and every projected figure in this report is marked as
-              one.
+              <strong>Projected past the boundary.</strong> The state runs two
+              to three months behind, so the filed record ends at {report.month}
+              . Past that the decline model carries each lease forward at a
+              fixed price deck, and every projected figure in this report is
+              marked as one.
             </li>
           </ol>
         </div>

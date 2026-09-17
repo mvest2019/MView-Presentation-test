@@ -1,11 +1,7 @@
 import { KpiTile } from "../../../../_components/ui/kpi-tile";
-import {
-  formatCompactVolume,
-  formatCount,
-  formatDollars,
-} from "../../_lib/lease-format";
 import type { MonthlyReport } from "../../_lib/monthly-report";
 import { ReportList, ReportPageCard } from "./report-page";
+import { useReport } from "./report-context";
 
 /**
  * PAGE 2 · THE MONTH — the four figures, then what they say.
@@ -21,6 +17,7 @@ import { ReportList, ReportPageCard } from "./report-page";
  * a footnote, because it is about the headline figure directly above it.
  */
 export function PageMonth({ report }: { report: MonthlyReport }) {
+  const { fmt } = useReport();
   const missing = report.leaseCount - report.filedCount;
   const top = report.leases[0];
 
@@ -35,17 +32,17 @@ export function PageMonth({ report }: { report: MonthlyReport }) {
         <KpiTile
           locked
           label="Your share of the month"
-          value={formatDollars(report.yourShare)}
-          basis={`across ${report.filedCount} reporting leases`}
+          value={fmt.dollars(report.yourShare)}
+          basis={`across ${fmt.num(report.filedCount)} reporting leases`}
         />
         <KpiTile
           label="Your gas"
-          value={`${formatCount(Math.round(report.yourGas))} MCF`}
-          basis={`of ${formatCompactVolume(report.wholeGas)} MCF filed on the whole leases`}
+          value={`${fmt.count(Math.round(report.yourGas))} MCF`}
+          basis={`of ${fmt.compactVolume(report.wholeGas)} MCF filed on the whole leases`}
         />
         <KpiTile
           label="Your oil"
-          value={`${formatCount(Math.round(report.yourOil))} BBL`}
+          value={`${fmt.count(Math.round(report.yourOil))} BBL`}
           basis="net of what never reached the sales meter"
         />
         {/* The accent marks the tile that is a COUNT rather than a quantity —
@@ -54,9 +51,11 @@ export function PageMonth({ report }: { report: MonthlyReport }) {
         <KpiTile
           accent
           label="Leases reporting"
-          value={`${report.filedCount} of ${report.leaseCount}`}
+          value={`${fmt.num(report.filedCount)} of ${fmt.num(report.leaseCount)}`}
           basis={
-            missing > 0 ? "the rest are behind, not stopped" : "all filed on time"
+            missing > 0
+              ? "the rest are behind, not stopped"
+              : "all filed on time"
           }
         />
       </div>
@@ -65,8 +64,8 @@ export function PageMonth({ report }: { report: MonthlyReport }) {
       <ReportList
         items={[
           <>
-            {report.filedCount} of your {report.leaseCount} leases filed
-            production in {report.month}.{" "}
+            {fmt.num(report.filedCount)} of your {fmt.num(report.leaseCount)}{" "}
+            leases filed production in {report.month}.{" "}
             {missing > 0
               ? `${missing} did not — a lease can file late, and a missing month is far more often the posting lag than a well that stopped.`
               : "Nothing is outstanding."}
@@ -74,7 +73,7 @@ export function PageMonth({ report }: { report: MonthlyReport }) {
           top && (
             <>
               {top.title} carried the month:{" "}
-              {formatCount(Math.round(top.yourGas))} MCF to you,{" "}
+              {fmt.count(Math.round(top.yourGas))} MCF to you,{" "}
               {report.topLease.gasPercent.toFixed(1)}% of your gas.
             </>
           ),
@@ -94,10 +93,11 @@ export function PageMonth({ report }: { report: MonthlyReport }) {
             </>
           ),
           <>
-            Your share of the month is {formatDollars(report.yourShare)} across{" "}
-            {report.leaseCount} leases. That is the model&apos;s figure for the
-            volumes filed, not an amount owed — deductions and the price your
-            operator actually got are on the statement, not in the public record.
+            Your share of the month is {fmt.dollars(report.yourShare)} across{" "}
+            {fmt.num(report.leaseCount)} leases. That is the model&apos;s figure
+            for the volumes filed, not an amount owed — deductions and the price
+            your operator actually got are on the statement, not in the public
+            record.
           </>,
         ].filter(Boolean)}
       />
