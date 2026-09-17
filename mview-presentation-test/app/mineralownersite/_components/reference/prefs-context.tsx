@@ -23,17 +23,16 @@
  * renders the right density first time, hydration matches it exactly, and
  * there is no flash and no skeleton.
  *
- * THE SKELETON IS STILL THERE and still correct — it covers the one case the
- * cookie cannot: a reader who set a density BEFORE this cookie existed, whose
- * `localStorage` says `ultra` while the request carries nothing. They get the
- * skeleton once, the effect writes the cookie, and every later visit is served
- * directly. A brand-new reader has neither store and the default is right for
- * them, so they never see it either.
+ * THE SKELETON IS GONE (QA asked for the loading skeletons to go). The one
+ * case the cookie cannot cover — a reader who set a density BEFORE this cookie
+ * existed, whose `localStorage` says `ultra` while the request carries nothing
+ * — now renders the default for the frame it takes the layout effect to read
+ * the choice and write the cookie; every later visit is served directly. A
+ * brand-new reader has neither store and the default is right for them.
  *
- * `null` MEANS "the request said nothing", which is the state that turns the
- * skeleton on. It is not the same as a value that happens to equal the
- * default: a reader who deliberately chose Detailed has a cookie saying so,
- * and must not be made to wait behind a skeleton for a choice already known.
+ * `null` MEANS "the request said nothing". It is not the same as a value that
+ * happens to equal the default: a reader who deliberately chose Detailed has a
+ * cookie saying so.
  *
  * NOT A SECURITY BOUNDARY, and it must not be mistaken for one. These are two
  * display preferences. `funnel` in particular decides which SAMPLE COPY the

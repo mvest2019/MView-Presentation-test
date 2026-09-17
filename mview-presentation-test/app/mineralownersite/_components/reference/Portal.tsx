@@ -400,25 +400,20 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
    * page at the wrong density: the reported shape was "after refresh the page
    * shows pro mode for some time and then shows ultra or essentials".
    *
-   * That is not a slow render, it is the server's guess held on screen for the
-   * length of a hydration — and unlike a wrong FIGURE, a wrong DENSITY moves
-   * every heading on the page when it corrects, so the reader loses their
-   * place. QA asked for a loader or a skeleton, which is the honest answer:
-   * the shell says it is still deciding rather than deciding wrongly.
+   * The shell skeleton that used to cover that window was removed at QA's
+   * request — the page now renders immediately at the density in state, and
+   * the one frame a pre-cookie `localStorage` choice corrects in is accepted.
+   * The cookie (`prefs-context`) keeps that frame from existing for anyone who
+   * has picked a density since it was introduced.
    *
+   * The flag itself remains, with one job left: the "no owner is loaded" error
+   * card below must not flash before the preferences have been read.
    * `false` on the server AND on the first client render, so hydration matches
-   * exactly; flipped in the same LAYOUT effect that reads the preference, so
-   * the real page paints in the frame hydration commits rather than one frame
-   * later. See `SHELL_SKELETON` at the foot of this file for what shows
-   * meanwhile.
+   * exactly; flipped in the same LAYOUT effect that reads the preference.
    */
   const [prefsReady, setPrefsReady] = useState(
-    /* THE SKELETON IS FOR READERS THE REQUEST COULD NOT DESCRIBE. A cookie
-       means the server has already rendered this reader's own density, so
-       there is nothing to wait for and nothing that can flash — showing them
-       blocks would be a regression dressed as a fix. Only a reader with no
-       cookie, whose `localStorage` may still hold a choice from before the
-       cookie existed, has a wrong density on screen worth covering. */
+    /* A cookie means the server already rendered this reader's own density,
+       so there is nothing left to wait for. */
     pref.tier != null,
   );
   const seq = useRef(0);
@@ -474,8 +469,8 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
        read-state — the empty one — and holding `readReady` at false there would
        hide the count for the whole visit rather than for a frame. And a browser
        that throws still has a DENSITY — the default one — so `prefsReady` has
-       to flip for the same reason: a private window must get the page, not the
-       skeleton, for the rest of the visit. */
+       to flip for the same reason: the error card below must stay reachable in
+       a private window for the rest of the visit. */
     setReadReady(true);
     setPrefsReady(true);
   }, []);
@@ -1033,14 +1028,13 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
 
   const view = (
     children ??
-    /* THE DENSITY IS NOT KNOWN YET — see `prefsReady`. Every surface below
-       branches on `effTier`, so rendering one before the reader's own choice
-       has been read paints the server's guess and then re-lays the whole page
-       out when it corrects. The skeleton holds the shape for that one frame.
-       `children` is exempt: a page that brought its own view (the Map) does
-       not read the density at all. */
-    (!prefsReady ? <ShellSkeleton />
-      : !data ? null
+    /* The view renders as soon as the payload is here, at the density in
+       state — the cookie's when the request carried one, the default
+       otherwise. QA asked for the loading skeletons to go, so the one frame a
+       pre-cookie `localStorage` choice corrects in is accepted rather than
+       covered. `children` is exempt: a page that brought its own view (the
+       Map) does not read the density at all. */
+    (!data ? null
       : route === 'weekly'
         ? <WeeklyView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
         : route === 'alerts'
@@ -1100,13 +1094,10 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
         {/* The copy no longer says "search for a name above" — there is no
             search box above it any more. The owner comes from the URL or from
             the default read, so a reload is the honest suggestion. */}
-        {/* `prefsReady` too: until the density is known the skeleton is what is
-            on screen, and "no owner is loaded" under it would be a second,
-            contradictory answer to the same question. `sampleBusy` is the same
-            argument for the not-claimed preview: entering that state fetches
-            its fixed base record, and without the guard this card showed for
-            the length of that request. */}
-        {prefsReady && !children && !data && !error && !busy && !sampleBusy ? <ErrorCard detail="No owner is loaded yet. Reload the page, or open a link that names one." /> : null}
+        {/* `prefsReady` too: until the preferences are read the page may still
+            be about to render, and "no owner is loaded" before that would be a
+            wrong answer flashed for a frame. */}
+        {prefsReady && !children && !data && !error && !busy ? <ErrorCard detail="No owner is loaded yet. Reload the page, or open a link that names one." /> : null}
       </Chrome>
       </PortalViewStateProvider>
 
@@ -1119,42 +1110,6 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
         copy={copy} onClose={() => setDrawer(null)}
         sample={sample} sourceNote={data?.owner.identity_note ?? null}
       />
-    </div>
-  );
-}
-
-/**
- * WHAT IS ON SCREEN WHILE THE DENSITY IS STILL UNKNOWN — see `prefsReady`.
- *
- * It is a SKELETON and not a spinner, and the difference matters here: the
- * thing being waited for is a layout, so the honest placeholder is the shape
- * of a layout. A spinner in the middle of an empty column would say "this page
- * is loading its data", which is a different and untrue claim — the payload is
- * already here, it is the reader's own choice of density that is not.
- *
- * It holds roughly the height the real page opens at, so the scroll position
- * does not jump when the tree lands. `aria-busy` and the visually-hidden line
- * say the same thing to a screen reader, which sees no skeleton at all.
- *
- * ONE FRAME, USUALLY. `prefsReady` flips in a layout effect, so this is
- * replaced before the browser paints the hydrated tree; what it actually
- * covers is the gap between the server's HTML arriving and hydration running,
- * which on a cold load is the only window the wrong density was ever visible
- * in.
- */
-function ShellSkeleton() {
-  return (
-    <div className="mv-shellskel" aria-busy="true" aria-live="polite">
-      <span className="sr-only">Loading your view</span>
-      <div className="sk-line sk-head" />
-      <div className="sk-line sk-sub" />
-      <div className="sk-card" />
-      <div className="sk-row">
-        <div className="sk-card sk-sm" />
-        <div className="sk-card sk-sm" />
-        <div className="sk-card sk-sm" />
-      </div>
-      <div className="sk-card" />
     </div>
   );
 }
