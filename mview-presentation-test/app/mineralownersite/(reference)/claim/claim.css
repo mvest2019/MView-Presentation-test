@@ -75,8 +75,11 @@
    This route owned none, so the card sat flush against the funnel bar, its
    heading reading as touching the band above it.
 
-   16px, the same figure rule 5 hands every other route, so the flow opens level
-   with them rather than at a number of its own.
+   24px. Rule 5 hands every other route 16px, and that is the floor this started
+   at — but those routes open under the plain chrome row, and this one opens
+   under the plan banner as well, which is a filled band rather than a rule. A
+   card set the same 16px from a solid colour reads tighter than the same 16px
+   from a white bar, so it takes the next step up and no more.
 
    Scoped under `.app-body`, which the walkthrough is NOT inside — the dialog is
    portalled to `document.body` and mounts its own `ClaimShell`. Without that
@@ -84,7 +87,7 @@
    section 5 exists to keep out of it.
    ---------------------------------------------------------------------------- */
 .mv-ref-app .app-body .mv-claim-flow {
-  margin-top: 16px;
+  margin-top: 24px;
 }
 
 /* ----------------------------------------------------------------------------
