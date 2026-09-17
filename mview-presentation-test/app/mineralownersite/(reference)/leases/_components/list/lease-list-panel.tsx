@@ -128,16 +128,23 @@ export function LeaseListPanel({ leases }: { leases: LeaseRecord[] }) {
           <div className="mt-3.5">
             <LeaseGrid leases={visible} />
           </div>
-          <Card padded={false} className="mt-3.5 overflow-hidden">
-            <LeasePagination
-              divided={false}
-              page={safePage}
-              pageCount={pageCount}
-              pageSize={pageSize}
-              total={matched.length}
-              onPageChange={setPage}
-            />
-          </Card>
+          {/* THE CARD IS THE PAGER'S, so it only exists when the pager does.
+              `LeasePagination` returns nothing on a single page, and this
+              wrapper went on rendering around it — an empty bordered box under
+              the cards with nothing in it. A component that can render nothing
+              cannot be wrapped unconditionally. */}
+          {pageCount > 1 && (
+            <Card padded={false} className="mt-3.5 overflow-hidden">
+              <LeasePagination
+                divided={false}
+                page={safePage}
+                pageCount={pageCount}
+                pageSize={pageSize}
+                total={matched.length}
+                onPageChange={setPage}
+              />
+            </Card>
+          )}
         </>
       )}
 

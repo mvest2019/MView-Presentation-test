@@ -11,7 +11,12 @@ import {
 } from "../../_api/leases-api";
 import { SCOPE_COPY, type FinancialsScope } from "../../_lib/financials-record";
 import { monthLabel, shortMonthLabel } from "../../_lib/months";
-import { CHART_MODES, CHART_MODE_COPY, chartTitle, type ChartMode } from "./chart-modes";
+import {
+  CHART_MODES,
+  CHART_MODE_COPY,
+  chartTitle,
+  type ChartMode,
+} from "./chart-modes";
 import { ChartBrush } from "./chart-brush";
 import { FinancialsTiles } from "./financials-tiles";
 import { MonthTable } from "./month-table";
@@ -192,7 +197,9 @@ function FinancialsView({ data }: { data: LeaseFinancials }) {
             { value: "share", label: SCOPE_COPY.share.label },
           ]}
         />
-        <p className="text-[12.5px] text-mv-muted">{SCOPE_COPY[scope].caption}</p>
+        <p className="text-[12.5px] text-mv-muted">
+          {SCOPE_COPY[scope].caption}
+        </p>
       </div>
 
       <FinancialsTiles
@@ -202,6 +209,16 @@ function FinancialsView({ data }: { data: LeaseFinancials }) {
       />
 
       <Card padded={false} className="px-[18px] py-4">
+        {/* THE TWO CONTROLS THAT GOVERN THE CHART, ON ONE ROW ABOVE IT.
+
+            The range presets sat under the chart beside the "Showing …" line,
+            which put the two things a reader reaches for — what to plot, and how
+            much of it to plot — at opposite ends of the card with the chart
+            between them. They are one decision in two halves.
+
+            `ml-auto` rather than `justify-between`: the note beside the mode
+            switch is prose and changes length with the mode, so pinning the
+            presets to the right edge is what keeps them still as it does. */}
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <SegmentedControl
             label="What to plot"
@@ -210,7 +227,17 @@ function FinancialsView({ data }: { data: LeaseFinancials }) {
             onChange={setMode}
             options={CHART_MODES}
           />
-          <p className="text-[12.5px] text-mv-muted">{CHART_MODE_COPY[mode].note}</p>
+          <p className="text-[12.5px] text-mv-muted">
+            {CHART_MODE_COPY[mode].note}
+          </p>
+          <div className="ml-auto">
+            <RangePresets
+              months={months}
+              lastPostedIndex={data.lastPostedIndex}
+              length={data.length}
+              onChange={setRange}
+            />
+          </div>
         </div>
 
         <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
@@ -236,17 +263,14 @@ function FinancialsView({ data }: { data: LeaseFinancials }) {
           summary={`${chartTitle(mode, scope)}, ${labelFor(range.from)} to ${labelFor(range.to)}. Filed through ${filedThrough}; modelled after that.`}
         />
 
-        <div className="mt-2 mb-2 flex flex-wrap items-center justify-between gap-3">
+        {/* The presets moved up to the control row — see the note there. This
+            line is a readout of where the window is rather than a control, so it
+            keeps its place directly under the chart it describes. */}
+        <div className="mt-2 mb-2">
           <p className="text-[11.5px] text-mv-muted tabular-nums">
             Showing {labelFor(range.from)} to {labelFor(range.to)} · {months}{" "}
             months of {data.length}
           </p>
-          <RangePresets
-            months={months}
-            lastPostedIndex={data.lastPostedIndex}
-            length={data.length}
-            onChange={setRange}
-          />
         </div>
 
         <ChartBrush
@@ -261,7 +285,7 @@ function FinancialsView({ data }: { data: LeaseFinancials }) {
       {/* THE FIGURES BEHIND THE PICTURE, directly under it and at the same
           scope. A reader who wants the exact value of a month cannot read one
           off a polyline — see the note in `month-table.tsx`. */}
-      <MonthTable data={data} scope={scope} />
+      <MonthTable data={data} scope={scope} window={range} />
     </div>
   );
 }

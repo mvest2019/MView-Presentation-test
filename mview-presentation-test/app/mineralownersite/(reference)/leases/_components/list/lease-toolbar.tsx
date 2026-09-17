@@ -324,6 +324,9 @@ function FilterField({
         value={value}
         onChange={onChange}
         block
+        /* `""` IS "All counties" — the first option below. Passing it is what
+           puts the ✕ on this control once anything else is chosen. */
+        clearTo=""
         options={[
           { value: "", label: allLabel },
           ...options.map((option) => ({ value: option, label: option })),

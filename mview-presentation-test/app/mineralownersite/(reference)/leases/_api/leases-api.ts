@@ -160,9 +160,7 @@ export async function fetchLeaseFinancials(
  * filtering server-side is the real fix and is a change to the panel, not to
  * this call.
  */
-export async function fetchLeaseList(
-  signal?: AbortSignal,
-): Promise<LeaseList> {
+export async function fetchLeaseList(signal?: AbortSignal): Promise<LeaseList> {
   const first = await request<WireLeaseList>(
     `/api/leases/leases?page=1&page_size=${PAGE_SIZE}`,
     "your leases",
@@ -254,14 +252,12 @@ async function fetchPages(
   const pages: WireLeaseList[] = [];
   for (let start = from; start <= to; start += CONCURRENCY) {
     const batch = await Promise.all(
-      Array.from(
-        { length: Math.min(CONCURRENCY, to - start + 1) },
-        (_, i) =>
-          request<WireLeaseList>(
-            `/api/leases/leases?page=${start + i}&page_size=${PAGE_SIZE}`,
-            "your leases",
-            signal,
-          ),
+      Array.from({ length: Math.min(CONCURRENCY, to - start + 1) }, (_, i) =>
+        request<WireLeaseList>(
+          `/api/leases/leases?page=${start + i}&page_size=${PAGE_SIZE}`,
+          "your leases",
+          signal,
+        ),
       ),
     );
     pages.push(...batch);
@@ -477,25 +473,52 @@ function toFinancials(wire: WireFinancials): LeaseFinancials {
   }
 
   /*
-   * `seam` IS A COUNT AND `lastPostedIndex` IS AN INDEX, so one is subtracted.
-   * Verified against the dev response on 2026-09-17: `seam` was 402,
-   * `months[401]` was `forecast: false` and `months[402]` the first
-   * `forecast: true`.
+   * ── WHERE HISTORY ENDS, DECIDED ONCE ──
    *
-   * FALLING BACK TO THE FLAGS RATHER THAN TO A CONSTANT. If `seam` is missing
-   * or out of range, the first `forecast: true` month says the same thing, and
-   * a record with nothing modelled leaves every month filed. A hard-coded guess
-   * here would draw the solid/dashed join in the wrong place, which is the one
-   * thing on this chart a reader cannot check for themselves.
+   * The response says it three ways and they do not always agree:
+   *
+   *   `history_end_label`  "May 2026" — the month the backend prints
+   *   `seam`               a COUNT of filed months, so `seam - 1` is an index
+   *   `forecast`           a flag on every month
+   *
+   * THEY DISAGREED BY ONE ON A REAL RECORD (seen 2026-09-17): the label said
+   * May 2026 while `seam` made June 2026 the last filed month. Binding them
+   * independently — the label to the captions, `seam` to the chart — made the
+   * page contradict itself: the tile read "through May 2026" and the basis line
+   * "solid to May 2026" while the solid line ran a month further and the table
+   * window started a month late. The extra month was also the one that dragged
+   * the curve to zero at the join, because it is a month the operators have not
+   * filed yet.
+   *
+   * SO THE LABEL GOVERNS, and the index is resolved FROM it. It is the
+   * backend's own statement of where the history it is willing to stand behind
+   * ends, it is what every caption on the page prints, and a chart that
+   * disagrees with its own caption is worse than one that stops a month early.
+   *
+   * THE OTHER TWO ARE FALLBACKS, in order of how much they know: the `forecast`
+   * flags, which are per-month, then `seam`. A record with nothing modelled
+   * leaves every month filed. Nothing here is ever a hard-coded guess — the
+   * solid/dashed join is the one thing on this chart a reader cannot check for
+   * themselves.
    */
-  const seam =
+  const fromLabel = wire.history_end_label
+    ? months.findIndex((month) => month.short === wire.history_end_label)
+    : -1;
+
+  const fromFlags = (() => {
+    const first = months.findIndex((month) => month.forecast);
+    return first === -1 ? months.length - 1 : first - 1;
+  })();
+
+  const fromSeam =
     typeof wire.seam === "number" && wire.seam > 0 && wire.seam <= months.length
-      ? wire.seam
-      : (() => {
-          const first = months.findIndex((month) => month.forecast);
-          return first === -1 ? months.length : first;
-        })();
-  const lastPostedIndex = Math.max(0, seam - 1);
+      ? wire.seam - 1
+      : -1;
+
+  const lastPostedIndex = Math.max(
+    0,
+    fromLabel >= 0 ? fromLabel : fromFlags >= 0 ? fromFlags : fromSeam,
+  );
 
   const totals = wire.totals ?? {};
 
@@ -519,11 +542,12 @@ function toFinancials(wire: WireFinancials): LeaseFinancials {
     firstMonth: monthNumber(months[0].short),
     lastPostedIndex,
     length: months.length,
-    /* The backend's label is preferred over one derived here: it is the same
-       string the rest of its responses print, and a month formatted twice in
-       two places is how "June 2026" and "Jun 2026" end up on one screen. */
-    historyEndLabel:
-      wire.history_end_label || months[lastPostedIndex]?.short || "",
+    /* READ OFF THE MONTH THE LINE ACTUALLY ENDS ON. It is the backend's own
+       string either way — `months[].short` is the same vocabulary as
+       `history_end_label` — but taking it from the resolved index is what
+       guarantees the caption names the month the chart stops at, whichever of
+       the three sources above won. */
+    historyEndLabel: months[lastPostedIndex]?.short ?? "",
     blendedInterest: num(totals.blended_interest),
     owner: wire.owner ?? "",
     note: wire.note ?? "",

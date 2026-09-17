@@ -13,10 +13,7 @@ import type { LeaseFinancials } from "../../_api/leases-api";
 import type { FinancialsScope } from "../../_lib/financials-record";
 import { financialsRows } from "../../_lib/financials-rows";
 import { formatCount, formatDollars } from "../../_lib/lease-format";
-import {
-  MONTHLY_WINDOW_COPY,
-  STEEP_DROP_PERCENT,
-} from "../../_lib/monthly-rows";
+import { STEEP_DROP_PERCENT } from "../../_lib/monthly-rows";
 
 /**
  * "MONTH BY MONTH" — the chart above it, as figures.
@@ -48,23 +45,27 @@ import {
 export function MonthTable({
   data,
   scope,
+  window,
 }: {
   /** The record the chart above is drawn from — so the two cannot disagree. */
   data: LeaseFinancials;
   scope: FinancialsScope;
+  /** The months the chart is showing. The table shows the same ones. */
+  window: { from: number; to: number };
 }) {
-  const rows = financialsRows(data, scope);
+  const rows = financialsRows(data, scope, window);
 
   return (
     <Card padded={false} className="mt-4 px-[18px] py-[14px]">
+      {/* NO CHIP BESIDE THE TITLE. It read "the year ahead and four behind ·
+          newest first" — a description of the window, standing where a control
+          usually stands, on a card the reader can see the shape of by looking
+          at it: the first row is dated and so is the last. Removed on request.
+          `MONTHLY_WINDOW_COPY` is left in `monthly-rows.ts`, where the window
+          it describes is still defined. */}
       <CardHeader
         className="mb-3"
         title={<h3 className="text-[14px] font-bold">Month by month</h3>}
-        action={
-          <Badge tone="slate" size="sm">
-            {MONTHLY_WINDOW_COPY}
-          </Badge>
-        }
       />
 
       <TableScroll>
@@ -84,8 +85,12 @@ export function MonthTable({
                 <TableCell className="font-bold whitespace-nowrap">
                   {row.month}
                 </TableCell>
-                <TableCell numeric>{formatCount(Math.round(row.gas))}</TableCell>
-                <TableCell numeric>{formatCount(Math.round(row.oil))}</TableCell>
+                <TableCell numeric>
+                  {formatCount(Math.round(row.gas))}
+                </TableCell>
+                <TableCell numeric>
+                  {formatCount(Math.round(row.oil))}
+                </TableCell>
                 <TableCell numeric>{formatDollars(row.cash)}</TableCell>
                 <TableCell numeric>
                   <span className="inline-flex items-center justify-end gap-2">

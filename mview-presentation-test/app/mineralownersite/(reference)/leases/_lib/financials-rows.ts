@@ -1,6 +1,6 @@
 import type { LeaseFinancials } from "../_api/leases-api";
 import type { FinancialsScope } from "./financials-record";
-import { MONTHS_AHEAD, MONTHS_BEHIND, type MonthlyRow } from "./monthly-rows";
+import { type MonthlyRow } from "./monthly-rows";
 import { shortMonthLabel } from "./months";
 
 /**
@@ -29,12 +29,21 @@ import { shortMonthLabel } from "./months";
  * disagreeing with it by a few percent is worse than having no table — a reader
  * who notices stops trusting both.
  *
- * ── WHY THIS SLICE AND NOT THE WHOLE RECORD ──
+ * ── THE WINDOW IS THE CHART'S, NOT ITS OWN ──
  *
- * 523 rows is not a table anybody reads; it is a data dump with a header. The
- * window is the twelve months ahead of the last filing and the four years
- * behind it — far enough back to see a seasonal shape and a shut-in, far enough
- * forward to see where the model is taking it.
+ * It used to compute a fixed slice — twelve months past the last filing and
+ * four years behind it — which meant the presets and the brush moved the chart
+ * and left the table where it was. Two views of one series, showing different
+ * months, with nothing on screen to say so.
+ *
+ * Now the caller passes the visible range, so "5 yr" gives sixty rows of the
+ * same sixty months the line is drawn from, and dragging a handle moves both.
+ * The table is the chart as figures; a reader checking a month against a
+ * statement should not have to work out which months each one is showing.
+ *
+ * "All" therefore means all of it — 228 rows. That is a lot of table, and it is
+ * what the reader asked for by pressing the button; the scroll is theirs to
+ * make.
  *
  * NEWEST FIRST, which is the opposite of the chart's direction and is right for
  * both: a chart is read left to right because it is a shape over time, and a
@@ -43,12 +52,16 @@ import { shortMonthLabel } from "./months";
 export function financialsRows(
   data: LeaseFinancials,
   scope: FinancialsScope,
+  window: { from: number; to: number },
 ): MonthlyRow[] {
   const streams = scope === "share" ? data.share : data.lease;
   const { firstMonth, lastPostedIndex, length } = data;
 
-  const newest = Math.min(lastPostedIndex + MONTHS_AHEAD, length - 1);
-  const oldest = Math.max(lastPostedIndex - (MONTHS_BEHIND - 1), 0);
+  /* CLAMPED, NOT TRUSTED. The window comes from the brush and the presets, and
+     "All" runs to the last index — one past it would read `undefined` out of
+     three arrays and print a row of zeroes. */
+  const newest = Math.min(Math.max(window.to, 0), length - 1);
+  const oldest = Math.min(Math.max(window.from, 0), newest);
 
   const rows: MonthlyRow[] = [];
   for (let index = newest; index >= oldest; index -= 1) {
