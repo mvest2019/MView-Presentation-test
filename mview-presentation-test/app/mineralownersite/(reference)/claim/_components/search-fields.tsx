@@ -104,7 +104,18 @@ export function ClaimSearchFields({
     /* NO FRAME OF ITS OWN — the caller supplies it. Step 1 wraps these in a
        bordered box; on step 2 they sit inside the filter card, and a border
        here would draw a second rule just inside that card's own. */
-    <div className={`grid @[520px]:grid-cols-2 ${compact ? "gap-3" : "gap-5"}`}>
+    /* THE COMPACT GAP IS FOR TWO COLUMNS, NOT FOR ONE.
+       12px between a pair of fields sitting side by side reads as one control
+       panel. Stacked on a phone the same 12px has to separate a label, a
+       qualifier and an input from the next label — four lines of text with a
+       gap the size of the space between them — and the four fields run
+       together. Below the breakpoint, where the grid is a single column, it
+       takes the roomier value the uncompacted form already uses. */
+    <div
+      className={`grid @[520px]:grid-cols-2 ${
+        compact ? "gap-5 @[520px]:gap-3" : "gap-5"
+      }`}
+    >
       <ClaimTextField
         label="Owner name"
         qualifier="as it appears on checks or mail"

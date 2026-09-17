@@ -319,7 +319,12 @@ export function StepSuccess({
               <FileText aria-hidden="true" className="h-[17px] w-[17px]" />
             </span>
 
-            <div className="min-w-0 flex-1">
+            {/* A REAL BASIS, SO THE PILL WRAPS INSTEAD OF THE WORDS.
+                `flex-1` alone is a basis of 0, which always fits — so on a
+                phone this column shrank to what was left beside a 34px tile
+                and a "N leases claimed" pill, and the heading came out one
+                word per line. See the same fix on step 3's group header. */}
+            <div className="min-w-0 grow basis-[190px]">
               <h3 className="text-[15px] leading-[1.3] font-bold text-mv-ink">
                 Claimed Leases ({claimed})
               </h3>
@@ -388,7 +393,7 @@ function OwnerRowItem({ row }: { row: OwnerRow }) {
         )}
       </span>
 
-      <span className="min-w-0 flex-1">
+      <span className="min-w-0 grow basis-[170px]">
         <span className="block text-[14px] leading-[1.35] font-bold tracking-[.01em] text-mv-ink uppercase">
           {row.name}
         </span>
@@ -528,7 +533,12 @@ function OwnerRowItem({ row }: { row: OwnerRow }) {
         already yours" wrapped to two lines in the old 92px and made that one
         row taller than its neighbours.
       */}
-      <span className="flex w-[132px] flex-none justify-start">
+      {/* THE FIXED CELL IS FOR ALIGNMENT, AND ALIGNMENT NEEDS ROOM.
+          Below 560px the row wraps, so there are no columns to line up — and
+          132px of the ~300px a phone card has left the name about 60px, which
+          is where "JLA RESOURCES COMPANY" came out one word per line. The cell
+          sizes to the pill until there is width worth aligning. */}
+      <span className="flex w-auto flex-none justify-start min-[560px]:w-[132px]">
         <StatusPill filed={row.filed} label={row.statusLabel} />
       </span>
 
@@ -550,7 +560,10 @@ function OwnerRowItem({ row }: { row: OwnerRow }) {
        its content, so a long address pushed the whole row wider than the card
        and put a horizontal scrollbar under it — the truncation inside could
        never fire, because there was always more width to take. */
-    <li className="flex min-w-0 items-center gap-4 rounded-[12px] border border-mv-line bg-mv-card px-4 py-[14px] shadow-[0_1px_2px_rgba(13,14,23,.04)]">
+    /* AND IT WRAPS BELOW 560px. Four cells on one line need about 380px; a
+       phone card has roughly 300. Wrapping puts the pill under the name
+       instead of crushing both, and `gap-4` already supplies the row gap. */
+    <li className="flex min-w-0 flex-wrap items-center gap-4 rounded-[12px] border border-mv-line bg-mv-card px-4 py-[14px] shadow-[0_1px_2px_rgba(13,14,23,.04)] min-[560px]:flex-nowrap">
       {body}
     </li>
   );

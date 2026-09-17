@@ -83,7 +83,11 @@ export function StepIntro({
 
           `items-center` against the two-line block, so the 34px tile centres on
           the eyebrow-plus-heading rather than hanging off the top of it. */}
-      <div className="flex flex-wrap items-center gap-[14px]">
+      {/* ONE WRAPPING ROW HOLDS THE WHOLE HEADER, so the aside can be ordered
+          around the sentences below it rather than being stuck between them.
+          `items-center` only applies to what actually shares a line — the lead
+          and the body take the full width and sit on their own. */}
+      <div className="flex flex-wrap items-center gap-x-[14px]">
         <span className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px] bg-mv-mint text-mv-green-deep">
           <Icon
             aria-hidden="true"
@@ -92,7 +96,14 @@ export function StepIntro({
           />
         </span>
 
-        <div className="min-w-0">
+        {/* `basis-0` KEEPS THE TILE AND THE HEADING ON ONE LINE.
+            With `basis-auto` this block's hypothetical width is the title's
+            max-content — "Address-verify the owner record before you file the
+            claim" laid out in one line — so on a phone it could not fit beside
+            a 34px tile and dropped below it, leaving the icon stranded on a row
+            of its own. At `basis-0` it always fits and then grows into whatever
+            is left, wrapping its text inside itself where it belongs. */}
+        <div className="order-1 min-w-0 grow basis-0">
           <p className="text-[10.5px] font-bold tracking-[.12em] text-mv-green-deep uppercase">
             {eyebrow ?? `Step ${step} of ${TOTAL_STEPS}`}
           </p>
@@ -112,40 +123,76 @@ export function StepIntro({
           </h2>
         </div>
 
-        {/* `ml-auto` rather than `justify-between`, so the corner is empty on
-            the four steps that pass nothing and the heading keeps its place.
-            It wraps under the heading on a narrow card instead of squeezing
-            it — the row is `flex-wrap` for that reason alone. */}
-        {aside && <div className="ml-auto flex-none">{aside}</div>}
+        {/* The lead and the body stay at the FULL width of the column, flush
+            with the tile's left edge — indenting them to line up under the
+            heading would cost the paragraph 48px on a phone to no benefit. */}
+        {/* The instruction is a step DOWN from the heading, not level with it.
+            At bold-on-ink it was the same colour and nearly the same weight as
+            the h2 above, so the two read as one heavy block rather than a title
+            and the sentence that follows it. */}
+        {lead && (
+          <p
+            data-claim="step-lead"
+            className="order-2 mt-[14px] w-full text-[14px] font-semibold text-mv-slate sm:order-3"
+          >
+            {lead}
+          </p>
+        )}
+
+        {/* FULL COLUMN WIDTH — the 68ch reading measure that used to cap this
+            is gone (requested). It was holding the explanation to roughly
+            two-thirds of the column and spilling every step's opening paragraph
+            onto a third line, with the right third of the card left empty
+            beside it. The paragraphs are two lines each, which is short enough
+            that the long measure costs nothing a reader would notice. */}
+        {children && (
+          <div className="order-3 mt-[6px] w-full text-[13px] leading-[1.65] text-mv-muted sm:order-4">
+            {children}
+          </div>
+        )}
+
+        {/*
+          THE ASIDE IS LAST ON A PHONE AND TOP-RIGHT EVERYWHERE ELSE.
+
+          ── WHY IT MOVES ──
+
+          In the corner it is out of the reading flow, so it costs the heading
+          nothing. Wrapped onto its own line on a narrow card it is IN that
+          flow, and it landed between the heading and the instruction — so step
+          1 read "Find your record", then a button, then what to actually do.
+          An optional "show me how" interrupting the sentence that tells you
+          what the step is.
+
+          EVERY ITEM IN THIS ROW CARRIES AN EXPLICIT ORDER, and that is the
+          correction to a first attempt that only ordered this one. `order-last`
+          alone fixed the phone and broke the desktop: the lead and the body are
+          `w-full`, so they end the line they are on, and an aside left in DOM
+          order after them lands on a third row — the button dropped out of the
+          heading's corner and sat under the instruction, ranged right against
+          nothing.
+
+          Phone  1 heading · 2 lead · 3 body · 4 aside
+          sm:    1 heading · 2 aside · 3 lead · 4 body
+
+          which is the original desktop layout exactly: the heading block grows
+          into the row, so the aside is pushed to the right edge beside it, and
+          the lead and body wrap to their own lines underneath.
+
+          ── AND IT IS FULL WIDTH THERE ──
+
+          A 190px chip floating on an otherwise empty line reads as debris. The
+          wrapper is a flex row so the button can be told to fill it, and goes
+          back to hugging its own words at `sm:`.
+
+          `mt-auto` is deliberately absent: the margin is the button's own, so
+          the gap is the same whether or not a step passes a `lead`.
+        */}
+        {aside && (
+          <div className="order-4 mt-[14px] flex w-full [&>*]:flex-1 sm:order-2 sm:mt-0 sm:ml-auto sm:w-auto sm:[&>*]:flex-none">
+            {aside}
+          </div>
+        )}
       </div>
-
-      {/* The lead and the body stay at the FULL width of the column, flush with
-          the tile's left edge — indenting them to line up under the heading
-          would cost the paragraph 48px on a phone to no benefit. */}
-      {/* The instruction is a step DOWN from the heading, not level with it. At
-          bold-on-ink it was the same colour and nearly the same weight as the
-          h2 above, so the two read as one heavy block rather than a title and
-          the sentence that follows it. */}
-      {lead && (
-        <p
-          data-claim="step-lead"
-          className="mt-[14px] text-[14px] font-semibold text-mv-slate"
-        >
-          {lead}
-        </p>
-      )}
-
-      {/* FULL COLUMN WIDTH — the 68ch reading measure that used to cap this is
-          gone (requested). It was holding the explanation to roughly two-thirds
-          of the column and spilling every step's opening paragraph onto a third
-          line, with the right third of the card left empty beside it. The
-          paragraphs are two lines each, which is short enough that the long
-          measure costs nothing a reader would notice. */}
-      {children && (
-        <div className="mt-[6px] text-[13px] leading-[1.65] text-mv-muted">
-          {children}
-        </div>
-      )}
     </header>
   );
 }
