@@ -5,7 +5,7 @@ import { ChevronDown, LayoutGrid, List, Search, X } from "lucide-react";
 import {
   activeFilterCount,
   emptyLeaseFilters,
-  leaseFilterOptions,
+  type LeaseFilterOptions,
   type LeaseFilters,
 } from "../../_lib/lease-filters";
 import {
@@ -76,6 +76,7 @@ export function LeaseToolbar({
   onViewChange,
   filters,
   onFiltersChange,
+  options,
 }: {
   sort: LeaseSort;
   onSortChange: (next: LeaseSort) => void;
@@ -87,6 +88,10 @@ export function LeaseToolbar({
   onViewChange: (next: LeaseView) => void;
   filters: LeaseFilters;
   onFiltersChange: (next: LeaseFilters) => void;
+  /* WHAT THE FIVE DROPDOWNS OFFER, passed in rather than imported. They are the
+     distinct values of the leases actually on screen, and this component does
+     not know which set that is — see `leaseFilterOptionsFor`. */
+  options: LeaseFilterOptions;
 }) {
   const active = activeFilterCount(filters);
 
@@ -187,35 +192,35 @@ export function LeaseToolbar({
           label="County"
           value={filters.county}
           allLabel="All counties"
-          options={leaseFilterOptions.county}
+          options={options.county}
           onChange={(value) => set("county", value)}
         />
         <FilterField
           label="Operator"
           value={filters.operator}
           allLabel="All operators"
-          options={leaseFilterOptions.operator}
+          options={options.operator}
           onChange={(value) => set("operator", value)}
         />
         <FilterField
           label="Reservoir"
           value={filters.reservoir}
           allLabel="All reservoirs"
-          options={leaseFilterOptions.reservoir}
+          options={options.reservoir}
           onChange={(value) => set("reservoir", value)}
         />
         <FilterField
           label="Status"
           value={filters.status}
           allLabel="All status"
-          options={leaseFilterOptions.status}
+          options={options.status}
           onChange={(value) => set("status", value)}
         />
         <FilterField
           label="Lease type"
           value={filters.type}
           allLabel="All types"
-          options={leaseFilterOptions.type}
+          options={options.type}
           onChange={(value) => set("type", value)}
         />
 

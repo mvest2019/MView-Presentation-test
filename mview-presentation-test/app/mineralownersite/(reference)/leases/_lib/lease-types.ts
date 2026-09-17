@@ -31,7 +31,17 @@ export interface LeaseRecord {
   /** The route segment the lease report opens on. */
   slug: string;
   name: string;
-  status: "Producing";
+  /**
+   * `"Producing"` on every lease the fixture and the service have shown so far
+   * — but a STRING, not that one literal.
+   *
+   * It was the literal, which was true of ten hand-written records and is not a
+   * promise the service makes: `lease_status` is whatever the filing says, and
+   * the status filter builds its dropdown from the values actually present. A
+   * literal here would mean a lease the state has marked shut-in could not be
+   * represented at all.
+   */
+  status: string;
   acres: number;
   /** "June 2020" — the month this lease first appeared on a production filing. */
   firstPosting: string;
@@ -45,6 +55,18 @@ export interface LeaseRecord {
   wells: number;
   /** The decimal interest as filed — 0.05138 is 5.138%. */
   decimalInterest: number;
+  /**
+   * What the wells on this lease are approved to produce — `["Gas", "Oil"]`.
+   *
+   * OPTIONAL, AND THAT IS THE POINT. The service sends it per lease; the
+   * fixture does not carry it, and for a fixture lease the same answer is
+   * already derivable from the well records keyed by slug. So the type filter
+   * reads this field when it is here and falls back to the wells when it is
+   * not — see `leaseTypes` in `lease-filters.ts`. Making it required would mean
+   * writing the same fact onto ten records that can already answer for
+   * themselves.
+   */
+  types?: string[];
   production: LeaseProduction;
   lastPosted: LeaseLastPosting;
 }

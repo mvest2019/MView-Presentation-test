@@ -3,9 +3,8 @@ import Link from "next/link";
 import { Card } from "../../../_components/ui/card";
 import { gates } from "../../../_components/ui/portal-gating";
 import { formatCompactDollars, formatLeaseTitle } from "../_lib/lease-format";
-import { leaseRecords } from "../_lib/lease-records";
 import { leaseReportPath } from "../_lib/lease-routes";
-import { portfolioSummary } from "../_lib/lease-totals";
+import type { LeaseRecord } from "../_lib/lease-types";
 import { ReportStackNotice } from "./list/report-stack-notice";
 
 /**
@@ -41,22 +40,33 @@ import { ReportStackNotice } from "./list/report-stack-notice";
  * well-level facts live would vanish for the readers most likely to go looking
  * for them. Exactly one copy is ever visible, the same arrangement the Ultra
  * block uses for the value band.
+ *
+ * ── THE LEASES ARRIVE AS A PROP, AND THEY ARE THE TABLE'S OWN ──
+ *
+ * This is the SAME array `LeaseListPanel` is given: the member's record when it
+ * is claimed, the sample set when it is not. It used to read the fixture
+ * directly, which meant the two lists could describe different leases the
+ * moment either source changed — and they are two renderings of one answer, not
+ * two answers. The count and the total in the sentence above are summed from
+ * the array for the same reason, rather than read off a stored total that would
+ * have to be kept in step with it.
  */
-export function PlainEnglishList() {
-  const earning = leaseRecords.filter((lease) => lease.mvestimate > 0);
-  const paused = leaseRecords.length - earning.length;
+export function PlainEnglishList({ leases }: { leases: LeaseRecord[] }) {
+  const earning = leases.filter((lease) => lease.mvestimate > 0);
+  const paused = leases.length - earning.length;
+  const projected = leases.reduce((total, lease) => total + lease.mvestimate, 0);
 
   return (
     <div className={gates("essentialsOnly")}>
       <Card accent padded={false} className="px-[22px] py-[18px]">
         <h3 className="text-[15px] font-bold">
-          Your {portfolioSummary.leaseCount} leases, in plain English
+          Your {leases.length} leases, in plain English
         </h3>
         <p className="mt-1 text-[12.5px] leading-[1.55] text-mv-muted">
           {earning.length} are earning · {paused} are paused (paused means
           little future income is projected — you still own them). Together:{" "}
           <strong className="text-mv-ink">
-            about {formatCompactDollars(portfolioSummary.mvestimate)}
+            about {formatCompactDollars(projected)}
           </strong>{" "}
           projected.
         </p>
@@ -70,7 +80,7 @@ export function PlainEnglishList() {
             full-width rule leaves a sliver of card showing at each corner,
             which reads as the line being broken rather than as a corner. */}
         <ul className="mt-3 divide-y divide-mv-line border-y border-mv-line">
-          {leaseRecords.map((lease) => (
+          {leases.map((lease) => (
             <li
               key={lease.slug}
               className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-2.5 py-2.5 text-[13px] odd:bg-mv-portal-row-tint"

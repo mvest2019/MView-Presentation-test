@@ -1,15 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Card } from "../../../../_components/ui/card";
+import { Notice } from "../../../../_components/ui/notice";
 import {
-  SCOPE_COPY,
-  OWNER_SHARE,
-  type FinancialsScope,
-} from "../../_lib/financials-record";
-import { financialsSeries } from "../../_lib/financials-series";
-import { cashAt } from "../../_lib/price-deck";
+  fetchLeaseFinancials,
+  LeasesApiError,
+  type LeaseFinancials,
+} from "../../_api/leases-api";
+import { SCOPE_COPY, type FinancialsScope } from "../../_lib/financials-record";
 import { monthLabel, shortMonthLabel } from "../../_lib/months";
 import { CHART_MODES, CHART_MODE_COPY, chartTitle, type ChartMode } from "./chart-modes";
 import { ChartBrush } from "./chart-brush";
@@ -25,6 +25,111 @@ const DEFAULT_WINDOW_MONTHS = 49;
 
 /**
  * THE FINANCIALS TAB — three headlines and one chart, read at either scope.
+ *
+ * ── IT READS THE BACKEND NOW, NOT A FIXTURE ──
+ *
+ * `GET /api/v1/leases/financials` through the module's own API layer — see
+ * `_api/leases-api.ts` for the mapping and `app/api/leases/[endpoint]/route.ts`
+ * for why the call goes through our origin. Nothing on screen moved: the same
+ * tiles, the same chart, the same table, filled from the member's own record
+ * instead of `_lib/financials-record.ts`.
+ *
+ * THREE OUTCOMES, ALL HANDLED HERE. A request that is still running, one that
+ * failed, and one that answered. The loading and failed states are this
+ * component's own because they belong to the fetch; everything below the fetch
+ * is `FinancialsView`, which only ever sees a loaded record and so keeps every
+ * piece of state it had.
+ *
+ * SPLIT IN TWO FOR THE STATE'S SAKE, not for tidiness. The window the brush
+ * moves is initialised from the last FILED month, which is a fact about the
+ * response — so it cannot be a `useState` initialiser in a component that
+ * renders before the response exists. Mounting the view once the record is in
+ * hand means no conditional hooks and no effect re-seeding a range the reader
+ * has already dragged.
+ *
+ * ── THE PRICE DECK IS GONE FROM THIS PANEL ──
+ *
+ * The cash line used to be gas and oil run through `cashAt` in the browser. The
+ * response carries `cash_gross` and `cash_share` per month, so the money on the
+ * chart is now the money the service calculated. One less place for our
+ * arithmetic to disagree with the statement a reader is holding.
+ */
+export function FinancialsPanel() {
+  const [data, setData] = useState<LeaseFinancials | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let live = true;
+
+    /* NOTHING IS SET SYNCHRONOUSLY HERE. The effect runs once, on mount, with
+       both pieces of state already at their initial values, so a `setError(null)`
+       before the call would be a no-op that re-renders — and the one
+       `react-hooks/set-state-in-effect` is pointing at. The two writes below
+       are in async callbacks, which is what an effect is for. */
+    fetchLeaseFinancials(controller.signal)
+      .then((record) => {
+        if (live) setData(record);
+      })
+      .catch((cause: unknown) => {
+        /* Our own unmount, not a failure — the component is going away and has
+           nothing to report. */
+        if (controller.signal.aborted || !live) return;
+        setError(
+          cause instanceof LeasesApiError
+            ? cause.message
+            : "Could not load your lease financials.",
+        );
+      });
+
+    return () => {
+      live = false;
+      controller.abort();
+    };
+  }, []);
+
+  if (error) {
+    return (
+      <Notice tone="amber" glyph="⚠">
+        {error}
+      </Notice>
+    );
+  }
+
+  if (!data) return <FinancialsLoading />;
+
+  return <FinancialsView data={data} />;
+}
+
+/**
+ * WHILE THE RECORD IS ON ITS WAY.
+ *
+ * Blocks the shape the panel is about to take — three tiles and a chart — at
+ * the heights they render at, so the tab does not jump when the answer lands
+ * and the page below it does not reflow. `aria-busy` with a live label, because
+ * a screen reader gets nothing at all from three grey rectangles.
+ */
+function FinancialsLoading() {
+  return (
+    <div aria-busy="true" aria-live="polite">
+      <span className="sr-only">Loading your lease financials…</span>
+      <div className="mb-4 grid gap-[18px] sm:grid-cols-2 lg:grid-cols-3">
+        {[0, 1, 2].map((key) => (
+          <div
+            key={key}
+            className="h-[108px] animate-pulse rounded-mv border border-mv-line bg-mv-portal-wash"
+          />
+        ))}
+      </div>
+      <Card padded={false} className="px-[18px] py-4">
+        <div className="h-[260px] animate-pulse rounded-mv bg-mv-portal-wash" />
+      </Card>
+    </div>
+  );
+}
+
+/**
+ * THE PANEL PROPER, given a record.
  *
  * ── WHAT IT OWNS ──
  *
@@ -42,6 +147,9 @@ const DEFAULT_WINDOW_MONTHS = 49;
  * repeats which one is showing ("Your cash", "Lease cash"), and the caption
  * beside it states the blended interest in words.
  *
+ * THE TWO SCOPES ARE TWO SETS OF FIGURES FROM THE RESPONSE, not one set and a
+ * multiplier — the service sends both, so switching picks rather than scales.
+ *
  * ── THE WINDOW STARTS ASTRIDE THE JOIN ──
  *
  * Not at the start of the record and not at the end: the default window is the
@@ -50,39 +158,26 @@ const DEFAULT_WINDOW_MONTHS = 49;
  * one lease, almost flat — is a scroll away in the strip underneath, where it
  * is context rather than four fifths of the picture.
  */
-export function FinancialsPanel() {
+function FinancialsView({ data }: { data: LeaseFinancials }) {
   const [scope, setScope] = useState<FinancialsScope>("share");
   const [mode, setMode] = useState<ChartMode>("both");
   const [range, setRange] = useState(() =>
-    windowAround(DEFAULT_WINDOW_MONTHS, financialsSeries.lastPostedIndex, financialsSeries.length),
+    windowAround(DEFAULT_WINDOW_MONTHS, data.lastPostedIndex, data.length),
   );
 
-  /* The three streams, at the chosen scope. Recomputed only when the scope
-     changes — these are 261-element arrays and the window moves on every frame
-     of a brush drag. */
-  const streams = useMemo(() => {
-    const factor = scope === "share" ? OWNER_SHARE : 1;
-    const gas = financialsSeries.gas.map((value) => value * factor);
-    const oil = financialsSeries.oil.map((value) => value * factor);
-    /* Priced through the same deck the table below uses, so a month read off
-       the cash line and the same month read out of the table agree — including
-       the seasonal swing, which is most of what the cash line's shape IS. */
-    const cash = gas.map((value, index) =>
-      cashAt({
-        gas: value,
-        oil: oil[index],
-        monthOfYear: (financialsSeries.firstMonth + index) % 12,
-        index,
-        filed: index <= financialsSeries.lastPostedIndex,
-      }),
-    );
-    return { gas, oil, cash };
-  }, [scope]);
+  /* The three streams at the chosen scope — a pick, not a calculation. Memoised
+     because these are 500-element arrays and the window moves on every frame of
+     a brush drag. */
+  const streams = useMemo(
+    () => (scope === "share" ? data.share : data.lease),
+    [scope, data],
+  );
 
   const { left, right } = seriesFor(mode, streams);
-  const firstMonth = financialsSeries.firstMonth;
+  const firstMonth = data.firstMonth;
   const months = range.to - range.from + 1;
   const labelFor = (index: number) => shortMonthLabel(firstMonth + index);
+  const filedThrough = monthLabel(firstMonth + data.lastPostedIndex);
 
   return (
     <div>
@@ -100,7 +195,11 @@ export function FinancialsPanel() {
         <p className="text-[12.5px] text-mv-muted">{SCOPE_COPY[scope].caption}</p>
       </div>
 
-      <FinancialsTiles scope={scope} />
+      <FinancialsTiles
+        scope={scope}
+        totals={scope === "share" ? data.totals.share : data.totals.lease}
+        filedThrough={data.historyEndLabel}
+      />
 
       <Card padded={false} className="px-[18px] py-4">
         <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -118,8 +217,7 @@ export function FinancialsPanel() {
           <div>
             <h3 className="text-[15px] font-bold">{chartTitle(mode, scope)}</h3>
             <p className="text-[11.5px] text-mv-muted">
-              solid to {monthLabel(firstMonth + financialsSeries.lastPostedIndex)},
-              lighter after
+              solid to {filedThrough}, lighter after
             </p>
           </div>
           <div className="flex flex-wrap gap-4 text-[11.5px] font-semibold">
@@ -133,20 +231,20 @@ export function FinancialsPanel() {
           right={right}
           from={range.from}
           to={range.to}
-          lastPostedIndex={financialsSeries.lastPostedIndex}
+          lastPostedIndex={data.lastPostedIndex}
           firstMonth={firstMonth}
-          summary={`${chartTitle(mode, scope)}, ${labelFor(range.from)} to ${labelFor(range.to)}. Filed through ${monthLabel(firstMonth + financialsSeries.lastPostedIndex)}; modelled after that.`}
+          summary={`${chartTitle(mode, scope)}, ${labelFor(range.from)} to ${labelFor(range.to)}. Filed through ${filedThrough}; modelled after that.`}
         />
 
         <div className="mt-2 mb-2 flex flex-wrap items-center justify-between gap-3">
           <p className="text-[11.5px] text-mv-muted tabular-nums">
             Showing {labelFor(range.from)} to {labelFor(range.to)} · {months}{" "}
-            months of {financialsSeries.length}
+            months of {data.length}
           </p>
           <RangePresets
             months={months}
-            lastPostedIndex={financialsSeries.lastPostedIndex}
-            length={financialsSeries.length}
+            lastPostedIndex={data.lastPostedIndex}
+            length={data.length}
             onChange={setRange}
           />
         </div>
@@ -163,7 +261,7 @@ export function FinancialsPanel() {
       {/* THE FIGURES BEHIND THE PICTURE, directly under it and at the same
           scope. A reader who wants the exact value of a month cannot read one
           off a polyline — see the note in `month-table.tsx`. */}
-      <MonthTable scope={scope} />
+      <MonthTable data={data} scope={scope} />
     </div>
   );
 }

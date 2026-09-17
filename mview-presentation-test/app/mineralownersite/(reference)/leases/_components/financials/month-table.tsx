@@ -9,10 +9,11 @@ import {
   TableRow,
   TableScroll,
 } from "../../../../_components/ui/table";
-import { OWNER_SHARE, type FinancialsScope } from "../../_lib/financials-record";
+import type { LeaseFinancials } from "../../_api/leases-api";
+import type { FinancialsScope } from "../../_lib/financials-record";
+import { financialsRows } from "../../_lib/financials-rows";
 import { formatCount, formatDollars } from "../../_lib/lease-format";
 import {
-  monthlyRows,
   MONTHLY_WINDOW_COPY,
   STEEP_DROP_PERCENT,
 } from "../../_lib/monthly-rows";
@@ -44,8 +45,15 @@ import {
  * modelled month that looks like a filed one is the same failure the chart's
  * dashed line exists to prevent.
  */
-export function MonthTable({ scope }: { scope: FinancialsScope }) {
-  const rows = monthlyRows(scope === "share" ? OWNER_SHARE : 1);
+export function MonthTable({
+  data,
+  scope,
+}: {
+  /** The record the chart above is drawn from — so the two cannot disagree. */
+  data: LeaseFinancials;
+  scope: FinancialsScope;
+}) {
+  const rows = financialsRows(data, scope);
 
   return (
     <Card padded={false} className="mt-4 px-[18px] py-[14px]">

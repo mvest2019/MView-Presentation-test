@@ -44,6 +44,28 @@ export function leaseReportPath(slug: string): string {
 }
 
 /**
+ * The slug for a lease that did not come out of the fixture.
+ *
+ * THE FIXTURE'S OWN CONVENTION, WRITTEN DOWN. Its ten records carry hand-typed
+ * slugs — `290271-mccabe-etal-gu` — and this is that shape as a function, so a
+ * lease arriving from the service gets a URL of the same form rather than a
+ * second scheme living beside the first. `findLeaseBySlug` already reads the
+ * leading digits as the identity and tolerates a drifted name half, which is
+ * what makes one shape enough for both.
+ *
+ * AN UNNUMBERED UNIT FALLS BACK TO ITS NAME, the way KAISER GAS UNIT and COOK
+ * GAS UNIT do in the fixture: the number is the identity when there is one, and
+ * the name is all there is when there is not.
+ */
+export function leaseSlug(number: string | null, name: string): string {
+  const kebab = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return number ? `${number}-${kebab}` : kebab;
+}
+
+/**
  * Resolve a URL segment back to a lease.
  *
  * TOLERANT ON PURPOSE. It accepts the full slug, the bare lease number, and a
