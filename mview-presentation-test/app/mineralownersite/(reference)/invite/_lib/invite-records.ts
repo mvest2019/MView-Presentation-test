@@ -275,9 +275,10 @@ export const inviteSender = {
    * not a missing feature.
    */
   sendNote:
-    "Mineral View does not post these for you. That is deliberate — a letter " +
-    "from a family member reads as more trusted than a mailshot — and the " +
-    "appraisal roll carries no email address, only a posting address. Copy them " +
-    "into your own mail, or print them and send them however you already reach " +
-    "the person.",
+    "Mineral View prepares a personalized invitation and unique code for each " +
+    "selected co-owner but does not send the invitation on your behalf. This " +
+    "allows the communication to come directly from someone the recipient " +
+    "already knows. As public appraisal records may include a mailing address " +
+    "but not an email address, you can copy the invitation into your own email " +
+    "or print and mail it using your preferred method of communication.",
 } as const;

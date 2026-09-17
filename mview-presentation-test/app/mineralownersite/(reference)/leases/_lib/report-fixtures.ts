@@ -179,6 +179,29 @@ export interface PressItem {
  * marked "not one of yours", because an investor deck from a company a reader
  * has never heard of is context, and reading it as news about their own acreage
  * is the exact mistake this page has to prevent.
+ *
+ * NO BOE FIGURE SURVIVES INTO A SUMMARY (defect #34).
+ *
+ * The sign-off rule is that no barrel-of-oil-equivalent figure appears in any
+ * UI-facing label, and these summaries are UI-facing labels. Two of them
+ * carried four — "106.1 Mboe/d" and "53 Mboe/d" on the Magnolia item, "169
+ * MBOEPD" and "700 MMBOE" on the Murphy one. That an operator published the
+ * figure itself is not an exemption: it is still a BOE number on this page,
+ * read by an owner who is being taught not to trust one.
+ *
+ * THE CLAUSES ARE DROPPED, NOT CONVERTED. A BOE figure cannot be split back
+ * into barrels and MCF without knowing the stream mix, so anything derived
+ * would be invented. Every other figure in both summaries — the dollars, the
+ * acres, the percentages, the dates — is untouched, and the sentences still
+ * say what the quarter was about. Magnolia keeps "production up 8% year over
+ * year", which is the movement without the unit; Murphy loses its reserves
+ * clause outright, which is the cost of the rule and is recorded here so it
+ * reads as a decision rather than an omission.
+ *
+ * If a future item arrives with a BOE figure in it, drop the clause the same
+ * way. The Alerts page has the same problem in its community alerts, but those
+ * bodies are composed by `mineralview-api` and rendered verbatim, so that half
+ * is not fixable from here.
  */
 export const PRESS_ITEMS: PressItem[] = [
   {
@@ -213,14 +236,14 @@ export const PRESS_ITEMS: PressItem[] = [
     operator: "Magnolia Oil & Gas Operating LLC",
     title: "Q2 2026 Magnolia Oil & Gas Earnings Presentation",
     summary:
-      "Magnolia Oil & Gas reported second-quarter 2026 adjusted net income of $184 million, adjusted EBITDAX of $370 million and free cash flow of $235 million on production of 106.1 Mboe/d, up 8% year over year. It agreed to acquire WildFire Energy for $4.06 billion, adding about 53 Mboe/d and 810,000 net Giddings acres and lifting its oil mix to roughly 50%, and raised the quarterly dividend 9% to 18 cents per share.",
+      "Magnolia Oil & Gas reported second-quarter 2026 adjusted net income of $184 million, adjusted EBITDAX of $370 million and free cash flow of $235 million, on production up 8% year over year. It agreed to acquire WildFire Energy for $4.06 billion, adding 810,000 net Giddings acres and lifting its oil mix to roughly 50%, and raised the quarterly dividend 9% to 18 cents per share.",
     date: "Aug 6, 2026",
   },
   {
     operator: "Murphy Oil Corporation",
     title: "Second Quarter 2026 Earnings Presentation",
     summary:
-      "Murphy Oil produced 169 MBOEPD in the second quarter of 2026 across a portfolio spanning the Eagle Ford, Gulf of America, Canada and international exploration, backed by more than 700 MMBOE of proved reserves. The quarter brought an oil discovery at Bubale-1X in Cote d'Ivoire, conclusion of the Hai Su Vang appraisal in Vietnam, and progress toward first oil at Lac Da Vang in the fourth quarter of 2026, with $50 million returned through dividends.",
+      "Murphy Oil reported second-quarter 2026 production across a portfolio spanning the Eagle Ford, Gulf of America, Canada and international exploration. The quarter brought an oil discovery at Bubale-1X in Cote d'Ivoire, conclusion of the Hai Su Vang appraisal in Vietnam, and progress toward first oil at Lac Da Vang in the fourth quarter of 2026, with $50 million returned through dividends.",
     date: "Aug 6, 2026",
   },
 ];

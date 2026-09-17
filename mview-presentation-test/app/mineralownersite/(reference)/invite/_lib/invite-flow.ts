@@ -26,64 +26,80 @@ export const FLOW: FlowStep[] = [
     n: 1,
     who: "you",
     state: "live",
-    title: "Pick a lease",
-    detail: "The public appraisal roll says who else owns it.",
+    title: "Select a lease",
+    detail:
+      "Choose the lease for which you want to invite co-owners. Mineral View " +
+      "will display other owners identified in public appraisal records.",
   },
   {
     n: 2,
     who: "you",
     state: "live",
-    title: "Choose who to invite",
-    detail: "Tick the people you actually know.",
+    title: "Select co-owners",
+    detail: "Choose the people you recognize and would like to invite.",
   },
   {
     n: 3,
     who: "you",
     state: "live",
-    title: "Copy the email",
-    detail: "One is written for each of them, with their own code in it.",
+    title: "Copy the invitation",
+    detail:
+      "Mineral View prepares a personalized email for each selected " +
+      "co-owner, including their unique invitation code.",
   },
   {
     n: 4,
     who: "you",
     state: "manual",
-    title: "Send it yourself",
-    detail: "Paste it into your own mail. It reads as personal because it is.",
+    title: "Send from your email",
+    detail:
+      "Copy the invitation into your preferred email account and send it " +
+      "directly to the co-owner.",
   },
   {
     n: 5,
     who: "them",
     state: "pending",
-    title: "They enter the code",
-    detail: "It says which owner of record they are.",
+    title: "Enter the invitation code",
+    detail:
+      "The invitation code identifies the ownership record associated with " +
+      "their invitation.",
   },
   {
     n: 6,
     who: "them",
     state: "pending",
-    title: "They confirm one detail",
-    detail: "Their town, so a forwarded email cannot claim their record.",
+    title: "Verify their information",
+    detail:
+      "They confirm a matching detail, such as their town, to help verify " +
+      "the correct ownership record.",
   },
   {
     n: 7,
     who: "them",
     state: "pending",
-    title: "They register — free",
-    detail: "Claiming changes nothing about legal ownership.",
+    title: "Create a free account",
+    detail:
+      "They register with Mineral View at no cost. Claiming a record does " +
+      "not change or transfer legal ownership.",
   },
   {
     n: 8,
     who: "them",
     state: "pending",
-    title: "Their leases claim themselves",
-    detail: "Every lease that owner number holds, not just this one.",
+    title: "View associated lease records",
+    detail:
+      "Mineral View identifies the lease records associated with that owner " +
+      "record, not only the lease referenced in the invitation.",
   },
   {
     n: 9,
     who: "you",
     state: "pending",
-    title: "You get a free month",
-    detail: "The moment they take a paid plan.",
+    title: "Receive one complimentary month",
+    detail:
+      "When an invited co-owner activates a paid Mineral View plan, you " +
+      "receive one complimentary month.",
   },
 ];
 
@@ -117,11 +133,11 @@ export const CREDIT: CreditPolicy = {
   monthsOnSend: 0,
   monthsOnFreeSignup: 0,
   per: "person",
-  label: "One free month of Mineral View",
+  label: "One complimentary month of Mineral View",
   rules: [
-    "It lands the moment they take a paid plan — there is no waiting period.",
-    "One month per person, ever — not per lease. The same co-owners sit on " +
-      "several of your leases, and one person is one subscriber.",
+    "It lands the moment they upgrade to a paid plan — there is no waiting period.",
+    "The reward is granted once per person, regardless of the number of " +
+      "leases associated with their account.",
     "Posting a letter earns nothing on its own, and neither does a free " +
       "signup — otherwise the sensible move would be to write to every owner " +
       "of record on the roll, which is a mailshot.",
@@ -174,11 +190,11 @@ export function creditPlan(
      */
     line:
       chosen.length === 0
-        ? "Tick a co-owner and this says what it could earn you."
+        ? "Select a co-owner and this says what it could earn you."
         : months === 0
           ? "The working-interest party cannot register as a mineral owner, so " +
-            "this selection earns nothing. Tick somebody on the roll as well."
-          : `If all ${eligible.length} of them take a paid plan, that is ${months} free ` +
+            "this selection earns nothing. Select somebody on the roll as well."
+          : `If all ${eligible.length} of them upgrade to a paid plan, that is ${months} complimentary ` +
             `${months === 1 ? "month" : "months"} of Mineral View.`,
   };
 }

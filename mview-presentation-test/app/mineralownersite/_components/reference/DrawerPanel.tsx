@@ -35,7 +35,166 @@
 import React, { useEffect, useRef } from 'react';
 import type { Drawer } from '../../_lib/reference/payload';
 import { Html } from './bits';
+import { serviceText, spanLabel } from '../../_lib/reference/fmt';
 import { Charts } from './LineChart';
+
+/**
+ * WRAP EVERY FIGURE IN THE EVIDENCE SO THE LAPSED STATE CAN COVER IT.
+ *
+ * DEFECT #14, QA's re-open: "Need to blur the in detail side nav." The page
+ * behind this panel blurs its values once the subscription has ended — the
+ * Ultra stat strip and every row's `.alx-v` — and then the reader pressed
+ * `expand` and the same volumes were printed in the open drawer: "14K MCF ·
+ * no oil", "7.0%", and four evidence lines each carrying a month's gas. The
+ * cover was on the summary and off the detail.
+ *
+ * WHY IT NEEDED MARKUP AND NOT ANOTHER CSS RULE. The band values have their
+ * own element (`.dx-v`) and the stylesheet can reach them. The evidence lines
+ * cannot be reached: an alert drawer's evidence arrives as PLAIN TEXT —
+ * "MCCABE ETAL GU — 3,998 MCF of gas and 157 barrels of oil (Hurd
+ * Enterprises, Ltd)" — with no element around the number. Blurring the whole
+ * line would take the lease name and the operator with it, and defect #17 is
+ * explicit that the lapsed state covers VALUES AND NOT TEXT.
+ *
+ * WHAT COUNTS AS A FIGURE: a number carrying a unit, a currency mark or a
+ * percent, or a grouped number like "3,998". A BARE YEAR IS NOT ONE — "roll
+ * year 2025" and "completed Aug 11, 2026" are the dates that say when, which
+ * the reader keeps in every state; covering them would tell them nothing
+ * about what they are missing.
+ *
+ * IT RUNS IN EVERY STATE and marks the same spans every time, so there is no
+ * second render path to keep in step: the stylesheet decides whether a marked
+ * figure is covered, and only `state-lapsed` says yes. That also keeps this
+ * function out of the funnel's business — it does not need to know the state.
+ *
+ * TAGS ARE STEPPED OVER, not matched. Some drawers (a lease, a well) do carry
+ * `<strong>` around their figures, so the scan alternates between markup and
+ * text and only rewrites the text.
+ */
+const FIGURE =
+  /(?:\$\s?)?\d[\d,]*(?:\.\d+)?[KMB]?(?:\s*(?:%|MCF|BBL|BOE|mcf|bbl|boe|barrels?|ft|acres?|months?))?/g;
+
+/**
+ * IS THIS MATCH A VALUE, OR IS IT AN IDENTIFIER THE READER STILL NEEDS?
+ *
+ * Defect #17's rule is that the lapsed state covers VALUES and not text, and a
+ * digit on its own is not enough to tell the two apart. Measured on the open
+ * drawer, a bare-integer rule covered the lease numbers — "WEST GRAYBURG UNIT
+ * (20416)", "(01055)" — which are the reader's own references, the thing they
+ * would quote in a question to the operator, and worth nothing to anybody
+ * selling them a subscription. It also covered API numbers and well numbers
+ * for the same reason.
+ *
+ * So a match is a VALUE when it says how much rather than which one:
+ *
+ *   · it carries a currency mark, a percent or a unit   $99.99 · 7.0% · 9 barrels
+ *   · it carries a magnitude suffix                     14K MCF
+ *   · it is grouped or fractional                       3,998 · 23.7
+ *
+ * and it is an IDENTIFIER — left legible — when it is a plain run of digits:
+ * 20416, 01055, a four-digit year, a count in "9 of 10".
+ */
+function isValue(m: string): boolean {
+  const t = m.trim();
+  if (/[$%]/.test(t)) return true;
+  if (/[A-Za-z]/.test(t)) return true;
+  return /[,.]/.test(t);
+}
+
+/**
+ * WRAP EVERY FIGURE SO THE LAPSED STATE CAN COVER IT — the HTML form.
+ *
+ * DEFECT #14, QA's re-open: "Need to blur the in detail side nav." The page
+ * behind this panel covers its values once the subscription has ended — the
+ * Ultra stat strip and every row's `.alx-v` — and then the reader pressed
+ * `expand` and the open drawer printed the same volumes: the band's "14K MCF ·
+ * no oil" and "7.0%", then four evidence lines each carrying a month's gas.
+ * The cover was on the summary and off the detail.
+ *
+ * WHY IT NEEDED MARKUP AND NOT ANOTHER CSS RULE. The evidence lines have no
+ * element around their numbers — an alert's evidence arrives as plain text,
+ * "MCCABE ETAL GU — 3,998 MCF of gas and 157 barrels of oil (Hurd Enterprises,
+ * Ltd)". Blurring the line would take the lease name and the operator with it.
+ *
+ * TAGS ARE STEPPED OVER, not matched. Some drawers (a lease, a well) carry
+ * `<strong>` around their figures, so the scan alternates between markup and
+ * text and only rewrites the text.
+ *
+ * IT RUNS IN EVERY STATE and marks the same spans every time, so there is no
+ * second render path to keep in step: the stylesheet decides whether a marked
+ * figure is covered, and only `state-lapsed` says yes.
+ */
+export function lockFigures(html: string): string {
+  return html
+    .split(/(<[^>]*>)/)
+    .map((part, i) => (i % 2 === 1
+      ? part
+      : serviceText(part).replace(FIGURE, (m) => (isValue(m)
+        ? '<span class="cl-fig">' + m + '</span>'
+        : m))))
+    .join('');
+}
+
+/**
+ * The same marking for a PLAIN-TEXT value — the metric band's own cells.
+ *
+ * `.dx-v` was covered whole at first and that was too broad in the other
+ * direction: the band's value is not always a number. "Busiest operator ·
+ * DEVON ENERGY PRODUCTION CO L.P." and "Lease · WEST GRAYBURG UNIT (20416)"
+ * are cells whose value IS text, and blurring them told the reader nothing
+ * except that something had been taken away. Marking the figures inside
+ * instead covers "14K MCF" and "7.0%" and leaves the names to be read.
+ *
+ * A component rather than the string form above because these arrive as text,
+ * not markup, and building HTML out of them would mean escaping them first.
+ */
+function LockFigures({ text }: { text: string }) {
+  const out: React.ReactNode[] = [];
+  let last = 0;
+  let k = 0;
+  for (const m of text.matchAll(FIGURE)) {
+    const at = m.index ?? 0;
+    if (!isValue(m[0])) continue;
+    if (at > last) out.push(text.slice(last, at));
+    out.push(<span className="cl-fig" key={k++}>{m[0]}</span>);
+    last = at + m[0].length;
+  }
+  if (!out.length) return <>{text}</>;
+  if (last < text.length) out.push(text.slice(last));
+  return <>{out}</>;
+}
+
+/**
+ * WHAT A DELIVERY CLASS MEANS, SAID NEXT TO IT.
+ *
+ * The panel's sub-line opens with the alert's class — "Urgent · event June 2026
+ * · detected Sep 10, 2026" — and a reader met the word "Urgent" with nothing to
+ * say what it was claiming (defect sheet row 5). It is easy to read as "this is
+ * an emergency", and that is not what it says: `payload.ts` types
+ * `AlertClass` as "the DELIVERY class, which is a METHOD taxonomy", and the
+ * Alerts page states the same thing in words — "the class decides where an
+ * alert is delivered". So the word is about the CHANNEL, not the severity, and
+ * on its own above a money figure it invites the wrong one of the two.
+ *
+ * The gloss below is that same sentence, per class, in the place the word
+ * actually appears. The class itself is unchanged — it is the service's
+ * taxonomy and the Alerts page filters on it.
+ */
+const CLASS_MEANS: Record<string, string> = {
+  Urgent: 'sent on its own, as soon as it is found',
+  'Important digest': 'gathered into your weekly report',
+  Educational: 'context, kept for you to read when you want it',
+  Community: 'shared by other owners, not from the record',
+};
+
+/** The panel's sub-line, with the leading class explained where it appears. */
+function subLine(sub: string): string {
+  const cut = sub.indexOf(' · ');
+  const klass = cut === -1 ? sub : sub.slice(0, cut);
+  const means = CLASS_MEANS[klass.trim()];
+  if (!means) return sub;
+  return `${klass} — ${means}${cut === -1 ? '' : sub.slice(cut)}`;
+}
 
 const TONE_LABEL: Record<string, string> = {
   money: 'Money',
@@ -49,8 +208,37 @@ export default function DrawerPanel(
   { copy: Drawer | null; onClose: () => void; sample: boolean; sourceNote: string | null },
 ) {
   const panel = useRef<HTMLDivElement | null>(null);
+  const body = useRef<HTMLDivElement | null>(null);
   const returnTo = useRef<HTMLElement | null>(null);
   const open = Boolean(copy);
+
+  /**
+   * EVERY PANEL OPENS AT ITS OWN TOP.
+   *
+   * This drawer is hidden with `display: none` rather than unmounted — see the
+   * focus note below, which depends on that — so the scroll container survives
+   * a close. Read one panel to the bottom, close it, open a different one, and
+   * the second panel opened at the first one's scroll offset: its heading, its
+   * figures and its first two sections were already above the fold, so the
+   * reader was dropped into the middle of an explanation they had not started.
+   * That is the defect sheet's row 7, filed as "show side nav bar page last
+   * info first instead need to go starting at side nav bar".
+   *
+   * KEYED ON `copy.title`, NOT ON `open`. Several of this page's controls swap
+   * the panel's CONTENT without closing it — the alert strip, the KPI tiles and
+   * the setrows all call `open()` again while the drawer is up — so resetting
+   * only on open would have left those switches showing the previous panel's
+   * offset. Anything that changes which panel is on screen resets it.
+   *
+   * `scrollTop` AND NOT `scrollTo({behavior:'smooth'})`: the panel is sliding in
+   * at the same moment, and animating a scroll inside an animating element
+   * reads as a stutter. There is nothing for the reader to follow here — the
+   * top is simply where the panel starts.
+   */
+  useEffect(() => {
+    if (!open) return;
+    if (body.current) body.current.scrollTop = 0;
+  }, [open, copy?.title]);
 
   useEffect(() => {
     if (!open) return;
@@ -121,13 +309,13 @@ export default function DrawerPanel(
         <div className="ctx-head">
           <div style={{ minWidth: 0, flex: '1 1 auto' }}>
             {copy?.tone ? <span className="dx-kind">{TONE_LABEL[tone]}</span> : null}
-            <h3 id="ctxTitle">{copy?.title ?? ''}</h3>
-            <div className="ctx-sub" id="ctxSub">{copy?.sub ?? ''}</div>
+            <h3 id="ctxTitle">{serviceText(copy?.title ?? '')}</h3>
+            <div className="ctx-sub" id="ctxSub">{serviceText(subLine(copy?.sub ?? ''))}</div>
           </div>
           <button type="button" className="ctx-x" onClick={onClose} aria-label="Close">✕</button>
         </div>
 
-        <div className="ctx-body">
+        <div className="ctx-body" ref={body}>
           {copy
             ? (
               <>
@@ -161,14 +349,23 @@ export default function DrawerPanel(
                       <div className="dx-band-grid">
                         {copy.stats.map((st) => (
                           <div className="dx-stat" key={st.label}>
-                            <span className="dx-k">{st.label}</span>
-                            <span className={'dx-v' + (st.tone ? ' t-' + st.tone : '')}>
+                            <span className="dx-k">{serviceText(st.label)}</span>
+                            <span
+                              className={'dx-v' + (st.tone ? ' t-' + st.tone : '')}
+                            >
                               {st.tone === 'up' ? '▲ ' : st.tone === 'down' ? '▼ ' : ''}
-                              {st.tone === 'up' || st.tone === 'down'
-                                ? st.value.replace(/^[+-]/, '')
-                                : st.value}
+                              {/* the figures inside, not the cell — see
+                                  `LockFigures` for why a band value is not
+                                  always a number */}
+                              <LockFigures
+                                text={serviceText(st.tone === 'up' || st.tone === 'down'
+                                  ? st.value.replace(/^[+-]/, '')
+                                  : st.value)}
+                              />
                             </span>
-                            {st.sub ? <span className="dx-s">{st.sub}</span> : null}
+                            {st.sub
+                              ? <span className="dx-s"><LockFigures text={serviceText(st.sub)} /></span>
+                              : null}
                           </div>
                         ))}
                       </div>
@@ -176,8 +373,10 @@ export default function DrawerPanel(
                         ? (
                           <div className="dx-spark">
                             <BandSpark values={copy.spark} />
+                            {/* the same span wording as the charts below it —
+                                see `spanLabel` in `fmt.ts` */}
                             {copy.spark_label
-                              ? <span className="dx-sparkcap">{copy.spark_label}</span>
+                              ? <span className="dx-sparkcap">{spanLabel(copy.spark_label)}</span>
                               : null}
                           </div>
                         )
@@ -187,12 +386,20 @@ export default function DrawerPanel(
                   : null}
 
                 {/* ------------------------------------------ the four steps */}
+                {/* THE PROSE IS COVERED ON THE SAME TERMS AS THE BAND.
+                    Marked and left alone at first, and it undid the cover: the
+                    band read "•••• MCF · ••• BBL" and the sentence three lines
+                    under it read "Your share of that month is 4 MCF and 31
+                    barrels of oil". One figure, hidden once and printed once,
+                    on the same panel. `lockFigures` marks the figures inside
+                    the sentence and leaves every word of it legible, so the
+                    paragraph still says what it means. */}
                 <Step n={1} head="What this is">
-                  <Html html={copy.what} className="small" />
+                  <Html html={lockFigures(copy.what)} className="small" />
                 </Step>
 
                 <Step n={2} head="What it means for you">
-                  <Html html={copy.means} className="small" />
+                  <Html html={lockFigures(copy.means)} className="small" />
                 </Step>
 
                 {/* the charts belong with the meaning: they are the picture of
@@ -210,7 +417,7 @@ export default function DrawerPanel(
                         {copy.evidence.map((e, i) => (
                           <li key={i}>
                             <span className="dx-bullet" aria-hidden="true" />
-                            <Html html={e} as="span" />
+                            <Html html={lockFigures(e)} as="span" />
                           </li>
                         ))}
                       </ul>
@@ -222,14 +429,14 @@ export default function DrawerPanel(
                     one that looks like it */}
                 <div className="dx-do">
                   <span className="dx-do-k">What to do</span>
-                  <Html html={copy.next} className="dx-do-t" />
+                  <Html html={lockFigures(copy.next)} className="dx-do-t" />
                 </div>
 
                 {copy.chips.length
                   ? (
                     <div className="ctx-chips">
                       {copy.chips.map((ch) => (
-                        <span key={ch} className="chip chip-est" style={{ marginRight: 6 }}>{ch}</span>
+                        <span key={ch} className="chip chip-est" style={{ marginRight: 6 }}>{serviceText(ch)}</span>
                       ))}
                     </div>
                   )

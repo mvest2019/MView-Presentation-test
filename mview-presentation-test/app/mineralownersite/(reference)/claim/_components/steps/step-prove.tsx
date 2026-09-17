@@ -268,7 +268,16 @@ export function StepProve({
                     <House aria-hidden="true" className="h-[17px] w-[17px]" />
                   </span>
 
-                  <div className="min-w-0 flex-1">
+                  {/* `basis-0`, AND THE PILL IS THE THING THAT WRAPS.
+                      A fixed basis here was the first attempt and it put the
+                      wrong item on the second line: 24px of number, 36px of
+                      avatar and 170px of text overflowed a ~259px card, so the
+                      TEXT dropped and the number and the house sat alone on a
+                      row of their own. At `basis-0` this column always fits
+                      beside them and grows into what is left; the pill is
+                      pushed to its own line by its wrapper below, which is a
+                      rule rather than an arithmetic accident. */}
+                  <div className="min-w-0 grow basis-0">
                     <h3 className="text-[15px] leading-[1.3] font-bold text-mv-ink">
                       {name}
                     </h3>
@@ -292,23 +301,32 @@ export function StepProve({
                     taken, and the button below would still be grey with no
                     visible reason why.
                   */}
-                  {picked > 0 ? (
-                    <span className="flex flex-none items-center gap-[6px] rounded-full border border-mv-mint-line bg-mv-mint px-[11px] py-[5px] text-[11.5px] font-semibold text-mv-green-ink">
-                      <CircleCheck
-                        aria-hidden="true"
-                        className="h-[13px] w-[13px]"
-                      />
-                      Address verified
-                    </span>
-                  ) : (
-                    <span className="flex flex-none items-center gap-[6px] rounded-full border border-mv-line bg-mv-card px-[11px] py-[5px] text-[11.5px] font-semibold text-mv-muted">
-                      <Circle
-                        aria-hidden="true"
-                        className="h-[13px] w-[13px]"
-                      />
-                      Not verified yet
-                    </span>
-                  )}
+                  {/* THE PILL TAKES ITS OWN LINE ON A PHONE.
+                      `w-full` on the wrapper and not on the pill: a stretched
+                      pill is a rounded bar, and this one should stay the size
+                      of its words. `sm:contents` makes the wrapper vanish from
+                      the layout above the breakpoint, so the pill flows in the
+                      header row exactly as it did before — the desktop box
+                      model gains nothing. */}
+                  <div className="w-full sm:contents">
+                    {picked > 0 ? (
+                      <span className="flex flex-none items-center gap-[6px] rounded-full border border-mv-mint-line bg-mv-mint px-[11px] py-[5px] text-[11.5px] font-semibold text-mv-green-ink">
+                        <CircleCheck
+                          aria-hidden="true"
+                          className="h-[13px] w-[13px]"
+                        />
+                        Address verified
+                      </span>
+                    ) : (
+                      <span className="flex flex-none items-center gap-[6px] rounded-full border border-mv-line bg-mv-card px-[11px] py-[5px] text-[11.5px] font-semibold text-mv-muted">
+                        <Circle
+                          aria-hidden="true"
+                          className="h-[13px] w-[13px]"
+                        />
+                        Not verified yet
+                      </span>
+                    )}
+                  </div>
                 </header>
 
                 <div className="grid gap-[10px] p-[12px]">
@@ -334,8 +352,15 @@ export function StepProve({
                             : "border-mv-line bg-mv-card"
                         }`}
                       >
+                        {/* FOUR THINGS ON ONE LINE NEED ABOUT 400px, and a
+                            phone tile has roughly 270. Unwrapped, the tick, the
+                            value and the Edit button took 226 of it and left
+                            the address ~44px — every word on its own line, with
+                            the figures sitting across it. Below 560px the row
+                            breaks in two instead: the tick and the address, then
+                            the value and Edit beneath. */}
                         <label
-                          className={`flex cursor-pointer items-center gap-3 rounded-md px-[14px] py-[12px] ${
+                          className={`flex cursor-pointer flex-wrap items-center gap-3 rounded-md px-[14px] py-[12px] min-[560px]:flex-nowrap ${
                             ticked ? "" : "hover:bg-mv-hover"
                           }`}
                         >
@@ -376,7 +401,7 @@ export function StepProve({
 
                           {/* THE ADDRESS AND WHERE IT CAME FROM — the column
                               that answers "is this me". */}
-                          <div className="min-w-0 flex-1">
+                          <div className="min-w-0 grow basis-[160px]">
                             <p className="text-[13px] leading-[1.4] font-bold text-mv-green-deep">
                               {record.address || "No address on file"}
                             </p>
@@ -426,7 +451,13 @@ export function StepProve({
                               figure against a stranger's record is the one
                               thing this flow promised not to do. Picking the
                               record is the confirmation it waited for. */}
-                          <div className="flex-none text-right">
+                          {/* ON THE WRAPPED ROW IT TAKES THE SLACK, which is
+                              what pushes Edit to the right end of that line;
+                              ranged right there it would sit against the
+                              button with the line's empty space on the far
+                              side. It goes back to a fixed, right-ranged cell
+                              once the row is one line again. */}
+                          <div className="grow text-left min-[560px]:flex-none min-[560px]:text-right">
                             <p className="text-[13px] font-bold text-mv-ink tabular-nums">
                               {money(record.appraisedValue)}
                             </p>

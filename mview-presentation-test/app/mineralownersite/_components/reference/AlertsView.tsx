@@ -47,7 +47,7 @@
  *      an internal route, so this app's lint rule requires the router-aware
  *      element and `Chrome` already uses it for its own literal-href link.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { Alert, AlertCategory, Payload } from '../../_lib/reference/payload';
 import { n0, plural } from '../../_lib/reference/fmt';
@@ -279,6 +279,122 @@ function watchLedger(p: Payload): Payload['alerts']['ledger'] {
  * An unparseable or missing label sorts to the bottom rather than to the top —
  * `0`, not `NaN` — because a row with no date is not news.
  */
+/**
+ * A COUNTY-WIDE FINDING NAMES ITS COUNTIES; IT DOES NOT LIST THEM ALL.
+ *
+ * A reader whose record spans the Permian gets alerts built over every county
+ * they hold in, and the service names each one. That is correct data and
+ * unreadable copy: one row's title ran
+ *
+ *   "284 new wells completed in ANDREWS, BORDEN, BURLESON, CROCKETT,
+ *    CULBERSON, DAWSON, FREESTONE, GLASSCOCK, GRAYSON, GRIMES, HOWARD, IRION,
+ *    JONES, LEE, LEON, LIBERTY, LOVING, MARTIN, MIDLAND, PECOS, REEVES,
+ *    UPTON, WINKLER"
+ *
+ * and the stat cell under it repeated the same 23 names, so a card whose job
+ * is to say "284 wells" spent four lines saying where. QA asked for the first
+ * few and a "(…)" carrying the rest on hover.
+ *
+ * WHAT COUNTS AS A RUN: four or more comma-separated ALL-CAPS tokens. Three or
+ * fewer are left alone — "ANDREWS, MARTIN, MIDLAND" is shorter than the
+ * ellipsis that would replace it — and the threshold is on the run, not on the
+ * string, so a title that merely contains a capitalised word is untouched.
+ *
+ * NOTHING IS REWORDED (§13). The kept names are the server's own, in the
+ * server's own order, and the hidden ones are on the element's `title` rather
+ * than dropped: the fact is still on the page, it is just not all of it at
+ * once.
+ */
+/**
+ * A PERCENTAGE STOPS BEING A PERCENTAGE SOMEWHERE AROUND TEN-FOLD.
+ *
+ * DEFECT #31, filed as "verify this value, percentage should be 1 to 100%".
+ * The value is not wrong — MOHICAN UNIT filed 2 MCF in May and 48,778 MCF in
+ * June, which really is a rise of 2,438,800% — and clamping it to 100% would
+ * replace a true figure with a false one. The problem is that nobody can read
+ * seven digits of percent. "▲ 2438800.0%" carries no sense of scale at all; it
+ * reads as a glitch, which is how it was reported.
+ *
+ * So the FIGURE is kept and the UNIT is changed: past ten-fold, a ratio is what
+ * a reader actually understands, and "24,389×" says the same thing in four
+ * characters. Below that a percentage still reads fine and is left alone —
+ * "23.7%" and "18.8%" are the normal case and the threshold is well clear of
+ * them.
+ *
+ * ONLY RISES. A fall cannot pass -100%, so a large negative percentage is a
+ * data fault rather than a big number and must be left visible as filed
+ * instead of being quietly re-expressed.
+ *
+ * WHY THE TITLE TOO. The server writes the same number into the sentence —
+ * "gas rose 2438800.0% from May 2026 to June 2026" — so formatting only the
+ * stat cell would leave the unreadable figure as the loudest thing on the row.
+ * This changes how a number is spelled, not what it says, which is the same
+ * latitude `liveValue` already takes with the cells beside it.
+ */
+const PERCENT = /(-?\d[\d,]*(?:\.\d+)?)\s*%/g;
+/** ten-fold — past here a percentage has more digits than meaning */
+const PCT_AS_RATIO_AT = 1000;
+
+function foldBigPercent(text: string): string {
+  return text.replace(PERCENT, (whole, num: string) => {
+    const v = Number(num.replace(/,/g, ''));
+    if (!Number.isFinite(v) || v < PCT_AS_RATIO_AT) return whole;
+    /* +2,438,800% means the new month is 24,389 times the old one */
+    const ratio = 1 + v / 100;
+    return `${Math.round(ratio).toLocaleString('en-US')}\u00d7`;
+  });
+}
+
+const KEEP_COUNTIES = 3;
+const COUNTY_RUN = /\b[A-Z][A-Z'.-]*(?:\s+[A-Z][A-Z'.-]*)*(?:,\s*[A-Z][A-Z'.-]*(?:\s+[A-Z][A-Z'.-]*)*){3,}/;
+
+function FoldCounties({ text }: { text: string | null | undefined }): React.ReactElement | null {
+  const src = String(text ?? '');
+  if (!src) return null;
+  const m = COUNTY_RUN.exec(src);
+  if (!m) return <>{src}</>;
+
+  const names = m[0].split(/,\s*/);
+  if (names.length <= KEEP_COUNTIES + 1) return <>{src}</>;
+
+  const kept = names.slice(0, KEEP_COUNTIES).join(', ');
+  const rest = names.slice(KEEP_COUNTIES);
+  const before = src.slice(0, m.index);
+  const after = src.slice(m.index + m[0].length);
+
+  return (
+    <>
+      {before}
+      {kept}{' '}
+      <span
+        className="al-ell"
+        title={rest.join(', ')}
+        tabIndex={0}
+        role="note"
+        aria-label={`and ${rest.length} more: ${rest.join(', ')}`}
+      >
+        (…)
+      </span>
+      {after}
+    </>
+  );
+}
+
+/**
+ * Is this label a date still ahead of us?
+ *
+ * Only the forecast alerts answer yes — a filing cannot be filed in the
+ * future — so this is the test for "this is a horizon, not an event". It
+ * reuses `alertTime`'s parse so the two cannot disagree about what a label
+ * means, and an unparseable or missing label is NOT ahead: a row with no
+ * readable date should be left exactly as it is rather than labelled on a
+ * guess.
+ */
+function isAhead(label: string | null): boolean {
+  const t = alertTime(label);
+  return t > 0 && t > Date.now();
+}
+
 function alertTime(label: string | null): number {
   if (!label) return 0;
   const t = Date.parse(label);
@@ -319,17 +435,60 @@ export default function AlertsView(
     [al.items],
   );
 
-  /* EVERY FILING THE SWEEP READ, which is the largest true figure the record
-     carries and the one this panel is really selling. `timeline.events` is
-     the whole matched feed — the reader's own leases, their rings and their
-     counties — before any filter narrows it. Falls back to the ledger's own
-     counts if the feed is not loaded. */
-  const readCount = p.timeline.events.length
-    || (lg.production_filings + lg.nearby_filings);
+  /* WHAT THE RECENT FEED HOLDS — `timeline.events`, the matched feed across
+     the reader's own leases, their rings and their counties before any filter
+     narrows it.
+
+     THE FALLBACK IS GONE, and removing it is half of defect #21. It used to
+     read `|| (production_filings + nearby_filings)`, which is the ALL-TIME
+     count — a different window entirely — printed under this cell's label. So
+     a payload whose feed had not loaded showed an all-time total where a
+     recent-feed figure belongs, and the two ledger cells then reported the
+     same span twice at different magnitudes. The cell is omitted instead when
+     there is no feed: the all-time figure is already in its own cell two
+     blocks down, correctly labelled, and a missing cell is honest where a
+     mislabelled one is not.
+
+     This is also why the cell cannot look "impossible" any more. QA's note —
+     "the filings read cell cannot be smaller than its own 80,922 production
+     filings subset" — was true of the label, not of the number: 323 really is
+     the recent feed and 80,922 really is all time. Neither is a subset of the
+     other, and both now say which window they are. */
+  const feedCount = p.timeline.events.length;
   const [cat, setCat] = useState<AlertCategory | 'all'>('all');
   const [q, setQ] = useState('');
   /* THE UNREAD PILL IS A FILTER, NOT A BUTTON — see the filter row below. */
   const [unreadOnly, setUnreadOnly] = useState(false);
+
+  /**
+   * THE CATEGORY CAN ARRIVE IN THE QUERY STRING.
+   *
+   * The Dashboard's rollup chips — "2 Money", "5 Activity" — used to land here
+   * unfiltered, so the number the reader clicked and the number they arrived at
+   * disagreed on screen. `Portal.go` now writes `?cat=` and this reads it.
+   *
+   * IN AN EFFECT, not in the `useState` initialiser, and for the same reason
+   * `Portal` reads `localStorage` in one: this page has a real server render at
+   * `/mineralownersite/alerts`, so a lazy initialiser touching
+   * `window.location` would make the first client render disagree with the
+   * server's and throw a hydration error. Read after mount, the filter is
+   * applied before anything is painted on the in-shell route change, which is
+   * how the chips reach it, and costs one extra render on a cold link.
+   *
+   * IT ONLY EVER SEEDS. `setCat` from the filter row is the reader's own
+   * choice and this must not fight it, so the effect runs once on mount and
+   * ignores an unknown value rather than falling back to "all" — an
+   * unrecognised `cat` leaves the default alone instead of overriding a
+   * category the reader has since picked.
+   */
+  useEffect(() => {
+    try {
+      const want = new URLSearchParams(window.location.search).get('cat');
+      if (want && CATS.some((c) => c.key === want)) {
+        setCat(want as AlertCategory | 'all');
+      }
+    } catch { /* no URL to read — the default is correct */ }
+  }, []);
 
   const unclaimed = funnel === 'unclaimed';
 
@@ -649,12 +808,13 @@ export default function AlertsView(
                   day — including the days it says nothing.
                 </strong>
               </div>
-              {/* same destination as "Alert preferences" in the header — the
-                  two controls make the same offer and used to land on two
-                  different-looking answers; and neither belongs on a sample */}
-              {unclaimed
-                ? null
-                : <Link className="btn btn-ghost btn-sm" href={PREFS_HREF}>Choose what reaches you</Link>}
+              {/* NO SECOND PREFERENCES CONTROL (defect, Alerts sheet).
+                  This was "Choose what reaches you", pointing at the same
+                  `PREFS_HREF` as "Alert preferences" in the header a few
+                  hundred pixels above it. Two buttons, one destination, one
+                  offer — and this one sat inside the panel arguing what the
+                  subscription buys, where a control that navigates away is the
+                  last thing the panel wants. The header keeps the link. */}
             </div>
 
             <div className="aw-grid">
@@ -680,12 +840,33 @@ export default function AlertsView(
                   figure, not the same one inflated — 897 filings really were
                   read, and `mine_count` says how many landed on the reader's
                   own leases, so the caption cannot overstate what is theirs. */}
+              {feedCount
+                ? (
               <div>
                 <span className="aw-n num">
-                  {n0(readCount)}{' '}
-                  {/* the unit tail rides inside `.aw-n`, so it has to be a class
-                      rather than an inline font-size */}
-                  <span className="aw-unit">filings read</span>
+                  {n0(feedCount)}{' '}
+                  {/* THE WINDOW IS PART OF THE FIGURE (defects #21 and #33).
+                      This cell and the production cell two blocks down both
+                      read "filings read" and they count different things over
+                      different windows: this one is `timeline.events`, the
+                      RECENT feed, and that one is every production filing on
+                      the record. Side by side and identically labelled they
+                      looked like one number reported twice and disagreeing —
+                      "323 filings read" beside "80,922 production filings
+                      read", on a member whose every other ledger figure had
+                      scaled with the record. QA read the small one as a
+                      leftover constant from the 10-lease sample, which is
+                      exactly what a smaller-than-its-own-subset figure looks
+                      like.
+
+                      Neither number was wrong; neither said which window it
+                      was for. Both now do, in the label rather than in the
+                      caption, because the label is what is read beside the
+                      figure.
+
+                      The unit tail rides inside `.aw-n`, so it has to be a
+                      class rather than an inline font-size. */}
+                  <span className="aw-unit">filings read in the recent feed</span>
                 </span>
                 <span className="aw-cap">
                   Matched against your <strong className="num">{n0(lg.leases)}</strong>{' '}
@@ -713,12 +894,19 @@ export default function AlertsView(
                     : null} within about a mile of them.
                 </span>
               </div>
+                )
+                : null}
               <div>
-                <span className="aw-n num">{n0(lg.production_filings)}</span>
+                {/* the other half of #33 — this is the WHOLE record, not the
+                    recent feed, and the two cells now say so */}
+                <span className="aw-n num">
+                  {n0(lg.production_filings)}{' '}
+                  <span className="aw-unit">production filings, all time</span>
+                </span>
                 <span className="aw-cap">
-                  Production filings read on your leases, each checked against what your
-                  record&rsquo;s own model expected. {n0(lg.nearby_filings)} permit and completion{' '}
-                  filings read next door.
+                  Read across your leases since the record begins, each one checked against
+                  what your record&rsquo;s own model expected. {n0(lg.nearby_filings)} permit and
+                  completion filings read next door.
                 </span>
               </div>
               <div>
@@ -886,7 +1074,7 @@ export default function AlertsView(
                           : a.severity === 'important'
                             ? <span className="al-sev s-imp">Important</span>
                             : null}
-                        {a.title}
+                        <FoldCounties text={foldBigPercent(a.title)} />
                       </strong>
                       <span className="tiny muted" style={{ marginRight: 6 }}>
                         <Band tier={tier} from="pro">
@@ -900,6 +1088,20 @@ export default function AlertsView(
                         </span>
                       </span>
                       <span className="tiny muted num">
+                        {/* A DATE IN THIS SLOT MEANS "WHEN THIS HAPPENED", and
+                            for one kind of alert it does not (defect #36). A
+                            new-well probability is modelled over a horizon, so
+                            its `event_label` is "February 2030" — printed bare,
+                            in the same position where every other row prints
+                            the month a filing landed, it reads as a data fault,
+                            which is how it was reported alongside the same
+                            row's "detected May 11, 2026".
+                            The date is not changed, only named: a horizon is
+                            marked as one, and the row stops claiming something
+                            happened in 2030. Anything at or before today is
+                            untouched, so the normal case reads exactly as it
+                            did. */}
+                        {isAhead(a.event_label) ? 'forecast · ' : ''}
                         {a.event_label ?? a.detected_label ?? '—'} · {a.channels}
                       </span>
                     </div>
@@ -930,11 +1132,21 @@ export default function AlertsView(
                                 {st.tone === 'up' ? '▲ ' : st.tone === 'down' ? '▼ ' : ''}
                                 {/* `shown` is the value with its empty halves
                                     removed — see `liveValue` */}
-                                {st.tone === 'up' || st.tone === 'down'
-                                  ? shown.replace(/^[+-]/, '')
-                                  : shown}
+                                <FoldCounties
+                                  text={foldBigPercent(
+                                    st.tone === 'up' || st.tone === 'down'
+                                      ? shown.replace(/^[+-]/, '')
+                                      : shown,
+                                  )}
+                                />
                               </span>
-                              {st.sub ? <span className="alx-s">{st.sub}</span> : null}
+                              {st.sub
+                                ? (
+                                <span className="alx-s">
+                                  <FoldCounties text={foldBigPercent(st.sub)} />
+                                </span>
+                              )
+                                : null}
                             </div>
                           ))}
                           {/* the series beside the figures, only where one

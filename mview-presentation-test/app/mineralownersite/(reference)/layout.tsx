@@ -1,6 +1,16 @@
 import type { Metadata } from "next";
 
+import { cookies } from "next/headers";
+
 import { PortalSessionProvider } from "../_components/portal-session";
+import { PortalPrefsProvider } from "../_components/reference/prefs-context";
+import {
+  PORTAL_FUNNELS,
+  PORTAL_FUNNEL_COOKIE,
+  PORTAL_TIERS,
+  PORTAL_TIER_COOKIE,
+  readPortalPref,
+} from "../_lib/reference/portal-prefs";
 import { Sprite } from "../_components/reference/Sprite";
 import { getSessionUser } from "@/lib/session";
 import "../dashboard-reference.layer.css";
@@ -94,17 +104,37 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * THE READER'S DENSITY, READ ON THE SERVER — see `prefs-context.tsx`.
+ *
+ * `mv.tier` and `mv.funnel` are mirrored into cookies so this layout can hand
+ * them to `Portal` as its opening state. Without them the server rendered
+ * `detailed` for everybody and the reader's own choice replaced it one
+ * hydration later, which is the "shows pro mode and then shows ultra" defect.
+ *
+ * The names, the key lists and `readPortalPref` come from `_lib/reference/
+ * portal-prefs`, which carries NO `'use client'` directive — importing them
+ * from the context module instead gave this server component a client
+ * reference rather than the array, and the validation threw.
+ */
 export default async function ReferencePortalLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const user = await getSessionUser();
+  const [user, jar] = await Promise.all([getSessionUser(), cookies()]);
+
+  const tier = readPortalPref(jar.get(PORTAL_TIER_COOKIE)?.value, PORTAL_TIERS);
+  const funnel = readPortalPref(jar.get(PORTAL_FUNNEL_COOKIE)?.value, PORTAL_FUNNELS);
 
   return (
     <>
       <Sprite />
-      <PortalSessionProvider user={user}>{children}</PortalSessionProvider>
+      <PortalSessionProvider user={user}>
+        <PortalPrefsProvider tier={tier} funnel={funnel}>
+          {children}
+        </PortalPrefsProvider>
+      </PortalSessionProvider>
     </>
   );
 }

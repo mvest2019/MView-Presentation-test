@@ -128,9 +128,25 @@ export function ClaimShell({
     <div
       ref={root}
       /* `mv-claim-flow` is a MARKER, not styling — `claim.css` uses it to opt
-         this route out of two global `portal.css` rules that would otherwise
-         make the flow look different in each density. See that file. */
-      className="mv-claim-flow @container rounded-mv border border-mv-line bg-mv-card p-5 shadow-mv max-[767px]:p-3"
+         this route out of rules in the shell's own sheet that would otherwise
+         make the flow look different in each density. See that file.
+
+         ── NO OUTER CARD ON A PHONE ──
+
+         On a desktop this frame is what separates the flow from the page. On a
+         375px screen it was the outermost of THREE nested white cards — this
+         one, the step panel inside it, then the filter card inside that — and
+         each one spent a border and its own padding on the same edge. Roughly
+         26px of width gone to draw two lines beside each other, on the axis
+         that has the least to spare.
+
+         So below 768px it stops being a card at all: no border, no radius, no
+         shadow, no ground and no padding. The step panel becomes the outermost
+         card and takes the width back, and the page's own 14px gutter is the
+         only inset left. The heading and the caption bar then sit on the page
+         ground, which is what puts them at the same level as the chrome above
+         rather than inside a box of their own. */
+      className="mv-claim-flow @container rounded-none border-0 bg-transparent p-0 shadow-none min-[768px]:rounded-mv min-[768px]:border min-[768px]:border-mv-line min-[768px]:bg-mv-card min-[768px]:p-5 min-[768px]:shadow-mv"
     >
       <header className="mb-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
         <h1

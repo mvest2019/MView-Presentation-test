@@ -29,7 +29,12 @@ export function ClaimCheckbox({
         onChange={(event) => onChange(event.target.checked)}
         className="mt-[2px] h-[15px] w-[15px] flex-none cursor-pointer accent-mv-green-deep outline-none focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.28)]"
       />
-      <span className="min-w-0">{children}</span>
+      {/* `flex-1` SO THE BOX AND THE SENTENCE SHARE A LINE.
+          Without it this span's basis is the attestation laid out as one long
+          line, which on a phone cannot fit beside a 15px checkbox — so the box
+          wrapped to a row of its own above the text, reading as an orphaned
+          control rather than the thing you tick to agree. */}
+      <span className="min-w-0 flex-1">{children}</span>
     </label>
   );
 }

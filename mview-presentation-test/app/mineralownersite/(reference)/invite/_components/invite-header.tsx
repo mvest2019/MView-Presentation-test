@@ -31,7 +31,7 @@ import { gates } from "../../../_components/ui/portal-gating";
 export function InviteHeader() {
   return (
     <div className="iv-top">
-      <div className="section-label">Bring the family in</div>
+      <div className="section-label">Connect with Co-Owners</div>
       {/* AN `h1`, AND THE REFERENCE'S `h2` IS NOT COPIED HERE. This page brings
           its own view through `Portal`'s `children`, so nothing above it in the
           document is a heading — the title of the page is the document's
@@ -39,9 +39,10 @@ export function InviteHeader() {
           the other pages' 24px either way; see `.iv-title`. */}
       <h1 className="iv-title">Invite Co-Owners</h1>
       <p className="small muted">
-        Everyone who owns a share of your leases is named on the public
-        appraisal roll. Pick the ones you know, and an email is written for each
-        of them — their own name, their own invite code — ready for you to send.
+        Mineral View uses public appraisal records to identify other owners
+        associated with your selected lease. Choose the co-owners you recognize,
+        and Mineral View will prepare a personalized invitation for each person,
+        including their name and unique invitation code, ready for you to send.
       </p>
     </div>
   );

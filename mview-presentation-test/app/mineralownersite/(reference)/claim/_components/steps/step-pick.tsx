@@ -666,49 +666,84 @@ export function StepPick({
       */}
       {count > 0 && (
         <div className="pointer-events-none sticky bottom-4 z-30 flex justify-center max-[1024px]:bottom-[84px]">
-          <div className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-full border border-white/10 bg-mv-deep py-2 pr-2 pl-3 shadow-mv-lg">
+          {/*
+            TWO SHAPES, BECAUSE A PHONE AND A DESKTOP WANT DIFFERENT THINGS.
+
+            ── DESKTOP: A FLOATING PILL ──
+
+            It hovers over a list it must not hide, so it is only as wide as its
+            contents and `rounded-full` — the shape says "this is on top of the
+            page", and the rows either side stay readable.
+
+            ── PHONE: A FULL-WIDTH BAR ──
+
+            The same pill at 375px is a narrow lozenge whose contents wrap into
+            two centred rows with dark space around them, which is what this
+            looked like before: a count and two links floating above a button
+            floating above nothing. Every attempt to fit it on one row ran into
+            the shell's own tap-target floor — `.app-main button` is 44px tall
+            below 640px — so two rows is the honest answer and the job is to
+            make two rows look deliberate.
+
+            Full width uses the space instead of fighting it: the count and the
+            links take one line ranged to the edges, and the button takes the
+            next as a real, full-width target. `rounded-[14px]` because at that
+            width it is a bar and no longer a pill.
+          */}
+          <div className="pointer-events-auto flex w-full max-w-full flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-[14px] border border-white/10 bg-mv-deep px-3 py-[10px] shadow-mv-lg sm:w-auto sm:justify-center sm:gap-y-1 sm:rounded-full sm:py-2 sm:pr-2 sm:pl-3">
             <span className="flex items-center gap-2 text-[12.5px] font-semibold text-mv-on-deep">
               <span className="flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-mv-on-deep-accent px-[6px] text-[11.5px] font-bold text-mv-deep-ink tabular-nums">
                 {count}
               </span>
+              {/* VISIBLE AGAIN. It was `sr-only` on a phone while the bar was
+                  a narrow pill fighting for one row; a full-width bar has the
+                  48px, and a chip reading "2" on its own is not a sentence for
+                  anyone. */}
               selected
             </span>
 
-            {/* THE COUNT NOW LEADS SOMEWHERE.
+            {/* ONE GROUP, SO THEY STAY TOGETHER AT THE END OF THE LINE.
+                `justify-between` on the bar would otherwise push these two
+                apart to opposite edges. `sm:contents` dissolves the wrapper
+                above the breakpoint, so on desktop the two buttons flow in the
+                pill exactly as they always did. */}
+            <div className="flex items-center gap-3 sm:contents">
+              {/* THE COUNT NOW LEADS SOMEWHERE.
                 A tick can be row 387 of 1,153 — on screen, but a thousand rows
                 down, which reads as a number referring to nothing. This narrows
                 the list to exactly the rows the number counts, so the selection
                 can be checked and unticked without hunting for it. */}
-            <button
-              type="button"
-              onClick={() => setShowPicked((on) => !on)}
-              aria-pressed={showPicked}
-              title={
-                showPicked
-                  ? "Show every record the search returned"
-                  : "Narrow the list to the records you have ticked"
-              }
-              className="cursor-pointer text-[11.5px] font-semibold text-mv-on-deep-soft underline underline-offset-2 hover:text-mv-on-deep"
-            >
-              {showPicked ? "Show all" : "Show picked"}
-            </button>
+              <button
+                type="button"
+                onClick={() => setShowPicked((on) => !on)}
+                aria-pressed={showPicked}
+                title={
+                  showPicked
+                    ? "Show every record the search returned"
+                    : "Narrow the list to the records you have ticked"
+                }
+                className="cursor-pointer text-[11.5px] font-semibold text-mv-on-deep-soft underline underline-offset-2 hover:text-mv-on-deep"
+              >
+                {showPicked ? "Show all" : "Show picked"}
+              </button>
 
-            {/* NO CEILING ON THE SELECTION (requested). The bar used to turn
+              {/* NO CEILING ON THE SELECTION (requested). The bar used to turn
                 its count red and swap `Clear` for a refusal past 25; claims are
                 filed in batches now, so there is nothing here to refuse and
                 nothing to count against. */}
-            <button
-              type="button"
-              onClick={onClearSelection}
-              className="cursor-pointer text-[11.5px] font-semibold text-mv-on-deep-soft underline underline-offset-2 hover:text-mv-on-deep"
-            >
-              Clear
-            </button>
+              <button
+                type="button"
+                onClick={onClearSelection}
+                className="cursor-pointer text-[11.5px] font-semibold text-mv-on-deep-soft underline underline-offset-2 hover:text-mv-on-deep"
+              >
+                Clear
+              </button>
+            </div>
 
             <PortalButton
               variant="primary"
               size="sm"
-              className="rounded-full"
+              className="w-full rounded-full sm:w-auto"
               onClick={onContinue}
               disabled={resolving}
             >
@@ -721,6 +756,10 @@ export function StepPick({
               {/* NAMES THE NEXT SCREEN, not the act of moving. "Continue" is
                   true of every button in a wizard and tells the reader nothing
                   about what they are about to be asked. */}
+              {/* THE FULL LABEL EVERYWHERE AGAIN. It was shortened to
+                  "Addresses →" while the bar was trying to hold one row on a
+                  phone; a full-width button has the room, and the longer label
+                  is the one that says what the next screen asks. */}
               {resolving ? "Checking these records…" : "Review addresses →"}
             </PortalButton>
           </div>

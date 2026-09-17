@@ -18,7 +18,6 @@ import {
 } from "../_api/invite-api";
 import type { PrefetchedLeases } from "../_api/invite-prefetch";
 import { CREDIT, creditPlan, FLOW } from "../_lib/invite-flow";
-import { DEFAULT_BODY } from "../_lib/invite-letters";
 import { inviteSender } from "../_lib/invite-records";
 import type { GreetingStyle } from "../_lib/invite-types";
 import { EmailStep } from "./email-step";
@@ -136,7 +135,11 @@ export function InviteWorkbench({
   const [showAll, setShowAll] = useState(false);
   const [greeting, setGreeting] = useState<GreetingStyle>("first");
   const [custom, setCustom] = useState("");
-  const [body, setBody] = useState(DEFAULT_BODY);
+  /* NULL, NOT A LOCAL TEMPLATE. The letter's wording is the service's own —
+     `wordingParams` sends no `body` when this is null, so the email arrives in
+     the backend's default words. A string only appears here once the reader
+     edits, and "start again" hands it back to null (the service default). */
+  const [body, setBody] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [atKey, setAtKey] = useState<string | null>(null);
   const [rewording, setRewording] = useState(false);

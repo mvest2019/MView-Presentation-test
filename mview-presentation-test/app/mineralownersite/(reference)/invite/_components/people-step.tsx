@@ -105,13 +105,13 @@ export function PeopleStep({
   return (
     <StepCard
       n={2}
-      title="Choose who to invite"
+      title="Select Co-Owners to Invite"
       action={
         <span
           className={`chip ${picked.size ? "chip-mint" : "chip-slate"}`}
           style={{ fontSize: 10 }}
         >
-          {picked.size} chosen
+          {picked.size} selected
         </span>
       }
     >
@@ -123,12 +123,12 @@ export function PeopleStep({
           type="search"
           value={query}
           onChange={(event) => onQuery(event.target.value)}
-          placeholder="Search a name or a town"
+          placeholder="Search by name or town"
           aria-label="Search the owners of record"
         />
         {picked.size ? (
           <button type="button" className="iv-link" onClick={onClear}>
-            Clear {picked.size}
+            Clear selection
           </button>
         ) : null}
       </div>
@@ -194,8 +194,15 @@ export function PeopleStep({
         {/* EVERY LOADED OWNER IS IN THAT CARD, and the card is a fixed height —
             so this is a fact rather than a button that grows the page. */}
         <span className="iv-count">
-          {matching.length} {matching.length === 1 ? "owner" : "owners"}
-          {query.trim() ? " matching" : ""} · scroll the list
+          {matching.length}{" "}
+          {showAll
+            ? matching.length === 1
+              ? "owner"
+              : "owners"
+            : matching.length === 1
+              ? "individual owner"
+              : "individual owners"}
+          {query.trim() ? " matching" : ""} · scroll to view
         </span>
         {others ? (
           <button
@@ -204,16 +211,16 @@ export function PeopleStep({
             onClick={() => onShowAll(!showAll)}
           >
             {showAll
-              ? "Show people only"
+              ? "Show individual owners only"
               : `Also show ${others} ${
                   others === 1
                     ? "company or trust"
-                    : "companies, trusts and the operator"
+                    : "companies, trusts, and the operator"
                 }`}
           </button>
         ) : null}
         <span className="tiny muted" style={{ marginLeft: "auto" }}>
-          Largest share first
+          Largest ownership share first
         </span>
       </div>
 
@@ -234,7 +241,7 @@ export function PeopleStep({
           The roll includes the working-interest party — the operator, who pays
           to drill rather than owning the minerals. Inviting them into a private
           owners&rsquo; group is almost certainly not what you want, and they
-          never count towards a free month.
+          never count towards a complimentary month.
         </p>
       ) : null}
     </StepCard>

@@ -26,19 +26,18 @@
  *
  * 3. The neighbours card carries the feed's own filings, not just ring counts.
  */
-import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
+import { createPortal } from 'react-dom';
 import type { Payload } from '../../_lib/reference/payload';
-import { formatLakhs } from '../../_lib/format-lakhs';
 import { usePortalMember } from '../portal-session';
 import {
-  n0, n1, usd, usdShort, pctS, vol, volWords, plural, productWord, interest, nShort,
+  n0, n1, usd, usdShort, usdScaled, pctS, vol, volWords, plural, productWord, interest, nShort,
   MCF, BBL,
 } from '../../_lib/reference/fmt';
 import type { Tier } from './bits';
 import { Pager, ProductPair, usePaged } from './bits';
 import { Essentials, ProdCols, Wells, ValueMix } from './panels';
-import { StateCard } from './funnel';
 import { Maturity } from './maturity';
 import { Charts } from './LineChart';
 import { productCharts } from '../../_lib/reference/chart';
@@ -50,11 +49,18 @@ export interface ViewProps {
   funnel: FunnelKey;
   sample: boolean;
   open: (key: string) => void;
-  go: (r: Route) => void;
+  go: (r: Route, params?: Record<string, string | null>) => void;
 }
 
 /** the dashboard also drives the plan card, so it needs the two funnel props */
 export interface DashProps extends ViewProps {
+  /**
+   * Re-read this member's payload and resolve once it is in state.
+   *
+   * Supplied by `Portal`, which owns the payload. The switch flow AWAITS it —
+   * see `applySwitch` for why a resolvable request replaced `router.refresh()`.
+   */
+  reloadActiveOwner: () => Promise<boolean>;
   trialStarted: string | null;
   setFunnel: (f: FunnelKey) => void;
 }
@@ -68,7 +74,11 @@ interface SeriesDef {
 }
 
 export default function Dashboard(
-  { p, tier, funnel, sample, open, go, trialStarted, setFunnel }: DashProps,
+  /* `trialStarted` and `setFunnel` are still part of `DashProps` — `Portal`
+     passes them and the plan card used to read them. They are accepted and
+     not destructured so the shell's call site is unchanged and the props stay
+     available the moment anything on this page needs the trial stamp again. */
+  { p, tier, funnel, sample, open, go, reloadActiveOwner }: DashProps,
 ) {
   const t = p.totals;
   const a = p.as_of;
@@ -87,18 +97,185 @@ export default function Dashboard(
   const member = usePortalMember();
   const top = al.items[0] ?? null;
 
+  /**
+   * SWITCHING TO ANOTHER RECORD — the loader, and nothing else about the page.
+   *
+   * WHAT STAYS ON SCREEN IS THE PREVIOUS OWNER'S PAGE. Nothing below is
+   * unmounted, hidden or blanked while the new record is read: a page that
+   * empties itself the moment a control is pressed reads as if the control
+   * broke it, and for the length of the request there is nothing better to put
+   * there. The reader keeps what they were looking at, under a loader that
+   * says what is happening.
+   *
+   * AND THE NEW OWNER'S DATA IS NOT BOUND UNTIL IT ARRIVES — which is the same
+   * statement from the other side. `p` is still the previous record for the
+   * whole of the wait, so every figure below is still that record's; the swap
+   * happens in one render when the refresh lands.
+   *
+   * THE TRANSITION IS OWNED HERE rather than in `OwnerSwitch` because this is
+   * the component that survives the swap and renders the loader; the panel
+   * below only reports what the reader pressed.
+   */
+  const [switchingTo, setSwitchingTo] = useState<string | null>(null);
+  const switching = switchingTo !== null;
+
+  /* WHERE THE LOADER IS PORTALLED — see the overlay below for why it cannot
+     render in place.
+     LOOKED UP IN THE EVENT, AND HELD AS STATE. The server has no `document`,
+     so it cannot be resolved during render; an effect that set it tripped
+     `set-state-in-effect`; and a ref cannot be READ during render at all. A
+     `setState` from an event handler is none of those things. */
+  const [shellRoot, setShellRoot] = useState<HTMLElement | null>(null);
+
+  /* Pressed: the loader goes up before the request leaves, so the wait the
+     reader sees is the whole wait rather than only the render after it. */
+  const beginSwitch = useCallback((ownername: string) => {
+    setShellRoot(document.querySelector<HTMLElement>('.mv-ref-app'));
+    setSwitchingTo(ownername);
+  }, []);
+  const cancelSwitch = useCallback(() => setSwitchingTo(null), []);
+
+  /**
+   * THE WAIT ENDS WHEN THE DATA LANDS — not when a transition says so.
+   *
+   * THE DEFECT THIS REPLACES. This used to be
+   * `startTransition(() => router.refresh())`, with the loader keyed on the
+   * transition's `isPending`. `router.refresh()` returns void, so `isPending`
+   * tracks React's own render and not the round trip behind it: on a large
+   * record it settled seconds before the new payload arrived. The loader came
+   * down over the PREVIOUS owner's figures, which then sat there — measured at
+   * ten to eleven seconds on a 100+ lease record — until the refresh finally
+   * delivered and the page changed under the reader with no warning.
+   *
+   * `reloadActiveOwner()` RESOLVES WHEN THE PAYLOAD IS IN STATE, so the wait
+   * is the real wait. Clearing `switchingTo` immediately after it means React
+   * batches the new payload and the end of the loading state into ONE render:
+   * the loader lifts and the new owner's dashboard is already underneath it.
+   * There is no window in which one owner's figures are on screen without the
+   * loader over them.
+   *
+   * NO TIMER UNDER IT. The previous version needed a failsafe because its
+   * completion signal was a guess; an awaited request either resolves or
+   * rejects, and both are handled here.
+   */
+  const applySwitch = useCallback(async () => {
+    try {
+      await reloadActiveOwner();
+    } finally {
+      setSwitchingTo(null);
+    }
+  }, [reloadActiveOwner]);
+
+  /**
+   * A BELT-AND-BRACES CLEAR, if the record changes by any other route.
+   *
+   * ADJUSTED DURING RENDER, NOT IN AN EFFECT — React's own recommendation for
+   * "reset state when a prop changes": React re-runs this component with the
+   * new state before anything is painted, so the loader and the new record
+   * never both reach the screen. In an effect it would paint the loader once
+   * OVER the new data and then remove it, which is a visible flash and what
+   * the `set-state-in-effect` rule warns about.
+   */
+  const [shownOwner, setShownOwner] = useState(p.owner.ownername);
+  if (shownOwner !== p.owner.ownername) {
+    setShownOwner(p.owner.ownername);
+    setSwitchingTo(null);
+  }
+
+  /* ---------------------------------------------- EACH FINDING, SHOWN ONCE.
+   *
+   * THREE BLOCKS ON THIS PAGE WERE DRAWING THE SAME ALERTS. The rollup prints
+   * the top finding as a sentence; "What changed" printed `items[0..4]`, which
+   * begins with that same finding; and the alert strip printed `items[0..]`,
+   * which begins with all five of those. So the reader met finding #1 three
+   * times and findings #2-#5 twice, on one screen — the defect sheet's rows 6,
+   * 37 and 53, filed separately because they look different at each tier.
+   *
+   * THE FIX IS A PARTITION, NOT A DELETION. The rollup keeps the top finding,
+   * "What changed" takes the next five, and the strip takes whatever is left.
+   * Every finding the payload carries is still on the page, still opens its own
+   * drawer, and now appears exactly once. A portfolio with a single finding
+   * simply leaves the two lower blocks empty, and each is already gated on its
+   * own list being non-empty.
+   *
+   * `TOP_IN_ROLLUP` is 1 because that is how many the rollup prints — it is
+   * derived from the block above rather than written twice, so changing the
+   * rollup cannot silently reintroduce the overlap. */
+  const TOP_IN_ROLLUP = top ? 1 : 0;
+  const CHANGED_ROWS = 5;
+  const changedItems = al.items.slice(TOP_IN_ROLLUP, TOP_IN_ROLLUP + CHANGED_ROWS);
+  const stripItems = al.items.slice(TOP_IN_ROLLUP + changedItems.length);
+
   return (
     /* `.active` is REQUIRED, not decorative: the prototype ships
        `section[data-route]{display:none}` and only `section[data-route].active`
        is shown. Without it the whole dashboard renders into a hidden element
        and the page comes up empty below the pinned bar. */
     <section data-route="app" id="routeApp" className="active">
+      {/* `.mv-loader` IS THE SHELL THIS APP ALREADY LOADS BEHIND — fixed,
+          full-page, centred over a scrim (`dashboard-reference.css:1006`), with
+          `.mv-load-mark`'s three-dot spinner in its card. Reused rather than
+          re-drawn so a wait looks the same wherever the reader meets one. It
+          does NOT carry the owner-read loader's progress bar, elapsed timer and
+          roll-scan footnote: this wait is short, and the message is the whole
+          of what there is to say. */}
+      {/* PORTALLED TO THE BODY, AND IT HAS TO BE.
 
-      {/* ---------- the plan card: what this account state means ---------- */}
-      <StateCard
-        p={p} funnel={funnel} trialStarted={trialStarted}
-        setFunnel={setFunnel} go={go} open={open}
-      />
+          `.mv-loader` is `position: fixed; inset: 0`, which is measured against
+          the VIEWPORT only while no ancestor establishes a containing block.
+          The route section around this one does: `section[data-route].active`
+          carries a `transform` for its enter animation, and a transformed
+          ancestor becomes the containing block for every fixed descendant.
+          Rendered in place the overlay sized itself to the section — measured
+          1114x5110 at a 1440x900 viewport, so the card sat two thousand pixels
+          down the page instead of in the middle of the screen.
+
+          This is why the shell's own `Loader` centres correctly and this one
+          did not: `Portal` renders it OUTSIDE the section. A portal puts this
+          one in the same place without moving the component that owns it.
+
+          THE TARGET IS THE SHELL ROOT, NOT `document.body`. Every rule in these
+          sheets is scoped under `.mv-ref-app` — that is how the reference's
+          stylesheets are kept off the rest of the site — so an overlay in the
+          body would be unstyled markup. `.mv-ref-app` is the element `Portal`
+          renders its own loader inside, it is not transformed, and there is
+          exactly one of it. */}
+      {switching && shellRoot
+        ? createPortal(
+          <div className="mv-loader mv-loader-switch" role="status" aria-live="polite">
+            <div className="mv-loader-card">
+              {/* A SPINNER, NOT `.mv-load-mark`'s three bouncing dots — and it
+                  is its own element rather than a restyling of that one,
+                  because the dots belong to the owner-read loader and must
+                  keep working there. */}
+              <span className="mv-spin" aria-hidden="true" />
+              <h3>Loading…</h3>
+            </div>
+          </div>,
+          shellRoot,
+        )
+        : null}
+
+      {/* ---------- the plan card: REMOVED, because the chrome already says it.
+           `StateCard` and `FunnelBar` render for the SAME three funnel states —
+           claimed, trial, lapsed — and say the same thing in the same words:
+           the same headline, the same "what Premium adds" paragraph, the same
+           primary button. The bar is sticky chrome directly above this element,
+           so on every one of those three states the reader met the message
+           twice, one line apart. Defect sheet rows 15, 33, 37 and 53 are all
+           that duplication seen from different tiers.
+
+           THE BAR IS THE ONE THAT STAYS, not this card, for two reasons: it is
+           visible from every scroll position rather than only at the top, and
+           it belongs to `Chrome`, so the Weekly Report and the Map keep the
+           same message without the Dashboard having to render its own copy.
+
+           NOTHING IS LOST. The card's primary CTA is the bar's CTA. Its one
+           unique control was a ghost link to Activities or Alerts — and both
+           routes are already reachable from this page: the alerts rollup below
+           carries "Open all alerts →" and "What's going on around you" carries
+           "See all N filings →". The component itself is untouched in
+           `funnel.tsx`; only this call site is gone. */}
 
       {/* ---------- ULTRA: one headline, one status, one action ---------- */}
       {tier === 'ultra' ? <UltraHero p={p} funnel={funnel} open={open} /> : null}
@@ -192,18 +369,26 @@ export default function Dashboard(
                 {/* THE COUNTIES COLLAPSE TO A COUNT once there are more than
                     five of them. Twenty names is not a fact anyone reads — it
                     is a wall the eye skips, and it pushed this line to three
-                    rows. The names are kept on the `title`, so hovering still
-                    answers "which ones", and the map and the leases table both
-                    list them properly. */}
-                {t.counties.length > MAX_COUNTY_NAMES
-                  ? (
-                    <span title={t.counties.join(', ')}>
-                      {t.counties.length} {plural(t.counties.length, 'county', 'counties')}
-                    </span>
-                  )
-                  : t.counties.join(', ')} ·{' '}
+                    rows. The count OPENS, so the names are one click away on
+                    every input — see `NameList`. */}
+                <NameList
+                  names={t.counties} max={MAX_COUNTY_NAMES}
+                  one="county" many="counties"
+                /> ·{' '}
                 {t.operator_count} {plural(t.operator_count, 'operator')}
-                {t.plays.length ? ' · ' + t.plays.join(', ') : ''}
+                {/* THE PLAYS COLLAPSE THE SAME WAY THE COUNTIES DO, and for the
+                    same measured reason. Four play names — "EAGLE FORD SHALE,
+                    GRANITE WASH, HAYNESVILLE/BOSSIER SHALE, PERMIAN BASIN" — is
+                    118 characters at the end of a line that already carries six
+                    facts, and it pushed this subhead onto a third row. */}
+                {t.plays.length
+                  ? (
+                    <>
+                      {' · '}
+                      <NameList names={t.plays} max={MAX_PLAY_NAMES} one="play" many="plays" />
+                    </>
+                  )
+                  : null}
               </p>
             </div>
             {/* ADAPTED · the reference says "Owner:"; this build says
@@ -219,7 +404,13 @@ export default function Dashboard(
                 sources card. What the chip lacked was the thing an account
                 with more than one claimed record actually needs: a way to see
                 which of them is filling the page. */}
-            <OwnerSwitch p={p} />
+            <OwnerSwitch
+              p={p}
+              unclaimed={unclaimed}
+              onSwitchBegin={beginSwitch}
+              onSwitchApply={applySwitch}
+              onSwitchCancel={cancelSwitch}
+            />
           </div>
 
           {/* the sample badge moved to the top of the page — see SAMPLE
@@ -261,9 +452,16 @@ export default function Dashboard(
                   {(Object.keys(al.counts) as (keyof typeof al.counts)[])
                     .filter((k) => k !== 'all' && al.counts[k])
                     .map((k) => (
+                      /* THE CHIP CARRIES ITS CATEGORY TO THE ALERTS PAGE.
+                         Every one of these called a bare `go('alerts')`, so
+                         "2 Money" landed on the unfiltered list with "All · 9"
+                         active and the reader had to find the Money filter
+                         again — the two counts on screen disagreed the moment
+                         they arrived. The category rides in the query string,
+                         which is where `AlertsView` already looks for it. */
                       <button
                         key={k} className={'as-cat' + (k === 'money' ? ' as-act' : '')}
-                        type="button" onClick={() => go('alerts')}
+                        type="button" onClick={() => go('alerts', { cat: k })}
                       >
                         <b>{al.counts[k]}</b> {CAT_NAME[k] ?? k}
                       </button>
@@ -286,18 +484,23 @@ export default function Dashboard(
             ? (
               <div className="card card-pad simple-hero" style={{ margin: '14px 0' }}>
                 <h3 style={{ marginBottom: 6 }}>Your minerals, in one line</h3>
+                {/* THE PORTFOLIO LINE, NOT THE TOP ALERT.
+
+                    This printed `top.title — top.body`, which is word for word
+                    what the rollup directly above it prints. At Essentials the
+                    two sat one card apart, so the page's first two blocks said
+                    the same sentence twice (defect sheet row 53). The branch
+                    below was already written — it was the fallback for an
+                    account with no findings — and it is the sentence this card
+                    is actually titled for: what the portfolio filed, in one
+                    line. The finding is not lost; it is in the rollup above and
+                    the button below still opens it. */}
                 <p style={{ fontSize: 16, margin: '0 0 10px' }}>
-                  {top
-                    ? <><strong>{top.title}</strong> — {top.body}</>
-                    : (
-                      <>
-                        <strong>
-                          {t.reporting_count} of your {t.lease_count} {plural(t.lease_count, 'lease')}{' '}
-                          filed {pw} in {a.data_month_label}
-                        </strong>{' '}
-                        — {volWords(t.anchor_gas_net, t.anchor_oil_net)} to you.
-                      </>
-                    )}
+                  <strong>
+                    {t.reporting_count} of your {t.lease_count} {plural(t.lease_count, 'lease')}{' '}
+                    filed {pw} in {a.data_month_label}
+                  </strong>{' '}
+                  — {volWords(t.anchor_gas_net, t.anchor_oil_net)} to you.
                 </p>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button
@@ -320,7 +523,7 @@ export default function Dashboard(
             : null}
 
           {/* ---------- what changed ---------- */}
-          {al.count && tier !== 'simple'
+          {changedItems.length && tier !== 'simple'
             ? (
               <div
                 className="card card-pad" id="changedCard"
@@ -334,7 +537,9 @@ export default function Dashboard(
                   <span className="small muted">{al.window_note}</span>
                 </div>
                 <ul className="timeline" style={{ marginTop: 10 }}>
-                  {al.items.slice(0, 5).map((it) => (
+                  {/* `changedItems`, not `al.items.slice(0, 5)` — see the
+                      partition where it is built. */}
+                  {changedItems.map((it) => (
                     <li
                       key={it.id} role="button" tabIndex={0}
                       onClick={() => open('alert:' + it.id)}
@@ -354,10 +559,13 @@ export default function Dashboard(
             : null}
 
           {/* ---------- the alert strip ---------- */}
-          {tier === 'detailed' || tier === 'pro'
+          {(tier === 'detailed' || tier === 'pro') && stripItems.length
             ? (
               <div className="al-strip" id="alStrip">
-                {al.items.map((it) => (
+                {/* `stripItems`, not `al.items` — see the partition above. The
+                    strip used to repeat the five "What changed" rows verbatim
+                    immediately under them. */}
+                {stripItems.map((it) => (
                   <button
                     key={it.id} type="button"
                     className={'al-mini' + (it.severity === 'action' ? ' gold' : '')}
@@ -376,7 +584,7 @@ export default function Dashboard(
 
           {/* ---------- KPI grid ---------- */}
           {tier === 'detailed' || tier === 'pro'
-            ? <KpiGrid p={p} sample={sample} open={open} />
+            ? <KpiGrid p={p} sample={sample} funnel={funnel} open={open} />
             : null}
 
           {/* ---------- two columns ---------- */}
@@ -490,7 +698,7 @@ function UltraHero(
       </h1>
       <p className="u-status">
         {unclaimed
-          ? `Appraised at ${usd(t.appraised_value)} on the ${t.appraised_year} roll. Claiming is free.`
+          ? `Appraised at ${usdScaled(t.appraised_value)} on the ${t.appraised_year} roll. Claiming is free.`
           : `Your share across ${t.lease_count} ${plural(t.lease_count, 'lease')}. ` +
             `${t.reporting_count} filed ${productWord(t.has_gas, t.has_oil)} in ${a.data_month_label} — ` +
             `${volWords(t.anchor_gas_net, t.anchor_oil_net)} to you.`}
@@ -589,21 +797,37 @@ function PfStrip(
   const t = p.totals;
   const a = p.as_of;
 
-  /* LAKHS, ON THE SAMPLE PAGE ONLY.
-
-     The brief is that the not-claimed dashboard reads its MVestimate and its
-     production figures in lakhs. It is a presentation step and nothing else:
-     `formatLakhs` takes the already-formatted string and hands one back, so no
-     value is restated and a figure it cannot parse comes through untouched
-     rather than as `NaN`. Its own threshold means a figure under one lakh is
-     returned as it was — "17,306" stays "17,306", because "0.17 L" is harder to
-     read and throws away two digits.
-
-     GATED ON `sample`, deliberately. A claimed owner's own money keeps the
-     format their statements and the rest of the product use; only the
-     illustrative record is re-expressed. */
-  const lakhs = (display: string | null) =>
-    (sample && display != null ? formatLakhs(display) : display);
+  /* LAKHS ARE GONE FROM THIS STRIP, and that is the fix for two defects at once.
+   *
+   * WHAT IT DID. `formatLakhs` re-expressed the already-formatted figure in
+   * lakhs — so "$3,178,463,600" was printed as "$31784636 L" and "22,511,490
+   * MCF" as "22511.49 L MCF". Three things were wrong with that on this page:
+   *
+   *   1  IT DROPPED THE GROUPING. The helper divides and calls `toFixed`, which
+   *      returns a bare decimal, so the largest figure on the dashboard came
+   *      out as an unbroken run of digits. That is the defect sheet's row 8,
+   *      "need proper commas".
+   *
+   *   2  IT PUT A CURRENCY SUFFIX ON A VOLUME. A lakh is a grouping for a
+   *      COUNT; "22511.49 L MCF" reads as a unit that does not exist. That is
+   *      row 21's "stray 'L' unit".
+   *
+   *   3  IT WAS APPLIED TO TWO FIGURES OUT OF FORTY. Only the strip's headline
+   *      values went through it — every sub-line, chart, drawer, lease row and
+   *      the pinned bar beside them stayed in US grouping. So one cell read
+   *      "$31784636 L" directly above its own sub-line reading "your share of
+   *      $15150.42B", which is the "internally inconsistent by 1000x" in row
+   *      21: the reader is asked to hold two scales for one quantity.
+   *
+   * WHY REMOVING IT IS THE ROOT-CAUSE FIX AND NOT A PREFERENCE. `fmt.ts` opens
+   * by pinning every formatter to `en-US` and names this exact failure as the
+   * reason: "on an Indian-locale machine $4,548,479 rendered as $45,48,479 —
+   * the lakh grouping. The figures here are US oil-and-gas records quoted in
+   * dollars, mcf and barrels; the grouping belongs to the data, not to the
+   * reader's operating system." The lakh pass reintroduced by hand what that
+   * module exists to prevent. `format-lakhs.ts` itself is untouched and still
+   * exported, so anything that genuinely wants lakhs can still ask for them.
+   */
 
   const cells: React.ReactNode[] = [];
   const cell = (
@@ -625,7 +849,7 @@ function PfStrip(
      state-lapsed and is untouched in trial and paid. Only the VALUE figures carry
      it — a claimed owner keeps every lease, volume and permit, because they
      claimed them. What Premium adds is what they are worth. */
-  cells.push(cell('Your value', lakhs(usd(t.owner_value)),
+  cells.push(cell('Your value', usd(t.owner_value),
     <>your share of {usdShort(t.gross_value)} · range {usdShort(t.owner_value_low)}–{usdShort(t.owner_value_high)}</>,
     'value', 'How it is built', 'big cl-lock'));
 
@@ -638,7 +862,7 @@ function PfStrip(
   if (t.has_gas || t.has_oil) {
     cells.push(cell(`Gas filed in ${a.data_month_label ?? '—'}`,
       t.has_gas
-        ? <>{lakhs(n0(t.anchor_gas_net))}<span className="pf-val-s"> {MCF}</span></>
+        ? <>{n0(t.anchor_gas_net)}<span className="pf-val-s"> {MCF}</span></>
         : <span className="nodata">none</span>,
       t.has_gas
         ? (t.gas_change_pct == null
@@ -647,8 +871,25 @@ function PfStrip(
         : (t.reserves_gas_net > 0
           ? `no gas has ever been filed — the model still forecasts ${nShort(t.reserves_gas_net)} ${MCF}`
           : 'no gas has ever been filed on these leases'),
-      'production', 'Why this is not a cheque'));
+      'production', 'Why not a cheque'));
 
+    /* "WHY NOT A CHEQUE", NOT "WHY THIS IS NOT A CHEQUE".
+
+       Same question, eight characters shorter, and the shorter one is what
+       fits. These two cells carried the longest affordance label in the strip
+       by a wide margin — 24 characters against "What paused means" at 17,
+       "How it is built" at 15 and "Why it differs" at 14 — and the pill drew
+       past its own tile and over the divider into the cell beside it. The
+       chip is on its own line inside a tile that is 220px of content at the
+       width the strip runs five across, and the label has to fit that at
+       whatever width the reader's own font renders it; the four siblings do,
+       and this one did not.
+
+       NOTHING IS LOST FROM THE QUESTION. The subject is the figure directly
+       above the label — the volume filed that month — so "this" was pointing
+       at something already on screen and in the reader's eye. The panel it
+       opens is unchanged, and it is the panel that answers at length: a state
+       filing is a production fact, not a payment. */
     /* THE FIGURE IS THE FIX HERE, not the wording. This cell read
        "no oil has ever been filed" for a record holding 1.9M barrels of it,
        because the volume was being taken from a column the state leaves empty
@@ -656,7 +897,7 @@ function PfStrip(
        the label is just "Oil", which is what an owner's statement calls it. */
     cells.push(cell(`Oil filed in ${a.data_month_label ?? '—'}`,
       t.has_oil
-        ? <>{lakhs(n0(t.anchor_oil_net))}<span className="pf-val-s"> {BBL}</span></>
+        ? <>{n0(t.anchor_oil_net)}<span className="pf-val-s"> {BBL}</span></>
         : <span className="nodata">none</span>,
       t.has_oil
         ? (t.oil_change_pct == null
@@ -666,7 +907,7 @@ function PfStrip(
           ? `nothing filed that month — the model forecasts `
             + `${nShort(t.reserves_oil_net)} ${BBL} ahead`
           : 'no oil on the record for that month'),
-      'production', 'Why this is not a cheque'));
+      'production', 'Why not a cheque'));
   }
   if (!t.has_gas && !t.has_oil) {
     cells.push(cell(`Filed in ${a.data_month_label ?? '—'}`,
@@ -674,8 +915,25 @@ function PfStrip(
       'no volume on the record for that month', 'production', 'What that means'));
   }
 
-  cells.push(cell('County appraised', usd(t.appraised_value),
-    `roll year ${t.appraised_year} · all ${t.lease_count} ${plural(t.lease_count, 'lease')}`,
+  /* "ALL 794 LEASES" WAS A CLAIM THE ROLL DOES NOT MAKE.
+     This cell said "roll year 2025 · all 794 leases" while the panel it opens
+     headed its own KPI "LEASES ON THE ROLL — 703": the appraisal roll is a
+     county document and it does not carry a row for every lease the owner
+     holds. Defect sheet row 35, where the same figure appears three ways in
+     one view. `owner.roll_rows` is the count of rows the roll actually
+     returned for this owner, so the cell quotes that and says what it is a
+     count OF; when the roll does cover everything the two are equal and the
+     sentence goes back to being the one that was there. */
+  const rollRows = num(p.owner.roll_rows);
+  /* `usdScaled`, NOT `usd` — this one tile and the four other places the same
+     figure appears. See `usdScaled` in `fmt.ts`: the appraisal roll covers the
+     whole lease at 100%, so it is the longest figure on the page and the only
+     one that does not fit its tile. Nothing else in this strip changes. */
+  cells.push(cell('County appraised', usdScaled(t.appraised_value),
+    `roll year ${t.appraised_year} · `
+    + (rollRows && rollRows !== t.lease_count
+      ? `${n0(rollRows)} of your ${n0(t.lease_count)} ${plural(t.lease_count, 'lease')} on the roll`
+      : `all ${t.lease_count} ${plural(t.lease_count, 'lease')}`),
     'appraised', 'Why it differs'));
 
   cells.push(cell('Producing',
@@ -729,28 +987,86 @@ function PfStrip(
 }
 
 /* ============================================================= KPI grid */
-function KpiGrid({ p, sample, open }: { p: Payload; sample: boolean; open: (k: string) => void }) {
+function KpiGrid(
+  { p, sample, funnel, open }:
+  { p: Payload; sample: boolean; funnel: FunnelKey; open: (k: string) => void },
+) {
   const t = p.totals;
+  /**
+   * THE UPSELL LINE IS MARKUP NOW, NOT A `::after`.
+   *
+   * `dashboard-reference.css` painted it with two absolutely-positioned
+   * pseudo-elements pinned to `bottom: 6px` inside the tile. Two things were
+   * wrong with that, and both are on the defect sheet:
+   *
+   *   · IT OVERLAPPED THE TILE'S OWN TEXT (row 38). An absolute box in a tile
+   *     whose height is set by its content sits ON the last lines rather than
+   *     after them, so "What it's worth unlocks with your free 7-day trial"
+   *     printed across "your interest applied to the six-year projection" and
+   *     the freshness stamp below it.
+   *
+   *   · THE LAPSED ONE HARDCODED A LEASE COUNT. `content: "Portfolio totals
+   *     cover all 10 leases — Premium"` — ten, for every account, because a
+   *     `content` string cannot read a number. On the 794-lease record it was
+   *     simply false. A CSS pseudo-element can never be right here; the count
+   *     has to come from the payload, so the line has to be an element.
+   *
+   * In normal flow it takes its own space, so nothing can be written over, and
+   * the two rules in the copy are switched off in the overrides sheet.
+   */
+  /* THE CLAIMED TILE SAYS NOTHING EXTRA, AND THAT IS THE ASK.
+   *
+   * "What it's worth unlocks with your free 7-day trial" is REMOVED, not
+   * hidden: the sentence is already on the page twice above this grid — the
+   * free-plan banner opens with it and puts the trial button under it, and the
+   * covered figure's own affordance says "How it is built →". A third copy
+   * under every masked tile is the page repeating its own upsell at the reader,
+   * which is what the tile has to stop doing.
+   *
+   * THE LAPSED LINE STAYS. It is not an upsell, it is the answer to "why is
+   * this figure covered when the rest of the page is not" — and it carries the
+   * lease count, which is the fact the reader needs and the one a `content`
+   * string could never get right. Nothing about that state changes here.
+   */
+  const upsell = funnel === 'lapsed'
+    ? `Portfolio totals cover all ${t.lease_count} ${plural(t.lease_count, 'lease')} — Premium`
+    : null;
   const a = p.as_of;
   const r = p.reserves;
   const rad = p.radius['1'];
   const trend = (p.series.months ?? []).map((m) => (t.has_gas ? m.gas_net : m.oil_net));
 
-  /* LAKHS, ON THE SAMPLE PAGE ONLY.
-
-     The brief is that the not-claimed dashboard reads its MVestimate and its
-     production figures in lakhs. It is a presentation step and nothing else:
-     `formatLakhs` takes the already-formatted string and hands one back, so no
-     value is restated and a figure it cannot parse comes through untouched
-     rather than as `NaN`. Its own threshold means a figure under one lakh is
-     returned as it was — "17,306" stays "17,306", because "0.17 L" is harder to
-     read and throws away two digits.
-
-     GATED ON `sample`, deliberately. A claimed owner's own money keeps the
-     format their statements and the rest of the product use; only the
-     illustrative record is re-expressed. */
-  const lakhs = (display: string | null) =>
-    (sample && display != null ? formatLakhs(display) : display);
+  /* LAKHS ARE GONE FROM THIS STRIP, and that is the fix for two defects at once.
+   *
+   * WHAT IT DID. `formatLakhs` re-expressed the already-formatted figure in
+   * lakhs — so "$3,178,463,600" was printed as "$31784636 L" and "22,511,490
+   * MCF" as "22511.49 L MCF". Three things were wrong with that on this page:
+   *
+   *   1  IT DROPPED THE GROUPING. The helper divides and calls `toFixed`, which
+   *      returns a bare decimal, so the largest figure on the dashboard came
+   *      out as an unbroken run of digits. That is the defect sheet's row 8,
+   *      "need proper commas".
+   *
+   *   2  IT PUT A CURRENCY SUFFIX ON A VOLUME. A lakh is a grouping for a
+   *      COUNT; "22511.49 L MCF" reads as a unit that does not exist. That is
+   *      row 21's "stray 'L' unit".
+   *
+   *   3  IT WAS APPLIED TO TWO FIGURES OUT OF FORTY. Only the strip's headline
+   *      values went through it — every sub-line, chart, drawer, lease row and
+   *      the pinned bar beside them stayed in US grouping. So one cell read
+   *      "$31784636 L" directly above its own sub-line reading "your share of
+   *      $15150.42B", which is the "internally inconsistent by 1000x" in row
+   *      21: the reader is asked to hold two scales for one quantity.
+   *
+   * WHY REMOVING IT IS THE ROOT-CAUSE FIX AND NOT A PREFERENCE. `fmt.ts` opens
+   * by pinning every formatter to `en-US` and names this exact failure as the
+   * reason: "on an Indian-locale machine $4,548,479 rendered as $45,48,479 —
+   * the lakh grouping. The figures here are US oil-and-gas records quoted in
+   * dollars, mcf and barrels; the grouping belongs to the data, not to the
+   * reader's operating system." The lakh pass reintroduced by hand what that
+   * module exists to prevent. `format-lakhs.ts` itself is untouched and still
+   * exported, so anything that genuinely wants lakhs can still ask for them.
+   */
 
   const kpi = (
     label: string, val: React.ReactNode, sub: React.ReactNode, chip: string | null,
@@ -773,12 +1089,24 @@ function KpiGrid({ p, sample, open }: { p: Payload; sample: boolean; open: (k: s
       </div>
       <div className="k-sub"><span className="ctx-hint">{hint} →</span></div>
       <div className="freshness">{fresh}</div>
+      {/* ON THE TILES THAT ARE ACTUALLY COVERED, AND ONLY THOSE.
+
+          The lapsed pseudo-element had no `:has(.cl-lock)` on it, so it printed
+          this line under all four tiles — including "Leases earning" and
+          "Permits within 1 mile", which lapsed does not cover and never did.
+          A sentence explaining why a figure is hidden, under a figure that is
+          not, is a worse defect than the overlap it was printed in. Now that
+          both states cover the same one thing (see the money gate in the
+          overrides sheet), both use the same test: the tile is locked. */}
+      {upsell && lock
+        ? <div className={'k-upsell k-upsell-' + funnel}>{upsell}</div>
+        : null}
     </div>
   );
 
   return (
     <div className="grid g4" style={{ margin: '14px 0' }} id="kpiGrid">
-      {kpi('Your value', lakhs(usd(t.owner_value)),
+      {kpi('Your value', usd(t.owner_value),
         'your interest applied to the six-year projection',
         'Estimate — not an appraisal', `re-run ${a.estimate_run_label}`,
         'value', 'How it is built', true, 'cl-lock')}
@@ -929,7 +1257,11 @@ function seriesDefs(t: Payload['totals']): Record<SeriesKey, SeriesDef> {
     oil: { key: 'anchor_oil_net', fmt: (v) => `${n0(v)} ${BBL}`, cls: 'oil', name: 'Oil',
       title: 'Oil filed to you, by lease',
       note: 'your share of the last month each lease filed' },
-    appraised: { key: 'appraised_value', fmt: (v) => usd(v) ?? '—', cls: 'amber',
+    /* the bar labels, the hover title and the "total" line, all through the
+       same formatter the tile uses — this series IS the county appraised
+       value, and a ten-lease roll puts a thirteen-character figure at the end
+       of every bar. */
+    appraised: { key: 'appraised_value', fmt: (v) => usdScaled(v) ?? '—', cls: 'amber',
       name: 'Appraised', title: 'County appraised value, by lease',
       note: 'the appraisal roll’s own figure' },
     reserves: gasReserves
@@ -1011,7 +1343,17 @@ function ProdSeries({ p }: { p: Payload }) {
           opts={{
             gasName: 'Gas to you, by month',
             oilName: 'Oil to you, by month',
-            sub: `${filed.length} of ${s.months.length} months filed`,
+            /* THE SUB-LINE SAYS WHICH MONTHS, not only how many of them.
+               "24 of 24 months filed" is a coverage figure and was the whole
+               of it, so the chart under it did not say what window it draws —
+               the anchor month is in the paragraph above and in the axis, and
+               neither is beside the series the reader is hovering. Defect
+               sheet row 16. The drawer charts already carry the window this
+               way ("24 months to June 2026"), so this is the same sentence the
+               same reader meets one click deeper, and it is built from
+               `as_of`, which every mode and every account state shares. */
+            sub: `${filed.length} of ${s.months.length} months filed`
+              + (p.as_of.data_month_label ? ` · to ${p.as_of.data_month_label}` : ''),
             keyPrefix: 'dash',
           }}
         />
@@ -1034,7 +1376,7 @@ function ProdSeries({ p }: { p: Payload }) {
  */
 function AroundYou(
   { p, tier, open, go }:
-  { p: Payload; tier: Tier; open: (k: string) => void; go: (r: Route) => void },
+  { p: Payload; tier: Tier; open: (k: string) => void; go: (r: Route, params?: Record<string, string | null>) => void },
 ) {
   const ac = p.activities;
   const cmp = ac.compare_90;
@@ -1221,7 +1563,7 @@ function PriceSpark({ hist, k }: { hist: { label: string | null; gas: number; oi
     `${((i / (vals.length - 1)) * 300).toFixed(1)},${(44 - ((v - min) / span) * 38).toFixed(1)}`);
   const dp = k === 'gas' ? 3 : 2;
   return (
-    <div className="price-spark">
+    <div className="price-spark ps-has-axis">
       <div className="ps-head">
         <strong className="small">
           {k === 'gas' ? 'Gas' : 'Oil'} across the last {hist.length} months
@@ -1238,9 +1580,17 @@ function PriceSpark({ hist, k }: { hist: { label: string | null; gas: number; oi
           fill={k === 'gas' ? '#2e8f6d' : '#8a6420'}
         />
       </svg>
-      <div className="ps-ax">
-        <span>low ${min.toFixed(dp)}</span>
-        <span>high ${max.toFixed(dp)}</span>
+      {/* THE TWO BOUNDS SIT WHERE THEY HAPPEN, not side by side under the line.
+          Printed as a row, "low $2.821" and "high $4.921" shared one baseline
+          while the line above plainly put its high at the top — so the card
+          showed a high and a low at the same height and invited the reading
+          that they were equal (defect sheet row 41). They are the ends of a
+          vertical scale, so they are labelled as one: high against the top of
+          the plot, low against the bottom. The same two figures, in the two
+          positions that make them readable. */}
+      <div className="ps-ax ps-ax-v">
+        <span className="ps-hi">high ${max.toFixed(dp)}</span>
+        <span className="ps-lo">low ${min.toFixed(dp)}</span>
       </div>
     </div>
   );
@@ -1261,6 +1611,17 @@ function Operators({ p, open }: { p: Payload; open: (k: string) => void }) {
      — every page would end in a full bar and the comparison the bars exist
      for would be gone. */
   const maxVal = Math.max(1, ...o.operators.map((x) => x.owner_share_value));
+
+  /* one entry per distinct change of hands — see the note on the handover
+     line at the foot of this card */
+  const handoverCount = new Map<string, number>();
+  for (const h of o.handovers) {
+    const k = `${h.from_operator} → ${h.to_operator} (${h.cycle_label})`;
+    handoverCount.set(k, (handoverCount.get(k) ?? 0) + 1);
+  }
+  const handoverLines = [...handoverCount].map(
+    ([k, n]) => (n > 1 ? `${k} on ${n} leases` : k),
+  );
 
   return (
     <div className="card card-pad" id="opCard">
@@ -1314,7 +1675,24 @@ function Operators({ p, open }: { p: Payload; open: (k: string) => void }) {
           ? (
             <p className="tiny muted" style={{ margin: '9px 0 0', paddingTop: 8, borderTop: '1px solid var(--line)' }}>
               Handovers on record:{' '}
-              {o.handovers.slice(0, 3).map((h) => `${h.from_operator} → ${h.to_operator} (${h.cycle_label})`).join(' · ')}
+              {/* ONE LINE PER HANDOVER, NOT PER LEASE IT HAPPENED ON.
+
+                  `handovers` is keyed by lease — `{lease_id, cycle,
+                  from_operator, to_operator}` — and this printed only the two
+                  operators and the month. An operator that sold a package of
+                  leases hands over every one of them in the same month, so the
+                  identical sentence was printed two and three times in a row:
+                  "BLACKBRUSH O & G, LLC → SCOTT SUGG ... (May 2026) ·
+                  BLACKBRUSH O & G, LLC → ... (May 2026)". Defect sheet row 27.
+
+                  The rows are grouped by the sentence they produce, so one
+                  change of hands reads as one change of hands and the lease
+                  count it covers — the fact the repetition was accidentally
+                  standing in for — is stated instead of implied. Nothing is
+                  dropped: the panel behind "why a handover matters" still
+                  lists every lease, and `slice(0, 3)` still limits the line to
+                  three the way it always has. */}
+              {handoverLines.slice(0, 3).join(' · ')}
               {' '}— <button type="button" className="linklike" onClick={() => open('operators')}>
                 why a handover matters →
               </button>
@@ -1372,7 +1750,10 @@ function RawTable({ p, open }: { p: Payload; open: (k: string) => void }) {
                 <td>{l.operator_name ?? '—'}</td>
                 <td>{interest(l.interest_value)}</td>
                 <td style={{ textAlign: 'right' }} className="num">{usdShort(l.owner_value)}</td>
-                <td style={{ textAlign: 'right' }} className="num">{usdShort(l.appraised_value)}</td>
+                {/* the appraised column moves to `usdScaled` with the rest of
+                    this figure; `usdShort` beside it still serves "Your value",
+                    which is a different quantity and is unchanged. */}
+                <td style={{ textAlign: 'right' }} className="num">{usdScaled(l.appraised_value)}</td>
                 <td>
                   {l.anchor_label ?? 'never'}
                   {l.months_behind ? <span className="tiny muted"> · {l.months_behind}m behind</span> : null}
@@ -1415,6 +1796,14 @@ function Watched({ p, open }: { p: Payload; open: (k: string) => void }) {
   const a = p.as_of;
   const r = p.reserves;
   const rad = p.radius;
+  /* THE DECLINE RUN'S OWN UNIVERSE — see the Decline models row below.
+     Clamped to the portfolio, because a service that ever reported more
+     modelled leases than the owner holds must not make the remainder go
+     negative on screen. */
+  const modelUniverse = Math.min(
+    t.lease_count, num(r.modelled_leases) + num(r.unmodelled_leases),
+  );
+  const noModelRecord = Math.max(0, t.lease_count - modelUniverse);
   const rows: [string, string, string, string][] = [
     ['Lease-months read', n0(p.leases.reduce((s, l) => s + l.months_reported, 0)) ?? '0',
       `across ${t.lease_count} ${plural(t.lease_count, 'lease')}, through ${a.data_month_label}`,
@@ -1424,11 +1813,38 @@ function Watched({ p, open }: { p: Payload; open: (k: string) => void }) {
       `inside 1 / 3 / 5 miles · survey rebuilt ${a.radius_rebuild_label ?? '—'}`, 'permits'],
     ['Leases re-valued', n0(t.valued_count) ?? '0',
       `the model re-ran on ${a.estimate_run_label}`, 'value'],
-    ['Decline models', `${n0(r.modelled_leases)} of ${n0(t.lease_count)}`,
-      r.unmodelled_leases
-        ? `${r.unmodelled_leases} not modelled — shown as such, never as 0%`
-        : 'every lease carries a model', 'reserves'],
-    ['Wells located', n0(t.well_count) ?? '0', 'with coordinates, status and depth', 'value'],
+    /* THE THREE FIGURES IN THIS ROW COME OUT RIGHT WHEN A READER SUBTRACTS.
+       It printed `modelled_leases of lease_count` beside "`unmodelled_leases`
+       not modelled", and those are counts of two DIFFERENT sets: 738 of 794,
+       43 not modelled, and 794 − 738 is 56. Defect sheet row 24. The decline
+       run covers the leases the reserves block reached — 738 modelled plus 43
+       not, which is 781 — and the other 13 were never in front of it at all,
+       so quoting the portfolio as the denominator claims a coverage the model
+       does not have.
+
+       The pair that actually belongs together is shown as a pair, and the
+       leases the run never saw are named as their own third figure rather than
+       being folded into "not modelled" — a lease with no model is a different
+       fact from a lease the model could not fit, and the note under the
+       reserves card turns on that distinction. */
+    ['Decline models', `${n0(r.modelled_leases)} of ${n0(modelUniverse)}`,
+      [r.unmodelled_leases
+        ? `${n0(r.unmodelled_leases)} not modelled — shown as such, never as 0%`
+        : 'every lease the run reached carries a model',
+      noModelRecord
+        ? `${n0(noModelRecord)} of your ${n0(t.lease_count)} carry no decline run yet`
+        : null].filter(Boolean).join(' · '), 'reserves'],
+    /* NOT `'value'`. This row counts WELLS and opened "Your value — how it is
+       built", which is the one panel on the list that has nothing to do with
+       it — every sibling maps correctly (lease-months to production, permits
+       to the permit panel, decline models to reserves), so the mismatch read
+       as a broken control rather than a choice. `producing` is the well-record
+       panel this page already uses: it is what the "Your wells" card's own
+       status rows open, so a reader who clicks a well status and a reader who
+       clicks this count now land in the same place. A dedicated well-register
+       drawer would be better still and needs an endpoint — the service
+       advertises no `wells` key today. */
+    ['Wells located', n0(t.well_count) ?? '0', 'with coordinates, status and depth', 'producing'],
     ['Filings near you', n0(p.activities.counts.nearby) ?? '0',
       `permits, completions and status changes in the last ${p.activities.window_months} months`,
       'permits'],
@@ -1463,6 +1879,13 @@ function Reserves({ p, open }: { p: Payload; open: (k: string) => void }) {
   const r = p.reserves;
   const t = p.totals;
   const best = r.probability_best;
+  /* the decline run's own universe, and the leases outside it — the same two
+     figures the "Decline models" row in `Watched` is built on, for the same
+     reason. See the comment there. */
+  const modelUniverse = Math.min(
+    t.lease_count, num(r.modelled_leases) + num(r.unmodelled_leases),
+  );
+  const noModelRecord = Math.max(0, t.lease_count - modelUniverse);
 
   const line = (k: string, v: React.ReactNode, sub: string, ctx: string) => (
     <div
@@ -1494,8 +1917,15 @@ function Reserves({ p, open }: { p: Payload; open: (k: string) => void }) {
           r.probability_avg == null ? 'not modelled' : `${r.probability_avg.toFixed(0)}%`,
           r.probability_avg == null
             ? 'no lease here carries a model — that is not the same as 0%'
-            : `average across the ${r.modelled_leases} modelled ${plural(r.modelled_leases, 'lease')}` +
-              (r.unmodelled_leases ? ` · ${r.unmodelled_leases} excluded as not modelled` : ''),
+            /* THE SAME THREE FIGURES AS THE "Decline models" ROW, and they add
+               up here for the same reason — see that row. This line used to
+               name the modelled and the unmodelled count with no denominator
+               at all, so a reader carried the portfolio's 794 over from the
+               card above and got 781. The run's own universe is stated, and
+               the leases outside it are named as being outside it. */
+            : `average across the ${n0(r.modelled_leases)} modelled of ${n0(modelUniverse)}`
+              + (r.unmodelled_leases ? ` · ${n0(r.unmodelled_leases)} excluded as not modelled` : '')
+              + (noModelRecord ? ` · ${n0(noModelRecord)} carry no decline run yet` : ''),
           'reserves')}
         {best
           ? line('Best-placed lease', `${(best.probability ?? 0).toFixed(0)}%`,
@@ -1517,7 +1947,7 @@ function Reserves({ p, open }: { p: Payload; open: (k: string) => void }) {
 
 /* ========================================================== neighbours */
 function Neighbors(
-  { p, open, go }: { p: Payload; open: (k: string) => void; go: (r: Route) => void },
+  { p, open, go }: { p: Payload; open: (k: string) => void; go: (r: Route, params?: Record<string, string | null>) => void },
 ) {
   const rad = p.radius;
   const ac = p.activities;
@@ -1574,6 +2004,12 @@ function Neighbors(
 function Provenance({ p, open }: { p: Payload; open: (k: string) => void }) {
   const o = p.owner;
   const cov = p.coverage;
+  /* what the sources say they were run over, and what the portfolio holds
+     beyond it — see the heading below */
+  const covOf = Math.max(
+    0, ...Object.values(cov).map((v) => num((v as { of: number }).of)),
+  ) || p.totals.lease_count;
+  const covGap = Math.max(0, p.totals.lease_count - covOf);
   return (
     <div className="card card-pad" id="provCard">
       <h4>Where every number came from</h4>
@@ -1609,11 +2045,30 @@ function Provenance({ p, open }: { p: Payload; open: (k: string) => void }) {
         {o.collapsed_rows
           ? <p className="tiny muted" style={{ margin: '0 0 8px' }}>{o.collapse_note}</p>
           : null}
+        {/* THE HEADING COUNTS THE SAME LEASES THE ROWS UNDER IT COUNT.
+
+            It read "Source coverage of the 794 leases" over a line where every
+            single denominator was 782 — production 782/782, valuation 781/782,
+            radius 707/782 — so the twelve leases between the two numbers were
+            asserted to be covered by the heading and were in none of the
+            figures. Defect sheet row 25.
+
+            The denominator is the sources' own, and where it falls short of
+            the portfolio the shortfall is stated rather than papered over: a
+            lease no source has reached yet is a real and useful fact about
+            this record, and it is the one thing the old heading hid. `outOf`
+            takes the LARGEST `of` the sources report, so a source that covers
+            more than its neighbours cannot make the gap read as bigger than it
+            is; they are equal on every payload seen so far. */}
         <strong className="small">
-          Source coverage of the {p.totals.lease_count} {plural(p.totals.lease_count, 'lease')}
+          Source coverage of {covGap ? '' : 'the '}{n0(covOf)} {plural(covOf, 'lease')}
         </strong>
         <p className="tiny muted" style={{ margin: '4px 0 0' }}>
           {Object.entries(cov).map(([k, v]) => `${k.replace(/_/g, ' ')} ${v.have}/${v.of}`).join(' · ')}
+          {covGap
+            ? ` · ${n0(covGap)} of your ${n0(p.totals.lease_count)} ${plural(p.totals.lease_count, 'lease')} `
+              + 'carry no source row yet'
+            : ''}
         </p>
       </div>
     </div>
@@ -1630,6 +2085,51 @@ const GLYPH: Record<string, string> = {
 
 function num(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
+
+/**
+ * A LIST THAT COLLAPSES TO A COUNT, AND OPENS AGAIN.
+ *
+ * WHAT WAS WRONG. The greeting line collapses its counties past five names and
+ * its plays past two, and the only way back to the names was the `title`
+ * attribute — which is a hover, so it does not exist on a phone, on a tablet,
+ * on a keyboard or to a screen reader that is not in browse mode. The line
+ * therefore read "4 plays" and, for most of the people reading it, that was
+ * all it would ever read. Defect sheet row 9, "More than one playtypes show
+ * only count".
+ *
+ * THE COLLAPSE ITSELF IS KEPT. The measurement behind it has not changed —
+ * twenty county names is a wall, and four play names pushed this subhead onto
+ * a third row — so the default is still the count. What changes is that the
+ * count is now a CONTROL: it says how many, it opens to the names, and it
+ * closes again. Nothing is hidden from anybody; the page simply does not open
+ * with a wall of names on it.
+ *
+ * `title` IS KEPT TOO, because a hover that already worked should go on
+ * working, and it is what a tooltip-reading assistive technology finds.
+ *
+ * A LIST SHORT ENOUGH TO PRINT IS PRINTED, with no control at all — a button
+ * around three words the reader can already see is noise, and this component
+ * is used inside a sentence.
+ */
+function NameList(
+  { names, max, one, many }:
+  { names: string[]; max: number; one: string; many?: string },
+) {
+  const [open, setOpen] = useState(false);
+  if (!names.length) return null;
+  if (names.length <= max) return <>{names.join(', ')}</>;
+  const all = names.join(', ');
+  return (
+    <button
+      type="button" className="linklike name-list" title={all}
+      aria-expanded={open}
+      onClick={() => setOpen((v) => !v)}
+    >
+      {open ? all : `${names.length} ${plural(names.length, one, many)}`}
+      <span aria-hidden="true">{open ? ' ▴' : ' ▾'}</span>
+    </button>
+  );
 }
 
 function ctxForKind(k: string): string {
@@ -1663,6 +2163,17 @@ function metricText(it: { metric: number | null; metric_unit: string | null }): 
  */
 const MAX_COUNTY_NAMES = 5;
 const MAX_OPERATOR_NAMES = 3;
+/**
+ * AND TWO FOR THE PLAYS, which sit at the END of that same sentence.
+ *
+ * The counties get five because they are the line's subject; the plays trail
+ * it, and their names are long — "HAYNESVILLE/BOSSIER SHALE" is one fact and
+ * twenty-five characters. Four of them added 118 characters to a line already
+ * carrying six figures and pushed the subhead onto a third row. Two names is
+ * still an answer ("Eagle Ford and Permian"); past that the count is the more
+ * useful fact and the names stay on the `title`.
+ */
+const MAX_PLAY_NAMES = 2;
 
 /* ============================================================ owner switch */
 /**
@@ -1689,7 +2200,35 @@ const MAX_OPERATOR_NAMES = 3;
  * which does exist. When the API can take an owner, each row becomes the
  * control; nothing else here has to change.
  */
-function OwnerSwitch({ p }: { p: Payload }) {
+function OwnerSwitch(
+  { p, unclaimed, onSwitchBegin, onSwitchApply, onSwitchCancel }: {
+    p: Payload;
+    /**
+     * NOT CLAIMED HAS NOTHING TO SWITCH TO, so it is not offered the control.
+     *
+     * The record on screen in that state is the FIXED SAMPLE — one fictional
+     * capture, identical for every reader, served by `/api/portfolio/sample`
+     * and deliberately unrelated to whoever is signed in. Switching is an
+     * action on the member's own claimed records, so offering it here would
+     * either do nothing to the page in front of them or replace a sample they
+     * were told is a sample with somebody's real minerals.
+     *
+     * THE CHIP ITSELF STAYS. "Mineral Owner: <name>" is a label, not a control
+     * — it answers "whose figures am I looking at", which is the one question
+     * the sample state most needs answered. Only the button is withheld, and
+     * with it the panel: `open` starts false and nothing but that button ever
+     * sets it, so the popup below cannot be reached and the
+     * `/api/owners/claimed` read it triggers is never made.
+     */
+    unclaimed: boolean;
+    /** the row was pressed — put the loader up before the request goes out */
+    onSwitchBegin: (ownername: string) => void;
+    /** the service accepted it — re-read the page, resolving when it is ready */
+    onSwitchApply: () => Promise<void>;
+    /** it did not go through — take the loader down again */
+    onSwitchCancel: () => void;
+  },
+) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
 
@@ -1709,29 +2248,129 @@ function OwnerSwitch({ p }: { p: Payload }) {
     };
   }, [open]);
 
-  const active = p.owner.ownername;
-  /* The active record is in this list too — it is filtered out rather than
-     assumed to be first, because the endpoint does not promise an order. */
-  const others = (p.owner.claimed_owners ?? []).filter((o) => o !== active);
-  const counties = p.totals.counties ?? [];
+  /**
+   * THE LIST IS THE SERVICE'S, NOT THE PAYLOAD'S.
+   *
+   * This read `p.owner.claimed_owners` — a bare array of names on the dashboard
+   * payload, with no lease counts, no counties and no marker for which one is
+   * active, so the panel had to assume the active record was `owner.ownername`
+   * and could show nothing about the others. `GET /owners/claimed` answers with
+   * the whole set and says which is active itself.
+   *
+   * `member_id` IS NOT SENT FROM HERE. `/api/owners/claimed` reads it from the
+   * session on the server, the same way every other member-keyed read in this
+   * app resolves it — the cookie is httpOnly, so this component could not send
+   * it even if it should, and it should not.
+   *
+   * FETCHED WHEN THE PANEL OPENS, not on mount: it is one request per reader
+   * who actually asks the question, and the chip above it already names the
+   * active record from the payload. Asked once and kept, so re-opening the
+   * panel does not re-fetch.
+   */
+  const [rows, setRows] = useState<ClaimedOwner[] | null>(null);
+  const [listErr, setListErr] = useState(false);
+  const [saving, setSaving] = useState<string | null>(null);
+  const asked = useRef(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/owners/claimed', { cache: 'no-store' });
+      const body = (await res.json()) as ClaimedResponse;
+      if (!res.ok) throw new Error('claimed list failed');
+      setRows(Array.isArray(body?.owners) ? body.owners : []);
+      setListErr(false);
+    } catch {
+      setListErr(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open || asked.current) return;
+    asked.current = true;
+    void load();
+  }, [open, load]);
+
+  /**
+   * MAKE THE CLICKED RECORD ACTIVE.
+   *
+   * The name is what identifies the record to the service — see
+   * `/api/owners/active`, which explains why the member id is the session's and
+   * not the row's, and why the forward upstream is a `PATCH`.
+   *
+   * THE LIST IS RE-READ RATHER THAN PATCHED IN PLACE, so the tick moves because
+   * the service says it moved and not because this component assumed it would.
+   */
+  const choose = useCallback(async (ownername: string) => {
+    if (saving) return;
+    setSaving(ownername);
+    /* THE PANEL GOES FIRST, THEN THE LOADER — in that order, and both before
+       the request leaves.
+
+       It used to close on the way OUT, after the POST and the list re-read had
+       both returned, so the reader pressed a row and the dropdown sat open on
+       top of the page for the whole round trip with only a "Making this the
+       active record…" line inside it. The press is the decision; the panel has
+       nothing left to offer once it is made. */
+    setOpen(false);
+    onSwitchBegin(ownername);
+    try {
+      const res = await fetch('/api/owners/active', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ownername }),
+      });
+      if (!res.ok) { onSwitchCancel(); return; }
+
+      /* THE PANEL'S OWN LIST IS REFRESHED FIRST, and it is cheap — it decides
+         which row carries the tick the next time the panel opens. The page
+         payload after it is the long one, and it is what the loader is
+         covering. */
+      await load();
+
+      /* AWAITED. `applySwitch` re-reads the member's payload and resolves when
+         it is in state; the loader stays up until it does. Not awaiting this
+         is the whole of the defect it replaced — see `applySwitch`. */
+      await onSwitchApply();
+    } catch {
+      /* the row simply stays where it was */
+      onSwitchCancel();
+    } finally {
+      setSaving(null);
+    }
+  }, [saving, load, onSwitchBegin, onSwitchApply, onSwitchCancel]);
+
+  /* The chip keeps naming the payload's owner until the list arrives, so the
+     header does not flicker; once it has, the service's own `is_active` is
+     what the panel marks. */
+  const active = rows?.find((o) => o.is_active)?.ownername ?? p.owner.ownername;
+  const others = (rows ?? []).filter((o) => !o.is_active);
 
   return (
     <span className="owner-chip mv-ownersw" ref={box}>
       Mineral Owner: <strong>{active}</strong>
-      <button
-        type="button" className="sw-btn" aria-expanded={open} aria-haspopup="dialog"
-        onClick={() => setOpen((v) => !v)}
-      >
-        Switch Owner ▾
-      </button>
+      {unclaimed ? null : (
+        <button
+          type="button" className="sw-btn" aria-expanded={open} aria-haspopup="dialog"
+          onClick={() => setOpen((v) => !v)}
+        >
+          Switch Owner ▾
+        </button>
+      )}
 
       {open ? (
         <div className="ownersw-pop" role="dialog" aria-label="Switch the active owner record">
           <h4>Switch the active owner record</h4>
+          {/* CUT FROM 183 CHARACTERS TO 92, SAME MEANING.
+
+              What it dropped is the list of examples — "a spouse, a family
+              trust, an inherited interest" — which is 61 characters spent
+              illustrating a point the rows underneath make by simply being
+              there. What it keeps is the only thing a reader needs before
+              pressing one: that the choice reaches every page, and which
+              pages. */}
           <p className="ownersw-lede">
-            One account can hold several owner records — a spouse, a family trust,
-            an inherited interest. Switching swaps <strong>which record fills every
-            page</strong>: dashboard, leases, map, alerts and reports.
+            Switching changes <strong>which record fills every page</strong> —
+            dashboard, leases, map, alerts and reports.
           </p>
 
           {/* THE LIST SCROLLS, THE PANEL DOES NOT. This account holds eight
@@ -1741,48 +2380,147 @@ function OwnerSwitch({ p }: { p: Payload }) {
               there. Capping the list keeps the heading, the button and the
               seven-day note on screen whatever the account holds. */}
           <div className="ownersw-list">
+          {/* THE ACTIVE ROW IS THE ONE THE SERVICE MARKS `is_active`, and its
+              figures are that row's own. While the list is still loading it
+              falls back to the payload, so the panel opens filled rather than
+              blank. */}
           <div className="ownersw-rec is-active">
             <div className="ownersw-name">
-              {active}
+              {/* THE NAME IS ITS OWN ELEMENT so the badge can sit beside it.
+                  As a bare text node it was an anonymous flex item, which
+                  cannot take a `min-width`, so a long record name — "Addison
+                  Sidney Tennille Smith" — could not shrink and pushed
+                  "✓ Active now" onto a second line. */}
+              <span className="ownersw-nm">{active}</span>
               <span className="ownersw-now">✓ Active now</span>
             </div>
             <div className="ownersw-meta">
-              {p.owner.ownernumber ? <>{p.owner.ownernumber} · </> : null}
-              {p.totals.lease_count} {plural(p.totals.lease_count, 'lease')}
-              {counties.length ? <> · {counties.join(', ')}</> : null}
+              <OwnerMeta
+                row={rows?.find((o) => o.is_active) ?? null}
+                fallbackLeases={p.totals.lease_count}
+              />
             </div>
           </div>
 
+          {/* EVERY OTHER CLAIMED RECORD, AND EACH ONE IS A CONTROL NOW. The
+              rows used to read "Claimed · waiting its turn" because there was
+              no endpoint to switch to them; there is one, so a row does what it
+              looks like it does. */}
           {others.length
             ? others.map((o) => (
-              <div className="ownersw-rec" key={o}>
-                <div className="ownersw-name">{o}</div>
-                {/* NOT A BUTTON. See the header: there is no endpoint to switch
-                    to this record yet, and a row that looks clickable and is
-                    not is worse than a row that plainly waits. */}
-                <div className="ownersw-meta">Claimed · waiting its turn</div>
-              </div>
+              <button
+                type="button" className="ownersw-rec ownersw-pick" key={o.ownername}
+                disabled={saving !== null}
+                aria-busy={saving === o.ownername}
+                onClick={() => { void choose(o.ownername); }}
+              >
+                <div className="ownersw-name">{o.ownername}</div>
+                <div className="ownersw-meta">
+                  {saving === o.ownername
+                    ? 'Making this the active record…'
+                    : <OwnerMeta row={o} />}
+                </div>
+              </button>
             ))
-            : (
-              <p className="ownersw-empty">
-                No other owner records on this account yet — claim one below and it
-                appears here, ready to switch to.
-              </p>
-            )}
+            : rows === null && !listErr
+              ? (
+                /* STILL READING THE LIST — placeholder rows, not a blank panel.
+                   The panel opens instantly and the request behind it does not,
+                   so a line of text left the reader looking at an empty box and
+                   no sign of how much was coming. These are the row's own shape
+                   at the row's own height, so nothing moves when the real ones
+                   replace them. Three, because that is the commonest number of
+                   claimed records — not a measurement of this account's. */
+                <div aria-hidden="true">
+                  {[0, 1, 2].map((i) => (
+                    <div className="ownersw-rec ownersw-skel" key={i}>
+                      <div className="ownersw-skel-line ownersw-skel-name" />
+                      <div className="ownersw-skel-line ownersw-skel-meta" />
+                    </div>
+                  ))}
+                  <p className="ownersw-empty" role="status">Reading your claimed records…</p>
+                </div>
+              )
+              : (
+                <p className="ownersw-empty">
+                  {listErr
+                    ? 'Your other claimed records could not be read just now.'
+                    : 'No other owner records on this account yet — claim one below '
+                      + 'and it appears here, ready to switch to.'}
+                </p>
+              )}
           </div>
 
           <Link className="ownersw-cta" href="/mineralownersite/claim">
             + Claim another owner record — free
           </Link>
-
-          <p className="ownersw-foot">
-            You can change the active record <strong>once every 7 days</strong>.
-            Claimed records are never removed by switching — they just wait their
-            turn.
-          </p>
         </div>
       ) : null}
     </span>
+  );
+}
+
+/** one claimed record, as `GET /api/v1/owners/claimed` returns it */
+interface ClaimedOwner {
+  ownername: string;
+  ownernumber: string | number | null;
+  is_active: boolean;
+  lease_count: number;
+  county_count: number;
+  counties: string[];
+  claimed_at: string | null;
+  /** OPTIONAL BECAUSE THE SERVICE DOES NOT SEND IT YET — see `OwnerMeta`. */
+  address?: string | null;
+}
+
+interface ClaimedResponse {
+  member_id: number | null;
+  active: string | null;
+  count: number;
+  owners: ClaimedOwner[];
+}
+
+/**
+ * A record's own one-line summary — its address and how many leases it holds.
+ *
+ * STRAIGHT OFF THE RESPONSE. Both figures are the ROW'S, so a record the page
+ * is not currently showing still describes itself correctly; before this, the
+ * one row that had a summary borrowed the dashboard's own lease count and
+ * counties, which are the ACTIVE record's and belong to no other row.
+ *
+ * THE ROLL NUMBER AND THE COUNTY LIST ARE GONE, as asked: the row now names the
+ * record and says where it is and how big it is, which is what a reader picking
+ * between records actually needs. The roll number is an internal key and the
+ * counties are a detail the dashboard itself carries once a record is active.
+ *
+ * THE ADDRESS IS READ BUT THE SERVICE DOES NOT YET SEND IT.
+ * `GET /api/v1/owners/claimed` returns exactly `ownername`, `ownernumber`,
+ * `is_active`, `lease_count`, `county_count`, `counties` and `claimed_at` —
+ * measured, no address field on any row, and no city either. The appraisal-roll
+ * SEARCH endpoint does carry `address`, but it answers per owner-and-county
+ * rather than per claimed record, so one claimed owner matches many rows there
+ * and none of them is "the" address.
+ *
+ * So this reads `address` off the row and prints it when it is there. Nothing
+ * is invented and nothing is fetched twice; the day the endpoint adds the
+ * field, the line fills in with no further change here.
+ */
+function OwnerMeta(
+  { row, fallbackLeases }: {
+    row: ClaimedOwner | null;
+    fallbackLeases?: number;
+  },
+) {
+  const address = row?.address?.trim() || null;
+  const leases = row ? row.lease_count : fallbackLeases;
+  const hasLeases = typeof leases === 'number';
+  if (!address && !hasLeases) return null;
+  return (
+    <>
+      {address ? <>{address}</> : null}
+      {address && hasLeases ? ' · ' : null}
+      {hasLeases ? <>{n0(leases)} {plural(leases, 'lease')}</> : null}
+    </>
   );
 }
 

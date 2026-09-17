@@ -95,3 +95,66 @@ body .mv-ref-app.state-lapsed .app-main .alx-v {
   opacity: .55;
   user-select: none;
 }
+
+/* ===========================================================================
+   14 (RE-OPENED) · THE LAPSED COVER REACHES THE DETAIL PANEL
+   ---------------------------------------------------------------------------
+   QA's note on the closed defect was "Need to blur the in detail side nav":
+   the page's own figures were covered, the reader pressed `expand`, and the
+   open drawer printed the same volumes — the band's "14K MCF · no oil" and
+   "7.0%", then four evidence lines each carrying a month's gas.
+
+   `DrawerPanel` marks every figure it prints — in the metric band and in the
+   evidence lines — with `.cl-fig`, and this rule covers those and nothing
+   else. Lease names, operators, lease and API numbers, and dates are left
+   legible, which is defect #17's rule: the lapsed state covers values, not
+   text. Covering `.dx-v` whole was the first attempt and it was too broad in
+   the other direction — "Busiest operator · DEVON ENERGY PRODUCTION CO L.P."
+   is a band value whose value is a name.
+
+   `.cl-fig` is marked in every state and covered in exactly one, so there is
+   no second render path to keep in step with this stylesheet.
+   ======================================================================== */
+body .mv-ref-app.state-lapsed .ctx-drawer .cl-fig {
+  filter: blur(6px);
+  opacity: .55;
+  user-select: none;
+}
+
+/* ===========================================================================
+   25 · THE SIDEBAR KEEPS ITS SCROLL TO ITSELF
+   ---------------------------------------------------------------------------
+   `.app-side` is `overflow-y:auto` and `height:100vh`, so on a short viewport
+   the nav scrolls. With no `overscroll-behavior` the browser's default is
+   `auto`: once the sidebar hits its last row, the remaining wheel delta is
+   handed to the nearest scrollable ancestor and the PAGE moves instead. A
+   reader looking for "Invite Co-Owners" at the bottom of the nav scrolled the
+   alert list out from under themselves.
+
+   `contain` stops the chain at this element and changes nothing else — the
+   sidebar still scrolls normally, it just no longer passes the overflow on.
+   ======================================================================== */
+body .mv-ref-app .app-side {
+  overscroll-behavior: contain;
+}
+
+/* ===========================================================================
+   C · A COUNTY-WIDE FINDING NAMES THREE COUNTIES AND CARRIES THE REST
+   ---------------------------------------------------------------------------
+   See `FoldCounties` in `AlertsView`. The "(…)" is the affordance for the
+   names that are not printed: it is focusable and carries them on `title`, so
+   the full list is one hover or one Tab away and is never lost.
+   ======================================================================== */
+body .mv-ref-app .al-ell {
+  cursor: help;
+  color: var(--slate, #64748b);
+  font-weight: 600;
+  white-space: nowrap;
+  border-bottom: 1px dotted currentColor;
+}
+body .mv-ref-app .al-ell:focus-visible {
+  outline: 2px solid var(--green, #16a34a);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+

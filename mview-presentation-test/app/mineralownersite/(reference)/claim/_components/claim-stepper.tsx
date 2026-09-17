@@ -42,7 +42,14 @@ export function ClaimStepper({ current }: { current: number }) {
   return (
     <ol
       data-claim="stepper"
-      className="flex gap-0 overflow-x-auto rounded-mv border border-mv-line bg-mv-card px-4 pt-[14px]"
+      /* `flex-nowrap` is stated rather than assumed: five nodes that wrap turn
+         a progress rail into two rows with a connector running backwards
+         between them, which is worse than no rail at all.
+
+         The bottom padding is the phone's. With the labels hidden there is
+         nothing under the discs to hold the rail off the card's edge, so it is
+         put back here and dropped again once the labels return. */
+      className="flex flex-nowrap gap-0 overflow-x-auto rounded-mv border border-mv-line bg-mv-card px-4 pt-[14px] pb-[14px] sm:pb-0"
     >
       {claimSteps.map((step) => {
         const done = step.n < current;
@@ -57,9 +64,19 @@ export function ClaimStepper({ current }: { current: number }) {
             key={step.n}
             /* The current step's cell is tinted, so the rail says where you
                are twice — by the mark under the label and by the panel behind
-               it. On a five-node rail the underline alone is easy to lose. */
-            className={`relative flex min-w-[92px] flex-1 flex-col items-center gap-2 rounded-t-[10px] pt-[2px] ${
-              active ? "bg-mv-mint/45" : ""
+               it. On a five-node rail the underline alone is easy to lose.
+
+               BOTH OF THOSE BELONG TO THE LABELLED LAYOUT, so both wait for
+               `sm:`. A tinted cell with no word in it is a coloured rectangle,
+               and the underline marks the bottom of a label that is not there.
+
+               `min-w-[92px]` IS THE PHONE BUG. Five nodes at 92px is 460px of
+               minimum width inside a card that has about 300px on a 375px
+               screen, so the rail wrapped to two rows — discs 1-2-3 above
+               4-5, with the connector crossing back under them. The floor only
+               applies once there is a label that needs the room. */
+            className={`relative flex min-w-0 flex-1 flex-col items-center gap-2 rounded-t-[10px] pt-[2px] sm:min-w-[92px] ${
+              active ? "sm:bg-mv-mint/45" : ""
             }`}
             aria-current={active ? "step" : undefined}
           >
@@ -78,13 +95,19 @@ export function ClaimStepper({ current }: { current: number }) {
               </span>
             )}
 
+            {/* ON A PHONE THE DISC IS THE WHOLE RAIL, so the current one gets a
+                ring. With the labels gone, "done" and "current" are both a
+                filled green disc and the only thing separating them is a tick
+                against a number — too fine a distinction to carry the question
+                "where am I" on its own. The ring drops away at `sm:`, where the
+                tint and the underline take the job back. */}
             <span
               data-claim="step-dot"
               className={`relative z-[1] flex h-[26px] w-[26px] flex-none items-center justify-center rounded-full text-[12px] font-bold ${
                 done || active
                   ? "bg-mv-green-deep text-white"
                   : "border border-mv-line bg-mv-card text-mv-muted"
-              }`}
+              } ${active ? "ring-[3px] ring-mv-green/35 sm:ring-0" : ""}`}
             >
               {done ? (
                 <Check
@@ -112,9 +135,15 @@ export function ClaimStepper({ current }: { current: number }) {
                   · `inset-x-1` matches the label's own `px-1`, so the mark is
                     exactly as wide as the word above it — the width the border
                     used to have. */}
+            {/* HIDDEN ON A PHONE, and that is the point rather than a
+                casualty. Five labels in ~300px wrap to two lines each and
+                still do not fit, and the caption bar directly beneath the rail
+                already names the step in full — "Step 1 of 5 — Search the
+                public record". The discs carry the progress, the caption
+                carries the words, and neither is squeezed. */}
             <span
               data-claim="step-label"
-              className={`relative flex-1 px-1 pb-[11px] text-center text-[12.5px] leading-[1.3] ${
+              className={`relative hidden flex-1 px-1 pb-[11px] text-center text-[12.5px] leading-[1.3] sm:block ${
                 active
                   ? "font-bold text-mv-ink"
                   : done
