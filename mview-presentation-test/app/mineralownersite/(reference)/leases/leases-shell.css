@@ -1,0 +1,392 @@
+/*
+ * MY LEASES' TYPE, BACK FROM ARIAL.
+ *
+ * `dashboard-reference.css` carries this, which is the reference build's own
+ * normalize for form controls:
+ *
+ *   .mv-ref-app button, input, select, textarea, optgroup {
+ *     font-family: revert; font-size: revert; font-weight: revert;
+ *     font-style: revert; line-height: normal;
+ *   }
+ *
+ * `revert` on an author declaration rolls the property back to the USER-AGENT
+ * stylesheet, and Chrome's UA font for form controls on Windows is Arial at
+ * 13.333px. That is correct for the Dashboard and the Weekly Report, which
+ * style their controls with the reference's own `.btn` classes.
+ *
+ * IT IS WRONG FOR MY LEASES, and it only started applying when the module moved
+ * into the `(reference)` group — before that no `.mv-ref-app` selector could
+ * reach it. This is the SAME regression the Map hit when it moved here, and for
+ * the same reason; see the twin of this block in `map/map-shell.css`.
+ *
+ * WHAT IT COST, measured on the lease report against the same markup rendered
+ * outside the shell: 31 buttons turned Arial — the lease picker, Download
+ * report, CSV, "How it is built", every KPI tile trigger, every tab — and took
+ * 12 spans, 13 icons and 34 paths inside them along with them; 17 lost their
+ * line-height to `normal`; and the 3 with no Tailwind size class dropped from
+ * 15px to 13.333px. Plain text beside them stayed Lexend Deca, which is the
+ * mismatch that makes a panel look wrong rather than merely different.
+ *
+ * ── WHY A LAYER AND NOT JUST A RULE ──
+ *
+ * An unlayered rule here would beat the reference sheet, but it would also beat
+ * Tailwind's utilities, which live in `@layer utilities` — and then
+ * `font-size: inherit` below would silently outrank every `text-[13px]` in the
+ * module. So this sits in `mv-map-reset`, declared in `app/globals.css` between
+ * `mv-reference` and `components`: above the sheet, below the utilities. That
+ * slot is exactly one layer wide and it already existed; the Map named it, and
+ * the name is left alone because renaming a layer means editing the order
+ * statement that has to be the first thing in the first stylesheet.
+ *
+ * WHAT IT RESTATES is Tailwind's own preflight — `font: inherit` on form
+ * controls — for this subtree only. Nothing in the reference tree is touched:
+ * every selector here is under `.mv-portal`, which exists on no other page.
+ */
+@layer mv-map-reset {
+  .mv-ref-app .mv-portal :is(button, input, select, textarea, optgroup) {
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    font-style: inherit;
+    line-height: inherit;
+  }
+
+  /*
+   * AND THE HEADINGS BACK ONTO THE LOADED FACE.
+   *
+   * `.mv-ref-app h1, h2, h3 { font-family: var(--serif) }` names the same
+   * family — Lexend Deca — so nothing here looks wrong. What it drops is the
+   * `Lexend Deca Fallback` entry `next/font` puts in the stack: a synthetic
+   * face with Lexend's metrics, whose whole job is to hold the line lengths
+   * steady between first paint and the webfont arriving. Without it the
+   * headings reflow when the font lands.
+   *
+   * FAMILY ONLY. Size, weight, line-height and tracking are left to the
+   * reference rule and to the Tailwind classes above it, exactly as they are on
+   * every other page in this group — all three heading levels on the lease
+   * report already carry their own, and the audit found no difference in any of
+   * them.
+   */
+  .mv-ref-app .mv-portal :is(h1, h2, h3, h4) {
+    font-family: inherit;
+  }
+
+  /*
+   * AND THE TABLES OFF THE SHELL'S DENSITY, ONTO THEIR OWN.
+   *
+   * `dashboard-reference.css` tightens its tables at Professional:
+   *
+   *   body .mv-ref-app.view-pro td { padding: 6px 10px; font-size: 12.5px }
+   *
+   * `portal.css` has the identical rule — `.mv-portal.view-pro td`, same two
+   * values — so at Professional the two agree and nothing here matters.
+   *
+   * THE TWO STOP AGREEING WHEN NOTHING IS CLAIMED. `Portal` forces the SHELL to
+   * Professional while the account is unclaimed, which is right for a dashboard
+   * acting as a shop window; My Leases keeps showing the reader's own density,
+   * which is the rule this module has always had. So the shell root reads
+   * `view-pro` while the wrapper reads `view-detailed`, the reference's rule
+   * fires, and all 547 cells of the lease table dropped to 12.5px at a density
+   * that never asked for it.
+   *
+   * PADDING NEEDED NO HELP: `.mv-portal td { padding: 11px 14px }` is unlayered
+   * and beats any layer whatever its specificity. Font size had no unlayered
+   * declaration to do that job — the cells INHERIT from the table's own
+   * `text-[13.5px]`, and an inherited value loses to any rule that matches. So
+   * this states the inheritance as a declaration, in the one layer that is
+   * above the reference sheet and below everything that should still win:
+   *
+   *   `.mv-portal.view-pro td` (unlayered) still tightens at Professional.
+   *   A Tailwind `text-*` on a cell still wins, being in `utilities`.
+   *   The reference's density rule no longer reaches in at all.
+   */
+  .mv-ref-app .mv-portal :is(td, th) {
+    font-size: inherit;
+  }
+
+  /*
+   * AND THE COLOUR AND THE ICONS, which the same two resets take with them.
+   *
+   * The form-control rule also carries `color: revert`, which drops a button to
+   * the UA's black instead of the page's `--ink`; and
+   *
+   *   .mv-ref-app svg { display: revert; vertical-align: revert }
+   *
+   * undoes Tailwind preflight's `display:block; vertical-align:middle`, which
+   * is what stops an inline icon sitting on the text baseline with a descender
+   * gap under it. Seventeen icons on the lease list were riding the baseline.
+   */
+  .mv-ref-app .mv-portal :is(button, input, select, textarea) {
+    color: inherit;
+  }
+
+  .mv-ref-app .mv-portal svg {
+    display: block;
+    vertical-align: middle;
+  }
+
+  /*
+   * ── AND THE TWO CLASS NAMES THE TWO SYSTEMS BOTH CLAIM ──
+   *
+   * `dashboard-reference.css` styles `.grid` and `.flex` as its OWN layout
+   * helpers:
+   *
+   *   .mv-ref-app .grid { display: grid; gap: 18px }
+   *   .mv-ref-app .flex { display: flex; align-items: center; gap: 10px }
+   *
+   * Those are also the names of two Tailwind utilities, and My Leases is built
+   * in Tailwind — so every `class="grid"` and `class="flex"` in the module
+   * silently picked up a gap and a vertical centring it never asked for: 26
+   * grids gained an 18px gap, 10 flex rows were centred, and the KPI strips
+   * re-flowed because `repeat(auto-fit, minmax(150px, 1fr))` solves differently
+   * once there is 18px between the tracks.
+   *
+   * `display` IS LEFT ALONE. `grid` and `flex` mean the same thing in both
+   * systems, so the reference's declaration agrees with the utility and there
+   * is nothing to correct.
+   *
+   * WHAT IS CORRECTED is only the properties Tailwind's own `.grid` and `.flex`
+   * do not set — which is to say, back to the CSS initial value. Any element
+   * that asks for a gap or an alignment with `gap-*` / `items-*` still gets it:
+   * those are utilities, and utilities are the layer above this one.
+   */
+  .mv-ref-app .mv-portal :is(.grid, .flex) {
+    gap: normal;
+  }
+
+  .mv-ref-app .mv-portal .flex {
+    align-items: normal;
+  }
+}
+
+/* ============================================================================
+   NOT CLAIMED — THE SAMPLE CHROME
+   ============================================================================
+
+   UNLAYERED, unlike everything above. These are this module's OWN decisions
+   rather than an undo of somebody else's, and unlayered beats every layer
+   whatever its specificity — which is what lets two short rules replace the
+   `!important` the reference sheet needs for the same job.
+   ============================================================================ */
+
+/* THE SAMPLE BORDER IS DASHED, and only in the not-claimed state.
+
+   The same language the Dashboard uses, from the same variable: it sets
+   `border-color: var(--mv-sample)` and `border-style: dashed` on every `.card`
+   and `.kpi` under `.no-claim`, and this is that rule with this module's two
+   hooks in place of those two class names. `--mv-sample` (#b8892f) is declared
+   on `.mv-ref-app` and inherits down, so the gold is literally the same gold.
+
+   WIDTH AND COLOUR ARE THE ONLY THINGS TOUCHED, which is the point — a dashed
+   border occupies exactly the box a solid one of the same width does, so
+   nothing moves and no other style changes. The cards keep their 1px edge and
+   their 12px radius; the KPI tiles keep their 3px green top rule, which stays
+   green and solid because it is an accent and not the sample disclosure.
+
+   AT EVERY DENSITY. The state is what makes a figure a sample, not the density
+   the reader happens to be at, so there is no tier in this selector.
+
+   `data-mv-card` and `data-mv-kpi` are hooks the two components carry for
+   exactly this: rules they never apply themselves. See `ui/card.tsx`. */
+.mv-portal.no-claim [data-mv-card] {
+  border-color: var(--mv-sample, #b8892f);
+  border-style: dashed;
+}
+
+/* A KPI TILE IS THE SAME RULE ON THREE EDGES, NOT FOUR.
+
+   Its top border is not an edge — it is the 3px green accent that tells the
+   tiles apart from the cards, the only piece of colour a tile has. Dashed and
+   gold, it stops being an accent and becomes a row of dots, which is a change
+   to the tile's style rather than a border added to it. So the accent is left
+   exactly as it is and the sample border is drawn on the three edges that are
+   edges. */
+.mv-portal.no-claim [data-mv-kpi] {
+  border-right-color: var(--mv-sample, #b8892f);
+  border-bottom-color: var(--mv-sample, #b8892f);
+  border-left-color: var(--mv-sample, #b8892f);
+  border-right-style: dashed;
+  border-bottom-style: dashed;
+  border-left-style: dashed;
+}
+
+/* ONE WIDTH FOR EVERY MODE WHILE NOTHING IS CLAIMED — the DETAILED width.
+
+   `Portal` forces the SHELL to Professional while the account is unclaimed,
+   and the reference sizes its body off that: `view-pro` is a 1440px column
+   against Detailed's 1180px. So an unclaimed reader switching density saw the
+   page keep one width, but the WRONG one — the widest in the set, which is the
+   density a shop window is least likely to want.
+
+   1360px is `.app-body`'s own base width in this shell, which is to say
+   Detailed's — the reference sheet states 1180px and then overrides itself with
+   1360px further down, and the second one is the live value. Stated as a number
+   rather than inherited because the rule it has to beat is
+   `body .mv-ref-app.view-pro .app-body`, and the class it beats it with —
+   `.mv-leases-shell` — is what `Portal`'s `shellClass` prop puts on the shell
+   root for this page and no other. The Dashboard, Alerts and the Map keep
+   every width they had.
+
+   THIS ELEMENT CANNOT BE REACHED FROM THE PAGE. `.app-body` is an ANCESTOR of
+   `children`, which is the whole reason `shellClass` exists; the Map names
+   `.app-shell` through it for the same reason. See the prop's own note. */
+body .mv-ref-app.mv-leases-shell.no-claim .app-body {
+  max-width: 1360px;
+}
+
+/* ============================================================================
+   CLAIMED · FREE — THE FIGURES ARE READABLE
+   ============================================================================
+
+   NOTHING ON THIS PAGE IS BLURRED IN THE CLAIMED STATE. Two sheets blur it and
+   both are answered here, because both reach this page now:
+
+     .mv-portal.state-claimed .cl-lock              portal.css, unlayered
+     body .mv-ref-app.state-claimed .cl-lock        the reference sheet
+
+   The second only started applying when the module moved into this group; the
+   first has been there all along. `.mv-ref-app .mv-portal.state-claimed` is
+   (0,3,0) against their (0,2,0) and (0,2,1), so one rule settles both without
+   an `!important` and without editing either sheet — nothing else that reads
+   `.cl-lock` changes.
+
+   ALL THREE PROPERTIES GO BACK, not just the blur. `opacity: .55` and
+   `user-select: none` are the other two halves of the same treatment: leave
+   them and the figure is legible but grey and cannot be copied, which is a
+   worse state than either being blurred or being shown.
+
+   THE TOP BAR IS NOT IN HERE, and cannot be. `#mvPinBar`'s value carries the
+   same `.cl-lock` and sits OUTSIDE `.mv-portal` — it is the shared chrome, the
+   same element on the Dashboard, Alerts and every other page in this group.
+   Unblurring it is a one-line change to `dashboard-reference.css` that would
+   show it everywhere, which is a decision about the whole portal rather than
+   about this page.
+
+   LAPSED IS UNTOUCHED. `.mv-portal.state-lapsed` blurs a different and larger
+   set — the pinned value, the KPI values, the locked table rows — and that is
+   the state whose whole point is that the subscription ended. Only `claimed`
+   is named here.
+   ============================================================================ */
+.mv-ref-app .mv-portal.state-claimed .cl-lock {
+  filter: none;
+  opacity: 1;
+  user-select: auto;
+}
+
+/* ============================================================================
+   LAPSED — THE ALL-TEN FIGURES GO BACK ON HOLD
+   ============================================================================
+
+   `portal.css` already says all of this. Every one of its lapsed rules is
+   written as
+
+     .mv-portal.state-lapsed .app-main <thing>
+
+   and `.app-main` USED TO BE INSIDE `.mv-portal` — the old shell put the portal
+   root above the chrome, so the main column was a descendant. In this group the
+   two have swapped: the shell owns `.app-main` and `.mv-portal` is a wrapper
+   deep inside it, so a selector asking for `.app-main` BELOW `.mv-portal` now
+   matches nothing at all. Twenty-one portfolio figures, the Ultra headline and
+   every KPI value were rendering sharp in a state whose whole point is that the
+   subscription has ended.
+
+   SO THIS IS THAT BLOCK WITH ONE COMBINATOR REMOVED, and nothing else changed:
+   the same six targets, the same `blur(6px)`, the same `.5` opacity, the same
+   caption in the same gold. Restated here rather than edited in `portal.css`,
+   because that sheet still dresses the claim flow and Settings, where
+   `.app-main` IS a descendant and the selectors are doing their job as written.
+
+   DROPPING `.app-main` COSTS NOTHING HERE. It was in the selector to keep the
+   blur off the sidebar and the two pinned bars, which carry their own copies of
+   these figures. None of those are inside `.mv-portal` any more — they belong
+   to the shared chrome — so the scope it was buying is now free.
+
+   Ryan's rule, quoted from that block: "Everything that carries an all-ten
+   number blurs. Leaving the portfolio total sharp is what made the lapsed state
+   read as 'same as paid' in an earlier pass, so the totals are included
+   deliberately."
+
+   THE LEASE TABLE IS A SEPARATE MATTER and is not touched here. `portal.css`
+   describes a whole lapsed design for it — `tr.lp-active` for the one lease
+   that stays live, `tr.lp-locked` for the nine on hold, `tr.lp-totalrow` for
+   the all-ten row — and those selectors never named `.app-main`, so they are
+   not what this block is fixing. They are also not doing anything: NO COMPONENT
+   RENDERS THOSE THREE CLASSES, so the rules are styles waiting on markup, which
+   is the state `portal.css`'s own note describes. The lease table therefore
+   shows every per-lease figure sharp when lapsed. Building that is its own
+   piece of work.
+   ============================================================================ */
+.mv-ref-app .mv-portal.state-lapsed :is(.kpi .k-val, .pf-val, .ck-val),
+.mv-ref-app .mv-portal.state-lapsed :is(.u-headline, [data-mv-headline]) strong,
+.mv-ref-app .mv-portal.state-lapsed [data-mv-portfolio-figure] {
+  filter: blur(6px);
+  opacity: 0.5;
+  user-select: none;
+}
+
+/* The tile says WHY it is blurred, in the same words and the same gold as
+   before. Without it a blurred number is a bug rather than a boundary. */
+.mv-ref-app .mv-portal.state-lapsed :is(.kpi, [data-mv-kpi]) {
+  position: relative;
+  padding-bottom: 30px;
+}
+
+.mv-ref-app .mv-portal.state-lapsed :is(.kpi, [data-mv-kpi])::after {
+  content: "Portfolio totals cover all 10 leases — Premium";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 6px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #a8791a;
+}
+
+/* ============================================================================
+   CLAIMED · FREE — THE PER-LEASE MVESTIMATE IS THE PART PREMIUM BUYS
+   ============================================================================
+
+   THE TOTALS STAY SHARP AND THE COLUMN DOES NOT, and the two together are the
+   offer. A free claimed account can see what its record IS — ten leases, the
+   county roll, the wells, the volumes, every lease NAME — and the portfolio
+   headline that says the record is worth having. What it cannot see is our
+   estimate lease by lease, which is the figure the subscription is for. The
+   banner above the page already says it in words: "What each one is worth to
+   you is the part Premium adds."
+
+   That is why this rule and the `.cl-lock` rule further up point in opposite
+   directions and are both correct. `.cl-lock` marks the summary figures and
+   they are readable now. `data-mv-lease-estimate` marks the per-lease ones and
+   they are not. Two hooks, because it is two decisions — one class carrying
+   both would have to be added and removed in the same breath.
+
+   THE WHOLE CELL, NOT THE NUMBER. The `<td>` carries the hook, so the "earning
+   · projection" basis under the figure goes with it. A sharp basis line under a
+   blurred number tells a reader how a figure was built while refusing to show
+   it, which is worse than withholding both.
+
+   AND THE GRID CARD TOO — same hook, same figure, because the List/Grid switch
+   changes how the list is drawn and not what it is allowed to say.
+
+   `blur(2.4px)` and not the 6px the summary figures use, for the reason the
+   lapsed table rules in `portal.css` give in full: "these are table cells at
+   13px, and 6px turns them into grey smears with no shape left to show that a
+   number is being withheld rather than missing." The grid's figure is 26px and
+   takes the same value so the two views blur alike; it is legible as a shape
+   there, which is the point.
+
+   LAPSED IS DELIBERATELY NOT NAMED, and it is NOT covered by something else
+   either — checked, not assumed. `portal.css` has `tr.lp-locked > td` ready to
+   blur the nine leases on hold and leave the one live lease sharp, but nothing
+   renders `lp-locked`, so today the lapsed table shows this column in full.
+   Naming `state-lapsed` here would blur the column for all ten leases including
+   the live one, which is the opposite of what that state is for — one lease
+   stays fully readable. It wants its row classes, not this rule.
+   ============================================================================ */
+.mv-ref-app .mv-portal.state-claimed [data-mv-lease-estimate] {
+  filter: blur(2.4px);
+  opacity: 0.42;
+  user-select: none;
+}

@@ -22,3 +22,6 @@
    source order without needing extra specificity — and so a Tailwind utility
    still beats both. See that sheet's header for why the copy is not edited. */
 @import "./dashboard-reference.onebar.css" layer(mv-reference);
+/* The Alerts route's QA fixes, last for the same reason and in the same layer —
+   they override rules in both sheets above. See that sheet's own header. */
+@import "./dashboard-reference.alerts.css" layer(mv-reference);

@@ -212,6 +212,8 @@ export function toViewTier(value: string | null | undefined): ViewTier {
 export const STORAGE_KEYS = {
   /** The owner's chosen density. Survives sessions; a `?view=` link wins. */
   viewTier: "mv_view_tier",
+  /** The demo's funnel state. A COOKIE, not localStorage — see the store. */
+  funnelState: "mv_funnel_state",
   /** Which single lease a lapsed owner keeps live. */
   activeLease: "mv_active_lease",
   /** When that choice was made — the seven-day lock is measured from it. */

@@ -107,6 +107,31 @@ export interface OwnerSelection {
  */
 const FIXTURE = americanize(raw as unknown as Payload);
 
+/**
+ * THE ONE RECORD THE NOT-CLAIMED PREVIEW IS BUILT FROM, for every reader.
+ *
+ * `sampleize` rewrites a payload into a sample of itself, and it used to be
+ * handed the READER'S OWN snapshot. Anonymised and scaled, so nothing of theirs
+ * was published — but it meant the preview was a different record for every
+ * visitor: different lease count, different counties, different volumes, and
+ * for a member who had claimed something it was visibly their own portfolio
+ * wearing invented names. "This is what your inbox looks like once you claim"
+ * is a promise about the PRODUCT, and it cannot be made from the record of
+ * somebody who has not claimed one.
+ *
+ * So the preview is drawn from the capture instead: one record, ten leases, one
+ * county, a full timeline and every drawer key — the same shop window for
+ * everybody, and the one the copy was written against.
+ *
+ * SERVER ONLY, DELIBERATELY. This module imports 2 MB of JSON. `Portal` is a
+ * client component, so it fetches this through `/api/portfolio/sample` rather
+ * than importing it — an import would put the whole capture in the browser
+ * bundle of every portal route, claimed readers included.
+ */
+export function sampleFixture(): Payload {
+  return FIXTURE;
+}
+
 /** what a caller is willing to wait for */
 export interface PayloadOptions {
   /**
@@ -297,13 +322,20 @@ export async function currentMemberTarget(): Promise<
  * cards open, so Production & Forecast is live for a signed-in member and the
  * capture is not read for it at all.
  *
- * WHAT THIS STILL DOES NOT SERVE, and why the capture does. `my_leases` has no
- * endpoint at all, and `timeline` and `rings` are the owner-keyed half of the
- * API rather than this one. None of the three is read by the Dashboard, the
- * Weekly Report or Production & Forecast — they belong to My Leases and
- * Activities, which are outside this work — so they are left exactly as they
- * were rather than being quietly re-pointed. See `.env.example` for what that
- * means for those routes.
+ * ACTIVITY IS LIVE FOR A MEMBER TOO. `timeline`, `rings`, `activities` and
+ * `series` are the owner-keyed half of the API (`OWNER-ALERTS-ACTIVITY-API.md`
+ * §9-§11), and they used to be pinned to the capture here — a signed-in
+ * member's Activities page showed the sample owner's 893 events under their
+ * own name, which is the defect sheet's #3 and #7. The owner identity those
+ * four reads need is exactly what `/dashboard` resolves (`dash.owner`), so
+ * they ride the second round beside the drawers: `fetchOwnerLiveBlocks`
+ * already fetches in the contract's order (`/alerts` alone to warm the
+ * snapshot, then the three activity reads together) and a failure THROWS,
+ * like `/weekly`'s does — patching Activities with the capture would put the
+ * sample owner's feed under this member's name and say nothing.
+ *
+ * WHAT THIS STILL DOES NOT SERVE, and why the capture does: `my_leases` has
+ * no endpoint at all. See `.env.example` for what that means for that route.
  */
 async function buildMemberPayload(base: string, member: string): Promise<Payload> {
   /* `/dashboard` is the long read — 648 KB, eight seconds cold — so `/weekly`
@@ -402,9 +434,19 @@ async function buildMemberPayload(base: string, member: string): Promise<Payload
      is the fourth insight ("Removed before the sales meter"); the card in the
      reference that reads "What this is →" is `pf_blind`. Serving one and not
      the other eleven would leave eleven dead controls. */
-  const [served, pfServed] = await Promise.all([
+  const [served, pfServed, live] = await Promise.all([
     fetchDrawers(base, member, dash.owner.ownername, flatKeys),
     fetchForecastDrawers(base, member, forecast.drawer_keys),
+    /* THE OWNER-KEYED ACTIVITY BLOCKS, for the owner `/dashboard` resolved.
+       `num` and `dist` ride along where the dashboard carries them — §2 rule 2:
+       an owner number is a county appraisal key and only pins the identity
+       together with the name. The first read on a cold owner is 23-28 seconds;
+       `owner-api.ts` already carries the contract's 60-second deadline. */
+    fetchOwnerLiveBlocks(base, {
+      owner: dash.owner.ownername,
+      num: dash.owner.ownernumber ?? null,
+      dist: dash.owner.districtcode ?? null,
+    }),
   ]);
 
   return {
@@ -416,12 +458,9 @@ async function buildMemberPayload(base: string, member: string): Promise<Payload
     alerts: { ...dash.alerts, ledger: dash.alerts.ledger ?? EMPTY_LEDGER },
     weekly: { ...weekly, archive },
     nearby: NO_NEARBY,
-    activities: {
-      ...dash.activities,
-      ...ACTIVITY_GAPS,
-      nearby: trimNearby(dash.activities.nearby),
-      counts: { ...dash.activities.counts, production: dash.activities.counts.production ?? 0 },
-    },
+    /* the four Activity blocks come from the owner-keyed API — one snapshot,
+       the same one the anonymous owner path reads (see the header note) */
+    activities: { ...live.activities, nearby: trimNearby(live.activities.nearby) },
     drawers: {
       ...served,
       /* the twelve Production & Forecast panels, from their own endpoint */
@@ -432,8 +471,11 @@ async function buildMemberPayload(base: string, member: string): Promise<Payload
          404s: filed-<YYYYMM>, handover-<lease>, trend-<lease> */
       ...withAlertDrawers({}, dash.alerts.items),
     },
-    timeline: FIXTURE.timeline,
-    rings: FIXTURE.rings,
+    timeline: live.timeline,
+    rings: live.rings,
+    /* `series_months`, lifted out of `/activity/summary` by `owner-api.ts` —
+       the only source for "Your own filed months" the contract names */
+    series: live.series,
     /* THE ASSIGNMENT IS THE CONTRACT TEST — `ForecastResponse` is
        `ForecastPayload` plus the service's three self-report fields, so a
        renamed or newly-nullable field stops `tsc` here rather than reaching
@@ -484,12 +526,6 @@ const OWNER_GAPS = {
   districtcode: null,
   identities_matched: 0,
 } satisfies Partial<Payload['owner']>;
-
-const ACTIVITY_GAPS = {
-  kpis_mine: [],
-  kpis_nearby: [],
-  production: [],
-} satisfies Partial<Payload['activities']>;
 
 const EMPTY_LEDGER: Payload['alerts']['ledger'] = {
   leases: 0, counties: 0, adjacent_leases: 0, standing_permits: 0,

@@ -532,8 +532,23 @@
   overflow-wrap: anywhere;
 }
 
+/* ANCHORS AND BUTTONS BOTH, and the buttons are not a variant — they are the
+   same row rendered by an element that does not navigate.
+
+   The demo state menu stopped being five links when the funnel state came out
+   of the URL: picking a state writes a cookie and refreshes, so the rows became
+   `<button role="menuitemradio">`. Selectors that named only `a` then matched
+   nothing, and every row in both menus collapsed to a 0px-wide inline-block of
+   unstyled text. A `role` is what a row IS; the tag is only how it got there,
+   so both tags are listed on every rule below.
+
+   THE FOUR RESET PROPERTIES are what an `<a>` never needed: a button carries a
+   UA background, border, font and width of its own, and `display: flex` alone
+   leaves it shrink-wrapped and centred in the middle of the panel. */
 .mv-portal .v41-avmenu a[role="menuitem"],
-.mv-portal .v41-avmenu a[role="menuitemradio"] {
+.mv-portal .v41-avmenu a[role="menuitemradio"],
+.mv-portal .v41-avmenu button[role="menuitem"],
+.mv-portal .v41-avmenu button[role="menuitemradio"] {
   display: flex;
   align-items: center;
   gap: 9px;
@@ -545,8 +560,20 @@
   text-decoration: none;
 }
 
+.mv-portal .v41-avmenu button[role="menuitem"],
+.mv-portal .v41-avmenu button[role="menuitemradio"] {
+  width: 100%;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .mv-portal .v41-avmenu a[role="menuitem"]:hover,
-.mv-portal .v41-avmenu a[role="menuitemradio"]:hover {
+.mv-portal .v41-avmenu a[role="menuitemradio"]:hover,
+.mv-portal .v41-avmenu button[role="menuitem"]:hover,
+.mv-portal .v41-avmenu button[role="menuitemradio"]:hover {
   background: #f0faf5;
   text-decoration: none;
 }
@@ -584,7 +611,8 @@
   padding-top: 4px;
 }
 
-.mv-portal .mv-demo-menu a[role="menuitemradio"] {
+.mv-portal .mv-demo-menu a[role="menuitemradio"],
+.mv-portal .mv-demo-menu button[role="menuitemradio"] {
   align-items: flex-start;
   gap: 8px;
   font-weight: 600;
@@ -613,7 +641,8 @@
   line-height: 1.35;
 }
 
-.mv-portal .mv-demo-menu a[role="menuitemradio"][aria-checked="true"] {
+.mv-portal .mv-demo-menu a[role="menuitemradio"][aria-checked="true"],
+.mv-portal .mv-demo-menu button[role="menuitemradio"][aria-checked="true"] {
   background: var(--mint);
 }
 
@@ -1845,6 +1874,55 @@
   max-width: 920px;
 }
 
+/* ── THE LEASE MODULE GETS ITS OWN WIDTH LADDER, ONE STEP PER DENSITY ──
+
+   IT USED TO BE ONE FLAT NUMBER. `.mv-wide` pinned My Leases to 1340px at
+   every tier, so the density switch — the one control whose whole promise is
+   "how much detail, and how much room for it" — moved type and padding on this
+   module and never moved the measure. Changing from Essentials to Professional
+   redrew the page inside the same column, which reads as the switch being
+   half-wired rather than as a deliberate choice.
+
+   THE NUMBERS ARE `dashboard-reference.css`'s, NOT NEW ONES. That file runs the
+   same ladder on its own `.app-body` — 860 / 1120 / 1360 / 1440 — and the
+   portal is the same product at a different route. Inventing a second set here
+   would mean two answers to "how wide is Professional" inside one design.
+
+   AND THE LADDER IS WHY THE OPT-OUT CAN GO. The rule this replaces existed
+   because the portal's own Essentials cap of 920px was too tight for an
+   eleven-column table: it scrolled sideways inside its own box while every
+   paragraph beside it wrapped early. The dashboard's Essentials is 1120px, two
+   hundred pixels of difference that the table actually needs, so the module can
+   follow the switch without the narrowing that made opting out necessary.
+
+   ULTRA IS LAST, AND THAT ORDER IS LOAD-BEARING. This portal writes
+   `view-ultra view-simple` together — see `viewTierClasses` — so both rules
+   match at Ultra with identical specificity and source order is the only thing
+   deciding. Move the Ultra rule above the Essentials one and Ultra silently
+   renders at 1120px.
+
+   `:has()` rather than a class on `.app-body` itself, because the shell is
+   route-agnostic by design and nothing in it should have to know which module
+   is rendering. The page root carries the marker; the shell stays ignorant. */
+
+/* Detailed — the tier with no rule of its own above, so this is its width. */
+.mv-portal .app-body:has(> .mv-wide) {
+  max-width: 1360px;
+}
+
+.mv-portal.view-simple .app-body:has(> .mv-wide) {
+  max-width: 1120px;
+}
+
+/* After Essentials — see the note above. */
+.mv-portal.view-ultra .app-body:has(> .mv-wide) {
+  max-width: 860px;
+}
+
+.mv-portal.view-pro .app-body:has(> .mv-wide) {
+  max-width: 1440px;
+}
+
 /* Essentials is single-column: the two-column dashboard body is a Detailed and
    Professional layout.
 
@@ -2125,8 +2203,20 @@
   font-size: 12.5px;
 }
 
+/* THE HEADER BAND KEEPS ITS HEIGHT AT EVERY TIER — only the COLUMNS tighten.
+
+   Professional used to take the heading down to 7px vertical with the rows, and
+   that was the density contract applied to the one row it buys nothing on.
+   Tightening a `td` earns screen: twenty rows at 6px are five rows more of the
+   record. There is exactly one `thead` row, so tightening it earns six pixels
+   and costs the heading band its constant height — switch Detailed to Pro and
+   the headings jump, which reads as the table redrawing itself rather than as
+   the rows getting denser.
+
+   The horizontal 10px stays: it is what keeps each heading over the left edge
+   of its own column, and Professional's `td` is at 10px too. */
 .mv-portal.view-pro th {
-  padding: 7px 10px;
+  padding: 10px;
 }
 
 /* Each KPI tile presents itself as a target: the reference's tiles are

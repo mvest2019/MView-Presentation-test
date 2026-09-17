@@ -2,17 +2,8 @@
 
 import { useMemo } from "react";
 
-import { Badge } from "../../../_components/ui/badge";
-import { SearchField } from "../../../_components/ui/form-controls";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeaderCell,
-  TableRow,
-} from "../../../_components/ui/table";
-import type { CoOwner, InviteLease, OwnerKind } from "../_lib/invite-types";
+import type { LeaseRoster, RollCoOwner } from "../_api/invite-api";
+import type { OwnerKind } from "../_lib/invite-types";
 import { StepCard } from "./step-card";
 
 /** What each kind of party is called, when the page has to say it out loud. */
@@ -24,43 +15,49 @@ const KIND_LABEL: Record<OwnerKind, string> = {
 };
 
 /**
- * STEP 2 · WHO TO WRITE TO.
+ * STEP 2 · WHO TO WRITE TO — the appraisal roll, read live per lease.
  *
- * ── A FIXED-HEIGHT CARD THAT SCROLLS INSIDE ITSELF ──
+ * ── EVERY ROW IS ADDRESSED BY `ownerKey`, NEVER BY POSITION ──
  *
- * The list used to show ten rows with the rest behind a "show all" button, and
- * pressing it grew the card to every owner on the roll and the page to several
- * screens — so reaching step 3 meant scrolling past a phone book. One card of
- * fixed height with its own scroller puts every owner within reach and leaves
- * the email where it was. The count underneath is then a fact rather than a
- * button: "24 owners · scroll the list".
+ * The list arrives sorted by share, so an index names a different person the
+ * moment the roll changes, and some owners carry no owner number at all. The
+ * key is the row's identity for the tick, the POST and the DELETE alike.
+ *
+ * ── A TICK IS A WRITE NOW, so a row in flight holds still ──
+ *
+ * The service records the invite and mints the code before the box shows as
+ * ticked. While that round trip is out, the row's checkbox is disabled — a
+ * second click during it would race the first, and the honest state of that
+ * box is "being decided".
  *
  * ── WHAT IS TICKED RISES TO THE TOP ──
  *
  * A row that disappears under a filter while its tick survives is a letter the
- * reader can neither see nor take back. Nothing is ever hidden from the
- * selection here: the chosen are simply sorted first, so a tick made forty rows
- * down is still findable after the search box is typed in. This is the one
- * piece of ordering that overrides "largest share first", and it is worth the
- * inconsistency.
+ * reader can neither see nor take back. The chosen sort first, always.
  *
- * ── PEOPLE ONLY, UNTIL ASKED ──
+ * ── PEOPLE ONLY, UNTIL ASKED; THE OPERATOR IS SET APART ──
  *
- * Companies, trusts and the operator are real rows on the roll and are not
- * hidden — a reader who knows the operator is on it and cannot find it assumes
- * the list is broken. They are behind one link because the page's question is
- * "who do you actually know", and an LLC in Midland is never the answer.
+ * Companies, trusts and the operator are real rows and are not hidden — they
+ * are behind one link because the page's question is "who do you actually
+ * know". The operator's tag is toned as a warning: a working-interest party
+ *pays to drill and is not a fellow mineral owner.
  *
- * ── THE KIND IS SAID ONLY WHEN IT IS NOT A PERSON ──
+ * ── A NULL SHARE SAYS "NOT FILED", NEVER 0% ──
  *
- * Twenty rows each carrying an "Individual" chip is twenty chips saying
- * nothing. The tag appears on the rows where it changes what the reader should
- * do, and the operator's is toned as a warning because inviting it is almost
- * certainly a mistake.
+ * The roll filing no interest is a fact about the roll, and rendering it as a
+ * zero would rank a real owner as worthless.
+ *
+ * ── THE COUNTS COME FROM THE SERVICE ──
+ *
+ * `counts` always describes the WHOLE lease even when a filter narrows the
+ * list, and `note` is the contract's own ready-to-render sentence about what
+ * was read and what was left out. Both are printed rather than re-derived.
  */
 export function PeopleStep({
-  lease,
+  roster,
+  rosterError,
   picked,
+  busy,
   onToggle,
   onClear,
   query,
@@ -68,34 +65,39 @@ export function PeopleStep({
   showAll,
   onShowAll,
 }: {
-  lease: InviteLease;
+  /** Null while the roll is being read. */
+  roster: LeaseRoster | null;
+  rosterError: string | null;
   picked: Set<string>;
-  onToggle: (ownerNumber: string, on: boolean) => void;
+  /** Owner keys whose POST/DELETE is still in flight. */
+  busy: Set<string>;
+  onToggle: (ownerKey: string, on: boolean) => void;
   onClear: () => void;
   query: string;
   onQuery: (next: string) => void;
   showAll: boolean;
   onShowAll: (next: boolean) => void;
 }) {
-  const others = lease.owners.filter((owner) => owner.kind !== "person").length;
+  const owners = useMemo(() => roster?.owners ?? [], [roster]);
+  const others = owners.filter((owner) => owner.kind !== "person").length;
 
   const matching = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return lease.owners.filter((owner) => {
+    return owners.filter((owner) => {
       if (!showAll && owner.kind !== "person") return false;
       if (!needle) return true;
       return (
         owner.name.toLowerCase().includes(needle) ||
         (owner.city ?? "").toLowerCase().includes(needle) ||
-        owner.ownerNumber.includes(needle)
+        (owner.ownerNumber ?? "").includes(needle)
       );
     });
-  }, [lease, query, showAll]);
+  }, [owners, query, showAll]);
 
   const shown = useMemo(
     () => [
-      ...matching.filter((owner) => picked.has(owner.ownerNumber)),
-      ...matching.filter((owner) => !picked.has(owner.ownerNumber)),
+      ...matching.filter((owner) => picked.has(owner.ownerKey)),
+      ...matching.filter((owner) => !picked.has(owner.ownerKey)),
     ],
     [matching, picked],
   );
@@ -105,82 +107,102 @@ export function PeopleStep({
       n={2}
       title="Choose who to invite"
       action={
-        <Badge tone={picked.size ? "mint" : "slate"} size="xs">
+        <span
+          className={`chip ${picked.size ? "chip-mint" : "chip-slate"}`}
+          style={{ fontSize: 10 }}
+        >
           {picked.size} chosen
-        </Badge>
+        </span>
       }
     >
       {/* ONE CONTROL, NOT FOUR. A reader looking for their own cousin needs a
           search box; the filter and the reset are quiet links, not buttons
           competing with it. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <SearchField
-          label="Search the owners of record"
+      <div className="iv-find">
+        <input
+          type="search"
           value={query}
           onChange={(event) => onQuery(event.target.value)}
           placeholder="Search a name or a town"
+          aria-label="Search the owners of record"
         />
         {picked.size ? (
-          <QuietButton onClick={onClear}>Clear {picked.size}</QuietButton>
+          <button type="button" className="iv-link" onClick={onClear}>
+            Clear {picked.size}
+          </button>
         ) : null}
       </div>
 
-      <div className="mt-[10px] max-h-[320px] overflow-y-auto overscroll-contain rounded-mv border border-mv-line">
-        <Table minWidth={420}>
-          <TableHead>
-            <TableRow>
+      <div className="iv-list">
+        <table className="rep-mini iv-tbl">
+          <thead>
+            <tr>
               {/* The header cell is empty on screen and never to a screen
                   reader: a column of checkboxes with an unnamed header is a
                   column nobody can be told the purpose of. */}
-              <TableHeaderCell className="w-[38px] bg-mv-portal-wash">
-                <span className="sr-only">Chosen</span>
-              </TableHeaderCell>
-              <TableHeaderCell className="bg-mv-portal-wash">
-                Owner of record
-              </TableHeaderCell>
-              <TableHeaderCell numeric className="bg-mv-portal-wash">
-                Share
-              </TableHeaderCell>
-              <TableHeaderCell className="hidden bg-mv-portal-wash min-[560px]:table-cell">
-                Town
-              </TableHeaderCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {shown.map((owner) => (
-              <OwnerRow
-                key={owner.ownerNumber}
-                owner={owner}
-                on={picked.has(owner.ownerNumber)}
-                onToggle={onToggle}
-              />
-            ))}
-            {shown.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={4} className="text-[12.5px] text-mv-muted">
-                  Nothing matches that.
-                  {!showAll && others
-                    ? " Some owners of record are companies or trusts — show them below."
-                    : ""}
-                </TableCell>
-              </TableRow>
-            ) : null}
-          </TableBody>
-        </Table>
+              <th className="iv-cb">
+                <span className="iv-sr">Chosen</span>
+              </th>
+              <th>Owner of record</th>
+              <th className="right">Share</th>
+              <th>Town</th>
+            </tr>
+          </thead>
+          <tbody>
+            {roster === null ? (
+              <tr>
+                <td
+                  colSpan={4}
+                  className="tiny muted"
+                  style={{ padding: "14px 10px" }}
+                >
+                  {rosterError ?? "Reading the appraisal roll…"}
+                </td>
+              </tr>
+            ) : (
+              <>
+                {shown.map((owner) => (
+                  <OwnerRow
+                    key={owner.ownerKey}
+                    owner={owner}
+                    on={picked.has(owner.ownerKey)}
+                    pending={busy.has(owner.ownerKey)}
+                    onToggle={onToggle}
+                  />
+                ))}
+                {shown.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={4}
+                      className="tiny muted"
+                      style={{ padding: "14px 10px" }}
+                    >
+                      Nothing matches that.
+                      {!showAll && others
+                        ? " Some owners of record are companies or trusts — show them below."
+                        : ""}
+                    </td>
+                  </tr>
+                ) : null}
+              </>
+            )}
+          </tbody>
+        </table>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-mv-muted">
-        {/* EVERY OWNER IS IN THAT CARD, and the card is a fixed height — so
-            this is a fact rather than a button that grows the page to several
-            screens. "· scroll the list" is unconditional, as the reference has
-            it: a threshold on it would leave the one instruction the card needs
-            appearing and disappearing as the reader types in the search box. */}
-        <span>
+      <div className="iv-more">
+        {/* EVERY LOADED OWNER IS IN THAT CARD, and the card is a fixed height —
+            so this is a fact rather than a button that grows the page. */}
+        <span className="iv-count">
           {matching.length} {matching.length === 1 ? "owner" : "owners"}
           {query.trim() ? " matching" : ""} · scroll the list
         </span>
         {others ? (
-          <QuietButton onClick={() => onShowAll(!showAll)}>
+          <button
+            type="button"
+            className="iv-link"
+            onClick={() => onShowAll(!showAll)}
+          >
             {showAll
               ? "Show people only"
               : `Also show ${others} ${
@@ -188,17 +210,31 @@ export function PeopleStep({
                     ? "company or trust"
                     : "companies, trusts and the operator"
                 }`}
-          </QuietButton>
+          </button>
         ) : null}
-        <span className="ml-auto">Largest share first</span>
+        <span className="tiny muted" style={{ marginLeft: "auto" }}>
+          Largest share first
+        </span>
       </div>
 
-      {showAll && lease.owners.some((owner) => owner.kind === "operator") ? (
-        <p className="m-0 mt-[10px] border-l-[3px] border-l-mv-line-strong pl-[10px] text-[12px] leading-[1.55] text-mv-muted">
+      {/* THE SERVICE'S OWN SENTENCE about the roll read — how many rows, which
+          year, what was collapsed or left out. It already accounts for the
+          whole lease, so nothing here re-counts it. */}
+      {roster?.note ? <p className="pf2-note">{roster.note}</p> : null}
+      {roster?.truncated ? (
+        <p className="tiny muted" style={{ margin: "4px 0 0" }}>
+          This lease has more owners of record than one page of the roll —
+          showing the first {owners.length} of {roster.counts.owners}, largest
+          share first.
+        </p>
+      ) : null}
+
+      {showAll && owners.some((owner) => owner.kind === "operator") ? (
+        <p className="pf2-note">
           The roll includes the working-interest party — the operator, who pays
           to drill rather than owning the minerals. Inviting them into a private
-          owners’ group is almost certainly not what you want, and they never
-          count towards a free month.
+          owners&rsquo; group is almost certainly not what you want, and they
+          never count towards a free month.
         </p>
       ) : null}
     </StepCard>
@@ -208,85 +244,57 @@ export function PeopleStep({
 function OwnerRow({
   owner,
   on,
+  pending,
   onToggle,
 }: {
-  owner: CoOwner;
+  owner: RollCoOwner;
   on: boolean;
-  onToggle: (ownerNumber: string, on: boolean) => void;
+  pending: boolean;
+  onToggle: (ownerKey: string, on: boolean) => void;
 }) {
   const where = owner.city
     ? `${owner.city}${owner.state ? `, ${owner.state}` : ""}`
     : null;
+  const share =
+    owner.sharePct != null
+      ? `${owner.sharePct.toFixed(owner.sharePct < 1 ? 3 : 1)}%`
+      : null;
 
   return (
-    <TableRow className={on ? "bg-mv-portal-row-tint" : undefined}>
-      <TableCell className="pr-0">
+    <tr className={on ? "on" : undefined}>
+      <td className="iv-cb">
         <input
           type="checkbox"
           checked={on}
+          disabled={pending}
           /* NAMED WITH THE PERSON, not "row 12". A checkbox column is
-             unreadable to a screen reader without it, and "Invite MCCABE
-             CORLISS K" is also the confirmation a sighted reader gets from the
-             row they are on. */
+             unreadable to a screen reader without it. */
           aria-label={`Invite ${owner.name}`}
-          onChange={(event) => onToggle(owner.ownerNumber, event.target.checked)}
-          className="mt-[3px] h-4 w-4 cursor-pointer accent-mv-green-deep"
+          onChange={(event) => onToggle(owner.ownerKey, event.target.checked)}
         />
-      </TableCell>
-      <TableCell>
-        <strong className="text-[13px] font-semibold">{owner.name}</strong>
+      </td>
+      <td>
+        <strong>{owner.name}</strong>
         {owner.kind !== "person" ? (
-          <span
-            className={`ml-[6px] rounded-md px-[6px] py-px align-middle text-[10px] font-semibold whitespace-nowrap ${
-              owner.kind === "operator"
-                ? "bg-mv-amber-bg text-mv-amber"
-                : "bg-mv-portal-wash text-mv-slate"
-            }`}
-          >
+          <i className={`iv-tag${owner.kind === "operator" ? " warn" : ""}`}>
             {KIND_LABEL[owner.kind]}
-          </span>
+          </i>
         ) : null}
-        {/* THE TOWN, FOR A NARROW SCREEN ONLY. Below 560px the fourth column
-            does not fit, and one fewer column is the right answer rather than a
-            sideways scrollbar inside a card that already scrolls down. Exactly
-            one of these two is ever visible. */}
-        <span className="mt-px block text-[11.5px] text-mv-muted min-[560px]:hidden">
-          {where ?? "no address on the roll"}
-        </span>
-      </TableCell>
-      <TableCell numeric className="text-[12.5px]">
-        {owner.interestPct != null ? `${owner.interestPct.toFixed(1)}%` : "—"}
-      </TableCell>
-      <TableCell className="hidden text-[12.5px] min-[560px]:table-cell">
-        {where ?? (
-          <span className="text-[11.5px] text-mv-muted">
-            no address on the roll
-          </span>
+        {/* THE TOWN, FOR A NARROW SCREEN ONLY. CSS shows exactly one of these
+            two at any width. */}
+        <i className="iv-where">{where ?? "no address on the roll"}</i>
+      </td>
+      <td className="right num">
+        {/* "not filed", NEVER 0% — the roll filed no interest for this row. */}
+        {share ?? <span className="tiny muted">not filed</span>}
+      </td>
+      <td>
+        {where ? (
+          <span>{where}</span>
+        ) : (
+          <span className="tiny muted">no address on the roll</span>
         )}
-      </TableCell>
-    </TableRow>
-  );
-}
-
-/**
- * A LINK-WEIGHT BUTTON. Real `<button>` semantics — these change the page, they
- * do not navigate — with the weight of a link, because none of them is the
- * action of this card. The one action is a tick in the list above.
- */
-function QuietButton({
-  onClick,
-  children,
-}: {
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="cursor-pointer border-0 bg-transparent p-0 text-[12px] font-semibold text-mv-green-deep underline underline-offset-2 hover:text-mv-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
-    >
-      {children}
-    </button>
+      </td>
+    </tr>
   );
 }

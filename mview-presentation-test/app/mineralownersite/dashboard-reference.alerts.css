@@ -1,0 +1,97 @@
+/*
+ * ALERTS — the QA pass, as overrides.
+ *
+ * WHY THIS IS A THIRD SHEET AND NOT AN EDIT.
+ * `dashboard-reference.css` is a byte-for-byte copy of the reference build's
+ * ten stylesheets, and its whole value is that a future diff against that
+ * reference shows only what the reference changed. `dashboard-reference.onebar
+ * .css` is the local override sheet for ONE decision — the merged chrome row —
+ * and its header says so. Neither is the right home for a set of unrelated
+ * fixes to the Alerts route, so they live here: imported last, in the SAME
+ * `mv-reference` layer, so source order alone decides and a Tailwind utility
+ * still beats all three. See `dashboard-reference.layer.css`.
+ *
+ * Every rule below answers one reported defect and names it.
+ */
+
+/* ===========================================================================
+   1 · THE SEVERITY TAG NEEDS AIR
+   ---------------------------------------------------------------------------
+   `AlertsView` renders the tag and the title as siblings with no separator —
+   `<span class="al-sev">Action recommended</span>{a.title}` — and `.al-sev` is
+   a pill with its own background, so the two collided: "ACTION RECOMMENDEDPayment
+   check worth running". A margin rather than a space in the JSX, because the
+   gap belongs to the pill in every place it is used and a text node cannot
+   carry one.
+   ======================================================================== */
+.mv-ref-app .al-sev { margin-right: 7px; }
+
+/* ===========================================================================
+   23 · THE ALERT'S OWN SENTENCE IS THE THING BEING READ
+   ---------------------------------------------------------------------------
+   The body — the one line explaining what the finding means — rendered at
+   `.tiny`, 12px, which is the size this sheet uses for captions and footnotes.
+   It sat a size BELOW the title above it and the same size as the metadata
+   below it, so the row's most important prose was typographically its least
+   important. 13.5px and a looser leading puts it a step above the furniture
+   around it without changing the card's rhythm.
+
+   Scoped to the row's body paragraph specifically: `.tiny` elsewhere on the
+   page really is furniture.
+   ======================================================================== */
+.mv-ref-app .al-row > div > p.tiny {
+  font-size: 13.5px;
+  line-height: 1.58;
+  color: #3f4756;
+}
+
+/* ===========================================================================
+   19 · THE ESSENTIALS CARD, AND THE HOLE ON ITS RIGHT
+   ---------------------------------------------------------------------------
+   `.simple-hero > p { max-width: 78ch }` is a reading-measure cap, and at the
+   Detailed width it does its job. At Essentials the body is 1120px wide and the
+   card is full-bleed inside it, so the cap left roughly a third of the card
+   empty — a green panel with a column of text down its left side and nothing
+   at all beside it, which reads as a component that failed to load rather than
+   as a deliberate measure.
+
+   The cap is lifted only inside this route's card, where the copy is three
+   short blocks that then set in one or two lines each. Every other
+   `.simple-hero` on the site keeps its 78ch.
+   ======================================================================== */
+.mv-ref-app section[data-route="app-alerts"] .simple-hero > p { max-width: none; }
+
+/* ===========================================================================
+   14 + 17 · LAPSED BLURS VALUES, AND ONLY VALUES
+   ---------------------------------------------------------------------------
+   The lapsed state covers the figures an ended subscription no longer pays
+   for. On this route it was doing neither half of that correctly.
+
+   WHAT IT WAS BLURRING THAT IT SHOULD NOT. `.app-main .u-headline strong` — in
+   every view that renders one, the `<strong>` inside the Ultra headline is
+   WORDS, not a figure: "One thing **needs a look**", "**Something moved**",
+   "12 **things happened**". So the lapsed page blurred the two words that say
+   what the state IS, on the tier whose entire contract is one legible
+   headline, and left the four figures underneath perfectly readable.
+
+   WHAT IT WAS NOT BLURRING THAT IT SHOULD. The Ultra stat strip (`.u-stat`) and
+   every alert row's stat cell (`.alx-v`) — "14K MCF", "665 BBL", "253" — which
+   are the owner's own volumes and the exact figures the state is meant to hold
+   back. The Dashboard's Ultra headline is the portfolio value itself and
+   carries `.cl-lock`, and it was not covered either.
+
+   The treatment matches `.cl-lock` in `state-claimed`, so a reader who has seen
+   one covered figure recognises the next.
+   ======================================================================== */
+body .mv-ref-app.state-lapsed .app-main .u-headline strong {
+  filter: none;
+  opacity: 1;
+  user-select: auto;
+}
+body .mv-ref-app.state-lapsed .app-main .u-headline.cl-lock,
+body .mv-ref-app.state-lapsed .app-main .ultra-hero .u-stat b,
+body .mv-ref-app.state-lapsed .app-main .alx-v {
+  filter: blur(6px);
+  opacity: .55;
+  user-select: none;
+}

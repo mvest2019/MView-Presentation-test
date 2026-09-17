@@ -26,10 +26,34 @@ import { plural } from '../../_lib/reference/fmt';
 import type { FunnelKey, Route } from './Portal';
 
 export const TRIAL_LEN = 7;
-/** Billing & Plan — the route the top bar's plan pill already points at. */
-const BILLING_PATH = '/mineralownersite/soon/billing-and-plan';
 export const LEASE_LOCK_DAYS = 7;
-const PRICE = '$99.95/mo';
+const PRICE = '$99.99/mo';
+
+/**
+ * WHERE A PLAN QUESTION GOES — the plan ladder, which is a real page.
+ *
+ * TWO CONTROLS, ONE WRONG DESTINATION EACH.
+ *
+ * "Restore full access" called `setFunnel('paid')`, which is the demo menu's
+ * own switch: pressing the one button a lapsed reader is offered silently
+ * relabelled the account "Paid" and unlocked every figure on the page without a
+ * plan, a price or a payment ever being shown. That is the prototype
+ * demonstrating its five states; on a build a real member signs into, it is an
+ * entitlement granted by a click.
+ *
+ * The secondary link — "What the trial includes" on the free plan, "Compare
+ * plans" on trial, "What I am missing" once lapsed — opened `drawers.value`,
+ * whose title is "Your value — how it is built". That panel explains how the
+ * VALUATION is computed. It is a good panel and it answers a different
+ * question: all three labels ask what a plan gets you, and none of them is
+ * about the estimate.
+ *
+ * `/pricing#plans` is the page that answers both. It is this app's own plan
+ * ladder, it is where `upgradeHref` in `lib/entitlements.ts` already sends
+ * every other upgrade prompt, and `#plans` is a real anchor on it — so the
+ * reader lands on the comparison rather than at the top of a marketing page.
+ */
+const PLANS_HREF = '/pricing#plans';
 
 /** how far into the trial we are, counted from the stamp the Portal writes */
 export function trialDay(startedIso: string | null): number {
@@ -61,24 +85,21 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
   let snd: string | null = null;
   let onCta: (() => void) | null = null;
   /**
-   * WHICH PANEL THE SECONDARY LINK OPENS.
+   * WHERE THE SECONDARY LINK GOES.
    *
    * It used to be one expression for all five states —
-   * `open(funnel === 'unclaimed' ? 'identity' : 'value')' — so "What the trial
+   * `open(funnel === 'unclaimed' ? 'identity' : 'value')` — so "What the trial
    * includes", "Compare plans" and "What I am missing" every one of them opened
    * "Your value — how it is built". Three different questions, one answer, and
    * none of them the one asked (defect sheet row 30).
    *
    * THE LINK NOW CARRIES ITS OWN TARGET, set beside its own label so the two
-   * cannot drift apart again. Two of the three are plan questions and this
-   * build has a real page for those — the same Billing & Plan the plan pill in
-   * the top bar goes to — so they navigate there rather than opening a panel
-   * about something else. "What I am missing" is a question about the record,
-   * which IS a panel: `value` is the figure a lapsed account has lost, and
-   * that is the one state where the old target was right.
+   * cannot drift apart again. Every state that asks a PLAN question goes to
+   * `PLANS_HREF`; `unclaimed` keeps the identity drawer, because "is this
+   * really me" is a question about the record and a panel is the right answer.
    */
   let sndHref: string | null = null;
-  let sndDrawer: string | null = null;
+  /** set instead of `onCta` when the CTA is a destination rather than a switch */
   let ctaHref: string | null = null;
 
   if (funnel === 'claimed') {
@@ -113,16 +134,16 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
     tag = 'Premium trial';
     cta = 'Upgrade to Premium';
     snd = 'Compare plans';
-    sndHref = BILLING_PATH;
+    sndHref = PLANS_HREF;
     onCta = () => setFunnel('paid');
     msg = (
       <>
-        <b>{left} {plural(left, 'day')} left</b>{' '}
-        <span className="fb-pips" aria-hidden="true">
-          {Array.from({ length: TRIAL_LEN }, (_, i) => (
-            <i key={i} className={i < day ? 'spent' : ''} />
-          ))}
-        </span>{' '}
+        {/* NO DAY PIPS (defect #23). The seven dots — one per trial day, all
+            of them solid on day 0 — read as a masked value ("********"), the
+            same visual language the sample tier uses for hidden figures. The
+            day count is already in words right here, so the dots carried
+            nothing a reader could use. */}
+        <b>{left} {plural(left, 'day')} of {TRIAL_LEN} left</b>{' '}
         — this is <b>the full Premium plan</b>: all {n} of your {plural(n, 'lease')}, the value on
         each, the owner community, your weekly report and the monthly mailed report. Keep it for{' '}
         <b>{PRICE}</b>.
@@ -132,17 +153,18 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
     tag = 'Trial ended';
     cta = 'Restore full access';
     snd = 'What I am missing';
-    sndDrawer = 'value';
+    sndHref = PLANS_HREF;
     /* RESTORING ACCESS IS A PAYMENT, SO IT GOES WHERE PAYMENTS LIVE.
        This called `setFunnel('paid')`, which silently re-dressed the page as a
        paid account without asking for anything — the reader pressed "Restore
-       full access" and the values simply appeared (defect sheet row 49). The
-       destination is the Billing & Plan route the top bar's plan pill already
-       points at; it is the page that will carry the payment step. The demo's
-       own way of reaching the paid state is untouched — the account-state menu
-       in the top bar still switches to it directly, which is what that menu is
-       for. */
-    ctaHref = BILLING_PATH;
+       full access" and the values simply appeared (defect sheet row 49).
+       `/pricing#plans` is this app's own plan ladder and the destination
+       `upgradeHref` in `lib/entitlements.ts` already uses for every other
+       upgrade prompt, so the reader lands on the comparison rather than on a
+       placeholder. The demo's own way of reaching the paid state is untouched —
+       the account-state menu in the top bar still switches to it directly,
+       which is what that menu is for. */
+    ctaHref = PLANS_HREF;
     msg = (
       <>
         {/* IT NO LONGER CLAIMS TO BE THE FREE PLAN. The banner said "so your
@@ -195,13 +217,16 @@ export function FunnelBar({ p, funnel, trialStarted, setFunnel, open }: Props) {
                   </button>
                 ))
               : null}
+            {/* THE SECONDARY LINK IS A PLAN QUESTION IN EVERY STATE THAT SETS
+                `sndHref` — see the note beside its declaration. `unclaimed` is
+                the one that is not, and it keeps the identity drawer. */}
             {snd
               ? (sndHref
                 ? <Link className="linklike fb-2nd" href={sndHref}>{snd}</Link>
                 : (
                   <button
                     type="button" className="linklike fb-2nd"
-                    onClick={() => open(sndDrawer ?? (funnel === 'unclaimed' ? 'identity' : 'value'))}
+                    onClick={() => open(funnel === 'unclaimed' ? 'identity' : 'value')}
                   >
                     {snd}
                   </button>
@@ -287,10 +312,8 @@ export function StateCard({ p, funnel, trialStarted, setFunnel, go }: Props) {
           You can change which lease is live once every {LEASE_LOCK_DAYS} days.
         </span>
         <div className="sc-row">
-          <a role="button" tabIndex={0} onClick={() => setFunnel('paid')}
-            onKeyDown={(e) => { if (e.key === 'Enter') setFunnel('paid'); }}>
-            Restore full access
-          </a>
+          {/* same destination as the bar's own CTA — see `PLANS_HREF` */}
+          <Link href={PLANS_HREF}>Restore full access</Link>
           <a className="ghost hide-u" role="button" tabIndex={0} onClick={() => go('activities')}
             onKeyDown={(e) => { if (e.key === 'Enter') go('activities'); }}>
             What is still watched →

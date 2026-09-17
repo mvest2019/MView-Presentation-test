@@ -1,4 +1,3 @@
-import { Card } from "../../../_components/ui/card";
 import { CREDIT } from "../_lib/invite-flow";
 import type { CreditPlan, FlowStep } from "../_lib/invite-types";
 
@@ -13,13 +12,24 @@ import type { CreditPlan, FlowStep } from "../_lib/invite-types";
  * company: where you are, what is left, and what your cousin will be asked to
  * do — visible the whole way down instead of scrolled past once.
  *
- * ── THE READER'S OWN STEPS TICK; THEIR CO-OWNER'S DO NOT ──
+ * ── THE RAIL READS AS INSTRUCTIONS, NOT AS PROGRESS ──
  *
- * Steps 1-4 are the four things this page can watch happen, so they tick as
- * they happen and the rail is a position rather than a poster. Steps 5-8 are on
- * a claim-by-code flow that does not exist yet, and step 9 needs a credit
- * ledger — so they are drawn hollow, in their own panel, under a heading that
- * says whose they are. Styling all nine alike would promise five.
+ * Steps 1-4 used to tick: the page watched a lease get picked and a name get
+ * ticked and turned rungs 1 and 2 into green check marks, so the card was a
+ * position as much as a list. Asked for directly — show the steps, do not mark
+ * any of them as reached. Every rung now draws its own number, in the one
+ * treatment, and the card says how to invite rather than how far you have got.
+ *
+ * That also ends a small dishonesty the tick had. Only two of the four could
+ * ever be observed — copying is a clipboard event this page cannot verify and
+ * sending happens in a mail client it cannot see — so rungs 3 and 4 were
+ * permanently un-ticked no matter what the reader did, and a list where the
+ * back half can never complete reads as stalled rather than as a recipe.
+ *
+ * Steps 5-8 are on a claim-by-code flow that does not exist yet, and step 9
+ * needs a credit ledger — so they keep their own hollow panel under a heading
+ * that says whose they are. That distinction is about what is BUILT and stays:
+ * styling all nine alike would promise five.
  *
  * That is the same rule the sidebar and `portal-routes.ts` already follow:
  * unbuilt is shown as unbuilt, never as locked or premium, and never as
@@ -31,17 +41,26 @@ import type { CreditPlan, FlowStep } from "../_lib/invite-types";
  * name on the roll. Sending earns nothing and a free signup earns nothing, and
  * those two zeroes are the whole reason the page can be honest about the third
  * rung. Tidying them away would leave the number without its argument.
+ *
+ * ── WHAT THE RE-SKIN CHANGED ──
+ *
+ * Three `<Card>`s of Tailwind became `.iv-rail` and three `.iv-railcard`s, and
+ * with them the rail's own RESPONSIVE BEHAVIOR, which the old build did not
+ * have. `.iv-rail` carries `order: -1` so a stacked layout puts the steps ABOVE
+ * the work they introduce rather than below it; between a 600px and an 880px
+ * container the three cards lay out two across with the earnings card spanning
+ * both; at 880px and over it becomes the sticky side column it was always meant
+ * to be. All three are container queries against the page's own box, because
+ * this page is nearly the same width at a 1024px viewport as at 768px.
+ *
+ * AND THE EARNINGS CARD GOES DARK WHEN THERE IS SOMETHING TO EARN — `.live`,
+ * the reference's own state, which this build had as a green left border.
  */
-/* 70px clears `.app-top`, the reference shell's single 58px bar. It was 112 —
-   the portal shell's two stacked bars, from before this page changed shells. */
 export function InviteRail({
   steps,
-  at,
   plan,
 }: {
   steps: FlowStep[];
-  /** How many of the reader's own steps are done — 0 to 4. */
-  at: number;
   plan: CreditPlan;
 }) {
   const mine = steps.filter((step) => step.who === "you" && step.n <= 4);
@@ -49,65 +68,43 @@ export function InviteRail({
   const payoff = steps[steps.length - 1];
 
   return (
-    <aside className="flex flex-col items-stretch gap-3 min-[1100px]:sticky min-[1100px]:top-[70px]">
-      <Card className="p-4">
-        <RailHeading>How to invite</RailHeading>
-        <ol className="m-0 mt-[10px] flex list-none flex-col items-stretch gap-[10px] p-0">
+    <aside className="iv-rail">
+      <div className="iv-railcard">
+        <span className="iv-railk">How to invite</span>
+        <ol className="iv-steps">
           {mine.map((step) => (
-            <RailStep
-              key={step.n}
-              step={step}
-              done={step.n <= at}
-              now={step.n === at + 1}
-            />
+            <RailStep key={step.n} step={step} />
           ))}
         </ol>
-      </Card>
+      </div>
 
-      <Card className="bg-mv-portal-explain p-4">
-        <RailHeading>Then they</RailHeading>
-        {/* NAMED AS UNBUILT, IN WORDS. The hollow marks say "not yet" to a
-            reader who notices the styling; this line says it to everyone, and
-            says which part is missing rather than leaving the reader to guess
-            whether it is their account or the product. */}
-        <p className="m-0 mt-1 text-[11.5px] leading-[1.45] text-mv-muted">
-          Claiming by code is still being built, so these four do not happen yet.
-        </p>
-        <ol className="m-0 mt-[10px] flex list-none flex-col gap-[10px] p-0">
+      <div className="iv-railcard soft">
+        <span className="iv-railk">Then they</span>
+        {/* NOTHING BETWEEN THE HEADING AND THE LIST. A sentence sat here saying
+            these four steps are not built yet. It was this build's addition,
+            the reference carries no such line, and the hollow step marks and
+            the "Then they" heading already say whose steps these are. */}
+        <ol className="iv-steps ghost">
           {theirs.map((step) => (
-            <RailStep key={step.n} step={step} done={false} now={false} ghost />
+            <RailStep key={step.n} step={step} />
           ))}
         </ol>
-      </Card>
+      </div>
 
-      <Card
-        className={`p-4 ${
-          plan.monthsMax
-            ? "border-l-4 border-l-mv-green bg-mv-portal-hero-tint"
-            : ""
-        }`}
-      >
-        <RailHeading>What you earn</RailHeading>
-        <p className="m-0 mt-2 flex items-baseline gap-2">
-          <strong className="text-[26px] leading-none font-bold tabular-nums">
-            {plan.monthsMax}
-          </strong>
-          <span className="text-[12.5px] text-mv-slate">
-            free {plan.monthsMax === 1 ? "month" : "months"}
-          </span>
-        </p>
+      <div className={`iv-railcard earn${plan.monthsMax ? " live" : ""}`}>
+        <span className="iv-railk">What you earn</span>
+        <div className="iv-earn">
+          <strong className="num">{plan.monthsMax}</strong>
+          <span>free {plan.monthsMax === 1 ? "month" : "months"}</span>
+        </div>
         {/*
           THE SENTENCE EARNS ITS SPACE IN ONE STATE ONLY. With nothing ticked a
           bare "0 free months" explains nothing and needs the prompt; once there
           is a figure, the figure and the rungs below say it in less room.
         */}
-        {plan.monthsMax === 0 ? (
-          <p className="m-0 mt-1.5 text-[12px] leading-[1.5] text-mv-muted">
-            {plan.line}
-          </p>
-        ) : null}
+        {plan.monthsMax === 0 ? <p className="iv-earnline">{plan.line}</p> : null}
 
-        <div className="mt-3 flex flex-col items-stretch gap-1">
+        <div className="iv-rungs">
           {(
             [
               ["You send it", "nothing", false],
@@ -119,32 +116,24 @@ export function InviteRail({
               ],
             ] as [string, string, boolean][]
           ).map(([what, earns, pays]) => (
-            <div
-              key={what}
-              className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-[12px] ${
-                pays
-                  ? "bg-mv-mint text-mv-green-ink"
-                  : "bg-mv-portal-wash text-mv-slate"
-              }`}
-            >
+            <div key={what} className={pays ? "hit" : undefined}>
               <span>{what}</span>
-              <b className="font-semibold tabular-nums">{earns}</b>
+              <b>{earns}</b>
             </div>
           ))}
         </div>
 
-        <p className="m-0 mt-[10px] text-[11.5px] leading-[1.5] text-mv-muted">
+        <p className="iv-earnnote">
           {payoff.detail} One month per person, ever — not per lease.
           {plan.repeat.length ? (
             <>
               {" "}
-              <b className="font-semibold text-mv-slate">
+              <b>
                 {plan.repeat.length === 1
                   ? "One of your picks"
                   : `${plan.repeat.length} of your picks`}
               </b>{" "}
-              also{" "}
-              {plan.repeat.length === 1 ? "owns" : "own"}{" "}
+              also {plan.repeat.length === 1 ? "owns" : "own"}{" "}
               {plan.repeatLeases === 1
                 ? "another lease"
                 : `${plan.repeatLeases} other leases`}{" "}
@@ -152,70 +141,39 @@ export function InviteRail({
             </>
           ) : null}
         </p>
-      </Card>
+      </div>
     </aside>
   );
 }
 
-function RailHeading({ children }: { children: string }) {
-  return (
-    <h2 className="m-0 text-[11px] font-bold tracking-[0.06em] text-mv-muted uppercase">
-      {children}
-    </h2>
-  );
-}
-
 /**
- * One step.
+ * One step: its number and what it asks for. It takes no state, because there
+ * is none left to take — see the rail's note on why nothing ticks.
  *
- * `ghost` IS THE UNBUILT LANE — hollow mark, muted type, and no "now" state to
- * land on. It is deliberately NOT a lock icon or a dimmed premium treatment:
- * those say "not for you", and the truth here is "not yet, for anybody".
+ * THE GHOST LANE IS THE LIST'S, NOT THE ROW'S. `.iv-steps.ghost` styles every
+ * row inside it, so the "not yet" treatment is set once on the `<ol>` that
+ * holds the unbuilt four rather than passed down to each row — which is how
+ * the reference does it, and it means a row cannot be ghosted by accident in
+ * the lane where things actually work.
+ *
+ * It is deliberately NOT a lock icon or a dimmed premium treatment: those say
+ * "not for you", and the truth here is "not yet, for anybody".
  */
-function RailStep({
-  step,
-  done,
-  now,
-  ghost = false,
-}: {
-  step: FlowStep;
-  done: boolean;
-  now: boolean;
-  ghost?: boolean;
-}) {
+function RailStep({ step }: { step: FlowStep }) {
   return (
-    <li className="flex items-start gap-[10px]">
-      <span
-        aria-hidden="true"
-        className={`mt-[1px] flex h-[19px] w-[19px] flex-none items-center justify-center rounded-full text-[10.5px] font-bold ${
-          done
-            ? "bg-mv-green text-mv-green-ink"
-            : ghost
-              ? "border border-dashed border-mv-line-strong text-mv-placeholder"
-              : now
-                ? "border-2 border-mv-green text-mv-green-deep"
-                : "bg-mv-portal-wash text-mv-muted"
-        }`}
-      >
-        {done ? "✓" : step.n}
+    <li>
+      <span className="iv-rn" aria-hidden="true">
+        {step.n}
       </span>
-      <span className="min-w-0">
-        <strong
-          className={`block text-[12.5px] leading-[1.35] font-semibold ${
-            ghost ? "text-mv-muted" : "text-mv-ink"
-          }`}
-        >
-          {/* THE TITLE AND NOTHING ELSE. A build-state tag ("in your own mail")
-              hung off step 4 here, and it was saying what the step's own detail
-              line already says in the reference's words — "Paste it into your
-              own mail. It reads as personal because it is." Two labels for one
-              fact, the shorter one stripped of the reason that makes it land. */}
-          {step.title}
-        </strong>
-        <span className="mt-px block text-[11.5px] leading-[1.45] text-mv-muted">
-          {step.detail}
-        </span>
-      </span>
+      <div>
+        {/* THE TITLE AND NOTHING ELSE. A build-state tag ("in your own mail")
+            hung off step 4 here, and it was saying what the step's own detail
+            line already says in the reference's words — "Paste it into your own
+            mail. It reads as personal because it is." Two labels for one fact,
+            the shorter one stripped of the reason that makes it land. */}
+        <strong>{step.title}</strong>
+        <i>{step.detail}</i>
+      </div>
     </li>
   );
 }

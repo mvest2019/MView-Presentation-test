@@ -2,11 +2,11 @@
    import in `lease-step.tsx`. This is still the one place the page reads the
    leases fixture, so pointing it at a database later remains a single-file
    change. */
-import { formatLeaseTitle } from "@/app/mineralownersite/(portal)/leases/_lib/lease-format";
+import { formatLeaseTitle } from "@/app/mineralownersite/(reference)/leases/_lib/lease-format";
 import {
   leaseOwnerRecord,
   leaseRecords,
-} from "@/app/mineralownersite/(portal)/leases/_lib/lease-records";
+} from "@/app/mineralownersite/(reference)/leases/_lib/lease-records";
 import type { CoOwner, InviteLease, OwnerKind } from "./invite-types";
 
 /**
@@ -16,7 +16,7 @@ import type { CoOwner, InviteLease, OwnerKind } from "./invite-types";
  * appraisal roll — one query per lease, keyed on district and lease number —
  * and this portal has no server read to make that with. So the roster below
  * stands in for it, and it is shaped rather than sampled: every property the
- * page's behaviour turns on has at least one row that exercises it.
+ * page's behavior turns on has at least one row that exercises it.
  *
  *   A NAME THE GREETING CANNOT SAFELY SHORTEN.   "MCCABE J T JR" (a suffix),
  *   "ZAPATA ROSA & MANUEL" (two people), "NAVARRO LUIS" (two words). Each one
@@ -158,7 +158,7 @@ const MEMBERSHIP: Record<string, [string, number | null][]> = {
     ["10419480", 2.4], ["10419930", 1.5], ["10420190", 1.18], ["10420800", null],
   ],
   /* ---- the two COOK-KAISER units: the Cook side, the Kaisers, and a different
-     set of neighbours. Deliberately a partly different cast, so switching lease
+     set of neighbors. Deliberately a partly different cast, so switching lease
      in step 1 visibly changes who is on offer. */
   "292830-cook-kaiser-gu": [
     ["10419533", 9.14], ["10419587", 9.14], ["10418822", 4.86], ["10418901", 4.86],

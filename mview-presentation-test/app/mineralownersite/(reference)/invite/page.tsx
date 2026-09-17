@@ -6,8 +6,10 @@ import {
   type OwnerSelection,
 } from "../../_lib/reference/owner-data";
 import type { Payload } from "../../_lib/reference/payload";
+import { prefetchInviteLeases } from "./_api/invite-prefetch";
 import { InviteView } from "./_components/invite-view";
 import "./invite.css";
+import "../../page-gutters.css";
 
 /**
  * INVITE CO-OWNERS — `/mineralownersite/invite`.
@@ -75,21 +77,26 @@ export default async function InviteCoOwnersPage({
     year: one("year") ? Number(one("year")) : null,
   };
 
-  let initial: Payload | null = null;
-  try {
-    initial = await getOwnerPayload(sel);
-  } catch {
-    /* The page does not read this — only the chrome does — so a cold or
-       unreachable source costs the bar its figures and nothing else. The
-       client shell retries on mount. */
-    initial = null;
-  }
+  /* THE TWO SERVER READS RUN TOGETHER. The shell payload is this render's
+     slow part; the invite prefetch rides inside its window instead of adding
+     its own. Either may miss on its own terms — the payload cost is the bar's
+     figures, the prefetch's is one extra client round trip — and neither can
+     fail the page. */
+  const [initial, initialLeases] = await Promise.all([
+    getOwnerPayload(sel).catch(() => null as Payload | null),
+    prefetchInviteLeases(),
+  ]);
 
   return (
-    /* `shellClass` — the shell's body is an ANCESTOR of `children`, so this is
-       the only way the page can widen it. See `invite.css`. */
-    <Portal route={null} initial={initial} shellClass="mv-invite-wide">
-      <InviteView />
+    /* NO `shellClass`. This passed `mv-invite-wide`, which lifted the shell's
+       body from 1340px to 1600px on the argument that a lease picker and a
+       ninety-row table are better for the room. It was reverted: the page then
+       had visibly narrower side gutters than the Dashboard, Alerts and
+       Activities beside it, which on a wide monitor reads as the page having
+       come loose from the shell. It takes the group's width now. See
+       `invite.css`. */
+    <Portal route={null} initial={initial} shellClass="mv-wide-gutters">
+      <InviteView initialLeases={initialLeases} />
     </Portal>
   );
 }

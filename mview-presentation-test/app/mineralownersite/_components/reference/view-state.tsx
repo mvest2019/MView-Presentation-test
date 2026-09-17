@@ -41,6 +41,22 @@ export interface PortalViewState {
   tier: Tier;
   /** Which kind of account the shell is being shown as. */
   funnel: FunnelKey;
+  /**
+   * CHANGE THE DENSITY — `Portal`'s own `pickTier`, which sets the state AND
+   * persists it under `mv.tier`.
+   *
+   * WHY THE SETTER IS ON THE CONTEXT AT ALL. Settings carries a density switch
+   * in its View card, and once that page moved under this shell the switch had
+   * nowhere to write: it was calling `writeViewTier`, which saves the OTHER
+   * shell's key, so the control rendered the right current value and then did
+   * nothing when pressed. A control that does nothing is worse than no control.
+   *
+   * Handing the real setter down is what keeps "one owner, one value" true —
+   * the avatar menu and the Settings card now move the same value, rather than
+   * two copies that disagree, which is the exact bug this file's header records
+   * for the Map.
+   */
+  setTier: (t: Tier) => void;
 }
 
 const Ctx = createContext<PortalViewState | null>(null);
@@ -48,11 +64,15 @@ const Ctx = createContext<PortalViewState | null>(null);
 export function PortalViewStateProvider({
   tier,
   funnel,
+  setTier,
   children,
 }: PortalViewState & { children: ReactNode }) {
   /* Memoised on the two values rather than rebuilt each render: the map is a
      deep tree and this sits above all of it. */
-  const value = useMemo(() => ({ tier, funnel }), [tier, funnel]);
+  const value = useMemo(
+    () => ({ tier, funnel, setTier }),
+    [tier, funnel, setTier],
+  );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

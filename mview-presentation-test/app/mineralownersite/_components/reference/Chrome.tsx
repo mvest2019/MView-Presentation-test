@@ -162,7 +162,11 @@ const NAV: {
 const ACCOUNT: { label: string; href?: string }[] = [
   { label: 'My Profile', href: '/mineralownersite/profile' },
   { label: 'Settings', href: '/mineralownersite/settings' },
-  { label: 'Billing & Plan' },
+  /* THE MODULE HAS SHIPPED. This row carried no `href`, so the map below sent
+     it to `/soon/billing-and-plan` — a card announcing that Billing & Plan had
+     not opened yet. `(reference)/billing` is that page now, and the slug
+     redirects to it. */
+  { label: 'Billing & Plan', href: '/mineralownersite/billing' },
   { label: 'Contact Us', href: '/contact-us' },
 ];
 
@@ -194,6 +198,11 @@ export interface ChromeProps {
   /** the alerts this reader has opened, owned by `Portal` so the rail badge
    *  and the Alerts page cannot disagree — see `markRead` there */
   readIds: Set<string>;
+  /** has `mv.alertsRead` been loaded yet? — see `readReady` in `Portal`. The
+   *  rail badge and the bell are unread FIGURES, so they wait for it too: a
+   *  badge that paints 6 and settles on 4 is the same flash the Alerts header
+   *  was showing, in the one place that is on screen on every route. */
+  readReady: boolean;
   children: React.ReactNode;
 }
 
@@ -287,8 +296,9 @@ export default function Chrome(c: ChromeProps) {
   /* `a.unread` is the SERVER'S opinion and `readIds` is this reader's, so the
      badge subtracts one from the other. Counting the payload alone left the
      rail saying 6 after the page had been marked all read. */
-  const unread = c.p?.alerts.items
-    .filter((a) => a.unread && !c.readIds.has(a.id)).length ?? 0;
+  const unread = c.readReady
+    ? (c.p?.alerts.items.filter((a) => a.unread && !c.readIds.has(a.id)).length ?? 0)
+    : 0;
   const state = FUNNEL.find((s) => s.key === c.funnel)!;
   const persona = PERSONAS.find((x) => x.key === c.tier)!;
   /* The avatar is the MEMBER when there is one. Its old value — the owner
@@ -801,10 +811,18 @@ export default function Chrome(c: ChromeProps) {
             position rather than two and this is it. `#mvFunnelBar` is
             display:none by default and revealed per state by
             mvfunnelstates.css, so `paid` correctly shows nothing at all. */}
-        <FunnelBar
-          p={c.p} funnel={c.funnel} trialStarted={c.trialStarted}
-          setFunnel={c.setFunnel} go={c.go} open={c.open}
-        />
+        {/* NOT ON ACTIVITIES (defect #22): QA asked for the plan text and its
+            buttons to come off that page — the feed is the content there, and
+            the same plan message still meets the reader on every other route
+            and on the dashboard state card. */}
+        {c.route === 'activities'
+          ? null
+          : (
+            <FunnelBar
+              p={c.p} funnel={c.funnel} trialStarted={c.trialStarted}
+              setFunnel={c.setFunnel} go={c.go} open={c.open}
+            />
+          )}
 
         <div className="app-body">
           {c.children}

@@ -60,7 +60,7 @@
  *      The other four states are still the menu's, because nothing any source
  *      returns distinguishes them.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -342,31 +342,60 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
        declaring the record unclaimed. Only an explicitly EMPTY list flips it. */
     initial?.owner.claimed_owners?.length === 0 ? 'unclaimed' : 'paid',
   );
-  const [drawer, setDrawer] = useState<string | null>(null);
+  /* a string is a key into `data.drawers`; an object is a panel built by a
+     view from one specific record — the Activities timeline builds one per
+     event so the detail matches the card that was clicked (defects #12-#14,
+     #17) */
+  const [drawer, setDrawer] = useState<string | DrawerCopy | null>(null);
   const [loadingName, setLoadingName] = useState<string | null>(null);
   const [trialStarted, setTrialStarted] = useState<string | null>(null);
   /* WHICH ALERTS THIS READER HAS OPENED — see `markRead` below for why it
      lives up here rather than inside `AlertsView`. */
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  /**
+   * HAS `mv.alertsRead` BEEN READ YET? — the flash this closes.
+   *
+   * The set lives in `localStorage`, so the server renders every unread FIGURE
+   * — the header's "Mark all 6 read", the Unread pill, the sidebar rail badge
+   * and the bell — from `alerts.items[].unread` alone, which is the server's
+   * opinion and knows nothing about what this browser has already opened. A
+   * reader who marked everything read, reloaded, and watched "6" sit there for
+   * the length of a hydration before correcting itself to "4" was not seeing a
+   * stale cache: they were seeing the only answer the server has, held on
+   * screen until the browser's answer arrived.
+   *
+   * `false` on the server AND on the first client render, so there is no
+   * hydration mismatch; flipped in a LAYOUT effect, so the true count paints in
+   * the same frame hydration commits rather than one frame later. Every
+   * consumer renders the count only once it is true — a figure briefly absent
+   * is honest, a figure briefly wrong is not.
+   */
+  const [readReady, setReadReady] = useState(false);
   const seq = useRef(0);
   const router = useRouter();
 
   /* ---------------------------------------------------- the derived flags */
   const sample = funnel === 'unclaimed';
-  /* THE UNCLAIMED VIEW IS ALWAYS THE FULLEST ONE.
-     Someone deciding whether to claim is looking at a shop window: the point is
-     to show everything the record becomes, so the density preference is
-     overridden to `pro` while nothing is claimed. The persona buttons keep
-     their own state and take effect the moment the record is claimed.
-     Declared here rather than beside the render because the class effect
-     below reads it. */
-  const effTier: Tier = funnel === 'unclaimed' ? 'pro' : tier;
+  /* ONE UI FOR EVERY ACCOUNT STATE (defect #6). Unclaimed used to override
+     the density to `pro` as a shop window, so the sample page carried card
+     paragraphs and tables that vanished the moment the record was claimed —
+     QA read that as two different UIs for the same page. The density now
+     follows the reader's own choice in every state; what marks the sample is
+     the labeling (claim rail, sample badges, amber borders), not a different
+     layout. Declared here rather than beside the render because the class
+     effect below reads it. */
+  const effTier: Tier = tier;
 
   /* ------------------------------------------------------ persisted choice */
   /* Density and funnel state are the reader's own preference, not data, so they
      live in the browser. Read in an effect rather than in the initial state so
      the server and the first client render agree. */
-  useEffect(() => {
+  /* A LAYOUT EFFECT, not a passive one, and only for this reason: it runs
+     before the browser paints the hydrated tree, so the alert counts go
+     straight from absent to correct instead of painting the server's number
+     for a frame first. See `readReady`. The work is four synchronous
+     `localStorage` reads, which is not enough to be worth a frame of jank. */
+  useLayoutEffect(() => {
     try {
       const t = localStorage.getItem('mv.tier') as Tier | null;
       if (t && PERSONAS.some((p) => p.key === t)) setTier(t);
@@ -376,6 +405,10 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
       const r = JSON.parse(localStorage.getItem(READ_KEY) ?? '[]') as unknown;
       if (Array.isArray(r)) setReadIds(new Set(r.filter((x): x is string => typeof x === 'string')));
     } catch { /* private mode — nothing read yet is the correct default */ }
+    /* OUTSIDE THE `try`. A browser that throws on `localStorage` still has a
+       read-state — the empty one — and holding `readReady` at false there would
+       hide the count for the whole visit rather than for a frame. */
+    setReadReady(true);
   }, []);
 
   /**
@@ -632,61 +665,65 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
 
   /* ------------------------------------------------------- the sample view */
   /**
-   * NOT CLAIMED IS ONE FIXED RECORD, THE SAME FOR EVERY READER.
+  /**
+   * ONE SAMPLE RECORD, THE SAME ONE FOR EVERY READER.
    *
-   * `sampleize` renames and scales, but it MAPS OVER the payload it is given —
-   * so while it was given `live`, the preview inherited the shape of whatever
-   * record the page had loaded for that member: ten leases for one reader,
-   * 1,555 for another, every figure their own multiplied by a thousand. Two
-   * not-claimed readers saw two different products, and a "sample" was being
-   * derived from one member's private data. Defect sheet rows 51 and 54.
+   * Not claimed means the reader has not proved these interests are theirs, so
+   * the payload is rewritten as a sample of itself — same shape, same code
+   * path, real dates, illustrative figures.
    *
-   * The base is now `/api/portfolio?sample=1`, which answers with the committed
-   * capture and reads nothing about who is asking — see `getSamplePayload`. One
-   * record, identical on every request, for every user and every session.
+   * WHAT CHANGED: WHICH PAYLOAD IS REWRITTEN. `sampleize` renames and scales,
+   * but it MAPS OVER the payload it is given — and it was given `live`, the
+   * READER'S OWN snapshot. Nothing of theirs was published, since the transform
+   * substitutes every name and number, but the preview was then a different
+   * record for every visitor: ten leases for one reader, 1,555 for another,
+   * every figure their own multiplied by a thousand. The page says "this is
+   * what your record looks like once you claim it", which is a promise about
+   * the PRODUCT; it cannot be made out of the record of somebody who has not
+   * claimed one. Defect sheet rows 51 and 54.
    *
-   * FETCHED RATHER THAN IMPORTED. The capture is 2 MB and is server-only today;
-   * pulling it into this client component would put all of it in the bundle
-   * every reader downloads, claimed or not. One cacheable request, made only
-   * when somebody actually enters the not-claimed state, costs nothing to the
-   * readers who never do.
+   * So the preview is drawn from the committed capture — ten leases, one
+   * county, a full timeline, every drawer key — served by
+   * `/api/portfolio/sample`. See that route for why it is a fetch and not an
+   * import: the capture is 2 MB and this is a client component, so importing it
+   * would put all of it in the bundle every reader downloads, claimed or not.
    *
-   * MEMOISED ON THE BASE, as before: the transform walks every lease and month,
-   * and re-running it on each keystroke in the search box was measurable.
+   * IT DOES NOT FALL BACK TO `live`, AND THAT IS THE POINT OF THE FIX. A failed
+   * read leaves the preview empty rather than quietly serving the per-reader
+   * version again — "the same record for every user, independent of member_id,
+   * user, session or API data" is the requirement, and a fallback that is
+   * per-reader on the unhappy path does not meet it. The shell already has an
+   * honest place to say nothing loaded.
+   *
+   * ASKED ONCE, IN A REF, AND THE DEPENDENCY LIST IS JUST `sample`. Guarding on
+   * the busy flag and listing it as a dependency deadlocked: setting it re-ran
+   * the effect, the re-run's cleanup invalidated the request still in flight,
+   * and the `finally` that clears the flag was inside that invalidated closure —
+   * so the flag stayed true and the loader never came down. A ref is the right
+   * shape for "has this been asked for yet": it is not render state, and it
+   * cannot make the effect re-enter itself.
+   *
+   * MEMOISED ON THE SOURCE: the transform walks every lease and month, and
+   * re-running it on each keystroke in the search box was measurable.
    */
-  const [sampleBase, setSampleBase] = useState<Payload | null>(null);
+  const [fixture, setFixture] = useState<Payload | null>(null);
   const [sampleBusy, setSampleBusy] = useState(false);
-  /* ASKED ONCE, IN A REF, AND THE DEPENDENCY LIST IS JUST `sample`.
-   *
-   * The first version of this guarded on `sampleBusy` and listed it as a
-   * dependency, which deadlocked: setting it re-ran the effect, the re-run's
-   * cleanup invalidated the request that was still in flight, and the `finally`
-   * that clears the flag was inside that invalidated closure — so the flag
-   * stayed true and the loader never came down. Measured: two 200s on the
-   * network panel and a page that never rendered.
-   *
-   * A ref is the right shape for "has this been asked for yet": it is not
-   * render state, nothing should re-render when it changes, and it cannot make
-   * the effect re-enter itself. */
   const sampleAsked = useRef(false);
+
   useEffect(() => {
     if (!sample || sampleAsked.current) return;
     sampleAsked.current = true;
     setSampleBusy(true);
-    fetch('/api/portfolio?sample=1')
+    fetch('/api/portfolio/sample')
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) setSampleBase(d as Payload); })
-      /* A FAILURE LEAVES THE PREVIEW EMPTY RATHER THAN FALLING BACK TO `live`.
-         Falling back is what this change exists to stop: it would put one
-         member's own record on screen under a "sample" banner, which is the
-         leak, not a graceful degradation. The shell already has an honest
-         place to say nothing loaded. */
+      .then((j) => { if (j) setFixture(j as Payload); })
       .catch(() => { /* reported by the empty state below */ })
       .finally(() => setSampleBusy(false));
   }, [sample]);
 
+  const sampleSource = sample ? fixture : null;
   const shown = useMemo(
-    () => (sampleBase && sample ? sampleize(sampleBase) : null), [sampleBase, sample]);
+    () => (sampleSource ? sampleize(sampleSource) : null), [sampleSource]);
   const data: Payload | null = sample ? (shown?.payload ?? null) : live;
 
   /* Drop ids the payload no longer carries — see `markRead`. Runs on every
@@ -827,12 +864,20 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
     };
   }, [pricesOpen, ownerName]);
 
+  /* A PANEL A VIEW BUILT ITSELF, rather than a key into `data.drawers`. The
+     Activities timeline composes one per event so the detail matches the card
+     that was clicked (defects #12-#14, #17); it arrives already complete, so
+     there is nothing to look up and the string branches below do not apply. */
+  const openEventDrawer = useCallback((d: DrawerCopy) => setDrawer(d), []);
+
   const rawCopy: DrawerCopy | null = !drawer
     ? null
-    : drawer === 'prices'
-      ? ((priceCopy?.owner === ownerName ? priceCopy.drawer : null)
-        ?? data?.drawers?.prices ?? null)
-      : (data?.drawers?.[drawer] ?? null);
+    : typeof drawer !== 'string'
+      ? drawer
+      : drawer === 'prices'
+        ? ((priceCopy?.owner === ownerName ? priceCopy.drawer : null)
+          ?? data?.drawers?.prices ?? null)
+        : (data?.drawers?.[drawer] ?? null);
 
   /* every panel goes through the same reduction — see `collapseNames` */
   const counties = data?.totals.counties;
@@ -841,7 +886,6 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
     () => collapseNames(rawCopy, counties ?? [], operatorNames ?? []),
     [rawCopy, counties, operatorNames],
   );
-
   /* Esc closes the drawer wherever focus is — a panel that can only be closed
      by hitting its own button is a trap for a keyboard user. */
   const wrap = useRef<HTMLDivElement | null>(null);
@@ -920,11 +964,16 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
           ? (
             <AlertsView
               p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go}
-              readIds={readIds} markRead={markRead}
+              readIds={readIds} markRead={markRead} readReady={readReady}
             />
           )
           : route === 'activities'
-            ? <ActivitiesView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
+            ? (
+              <ActivitiesView
+                p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go}
+                openEvent={openEventDrawer}
+              />
+            )
             : route === 'production'
               ? <ProductionView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
               : (
@@ -941,7 +990,7 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
       {/* The two axes, readable by anything under the chrome. `tier` and not
           `effTier`: the raw choice, so a surface with its own ceiling rule can
           apply it rather than inherit this one's. See `view-state.tsx`. */}
-      <PortalViewStateProvider tier={tier} funnel={funnel}>
+      <PortalViewStateProvider tier={tier} funnel={funnel} setTier={pickTier}>
       {/* `onOwner` AND `busy` NO LONGER GO TO THE CHROME. The owner-search band
           was their only consumer and it has been removed (see `Chrome`); `load`
           and `busy` are still owned here — `load` for the URL-driven read in the
@@ -949,6 +998,7 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
           owner read changed, only who is told about it. */}
       <Chrome
         p={data} route={route} go={go} tier={tier} setTier={pickTier} readIds={readIds}
+        readReady={readReady}
         funnel={funnel} setFunnel={pickFunnel} sample={sample}
         open={openDrawer} spot={spot}
         sampleNote={shown?.note ?? null} trialStarted={trialStarted}

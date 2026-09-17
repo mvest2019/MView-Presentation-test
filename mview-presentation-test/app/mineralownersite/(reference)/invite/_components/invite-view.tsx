@@ -1,12 +1,9 @@
 "use client";
 
+import type { PrefetchedLeases } from "../_api/invite-prefetch";
 import { usePortalViewState } from "../../../_components/reference/view-state";
 import { gates } from "../../../_components/ui/portal-gating";
-import {
-  InviteFootnotes,
-  InviteHeader,
-  UnclaimedInviteNotice,
-} from "./invite-header";
+import { InviteHeader, UnclaimedInviteNotice } from "./invite-header";
 import { InviteWorkbench } from "./invite-workbench";
 
 /**
@@ -52,23 +49,35 @@ import { InviteWorkbench } from "./invite-workbench";
  * were. They are inert in this group, and they are what the page goes back to
  * wearing if it ever returns to the portal shell.
  */
-export function InviteView() {
+export function InviteView({
+  initialLeases,
+}: {
+  /** The server-prefetched first page of leases — see `invite-prefetch.ts`. */
+  initialLeases: PrefetchedLeases | null;
+}) {
   const view = usePortalViewState();
   const claimed = view === null || view.funnel !== "unclaimed";
 
   if (!claimed) {
     return (
-      <div className={gates("pageRoot")}>
+      <div className={`iv ${gates("pageRoot")}`}>
         <UnclaimedInviteNotice />
       </div>
     );
   }
 
+  /* `iv` IS THE CONTAINER EVERY BREAKPOINT ON THIS PAGE MEASURES.
+     `invite.css` sets `container-type: inline-size` on it, and the step cards,
+     the facts strip, the owner table, the rail and the mail preview all size
+     themselves against THIS box rather than against the window — which is the
+     reference's own arrangement, and it records why: the shell spends most of a
+     1024px viewport on its sidebar, so a page 664px wide was being asked to lay
+     itself out as though it had 1024. Without this class every one of those
+     queries silently falls back to its narrow branch. */
   return (
-    <div className={gates("pageRoot")}>
+    <div className={`iv ${gates("pageRoot")}`}>
       <InviteHeader />
-      <InviteWorkbench />
-      <InviteFootnotes />
+      <InviteWorkbench initialLeases={initialLeases} />
     </div>
   );
 }

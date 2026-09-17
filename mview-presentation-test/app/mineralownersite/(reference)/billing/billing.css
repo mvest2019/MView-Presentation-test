@@ -1,0 +1,282 @@
+/*
+ * BILLING & PLAN — the page's own sheet.
+ *
+ * WHERE THIS CAME FROM. The demo build serves this page at `#/app/billing` as
+ * `<section data-route="app-billing">`, on the same design system as the rest
+ * of this portal: `.card`, `.card-pad`, `.chip`, `.btn`, `.kpi`, `.timeline`,
+ * `.tablewrap`, `.small`, `.tiny`, `.num`, and the `tier-u` / `tier-s` /
+ * `hide-s` density gates. Almost all of that is already in
+ * `dashboard-reference.css` and is used as-is. What is below is only the
+ * dozen-odd rules that page adds and this app did not have.
+ *
+ * UNLAYERED, like `invite.css`: imported by `page.tsx`, so it sits outside
+ * `@layer mv-reference` and wins over the base sheet without a specificity
+ * contest.
+ *
+ * THREE HOUSE RULES APPLIED, the same three this route group has been held to:
+ *
+ *   1  SCOPED TO `.mv-ref-app`. The source writes its rules bare because that
+ *      document is nothing but the portal; this app also carries the marketing
+ *      site, so an unscoped `.plan` or `.price` would reach into it.
+ *
+ *   2  NO BOLD. The source runs `font-weight: 800` on the price and 700 on the
+ *      fold summaries, the chips and the pills. Everything here is capped at
+ *      700 and headings sit at 600, which is what the Dashboard, Alerts and
+ *      Invite are drawn at.
+ *
+ *   3  THE PORTAL'S GREEN. The source is already green here — `--green-deep`
+ *      on the price, `--mint` on the chips — so nothing had to move. The one
+ *      hard-coded tint it uses for the reader's own table column (`#f4fbf8`)
+ *      is expressed as a variable below so it matches the mint wash the rest of
+ *      this group uses for "this row is yours".
+ */
+
+/* the tint that marks the reader's own column and their own rows — the same
+   wash `.al-row.unreadal` and the invite table use */
+.mv-ref-app section[data-route="app-billing"] {
+  --mine-wash: #f4fdf9;
+}
+
+/* ===========================================================================
+   1 · THE EXPLAINER PILL AND ITS PANEL
+   ======================================================================== */
+.mv-ref-app .ppf-why {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line); background: #fff; border-radius: 999px;
+  color: var(--green-deep); font-family: var(--sans); font-size: 11.5px;
+  font-weight: 600; min-height: 32px; padding: 4px 12px; cursor: pointer;
+  /* `margin-bottom` ALONE, AND NOT THE `margin: 0 0 10px` SHORTHAND IT WAS.
+     That shorthand also set `margin-top: 0`, and this sheet is page-imported
+     and therefore UNLAYERED — so its zero beat `dashboard-reference.onebar.css`
+     section 5, which is in `@layer mv-reference` and grants every route's first
+     block `margin-top: 16px` precisely so nothing opens flush against the black
+     chrome row. The pill is this page's first block, so it cancelled the rule
+     written for it and sat at 0. MEASURED: `gapAbovePill: 0`.
+
+     Declaring only the bottom lets the shell's 16px through, which is the
+     figure every other route opens at — it is `.mv-greet`'s own margin, so the
+     page now starts level with Alerts, Activities and the Dashboard rather than
+     at a number invented here. */
+  margin-bottom: 10px;
+}
+.mv-ref-app .ppf-why:hover { background: #f0fbf7; }
+.mv-ref-app .ppf-why:focus-visible {
+  outline: 2px solid var(--green-deep); outline-offset: 2px;
+}
+.mv-ref-app .ppf {
+  display: flex; gap: 10px; align-items: flex-start;
+  background: var(--mint); border: 1px solid #bfe9d8; border-radius: 10px;
+  padding: 8px 13px; font-size: 12.5px; color: var(--green-ink); margin: 0 0 14px;
+}
+.mv-ref-app .ppf-x {
+  margin-left: auto; border: 0; background: transparent; color: var(--green-ink);
+  font-size: 14px; cursor: pointer; padding: 2px 6px; border-radius: 6px;
+  flex: 0 0 auto;
+}
+.mv-ref-app .ppf-x:hover { background: rgba(4, 35, 26, .08); }
+
+/* the amber "this is not an offer" marker. It is not decoration: every figure
+   on this page is illustrative and the chip is what says so. */
+.mv-ref-app .illus-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: #fdf6e3; border: 1px solid #e6d391; border-radius: 999px;
+  color: #7a5c12; font-family: var(--sans); font-size: 10.5px;
+  font-weight: 600; letter-spacing: .02em; padding: 3px 10px;
+  white-space: nowrap; vertical-align: middle;
+}
+.mv-ref-app .mv-illus-row { margin: 0 0 10px; }
+
+/* ===========================================================================
+   2 · THE PLAN CARDS
+   ======================================================================== */
+/* ---------------------------------------------------------------------------
+   THE PLAN ROW. `/pricing`'s own `PlanCard` sits in these cells now — see the
+   note at the top of `plan-compare.tsx`. Only the TRACKS are this page's, and
+   they had to be rewritten to get here.
+
+   THEY ARE CONTAINER QUERIES, NOT MEDIA QUERIES, and that is the whole reason
+   this block exists. `/pricing` drops to two columns under a 1024px VIEWPORT,
+   which is the right rule for a page whose cards have the window to themselves.
+   Here they do not: the portal spends ~236px on the sidebar and, since the
+   gutter change, up to 120px a side on padding. MEASURED at a 1500px viewport,
+   this row is 1039px wide — so a viewport rule would still be drawing four
+   columns at 1024px viewport, where the cells are 245px and the capacity block
+   inside them wraps its own labels.
+
+   `container-type: inline-size` makes the row measure ITSELF, so the count
+   follows the space the cards actually have. The thresholds are the cards':
+   ~250px is where a card's ruled capacity rows stop wrapping, so four wants
+   1040 and two wants 520.
+
+   `align-items: start`, NOT `stretch`: the popular card lifts itself 8px with a
+   transform and the ribbon sits above the top edge, so the row needs the cards
+   at their own heights rather than pinned to a common one. They already line up
+   internally — every block in `PlanCard` carries a `min-h-*` for exactly that.
+   --------------------------------------------------------------------------- */
+.mv-ref-app .bill-plans {
+  container-type: inline-size;
+  margin-bottom: 18px;
+}
+
+/* TWO ELEMENTS, AND IT HAS TO BE TWO. A `@container` query resolves against an
+   element's nearest ANCESTOR container, so an element that declares
+   `container-type` cannot be sized by a query it makes itself — written as one
+   element this matched nothing and the row stayed at a single column at every
+   width. MEASURED before the split: `grid-template-columns: 1005px`. The
+   wrapper measures; the grid inside it responds. */
+.mv-ref-app .bill-plans-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 22px 16px;
+  align-items: start;
+}
+@container (min-width: 560px) {
+  .mv-ref-app .bill-plans-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* 960, AND THE FIGURE IS MEASURED RATHER THAN REASONED. The first draft put
+   this at 1140 on the assumption that the card needed ~270px before its ruled
+   capacity rows began wrapping "Leases per record". Forcing four columns and
+   measuring said otherwise: at 239px per card — which is what this row gives
+   at a 1500px viewport — not one `dt` and not one `dd` wraps on any of the
+   four, and the price keeps its single 38px line.
+
+   That matters because the row cannot get very wide. `.app-body` caps at
+   1360px and the account pages now spend up to 120px a side on gutters, so
+   the row is 1005px at a 1500px viewport and 1086px at 1920px — it never
+   reaches 1140 at any screen size. A threshold above that would have meant
+   two columns forever, which is not what taking `/pricing`'s card was for.
+   960 fires at both. */
+@container (min-width: 960px) {
+  .mv-ref-app .bill-plans-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* The foot `PlanCard` was given. `.btn` is the reference sheet's, and the card
+   puts it in a `mt-auto` block, so all it needs is the full width the pricing
+   card's own link has. */
+.mv-ref-app .bill-plans-row .cta { width: 100%; }
+
+.mv-ref-app .plan {
+  background: #fff; border: 1px solid var(--line); border-radius: 14px;
+  padding: 22px; display: flex; flex-direction: column; gap: 10px;
+  position: relative; min-width: 0;
+}
+/* the reader's own tier. The source writes this as an inline style; it is a
+   class here so the card can say which one it is in its markup. */
+.mv-ref-app .plan.hot {
+  border: 2px solid var(--green); box-shadow: var(--shadow-lg);
+}
+.mv-ref-app .plan h3 { font-size: 20px; }
+/* THE PRICE, WHICH IS THE CARD. 46px in a bordered mint-to-white box, in
+   `--green-deep` — the source's own treatment, at 700 rather than its 800. */
+.mv-ref-app .plan .price {
+  font-family: var(--serif); font-size: 46px; font-weight: 700; line-height: 1.05;
+  letter-spacing: -.5px; color: var(--green-deep);
+  background: linear-gradient(#eefaf4, #fff);
+  border: 1px solid #d9ede3; border-radius: 12px;
+  padding: 14px 16px; margin: 4px 0 2px;
+}
+.mv-ref-app .plan.hot .price {
+  background: linear-gradient(#ddf5e9, #f6fdf9); border-color: var(--green);
+}
+.mv-ref-app .plan .price span {
+  display: block; font-family: var(--sans); font-size: 12.5px; font-weight: 500;
+  letter-spacing: 0; margin-top: 6px; color: var(--muted);
+}
+.mv-ref-app .plan ul {
+  list-style: none; display: flex; flex-direction: column; gap: 7px;
+  font-size: 13.5px; margin: 6px 0 12px; padding: 0;
+}
+.mv-ref-app .plan ul li { font-weight: 400; }
+.mv-ref-app .plan ul li::before {
+  content: "✓"; color: var(--green-deep); font-weight: 700; margin-right: 8px;
+}
+.mv-ref-app .plan ul li.no::before { content: "—"; color: #cbd5e1; }
+.mv-ref-app .plan ul li.no { color: var(--muted); }
+/* the foot control sits on the bottom edge whatever the list above it does */
+.mv-ref-app .plan .cta { margin-top: auto; }
+/* A CTA THAT IS A STATE, NOT AN ACTION — "Current plan", "Downgrades at end of
+   term". It is drawn as a button because the source draws it as one, and it is
+   inert because there is nothing to press. */
+.mv-ref-app .btn.is-future {
+  opacity: .55; cursor: not-allowed; pointer-events: none;
+}
+.mv-ref-app .btn-block { width: 100%; }
+
+@media (max-width: 1024px) {
+  .mv-ref-app .plan .price { font-size: 38px; }
+}
+@media (max-width: 767px) {
+  .mv-ref-app .plan .price { font-size: 34px; }
+}
+
+/* ===========================================================================
+   3 · THE COMPARISON TABLE
+   ---------------------------------------------------------------------------
+   The reader's own column carries a wash down its whole height so the eye can
+   follow it without re-reading the header. The source paints that per cell
+   with an inline style; one `:nth-child` rule does the same thing and cannot
+   fall out of step with the column it is marking.
+   ======================================================================== */
+.mv-ref-app .bill-compare thead th:nth-child(4),
+.mv-ref-app .bill-compare tbody td:nth-child(4) { background: var(--mine-wash); }
+.mv-ref-app .bill-compare th { font-weight: 600; }
+.mv-ref-app .bill-compare td { font-weight: 400; }
+.mv-ref-app .bill-compare td strong { font-weight: 600; }
+/* the gray half-sentence that qualifies a row label, on its own line */
+.mv-ref-app .bill-compare td .cmp-note { display: block; margin-top: 2px; }
+
+/* ===========================================================================
+   4 · THE FOLDS
+   ---------------------------------------------------------------------------
+   `<details>` / `<summary>`, which is the source's own choice and the right
+   one: the open/closed state is the browser's, it survives with no React, and
+   the keyboard and a screen reader get the disclosure for free.
+   ======================================================================== */
+.mv-ref-app details.bill-fold {
+  border: 1px solid var(--line); border-radius: 14px; background: #fff;
+  margin-bottom: 14px;
+}
+/* 15px, NOT THE SOURCE'S 14.5. Measured across the group, the portal's body
+   scale is 15 / 13.5 / 13 / 12.5 / 12 and 14.5 is on none of it — it was the
+   one size on this page that belonged to no other. 15px is the shell's own body
+   size, which is what a section heading at this weight should sit on. */
+.mv-ref-app details.bill-fold > summary {
+  cursor: pointer; padding: 13px 16px; font-weight: 600; font-size: 15px;
+  color: var(--ink); list-style: none;
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+}
+.mv-ref-app details.bill-fold > summary::-webkit-details-marker { display: none; }
+.mv-ref-app details.bill-fold > summary::after {
+  content: "▾ show"; font-size: 11px; font-weight: 600; color: var(--green-deep);
+  flex: 0 0 auto;
+}
+.mv-ref-app details.bill-fold[open] > summary::after { content: "▴ hide"; }
+.mv-ref-app details.bill-fold > summary:focus-visible {
+  outline: 2px solid var(--green-deep); outline-offset: -2px; border-radius: 14px;
+}
+.mv-ref-app details.bill-fold > .bf-body { padding: 0 16px 14px; }
+
+/* ===========================================================================
+   5 · THE CREDIT LEDGER
+   ======================================================================== */
+.mv-ref-app .ledger-row {
+  display: flex; justify-content: space-between; gap: 10px; align-items: center;
+  padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13px;
+}
+.mv-ref-app .ledger-row:last-of-type { border-bottom: 0; }
+.mv-ref-app .ledger-row strong { font-weight: 600; }
+/* a posting that actually paid reads in the accent; one that did not stays gray,
+   which is the whole point of showing the $0.00 row at all */
+.mv-ref-app .ledger-bal { color: var(--muted); white-space: nowrap; }
+.mv-ref-app .ledger-bal.paid { color: var(--green-deep); }
+
+/* ===========================================================================
+   6 · THE RADIO LISTS — the term-end decision and the lease to keep
+   ======================================================================== */
+.mv-ref-app .bill-choice {
+  display: flex; gap: 9px; align-items: flex-start; font-size: 13.5px;
+  padding: 2px 0; cursor: pointer;
+}
+.mv-ref-app .bill-choice input { margin-top: 3px; flex: none; accent-color: var(--green-deep); }
+.mv-ref-app .bill-choice strong { font-weight: 600; }
+.mv-ref-app .bill-choice .tiny { display: inline; }

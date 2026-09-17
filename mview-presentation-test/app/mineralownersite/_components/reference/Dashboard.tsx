@@ -26,7 +26,7 @@
  *
  * 3. The neighbours card carries the feed's own filings, not just ring counts.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { createPortal } from 'react-dom';
 import type { Payload } from '../../_lib/reference/payload';
@@ -84,6 +84,9 @@ export default function Dashboard(
   const a = p.as_of;
   const al = p.alerts;
   const [series, setSeries] = useState<SeriesKey>('value');
+  /* the viewer's own clock, and the only thing on this page that is one — read
+     after mount so it cannot disagree with the server. See `useGreeting`. */
+  const clock = useGreeting();
 
   const unclaimed = funnel === 'unclaimed';
   const pw = productWord(t.has_gas, t.has_oil);
@@ -178,13 +181,6 @@ export default function Dashboard(
     setShownOwner(p.owner.ownername);
     setSwitchingTo(null);
   }
-
-  /* See the greeting's own note below: the string is held in state so the
-     reader's clock can replace the server's after mount. */
-  const [greet, setGreet] = useState(() => greetLine(p, member?.firstName));
-  useEffect(() => {
-    setGreet(greetLine(p, member?.firstName));
-  }, [p, member?.firstName]);
 
   /* ---------------------------------------------- EACH FINDING, SHOWN ONCE.
    *
@@ -353,25 +349,12 @@ export default function Dashboard(
           {/* ---------- greeting + page head ---------- */}
           <div className="mv-greet">
             <div>
-              {/* THE VIEWER'S CLOCK, WITHOUT A HYDRATION MISMATCH.
-
-                  `greetLine` reads `new Date()`, so the server renders the
-                  greeting on the SERVER's clock and the browser re-renders it
-                  on the reader's. Whenever the two straddle a noon, a 5pm or a
-                  midnight the two strings differ and React throws #418,
-                  "Hydration failed because the initial UI does not match what
-                  was rendered on the server" — the defect sheet's row 45,
-                  reported once per load.
-
-                  BOTH HALVES ARE NEEDED. `suppressHydrationWarning` tells React
-                  this one subtree is legitimately time-dependent, which stops
-                  the error; on its own it also freezes the SERVER's wording on
-                  screen, so a reader five time zones away would be wished good
-                  morning at ten at night. The effect re-reads the clock after
-                  mount and writes the reader's own greeting, and React bails
-                  out of the re-render when the two agree — which is most
-                  loads. Nothing flashes, and nothing is wrong. */}
-              <p className="greet-line" suppressHydrationWarning>{greet}</p>
+              {/* ` ` while the clock is unknown — see `useGreeting`. The line
+                  keeps its height, so nothing under it shifts when the real
+                  greeting lands at the hydration commit. */}
+              <p className="greet-line">
+                {clock ? greetLine(p, member?.firstName, clock) : ' '}
+              </p>
               {/* THE PAID HEADLINE, IN EVERY STATE. "Here is what your dashboard
                   becomes" was the unclaimed variant, and it described the page
                   instead of naming the record on it — the banner above now does
@@ -2224,7 +2207,7 @@ function OwnerSwitch(
      * NOT CLAIMED HAS NOTHING TO SWITCH TO, so it is not offered the control.
      *
      * The record on screen in that state is the FIXED SAMPLE — one fictional
-     * capture, identical for every reader, served by `/api/portfolio?sample=1`
+     * capture, identical for every reader, served by `/api/portfolio/sample`
      * and deliberately unrelated to whoever is signed in. Switching is an
      * action on the member's own claimed records, so offering it here would
      * either do nothing to the page in front of them or replace a sample they
@@ -2541,13 +2524,35 @@ function OwnerMeta(
   );
 }
 
-/* the greeting reads the VIEWER's clock — the only "now" on this page, and the
-   only thing here that legitimately is one */
-function greetLine(p: Payload, memberFirstName?: string): string {
-  const h = new Date().getHours();
-  const part = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
-  const day = new Date().toLocaleDateString('en-US',
-    { weekday: 'long', day: 'numeric', month: 'long' });
+/**
+ * THE GREETING READS THE VIEWER'S CLOCK, AND THAT IS WHY IT HAD TO MOVE.
+ *
+ * It is the only "now" on this page and the only thing here that legitimately
+ * is one — but it was read in the component body, which made it the one string
+ * on the portal that CANNOT agree between the server and the browser:
+ *
+ *   · `new Date().getHours()` buckets into morning / afternoon / evening in
+ *     whatever timezone the process is in. A render on a UTC server at 14:00
+ *     says "Good afternoon"; the same markup hydrating in IST at 19:30 says
+ *     "Good evening".
+ *   · `toLocaleDateString(...)` formats the server's civil date. Either side of
+ *     the day boundary the two disagree outright — "Monday, 15 September"
+ *     against "Tuesday, 16 September".
+ *
+ * Both land in the same text node, so React finds server text it cannot match
+ * and throws **hydration error #418** — minified in production, which is
+ * exactly how it was reported: every load of the portal, no visible symptom,
+ * and portal-wide rather than belonging to any one route.
+ *
+ * THE FIX IS `useGreeting` BELOW, NOT A PINNED TIMEZONE. Pinning one would make
+ * the two sides agree by making the greeting wrong for everybody outside it,
+ * which loses the only property the line has. The clock is read after mount
+ * instead, in a layout effect — see that hook.
+ */
+function greetLine(p: Payload, memberFirstName: string | undefined, clock: Clock): string {
+  const part = clock.hour < 12 ? 'Good morning'
+    : clock.hour < 17 ? 'Good afternoon' : 'Good evening';
+  const day = clock.day;
   /* THE READER, NOT THE RECORD.
 
      This greeted `owner.first_name` — the name on the appraisal roll — which
@@ -2564,6 +2569,61 @@ function greetLine(p: Payload, memberFirstName?: string): string {
      a cold visit, and greeting the record is better than greeting no one. */
   const who = memberFirstName || p.owner.first_name;
   return part + (who ? ', ' + who : '') + ' · ' + day;
+}
+
+/** what the viewer's own clock says — see `greetLine` and `useGreeting` */
+interface Clock { hour: number; day: string }
+
+/* ----------------------------------------------------------------------------
+   THE VIEWER'S CLOCK, AS AN EXTERNAL STORE.
+
+   Reading the clock in the component body is what caused hydration error #418
+   — see `greetLine`. A store is the right home for it, and it is the pattern
+   this codebase already uses for exactly this problem: `active-lease-picker`
+   reads `Date.now()` through one, and `view-tier-store` reads `localStorage`
+   through another, each with an explicit server snapshot.
+
+   `useSyncExternalStore` is what makes it correct rather than merely quiet.
+   React uses `getServerSnapshot` for the server render AND for hydration, then
+   re-renders with `getSnapshot` — so the two passes agree by construction, and
+   there is no `setState` in an effect for the purity rule to object to.
+
+   THE SNAPSHOT IS A STRING, because `getSnapshot` is compared with `===` and a
+   fresh object every call would loop for ever. `"14|Tuesday, September 15"`
+   carries both halves the greeting needs and is stable for an hour at a time.
+
+   IT SUBSCRIBES TO A MINUTE TICK so a dashboard left open past noon, or past
+   midnight, stops saying "Good morning" on Tuesday's date. A minute is far
+   finer than the hour the greeting buckets into, which is the point: the
+   change lands within a minute of the boundary rather than at the next reload.
+   ---------------------------------------------------------------------------- */
+
+function subscribeToClock(onChange: () => void): () => void {
+  const id = window.setInterval(onChange, 60_000);
+  return () => window.clearInterval(id);
+}
+
+function readClock(): string {
+  const now = new Date();
+  /* the locale stays pinned — `fmt.ts` pins every formatter on this site so a
+     reader's locale cannot reorder a date. It is the TIMEZONE half that was
+     the bug, and the store is what fixes that half. */
+  return now.getHours() + '|'
+    + now.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+/** the server has no business deciding what time it is where the reader is */
+function readClockOnServer(): string {
+  return '';
+}
+
+function useGreeting(): Clock | null {
+  const key = useSyncExternalStore(subscribeToClock, readClock, readClockOnServer);
+  return useMemo(() => {
+    const cut = key.indexOf('|');
+    if (cut < 0) return null;
+    return { hour: Number(key.slice(0, cut)), day: key.slice(cut + 1) };
+  }, [key]);
 }
 
 function aroundMeaning(cmp: Payload['activities']['compare_90']): string {

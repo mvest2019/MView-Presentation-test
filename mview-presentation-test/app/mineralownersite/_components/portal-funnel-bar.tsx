@@ -17,7 +17,7 @@ import { TRIAL_DAY, TRIAL_LENGTH_DAYS } from "../_lib/portal-state";
  *
  *   TRIAL (4A · v49 · OW-23/24/25). The trial IS FULL PREMIUM, not a cut-down
  *   tier — "give them the full premium… the only difference is these banners."
- *   So the CTA is an UPGRADE at $99.95/mo, not a retention save. It said "Pro
+ *   So the CTA is an UPGRADE at $99.99/mo, not a retention save. It said "Pro
  *   trial" at $49.95 once; both were wrong, and "Pro" is a view density that
  *   must never come back as a plan name.
  *
@@ -74,7 +74,7 @@ export function PortalFunnelBar() {
         </span>{" "}
         — this is <b>the full Premium plan</b>: all {portfolio.leaseCount} of
         your leases, MVestimate values, the owner community, your weekly report
-        and the monthly mailed report. Keep it for <b>$99.95/mo</b>.
+        and the monthly mailed report. Keep it for <b>$99.99/mo</b>.
       </span>
 
       {/* --- state 4B · trial ended ----------------------------------------- */}

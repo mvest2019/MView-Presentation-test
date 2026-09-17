@@ -1,0 +1,254 @@
+/* ============================================================================
+   THE CLAIM FLOW RENDERS IDENTICALLY IN ALL FOUR DENSITIES.
+
+   Every other portal route is meant to change with the density switch — that is
+   the whole point of Ultra / Essentials / Detailed / Professional. This one is
+   not, and the reason is what the flow IS: a five-step legal attestation. The
+   sentence an owner reads before ticking "I have a good-faith basis and
+   authority to claim this record" must be the same sentence at every setting,
+   and the layout it sits in should not rearrange under someone halfway through.
+   A density switch is a reading preference; this is a form that commits.
+
+   ── WHY THIS IS CSS AND NOT TAILWIND ──
+
+   Rules 1 to 4 each answer a rule in the shell's own sheet that targets an
+   ANCESTOR of this route, or a bare element inside it. None can be reached from
+   a utility class on the component: CSS has no way for a child to widen a
+   parent whose `max-width` is set or to give itself the padding that parent
+   declined, and a Tailwind utility loses to a rule in the `mv-reference` layer.
+
+   ── THE ROOT IS `.mv-ref-app`, AND THAT IS WHAT THE MOVE COST ──
+
+   Rules 1 and 4 were written against `.mv-portal`, the root `(portal)/
+   layout.tsx` renders. This route moved to `(reference)`, whose shell writes
+   `.mv-ref-app` instead — so both selectors stopped matching and both opt-outs
+   silently went with them. The page went back to changing width with the
+   density switch (`.app-body` is 860px at Ultra, 1120 at Essentials, 1180 at
+   Detailed and 1440 at Professional in `dashboard-reference.css`), and step 4's
+   lease table went back to being re-padded at Professional.
+
+   Rules 2 and 3 are NEW, and they are the rest of what the move cost: the
+   reference shell gives `.app-body` no top padding and reverts every form
+   control's typeface to the user agent's. Neither applied under `(portal)`.
+
+   The table values did not need changing: the reference sheet sets the same
+   base `portal.css` did — `th` 10px/14px, `td` 11px/14px, 13.5px on the table —
+   so only the ancestor rule 4 hangs off was wrong.
+
+   THIS FILE IS UNLAYERED, imported straight from `page.tsx`, while the sheet it
+   is adjusting is imported into `@layer mv-reference`. An unlayered rule beats
+   a layered one whatever the specificity, which is what lets rule 1 win with
+   one class fewer than the rule it overrides.
+   ============================================================================ */
+
+/* ----------------------------------------------------------------------------
+   1 · THE BODY WIDTH CAP
+
+   `dashboard-reference.css` sets `.app-body` to 860px at Ultra, 1120px at
+   Essentials, 1180px at Detailed and 1440px at Professional. That alone changes
+   this flow's shape — the form and the cards reflow at each step of it — from a
+   control that is supposed to change how much DETAIL is shown, not where the
+   page's furniture lives. Halfway through a five-step attestation is the worst
+   possible moment for the page to rearrange itself.
+
+   Pinned to 1180 — the Detailed value, which is the sheet's own base and the
+   width this flow was laid out against.
+
+   `:has()` rather than a class on `.app-body` itself, because that element
+   belongs to the shell and this route does not own it.
+   ---------------------------------------------------------------------------- */
+.mv-ref-app:has(.mv-claim-flow) .app-body {
+  max-width: 1180px;
+}
+
+/* ----------------------------------------------------------------------------
+   2 · THE GAP UNDER THE PLAN BANNER
+
+   `.app-body` carries NO top padding — `dashboard-reference.css` sets
+   `padding: 0 26px 26px` on purpose, because the Dashboard's greeting supplies
+   its own. `dashboard-reference.onebar.css` gives every other route its 16px
+   back, but scoped to `.app-body > section[data-route] > :first-child`, and a
+   route rendered through `Portal`'s `children` has no such section. That sheet
+   names the exception itself: the Map keeps its `padding: 0` and the soon card
+   keeps its 26px — each owns its own top spacing.
+
+   This route owned none, so the card sat flush against the funnel bar, its
+   heading reading as touching the band above it.
+
+   24px. Rule 5 hands every other route 16px, and that is the floor this started
+   at — but those routes open under the plain chrome row, and this one opens
+   under the plan banner as well, which is a filled band rather than a rule. A
+   card set the same 16px from a solid colour reads tighter than the same 16px
+   from a white bar, so it takes the next step up and no more.
+
+   Scoped under `.app-body`, which the walkthrough is NOT inside — the dialog is
+   portalled to `document.body` and mounts its own `ClaimShell`. Without that
+   scope this margin would reappear inside the popup as exactly the stray band
+   section 5 exists to keep out of it.
+   ---------------------------------------------------------------------------- */
+.mv-ref-app .app-body .mv-claim-flow {
+  margin-top: 24px;
+}
+
+/* ----------------------------------------------------------------------------
+   3 · THE FORM CONTROLS' TYPEFACE
+
+   `dashboard-reference.css` carries this, twice:
+
+       .mv-ref-app button, .mv-ref-app input, .mv-ref-app select,
+       .mv-ref-app textarea, .mv-ref-app optgroup {
+         font-family: revert; font-size: revert; font-weight: revert; ... }
+
+   It is there for the reference build, whose own controls expect the UA's
+   defaults back after Tailwind's preflight has flattened them — and it sits
+   ABOVE the extract on purpose, which its own note explains.
+
+   `revert` on `font-family` means the USER AGENT's value, not the page's. So
+   every input, select and button in this flow started rendering in the
+   browser's form font while the labels beside them stayed in Lexend Deca —
+   two typefaces in one field group. Under `(portal)` there was no such rule and
+   preflight's `font-family: inherit` stood, which is why this only appeared
+   after the move.
+
+   ONLY `font-family`, deliberately. This file is unlayered, so it beats
+   Tailwind's utilities as well as the sheet — and size, weight and line-height
+   ARE set by utilities on these controls (`text-[13px]`, `font-semibold`,
+   `leading-[1.2]`). Reverting those here would win against the components and
+   undo their own sizing. Nothing in this module sets `font-family`, so it is
+   the one property with no utility to fight.
+   ---------------------------------------------------------------------------- */
+.mv-ref-app .mv-claim-flow button,
+.mv-ref-app .mv-claim-flow input,
+.mv-ref-app .mv-claim-flow select,
+.mv-ref-app .mv-claim-flow textarea {
+  font-family: inherit;
+}
+
+/* ----------------------------------------------------------------------------
+   4 · PROFESSIONAL'S TABLE TIGHTENING
+
+   `body .mv-ref-app.view-pro td/th` re-pads and re-sizes EVERY table in the
+   shell — a bare element selector, so it reaches step 4's lease table too and
+   shrinks it to 12.5px cells on 6px rows in that one density.
+
+   THE VALUES BELOW ARE THE SHEET'S OWN BASE VALUES, not the Tailwind ones the
+   component asks for. That distinction is the whole correctness of this rule
+   and it was got wrong first time round. The shell styles tables from bare
+   `td`/`th` selectors and those beat a Tailwind utility, so the lease table
+   renders at 11px/14px cells in EVERY density already and `table.tsx`'s own
+   10px/14px never applies. Restoring the component's values here would leave
+   Professional the one density that differs — the exact defect this file exists
+   to remove. Measured before and after.
+
+   `font-size: inherit` rather than a restated `13.5px`: the base size is set on
+   `.mv-ref-app table`, so inheriting takes whatever that rule says and cannot
+   fall out of step with it.
+
+   Base values: `.mv-ref-app th` (10px 14px) and `.mv-ref-app td` (11px 14px),
+   with the size from `.mv-ref-app table`.
+   ---------------------------------------------------------------------------- */
+.mv-ref-app.view-pro .mv-claim-flow td {
+  padding: 11px 14px;
+  font-size: inherit;
+}
+
+.mv-ref-app.view-pro .mv-claim-flow th {
+  padding: 10px 14px;
+}
+
+/* ----------------------------------------------------------------------------
+   5 · THE WALKTHROUGH'S OWN, TIGHTER COPY OF THESE SCREENS
+
+   The sample popup mounts the REAL step components, so every screen in it is
+   the page's screen. That is the whole point of it — a lookalike would drift.
+   But the popup is a 760px panel and the page is a full browser window, and the
+   page's own rhythm does not fit inside the panel: the stepper, the headings and
+   the padding that read correctly at full size cost the popup a third of its
+   stage.
+
+   THESE RULES CHANGE THE POPUP AND NOTHING ELSE. Every one is scoped under
+   `.mv-sample-stage`, which exists only inside the dialog, so the page renders
+   exactly as it did before any of this. It was done the wrong way round first —
+   by editing the shared components — which quietly restyled the live flow to
+   suit a demo. The components carry inert `data-claim` hooks now and no sizing
+   of their own beyond what the page wants.
+
+   WHY CSS AND NOT PROPS. Passing a `compact` flag down would put a branch in
+   five components and a second set of Tailwind classes in each, all to serve
+   one caller. A stylesheet the popup opts into keeps the components single-
+   purpose, and this file is unlayered — so these beat both the shell's sheet
+   and the components' own utilities without needing `!important`.
+   ---------------------------------------------------------------------------- */
+
+.mv-sample-stage [data-claim="heading"] {
+  gap: 8px;
+  font-size: 15px;
+}
+
+.mv-sample-stage [data-claim="panel"] {
+  padding: 18px;
+}
+
+.mv-sample-stage [data-claim="stepper"] {
+  padding-top: 6px;
+}
+
+.mv-sample-stage [data-claim="stepper"] li {
+  gap: 3px;
+  padding-top: 0;
+}
+
+.mv-sample-stage [data-claim="step-dot"] {
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+}
+
+/* The connector is pinned to the dot's middle, so it rises with the dot. */
+.mv-sample-stage [data-claim="step-line"] {
+  top: 10px;
+}
+
+.mv-sample-stage [data-claim="step-dot"] svg {
+  width: 11px;
+  height: 11px;
+}
+
+.mv-sample-stage [data-claim="step-label"] {
+  padding-bottom: 5px;
+  font-size: 11.5px;
+}
+
+.mv-sample-stage [data-claim="step-title"] {
+  font-size: 20px;
+}
+
+.mv-sample-stage [data-claim="step-lead"] {
+  margin-top: 10px;
+  font-size: 13.5px;
+}
+
+.mv-sample-stage [data-claim="find-form"] {
+  gap: 13px;
+}
+
+.mv-sample-stage [data-claim="find-fields"] {
+  padding: 16px;
+}
+
+/* The guide note and the action row are the two blocks between the fields and
+   the foot of a step, and together they carried about 50px of padding the popup
+   cannot spare. Trimmed here only — on the page they are the right size. */
+
+.mv-sample-stage [data-claim="find-form"] {
+  gap: 10px;
+}
+
+.mv-sample-stage [data-claim="guide"] {
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
+.mv-sample-stage [data-claim="step-actions"] {
+  padding-top: 12px;
+}

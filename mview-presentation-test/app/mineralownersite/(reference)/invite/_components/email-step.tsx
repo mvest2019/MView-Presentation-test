@@ -2,25 +2,17 @@
 
 import { Fragment } from "react";
 
-import { portalButtonClass } from "../../../_components/ui/button";
-import { Notice } from "../../../_components/ui/notice";
-import { SegmentedControl } from "../../../_components/ui/segmented-control";
-import {
-  DEFAULT_BODY,
-  firstNameOf,
-  plainAll,
-  plainText,
-  subjectFor,
-} from "../_lib/invite-letters";
-import type { CoOwner, GreetingStyle, Letter } from "../_lib/invite-types";
+import type { InviteEmailView } from "../_api/invite-api";
+import { DEFAULT_BODY } from "../_lib/invite-letters";
+import type { GreetingStyle } from "../_lib/invite-types";
 import { CopyButton } from "./copy-button";
 import { StepCard } from "./step-card";
 
 /**
- * THE BODY HAS A CEILING. Nothing technical forces one here — it is a textarea,
- * not a query string — but a letter that runs past two thousand characters has
- * stopped being a note from a relative, which is the only thing this page has
- * going for it. The counter stays out of sight until the reader is near it.
+ * THE BODY HAS A CEILING — the contract's own: POST and GET both cap `body` at
+ * 2,000 characters, and a letter that runs past that has stopped being a note
+ * from a relative anyway. The counter stays out of sight until the reader is
+ * near it.
  */
 const BODY_MAX = 2000;
 
@@ -32,48 +24,44 @@ const GREETINGS: { value: GreetingStyle; label: string }[] = [
 ];
 
 /**
- * STEP 3 · THE EMAIL.
+ * STEP 3 · THE EMAIL — WRITTEN BY THE SERVICE, SHOWN AND COPIED HERE.
  *
- * ── ONE BUTTON, AND IT IS THE JOB ──
+ * ── THE LETTERS ARRIVE RENDERED; NOTHING IS COMPOSED IN THE BROWSER ──
  *
- * There were four here once — copy the code, copy the link, email this one, and
- * a preview toggle — and only one of them is what the reader came for: copy the
- * message and paste it into their own mail. Everything else on this card is
- * either a setting for that message or a quieter way to send the same thing on
- * paper.
+ * Ticking a box records the invite and the service answers with the finished
+ * email: greeting resolved (a company is greeted by its own name whatever the
+ * reader picked), tokens substituted, the code minted and RESERVED. What this
+ * card holds is the reader's wording choices — which travel back on the next
+ * render — and the stepping, copying and editing around the result.
  *
- * ── THE LETTERS ARE STEPPED THROUGH, NOT STACKED ──
+ * ── `copy_text` REACHES THE CLIPBOARD VERBATIM ──
  *
- * Twenty ticks is twenty letters, and twenty letters printed down the page is a
- * document rather than a card. One at a time with arrows keeps the "copy"
- * button in the same place for all twenty — which matters, because the reader
- * is going to press it twenty times, alternating with their mail client.
+ * Subject + blank line + body, exactly as the service rendered it, per the
+ * contract's own rule. The preview may highlight the code; the clipboard gets
+ * the text untouched.
  *
- * ── HOW IT OPENS IS ON THE CARD; WHAT IT SAYS IS BEHIND A LINK ──
+ * ── THE CODE IS SHOWN AS `code_label` AND NOWHERE OUTSIDE A LETTER ──
  *
- * The greeting is the one thing nearly every reader wants to set, and the
- * wording is the thing nearly none of them touch. They used to be the other way
- * round: a twelve-row textarea taking half the card, with the greeting hidden
- * behind it.
+ * A code identifies ONE owner. The only places one appears are the letter
+ * addressed to the person it names and the per-person row beside that name.
  *
- * ── THE CODE IS HIGHLIGHTED IN THE PREVIEW AND NOWHERE ELSE ──
+ * ── THE PAPER ROW LOST ITS PRINT AND DOWNLOAD LINKS, for now ──
  *
- * `MailBody` marks it so the reader can see the one thing the recipient has to
- * act on. What the copy button hands over is `plainText` untouched: a mail
- * client pasting markup is a worse outcome than a code nobody noticed.
+ * They rendered through `/api/invite`, which still reads the demo fixture and
+ * cannot print a letter for a real lease. The per-person rows stay — each
+ * name, its code, and a copy of that one letter — and the links return when
+ * the backend grows a render endpoint.
  *
- * ── NO CODE IS SHOWN ON THIS PAGE EXCEPT INSIDE A LETTER ──
+ * ── `already_invited` IS INVISIBLE HERE, DELIBERATELY ──
  *
- * A code identifies ONE owner. A "your share code" printed at the top of the
- * page, or a column of them in the table, hands the reader something they can
- * copy to two cousins — and then two people hold one identifier. The only place
- * a code appears is in the letter addressed to the person it names, and in the
- * paper row beside that person's name.
+ * A box ticked in an earlier session comes back carrying the code issued then,
+ * and it looks exactly like every other letter — same code, same copy button.
+ * That is the contract's rule: it is a success, never an error.
  */
 export function EmailStep({
-  leaseId,
-  letters,
-  chosen,
+  emails,
+  copyAll,
+  rewording,
   at,
   onAt,
   greeting,
@@ -86,10 +74,11 @@ export function EmailStep({
   onEditing,
   sendNote,
 }: {
-  /** Which lease the letters are for — the download links carry it. */
-  leaseId: string;
-  letters: Letter[];
-  chosen: CoOwner[];
+  emails: InviteEmailView[];
+  /** Every recorded email in one block — the service's own "Copy all". */
+  copyAll: string | null;
+  /** True while a wording change is being re-rendered by the service. */
+  rewording: boolean;
   at: number;
   onAt: (next: number) => void;
   greeting: GreetingStyle;
@@ -102,62 +91,38 @@ export function EmailStep({
   onEditing: (next: boolean) => void;
   sendNote: string;
 }) {
-  /**
-   * THE LETTERS AS A DOCUMENT, AS A URL THE BROWSER CAN OPEN OR SAVE.
-   *
-   * THE WORDING TRAVELS IN THE QUERY STRING, and it has to: the greeting, the
-   * custom opener and any edit to the body live in React state, and a link
-   * cannot see React state. Carrying them means the sheet that prints is the
-   * letter that was on screen when the reader pressed the button, rather than
-   * the standard one.
-   *
-   * `who` NAMES THE OWNERS, defaulting to every one chosen. A letter is
-   * addressed to one person, so the per-owner rows pass a single number and get
-   * a single sheet named after that person; the batch passes none and gets all
-   * of them in one document.
-   */
-  const lettersUrl = (format: "html" | "csv", download: boolean, who?: string[]) => {
-    const params = new URLSearchParams();
-    params.set("lease", leaseId);
-    params.set("owners", (who ?? letters.map((l) => l.ownerNumber)).join(","));
-    params.set("greeting", greeting);
-    if (greeting === "custom" && custom.trim()) params.set("custom", custom.trim());
-    if (body !== DEFAULT_BODY) params.set("body", body.slice(0, BODY_MAX));
-    params.set("format", format);
-    if (download) params.set("dl", "1");
-    return `/api/invite?${params.toString()}`;
-  };
-
-  const index = Math.min(at, Math.max(0, letters.length - 1));
-  const one = letters[index] ?? null;
-  const cautions = letters.filter((letter) => letter.caution).length;
-  const notPeople = chosen.filter((owner) => owner.kind !== "person").length;
+  const index = Math.min(at, Math.max(0, emails.length - 1));
+  const one = emails[index] ?? null;
+  const cautions = emails.filter((email) => email.caution).length;
+  const notPeople = emails.filter((email) => email.kind !== "person").length;
 
   return (
     <StepCard
       n={3}
       title="Copy the email and send it"
       action={
-        letters.length ? (
-          <span className="inline-flex items-center gap-1.5 text-[12px] text-mv-slate">
-            {letters.length > 1 ? (
-              <StepArrow
-                label="Previous letter"
-                onClick={() => onAt((index - 1 + letters.length) % letters.length)}
+        emails.length ? (
+          <span className="iv-nav">
+            {emails.length > 1 ? (
+              <button
+                type="button"
+                aria-label="Previous letter"
+                onClick={() => onAt((index - 1 + emails.length) % emails.length)}
               >
-                ‹
-              </StepArrow>
+                &lsaquo;
+              </button>
             ) : null}
-            <b className="font-semibold tabular-nums">
-              {index + 1} of {letters.length}
+            <b>
+              {index + 1} of {emails.length}
             </b>
-            {letters.length > 1 ? (
-              <StepArrow
-                label="Next letter"
-                onClick={() => onAt((index + 1) % letters.length)}
+            {emails.length > 1 ? (
+              <button
+                type="button"
+                aria-label="Next letter"
+                onClick={() => onAt((index + 1) % emails.length)}
               >
-                ›
-              </StepArrow>
+                &rsaquo;
+              </button>
             ) : null}
           </span>
         ) : null
@@ -165,94 +130,109 @@ export function EmailStep({
     >
       {one ? (
         <>
+          {/* THE SERVICE'S OWN CAUTION, PROMINENTLY — the operator, a missing
+              address, an address that could not be split. All reasons a letter
+              should get a second look before it goes out. */}
           {one.caution ? (
-            <Notice tone="gold" glyph="!" className="mb-[10px]">
+            <p className="iv-warn">
               <strong>Worth a look first:</strong> {one.caution}
-            </Notice>
+            </p>
           ) : null}
 
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11px] font-bold tracking-[0.05em] text-mv-muted uppercase">
-              Opens with
+          <div className="iv-greet">
+            <span className="iv-lbl">Opens with</span>
+            <span className="ml-segs" role="group" aria-label="How the email opens">
+              {GREETINGS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={greeting === option.value ? "on" : ""}
+                  aria-pressed={greeting === option.value}
+                  onClick={() => onGreeting(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
             </span>
-            <SegmentedControl
-              label="How the email opens"
-              options={GREETINGS}
-              value={greeting}
-              onChange={onGreeting}
-            />
             {greeting === "custom" ? (
               <input
+                className="iv-custom"
                 value={custom}
                 maxLength={60}
                 onChange={(event) => onCustom(event.target.value)}
                 placeholder="Hi cousin"
                 aria-label="Your own greeting"
-                className="min-w-[140px] rounded-[9px] border border-mv-line bg-mv-card px-[10px] py-1.5 text-[12.5px] outline-none transition-colors hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)]"
               />
+            ) : null}
+            {/* The wording round-trips to the service; the pause is named
+                rather than left as a preview that lags a beat behind. */}
+            {rewording ? (
+              <span className="tiny muted" role="status">
+                rewording…
+              </span>
             ) : null}
           </div>
 
-          {/* "DEAR FAMILY" IS WRONG FOR AN LLC, and the roll is full of them.
-              The rule is stated where the choice is made, not discovered in the
-              preview three letters later. */}
+          {/* "DEAR FAMILY" IS WRONG FOR AN LLC, and the service enforces that
+              server-side. The rule is stated where the choice is made, not
+              discovered in the preview three letters later. */}
           {greeting !== "first" && greeting !== "name" && notPeople ? (
-            <p className="m-0 mt-1.5 text-[11.5px] text-mv-muted">
+            <p className="tiny muted" style={{ margin: "0 0 10px" }}>
               {notPeople} of your picks{" "}
               {notPeople === 1 ? "is a company or a trust" : "are companies or trusts"}
-              . Those are always addressed by their own name, whatever you
-              choose here.
+              . Those are always addressed by their own name, whatever you choose
+              here.
             </p>
           ) : null}
 
-          <div className="mt-3 overflow-hidden rounded-mv border border-mv-line">
-            <MailRow label="To">
-              <b className="font-semibold">{one.to}</b>
-              <i className="ml-2 text-[11.5px] font-normal text-mv-muted not-italic">
+          <div className="iv-mail">
+            <div className="iv-mailrow">
+              <span>To</span>
+              <b>{one.to}</b>
+              <i className="tiny muted">
                 you add the address — the roll holds no email
               </i>
-            </MailRow>
-            <MailRow label="Subject">
-              <b className="font-semibold">{subjectFor(one)}</b>
-            </MailRow>
-            <MailBody text={plainText(one)} code={one.codeLabel} />
+            </div>
+            <div className="iv-mailrow">
+              <span>Subject</span>
+              <b>{one.subject}</b>
+            </div>
+            <MailBody text={one.bodyText} code={one.codeLabel} />
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="iv-do">
             <CopyButton
               variant="primary"
               size="md"
-              text={`${subjectFor(one)}\n\n${plainText(one)}`}
-              /* THE NAME ON THE BUTTON IS THE NAME IN THE LETTER, worked out
-                 the same way the greeting is. Taking the first word of the "To"
-                 line would give the SURNAME — the roll files a person last name
-                 first — and the button would promise a letter to "Dear McCabe"
-                 while the letter said "Dear Corliss". */
+              /* VERBATIM — the contract's rule. Plain text on purpose; pasting
+                 HTML into a mail client is worse than a plain code. */
+              text={one.copyText}
               label={(() => {
-                const owner = chosen[Math.min(index, chosen.length - 1)];
-                const given = owner ? firstNameOf(owner) : null;
+                const given = givenNameOf(one);
                 return given ? `Copy this email — for ${given}` : "Copy this email";
               })()}
             />
-            {letters.length > 1 ? (
+            {emails.length > 1 && copyAll ? (
               <CopyButton
                 size="md"
-                text={plainAll(letters)}
-                label={`Copy all ${letters.length}`}
+                text={copyAll}
+                label={`Copy all ${emails.length}`}
                 title="Every chosen letter as one block, each with its own heading and code"
               />
             ) : null}
-            <QuietButton onClick={() => onEditing(!editing)}>
+            <button
+              type="button"
+              className="iv-link"
+              onClick={() => onEditing(!editing)}
+            >
               {editing ? "Done editing" : "Change the wording"}
-            </QuietButton>
+            </button>
           </div>
 
           {editing ? (
-            <div className="mt-3 rounded-mv border border-mv-line bg-mv-portal-explain p-3">
-              <span className="text-[11px] font-bold tracking-[0.05em] text-mv-muted uppercase">
-                What it says
-              </span>
-              <p className="m-0 mt-1 text-[12px] leading-[1.5] text-mv-muted">
+            <div className="iv-edit">
+              <span className="iv-lbl">What it says</span>
+              <p className="iv-editnote">
                 It is your letter — change as much as you like. Each person gets
                 their own name and their own code filled in when you copy it.
               </p>
@@ -262,19 +242,13 @@ export function EmailStep({
                 rows={9}
                 onChange={(event) => onBody(event.target.value)}
                 aria-label="The wording of the email"
-                className="mt-2 w-full resize-y rounded-[9px] border border-mv-line bg-mv-card p-[10px] font-mono text-[12px] leading-[1.6] outline-none transition-colors hover:border-mv-green focus-visible:border-mv-green focus-visible:ring-[3px] focus-visible:ring-[rgba(84,191,150,.16)]"
               />
               {/*
-                THE INSERT BUTTONS SAY WHAT THEY ADD, IN WORDS. They were
-                labelled with the brace syntax itself — `{name}`, `{code}` —
-                which means nothing to a reader who has never written a
-                template, beside a character counter nobody needs until they are
-                near the limit.
+                THE INSERT BUTTONS SAY WHAT THEY ADD, IN WORDS. The tokens are
+                the contract's own — the service substitutes them per recipient.
               */}
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] font-bold tracking-[0.05em] text-mv-muted uppercase">
-                  Add
-                </span>
+              <div className="iv-chips">
+                <span className="iv-chipk">Add</span>
                 {(
                   [
                     ["{name}", "their name"],
@@ -286,23 +260,26 @@ export function EmailStep({
                   <button
                     key={token}
                     type="button"
+                    className="iv-tok"
                     onClick={() =>
                       onBody(`${body}${body.endsWith(" ") ? "" : " "}${token}`)
                     }
-                    className="cursor-pointer rounded-full border border-mv-line bg-mv-card px-[10px] py-1 text-[11.5px] font-semibold text-mv-slate transition-colors hover:border-mv-green hover:text-mv-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
                   >
                     {what}
                   </button>
                 ))}
                 {body !== DEFAULT_BODY ? (
-                  <span className="ml-auto">
-                    <QuietButton onClick={() => onBody(DEFAULT_BODY)}>
-                      Start again from the standard letter
-                    </QuietButton>
-                  </span>
+                  <button
+                    type="button"
+                    className="iv-link"
+                    style={{ marginLeft: "auto" }}
+                    onClick={() => onBody(DEFAULT_BODY)}
+                  >
+                    Start again from the standard letter
+                  </button>
                 ) : null}
                 {body.length > BODY_MAX * 0.8 ? (
-                  <span className="text-[11.5px] text-mv-muted">
+                  <span className="tiny muted">
                     {BODY_MAX - body.length} characters left
                   </span>
                 ) : null}
@@ -311,147 +288,86 @@ export function EmailStep({
           ) : null}
 
           {/*
-            ON PAPER, ONE LETTER PER PERSON.
-
-            It was one document holding all of them, which is right for a print
-            run and wrong for everything else: to send Corliss hers you had to
-            find her page inside a three-page file. Each owner has their own row
-            now, carrying their own code — this is the second of the two places
-            a code is allowed to appear, and it is beside the name it belongs to.
-
-            THE POSTAL TEXT IS NOT THE EMAIL TEXT. It carries the lease heading
-            and the recipient's name above the greeting, which a printed sheet
-            needs and an email to a cousin does not.
+            EACH PERSON'S CODE, BESIDE THE NAME IT BELONGS TO — the second of
+            the two places a code is allowed to appear. The copy on each row is
+            that one letter, for a reader working down twenty cousins one paste
+            at a time without stepping the preview.
           */}
-          <div className="mt-[18px] border-t border-mv-portal-hairline pt-3">
-            <span className="text-[11px] font-bold tracking-[0.05em] text-mv-muted uppercase">
-              Or send it on paper — one letter per person
-            </span>
-            <ul className="m-0 mt-2 flex list-none flex-col items-stretch gap-1.5 p-0">
-              {letters.map((letter) => (
-                <li
-                  key={letter.ownerNumber}
-                  className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-[10px] bg-mv-portal-wash px-[10px] py-[7px] text-[12.5px]"
-                >
-                  <b className="font-semibold">{letter.to}</b>
-                  <span className="font-mono text-[12px] tracking-[0.04em] text-mv-slate tabular-nums">
-                    {letter.codeLabel}
-                  </span>
-                  {/* PRINT OPENS, DOWNLOAD SAVES, COPY PASTES — three ways out
-                      of the same letter, because the reader's next move is not
-                      knowable from here. Print is `target="_blank"`: it is a
-                      document, and replacing the page the reader is working in
-                      would lose their ticks. */}
-                  <span className="ml-auto flex flex-wrap items-center gap-2">
-                    <CopyButton
-                      text={plainText(letter, { postal: true })}
-                      label="Copy for post"
-                      title="The same letter with the lease heading and their name above it, ready to paste into a document"
-                    />
-                    <a
-                      className={portalButtonClass({ variant: "ghost", size: "sm" })}
-                      href={lettersUrl("html", false, [letter.ownerNumber])}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Print
-                    </a>
-                    <a
-                      className={portalButtonClass({ variant: "ghost", size: "sm" })}
-                      href={lettersUrl("html", true, [letter.ownerNumber])}
-                    >
-                      Download
-                    </a>
-                  </span>
+          <div className="iv-also">
+            <span className="iv-alsok">Each person&rsquo;s own letter and code</span>
+            <ul className="iv-each">
+              {emails.map((email) => (
+                <li key={email.ownerKey}>
+                  <b>{email.to}</b>
+                  <span className="iv-eachcode">{email.codeLabel}</span>
+                  <CopyButton
+                    size="sm"
+                    text={email.copyText}
+                    label="Copy"
+                    title={`The email for ${email.to}, subject line included`}
+                  />
                 </li>
               ))}
             </ul>
-
-            {/* AND THE WHOLE SELECTION AT ONCE. The combined document is right
-                for an actual print run — one trip to the printer, a page break
-                between owners — and the spreadsheet is for a reader who mails
-                their own way and wants the codes in a column. */}
-            <div className="mt-2.5 flex flex-wrap items-center gap-2">
-              {letters.length > 1 ? (
-                <a
-                  className={portalButtonClass({ variant: "ghost", size: "sm" })}
-                  href={lettersUrl("html", false)}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Print all {letters.length} in one go
-                </a>
-              ) : null}
-              <a
-                className={portalButtonClass({ variant: "ghost", size: "sm" })}
-                href={lettersUrl("csv", true)}
-              >
-                {letters.length === 1
-                  ? "Code as a spreadsheet"
-                  : "All codes as one spreadsheet"}
-              </a>
-            </div>
           </div>
 
           {cautions ? (
-            <p className="m-0 mt-3 border-l-[3px] border-l-mv-sand-line pl-[10px] text-[12px] leading-[1.55] text-mv-muted">
+            <p className="pf2-note">
               {cautions === 1 ? "One of these" : `${cautions} of these`} wants a
               look before it goes — step through them with the arrows above.
             </p>
           ) : null}
         </>
       ) : (
-        <p className="m-0 rounded-mv border border-dashed border-mv-line-strong px-4 py-6 text-center text-[13px] text-mv-muted">
+        <p className="iv-empty">
           Tick somebody in step 2 and their email is written here, ready to copy.
         </p>
       )}
 
-      <p className="m-0 mt-3 border-l-[3px] border-l-mv-line-strong pl-[10px] text-[12px] leading-[1.55] text-mv-muted">
-        {sendNote}
-      </p>
+      <p className="pf2-note">{sendNote}</p>
     </StepCard>
   );
 }
 
-function MailRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-wrap items-baseline gap-x-2 border-b border-mv-portal-hairline bg-mv-portal-explain px-3 py-2 text-[12.5px]">
-      <span className="w-[52px] flex-none text-[11px] font-bold tracking-[0.05em] text-mv-muted uppercase">
-        {label}
-      </span>
-      <span className="min-w-0">{children}</span>
-    </div>
-  );
+/**
+ * The name for the copy button, read OUT OF THE GREETING the service resolved.
+ *
+ * The old build re-derived a first name from the roll spelling; the service
+ * now owns that logic, and re-implementing it here would let the button
+ * promise a letter to one name while the letter opened with another. "Dear
+ * Judy," names Judy; "Dear family," and anything too long to fit on a button
+ * fall back to the button's plain label.
+ */
+function givenNameOf(email: InviteEmailView): string | null {
+  const match = /^Dear (.+),$/.exec(email.greeting.trim());
+  if (!match) return null;
+  const name = match[1];
+  if (name.toLowerCase() === "family" || name.length > 24) return null;
+  return name;
 }
 
 /**
  * The email body, with the invite code set off from the rest.
  *
- * IT WAS PLAIN TEXT IN A WALL OF PLAIN TEXT — the one thing in the message the
- * recipient has to act on, with nothing to mark it. It appears twice, once in
- * the sentence that introduces it and once on a line of its own, and the line
- * that is NOTHING BUT the code is set large: a plain-text email has no type
- * sizes, so the letter itself uses position for that, and on screen there are
- * type sizes to use instead.
- *
- * DISPLAY ONLY — see the note on the card about what reaches the clipboard.
+ * DISPLAY ONLY — the clipboard gets `copy_text` untouched. The line that is
+ * NOTHING BUT the code is set large: a plain-text email has no type sizes, so
+ * the letter itself uses position for that, and on screen there are type sizes
+ * to use instead.
  */
 function MailBody({ text, code }: { text: string; code: string }) {
   return (
-    <pre className="m-0 max-h-[300px] overflow-y-auto overscroll-contain bg-mv-card p-3 font-mono text-[12px] leading-[1.65] whitespace-pre-wrap text-mv-ink-soft">
+    <pre className="iv-mailbody">
       {text.split("\n").map((line, i) => {
         const key = `${i}-${line.length}`;
         if (line.trim() === code) {
           return (
             <Fragment key={key}>
-              <mark className="rounded-md bg-mv-mint px-1.5 py-px text-[15px] font-bold tracking-[0.06em] text-mv-green-ink">
-                {code}
-              </mark>
+              <mark className="iv-hl big">{code}</mark>
               {"\n"}
             </Fragment>
           );
         }
-        if (!line.includes(code)) {
+        if (!code || !line.includes(code)) {
           return (
             <Fragment key={key}>
               {line}
@@ -465,11 +381,7 @@ function MailBody({ text, code }: { text: string; code: string }) {
             {parts.map((part, j) => (
               <Fragment key={`${key}-${j}`}>
                 {part}
-                {j < parts.length - 1 ? (
-                  <mark className="rounded bg-mv-mint px-1 font-semibold text-mv-green-ink">
-                    {code}
-                  </mark>
-                ) : null}
+                {j < parts.length - 1 ? <mark className="iv-hl">{code}</mark> : null}
               </Fragment>
             ))}
             {"\n"}
@@ -477,44 +389,5 @@ function MailBody({ text, code }: { text: string; code: string }) {
         );
       })}
     </pre>
-  );
-}
-
-function StepArrow({
-  label,
-  onClick,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={onClick}
-      className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-lg border border-mv-line bg-mv-card text-[14px] leading-none text-mv-slate transition-colors hover:border-mv-green hover:text-mv-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
-    >
-      {children}
-    </button>
-  );
-}
-
-function QuietButton({
-  onClick,
-  children,
-}: {
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="cursor-pointer border-0 bg-transparent p-0 text-[12.5px] font-semibold text-mv-green-deep underline underline-offset-2 hover:text-mv-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
-    >
-      {children}
-    </button>
   );
 }

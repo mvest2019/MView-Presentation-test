@@ -17,6 +17,7 @@ The companion document for the other half of the same snapshot is
 
 | Concern | File |
 |---|---|
+| The route's QA CSS overrides | `app/mineralownersite/dashboard-reference.alerts.css` |
 | Route (server half) | `app/mineralownersite/(reference)/alerts/page.tsx` |
 | The page itself | `app/mineralownersite/_components/reference/AlertsView.tsx` |
 | Shell, drawer, **read state** | `app/mineralownersite/_components/reference/Portal.tsx` |
@@ -155,7 +156,7 @@ needs a direct child of the route section, which a component tree cannot promise
 | **Essentials** | the header with mark-all-read, the alerts-in-one-line card, and the rows |
 | **Detailed** | adds the **watch ledger**, the search box, the quiet-week card, the delivery footer |
 | **Professional** | adds the class legend, the method note under the ledger, the per-row class chip, the per-row evidence-line count, a fourth stat cell, and the email-policy footer |
-| **Not claimed** | the claim rail above everything, the sample badge, the claim CTA at the foot. `Portal` forces the density to `pro` while nothing is claimed |
+| **Not claimed** | the claim rail above everything, the sample badge, the claim CTA at the foot. `Portal` forces the density to `pro` while nothing is claimed. Both claim CTAs are `next/link`s to `/mineralownersite/claim`, and **no read-state or preferences control renders** — nothing in the list is the reader's, so there is nothing to mark read and nothing to tune |
 
 The Ultra tier is *undivided*, not *empty*. It was landing on a sentence and a
 button — nothing to weigh, and nothing to suggest a fuller view existed. It now
@@ -260,6 +261,15 @@ disagreeing on screen.
 - **Persisted** to `localStorage` under `mv.alertsRead`, alongside `mv.tier` and
   `mv.funnel`. `unread` is the *server's* opinion and the contract says read
   state is client-side, so the browser is the right home for it.
+- **No unread FIGURE renders before that store has been read.** `Portal` reads
+  it in a `useLayoutEffect` and hands down `readReady`; the header's
+  "Mark all *N* read", the Unread pill and `Chrome`'s rail badge and bell all
+  wait for it. Without the gate the server rendered the only count it has —
+  `unread` alone — so a reader who had marked everything read, reloaded, and
+  watched "6" sit there until hydration corrected it to "4" was not seeing a
+  stale cache. `readReady` is `false` on the server *and* on the first client
+  render, so there is no hydration mismatch; a count briefly absent is honest,
+  a count briefly wrong is not.
 - **Pruned on every new snapshot** by an effect on `data.alerts.items`. Two of
   the contract's ids carry a period or a lease (`filed-<YYYYMM>`,
   `handover-<lease_id>`), so an id stops existing when the month rolls.
@@ -271,8 +281,16 @@ disagreeing on screen.
 
 Five pills — All · Money · Activity · Models & forecasts · Community — counted
 from `al.counts`. **A pill with a zero count is not rendered** (except `all`).
-An Unread pill appears at the far right only while something is unread, and
-pressing it marks everything read.
+An Unread pill appears at the far right only while something is unread and
+`readReady` is true.
+
+**The Unread pill filters; it does not mark.** It used to call `markRead` on
+everything — the one control in a row of filters that changed the data rather
+than the view, sitting beside a header button that does exactly that and says
+so. Pressing "Unread · 6" to see the six unread alerts emptied the chip and left
+the same nine rows on screen with no way back. It is now a third gate alongside
+category and search, and `clearFilters` — the empty card's "show all *N*" —
+clears all three.
 
 ### Search
 
@@ -281,7 +299,7 @@ Detailed and above. Matches `title`, `body`, `lead_lease`, `klass`,
 strings the reader can see, rather than a hidden index. The placeholder promises
 "lease, operator, county, or any word".
 
-Category and search are **both gates, always**. A search that silently reset the
+Category, search and the Unread pill are **all gates, always**. A search that silently reset the
 category would strand a reader who narrowed to Money and then typed a lease
 name. A search with no hits offers "clear it and show all *N*", which clears
 both.
@@ -289,6 +307,15 @@ both.
 ---
 
 ## 7. The row
+
+**Newest first.** `al.items` arrives in the builder's own order, which groups by
+finding type and so interleaves a 2025 completion between two June 2026 rows.
+`AlertsView` sorts a copy by `detected_label` descending, tie-broken on
+`event_label`. `detected_label` leads deliberately: it is the day the finding
+entered this inbox, which is what "latest first" means to someone working
+through it, where `event_label` is the day the filing is *about* and ordering on
+it puts a forecast dated February 2030 above everything that happened this week.
+An unparseable or missing label sorts to the bottom, not the top.
 
 Clicking or pressing Enter/Space on a row marks it read **and** opens
 `alert:<id>` in the drawer. The whole row is `role="button"`, with an
@@ -475,9 +502,18 @@ and a zero pill is suppressed.
 - **`standing_permits` and `lease_months_read`** have no second source, so
   `watchLedger`'s derived path leaves them at zero and drops their clauses. Only
   a populated server ledger prints them.
+- **The sample is one record for everybody.** `Portal` fetches the committed
+  capture from `/api/portfolio/sample` and hands *that* to `sampleize`, rather
+  than the reader's own snapshot. It used to pass `live`, which meant the
+  not-claimed preview was a different record per visitor — and, for a member who
+  had claimed something, their own portfolio under invented lease names. It is a
+  fetch and not an import because the capture is 2 MB and `Portal` is a client
+  component. While the fetch is in flight it falls back to `sampleize(live)`,
+  which is the old behaviour and still fully anonymised.
+
 - **Read state is per-browser.** `mv.alertsRead` is `localStorage`; marking read
   on a phone does not mark read on a desktop. The contract says read state is
   client-side, so this is by design until the API grows somewhere to record it —
   `markRead` in `Portal.tsx` is the one place that would change.
-- **The Settings links** point at `/mineralownersite/soon/settings`, which is
-  the "coming soon" page.
+- **`standing_permits` and `lease_months_read`** are still the only ledger
+  fields with no second source.

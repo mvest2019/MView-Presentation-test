@@ -2,11 +2,23 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import {
-  PortalButton,
-  type PortalButtonSize,
-  type PortalButtonVariant,
-} from "../../../_components/ui/button";
+/* NO `PortalButton` ANY MORE. This page is drawn by the route group's own
+   sheet now, and `dashboard-reference.css` ships `.btn` with `.btn-primary`,
+   `.btn-ghost` and `.btn-sm` — the same button every other page in the group
+   presses. Importing the `(portal)` kit's button here put a second button
+   design on a page that already had one. */
+type ButtonVariant = "primary" | "ghost";
+type ButtonSize = "sm" | "md";
+
+/** the group's own button classes, assembled the way `Chrome` assembles them */
+function btnClass(variant: ButtonVariant, size: ButtonSize, extra?: string): string {
+  return [
+    "btn",
+    variant === "primary" ? "btn-primary" : "btn-ghost",
+    size === "sm" ? "btn-sm" : null,
+    extra,
+  ].filter(Boolean).join(" ");
+}
 
 /** How long the confirmation stands before the button says its own name again. */
 const CONFIRM_MS = 1800;
@@ -44,8 +56,8 @@ export function CopyButton({
   text: string;
   label: string;
   copiedLabel?: string;
-  variant?: PortalButtonVariant;
-  size?: PortalButtonSize;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
   className?: string;
   title?: string;
 }) {
@@ -71,10 +83,9 @@ export function CopyButton({
   };
 
   return (
-    <PortalButton
-      variant={variant}
-      size={size}
-      className={className}
+    <button
+      type="button"
+      className={btnClass(variant, size, className)}
       title={title}
       onClick={copy}
       /* The confirmation is a visual change on a control the reader has just
@@ -87,6 +98,6 @@ export function CopyButton({
         : state === "refused"
           ? "Select it and press ⌘C"
           : label}
-    </PortalButton>
+    </button>
   );
 }
