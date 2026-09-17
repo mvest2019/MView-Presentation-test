@@ -1,13 +1,7 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 
-import {
-  INVITE_CODE_PARAM,
-  INVITE_REDEEM_PARAM,
-  normalizeInviteCode,
-} from "@/lib/invite-code";
+import { INVITE_CODE_PARAM, normalizeInviteCode } from "@/lib/invite-code";
 import { PORTAL_HOME } from "@/lib/routes";
-import { getSessionUser } from "@/lib/session";
 
 import { AuthShell } from "../_components/auth-shell";
 import { RegisterForm } from "./_components/register-form";
@@ -57,18 +51,15 @@ export default async function RegisterPage({
   const inviteCode =
     normalizeInviteCode(Array.isArray(rawCode) ? rawCode[0] : rawCode) ?? "";
 
-  /* A visitor who ALREADY has a session skips this page — but their invitation
-     must not be dropped on the way out. The code rides the redirect under the
-     portal's own parameter, so the redeem flow (`InviteRedeem`) still looks it
-     up and claims their record, the same as if they had just registered. */
-  if (await getSessionUser()) {
-    redirect(
-      inviteCode
-        ? `${PORTAL_HOME}?${INVITE_REDEEM_PARAM}=${inviteCode}`
-        : PORTAL_HOME,
-    );
-  }
-
+  /* A visitor who ALREADY has a session skips this page — `proxy.ts` redirects
+     their GET before the render, carrying any invitation code to the portal
+     under the redeem parameter so `InviteRedeem` still claims their record.
+     The redirect() that used to do that HERE is gone for the reason written
+     out on `app/login/page.tsx`: registration ends in a server-action POST to
+     this route that sets the session cookie, the cookie triggers a re-render
+     of this page inside that POST, and the redirect firing mid-re-render
+     committed an empty page under the URL while racing the form's own full
+     navigation — the blank-band bug, on this page's flow too. */
   const requested = Array.isArray(params.next) ? params.next[0] : params.next;
   const next = requested && /^\/(?!\/)/.test(requested) ? requested : PORTAL_HOME;
 

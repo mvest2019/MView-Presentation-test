@@ -20,10 +20,12 @@
  * whether they have a session or not. The fix for it is NOT a bigger fallback —
  * it is to redirect BEFORE the render, which is what `proxy.ts` is for and what
  * Next's own guidance says ("If you'd like to redirect before the render
- * process, use next.config.js or Proxy"). Doing that needs the session cookie's
- * name pulled out of `lib/session.ts`, which cannot be imported from a proxy
- * because it reaches for `next/headers`, and needs the redirect limited to GET
- * so a server-action POST to this URL is never bounced. Not done here.
+ * process, use next.config.js or Proxy"). DONE, 2026-09-17 (Pragati, with a
+ * screenshot of the blank band on the deployed app): `proxy.ts` now bounces a
+ * signed-in GET off `/login` and `/register` before either renders, with the
+ * cookie name duplicated there for the `next/headers` reason and the redirect
+ * limited to GET so a server-action POST is never bounced. The pages keep
+ * their own `redirect()` as the backstop.
  *
  * Sign-in and sign-up no longer route through here themselves — both finish
  * with one full navigation now, see the note on `onValid` in
