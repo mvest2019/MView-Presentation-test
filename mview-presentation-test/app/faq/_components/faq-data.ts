@@ -47,7 +47,7 @@ export const MOST_ASKED: readonly Omit<FaqEntry, "category">[] = [
   },
   {
     question: "How is Free different from Essentials and Premium?",
-    answerHtml: `<p>Free is 1 active owner and 1 visible lease. Essentials is up to 5 visible leases and portfolio exports at $49.95/mo. Premium is up to 10 visible leases, the monthly production mailed report, and the private document vault at $99.95/mo. Enterprise is custom and contact-required. Annual prepay is 10 × monthly — pay for 10 months, get 12: Essentials $499.50/yr, Premium $999.50/yr.</p><p><em>All pricing is illustrative for design review — not yet an offer.</em></p>`,
+    answerHtml: `<p>Free is 1 owner record and 1 visible lease. Pro is 1 record and up to 5 visible leases with portfolio exports at $49.99/mo. Premium is 2 records at 10 leases each — 20 of capacity — plus the monthly production mailed report and the private document vault at $99.99/mo, and it is the only plan carrying the $1.99/mo add-on lease. Enterprise is 3 or more records, custom and contact-required. Annual prepay is 10 × monthly — pay for 10 months, get 12: Pro $499.90/yr, Premium $999.90/yr.</p><p><em>All pricing is illustrative for design review — not yet an offer.</em></p>`,
   },
   {
     question: "Do paid plans auto-renew?",

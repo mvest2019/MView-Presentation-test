@@ -1,0 +1,77 @@
+/*
+ * `.flex` MEANS TWO THINGS ON THIS SHELL. THIS IS THE SEAM BETWEEN THEM.
+ *
+ * `dashboard-reference.css` line 254 is
+ *
+ *     .mv-ref-app .flex { display:flex; align-items:center; gap:10px }
+ *
+ * — a component class from the reference build, where `.flex` is a named row:
+ * a label beside a control, centered, ten pixels apart. It is used that way in
+ * a few hundred places and is correct there.
+ *
+ * `.flex` is ALSO Tailwind's own utility, and three routes in this group render
+ * Tailwind markup: Settings and Profile, which moved here from `(portal)` to
+ * wear this header, and Billing, which renders `/pricing`'s `PlanCard`. In that
+ * markup `flex` says ONLY "be a flex container" — alignment and gap are stated
+ * separately when they are wanted, and left unstated when the default is
+ * right. Under this shell "unstated" silently became centered and 10px apart.
+ *
+ * ── WHAT IT ACTUALLY BROKE, MEASURED ──
+ *
+ *   Profile    4 field wrappers — "Full name *", "Email *", "Phone (optional)",
+ *              "Mailing address *" — and their hint lines, centered over their
+ *              own inputs. They are `flex flex-col gap-1.5` with no `items-*`,
+ *              because under `(portal)` a column of blocks stacks left and
+ *              there was nothing to say.
+ *
+ *   Billing    26 elements centered and 8 gapped, including every `PlanCard`
+ *              root and every price tile — so the plan name, the audience line
+ *              and the price sat centered on a card that is left-aligned on
+ *              `/pricing`, with 10px of extra air between every block. Two
+ *              pages showing the same card, differently.
+ *
+ *   Settings   72 rows ask for an alignment explicitly and are untouched; the
+ *              rest take the default.
+ *
+ * `step-card.tsx` in the Invite route recorded this trap when that page made
+ * the same move: "an unstated alignment silently becomes `center`". It is
+ * unstated in dozens of files, so it is answered once, here, for the three
+ * route sections that are Tailwind — rather than by adding `items-start` and
+ * `gap-0` to every container in all of them.
+ *
+ * ── `normal` AND `0`, WHICH ARE THE DEFAULTS BEING PUT BACK ──
+ *
+ * `align-items: normal` is what a flex container has when nobody has said
+ * otherwise, and `gap: 0` likewise. `flex-start` would be a new opinion; these
+ * remove one. Nothing here decides how anything should look — it decides only
+ * that the reference's component rule stops reaching markup that never asked
+ * for it.
+ *
+ * ── WHY IT IS LAYERED, WHICH THE REST OF THIS FOLDER'S PAGE SHEETS ARE NOT ──
+ *
+ * It must LOSE to a Tailwind utility. Everything that genuinely wants centering
+ * says `items-center` and everything that wants space says `gap-2`, and those
+ * live in `@layer utilities`; an unlayered rule here would beat them and break
+ * every row that asked on purpose — measured, 17 such rows on Profile, 72 on
+ * Settings, and every feature line inside a `PlanCard`. Declaring it in
+ * `mv-reference` puts it after `dashboard-reference.css` in the same layer, so
+ * it wins the collision it is for, and still behind every utility.
+ * `app/globals.css` fixes that order: `@layer properties, theme, base,
+ * mv-reference, mv-map-reset, components, utilities`.
+ *
+ * ── THE ROUTES ARE LISTED, NOT GENERALIZED ──
+ *
+ * Not `.mv-ref-app .flex` at large: Alerts, the Dashboard, Activities and
+ * Invite are the reference's own markup, where `.flex` is the component class
+ * and centering is the point. Narrowing to the three Tailwind sections is what
+ * keeps this from being a redesign of the other four. A new Tailwind page in
+ * this group adds its `data-route` here.
+ */
+@layer mv-reference {
+  .mv-ref-app section[data-route="app-settings"] .flex,
+  .mv-ref-app section[data-route="app-profile"] .flex,
+  .mv-ref-app section[data-route="app-billing"] .flex {
+    align-items: normal;
+    gap: 0;
+  }
+}

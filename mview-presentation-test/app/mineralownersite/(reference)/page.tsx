@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
 
+import { INVITE_REDEEM_PARAM, normalizeInviteCode } from "@/lib/invite-code";
+import { getSessionUser } from "@/lib/session";
+import { DashboardVeil } from "../_components/dashboard-veil";
+import { InviteRedeem } from "../_components/invite-redeem";
 import Portal from "../_components/reference/Portal";
 import {
   getOwnerPayload,
@@ -85,8 +89,40 @@ export default async function MineralOwnerDashboard({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const initial: Payload | null = await loadInitial(searchParams);
-  return <Portal route="dashboard" initial={initial} />;
+  /*
+   * A MEMBER ARRIVING OFF AN INVITATION carries `?invite=<code>` from the
+   * register form, and the code's whole promise is "your leases come across on
+   * their own". `InviteRedeem` keeps it: lookup resolves the code to the owner
+   * of record, the claim files that record for THIS member, and the page then
+   * reloads clean with the claim landed. Both identity checks are server-side
+   * here — the session names the member, and a malformed code renders nothing
+   * at all rather than shipping a component to fail in the browser.
+   */
+  const [initial, user, q] = await Promise.all([
+    loadInitial(searchParams),
+    getSessionUser(),
+    searchParams,
+  ]);
+  const redeemCode = normalizeInviteCode(
+    Array.isArray(q[INVITE_REDEEM_PARAM])
+      ? q[INVITE_REDEEM_PARAM]?.[0]
+      : (q[INVITE_REDEEM_PARAM] as string | undefined),
+  );
+
+  return (
+    <>
+      {/* Exactly one loader per entry: the redeem loader when a code is being
+          looked up and claimed (it owns the page for the whole flow), the load
+          veil on every other dashboard entry — both in the server HTML, so the
+          unclaimed state can never be the first paint. */}
+      {user && redeemCode ? (
+        <InviteRedeem memberId={user.id} code={redeemCode} />
+      ) : (
+        <DashboardVeil />
+      )}
+      <Portal route="dashboard" initial={initial} />
+    </>
+  );
 }
 
 /**

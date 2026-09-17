@@ -50,6 +50,7 @@ import type { ForecastLease, ForecastMonth, ForecastStat } from '../../_lib/refe
 import { MCF, BBL, n0, n1, nShort, usd, usdShort, pctS, pct1, plural } from '../../_lib/reference/fmt';
 import ForecastChart, { Brush, MEASURE, type Measure, type Products } from './ForecastChart';
 import type { ViewProps } from './Dashboard';
+import { Pager, usePaged } from './bits';
 
 /* --------------------------------------------------------------- the window
    Every preset is expressed against the SEAM rather than against an index,
@@ -169,6 +170,20 @@ export default function ProductionView(
     () => windowFor(simple ? 'last24' : 'all', n, f.seam),
   );
   const [pinned, setPinned] = useState<number | null>(null);
+  /* TEN ROWS, THE SAME AS THE DASHBOARD'S TWO LONG LISTS.
+     `usePaged` and `Pager` are the pair that page "Your operators" and "Every
+     lease, every field" — same hook, same control, same ten. This table had no
+     pager at all, and on a large account that is what the page mostly is:
+     measured on a 108-lease record it ran 8,596px of the document's 15,682, so
+     more than half the page was one table the reader has to scroll past to
+     reach the scorecard and the deduction panel below it. The commit that
+     paged the Dashboard's two put the reason plainly — "ten rows keeps every
+     card the same height whatever the account holds" — and it is the same
+     reader doing the same job here.
+
+     THE LEASE `<select>` ABOVE IS NOT PAGED, deliberately: it is how a reader
+     reaches a lease that is not on this page, so it has to keep all of them. */
+  const paged = usePaged(f.leases);
   const chartRef = useRef<HTMLDivElement | null>(null);
 
   /** the series the chart draws: the portfolio, or one lease */
@@ -456,7 +471,9 @@ export default function ProductionView(
                   />
                   <path
                     d="M 13 65 A 52 52 0 0 1 117 65" fill="none"
-                    stroke={k === 'gas' ? 'var(--green-deep)' : '#b8892f'}
+                    /* golden gas, green oil — the same pair the key below,
+                       the year columns and the chart all use */
+                    stroke={k === 'gas' ? '#b8892f' : 'var(--green-deep)'}
                     strokeWidth="10" strokeLinecap="round"
                     strokeDasharray={`${done} ${LEN}`}
                   />
@@ -761,7 +778,7 @@ export default function ProductionView(
               </tr>
             </thead>
             <tbody>
-              {f.leases.map((l) => (
+              {paged.rows.map((l) => (
                 <tr
                   key={l.lease_id}
                   className={leaseId === l.lease_id ? 'on' : undefined}
@@ -873,6 +890,11 @@ export default function ProductionView(
             </tbody>
           </table>
         </div>
+        <Pager
+          page={paged.page} pages={paged.pages} setPage={paged.setPage}
+          start={paged.start} shown={paged.rows.length} total={f.leases.length}
+          label="Lease table pages"
+        />
         <p className="tiny muted" style={{ padding: '8px 2px 2px' }}>
           <strong>Click any row</strong> to put that lease into the chart and the scorecard below.
           Posted volumes are the gross lease month as filed with the state; the dollar columns are
@@ -974,14 +996,39 @@ export default function ProductionView(
                   <Unit>%/mo</Unit>
                 </span>
               </div>
-              <div className="pf2-c sh"><span className="pf2-vs na">—</span></div>
+              {/* A DECLINE RATE IS THE SAME AT ANY INTEREST, which is why the
+                  share column is a dash here: there is no separate owner-share
+                  version of "falls 0.5% a month" to print. On the SAMPLE page
+                  that dash is one of the blanks the shop window must not have,
+                  and the honest fill is the rate itself — your share of a lease
+                  declines at exactly the lease's rate. Gated on `sample`, so
+                  the claimed page keeps the dash it has always shown. */}
+              <div className="pf2-c sh">
+                {sample && card.decline_gas_pct != null
+                  ? (
+                    <span className="pf2-vs g num">
+                      {card.decline_gas_pct}
+                      <Unit>%/mo</Unit>
+                    </span>
+                  )
+                  : <span className="pf2-vs na">—</span>}
+              </div>
               <div className="pf2-c">
                 <span className="pf2-vo num">
                   {card.decline_oil_pct == null ? '—' : card.decline_oil_pct}
                   <Unit>%/mo</Unit>
                 </span>
               </div>
-              <div className="pf2-c sh"><span className="pf2-vs na">—</span></div>
+              <div className="pf2-c sh">
+                {sample && card.decline_oil_pct != null
+                  ? (
+                    <span className="pf2-vs o num">
+                      {card.decline_oil_pct}
+                      <Unit>%/mo</Unit>
+                    </span>
+                  )
+                  : <span className="pf2-vs na">—</span>}
+              </div>
 
               <div className="pf2-c">
                 <span className="pf2-l">
@@ -1011,10 +1058,23 @@ export default function ProductionView(
                   <span className="pf2-est">estimate — not an appraisal</span>
                 </span>
               </div>
+              {/* THE OWNER'S SHARE OF EUR IS NOT IN THE PAYLOAD, so these two
+                  pass `null` and print a dash. It is a real quantity though —
+                  ultimate recovery at this lease's own decimal interest — so
+                  on the SAMPLE page, where a blank is the one thing the window
+                  cannot afford, it is derived rather than left empty. Gated on
+                  `sample`: the claimed page still shows a dash rather than a
+                  figure the record did not report. */}
               <Cell v={card.eur_gas} unit={MCF} kind="gas" />
-              <Cell v={null} unit={MCF} kind="gas" share />
+              <Cell
+                v={sample && card.eur_gas != null ? card.eur_gas * card.interest : null}
+                unit={MCF} kind="gas" share
+              />
               <Cell v={card.eur_oil} unit={BBL} kind="oil" />
-              <Cell v={null} unit={BBL} kind="oil" share />
+              <Cell
+                v={sample && card.eur_oil != null ? card.eur_oil * card.interest : null}
+                unit={BBL} kind="oil" share
+              />
             </div>
             <div className="pf2-kstrip">
               <span>

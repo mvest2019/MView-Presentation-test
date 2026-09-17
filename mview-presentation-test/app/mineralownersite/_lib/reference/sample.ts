@@ -211,6 +211,17 @@ const OPERATOR_NAMES = [
  */
 const SAMPLE_OWNER = 'Michael Anderson';
 
+/**
+ * The stand-in for the roll key, and it is deliberately not a number.
+ *
+ * `owner.ownernumber` is already set to this on the owner block; the constant
+ * exists so the copy of it that appears inside prose and stat cells is
+ * substituted with the same string rather than a second invented one. A word
+ * where a figure was is what tells a reader the key is withheld — an invented
+ * six-digit number would read as somebody's real one, and might be.
+ */
+const SAMPLE_OWNER_NUMBER = 'SAMPLE';
+
 /** the first name that goes with it, for the greeting and for `names()` */
 const SAMPLE_FIRST_NAME = 'Michael';
 
@@ -381,11 +392,18 @@ function fillProductProse(text: string, filled: Filled): string {
 export interface SampleResult { payload: Payload; factor: number; note: string }
 
 /**
- * Rewrite a live payload as a sample of itself.
+ * Rewrite a payload as a sample of itself.
  *
  * Structure-preserving on purpose: every component renders the sample through
  * exactly the same code path as the real thing, so the not-claimed view cannot
  * drift away from the claimed one as either changes.
+ *
+ * WHICH PAYLOAD IT IS HANDED IS THE CALLER'S DECISION, AND IT CHANGED. `Portal`
+ * used to pass the reader's own snapshot; it now passes the committed capture,
+ * fetched from `/api/portfolio/sample`, so the preview is ONE record for every
+ * reader rather than a different one per visitor. See that call site for the
+ * reasoning. Nothing in this file depends on which it gets — it is the same
+ * shape either way, which is what made the swap a one-line change.
  */
 export function sampleize(input: Payload): SampleResult {
   /* THE PREVIEW'S OWN RECORD, before anything is renamed or scaled — see
@@ -640,6 +658,31 @@ export function sampleize(input: Payload): SampleResult {
    * operator is still substituted — the leak this line exists to stop — and a
    * stat naming a status, a month or a count is left as the API sent it.
    */
+  /**
+   * AND A LEASE NAME IN A STAT VALUE IS A LEASE NAME.
+   *
+   * MEASURED LEAK, and the loudest one left. `subIfOwnOp` looks up OPERATORS
+   * only, so a cell whose value is one of this owner's own lease names came
+   * through as filed while the title above it was substituted — the two halves
+   * of one row disagreeing about whose record it is:
+   *
+   *   title      "Operator changed on LONE MESQUITE"     (sample)
+   *   stat cell  "LEASE · COOK GAS UNIT"                 (REAL)
+   *   title      "KIOWA SPRING fell 23.7% ..."           (sample)
+   *   stat cell  "LEASE · MCCABE ETAL GU"                (REAL)
+   *
+   * The drawer repeated it, because its stat band is mapped through this same
+   * function. `.no-claim .alx-v` blurs these cells in CSS, which is why it
+   * survived a look at the page — but a blur is paint, and the real name was
+   * in the DOM, in the copy buffer and in the accessibility tree.
+   *
+   * `names()` IS THE RIGHT TOOL AND IT DOES NOT OVERREACH. It replaces only
+   * keys it holds — this owner's own lease names, ids and operator spellings,
+   * and her own name. A neighbour's lease, a county, a status word, a month or
+   * a count carries no key and comes back untouched, which is the same
+   * guarantee `subIfOwnOp` gave and the reason a public row can keep its
+   * figures. It subsumes `subIfOwnOp`, whose operator pass is `opSpellings`.
+   */
   const sampleStat = <T extends { value: string; sub?: string }>(st: T): T => ({
     ...st,
     /* NAMES FIRST, THEN FIGURES, AND NEITHER TEST LOOKS AT THE FIRST
@@ -657,8 +700,8 @@ export function sampleize(input: Payload): SampleResult {
        or a volume unit, so "Feb 23, 2021", "9 of 10" and "▲ 720.0%" pass
        through unchanged. Running both over every value is safe and catches
        the compound case. */
-    value: fig(subIfOwnOp(st.value) ?? st.value),
-    sub: st.sub ? fig(st.sub) : st.sub,
+    value: prose(st.value),
+    sub: st.sub ? prose(st.sub) : st.sub,
   });
 
   /**
@@ -696,6 +739,35 @@ export function sampleize(input: Payload): SampleResult {
     if (real.owner.first_name) {
       out = out.split(real.owner.first_name).join(SAMPLE_FIRST_NAME);
     }
+    /**
+     * AND THE OWNER NUMBER, WHICH IS HALF OF THE IDENTITY.
+     *
+     * MEASURED LEAK. `owner.ownernumber` is replaced with `'SAMPLE'` on the
+     * owner block, but the number is also written into PROSE and into a stat
+     * value by the service — the identity drawer opens "built from the roll
+     * rows carrying owner number 715109 AND the name Platis Sydney Kay" and
+     * puts the same figure on its first cell. Substituting only the name left
+     * the panel reading "Michael Anderson · owner number 715109", and this
+     * drawer's own second paragraph is what explains why that is enough: a
+     * roll key plus a roll year is a public lookup, so the alias was one
+     * search away from the person it was standing in for.
+     *
+     * NEITHER MASKING NOR SCALING REACHES IT. `scrub` is no longer used, and
+     * `scaleFigures` deliberately leaves a bare number alone — it is a count, a
+     * year or a percentage's stem everywhere else in the payload. So the
+     * substitution belongs here, beside the name it travels with.
+     *
+     * BOUNDED, so a longer figure that merely CONTAINS these digits is not
+     * rewritten, and only for a key long enough to be one — a two-digit
+     * district code would match half the numbers on the page.
+     */
+    const realNum = real.owner.ownernumber == null ? '' : String(real.owner.ownernumber).trim();
+    if (realNum.length > 3) {
+      out = out.replace(
+        new RegExp(`(?<![\\w,.])${realNum.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w,.])`, 'g'),
+        SAMPLE_OWNER_NUMBER,
+      );
+    }
     return out;
   };
 
@@ -712,7 +784,7 @@ export function sampleize(input: Payload): SampleResult {
       ownername: SAMPLE_OWNER,
       first_name: SAMPLE_FIRST_NAME,
       initials: 'SO',
-      ownernumber: 'SAMPLE',
+      ownernumber: SAMPLE_OWNER_NUMBER,
       city: null,
       identity_note:
         'This is the sample view. No interests are claimed on this account, so every figure ' +
@@ -867,6 +939,20 @@ export function sampleize(input: Payload): SampleResult {
         /* the sparkline beside them is the same series in shape — scaled, not
            masked, so a sample with a flat line does not read as a dead lease */
         spark: a.spark ? a.spark.map(s) : a.spark,
+        /* AND ITS CAPTION, which names the lease the series belongs to and was
+           riding through on the spread: a row titled "Operator changed on LONE
+           MESQUITE" carried a spark reading "COOK GAS UNIT through the
+           handover". The drawer branch found and fixed this same field; the
+           alert row it is copied from still had it. */
+        spark_label: a.spark_label ? prose(a.spark_label) : a.spark_label,
+        /* the remaining three prose fields on an alert. `next_step` is what
+           the drawer's "What to do" is built from, and `action_label` can name
+           a lease — neither is rendered on the row, which is exactly why they
+           were missed. `lease_id` becomes the sample reference the rest of the
+           preview uses, not a real roll id. */
+        next_step: prose(a.next_step),
+        action_label: a.action_label ? names(a.action_label) : a.action_label,
+        lease_id: a.lease_id ? (leaseRef.get(a.lease_id) ?? a.lease_id) : a.lease_id,
       })),
       notes: real.alerts.notes.map(prose),
     },
@@ -1147,8 +1233,128 @@ export function sampleize(input: Payload): SampleResult {
         value_share_low: s(m.value_share_low), value_share_high: s(m.value_share_high),
         removed: num(m.removed),
       });
+      /**
+       * NOTHING ON THE SAMPLE PAGE IS BLANK OR ZERO.
+       *
+       * A zero is honest on the claimed page: 19 of this record's leases are
+       * inactive, the model projects nothing for them, and "$0" beside "a
+       * forecast, not lost ownership" says so. In the SAMPLE it is the wrong
+       * answer to a different question. That page is a shop window — its whole
+       * job is to show what the product looks like working — and measured on
+       * this record it was showing 128 blanks: 53 rows opening at "$0" in each
+       * money column, 19 reading "$0" through 2036, 3 with no removal figure,
+       * and a "0%" and two dashes in the depletion list.
+       *
+       * DERIVED FROM THE LEASE'S OWN FIGURES, NOT INVENTED. `base` takes the
+       * first real number the lease already carries — its projected month, its
+       * year, its six-year total spread over 72 months, its lifetime share —
+       * so a big lease gets a big sample figure and a small one a small figure,
+       * and the ordering of the table is the record's own. The literal floor is
+       * the last resort for a lease that carries no positive figure anywhere.
+       *
+       * ONLY THE SAMPLE PATH. This is inside `sampleize`, which builds the
+       * not-claimed payload and nothing else, so the claimed page keeps its
+       * zeros and its dashes exactly as the record reports them.
+       */
+      const pos = (v: unknown): v is number =>
+        typeof v === 'number' && Number.isFinite(v) && v > 0;
+
       const rf = real.forecast;
       const rt = rf.totals;
+
+      /**
+       * A MONEY FIGURE FOR A LEASE THAT REPORTS NONE — IN MONEY, NOT IN VOLUME.
+       *
+       * The first pass here reached for `gas_to_date_share` when a lease had no
+       * money at all, and that is a VOLUME in MCF: a lifetime of about 1.2
+       * million, read as dollars and then multiplied by the sample's factor,
+       * which printed "$1,211,603,022 next month" against a portfolio that
+       * makes four million. Units have to match.
+       *
+       * So: the lease's own money if it has any, and otherwise its SHARE OF
+       * THE PORTFOLIO'S MONTH, taken by its share of the portfolio's volume —
+       * which is what a lease's money is proportional to anyway. That lands the
+       * inactive leases at a few hundred dollars a month against a per-lease
+       * average near thirty-eight thousand, so they read as the small tail they
+       * are instead of dwarfing the record. The last fallback is for a lease
+       * with neither money nor volume, so the window still shows a figure.
+       */
+      /**
+       * THE FALLBACK HAS TO TERMINATE IN A NUMBER, NOT IN ANOTHER FIELD.
+       *
+       * The first pass filled a lease's missing removal rate from
+       * `disposition.removed_pct` and its missing depletion from
+       * `depletion.gas_pct` — which works only while the PORTFOLIO has those.
+       * A record that filed no disposition at all reports `removed_pct: null`
+       * for every lease AND for the portfolio, and one whose gas is all still
+       * in the ground reports `gas_pct: 0` at both levels, so the fill
+       * inherited the blank and the page still read "—" and "0%".
+       *
+       * These three are the floors: used only when the record itself offers
+       * nothing, so a portfolio that HAS the figures still shows its own.
+       */
+      const SAMPLE_REMOVED_PCT = 8.4;
+      const SAMPLE_DEPLETION_PCT = 62.5;
+      const SAMPLE_OIL_DEPLETION_PCT = 57.8;
+      /** barrels per thousand MCF, for the ratio the oil and mix cards print */
+      const SAMPLE_YIELD = 41.6;
+
+      const gasPct = pos(rf.depletion.gas_pct) ? rf.depletion.gas_pct : SAMPLE_DEPLETION_PCT;
+      const oilPct = pos(rf.depletion.oil_pct) ? rf.depletion.oil_pct : SAMPLE_OIL_DEPLETION_PCT;
+      const removedPct = pos(rf.disposition.removed_pct)
+        ? rf.disposition.removed_pct : SAMPLE_REMOVED_PCT;
+
+      /**
+       * THE CARDS ARRIVE PRE-FORMATTED, SO THEIR BLANKS ARE BLANKS IN TEXT.
+       *
+       * `insights` and `stats` carry `value` and `sub` as strings the service
+       * has already written — "10% of the gas", "23.47M BBL". When the record
+       * has nothing to report they arrive as "—" or "0%", and no amount of
+       * scaling a number fixes a string that never held one. Seen on a record
+       * with no disposition filing and all its gas still in the ground:
+       * "REMOVED BEFORE THE SALES METER · —", "HOW MUCH OF THE GAS IS ALREADY
+       * OUT · 0%", and "about — BBL for every thousand MCF" in two subs.
+       *
+       * ONLY WHERE A FIGURE BELONGS. A dash is replaced when it stands
+       * immediately before a unit or follows "about" — the shapes a missing
+       * number leaves. The em-dash this page uses as PUNCTUATION ("Jul 2026,
+       * Aug 2026, Sep 2026 — the wells ran") is untouched, because it is
+       * followed by a word rather than by MCF, BBL or a percent sign.
+       */
+      const statFill = (key: string, text: string | null | undefined): string => {
+        let t = String(text ?? '');
+        if (!t) return t;
+        /* a dash standing in for a figure: "— BBL", "about —", "— %" */
+        t = t.replace(/about\s+—/g, `about ${SAMPLE_YIELD}`);
+        t = t.replace(/—(?=\s*(MCF|BBL|%))/g, String(SAMPLE_YIELD));
+        /* a zero volume opening a sentence: "0 produced of 1.3B MCF" */
+        t = t.replace(/(^|[\s·])0(?=\s+produced)/g, `$1${SAMPLE_YIELD}M`);
+        /* the whole value is the blank */
+        if (/^(—|-|–)$/.test(t.trim())) {
+          if (key === 'pf_removed') return `${removedPct}% of the gas`;
+          if (key === 'pf_depletion') return `${gasPct}%`;
+          return String(SAMPLE_YIELD);
+        }
+        if (/^0(\.0)?%$/.test(t.trim())) {
+          if (key === 'pf_removed') return `${removedPct}% of the gas`;
+          return `${gasPct}%`;
+        }
+        return t;
+      };
+
+      const base = (l: Record<string, unknown>): number => {
+        for (const v of [l.next_month_high, l.next_month_mid, l.year_value_share,
+          pos(l.six_year) ? (l.six_year as number) / 72 : null]) {
+          if (pos(v)) return v;
+        }
+        const month = pos(rt.next_month_high) ? rt.next_month_high : 0;
+        const frac = pos(rt.gas_to_date_share) && pos(l.gas_to_date_share)
+          ? l.gas_to_date_share / rt.gas_to_date_share
+          : 0;
+        const byVolume = month * frac;
+        if (pos(byVolume)) return byVolume;
+        return pos(month) ? (month / Math.max(1, rf.leases.length)) * 0.05 : 120;
+      };
       return {
         ...rf,
         boundary: {
@@ -1195,15 +1401,39 @@ export function sampleize(input: Payload): SampleResult {
           reserves_gas_model: num(l.reserves_gas_model),
           eur_gas_model: num(l.eur_gas_model),
           eur_oil_model: num(l.eur_oil_model),
-          next_month_low: num(l.next_month_low),
-          next_month_high: num(l.next_month_high),
-          next_month_mid: num(l.next_month_mid),
-          quarter_low: num(l.quarter_low),
-          quarter_high: num(l.quarter_high),
-          quarter_mid: num(l.quarter_mid),
-          six_year: s(l.six_year),
+          /* the six estimate fields and `six_year` are set in the block at the
+             end of this mapping, which needs them all together to keep the low
+             below the high — they were `num()`/`s()` here and that is what the
+             block now does, plus a floor for the ones that came back zero. */
           removed_total: num(l.removed_total),
           months: l.months.map(mon),
+          /* the fills — see `base` above. Each keeps the row internally
+             ordered: the low below the high, a quarter near three months, six
+             years near seventy-two, so the sample reads like a record. */
+          ...(() => {
+            const bs = base(l as unknown as Record<string, unknown>);
+            const nmHigh = pos(l.next_month_high) ? s(l.next_month_high) : s(bs * 1.8);
+            const nmLow = pos(l.next_month_low) ? s(l.next_month_low) : Math.round(nmHigh * 0.34);
+            const qHigh = pos(l.quarter_high) ? s(l.quarter_high) : Math.round(nmHigh * 3.1);
+            const qLow = pos(l.quarter_low) ? s(l.quarter_low) : Math.round(nmLow * 2.9);
+            return {
+              next_month_low: nmLow,
+              next_month_high: nmHigh,
+              next_month_mid: pos(l.next_month_mid)
+                ? s(l.next_month_mid) : Math.round((nmLow + nmHigh) / 2),
+              quarter_low: qLow,
+              quarter_high: qHigh,
+              quarter_mid: pos(l.quarter_mid)
+                ? s(l.quarter_mid) : Math.round((qLow + qHigh) / 2),
+              six_year: pos(l.six_year) ? s(l.six_year) : Math.round(nmHigh * 64),
+              /* a share, so it is neither scaled nor invented — the portfolio's
+                 own removal rate stands in where a lease filed none */
+              removed_pct: pos(l.removed_pct) ? l.removed_pct : removedPct,
+              /* the depletion list prints this one straight, so a null or a
+                 zero is the "—" and the "0%" it was showing */
+              pct_produced: pos(l.pct_produced) ? l.pct_produced : gasPct,
+            };
+          })(),
           /* the life share is a share, not a volume: scaling it would put a bar
              at a different length from the percentage printed beside it */
           note: l.note ? prose(l.note) : l.note,
@@ -1239,13 +1469,30 @@ export function sampleize(input: Payload): SampleResult {
         cards: rf.cards.map((c) => ({ ...c, value: fig(c.value), sub: prose(c.sub) })),
         disposition: {
           ...rf.disposition,
+          /* a record that filed no disposition reports `available: false` and a
+             null rate, which printed "—" on the panel and on its card. The
+             sample says what the panel is FOR instead of saying nothing. */
+          available: true,
+          removed_pct: removedPct,
           accounted: s(rf.disposition.accounted),
-          removed: s(rf.disposition.removed),
+          removed: pos(rf.disposition.removed)
+            ? s(rf.disposition.removed)
+            : Math.round(s(rf.disposition.accounted) * (removedPct / 100)),
           net: s(rf.disposition.net),
           oil_sold: s(rf.disposition.oil_sold),
           oil_total: s(rf.disposition.oil_total),
           routes: rf.disposition.routes.map((r) => ({
             ...r, volume: s(r.volume), removed: s(r.removed),
+            /* THE ROUTE TABLE PRINTS "—" WHEN A ROUTE CARRIES NO LEASES, and
+               one of this record's three does: the panel reads
+               `r.leases ? pct1(r.removed_pct) : '—'`, so a zero count blanks
+               the removal figure beside it. A route with a filed volume and no
+               lease attached is a real state of the record and the dash is
+               right on the claimed page; on the sample it is one more blank in
+               the shop window, so the count stands at one and its own removal
+               percentage prints. */
+            leases: pos(r.leases) ? r.leases : 1,
+            removed_pct: pos(r.removed_pct) ? r.removed_pct : removedPct,
           })),
           months: rf.disposition.months.map((m) => ({
             ...m, accounted: s(m.accounted), removed: s(m.removed),
@@ -1255,13 +1502,15 @@ export function sampleize(input: Payload): SampleResult {
         },
         insights: rf.insights.map((st) => ({
           ...st,
-          value: /^[\d$.,+-]/.test(st.value) ? fig(st.value) : prose(st.value),
-          sub: st.sub ? prose(st.sub) : st.sub,
+          value: statFill(st.key ?? '',
+            /^[\d$.,+-]/.test(st.value) ? fig(st.value) : prose(st.value)),
+          sub: st.sub ? statFill(st.key ?? '', prose(st.sub)) : st.sub,
         })),
         stats: rf.stats.map((st) => ({
           ...st,
-          value: /^[\d$.,+-]/.test(st.value) ? fig(st.value) : prose(st.value),
-          sub: st.sub ? prose(st.sub) : st.sub,
+          value: statFill(st.key ?? '',
+            /^[\d$.,+-]/.test(st.value) ? fig(st.value) : prose(st.value)),
+          sub: st.sub ? statFill(st.key ?? '', prose(st.sub)) : st.sub,
         })),
         /* the year columns are a SHAPE as well as a figure, so the money is
            scaled rather than masked — a masked column has no height and the
@@ -1274,20 +1523,40 @@ export function sampleize(input: Payload): SampleResult {
           gas_vol: s(y.gas_vol),
           oil_vol: s(y.oil_vol),
         })),
-        depletion: {
-          ...rf.depletion,
-          gas_produced: s(rf.depletion.gas_produced),
-          gas_remaining: s(rf.depletion.gas_remaining),
-          gas_eur: s(rf.depletion.gas_eur),
-          oil_produced: s(rf.depletion.oil_produced),
-          oil_remaining: s(rf.depletion.oil_remaining),
-          oil_eur: s(rf.depletion.oil_eur),
-          /* THE PERCENTAGES AND THE DATE STAY. A share of a life and the month
-             half the remainder arrives are facts about a decline curve, not
-             about this owner — and scaling them would make the bars disagree
-             with the number printed beside them. */
-          note: prose(rf.depletion.note),
-        },
+        depletion: (() => {
+          const d = rf.depletion;
+          /* THE PERCENTAGES AND THE DATE ARE NOT SCALED. A share of a life and
+             the month half the remainder arrives are facts about a decline
+             curve, not about this owner, and scaling them would make the bars
+             disagree with the number printed beside them.
+             THEY ARE FILLED, THOUGH, WHEN THE RECORD HAS NONE: a portfolio
+             whose gas is all still in the ground reports `gas_pct: 0` and
+             `gas_produced: 0`, which drew an empty arc reading "0% PRODUCED"
+             over "0 MCF out of the ground" — the emptiest thing on the page,
+             on the one page whose job is to look full. The produced volume is
+             then taken back off the EUR so the arc, the two volumes and the
+             sentence under them all still agree. */
+          const gasEur = s(d.gas_eur);
+          const oilEur = s(d.oil_eur);
+          const gasProduced = pos(d.gas_produced)
+            ? s(d.gas_produced) : Math.round(gasEur * (gasPct / 100));
+          const oilProduced = pos(d.oil_produced)
+            ? s(d.oil_produced) : Math.round(oilEur * (oilPct / 100));
+          return {
+            ...d,
+            gas_pct: gasPct,
+            oil_pct: oilPct,
+            gas_produced: gasProduced,
+            gas_remaining: pos(d.gas_remaining)
+              ? s(d.gas_remaining) : Math.max(0, gasEur - gasProduced),
+            gas_eur: gasEur,
+            oil_produced: oilProduced,
+            oil_remaining: pos(d.oil_remaining)
+              ? s(d.oil_remaining) : Math.max(0, oilEur - oilProduced),
+            oil_eur: oilEur,
+            note: prose(d.note),
+          };
+        })(),
         /* the price deck is the model's published path, not an identity */
         deck: rf.deck ? { ...rf.deck, note: prose(rf.deck.note) } : null,
         peak: rf.peak ? { ...rf.peak, gas: s(rf.peak.gas) } : null,

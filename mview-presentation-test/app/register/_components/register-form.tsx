@@ -27,6 +27,9 @@ import {
   inputClass,
 } from "@/app/_components/auth-shell";
 import { GoogleSignIn } from "@/app/_components/google-sign-in";
+import { INVITE_REDEEM_PARAM, normalizeInviteCode } from "@/lib/invite-code";
+import { PORTAL_HOME } from "@/lib/routes";
+import { PHONE_PLACEHOLDER, formatPhoneNumber } from "@/lib/phone";
 
 /**
  * Sign up — the design's `route:signup`, wired to the live endpoints.
@@ -65,31 +68,21 @@ import { GoogleSignIn } from "@/app/_components/google-sign-in";
  */
 const RESEND_COOLDOWN_SECONDS = 300;
 
-/**
- * `5551234567` → `(555) 123-4567`, ported from `formatPhoneNumber` in the live
- * repo's `app/register/_components/RegistrationValidation.ts`.
- *
- * THE TEN-DIGIT CAP IS `slice(6, 10)`. Everything past the tenth digit is
- * discarded rather than rejected, so an 11th keystroke is simply absorbed — which
- * is what stops a bare run of digits sneaking past the control's `maxLength`.
- *
- * Partial input formats as it grows, so the punctuation appears under the caret
- * rather than all at once at the end: "5" → "(5", "5551" → "(555) 1". That is the
- * live behaviour and the reason the opening bracket is unbalanced mid-type.
- *
- * Returns "" for an empty or all-punctuation string, which matters because the
- * field is optional and the schema's checks all short-circuit on "".
- */
-function formatPhoneNumber(value: string): string {
-  const numbers = value.replace(/\D/g, "");
-  if (numbers.length === 0) return "";
-  if (numbers.length <= 3) return `(${numbers}`;
-  if (numbers.length <= 6) return `(${numbers.slice(0, 3)}) ${numbers.slice(3)}`;
-  return `(${numbers.slice(0, 3)}) ${numbers.slice(3, 6)}-${numbers.slice(6, 10)}`;
-}
-
-export function RegisterForm({ next }: { next: string }) {
-
+export function RegisterForm({
+  next,
+  inviteCode = "",
+}: {
+  next: string;
+  /**
+   * The code from the invitation link, already normalized to eight digits by
+   * `app/register/page.tsx`, or "" when there was none.
+   *
+   * IT IS A DEFAULT VALUE AND NOT A CONTROLLED PROP. The spec requires the
+   * reader to be able to edit or replace it, so it seeds `defaultValues` and
+   * react-hook-form owns it from the first keystroke.
+   */
+  inviteCode?: string;
+}) {
   /*
    * VERIFICATION STATE, held as the two ADDRESSES rather than as booleans.
    *
@@ -124,6 +117,17 @@ export function RegisterForm({ next }: { next: string }) {
       password: "",
       phone: "",
       mailingAddress: "",
+      /* PRE-FILLED WITH THE BARE DIGITS, no hyphen. The letter PRINTS
+         `3159-7778` because that is how eight digits are read back off paper,
+         but the box shows `31597778` — the hyphen is punctuation the reader did
+         not type and has to work around when editing, and it is not part of the
+         code. `normalizeInviteCode` strips it either way, so somebody who
+         copies the hyphenated form off the letter is still accepted.
+
+         SET EVEN WHEN THE FIELD IS NOT RENDERED — "" in that case. It costs
+         nothing and it means `values.inviteCode` is always a string the submit
+         handler can read, rather than sometimes `undefined`. */
+      inviteCode,
     },
   });
 
@@ -135,6 +139,17 @@ export function RegisterForm({ next }: { next: string }) {
   // whole component. `useWatch` subscribes to the one field instead.
   const agreed = useWatch({ control, name: "terms" });
 
+  /*
+   * THE GOOGLE BUTTON NEEDS THE CODE TOO. The email path reads the code at
+   * submit, but "Continue with Google" never submits this form — its whole
+   * point is skipping it — so the invitation would be dropped on the floor for
+   * exactly the visitor the letter sent here. Watched live rather than taken
+   * from the prop, for the submit handler's own reason: the reader may have
+   * cleared the pre-fill or typed a code that was never in the URL, and what
+   * decides where they land is what is in the box when they press the button.
+   */
+  const inviteCodeNow = useWatch({ control, name: "inviteCode" });
+
   /* Watched because the verification block reacts to them as they are typed:
      these four gate the Verify Email button, and the address decides whether an
      existing confirmation still counts. */
@@ -144,7 +159,7 @@ export function RegisterForm({ next }: { next: string }) {
   });
   const [nameNow, emailRaw, passwordNow, phoneNow] = watched;
   /*
-   * NORMALISED THE SAME WAY THE SCHEMA DOES — trimmed and lower-cased (see the
+   * NORMALIZED THE SAME WAY THE SCHEMA DOES — trimmed and lower-cased (see the
    * note on `email` in `auth-schema.ts`).
    *
    * This was `.trim()` only, which mattered because THIS value, not the parsed
@@ -154,7 +169,7 @@ export function RegisterForm({ next }: { next: string }) {
    * issued against one spelling and the account created against another, and
    * whether that worked came down to the backend comparing case-insensitively.
    *
-   * With both sides normalised the comparison below no longer needs to lower-case
+   * With both sides normalized the comparison below no longer needs to lower-case
    * anything, but it is kept explicit rather than relying on this line staying as
    * it is.
    */
@@ -232,7 +247,9 @@ export function RegisterForm({ next }: { next: string }) {
     setSending(false);
 
     if (!result.ok) {
-      toast.error(result.message || "Could not send the code. Please try again.");
+      toast.error(
+        result.message || "Could not send the code. Please try again.",
+      );
       return;
     }
 
@@ -257,7 +274,9 @@ export function RegisterForm({ next }: { next: string }) {
     setVerifying(false);
 
     if (!result.ok) {
-      setOtpError(result.message || "Invalid or expired code. Please try again.");
+      setOtpError(
+        result.message || "Invalid or expired code. Please try again.",
+      );
       /*
        * CLEAR THE BOXES AND GO BACK TO THE FIRST ONE (Ryan, 2026-08-19: after a
        * failed attempt "nothing is accepted").
@@ -268,7 +287,7 @@ export function RegisterForm({ next }: { next: string }) {
        * were effectively read-only after one wrong code, with no way forward
        * except backspacing through all six.
        *
-       * Emptying them is also the right behaviour on its own terms: a rejected
+       * Emptying them is also the right behavior on its own terms: a rejected
        * code is not a starting point for the next attempt, and the caret belongs
        * where the retype starts. `select()` on focus (below) fixes the same
        * lock-out for the general case — correcting a single digit mid-code —
@@ -312,6 +331,37 @@ export function RegisterForm({ next }: { next: string }) {
 
     toast.success("Registration Successful");
     /*
+     * AN INVITED MEMBER LANDS IN THE PORTAL, whatever `?next=` said.
+     *
+     * The spec is explicit on both halves: a registration that used a code ends
+     * in the Portal, and a registration that did not keeps the existing
+     * behavior untouched. So the override is conditional on the code and
+     * nothing else — `next` is still computed exactly as it was, still
+     * leading-slash checked against an open redirect on the server, and still
+     * the destination for every visitor who did not come from an invitation.
+     *
+     * IT READS THE SUBMITTED VALUE, not the prop. The reader may have cleared a
+     * pre-filled code or typed one that was never in the URL, and what decides
+     * where they land is what they actually registered with.
+     *
+     * WHY THE PORTAL AND NOT THE CLAIM FINDER, which is where the letter's link
+     * was pointing. The letter invites them to claim a record, and claiming is
+     * IN the portal (`/mineralownersite/claim`) once there is an account to
+     * attach it to. Dropping a newly signed-in member back on the public finder
+     * would ask them to prove who they are twice.
+     */
+    const usedCode = normalizeInviteCode(values.inviteCode);
+    if (usedCode) {
+      /* THE CODE RIDES ALONG. The portal's own page runs the redeem flow —
+         lookup, then the automatic claim — off this parameter, which is the
+         letter's promise ("your leases come across on their own") kept. See
+         `InviteRedeem` and `INVITE_REDEEM_PARAM` for both halves. */
+      window.location.assign(
+        `${PORTAL_HOME}?${INVITE_REDEEM_PARAM}=${usedCode}`,
+      );
+      return;
+    }
+    /*
      * ONE FULL NAVIGATION, for the reasons written out at length on sign-in's
      * own handler (`app/login/_components/login-form.tsx`) — this had the same
      * `router.push(next)` + `router.refresh()` pair and therefore the same
@@ -340,7 +390,19 @@ export function RegisterForm({ next }: { next: string }) {
           from the Google token, so there is no separate "sign up with Google". */}
       {/* A toast, for the reason sign-in's carries — these are Google and API
           faults, not anything about this form. */}
-      <GoogleSignIn onError={(message) => toast.warning(message)} />
+      {/* AN INVITED VISITOR LANDS IN THE PORTAL WITH THEIR CODE, exactly as the
+          email path does at submit — the redeem flow (`InviteRedeem`) then
+          looks the code up and claims their record for them. Without a code
+          the button keeps its existing destination untouched. */}
+      <GoogleSignIn
+        next={(() => {
+          const code = normalizeInviteCode(inviteCodeNow);
+          return code
+            ? `${PORTAL_HOME}?${INVITE_REDEEM_PARAM}=${code}`
+            : undefined;
+        })()}
+        onError={(message) => toast.warning(message)}
+      />
 
       {/* Lower case on purpose — `OrDivider` sets `uppercase`. */}
       <OrDivider label="or with email" />
@@ -464,7 +526,7 @@ export function RegisterForm({ next }: { next: string }) {
                 type="tel"
                 inputMode="tel"
                 autoComplete="tel"
-                placeholder="(555) 555-0123"
+                placeholder={PHONE_PLACEHOLDER}
               />
             );
           }}
@@ -473,8 +535,7 @@ export function RegisterForm({ next }: { next: string }) {
         <Field
           label={
             <>
-              Mailing address{" "}
-              <Optional>(optional for now)</Optional>
+              Mailing address <Optional>(optional for now)</Optional>
             </>
           }
           error={errors.mailingAddress?.message}
@@ -490,6 +551,84 @@ export function RegisterForm({ next }: { next: string }) {
             />
           )}
         </Field>
+
+        {/*
+          THE INVITE CODE — SHOWN ONLY TO SOMEBODY WHO ARRIVED WITH ONE.
+
+          THE FIELD IS CONDITIONAL, and that is the whole answer to the
+          objection that deleted it the first time: "it read as a second
+          verification code box". A visitor who came to the form cold never
+          sees it, so it cannot be mistaken for anything — and asking the
+          general public for an invite code on a public sign-up form implies
+          the product is invitation-only, which it is not.
+
+          THE ONLY READER WHO SEES IT IS ONE WHO FOLLOWED AN INVITE LINK, and
+          they arrive with the box already filled in. For them it is not a
+          question but a confirmation: this is the code from your letter, and
+          you may change it or clear it.
+
+          CLEARING IT STILL REGISTERS. The field being conditional does not make
+          it required when present — the schema keeps it optional either way, so
+          somebody who empties the box gets an ordinary account and the ordinary
+          destination.
+
+          POSITION: the foot of the form, below the address and well away from
+          the six-digit email verification block, so the two codes are never
+          adjacent even for the reader who sees both.
+
+          `inputMode="numeric"` and not `type="number"`: the code is a string of
+          digits rather than a quantity, and a number input would offer a
+          spinner, strip a leading zero and accept `1e5`.
+        */}
+        {inviteCode ? (
+          <Field
+            label={
+              <>
+                Invite code <Optional />
+              </>
+            }
+            error={errors.inviteCode?.message}
+            /* ONE HINT, because there is now only one reader. The "leave it empty
+             if nobody invited you" variant went with the unconditional field —
+             nobody who has not been invited reaches this markup. */
+            hint="From the invitation a co-owner sent you. You can change it, or clear it to register without one."
+          >
+            {(props) => (
+              <input
+                {...props}
+                {...register("inviteCode")}
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                /*
+                  NINE, NOT EIGHT, even though the box shows eight digits. The
+                  letter prints `3159-7778`, so a reader typing it off the page
+                  types the hyphen too — an eight-character cap would silently
+                  swallow their last digit and then call the result malformed.
+                  The spare character absorbs the punctuation;
+                  `normalizeInviteCode` strips it before anything is sent.
+                */
+                maxLength={9}
+                placeholder="31597778"
+                /*
+                `defaultValue` ON THE ELEMENT AS WELL AS IN `useForm`, and it is
+                not belt-and-braces — MEASURED, the form's `defaultValues` alone
+                left this box EMPTY. `register()` returns only
+                `{name, onChange, onBlur, ref}`; it puts no `value` or
+                `defaultValue` on the element, so React renders the input with
+                no value and the server HTML ships one with no `value`
+                attribute. The other five fields default to "" so nothing about
+                this was visible until a field had a non-empty default.
+                React sets the initial DOM value from this, the input stays
+                UNCONTROLLED so the reader can edit or clear it freely, and RHF
+                reads the DOM on submit — so the two cannot disagree. Both sides
+                are fed the same expression for that reason.
+              */
+                defaultValue={inviteCode}
+              />
+            )}
+          </Field>
+        ) : null}
 
         {/* NO INVITE CODE FIELD (Ryan, 2026-08-19: "don't show double
             verification code box").
@@ -512,7 +651,7 @@ export function RegisterForm({ next }: { next: string }) {
                center align"). The panel is full width and the label is two words,
                so left-aligned it sat in the corner of a wide green band. The tick
                travels with the text because both are flex children of this row —
-               centring the row centres the pair as a unit rather than the words
+               centering the row centres the pair as a unit rather than the words
                alone. */
             <div className="flex items-center justify-center gap-2 rounded-[10px] border border-mv-mint-line bg-mv-mint px-[14px] py-[11px] text-[14px] font-semibold text-mv-green-deep">
               <span aria-hidden="true">✓</span>
@@ -539,8 +678,8 @@ export function RegisterForm({ next }: { next: string }) {
                   `•` directly. `react/no-unescaped-entities` only objects to
                   straight `"`, `'`, `>` and `}`, so “ ” pass untouched. */}
               <p className="mt-2 inline-block rounded-[6px] bg-mv-mint px-[10px] py-1 text-[11.5px] font-semibold text-mv-green-deep">
-                Click the “Verify Email” button to receive a 6-digit verification
-                code in your email.
+                Click the “Verify Email” button to receive a 6-digit
+                verification code in your email.
               </p>
             </>
           ) : (
@@ -655,7 +794,7 @@ export function RegisterForm({ next }: { next: string }) {
                    *
                    * Matching the weight rather than out-shouting it: the row now
                    * has one weight throughout, and "Change email" stays the
-                   * actionable one by being underlined with a hover colour, not by
+                   * actionable one by being underlined with a hover color, not by
                    * being the darker of the two. `tabular-nums` so the seconds
                    * ticking 9→8 does not shift the text width each second.
                    */
@@ -782,7 +921,7 @@ export function RegisterForm({ next }: { next: string }) {
               · "Free plan includes: 1 owner profile • 1 visible lease • Upgrade
                  at any time."
 
-            Together they were six lines of grey type between the submit button
+            Together they were six lines of gray type between the submit button
             and the sign-in link — the last of them had already been flattened
             from a <ul> on 2026-08-17 to claw back space, which treated the
             symptom. The live register form carries none of it (its only footer is

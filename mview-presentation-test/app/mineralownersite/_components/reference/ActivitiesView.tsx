@@ -37,7 +37,7 @@
  * copy and no arithmetic is this build's.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import type { EventKind, TimelineEvent, RingKey } from '../../_lib/reference/payload';
+import type { Drawer, EventKind, TimelineEvent, RingKey } from '../../_lib/reference/payload';
 import { n0, plural, pctS, MCF, BBL } from '../../_lib/reference/fmt';
 import { Band, ProductPair } from './bits';
 import { Charts } from './LineChart';
@@ -150,6 +150,57 @@ function shortMonth(cycle: string): string {
   return name ? `${name.slice(0, 3)} ${cycle.slice(0, 4)}` : '';
 }
 
+/**
+ * THE DETAIL PANEL IS BUILT FROM THE ROW THAT WAS CLICKED (defects #12-#14,
+ * #17). `open(e.ctx)` opened one pre-built panel per KIND — "all permits",
+ * "all production" — so the detail's dates disagreed with the card (#12, #14),
+ * an operator card opened every operator's story (#13), and the production
+ * panel's chart ran months past the month the reader clicked (#17). This
+ * builds the panel out of the event's own fields; the kind panel's generic
+ * prose is kept only for "what it means" and "what to do", which are true of
+ * every event of the kind. No chart is attached: the event is one filing, and
+ * the kind panel's full-range chart is exactly what contradicted the card.
+ */
+function eventDrawer(e: TimelineEvent, base: Drawer | null): Drawer {
+  const facts: string[] = [];
+  facts.push(e.when_label ? `Recorded ${e.when_label}` : 'No date recorded in the feed');
+  if (e.lease_name || e.lease_id) facts.push(`Lease: ${e.lease_name ?? e.lease_id}`);
+  if (e.operator_name) facts.push(`Operator: ${e.operator_name}`);
+  if (e.county) facts.push(`County: ${e.county}`);
+  if (e.distance_mi != null) {
+    facts.push(`Measured ${e.distance_mi.toFixed(2)} miles from your nearest well surface location`);
+  } else if (e.scope === 'county') {
+    facts.push('No coordinates in the filing — matched to your area by county');
+  }
+  for (const s of e.stats) {
+    const v = liveValue(s.value);
+    if (v) facts.push(`${s.label}: ${v}${s.sub ? ` (${s.sub})` : ''}`);
+  }
+
+  const stats = [
+    { label: 'Recorded', value: e.when_label ?? '—' },
+    ...e.stats.filter((s) => liveValue(s.value)),
+  ].slice(0, 4);
+
+  return {
+    title: e.title,
+    sub: `${e.kind_label}${e.is_mine ? ' · on your lease' : ''}`
+      + `${e.county ? ` · ${e.county} County` : ''}`,
+    what: e.body,
+    means: base?.means
+      ?? 'One filing from the public record around your minerals. On its own it proves activity, '
+        + 'not income — the timeline shows whether more of them follow.',
+    evidence: facts,
+    next: base?.next
+      ?? 'Watch this lease in the timeline — the feed reads the state record every day.',
+    chips: [e.kind_label, e.when_label ?? '', e.county ?? ''].filter(Boolean),
+    stats,
+    tone: 'activity',
+    spark: null,
+    charts: [],
+  };
+}
+
 /* ------------------------------------------------------------- the ranges */
 type RangeKey = '30' | '60' | '90' | '365' | 'jan25' | 'all' | 'custom';
 
@@ -177,7 +228,10 @@ const RANGE_ORDER: RangeKey[] = ['30', '60', '90', '365', 'jan25', 'all', 'custo
 type MileKey = '1' | '3' | '5' | 'all';
 const MILE_ORDER: MileKey[] = ['1', '3', '5', 'all'];
 
-export default function ActivitiesView({ p, tier, funnel, sample, open, go }: ViewProps) {
+export default function ActivitiesView(
+  { p, tier, funnel, sample, open, go, openEvent }:
+  ViewProps & { openEvent?: (d: Drawer) => void },
+) {
   const tl = p.timeline;
   const ac = p.activities;
   const rg = p.rings;
@@ -207,14 +261,21 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
   const [to, setTo] = useState<string>(tl.range.months[0]?.value ?? tl.range.floor_month);
   const [mi, setMi] = useState<MileKey>('all');
   const [q, setQ] = useState('');
-  const [showAll, setShowAll] = useState(false);
+  /* how many rows past the cap the reader has asked for — a "show more"
+     click loads one more page of `cap` rows rather than the whole list */
+  const [extra, setExtra] = useState(0);
+  /* the neighboring-leases table starts collapsed; this expands it */
+  const [nbAll, setNbAll] = useState(false);
   /* the click on a kind card has to LAND somewhere, or it looks like nothing
      happened — see note 1 at the top of this file */
   const feed = useRef<HTMLDivElement | null>(null);
   const [jump, setJump] = useState(0);
 
   const unclaimed = funnel === 'unclaimed';
-  const ring = rg.rings[(mi === 'all' ? '1' : mi) as RingKey];
+  /* COUNTY-WIDE SHOWS THE WIDEST MEASURED RING, not the 1-mile one — with
+     "County-wide" selected the panel used to headline "Within 1 mile", which
+     read as a contradiction of the button just pressed (defect #5) */
+  const ring = rg.rings[(mi === 'all' ? '5' : mi) as RingKey];
 
   useEffect(() => {
     if (!jump || !feed.current) return;
@@ -293,16 +354,18 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
   const scopedMine = scoped.filter((e) => e.is_mine).length;
 
   /* FIVE ROWS WHILE THE RECORD IS A SAMPLE (requested).
-     Unclaimed forces the density to `pro` (see `Portal`), so this list opened
-     on FORTY rows of substituted names and scaled figures — a wall of invented
-     detail, and the one state where volume argues against the page rather than
-     for it. A sample only has to show what the feed looks like; five rows do
-     that, and the claim rail above them is what the reader is meant to reach.
-     The "Show the other N" button below is untouched, so nothing is hidden from
-     anyone who asks for it. */
+     A sample list of substituted names and scaled figures is a wall of
+     invented detail, and the one state where volume argues against the page
+     rather than for it. A sample only has to show what the feed looks like;
+     five rows do that, and the claim rail above them is what the reader is
+     meant to reach. The "Show more" button below is untouched, so nothing is
+     hidden from anyone who asks for it. */
   const cap = sample ? 5 : tier === 'pro' ? 40 : 20;
-  const shown = showAll ? rows : rows.slice(0, cap);
-  const filtered = kind !== 'all' || range !== 'all' || mi !== 'all' || q.trim() !== '';
+  const shown = rows.slice(0, cap + extra);
+  /* `mine` is the state the page OPENS in, so it is not "a filter applied" —
+     counting it as one made "Clear all filters" appear on a fresh page and,
+     clicked, jump the count while no control visibly changed (defect #4) */
+  const filtered = kind !== 'mine' || range !== 'all' || mi !== 'all' || q.trim() !== '';
 
   /* WHY A DAY WINDOW EMPTIES THE PRODUCTION CARD, said out loud where the
      reader presses the button rather than left as a zero to interpret. A
@@ -396,14 +459,33 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
     [ring],
   );
 
+  /* back to exactly the state the page opened in, custom months included */
   const reset = () => {
-    setKind('all'); setRange('all'); setMi('all'); setQ(''); setShowAll(false);
+    setKind('mine'); setRange('all'); setMi('all'); setQ(''); setExtra(0);
+    setFrom(tl.range.floor_month);
+    setTo(tl.range.months[0]?.value ?? tl.range.floor_month);
   };
 
   const pickKind = (k: EventKind) => {
     setKind((cur) => (cur === k ? 'all' : k));
-    setShowAll(false);
+    setExtra(0);
     setJump((j) => j + 1);
+  };
+
+  /* ONE EVENT, ONE PANEL. The API's own `event.detail` is rendered when the
+     row carries it (the backend now sends each row's facts — dev note on
+     sheet #12-#14); whatever it leaves out is filled from the row by
+     `eventDrawer`, which is also the whole panel on a capture taken before
+     `detail` existed. The kind-key explainer is never opened from a row. */
+  const openRow = (e: TimelineEvent) => {
+    if (!openEvent) { open(e.ctx); return; }
+    const built = eventDrawer(e, p.drawers?.[e.ctx] ?? null);
+    if (!e.detail) { openEvent(built); return; }
+    const sent = Object.fromEntries(
+      Object.entries(e.detail).filter(([, v]) =>
+        v != null && (Array.isArray(v) ? v.length > 0 : v !== '')),
+    );
+    openEvent({ ...built, ...sent });
   };
 
   return (
@@ -426,9 +508,12 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                 </span>
               </div>
               <span className="cr-act">
-                <button className="btn btn-primary btn-lg" type="button" onClick={() => open('identity')}>
+                {/* a real navigation to the claim flow, not the identity
+                    drawer — QA expects this button to land on the claim
+                    mineral-owner page (defect #1) */}
+                <a className="btn btn-primary btn-lg" href="/mineralownersite/claim">
                   Claim your record — free, no obligation
-                </button>
+                </a>
                 <span className="cr-note">Have a family invite code? Enter it during the claim.</span>
               </span>
             </div>
@@ -531,7 +616,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                           tiers already open (`Row` calls `open(e.ctx)`), so
                           Ultra now opens the same panel for the same event
                           rather than a key nothing serves. */}
-                      <button type="button" onClick={() => open(e.ctx)}>
+                      <button type="button" onClick={() => openRow(e)}>
                         <span className={'u-more-sev k-' + e.kind} aria-hidden="true" />
                         <span className="u-more-t">{e.title}</span>
                         {e.when_label
@@ -541,8 +626,15 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                     </li>
                   ))}
                 </ul>
+                {/* HOW MUCH MORE THERE IS, in numbers (defect #24): the list
+                    shows four rows under a headline of hundreds, and the old
+                    footer never said how many were behind it. */}
                 <p className="u-more-f">
-                  Essentials and above show the whole feed, filterable by date and distance.
+                  {n0(Math.max(0,
+                    tl.events.filter((e) => !e.standing).length - ultraRecent.length))}{' '}
+                  more {plural(tl.events.filter((e) => !e.standing).length - ultraRecent.length,
+                    'record')} behind these — Essentials and above show the whole feed,
+                  filterable by date and distance.
                 </p>
               </div>
             )
@@ -603,7 +695,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                   key={r} type="button"
                   className={range === r ? 'on' : ''}
                   aria-pressed={range === r}
-                  onClick={() => { setRange(r); setShowAll(false); }}
+                  onClick={() => { setRange(r); setExtra(0); }}
                 >
                   {rangeLabel(r)}
                 </button>
@@ -655,7 +747,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                   key={m} type="button"
                   className={mi === m ? 'on' : ''}
                   aria-pressed={mi === m}
-                  onClick={() => { setMi(m); setShowAll(false); }}
+                  onClick={() => { setMi(m); setExtra(0); setNbAll(false); }}
                   title={m === 'all'
                     ? 'Everything, including the rows that carry no location'
                     : `Only rows measured within ${m} ${m === '1' ? 'mile' : 'miles'} of your wells`}
@@ -691,7 +783,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
             <span className="ac-lab">Search</span>
             <input
               className="ac-search"
-              type="search" value={q} onChange={(e) => { setQ(e.target.value); setShowAll(false); }}
+              type="search" value={q} onChange={(e) => { setQ(e.target.value); setExtra(0); }}
               placeholder="Lease, operator, county, field, or any word…"
               aria-label="Search the timeline"
             />
@@ -761,9 +853,15 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                 key={k.kind} type="button"
                 className={'mv-kind' + (on ? ' on' : '') + (now ? '' : ' empty')}
                 onClick={() => pickKind(k.kind)}
+                /* A CARD WITH NOTHING BEHIND IT DOES NOT CLICK (defect #10):
+                   it looked inactive but still filtered the timeline down to
+                   an empty list. It stays clickable only while it is the
+                   active filter, so the reader can always clear it. */
+                disabled={!now && !on}
                 aria-pressed={on}
                 aria-label={`${k.label}: ${now} in this filter, ${k.count} in total. `
-                  + `${on ? 'Filtering by this kind. Click to clear.' : k.action + '.'}`}
+                  + `${on ? 'Filtering by this kind. Click to clear.'
+                    : now ? k.action + '.' : 'Nothing in this filter.'}`}
               >
                 <span className="mk-top">
                   <span className={'mk-ico k-' + k.kind} aria-hidden="true">
@@ -814,7 +912,10 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                     shape can actually be read, with an axis and a hover
                     readout. `timeline.kinds[].spark` still arrives from the
                     API; nothing reads it here. */}
-                <span className="mk-act">{on ? 'Filtering — click to clear' : k.action} →</span>
+                <span className="mk-act">
+                  {on ? 'Filtering — click to clear →'
+                    : now ? `${k.action} →` : 'nothing in this filter'}
+                </span>
               </button>
             );
           })}
@@ -839,7 +940,7 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                     onPick={(i) => {
                       const c = monthCycles[i];
                       if (!c) return;
-                      setFrom(c); setTo(c); setRange('custom'); setShowAll(false);
+                      setFrom(c); setTo(c); setRange('custom'); setExtra(0);
                       setJump((j) => j + 1);
                     }}
                   />
@@ -979,7 +1080,8 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                       </tr>
                     </thead>
                     <tbody>
-                      {ring.neighbours.slice(0, tier === 'pro' ? 20 : 8).map((nb) => (
+                      {(nbAll ? ring.neighbours
+                        : ring.neighbours.slice(0, tier === 'pro' ? 20 : 8)).map((nb) => (
                         <tr key={nb.lease_id}>
                           <td>
                             <strong>{nb.lease_name ?? nb.lease_id}</strong>
@@ -987,7 +1089,11 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                                 neighbors genuinely share one name */}
                             <span className="rp-id">{nb.lease_id}</span>
                           </td>
-                          <td className="hide-s">{nb.operator_name ?? '—'}</td>
+                          {/* the full name in a tooltip — the cell truncates
+                              long operator names (defect #21) */}
+                          <td className="hide-s" title={nb.operator_name ?? undefined}>
+                            {nb.operator_name ?? '—'}
+                          </td>
                           <td>
                             <span className={'rp-st' + (nb.producing ? ' on' : '')}>
                               {nb.status ?? 'not recorded'}
@@ -1005,12 +1111,23 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                       ))}
                     </tbody>
                   </table>
+                  {/* THE REST OF THE RING IS ONE CLICK AWAY (defect #9): this
+                      used to be a passive "10 more leases" note with no way to
+                      see them */}
                   {ring.neighbours.length > (tier === 'pro' ? 20 : 8)
                     ? (
-                      <p className="tiny muted" style={{ margin: '8px 0 0' }}>
-                        {ring.neighbours.length - (tier === 'pro' ? 20 : 8)} more neighboring{' '}
-                        {plural(ring.neighbours.length - (tier === 'pro' ? 20 : 8), 'lease')} in
-                        this ring, ordered by the month they last filed.
+                      <p style={{ margin: '8px 0 0' }}>
+                        <button
+                          className="btn btn-ghost btn-sm" type="button"
+                          onClick={() => setNbAll((v) => !v)}
+                        >
+                          {nbAll
+                            ? 'Show fewer'
+                            : `Show the other ${n0(ring.neighbours.length - (tier === 'pro' ? 20 : 8))} neighboring ${plural(ring.neighbours.length - (tier === 'pro' ? 20 : 8), 'lease')}`}
+                        </button>
+                        <span className="tiny muted" style={{ marginLeft: 8 }}>
+                          ordered by the month they last filed
+                        </span>
                       </p>
                     )
                     : null}
@@ -1093,16 +1210,28 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                     {monthBreak(shown, i)
                       ? <p className="tl-sep"><span>{monthBreak(shown, i)}</span></p>
                       : null}
-                    <Row e={e} tier={tier} mi={mi} open={open} />
+                    <Row e={e} tier={tier} mi={mi} openRow={openRow} />
                   </React.Fragment>
                 ))}
               </div>
+              {/* A PAGE AT A TIME, NOT THE WHOLE LIST (defect #11): "Show the
+                  other 164" dumped every remaining card in one click. Each
+                  click now loads one more page of `cap` rows, and the line
+                  under the button says how many are still to come (defect
+                  #24). */}
               {rows.length > shown.length
                 ? (
                   <p style={{ margin: '14px 0 0', textAlign: 'center' }}>
-                    <button className="btn btn-ghost btn-sm" type="button" onClick={() => setShowAll(true)}>
-                      Show the other {n0(rows.length - shown.length)}
+                    <button
+                      className="btn btn-ghost btn-sm" type="button"
+                      onClick={() => setExtra((x) => x + cap)}
+                    >
+                      Show {n0(Math.min(cap, rows.length - shown.length))} more
                     </button>
+                    <span className="tiny muted" style={{ display: 'block', marginTop: 4 }}>
+                      showing {n0(shown.length)} of {n0(rows.length)}{' '}
+                      {plural(rows.length, 'event')} · {n0(rows.length - shown.length)} remaining
+                    </span>
                   </p>
                 )
                 : null}
@@ -1137,7 +1266,12 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                 {range !== 'all' && mi === 'all'
                   ? <>Nothing of this kind falls inside {rangeLabel(range).toLowerCase()}. </>
                   : null}
-                <button type="button" className="linklike" onClick={reset}>
+                <button
+                  type="button" className="linklike"
+                  /* the promise is "show all", so this lands on `all`, not on
+                     the page's opening `mine` filter */
+                  onClick={() => { reset(); setKind('all'); }}
+                >
                   clear the filters and show all {n0(tl.events.length)} →
                 </button>
               </p>
@@ -1187,7 +1321,9 @@ export default function ActivitiesView({ p, tier, funnel, sample, open, go }: Vi
                             <tbody>
                               {ac.operators.slice(0, 12).map((o, i) => (
                                 <tr key={(o.operator_name ?? '') + i}>
-                                  <td>{o.operator_name ?? 'Not named in the filing'}</td>
+                                  <td title={o.operator_name ?? undefined}>
+                                    {o.operator_name ?? 'Not named in the filing'}
+                                  </td>
                                   <td className="num">{n0d(o.permits)}</td>
                                   <td className="num">{n0d(o.completions)}</td>
                                   <td className="num"><strong>{n0(o.total)}</strong></td>
@@ -1319,23 +1455,26 @@ function monthBreak(list: TimelineEvent[], i: number): string | null {
 
 /* ------------------------------------------------------------------ a row */
 function Row(
-  { e, tier, mi, open }: {
-    e: TimelineEvent; tier: ViewProps['tier']; mi: MileKey; open: (k: string) => void;
+  { e, tier, mi, openRow }: {
+    e: TimelineEvent; tier: ViewProps['tier']; mi: MileKey; openRow: (e: TimelineEvent) => void;
   },
 ) {
   /* a neighbour row states the ring the reader has selected, not always the
      first one — that is what makes a mile button change the row rather than
      only the list */
+  /* County-wide states the widest measured band, not the 1-mile one — a row
+     captioned "within 1 mile" under a pressed County-wide button read as the
+     wrong distance (defect #5) */
   const stats = e.ring_stats
-    ? (e.ring_stats[(mi === 'all' ? '1' : mi) as RingKey] ?? e.stats)
+    ? (e.ring_stats[(mi === 'all' ? '5' : mi) as RingKey] ?? e.stats)
     : e.stats;
 
   return (
     <article
       className={'tl-row k-' + e.kind + (e.is_mine ? ' mine' : '') + (e.standing ? ' standing' : '')}
       role="button" tabIndex={0}
-      onClick={() => open(e.ctx)}
-      onKeyDown={(k) => { if (k.key === 'Enter' || k.key === ' ') { k.preventDefault(); open(e.ctx); } }}
+      onClick={() => openRow(e)}
+      onKeyDown={(k) => { if (k.key === 'Enter' || k.key === ' ') { k.preventDefault(); openRow(e); } }}
       aria-label={`${e.kind_label}. ${e.title}. Opens the detail.`}
     >
       <span className="tl-rail" aria-hidden="true">
@@ -1378,7 +1517,10 @@ function Row(
               {stats
                 .map((s) => ({ s, shown: liveValue(s.value) }))
                 .filter((x): x is { s: typeof x.s; shown: string } => x.shown !== null)
-                .slice(0, tier === 'pro' ? 4 : 3).map(({ s, shown }) => (
+                /* four at every tier (sheet #26): a well-status row now
+                   carries status, API number, operator and county, and a cap
+                   of three cut the status itself off the row */
+                .slice(0, 4).map(({ s, shown }) => (
                 <div className="tl-stat" key={s.label}>
                   <span className="tl-k">{s.label}</span>
                   <span className={'tl-v' + (s.tone ? ' t-' + s.tone : '')}>
@@ -1392,9 +1534,18 @@ function Row(
           )
           : null}
 
-        <Band tier={tier} from="detailed">
-          <p className="tl-body-t">{e.body} <span className="ctx-hint">expand →</span></p>
-        </Band>
+        {/* A ROW WITH ONE THIN STAT SAYS NOTHING WITHOUT ITS BODY (defect
+            #26): a well-status event's stats carry only the county, so on the
+            tiers below `detailed` the row was a title over an empty band. The
+            body is the only information the payload carries for it, so a row
+            with fewer than two live stats keeps its body at every tier. */}
+        {stats.filter((s) => liveValue(s.value)).length < 2
+          ? <p className="tl-body-t">{e.body} <span className="ctx-hint">expand →</span></p>
+          : (
+            <Band tier={tier} from="detailed">
+              <p className="tl-body-t">{e.body} <span className="ctx-hint">expand →</span></p>
+            </Band>
+          )}
       </div>
     </article>
   );

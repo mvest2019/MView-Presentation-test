@@ -18,6 +18,28 @@
  * so `#plans` exists as a real anchor for `upgradeHref` in `lib/entitlements.ts`
  * to land on. `PRICING_MARKUP` is no longer read by anything.
  *
+ * PRICE REVISION 2026-09-14 (user). The figures below are no longer the
+ * delivered design's. The ladder was re-sized against the table the user
+ * supplied: Pro drops to 1 record / 5 leases with no add-on meter, Premium
+ * drops to 2 records / 10 leases each (20 capacity) and becomes the ONLY plan
+ * carrying the $1.99 add-on lease, and Enterprise is stated as 3+ records
+ * rather than "Unlimited". Annual is "pay 10 months, get 12", so the yearly
+ * prices are exactly 10x monthly — $499.90 and $999.90, not the design's
+ * $499.99/$999.99 — and the annual add-on lease is $19.90.
+ *
+ * The table's two derived columns are carried as their own comparison rows:
+ * cost per lease (monthly price over full capacity — $10.00 Pro, $5.00
+ * Premium) and the twelve-month total paid monthly ($599.88 and $1,199.88).
+ *
+ * ONE ROW WAS DROPPED, NOT RE-STATED. "Records fully covered by the limit"
+ * read 66.9% / 87.6% / 97.2% / 100%, where 97.2% was measured at Premium's old
+ * TWENTY visible leases per record. Premium opens ten now and there is no
+ * measured figure for ten anywhere in this repo, so the row is gone rather
+ * than carrying an interpolated number. The 66.9% (1 lease) and 87.6% (5
+ * leases) figures are unaffected by the revision and still appear in the Free
+ * and Pro plan-detail copy. Restore the row once the ten-lease share is
+ * measured.
+ *
  * THE FULL LADDER IS DELIBERATE (user, 2026-09-11). The proto generator trims
  * plan cards to two features each (`MAX_PLAN_FEATURES = 2`, Ryan 2026-08-24,
  * "till show only 2") and trims the Free tier to `map` + `opdata`. This page
@@ -100,13 +122,19 @@ export const PLANS: Plan[] = [
         muted: ""
       },
       {
-        label: "Visible leases",
+        label: "Leases per record",
         mo: "1",
         yr: "1",
         muted: ""
       },
       {
-        label: "Extra leases",
+        label: "Total capacity",
+        mo: "1",
+        yr: "1",
+        muted: "lease"
+      },
+      {
+        label: "Add-on lease",
         mo: "",
         yr: "",
         muted: "not available"
@@ -121,32 +149,38 @@ export const PLANS: Plan[] = [
   {
     id: "pro",
     name: "Pro",
-    audience: "For a household",
+    audience: "For the owner with a handful of leases",
     priceMo: "$49.99",
     periodMo: "/mo",
-    priceYr: "$499.99",
+    priceYr: "$499.90",
     periodYr: "/yr",
     access: [
       {
         label: "Owner records",
-        mo: "2",
-        yr: "2",
+        mo: "1",
+        yr: "1",
         muted: ""
       },
       {
-        label: "Visible leases",
+        label: "Leases per record",
         mo: "5",
         yr: "5",
-        muted: "per record"
+        muted: ""
       },
       {
-        label: "Extra leases",
-        mo: "$1.99 ea/mo",
-        yr: "$19.99 ea/yr",
-        muted: ""
+        label: "Total capacity",
+        mo: "5",
+        yr: "5",
+        muted: "leases"
+      },
+      {
+        label: "Add-on lease",
+        mo: "",
+        yr: "",
+        muted: "not available"
       }
     ],
-    lead: "Everything in Free, on 10 leases",
+    lead: "Everything in Free, on 5 leases",
     ctaHref: "/plan-checkout?plan=pro",
     ctaLabel: "Choose Pro"
   },
@@ -156,29 +190,35 @@ export const PLANS: Plan[] = [
     audience: "For a family or an estate",
     priceMo: "$99.99",
     periodMo: "/mo",
-    priceYr: "$999.99",
+    priceYr: "$999.90",
     periodYr: "/yr",
     access: [
       {
         label: "Owner records",
-        mo: "5",
-        yr: "5",
+        mo: "2",
+        yr: "2",
         muted: ""
       },
       {
-        label: "Visible leases",
-        mo: "20",
-        yr: "20",
-        muted: "per record"
+        label: "Leases per record",
+        mo: "10",
+        yr: "10",
+        muted: ""
       },
       {
-        label: "Extra leases",
-        mo: "$1.99 ea/mo",
-        yr: "$19.99 ea/yr",
+        label: "Total capacity",
+        mo: "20",
+        yr: "20",
+        muted: "leases"
+      },
+      {
+        label: "Add-on lease",
+        mo: "$1.99/mo",
+        yr: "$19.90/yr",
         muted: ""
       }
     ],
-    lead: "Everything in Pro, on 100 leases",
+    lead: "Everything in Pro, on 20 leases",
     ctaHref: "/plan-checkout?plan=premium",
     ctaLabel: "Choose Premium",
     flag: "Most popular",
@@ -196,18 +236,24 @@ export const PLANS: Plan[] = [
     access: [
       {
         label: "Owner records",
-        mo: "Unlimited",
-        yr: "Unlimited",
+        mo: "3+",
+        yr: "3+",
         muted: ""
       },
       {
-        label: "Visible leases",
+        label: "Leases per record",
         mo: "All",
         yr: "All",
         muted: ""
       },
       {
-        label: "Extra leases",
+        label: "Total capacity",
+        mo: "",
+        yr: "",
+        muted: "no limit"
+      },
+      {
+        label: "Add-on lease",
         mo: "",
         yr: "",
         muted: "in your quote"
@@ -354,11 +400,33 @@ export const COMPARE_ROWS: CompareRow[] = [
   {
     kind: "row",
     label: "Yearly price",
-    note: "Prepaid — save two months",
+    note: "Prepaid — pay 10 months, get 12",
     cells: [
       "$0",
-      "$499.99",
-      "$999.99",
+      "$499.90",
+      "$999.90",
+      "Custom"
+    ]
+  },
+  {
+    kind: "row",
+    label: "Cost per lease",
+    note: "The monthly price over the plan’s full lease capacity",
+    cells: [
+      "$0",
+      "$10.00",
+      "$5.00",
+      "In quote"
+    ]
+  },
+  {
+    kind: "row",
+    label: "Twelve months, paid monthly",
+    note: "Prepaying the year instead saves two of the twelve payments",
+    cells: [
+      "$0",
+      "$599.88",
+      "$1,199.88",
       "Custom"
     ]
   },
@@ -383,53 +451,42 @@ export const COMPARE_ROWS: CompareRow[] = [
     note: "Roll identities for one legal person link automatically and count as one",
     cells: [
       "1",
+      "1",
       "2",
-      "5",
-      "Unlimited"
+      "3 or more"
     ]
   },
   {
     kind: "row",
-    label: "Visible leases",
+    label: "Leases per record",
     note: "Each record ranks its own — producing and highest-value first",
     cells: [
       "1",
-      "5 per record",
-      "20 per record",
+      "5",
+      "10",
       "All"
     ]
   },
   {
     kind: "row",
     label: "Total lease capacity",
-    note: "",
+    note: "Records multiplied by the leases each one opens",
     cells: [
       "1",
-      "10",
-      "100",
+      "5",
+      "20",
       "No limit"
     ]
   },
   {
     kind: "row",
-    label: "Extra leases",
-    note: "Bought one at a time, on the same invoice",
+    label: "Add-on lease",
+    note: "Bought one at a time, on the same invoice — Premium only",
     cells: [
       "—",
-      "$1.99 each",
+      "—",
       "$1.99 each",
       "In quote"
-    ]
-  },
-  {
-    kind: "row",
-    label: "Records fully covered by the limit",
-    note: "Share of the 2025 Texas roll that never meets it",
-    cells: [
-      "66.9%",
-      "87.6%",
-      "97.2%",
-      "100%"
     ]
   },
   {
@@ -649,7 +706,7 @@ export const PLAN_DETAIL: PlanDetail[] = [
         value: "1"
       },
       {
-        label: "Visible leases",
+        label: "Leases per record",
         value: "1"
       },
       {
@@ -657,77 +714,89 @@ export const PLAN_DETAIL: PlanDetail[] = [
         value: "1 lease"
       },
       {
-        label: "Extra leases",
+        label: "Add-on lease",
         value: "Not available"
+      },
+      {
+        label: "Cost per lease",
+        value: "$0"
       }
     ],
     example: "Worked example. You claim your record and it holds 1 lease. You see all 17 features on it — value estimate, forecast, reserves, maps, weekly and monthly reports — and pay nothing, ever. Your first 7 days also open full Premium so you can see what the paid plans do.",
-    note: "To open more you move to Pro — Free does not carry the extra-lease meter."
+    note: "To open more you move to Pro — Free does not carry the add-on lease meter."
   },
   {
     kind: "pro",
     name: "Pro",
     price: "$49.99/mo",
-    who: "For a household. Two records — you and a spouse, or you and a parent’s record — with five leases open on each. Five covers 87.6% of Texas owner records in full.",
+    who: "For the owner with a handful of leases. One record with five leases open on it — five covers 87.6% of Texas owner records in full, with nothing metered and nothing to add on.",
+    rows: [
+      {
+        label: "Owner records",
+        value: "1"
+      },
+      {
+        label: "Leases per record",
+        value: "5"
+      },
+      {
+        label: "Total capacity",
+        value: "5 leases"
+      },
+      {
+        label: "Add-on lease",
+        value: "Not available"
+      },
+      {
+        label: "Cost per lease",
+        value: "$10.00/mo"
+      }
+    ],
+    example: "Worked example. Your record holds 12 leases. Pro opens the top 5 — producing and highest-value first — with all 17 features on each, for $49.99 a month, or $10.00 per open lease. The other 7 stay listed and stay under alert monitoring; to open them you move to Premium.",
+    note: "Roll identities for one legal person link automatically and count as one, so a name spelled two ways on the roll does not need two claims."
+  },
+  {
+    kind: "prem",
+    name: "Premium",
+    price: "$99.99/mo",
+    who: "For a family, an estate, or an interest spread across counties. Two records with ten leases open on each — twenty in all, at half Pro’s cost per lease — and the only plan that carries the add-on meter when a record runs past ten.",
     rows: [
       {
         label: "Owner records",
         value: "2"
       },
       {
-        label: "Visible leases",
-        value: "5 per record"
+        label: "Leases per record",
+        value: "10"
       },
       {
         label: "Total capacity",
-        value: "10 leases"
+        value: "20 leases"
       },
       {
-        label: "Extra leases",
+        label: "Add-on lease",
         value: "$1.99/mo each"
+      },
+      {
+        label: "Cost per lease",
+        value: "$5.00/mo"
       }
     ],
-    example: "Worked example. Owner A holds 12 leases, Owner B holds 4. You see A’s top 5 and all 4 of B’s — 9 open. To open A’s remaining 7, add them for $13.93 a month — $63.92 in all, with every one of your 16 leases live.",
-    note: "Records for one legal person link automatically and count as one, so a household split across two RRC districts does not burn both claims."
-  },
-  {
-    kind: "prem",
-    name: "Premium",
-    price: "$99.99/mo",
-    who: "For a family, an estate, or an interest spread across counties. Five records with twenty leases open on each — enough to cover 97.2% of Texas owner records with no meter running at all.",
-    rows: [
-      {
-        label: "Owner records",
-        value: "5"
-      },
-      {
-        label: "Visible leases",
-        value: "20 per record"
-      },
-      {
-        label: "Total capacity",
-        value: "100 leases"
-      },
-      {
-        label: "Extra leases",
-        value: "$1.99/mo each"
-      }
-    ],
-    example: "Worked example. You claim three records holding 14, 9 and 22 leases — 45 in all. You see 14 + 9 + 20 = 43 of them, and the last two cost $3.98 a month. Five records means a whole family under one login.",
-    note: "This is the plan for anyone whose record runs past ten leases, or who holds more than two records."
+    example: "Worked example. You claim two records holding 14 and 9 leases — 23 in all. You see 10 + 9 = 19 of them, and the remaining 4 cost $7.96 a month. $107.95 in all, with every one of your 23 leases live — about $4.69 each.",
+    note: "This is the plan for anyone whose record runs past five leases, or who holds a second record. Past a few dozen add-ons an Enterprise quote usually costs less, and we say so rather than let the meter run."
   },
   {
     kind: "ent",
     name: "Enterprise",
     price: "Custom quote",
-    who: "For trusts, estates, family partnerships and advisors. Also the right home for anyone whose single record runs past fifty leases — the top 0.76% of the Texas roll.",
+    who: "For trusts, estates, family partnerships and advisors. Three records or more, with no lease limit on any of them — and the right home for anyone whose single record runs past fifty leases, the top 0.76% of the Texas roll.",
     rows: [
       {
         label: "Owner records",
-        value: "Unlimited"
+        value: "3 or more"
       },
       {
-        label: "Visible leases",
+        label: "Leases per record",
         value: "All of them"
       },
       {
@@ -735,8 +804,12 @@ export const PLAN_DETAIL: PlanDetail[] = [
         value: "No limit"
       },
       {
-        label: "Extra leases",
+        label: "Add-on lease",
         value: "Included in the quote"
+      },
+      {
+        label: "Cost per lease",
+        value: "Set by your quote"
       }
     ],
     example: "How it is quoted. Tell us the records you hold and your total lease count, and we price against those two numbers — then add seats, API access and onboarding as you need them. Terms and invoicing suit the entity: no card, no self-checkout.",
@@ -748,7 +821,7 @@ export const PLAN_DETAIL: PlanDetail[] = [
 export const HOW_CARDS: InfoCard[] = [
   {
     title: "What “visible lease” means",
-    body: "A lease on your claimed record that your plan shows in full — dashboard, map, reports, forecast and alerts. It is the unit every plan is sized in."
+    body: "A lease on your claimed record that your plan shows in full — dashboard, map, reports, forecast and alerts. It is the unit every plan is sized in: leases per record × records = your total capacity."
   },
   {
     title: "How your visible leases are chosen",
@@ -768,7 +841,7 @@ export const HOW_CARDS: InfoCard[] = [
 export const BILLING_CARDS: InfoCard[] = [
   {
     title: "How the 12-month term works",
-    body: "Every paid plan is a 12-month term starting at checkout. Pay it monthly and we take twelve automatic payments; prepay the year and you save two months. The price is fixed for the term."
+    body: "Every paid plan is a 12-month term starting at checkout. Pay it monthly and we take twelve automatic payments — $599.88 on Pro, $1,199.88 on Premium. Prepay the year instead and you pay ten months and get twelve: $499.90 and $999.90. The price is fixed for the term."
   },
   {
     title: "Automatic payments, no automatic renewal",
@@ -783,8 +856,8 @@ export const BILLING_CARDS: InfoCard[] = [
     body: "Upgrade any time — immediate, and you pay only the prorated difference. Downgrades take effect at the end of your term, and you choose which leases stay open before it closes."
   },
   {
-    title: "Extra leases ride the same invoice",
-    body: "Never a separate charge. A lease added on the 20th appears as a part-month line on your next invoice, so you get one number to look at rather than a scatter of receipts."
+    title: "Add-on leases ride the same invoice",
+    body: "A Premium feature, and never a separate charge. A lease added on the 20th appears as a part-month line on your next invoice, so you get one number to look at rather than a scatter of receipts. Free and Pro do not carry the meter — they step up a plan instead."
   },
   {
     title: "Nothing is ever deleted",
@@ -792,7 +865,7 @@ export const BILLING_CARDS: InfoCard[] = [
   },
   {
     title: "Claiming someone else’s record",
-    body: "Your own record is self-serve. A second, third or fifth needs a relationship attestation and a document, because a claim opens someone’s private figures. Entities are reviewed by a person."
+    body: "Your own record is self-serve — that is the one Free and Pro carry. Premium’s second record, and any record beyond it under Enterprise, needs a relationship attestation and a document, because a claim opens someone’s private figures. Entities are reviewed by a person."
   },
   {
     title: "Our promise",

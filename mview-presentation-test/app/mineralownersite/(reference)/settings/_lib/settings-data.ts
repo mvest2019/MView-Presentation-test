@@ -396,96 +396,31 @@ export const credits = {
 } as const;
 
 /* ============================================================================
-   8 · PROFILE & CONTACT  (v35 · feedback 19)
+   8 · PROFILE & CONTACT — NOW A POINTER  (2026-09-14)
 
-   SOURCE: PG.members_entity (name/email/phone) + the claim-verification mailing
-   address.
+   THE FORM LEFT THIS MODULE. `profileCard` — the four fields, their hints, the
+   two fieldset legends and the submit copy — moved to
+   `profile/_lib/profile-data.ts` as `identityForm` when `/mineralownersite/
+   profile` was built, and the Profile page owns editing identity now. Both
+   product rules moved with it: an email change re-verifies with a 6-digit
+   code, and a mailing-address change re-runs the claim address check before it
+   applies.
 
-   BUILD-CONTRACT, and both halves are real product rules rather than form
-   decoration: an email change re-verifies with a 6-digit code, and a
-   mailing-address change re-runs the claim address check before it applies. In
-   this build the save is a confirmation only.
+   WHAT IS LEFT HERE IS THE SIGNPOST. The section keeps its id and its jump
+   chip, so `#settings-profile` still resolves for anyone who bookmarked it or
+   follows the chip looking for the form; the card it lands on says where the
+   form went and names the fields so the reader can tell it is the right link.
+
+   DO NOT RE-ADD THE FIELDS HERE. One definition, deliberately —
+   `settings/_components/profile-card.tsx` has the reasoning.
    ============================================================================ */
 
-export interface ProfileField {
-  id: string;
-  label: string;
-  type: "text" | "email" | "tel";
-  required: boolean;
-  defaultValue?: string;
-  placeholder?: string;
-  hint?: string;
-  autoComplete?: string;
-}
-
-export interface ProfileGroup {
-  legend: string;
-  fields: ProfileField[];
-}
-
-export const profileCard = {
-  requiredNote: "Required field — everything else is optional.",
-  optionalMark: "(optional)",
-  groups: [
-    {
-      legend: "Who you are",
-      fields: [
-        {
-          id: "profile-name",
-          label: "Full name",
-          type: "text",
-          required: true,
-          defaultValue: "Suzie Smith",
-          autoComplete: "name",
-        },
-        {
-          id: "profile-email",
-          label: "Email",
-          type: "email",
-          required: true,
-          defaultValue: "suzie@example.com",
-          autoComplete: "email",
-          hint: "Changing your email sends a 6-digit verification code before it takes effect.",
-        },
-        {
-          id: "profile-phone",
-          label: "Phone",
-          type: "tel",
-          required: false,
-          placeholder: "(___) ___-____",
-          autoComplete: "tel",
-          hint: "Only used for the SMS summary when it launches — never for sales calls.",
-        },
-      ],
-    },
-    {
-      legend: "Where royalty mail arrives",
-      fields: [
-        {
-          id: "profile-address",
-          label: "Mailing address",
-          type: "text",
-          required: true,
-          defaultValue: "Beeville, TX",
-          autoComplete: "street-address",
-          hint: "This address verified your claim — changing it re-runs the record check before it applies.",
-        },
-      ],
-    },
-  ],
-  idle: "Changes apply immediately after you save.",
-  invalid: "Please fill in the required fields marked *",
-  saved: "Saved ✓ — your profile is up to date (prototype)",
-  submit: "Save profile",
-} as const satisfies {
-  requiredNote: string;
-  optionalMark: string;
-  groups: readonly ProfileGroup[];
-  idle: string;
-  invalid: string;
-  saved: string;
-  submit: string;
-};
+/** The four fields the Profile page names, so the pointer card can list them. */
+export const profilePointer = {
+  body: "Your name, email, phone and mailing address now live on your profile, together with your password and the devices signed in to your account.",
+  fields: ["Full name", "Email", "Phone", "Mailing address"],
+  cta: "Open my profile →",
+} as const;
 
 /* ============================================================================
    9 · PRIVACY

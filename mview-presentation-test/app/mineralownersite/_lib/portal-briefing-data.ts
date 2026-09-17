@@ -1350,13 +1350,13 @@ export const planCoverage = [
     body: "cover verdicts + am-I-making-money summary · enough to know you're OK",
   },
   {
-    plan: "Essentials · $49.95",
+    plan: "Pro · $49.99",
     covers: "+ Pages 3–4 · the why",
     body:
       "activity around your leases with the map, and the price/world context moving your number",
   },
   {
-    plan: "Premium · $99.95",
+    plan: "Premium · $99.99",
     covers: "All 5 + monthly + archive",
     body:
       "what-to-watch forward view, the keeper monthly report, the full archive — and the included Lease Audit",
@@ -1612,7 +1612,7 @@ export const monthly: {
     },
   ],
   planNote:
-    "Free: the headline + your 1 visible lease. Essentials · $49.95: the full report on up to 10 leases. Premium · $99.95: everything here — 20-lease limit, mailed paper copy, audit credits.",
+    "Free: the headline + your 1 visible lease. Pro · $49.99: the full report on up to 5 leases. Premium · $99.99: everything here — two records at 10 leases each, mailed paper copy, audit credits.",
   next:
     "Next: your Q3 quarterly deep-dive (trend pages + year-over-year) lands Oct 03, 2026.",
 };

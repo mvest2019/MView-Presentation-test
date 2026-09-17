@@ -651,7 +651,7 @@ body .mv-ref-app.ctx-open .ctx-drawer {transform:translateX(0);visibility:visibl
 .mv-ref-app .ctx-head .ctx-sub {color:#9fc9b8;font-size:11px;margin-top:2px }
 .mv-ref-app .ctx-x {background:none;border:0;color:#9fc9b8;font-size:16px;cursor:pointer;padding:6px;flex:none;font-family:inherit }
 .mv-ref-app .ctx-x:hover {color:#fff }
-.mv-ref-app .ctx-body {flex:1;overflow-y:auto;overflow-x:hidden;padding:14px 16px 20px;-webkit-overflow-scrolling:touch }
+.mv-ref-app .ctx-body {flex:1;overflow-y:auto;overflow-x:hidden;padding:14px 16px 20px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain }
 .mv-ref-app .kpi-click {cursor:pointer;transition:border-color .15s, box-shadow .15s;border:1px solid transparent }
 .mv-ref-app .kpi-click:hover,
 .mv-ref-app .kpi-click:focus-visible {border-color:var(--green);box-shadow:0 4px 14px rgba(46,143,109,.16);outline:none }
@@ -1196,6 +1196,8 @@ body .mv-ref-app.view-pro .app-body { max-width: 1440px; }
 .mv-ref-app .mv-kind:focus-visible {outline: 2px solid var(--green); outline-offset: 2px; }
 .mv-ref-app .mv-kind.on {border-color: var(--green); border-width: 2px; background: #f4fdf9; }
 .mv-ref-app .mv-kind.empty {opacity: .62; }
+.mv-ref-app .mv-kind:disabled {cursor: default; }
+.mv-ref-app .mv-kind:disabled:hover {border-color: var(--line, #dde5e2); box-shadow: none; }
 .mv-ref-app .mv-kind.empty .mk-n {color: var(--muted); }
 .mv-ref-app .mk-top {display: flex; align-items: center; gap: 9px; }
 .mv-ref-app .mk-ico {flex: none; width: 30px; height: 30px; border-radius: 9px;
@@ -1228,7 +1230,11 @@ body .mv-ref-app.view-pro .app-body { max-width: 1440px; }
   border-left: 4px solid #3b5bdb; }
 .mv-ref-app .rp-head {margin: 0 0 11px; font-size: 13.5px; font-weight: 700; line-height: 1.5; color: var(--ink); }
 .mv-ref-app .rp-kpis {display: flex; flex-wrap: wrap; gap: 10px; }
-.mv-ref-app .rp-kpis > * {flex: 1 1 178px; min-width: 0; }
+/* defect #16: basis 178px fit only six of the seven KPIs per row, so the
+   seventh wrapped alone and — with flex-grow — ballooned into a near-empty
+   panel-wide cell. 140px fits all seven on a desktop row, and the max-width
+   stops a lone wrapped cell from stretching into a sheet of white. */
+.mv-ref-app .rp-kpis > * {flex: 1 1 140px; min-width: 0; max-width: 340px; }
 .mv-ref-app .rp-kpi {display: flex; flex-direction: column; gap: 2px; padding: 10px 12px;
   border-radius: 11px; background: #f7f9fe; border: 1px solid #e4e9f7; }
 .mv-ref-app .rk-k {font-size: 9px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
@@ -1253,7 +1259,10 @@ body .mv-ref-app.view-pro .app-body { max-width: 1440px; }
   border-radius: 999px; background: #eef2f1; color: var(--slate); white-space: nowrap; }
 .mv-ref-app .rp-st.on {background: var(--mint); color: var(--green-ink); }
 .mv-ref-app .rp-note {margin: 10px 0 0; font-size: 10.5px; line-height: 1.55; color: var(--muted); }
-.mv-ref-app .mv-cols {display: grid; grid-template-columns: 1fr; gap: 14px; align-items: stretch; }
+/* defect #16: `stretch` pulled the shorter chart card down to its taller
+   neighbour's height, leaving a card-coloured void below its content. Each
+   card now ends where its content does. */
+.mv-ref-app .mv-cols {display: grid; grid-template-columns: 1fr; gap: 14px; align-items: start; }
 @media (min-width: 1080px) {
   .mv-ref-app .mv-cols {grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
 }
@@ -1955,10 +1964,15 @@ body .mv-ref-app.view-simple:not(.no-claim) section[data-route="app-briefing"] #
 .mv-ref-app .pf2-sub .pf2-dot { color: #c3ccd4; margin: 0 6px; }
 .mv-ref-app .pf2-legend { display: flex; gap: 8px 16px; flex-wrap: wrap; align-items: center;
               font-size: 12px; font-weight: 700; color: var(--ink); padding-top: 3px; }
-.mv-ref-app .pf2-sw { display: inline-block; width: 20px; border-top: 3px solid var(--green-deep);
+/* GOLDEN GAS, GREEN OIL. The bare `.pf2-sw` IS the gas swatch — the legend
+   renders gas with no modifier and oil as `.pf2-sw.oil` — so the base colour
+   is gas's. `.gas` and `.oil` used to share one golden rule, which made the
+   two legend keys identical whatever the base said; they are separated now so
+   each names its own product. */
+.mv-ref-app .pf2-sw { display: inline-block; width: 20px; border-top: 3px solid #b8892f;
           border-radius: 2px; vertical-align: middle; margin-right: 7px; }
-.mv-ref-app .pf2-sw.gas,
-.mv-ref-app .pf2-sw.oil { border-top-color: #b8892f; }
+.mv-ref-app .pf2-sw.gas { border-top-color: #b8892f; }
+.mv-ref-app .pf2-sw.oil { border-top-color: var(--green-deep); }
 .mv-ref-app .pf2-lgnote { font-size: 11px; font-weight: 600; color: var(--slate); opacity: .85;
               border-left: 1px solid #e2e8f0; padding-left: 14px; }
 @media (max-width: 560px) {
@@ -2055,8 +2069,8 @@ body .mv-ref-app.view-simple:not(.no-claim) section[data-route="app-briefing"] #
 .mv-ref-app .pf2-c.sh { background: rgba(255, 255, 255, .04); padding-left: 10px; padding-right: 8px; }
 .mv-ref-app .pf2-c.gh { border-top: none; padding-top: 4px; padding-bottom: 2px; font-size: 10.5px;
             font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-.mv-ref-app .pf2-c.gh.o { color: #ecc07c; }
-.mv-ref-app .pf2-c.gh.g { color: #9fd3ba; }
+.mv-ref-app .pf2-c.gh.o { color: #9fd3ba; }
+.mv-ref-app .pf2-c.gh.g { color: #ecc07c; }
 .mv-ref-app .pf2-c.shh { border-top: none; padding-top: 2px; padding-bottom: 7px; font-size: 9.5px;
              font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
              color: #8fa3ad; }
@@ -2066,12 +2080,12 @@ body .mv-ref-app.view-simple:not(.no-claim) section[data-route="app-briefing"] #
 .mv-ref-app .pf2-vo,
 .mv-ref-app .pf2-vg { font-variant-numeric: tabular-nums; font-weight: 800; font-size: 14px;
                    line-height: 1.35; white-space: nowrap; }
-.mv-ref-app .pf2-vg { color: #9fd3ba; }
-.mv-ref-app .pf2-vo { color: #ecc07c; }
+.mv-ref-app .pf2-vg { color: #ecc07c; }
+.mv-ref-app .pf2-vo { color: #9fd3ba; }
 .mv-ref-app .pf2-vs { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 12.5px;
           line-height: 1.35; white-space: nowrap; }
-.mv-ref-app .pf2-vs.g { color: #d8ede3; }
-.mv-ref-app .pf2-vs.o { color: #e9d1a4; }
+.mv-ref-app .pf2-vs.g { color: #e9d1a4; }
+.mv-ref-app .pf2-vs.o { color: #d8ede3; }
 .mv-ref-app .pf2-vs.na { color: #5f7482; font-weight: 600; }
 .mv-ref-app .pf2-u { font-size: 10px; font-weight: 700; color: #8fa3ad; margin-left: 3px; }
 .mv-ref-app .pf2-kstrip { display: flex; flex-wrap: wrap; gap: 6px 22px; padding: 11px 20px;

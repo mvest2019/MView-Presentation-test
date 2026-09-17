@@ -58,6 +58,11 @@ export function GoogleSignIn({
   onError?: (message: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  /* Same honesty as the sign-in form's submit button: once the backend has
+     accepted the token, the wait is the DESTINATION rendering (the portal's
+     cold build runs 11s+), not the sign-in — so the label stops claiming it
+     is still signing in. See the note on `redirecting` in `login-form.tsx`. */
+  const [redirecting, setRedirecting] = useState(false);
 
   /*
    * Latest props, held in a ref so the SDK is initialised once. Written in an
@@ -84,26 +89,40 @@ export function GoogleSignIn({
     }
     // Full navigation, not `router.push`: the session cookie was set on the
     // server and the tree on screen was rendered signed-out.
+    setRedirecting(true);
     window.location.assign(handlers.current.next);
   }
 
   return (
-    <div className="relative mb-1">
+    /* `group` so the visible copy below can react to a hover that physically
+       lands on the transparent overlay — `hover:` on the copy itself never
+       fires, because the overlay is always the topmost element. */
+    <div className="group relative mb-1">
       {/* What the visitor sees — the design's button. Hidden from assistive tech
-          because Google's real one sits on top and carries its own name. */}
+          because Google's real one sits on top and carries its own name. The
+          hover wash is `GoogleButton`'s (auth-shell.tsx), so the two Google
+          treatments read as one control. */}
       <div
         aria-hidden="true"
-        className={`flex w-full items-center justify-center gap-[10px] rounded-[10px] border border-mv-line bg-white px-[18px] py-[11px] font-sans text-[15px] font-semibold text-mv-ink ${
+        className={`flex w-full items-center justify-center gap-[10px] rounded-[10px] border border-mv-line bg-white px-[18px] py-[11px] font-sans text-[15px] font-semibold text-mv-ink transition-colors group-hover:bg-[#f6f8f7] ${
           busy ? "opacity-60" : ""
         }`}
       >
         <GoogleMark />
-        {busy ? "Signing you in…" : "Continue with Google"}
+        {redirecting
+          ? "Signed in — loading your portal…"
+          : busy
+            ? "Signing you in…"
+            : "Continue with Google"}
       </div>
 
       {/* Google's own button: same box, transparent, and it takes the click.
-          Unavoidable — the SDK returns a token from nothing else. */}
-      <div className="absolute inset-0 overflow-hidden opacity-0">
+          Unavoidable — the SDK returns a token from nothing else.
+
+          `cursor-pointer` on the overlay, not the copy: the overlay is what the
+          pointer is actually over, and before Google's script lands it is the
+          only thing saying this is a control at all. */}
+      <div className="absolute inset-0 cursor-pointer overflow-hidden opacity-0">
         <GoogleButtonSlot
           bare
           busy={busy}
@@ -141,6 +160,53 @@ function GoogleButtonSlot({
 
   useEffect(() => {
     let cancelled = false;
+    let resizer: ResizeObserver | null = null;
+
+    /*
+     * STRETCH GOOGLE'S BUTTON OVER THE WHOLE VISIBLE ONE — the overlay case's
+     * missing half (Pragati, 2026-09-17: hovering "Continue with Google" was
+     * "not proper clickable").
+     *
+     * WHY IT WAS BROKEN: GIS renders its button at the `width` it is asked for,
+     * and it CAPS THAT AT 400px — asking for more still renders 400. The
+     * visible copy underneath is `w-full` inside a 520px card, which is 474px
+     * at desktop, so Google's real button covered the left 400×40 of a 474×47
+     * box and nothing else. The right ~74px and bottom ~7px looked like button,
+     * showed no pointer, and swallowed clicks — measured on `/login` before
+     * this change.
+     *
+     * THE FIX IS A TRANSFORM, NOT A WIDER RENDER, because a wider render is
+     * exactly what the cap forbids. The host is pinned to the button's own
+     * layout size and scaled up to the overlay's — the button is `opacity-0`
+     * anyway, so the distortion is invisible and only the hit area matters.
+     * `offsetWidth`/`offsetHeight` on purpose: those are layout values,
+     * unaffected by the transform this same function sets, so re-running it is
+     * idempotent rather than compounding.
+     *
+     * A ResizeObserver keeps it true when the card reflows (viewport resize,
+     * font load). Observation fires once on registration, so the initial fit
+     * needs no separate call.
+     */
+    function fitOverlay(parent: HTMLElement) {
+      const box = parent.parentElement;
+      /* The `[role="button"]` INSIDE Google's tree, not `firstElementChild`:
+         GIS wraps its button in a full-width positioning div, so the wrapper
+         measures whatever the host measures and the scale came out as 1×. The
+         role node is the 400px-capped button itself — the thing that has to
+         grow. Pinning the host to ITS size first is what makes the wrapper
+         follow. */
+      const button = parent.querySelector<HTMLElement>('[role="button"]');
+      if (!box || !button) return;
+      const w = box.clientWidth;
+      const h = box.clientHeight;
+      const bw = button.offsetWidth;
+      const bh = button.offsetHeight;
+      if (!w || !h || !bw || !bh) return;
+      parent.style.width = `${bw}px`;
+      parent.style.height = `${bh}px`;
+      parent.style.transformOrigin = "0 0";
+      parent.style.transform = `scale(${w / bw}, ${h / bh})`;
+    }
 
     function init() {
       const gis = window.google?.accounts?.id;
@@ -169,12 +235,21 @@ function GoogleButtonSlot({
         logo_alignment: "left",
         width: 400,
       });
+
+      /* Only the transparent-overlay case is stretched. The dialog case shows
+         Google's button as itself, and scaling a VISIBLE button would distort
+         its type and its logo. */
+      if (bare && parent.parentElement) {
+        resizer = new ResizeObserver(() => fitOverlay(parent));
+        resizer.observe(parent.parentElement);
+      }
     }
 
     if (window.google?.accounts?.id) {
       init();
       return () => {
         cancelled = true;
+        resizer?.disconnect();
       };
     }
 
@@ -183,6 +258,7 @@ function GoogleButtonSlot({
       existing.addEventListener("load", init);
       return () => {
         cancelled = true;
+        resizer?.disconnect();
         existing.removeEventListener("load", init);
       };
     }
@@ -199,8 +275,9 @@ function GoogleButtonSlot({
 
     return () => {
       cancelled = true;
+      resizer?.disconnect();
     };
-  }, []);
+  }, [bare]);
 
   if (bare) {
     return <div ref={host} className="[color-scheme:light]" />;

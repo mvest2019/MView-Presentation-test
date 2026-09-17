@@ -54,6 +54,13 @@ export const BUILT_PORTAL_ROUTES: readonly string[] = [
   "/mineralownersite/leases",
   "/mineralownersite/briefing",
   "/mineralownersite/claim",
+  "/mineralownersite/invite",
+  /* BILLING & PLAN SHIPPED. Same omission the note above records, caught the
+     same way: the profile card's "See the full ledger" rendered as inert text
+     on top of a page that exists. `/soon/billing-and-plan` now redirects here,
+     so this is the only address the module has. */
+  "/mineralownersite/billing",
+  "/mineralownersite/profile",
   "/mineralownersite/settings",
 ];
 

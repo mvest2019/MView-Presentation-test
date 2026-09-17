@@ -62,6 +62,19 @@ export function LoginForm({ next }: { next: string }) {
   /* Kept apart from `failure`: a Google fault belongs under the Google button,
      not in the form's error slot next to the password field. */
   const [googleFailure, setGoogleFailure] = useState<string | null>(null);
+  /*
+   * TRUE ONCE THE CREDENTIALS ARE ACCEPTED, until the browser swaps documents.
+   *
+   * The full navigation below keeps this form on screen while the server
+   * renders the destination — and the destination is the PORTAL, the slowest
+   * page in the app (a cold dashboard build runs 11s+, and the upstream owner
+   * reads can take longer). For all of that time the button used to go on
+   * reading "Signing in…", which reports the one step that has already
+   * FINISHED, so a member sitting through a cold build reasonably concluded
+   * sign-in was broken (Pragati, 2026-09-17: "login not work properly"). The
+   * button now says what is actually happening: signed in, portal loading.
+   */
+  const [redirecting, setRedirecting] = useState(false);
 
   const {
     register,
@@ -156,6 +169,7 @@ export function LoginForm({ next }: { next: string }) {
      * `next` was validated server-side for a single leading slash before it was
      * passed to this component, so this cannot be pointed off-site.
      */
+    setRedirecting(true);
     window.location.assign(next);
   }
 
@@ -346,8 +360,15 @@ export function LoginForm({ next }: { next: string }) {
             them, where it is read on the way to trying again. */}
         <FormError message={failure} id={SIGN_IN_ERROR_ID} />
 
-        <SubmitButton disabled={isSubmitting}>
-          {isSubmitting ? "Signing in…" : "Sign in"}
+        {/* `redirecting` also keeps the button disabled after the action
+            resolves — react-hook-form flips `isSubmitting` back to false the
+            moment `onValid` returns, and the navigation is still in flight. */}
+        <SubmitButton disabled={isSubmitting || redirecting}>
+          {redirecting
+            ? "Signed in — loading your portal…"
+            : isSubmitting
+              ? "Signing in…"
+              : "Sign in"}
         </SubmitButton>
 
         <Fine className="mt-3">

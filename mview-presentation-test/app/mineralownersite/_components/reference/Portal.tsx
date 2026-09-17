@@ -60,7 +60,7 @@
  *      The other four states are still the menu's, because nothing any source
  *      returns distinguishes them.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -239,31 +239,60 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
        declaring the record unclaimed. Only an explicitly EMPTY list flips it. */
     initial?.owner.claimed_owners?.length === 0 ? 'unclaimed' : 'paid',
   );
-  const [drawer, setDrawer] = useState<string | null>(null);
+  /* a string is a key into `data.drawers`; an object is a panel built by a
+     view from one specific record — the Activities timeline builds one per
+     event so the detail matches the card that was clicked (defects #12-#14,
+     #17) */
+  const [drawer, setDrawer] = useState<string | DrawerCopy | null>(null);
   const [loadingName, setLoadingName] = useState<string | null>(null);
   const [trialStarted, setTrialStarted] = useState<string | null>(null);
   /* WHICH ALERTS THIS READER HAS OPENED — see `markRead` below for why it
      lives up here rather than inside `AlertsView`. */
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  /**
+   * HAS `mv.alertsRead` BEEN READ YET? — the flash this closes.
+   *
+   * The set lives in `localStorage`, so the server renders every unread FIGURE
+   * — the header's "Mark all 6 read", the Unread pill, the sidebar rail badge
+   * and the bell — from `alerts.items[].unread` alone, which is the server's
+   * opinion and knows nothing about what this browser has already opened. A
+   * reader who marked everything read, reloaded, and watched "6" sit there for
+   * the length of a hydration before correcting itself to "4" was not seeing a
+   * stale cache: they were seeing the only answer the server has, held on
+   * screen until the browser's answer arrived.
+   *
+   * `false` on the server AND on the first client render, so there is no
+   * hydration mismatch; flipped in a LAYOUT effect, so the true count paints in
+   * the same frame hydration commits rather than one frame later. Every
+   * consumer renders the count only once it is true — a figure briefly absent
+   * is honest, a figure briefly wrong is not.
+   */
+  const [readReady, setReadReady] = useState(false);
   const seq = useRef(0);
   const router = useRouter();
 
   /* ---------------------------------------------------- the derived flags */
   const sample = funnel === 'unclaimed';
-  /* THE UNCLAIMED VIEW IS ALWAYS THE FULLEST ONE.
-     Someone deciding whether to claim is looking at a shop window: the point is
-     to show everything the record becomes, so the density preference is
-     overridden to `pro` while nothing is claimed. The persona buttons keep
-     their own state and take effect the moment the record is claimed.
-     Declared here rather than beside the render because the class effect
-     below reads it. */
-  const effTier: Tier = funnel === 'unclaimed' ? 'pro' : tier;
+  /* ONE UI FOR EVERY ACCOUNT STATE (defect #6). Unclaimed used to override
+     the density to `pro` as a shop window, so the sample page carried card
+     paragraphs and tables that vanished the moment the record was claimed —
+     QA read that as two different UIs for the same page. The density now
+     follows the reader's own choice in every state; what marks the sample is
+     the labeling (claim rail, sample badges, amber borders), not a different
+     layout. Declared here rather than beside the render because the class
+     effect below reads it. */
+  const effTier: Tier = tier;
 
   /* ------------------------------------------------------ persisted choice */
   /* Density and funnel state are the reader's own preference, not data, so they
      live in the browser. Read in an effect rather than in the initial state so
      the server and the first client render agree. */
-  useEffect(() => {
+  /* A LAYOUT EFFECT, not a passive one, and only for this reason: it runs
+     before the browser paints the hydrated tree, so the alert counts go
+     straight from absent to correct instead of painting the server's number
+     for a frame first. See `readReady`. The work is four synchronous
+     `localStorage` reads, which is not enough to be worth a frame of jank. */
+  useLayoutEffect(() => {
     try {
       const t = localStorage.getItem('mv.tier') as Tier | null;
       if (t && PERSONAS.some((p) => p.key === t)) setTier(t);
@@ -273,6 +302,10 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
       const r = JSON.parse(localStorage.getItem(READ_KEY) ?? '[]') as unknown;
       if (Array.isArray(r)) setReadIds(new Set(r.filter((x): x is string => typeof x === 'string')));
     } catch { /* private mode — nothing read yet is the correct default */ }
+    /* OUTSIDE THE `try`. A browser that throws on `localStorage` still has a
+       read-state — the empty one — and holding `readReady` at false there would
+       hide the count for the whole visit rather than for a frame. */
+    setReadReady(true);
   }, []);
 
   /**
@@ -466,13 +499,53 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
   }, []);
 
   /* ------------------------------------------------------- the sample view */
-  /* Not claimed means the reader has not proved these interests are theirs, so
-     the payload is rewritten as a sample of itself — same shape, same code path,
-     real dates, illustrative figures. Memoised on the payload identity: the
-     transform walks every lease and month, and re-running it on each keystroke
-     in the search box was measurable. */
+  /**
+   * ONE SAMPLE RECORD, THE SAME ONE FOR EVERY READER.
+   *
+   * Not claimed means the reader has not proved these interests are theirs, so
+   * the payload is rewritten as a sample of itself — same shape, same code
+   * path, real dates, illustrative figures.
+   *
+   * WHAT CHANGED: WHICH PAYLOAD IS REWRITTEN. `sampleize(live)` rewrote the
+   * READER'S OWN snapshot. Nothing of theirs was published — the transform
+   * substitutes every name and number — but the preview was then a different
+   * record for every visitor, and for a member who had claimed something it was
+   * their own portfolio wearing invented lease names. The page says "this is
+   * what your alert inbox looks like once you claim your record", which is a
+   * promise about the PRODUCT; it cannot be made out of the record of somebody
+   * who has not claimed one.
+   *
+   * So the preview is drawn from the committed capture — ten leases, one
+   * county, a full timeline, every drawer key — served by
+   * `/api/portfolio/sample`. See that route for why it is a fetch and not an
+   * import: the capture is 2 MB and this is a client component.
+   *
+   * IT FALLS BACK TO `live` WHILE THE FETCH IS IN FLIGHT, and that is safe
+   * rather than merely convenient: the fallback is still `sampleize`d, so it is
+   * anonymised and scaled exactly as before. The reader sees the old behaviour
+   * for the length of one cached request and then the canonical record. What
+   * they never see is an unsampled figure.
+   *
+   * Memoised on payload identity: the transform walks every lease and month,
+   * and re-running it on each keystroke in the search box was measurable.
+   */
+  const [fixture, setFixture] = useState<Payload | null>(null);
+  useEffect(() => {
+    if (!sample || fixture) return;
+    let alive = true;
+    fetch('/api/portfolio/sample')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (alive && j) setFixture(j as Payload); })
+      /* a failed read leaves `fixture` null, which falls back to `live` — the
+         preview is then per-reader again, which is the old behaviour and not a
+         leak. A sample page is not worth an error card. */
+      .catch(() => { /* fall back to `live` */ });
+    return () => { alive = false; };
+  }, [sample, fixture]);
+
+  const sampleSource = sample ? (fixture ?? live) : null;
   const shown = useMemo(
-    () => (live && sample ? sampleize(live) : null), [live, sample]);
+    () => (sampleSource ? sampleize(sampleSource) : null), [sampleSource]);
   const data: Payload | null = sample ? (shown?.payload ?? null) : live;
 
   /* Drop ids the payload no longer carries — see `markRead`. Runs on every
@@ -491,7 +564,10 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
   }, [data?.alerts.items]);
 
   const openDrawer = useCallback((key: string) => setDrawer(key), []);
-  const copy: DrawerCopy | null = drawer ? (data?.drawers?.[drawer] ?? null) : null;
+  const openEventDrawer = useCallback((d: DrawerCopy) => setDrawer(d), []);
+  const copy: DrawerCopy | null = typeof drawer === 'string'
+    ? (data?.drawers?.[drawer] ?? null)
+    : drawer;
 
   /* Esc closes the drawer wherever focus is — a panel that can only be closed
      by hitting its own button is a trap for a keyboard user. */
@@ -523,11 +599,16 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
           ? (
             <AlertsView
               p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go}
-              readIds={readIds} markRead={markRead}
+              readIds={readIds} markRead={markRead} readReady={readReady}
             />
           )
           : route === 'activities'
-            ? <ActivitiesView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
+            ? (
+              <ActivitiesView
+                p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go}
+                openEvent={openEventDrawer}
+              />
+            )
             : route === 'production'
               ? <ProductionView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
               : (
@@ -543,7 +624,7 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
       {/* The two axes, readable by anything under the chrome. `tier` and not
           `effTier`: the raw choice, so a surface with its own ceiling rule can
           apply it rather than inherit this one's. See `view-state.tsx`. */}
-      <PortalViewStateProvider tier={tier} funnel={funnel}>
+      <PortalViewStateProvider tier={tier} funnel={funnel} setTier={pickTier}>
       {/* `onOwner` AND `busy` NO LONGER GO TO THE CHROME. The owner-search band
           was their only consumer and it has been removed (see `Chrome`); `load`
           and `busy` are still owned here — `load` for the URL-driven read in the
@@ -551,6 +632,7 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
           owner read changed, only who is told about it. */}
       <Chrome
         p={data} route={route} go={go} tier={tier} setTier={pickTier} readIds={readIds}
+        readReady={readReady}
         funnel={funnel} setFunnel={pickFunnel} sample={sample}
         open={openDrawer}
         sampleNote={shown?.note ?? null} trialStarted={trialStarted}

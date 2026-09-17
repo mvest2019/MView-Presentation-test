@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import Portal from "../../../_components/reference/Portal";
 import {
@@ -21,10 +22,11 @@ import "./soon.css";
  * the real pages and never reach here; keeping a "coming soon" page for one of
  * them would print a false statement about a page sitting one click away.
  * Production & Forecast had an entry here until that page was ported, and it
- * was removed then rather than left to contradict the sidebar. The three that
- * genuinely do not exist here — Lease Audit, Groups, Invite Co-Owners — keep
- * the reference's own description of what the module is, and the two account
- * rows keep theirs. The back buttons point at this app's paths.
+ * was removed then rather than left to contradict the sidebar; Invite Co-Owners
+ * went the same way when `(portal)/invite` landed. The two that genuinely do
+ * not exist here — Lease Audit and Groups — keep the reference's own
+ * description of what the module is, and the two account rows keep theirs. The
+ * back buttons point at this app's paths.
  *
  * ADAPTED — IT SAYS "COMING SOON", AND IT LOOKS LIKE THE PRODUCT. Two fixes to
  * one page, and they are the same fix:
@@ -104,12 +106,6 @@ const SECTIONS: Record<string, Section> = {
       "Being built. Your leases and the owners on them are already on the roll, which is what " +
       "this needs to open.",
   },
-  "invite-co-owners": {
-    title: "Invite Co-Owners",
-    icon: "mvi-invite",
-    what: "Invitations to the other owners on your leases.",
-    when: "Being built, alongside Groups — an invitation needs somewhere to invite people to.",
-  },
   "my-profile": {
     title: "My Profile",
     icon: "mvi-user",
@@ -117,12 +113,6 @@ const SECTIONS: Record<string, Section> = {
     when:
       "Part of it is live already: how this record was matched is in your profile menu, at the " +
       "top right. The rest is coming.",
-  },
-  "billing-and-plan": {
-    title: "Billing & Plan",
-    icon: "mvi-billing",
-    what: "Your plan and payment details.",
-    when: "Coming soon. Nothing here is billed while it is on its way.",
   },
 };
 
@@ -133,6 +123,27 @@ const SECTIONS: Record<string, Section> = {
  * Its title is not "Coming soon" because the eyebrow above it already says so,
  * and a heading that repeats the line above it tells the reader nothing twice.
  */
+/**
+ * SLUGS WHOSE MODULE HAS SINCE LANDED — sent to the real page, not answered.
+ *
+ * REMOVING A SECTION FROM `SECTIONS` IS NOT ENOUGH ON ITS OWN, and this map is
+ * the half that was missing. An unlisted slug falls through to `FALLBACK`,
+ * which says "this part of the wider portal has not opened yet" — so the moment
+ * a module ships, its own coming-soon URL starts printing a false statement
+ * about a page that is one redirect away. That is the exact defect this file's
+ * header says it exists to prevent, arriving through the back door.
+ *
+ * The URLs stay reachable because they were real routes and may be bookmarked,
+ * linked from an older build's sidebar, or sitting in a reader's history. A
+ * permanent redirect is what a moved page owes them.
+ *
+ * ADDING A MODULE IS ONE LINE HERE, alongside removing its `SECTIONS` entry.
+ */
+const LANDED: Record<string, string> = {
+  "invite-co-owners": "/mineralownersite/invite",
+  "billing-and-plan": "/mineralownersite/billing",
+};
+
 const FALLBACK: Section = {
   title: "This section",
   icon: "mvi-lock",
@@ -146,6 +157,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
+  if (LANDED[slug]) redirect(LANDED[slug]);
   const s = SECTIONS[slug] ?? FALLBACK;
   /* "This section — coming soon" is not a tab label; the fallback names itself */
   return {
@@ -162,6 +174,10 @@ export default async function Soon({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { slug } = await params;
+  /* BEFORE THE OWNER READ, deliberately: a redirect that first waited on a
+     several-second payload read for a page it is about to throw away would be
+     a slow answer to a question with a fast one. */
+  if (LANDED[slug]) redirect(LANDED[slug]);
   const s = SECTIONS[slug] ?? FALLBACK;
   const sel = ownerFrom(await searchParams);
   const initial: Payload | null = await load(sel);

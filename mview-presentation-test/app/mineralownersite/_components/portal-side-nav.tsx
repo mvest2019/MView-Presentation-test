@@ -134,17 +134,14 @@ export function PortalSideNav() {
         <span style={{ color: "#9fd7bd" }}>
           {referral.countyProof} are already on Mineral View.
         </span>
-        {/* No href: the Invite module is not built yet, so this is a labelled
-            non-action rather than a button into nothing. The "— soon" suffix is
-            gone with the nav rows' badges (requested); `aria-disabled`, the
-            dimming and the absence of an anchor still say it is inert. */}
-        <span
-          className="btn btn-mint btn-sm btn-block"
-          aria-disabled="true"
-          style={{ opacity: 0.6, cursor: "default" }}
-        >
+        {/* A REAL LINK NOW. This was a dimmed, `aria-disabled` label while the
+            Invite module was unbuilt — the sidebar's own convention for "not
+            yet", stated in `portal-nav.ts`. The module landed, so the panel
+            that has been advertising it all along finally goes somewhere, and
+            the dimming comes off with the inertness it was describing. */}
+        <Link href="/mineralownersite/invite" className="btn btn-mint btn-sm btn-block">
           Invite co-owners
-        </span>
+        </Link>
       </div>
     </aside>
   );

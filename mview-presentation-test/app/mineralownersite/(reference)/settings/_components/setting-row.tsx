@@ -44,6 +44,15 @@ import type { ReactNode } from "react";
  * setting will do; a switch labelled only "Email" leaves the reader guessing
  * whether it means the briefing or the receipts.
  */
+/*
+  THE LABEL COLUMN IS `basis-36` (144px), NOT `basis-40` (160px).
+
+  Taken from the delivered design (`mineralview-settings-detailed 2.html`,
+  2026-09-14), which sets it on all 25 rows this component renders. The app had
+  drifted 16px wider, which is enough to push the two-word controls in Alert
+  preferences ("In-app") onto a second line at the narrower column width. The
+  design's value gives the control side that space back.
+*/
 export function SettingRow({
   label,
   hint,
@@ -56,7 +65,7 @@ export function SettingRow({
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 border-b border-mv-portal-hairline py-[14px] last:border-b-0">
-      <div className="min-w-0 flex-1 basis-40">
+      <div className="min-w-0 flex-1 basis-36">
         <strong className="block text-[13px] leading-[1.45]">{label}</strong>
         <div className="mt-0.5 text-xs leading-[1.5] text-mv-muted">{hint}</div>
       </div>

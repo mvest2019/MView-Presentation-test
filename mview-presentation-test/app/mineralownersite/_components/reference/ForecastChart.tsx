@@ -43,10 +43,25 @@ const R = 694;
 const T = 22;
 const B = 246;
 
-const GAS = '#2e8f6d';
-const GAS_FC = '#7cc3a6';
-const OIL = '#b8892f';
-const OIL_FC = '#d8bb84';
+/**
+ * GAS IS GOLDEN AND OIL IS GREEN, on this chart and on every figure beside it.
+ *
+ * The two were the other way round here while the gauge keys
+ * (`.pf2-gk.gas` / `.pf2-gk.oil`) and the year columns
+ * (`.pf2-yrcol i.gas` / `i.oil`) already read gas-golden and oil-green — so
+ * the same product wore one colour in the chart and the other in the card
+ * above it. These four constants, the oil axis labels below and the value
+ * colours in the stylesheet are now one scheme: golden `#b8892f` for gas,
+ * `--green-deep` `#2e8f6d` for oil, each with the lighter tint its dashed
+ * projected half is drawn in.
+ *
+ * `VAL` is untouched: the money measure is neither product, and it is drawn
+ * in blue precisely so it cannot be read as one of them.
+ */
+const GAS = '#b8892f';
+const GAS_FC = '#d8bb84';
+const OIL = '#2e8f6d';
+const OIL_FC = '#7cc3a6';
 const VAL = '#3b5bdb';
 const VAL_FC = '#93a7ea';
 
@@ -169,7 +184,23 @@ export default function ForecastChart(
         const m = months[i];
         const inHalf = m.forecast === want || (want && s > 0 && i === s - 1);
         const v = f(m);
-        if (!inHalf || !(v > 0)) { started = false; continue; }
+        /* A ZERO IS A READING, NOT A GAP.
+         *
+         * The test here was `!(v > 0)`, which dropped every month whose value
+         * was zero and broke the line at it — so a lease that genuinely
+         * produced no oil in a month showed a hole rather than a zero, and a
+         * series that is zero throughout (a gas-only lease's oil, and every
+         * oil row on this record before 2010) drew NOTHING AT ALL: no line, no
+         * baseline, nothing to tell the reader whether it was zero or
+         * unavailable. `ForecastMonth`'s volume fields are plain `number`, so
+         * a zero there is measured production and not a missing reading.
+         *
+         * Now only a value that is not a usable number breaks the line.
+         * `Y(0)` is `B`, the axis baseline, so a zero draws flat along the
+         * bottom — visible, continuous, and correctly placed. The scale copes:
+         * `nice(0)` returns a top of 1, so an all-zero series gets a valid
+         * axis and sits on its floor instead of dividing by zero. */
+        if (!inHalf || !Number.isFinite(v) || v < 0) { started = false; continue; }
         pts.push(`${started ? 'L' : 'M'}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`);
         started = true;
       }
@@ -324,7 +355,7 @@ export default function ForecastChart(
           return (
             <text
               key={`cy${k}`} x={R + 7} y={geom.YO(v) + 3.5}
-              fontSize="10" fill="#a07a2c" textAnchor="start"
+              fontSize="10" fill={OIL} textAnchor="start"
             >
               {short(v)}
             </text>
@@ -383,7 +414,7 @@ export default function ForecastChart(
         {showOil ? (
           <text
             x={746} y={(T + B) / 2} fontSize="10.5" fontWeight="700"
-            fill="#a07a2c" textAnchor="middle"
+            fill={OIL} textAnchor="middle"
             transform={`rotate(90 746 ${(T + B) / 2})`}
           >
             {`OIL · ${BBL} / month`}
@@ -507,7 +538,7 @@ export function Brush(
           />
         ) : null}
         <polyline
-          points={pts} fill="none" stroke="#9fcab7" strokeWidth="1"
+          points={pts} fill="none" stroke={GAS_FC} strokeWidth="1"
           vectorEffect="non-scaling-stroke"
         />
       </svg>
