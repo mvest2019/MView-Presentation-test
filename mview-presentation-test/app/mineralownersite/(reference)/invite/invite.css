@@ -126,7 +126,15 @@
 
 /* ---------------------------------------------------------------- the head */
 .mv-ref-app .iv-top { margin: 18px 0 16px; }
-.mv-ref-app .iv-top > p { max-width: 68ch; margin: 5px 0 0; }
+/* THE INTRO RUNS THE PAGE'S FULL WIDTH (asked for directly — it was capped at
+   68ch and read as a half-width column), and at 15px rather than `.small`'s
+   13px so the page's one paragraph of explanation is not its smallest text. */
+.mv-ref-app .iv-top > p {
+  max-width: none;
+  margin: 5px 0 0;
+  font-size: 15px;
+  line-height: 1.6;
+}
 /* THE PAGE TITLE IS THE SIZE EVERY OTHER PAGE IN THIS GROUP USES.
    The reference marks it `.pg-title` and styles it nowhere, so it lands on
    whatever that build's bare `h2` is. Here the element is an `h1` — deliberate:
@@ -264,31 +272,37 @@
   padding: 13px 15px 14px; min-width: 0;
 }
 .mv-ref-app .iv-railcard.soft { background: #fafbfb; }
+/* THE RAIL'S TYPE IS A STEP UP FROM THE REFERENCE'S (asked for directly). It
+   was drawn at 9–12px, which is caption scale for what is actually the page's
+   instructions, and the detail line under each step was the smallest text on
+   the page. Every size in the rail moves together — bumping only the steps
+   card would leave the earnings card below it looking shrunken. The rail's
+   288px column is unchanged; the cards simply run a little taller. */
 .mv-ref-app .iv-railk {
-  display: block; font-size: 9px; font-weight: 700; letter-spacing: .08em;
-  text-transform: uppercase; color: var(--slate); margin: 0 0 9px;
+  display: block; font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--slate); margin: 0 0 10px;
 }
 
 .mv-ref-app .iv-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
 .mv-ref-app .iv-steps > li {
-  display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 0 10px;
-  align-items: start; padding: 7px 0; position: relative;
+  display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 0 10px;
+  align-items: start; padding: 8px 0; position: relative;
 }
 .mv-ref-app .iv-steps > li + li { border-top: 1px solid #f1f4f4; }
 .mv-ref-app .iv-steps > li:first-child { padding-top: 0; }
 .mv-ref-app .iv-steps > li:last-child { padding-bottom: 0; }
 .mv-ref-app .iv-rn {
-  width: 20px; height: 20px; border-radius: 50%; flex: none; display: flex;
-  align-items: center; justify-content: center; font-size: 10px; font-weight: 700;
+  width: 22px; height: 22px; border-radius: 50%; flex: none; display: flex;
+  align-items: center; justify-content: center; font-size: 11px; font-weight: 700;
   font-variant-numeric: tabular-nums; margin-top: 1px;
   background: #fff; color: #7d8a92; box-shadow: inset 0 0 0 1px #d3dbd9;
 }
 .mv-ref-app .iv-steps strong {
-  display: block; font-size: 12px; font-weight: 600; color: #37424e; line-height: 1.35;
+  display: block; font-size: 14px; font-weight: 600; color: #37424e; line-height: 1.35;
 }
 .mv-ref-app .iv-steps i {
-  display: block; font-style: normal; font-size: 10.5px; font-weight: 400; line-height: 1.5;
-  color: var(--slate); margin-top: 1px;
+  display: block; font-style: normal; font-size: 12.5px; font-weight: 400; line-height: 1.5;
+  color: var(--slate); margin-top: 2px;
 }
 /* NO `.done` AND NO `.now`. The rail used to fill rungs 1 and 2 green and ring
    the next one; asked for directly, it no longer marks any step as reached, so
@@ -319,20 +333,20 @@
   font-size: 34px; font-weight: 700; line-height: 1;
   font-variant-numeric: tabular-nums; color: var(--ink);
 }
-.mv-ref-app .iv-earn span { font-size: 12px; font-weight: 600; color: #37424e; }
+.mv-ref-app .iv-earn span { font-size: 13.5px; font-weight: 600; color: #37424e; }
 .mv-ref-app .iv-railcard.earn.live .iv-earn strong { color: var(--green-ink); }
 .mv-ref-app .iv-railcard.earn.live .iv-earn span { color: var(--green-ink); }
 .mv-ref-app .iv-earnline {
-  font-size: 11px; line-height: 1.55; color: var(--slate); margin: 7px 0 0;
+  font-size: 12.5px; line-height: 1.55; color: var(--slate); margin: 7px 0 0;
 }
 .mv-ref-app .iv-rungs { display: grid; gap: 0; margin: 11px 0 0; }
 .mv-ref-app .iv-rungs > div {
   display: flex; justify-content: space-between; gap: 10px;
   padding: 5px 0; border-top: 1px solid #e7ecec;
 }
-.mv-ref-app .iv-rungs span { font-size: 10.5px; color: var(--slate); }
+.mv-ref-app .iv-rungs span { font-size: 12px; color: var(--slate); }
 .mv-ref-app .iv-rungs b {
-  font-size: 10.5px; font-weight: 700; color: #8b959c; white-space: nowrap;
+  font-size: 12px; font-weight: 700; color: #8b959c; white-space: nowrap;
 }
 .mv-ref-app .iv-rungs > div.hit b { color: var(--ink); }
 .mv-ref-app .iv-railcard.earn.live .iv-rungs > div { border-color: rgba(4, 35, 26, .10); }
@@ -340,7 +354,7 @@
 .mv-ref-app .iv-railcard.earn.live .iv-rungs b { color: #6f8a80; }
 .mv-ref-app .iv-railcard.earn.live .iv-rungs > div.hit b { color: var(--green-ink); }
 .mv-ref-app .iv-earnnote {
-  font-size: 10.5px; line-height: 1.55; color: var(--slate);
+  font-size: 12px; line-height: 1.55; color: var(--slate);
   margin: 10px 0 0; padding-top: 9px; border-top: 1px solid #e7ecec;
 }
 .mv-ref-app .iv-earnnote b { color: #37424e; }
@@ -583,13 +597,47 @@
   text-transform: uppercase; color: var(--slate); width: 52px; flex: none;
 }
 .mv-ref-app .iv-mailrow > b { font-size: 12.5px; min-width: 0; overflow-wrap: anywhere; }
-.mv-ref-app .iv-mailrow > i { flex: 1 1 150px; text-align: right; }
-/* ONCE IT HAS WRAPPED IT IS NOT BESIDE ANYTHING, so it stops chasing the right
-   edge and lines up under the name instead. 62px is the 52px label column plus
-   the 10px flex gap. */
-@container (max-width: 520px) {
-  .mv-ref-app .iv-mailrow { align-items: baseline; }
-  .mv-ref-app .iv-mailrow > i { flex: 1 1 100%; text-align: left; margin-left: 62px; }
+/* THE HINT STAYS ON ONE LINE BESIDE THE NAME AND SCROLLS WHEN IT DOES NOT FIT
+   (asked for directly: no second line). It was `flex: 1 1 150px; text-align:
+   right`, which squeezed it into whatever was left over and broke its sentence
+   across two right-aligned lines — the ragged block floating in the corner of
+   the TO row.
+   `flex: 1 1 0` WITH `min-width: 0`: a zero basis means it never pushes the
+   row to wrap, it simply takes what is left after the label and the name, and
+   `overflow: hidden` clips the rest for the marquee to bring round. The
+   measuring and the duplicate copy are `MailHint`'s — see email-step.tsx for
+   why the overflow has to be measured rather than assumed. */
+.mv-ref-app .iv-mailhint {
+  flex: 1 1 0; min-width: 0; text-align: left;
+  overflow: hidden; white-space: nowrap;
+}
+/* IT ALWAYS RUNS. There is no "only when it overflows" state any more — see
+   `MailHint`: that made the same page scroll for one owner and sit still for
+   the next, because whether it overflowed depended on the recipient's name. */
+.mv-ref-app .iv-mailhint-track {
+  display: inline-flex;
+  animation: iv-hint-scroll var(--iv-hint-dur, 9s) linear infinite;
+  will-change: transform;
+}
+/* THE GAP IS PADDING ON EACH COPY, NOT `gap` ON THE TRACK. The loop travels
+   exactly -50%, which is one whole copy only while each copy carries its own
+   trailing space; with `gap` that translate lands half a gap short and the
+   seam stutters once a cycle. */
+.mv-ref-app .iv-mailhint-track > span { padding-right: 48px; }
+/* Pause under the pointer, so a reader who wants the whole sentence can stop
+   it rather than wait for it to come round. */
+.mv-ref-app .iv-mailhint:hover .iv-mailhint-track { animation-play-state: paused; }
+@keyframes iv-hint-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+/* MOTION OFF MEANS A SCROLLBAR, NOT A CLIPPED SENTENCE. With the animation
+   gone the tail would simply be unreachable, so the box hands it back as an
+   ordinary horizontal scroll. The duplicate copy stays out of the way. */
+@media (prefers-reduced-motion: reduce) {
+  .mv-ref-app .iv-mailhint-track { animation: none; }
+  .mv-ref-app .iv-mailhint-track > span + span { display: none; }
+  .mv-ref-app .iv-mailhint { overflow-x: auto; }
 }
 .mv-ref-app .iv-mailbody {
   margin: 0; padding: 15px 17px; background: #fcfdfd;

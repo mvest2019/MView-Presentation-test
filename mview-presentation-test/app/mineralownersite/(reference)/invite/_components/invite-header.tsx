@@ -38,7 +38,8 @@ export function InviteHeader() {
           heading, and the three step cards are one level under it. The SIZE is
           the other pages' 24px either way; see `.iv-title`. */}
       <h1 className="iv-title">Invite Co-Owners</h1>
-      <p className="small muted">
+      {/* Sized by `.iv-top > p` in invite.css — full width, 15px — not `.small`. */}
+      <p className="muted">
         Mineral View uses public appraisal records to identify other owners
         associated with your selected lease. Choose the co-owners you recognize,
         and Mineral View will prepare a personalized invitation for each person,

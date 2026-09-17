@@ -1,9 +1,11 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 
 import type { InviteEmailView } from "../_api/invite-api";
 import { DEFAULT_BODY } from "../_lib/invite-letters";
+import { preparedOn, printDocument } from "../_lib/print-document";
+import { renderInviteEmails } from "../_lib/invite-render";
 import type { GreetingStyle } from "../_lib/invite-types";
 import { CopyButton } from "./copy-button";
 import { StepCard } from "./step-card";
@@ -60,6 +62,7 @@ const GREETINGS: { value: GreetingStyle; label: string }[] = [
  */
 export function EmailStep({
   emails,
+  addresses,
   copyAll,
   rewording,
   at,
@@ -75,6 +78,8 @@ export function EmailStep({
   sendNote,
 }: {
   emails: InviteEmailView[];
+  /** `ownerKey` → the roll's town, for the printed posting block. */
+  addresses: ReadonlyMap<string, string | null>;
   /** Every recorded email in one block — the service's own "Copy all". */
   copyAll: string | null;
   /** True while a wording change is being re-rendered by the service. */
@@ -194,10 +199,8 @@ export function EmailStep({
             <div className="iv-mailrow">
               <span>To</span>
               <b>{one.to}</b>
-              <i className="tiny muted">
-                enter the recipient&rsquo;s email address — not available in
-                appraisal records
-              </i>
+              {/* Title case, and "in" left lowercase — the doc's own line. */}
+              <MailHint text="Enter Recipient’s Email Address (Not Available in Appraisal Records)" />
             </div>
             <div className="iv-mailrow">
               <span>Subject</span>
@@ -312,6 +315,21 @@ export function EmailStep({
                 <li key={email.ownerKey}>
                   <b>{email.to}</b>
                   <span className="iv-eachcode">{email.codeLabel}</span>
+                  {/* PRINT COMES FIRST, so `.iv-each > li > .btn:first-of-type`
+                      pushes the PAIR to the right edge — the rule was already
+                      written for two buttons and had only one to work with. */}
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    title={`A printable sheet for ${email.to}, with their own code`}
+                    onClick={() =>
+                      printDocument(
+                        renderInviteEmails([email], preparedOn(), addresses),
+                      )
+                    }
+                  >
+                    Print
+                  </button>
                   <CopyButton
                     size="sm"
                     text={email.copyText}
@@ -339,6 +357,81 @@ export function EmailStep({
 
       <p className="pf2-note">{sendNote}</p>
     </StepCard>
+  );
+}
+
+/** How fast the hint travels, in CSS pixels per second. Slow enough to read. */
+const HINT_SPEED = 45;
+
+/**
+ * THE TO ROW'S HINT, ON ONE LINE BESIDE THE NAME, SCROLLING CONTINUOUSLY.
+ *
+ * IT ALWAYS RUNS (asked for directly). An earlier pass measured whether the
+ * sentence overflowed and only animated when it did, so at a wide enough
+ * layout — or beside a short enough name — it simply sat still. That made the
+ * behaviour depend on the container and on how long the recipient's name is,
+ * which is roll data, so the same page scrolled for one owner and not the
+ * next. It is a ticker now: one line, moving, whatever the width.
+ *
+ * ── THE DUPLICATE IS WHAT MAKES THE LOOP SEAMLESS ──
+ *
+ * Two identical copies, each carrying its own trailing gap as padding, and the
+ * track travels exactly -50%. That lands copy two precisely where copy one
+ * started, so there is no jump at the seam — which is why the gap is padding
+ * on the copies rather than `gap` on the track: with `gap`, -50% is half a gap
+ * short and the seam stutters once a cycle.
+ *
+ * The second copy is `aria-hidden`: it is the same sentence twice, and a
+ * screen reader should hear it once. The full text is also on `title`, so it
+ * is reachable without waiting for the scroll to come round.
+ *
+ * ── SPEED IS CONSTANT, DURATION IS NOT ──
+ *
+ * A fixed duration makes a long sentence race and a short one crawl, so the
+ * duration is derived from the travel instead. That travel is ONE COPY's
+ * width, which does not depend on the container — but it does change when a
+ * webfont swaps in under the text, so it is measured on the copy itself rather
+ * than assumed, and re-measured if it moves.
+ *
+ * Hover pauses it, and `prefers-reduced-motion` stops it entirely — the CSS
+ * hands those readers a scrollbar instead, since a clipped sentence they
+ * cannot move is worse than either.
+ */
+function MailHint({ text }: { text: string }) {
+  const copyRef = useRef<HTMLSpanElement | null>(null);
+  const [seconds, setSeconds] = useState<number | null>(null);
+
+  useEffect(() => {
+    const copy = copyRef.current;
+    if (!copy) return;
+
+    const measure = () => {
+      const travel = copy.getBoundingClientRect().width;
+      /* A zero width is a copy that has not been laid out yet — measuring it
+         would pin the duration at nothing and the text would flicker in place. */
+      if (travel > 0) setSeconds(Math.max(6, Math.round(travel / HINT_SPEED)));
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(copy);
+    return () => observer.disconnect();
+  }, [text]);
+
+  return (
+    <i className="tiny muted iv-mailhint" title={text}>
+      <span
+        className="iv-mailhint-track"
+        style={
+          seconds
+            ? ({ "--iv-hint-dur": `${seconds}s` } as React.CSSProperties)
+            : undefined
+        }
+      >
+        <span ref={copyRef}>{text}</span>
+        <span aria-hidden="true">{text}</span>
+      </span>
+    </i>
   );
 }
 

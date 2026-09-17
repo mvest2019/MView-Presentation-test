@@ -39,9 +39,10 @@ export const metadata: Metadata = {
  * and the field opens empty, so the form can never render a pre-filled code
  * that its own schema would then reject. The visitor can still type one.
  *
- * IT IS PASSED AS A DEFAULT, NOT AS A LOCK. The spec is explicit that the code
- * must be editable and that registration must work without one, so this is the
- * field's starting value and nothing more — `RegisterForm` owns it from there.
+ * IT IS PASSED AS A LOCKED VALUE (asked for 2026-09-17, reversing the earlier
+ * editable-default spec): a code that arrives on the URL renders read-only, so
+ * the code from the letter is the code that registers. Registration without a
+ * code still works — a visitor with no `?code=` never sees the field at all.
  */
 export default async function RegisterPage({
   searchParams,

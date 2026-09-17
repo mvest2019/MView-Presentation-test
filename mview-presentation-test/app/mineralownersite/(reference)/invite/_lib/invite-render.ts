@@ -1,3 +1,4 @@
+import type { InviteEmailView } from "../_api/invite-api";
 import type { Letter } from "./invite-types";
 
 /**
@@ -169,6 +170,111 @@ export function renderLetters(
   <span>One sheet per owner, each with that owner&rsquo;s own code. Mineral View does not
   post these for you.</span>
 </div>
+${sheets}
+</body></html>`;
+}
+
+/**
+ * THE SAME SHEET, BUILT FROM THE LETTERS THE SERVICE WROTE.
+ *
+ * `renderLetters` above takes a `Letter`, which is the FIXTURE's shape — this
+ * page no longer composes letters, the invite service does, and what comes
+ * back is an `InviteEmailView`. So the printable document is rebuilt from that
+ * instead, reusing the stylesheet above rather than a second one: a letter that
+ * prints must not be able to drift from the letter that was previewed.
+ *
+ * ── THE LETTER ARRIVES AS ONE BLOCK OF TEXT, AND IS TAKEN APART HERE ──
+ *
+ * `bodyText` is greeting through signature. On paper those are not paragraphs:
+ * the greeting is set larger, the code becomes the bordered box the eye lands
+ * on, and the signature is pinned to the foot of the sheet. So the block is
+ * split on blank lines and each piece is placed by what it IS — matched
+ * against the service's own `greeting`, `codeLabel` and `sender` fields rather
+ * than by position, because a reader who has edited the wording can move any
+ * of them.
+ *
+ * ── THE ADDRESS IS THE ROLL'S, AND IS OFTEN ABSENT ──
+ *
+ * Printing exists for the owners with a posting address and no email, so the
+ * town goes in the window-envelope block when the roll filed one. The email
+ * view does not carry it — it is on the roster row — so the caller passes it
+ * in, and a missing one prints the same honest dash `renderLetters` prints.
+ */
+export function renderInviteEmails(
+  emails: InviteEmailView[],
+  madeOn: string,
+  /** `ownerKey` → "Victoria, TX", for the posting block. */
+  addresses?: ReadonlyMap<string, string | null>,
+): string {
+  const sheets = emails
+    .map((email) => {
+      const where = addresses?.get(email.ownerKey) ?? null;
+      const blocks = email.bodyText
+        .split(/\n{2,}/)
+        .map((block) => block.replace(/\s*\n\s*/g, " ").trim())
+        .filter(Boolean);
+
+      /* Placed by identity, not by index — see the header. */
+      const greeting = email.greeting.trim();
+      const sender = email.sender.trim();
+      const body = blocks.filter(
+        (block) => block !== greeting && block !== sender,
+      );
+      const hasCode = body.some((block) => block === email.codeLabel);
+
+      const codebox = `<div class="codebox">
+    <div class="k">Your unique invitation code</div>
+    <div class="v">${esc(email.codeLabel)}</div>
+    <div class="u">Enter it at <b>${esc(email.inviteUrl.split("?")[0])}</b></div>
+  </div>`;
+
+      return `<div class="sheet">
+  <div class="brand">Mineral View</div>
+  <div class="head">${esc(email.heading)}</div>
+  ${
+    email.caution
+      ? `<p class="warn"><strong>Before you post this:</strong> ${esc(email.caution)}</p>`
+      : ""
+  }
+  <div class="to">
+    <span class="line name">${esc(email.to)}</span>
+    <span class="line">${
+      where ? esc(where) : "— no address on the appraisal roll —"
+    }</span>
+  </div>
+  <p class="date">Prepared ${esc(madeOn)}</p>
+  <p class="greet">${esc(greeting)}</p>
+  ${body
+    .map((block) =>
+      block === email.codeLabel ? codebox : `<p class="body">${esc(block)}</p>`,
+    )
+    .join("\n  ")}
+  ${hasCode ? "" : codebox}
+  <div class="sign">
+    <div class="from">${esc(sender)}</div>
+    <div class="foot">
+      Claiming an owner record on Mineral View does not change or transfer legal ownership of
+      anything, and creating an owner account is free. This invitation was prepared by a
+      co-owner of record on ${esc(email.heading)} from the public appraisal roll.
+      Mineral View did not send it.
+    </div>
+  </div>
+</div>`;
+    })
+    .join("\n");
+
+  /* NO ON-SCREEN BAR. `renderLetters` is opened as a page and needs a Print
+     button; this document is handed straight to the print dialog, so a button
+     nobody will see would only be one more thing to keep working. */
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>${
+    emails.length === 1
+      ? `Invitation — ${esc(emails[0].to)}`
+      : `Invitations — ${esc(emails.length)} co-owners`
+  }</title>
+<style>${CSS}</style></head>
+<body>
 ${sheets}
 </body></html>`;
 }

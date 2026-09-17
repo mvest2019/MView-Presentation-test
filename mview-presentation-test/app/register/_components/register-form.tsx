@@ -563,14 +563,13 @@ export function RegisterForm({
           the product is invitation-only, which it is not.
 
           THE ONLY READER WHO SEES IT IS ONE WHO FOLLOWED AN INVITE LINK, and
-          they arrive with the box already filled in. For them it is not a
-          question but a confirmation: this is the code from your letter, and
-          you may change it or clear it.
-
-          CLEARING IT STILL REGISTERS. The field being conditional does not make
-          it required when present — the schema keeps it optional either way, so
-          somebody who empties the box gets an ordinary account and the ordinary
-          destination.
+          they arrive with the box already filled in — READ-ONLY (asked for
+          2026-09-17, reversing the earlier editable default): the code
+          identifies one ownership record, so the code from the letter is the
+          code that registers, shown here as a confirmation rather than a
+          question. `readOnly`, not `disabled`, because a disabled input's
+          value is dropped from form reads and this one must still reach
+          `registerUser` and the Google path.
 
           POSITION: the foot of the form, below the address and well away from
           the six-digit email verification block, so the two codes are never
@@ -588,10 +587,9 @@ export function RegisterForm({
               </>
             }
             error={errors.inviteCode?.message}
-            /* ONE HINT, because there is now only one reader. The "leave it empty
-             if nobody invited you" variant went with the unconditional field —
-             nobody who has not been invited reaches this markup. */
-            hint="From the invitation a co-owner sent you. You can change it, or clear it to register without one."
+            /* ONE HINT, because there is now only one reader — and it says the
+             field is fixed rather than inviting an edit the input refuses. */
+            hint="From the invitation a co-owner sent you — filled in from your link."
           >
             {(props) => (
               <input
@@ -600,16 +598,21 @@ export function RegisterForm({
                 type="text"
                 inputMode="numeric"
                 autoComplete="off"
-                /*
-                  NINE, NOT EIGHT, even though the box shows eight digits. The
-                  letter prints `3159-7778`, so a reader typing it off the page
-                  types the hyphen too — an eight-character cap would silently
-                  swallow their last digit and then call the result malformed.
-                  The spare character absorbs the punctuation;
-                  `normalizeInviteCode` strips it before anything is sent.
-                */
-                maxLength={9}
-                placeholder="31597778"
+                /* LOCKED TO THE LINK'S CODE. `readOnly` still submits (a
+                   `disabled` input's value would be dropped), and the styling
+                   says what the attribute does. */
+                readOnly
+                aria-readonly="true"
+                /* THE LOCKED LOOK IS INLINE, NOT UTILITIES. `inputClass`
+                   already carries `bg-white` and `text-mv-ink`; Tailwind
+                   resolves two background-color utilities by CSS order rather
+                   than by the order they are written here, so an override
+                   class would win or lose unpredictably. */
+                className={`${props.className} cursor-not-allowed`}
+                style={{
+                  backgroundColor: "var(--color-mv-line-soft)",
+                  color: "var(--color-mv-muted)",
+                }}
                 /*
                 `defaultValue` ON THE ELEMENT AS WELL AS IN `useForm`, and it is
                 not belt-and-braces — MEASURED, the form's `defaultValues` alone
@@ -617,10 +620,7 @@ export function RegisterForm({
                 `{name, onChange, onBlur, ref}`; it puts no `value` or
                 `defaultValue` on the element, so React renders the input with
                 no value and the server HTML ships one with no `value`
-                attribute. The other five fields default to "" so nothing about
-                this was visible until a field had a non-empty default.
-                React sets the initial DOM value from this, the input stays
-                UNCONTROLLED so the reader can edit or clear it freely, and RHF
+                attribute. React sets the initial DOM value from this and RHF
                 reads the DOM on submit — so the two cannot disagree. Both sides
                 are fed the same expression for that reason.
               */

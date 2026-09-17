@@ -424,6 +424,23 @@ export function InviteWorkbench({
 
   const copyAll = useMemo(() => buildCopyAll(emails), [emails]);
 
+  /* THE ROLL'S TOWN, KEYED BY OWNER, FOR THE PRINTED POSTING BLOCK. The email
+     the service writes carries no address — it is an email — but a sheet that
+     will go in an envelope needs one, and the roster row has it. Built here
+     because this is where both halves are on hand. */
+  const addresses = useMemo(() => {
+    const byOwner = new Map<string, string | null>();
+    for (const owner of roster?.owners ?? []) {
+      byOwner.set(
+        owner.ownerKey,
+        owner.city
+          ? `${owner.city}${owner.state ? `, ${owner.state}` : ""}`
+          : null,
+      );
+    }
+    return byOwner;
+  }, [roster]);
+
   const at = useMemo(() => {
     if (!atKey) return 0;
     const index = emails.findIndex((email) => email.ownerKey === atKey);
@@ -528,6 +545,7 @@ export function InviteWorkbench({
 
         <EmailStep
           emails={emails}
+          addresses={addresses}
           copyAll={copyAll}
           rewording={rewording}
           at={at}
