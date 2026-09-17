@@ -137,20 +137,28 @@ function SortHeader({
  *
  * Going back from here is therefore free: nothing has been filed yet.
  *
- * ── IT READS `allLeases`, NOT THE PICKED RECORD ──
+ * ── IT READS THE TICKED RECORDS, NOT `allLeases` ──
  *
- * A county view under-reports. The backend's own example is a name showing 19
- * leases in Archer that holds 22 across two counties, and `/owners/claim` takes
- * all 22. Printing the record's own 19 here would tell an owner they claimed
- * three fewer leases than they did.
+ * It read `allLeases` until this list and the claim payload were found to
+ * disagree. `allLeases` is the union over EVERY address the endpoint returned
+ * for a name, so a reader who ticked one of two addresses on step 3 got a table
+ * covering both — measured on `Brown Ellen Cochran`: 12 leases at the Martin
+ * address they ticked, 7 at the Karnes one they did not, and a heading reading
+ * "19 joined leases" over a request that named Martin alone.
  *
- * ── THE THIN ROWS ARE THE ENDPOINT'S SHAPE, NOT A BUG ──
+ * The wizard now builds this from the ticked records themselves. What the
+ * reader approves here is what the POST asks for, which is the one guarantee
+ * this screen owes them: it is the step that commits.
  *
- * `allLeases` carries lease names and values per county and nothing else.
- * Number, operator and interest exist only on the picked record, so leases in
- * that county are enriched and the rest print an em dash. An em dash is the
- * honest cell here — a zero would read as "no interest", which is a different
- * and false claim.
+ * ── AND THE ROWS COME THROUGH WHOLE ──
+ *
+ * A second thing that fixed. `allLeases` carries a lease name and value per
+ * county and nothing else, so number, operator and interest could only be
+ * filled in for the verified record's own county and every other county
+ * printed em dashes. Each record carries that detail for its own leases, so
+ * taking them from the records fills the columns. A dash now means the roll
+ * left the field blank — still an em dash and not a zero, which would read as
+ * "no interest" and be a different and false claim.
  *
  * ── NOTHING TO FILL IN, ONE THING TO DECIDE ──
  *
@@ -368,11 +376,17 @@ export function StepLeases({
         </>
       )}
 
-      <GuideNote title="Why some rows are thinner">
-        Lease number, operator and decimal interest are served for the record
-        you verified. Leases this name holds in other counties come back with a
-        name and an appraised value only, so those columns show an em dash
-        rather than a guess.
+      {/* THE OLD NOTE APOLOGISED FOR A WHOLE COLUMN OF EM DASHES — the table
+          was built from `allLeases`, which carries a name and a value per
+          county and nothing else, so only the verified record's own county
+          could be filled in. It is built from the ticked records' own leases
+          now, and those carry number, operator and interest per row, so the
+          dashes are down to whatever the roll genuinely left blank. */}
+      <GuideNote title="What this list covers">
+        Every lease held at the addresses you ticked on the previous step — go
+        back and tick another address to bring its leases in. A dash in a cell
+        means the roll carries no lease number, operator or decimal interest for
+        that row, which is left as a dash rather than a guess.
       </GuideNote>
 
       {/*

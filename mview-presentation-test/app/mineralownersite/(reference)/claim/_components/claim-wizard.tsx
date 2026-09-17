@@ -11,7 +11,12 @@ import {
   type ClaimResult,
 } from "../_api/claim-api";
 import { recordKey } from "../_lib/claim-format";
-import type { ClaimSet, CountyIndex, OwnerRecord } from "../_lib/claim-types";
+import type {
+  ClaimSet,
+  CountyIndex,
+  FlowLease,
+  OwnerRecord,
+} from "../_lib/claim-types";
 import { ClaimShell } from "./claim-shell";
 import {
   SEARCH_DEBOUNCE_MS,
@@ -569,6 +574,42 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
    * A record with no address on file contributes its name and no address, and
    * `postClaim` then omits the key entirely for that owner.
    */
+  /**
+   * THE RECORDS THE READER TICKED ON STEP 3 — and the single list steps 4 and
+   * 5 are now built from.
+   *
+   * ── THE BUG THIS FIXES ──
+   *
+   * `confirmed` used to reach exactly one thing: the claim payload. Steps 4
+   * and 5 read `claimSet.data.records` and `claimSet.data.all.leases`, which
+   * are the WHOLE answer — every address `/same-name` volunteered, ticked or
+   * not. So the page showed one claim and posted another.
+   *
+   * Measured on `Brown Ellen Cochran`: `selected` is 2901 BAMMEL LN, Martin
+   * County, `leaseCount: 12`. The endpoint also returns the same name at 2901
+   * BRAMMEL LANE in Karnes County, 7 leases. `allLeases.leaseCount` is 19 —
+   * 12 + 7, both addresses — and step 4 printed "19 joined leases" over a
+   * table carrying Karnes rows, for a reader who had ticked Martin only and a
+   * request that named Martin only.
+   *
+   * ── WHY THE TICKS WIN AND NOT `allLeases` ──
+   *
+   * Because the ticks are what gets SENT. `claimOwners` below carries one
+   * `addresses` array per name, built from this same list, so the request asks
+   * for the ticked doorsteps and nothing else. A table that disagrees with the
+   * request under a button labelled "this is the step that commits" is the one
+   * screen in the flow that must not be approximate.
+   *
+   * If the backend ever turns out to ignore `addresses` and claim by name
+   * statewide, then `allLeases` is right and this is wrong — but so is the
+   * payload, and the fix then belongs in `claimOwners`, not here. The two are
+   * built from one list precisely so they cannot drift apart again.
+   */
+  const confirmedRecords: OwnerRecord[] = [
+    ...(claimSet.data?.records ?? []),
+    ...(claimSet.data?.others ?? []),
+  ].filter((record) => confirmed.includes(recordKey(record)));
+
   const claimOwners: ClaimOwner[] = (() => {
     /*
      * ONE ENTRY PER OWNER NAME, carrying every address ticked under it.
@@ -580,11 +621,7 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
      * on the second.
      */
     const byName = new Map<string, Set<string>>();
-    for (const record of [
-      ...(claimSet.data?.records ?? []),
-      ...(claimSet.data?.others ?? []),
-    ]) {
-      if (!confirmed.includes(recordKey(record))) continue;
+    for (const record of confirmedRecords) {
       const addresses = byName.get(record.name) ?? new Set<string>();
       if (record.address) addresses.add(record.address);
       byName.set(record.name, addresses);
@@ -642,7 +679,52 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
     }
   }
 
-  const leases = claimSet.data?.all.leases ?? [];
+  /**
+   * THE LEASE TABLE — every lease held at a ticked address, deduplicated.
+   *
+   * ── AND EVERY ROW IS NOW A FULL ROW ──
+   *
+   * This used to be `claimSet.data.all.leases`, built by `toLeaseSet` out of
+   * the endpoint's `allLeases`, which carries a lease NAME and VALUE per county
+   * and nothing else. Number, operator and interest could only be filled in for
+   * the selected record's own county, so every other county printed em dashes —
+   * the thing step 4's guide note had to apologise for.
+   *
+   * Each `OwnerRecord` carries its own `leases`, mapped by `toRecord` from that
+   * record's `leaseNumbers`, `operators` and `interestValues`. Taking them from
+   * the records instead answers the ticks AND fills the columns, because the
+   * detail was there per address all along.
+   *
+   * ── THE KEY IS THE WHOLE ROW, NOT `county|name` ──
+   *
+   * `fetchClaimSet` merges `allLeases` on `county|name`, and that is right for
+   * a list carrying nothing else. These rows carry six fields, and a roll puts
+   * genuinely different leases under one name — `Brown Ellen Cochran` holds
+   * `BLAGRAVE I 31-43 (1 of 2)` and `(2 of 2)` in Martin, and a name-keyed map
+   * would silently drop one of them and under-count the claim.
+   *
+   * So a row is dropped only when every column the table prints is identical,
+   * which is the case this needs to catch: one lease reached through two ticked
+   * addresses in the same county, listed once rather than twice. Two rows the
+   * reader could not tell apart become one; anything distinguishable survives.
+   */
+  const leases: FlowLease[] = (() => {
+    const byLease = new Map<string, FlowLease>();
+    for (const record of confirmedRecords) {
+      for (const lease of record.leases) {
+        const key = [
+          lease.county,
+          lease.name,
+          lease.number,
+          lease.operator,
+          lease.value,
+          lease.decimal,
+        ].join("|");
+        if (!byLease.has(key)) byLease.set(key, lease);
+      }
+    }
+    return [...byLease.values()];
+  })();
 
   return (
     <ClaimShell current={step}>
@@ -695,7 +777,11 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
 
       {step === 4 && (
         <StepLeases
-          records={claimSet.data?.records ?? picked}
+          /* The ticked records, not the whole answer — the heading names the
+             owner this claim covers, and `?? picked` would have named a record
+             the reader unticked. Step 3 refuses to continue on an empty set, so
+             this is never empty here. */
+          records={confirmedRecords}
           leases={leases}
           ownerCount={claimOwners.length}
           memberId={memberId}
@@ -712,8 +798,9 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
           result={claim.data}
           /* The receipt prints an RRC lease number per name, and the claim
              response has none — it answers in counts and statuses, never in
-             lease identity. The confirmed set is where that number lives. */
-          records={claimSet.data?.records ?? []}
+             lease identity. The confirmed set is where that number lives —
+             which is what this comment always said and what it now passes. */
+          records={confirmedRecords}
           onStartOver={startOver}
         />
       )}

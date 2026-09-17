@@ -126,10 +126,23 @@ export function FlowEmpty({
   hint?: string;
 }) {
   return (
-    <div className="rounded-mv border border-mv-line bg-mv-portal-wash/60 px-4 py-[14px]">
-      <p className="text-[12.5px] font-semibold text-mv-ink">{message}</p>
+    /* CENTRED (requested), THE WAY `FlowLoading` ALREADY IS.
+       Ranged left it sat against the left edge of a 1,000px bar with the rest
+       of the row empty, so the one sentence on the screen read as a label for
+       something to its right that was not there. It is the only thing in the
+       box; the middle is where it belongs, and it is now the same placement
+       the loading slab it replaces uses. */
+    <div className="flex flex-col items-center justify-center rounded-mv border border-mv-line bg-mv-portal-wash/60 px-6 py-[22px] text-center">
+      {/* A MEASURE ON BOTH LINES. Centred text with no cap spreads to the full
+          width of the card and the eye loses the start of each line — the one
+          thing ragged-centre is bad at. `FlowLoading` caps its label at 42ch
+          for the same reason; the hint is the longer sentence, so it gets a
+          little more room. */}
+      <p className="max-w-[46ch] text-[12.5px] font-semibold text-mv-ink">
+        {message}
+      </p>
       {hint && (
-        <p className="mt-[3px] text-[12px] leading-[1.5] text-mv-muted">
+        <p className="mt-[5px] max-w-[54ch] text-[12px] leading-[1.5] text-mv-muted">
           {hint}
         </p>
       )}

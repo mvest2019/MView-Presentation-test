@@ -402,7 +402,29 @@ export default function Chrome(c: ChromeProps) {
         */}
         {c.sample
           ? (
-            <Link className="nav-item" href="/mineralownersite/claim">
+            /* A DASHED OUTLINE, BECAUSE THIS ROW IS NOT A DESTINATION
+               (requested). Every other item in this rail goes to a page that
+               already exists for this account; this one is the one thing the
+               account has not done yet, and while it is unclaimed it is the
+               most important control on the screen. A dashed edge is the
+               convention for "empty, to be filled" and marks it out without
+               giving it a filled button's weight inside a nav.
+
+               `outline` rather than `border`: the sheet sets 9px of padding and
+               a 9px radius on `.nav-item`, and a border would add 2px to a row
+               that has to line up with the ten below it. An outline is drawn
+               outside the box and follows the radius on its own.
+
+               `opacity-100` because the sheet dims every row that is not the
+               current one to `.62`, which would have taken the new outline down
+               with it — a dashed line at 62% on a near-black ground is a line
+               nobody sees. Both beat the sheet without `!important`: it is in
+               the `mv-reference` layer and these are utilities, which come
+               after it. */
+            <Link
+              className="nav-item opacity-100 outline-1 outline-dashed outline-mv-green/70"
+              href="/mineralownersite/claim"
+            >
               <span className="nav-ico"><Icon id="mvi-claim" /></span> Claim Mineral Owner
             </Link>
           )

@@ -401,14 +401,39 @@ export function StepPick({
              `toLocaleString` on both halves, because the narrow-down box beside
              it already prints "1,153" — the same number in two spellings on one
              screen reads as two different numbers. */
+          /*
+            THE SPINNER IS ON THE HEADING, and that is the correction to an
+            indicator that was only ever on the rows.
+
+            The floating pill below is right for a reader who has scrolled INTO
+            a list of a thousand candidates — it follows them down. It is the
+            wrong one for a reader who has not moved: they are looking at
+            "Searching the public record…" at the top of the card, and a badge
+            parked a third of the way down the viewport is not where that
+            sentence is. The two together cover both positions, and they are not
+            the duplicate that was removed earlier — that was two separate
+            notices each saying a search was running. This is the heading's own
+            glyph turning while the heading says it.
+
+            It costs no height: the glyph is smaller than the line it sits
+            on, and it is gone the moment the heading turns into a count.
+          */
           title={
-            results.loading
-              ? "Searching the public record…"
-              : results.error || records.length === 0
-                ? "Pick your record"
-                : narrowed
-                  ? `${shown.length.toLocaleString("en-US")} of ${records.length.toLocaleString("en-US")} owner record${records.length === 1 ? "" : "s"}`
-                  : `${records.length.toLocaleString("en-US")} candidate owner record${records.length === 1 ? "" : "s"}`
+            results.loading ? (
+              <span className="flex items-center gap-[10px]">
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="h-[18px] w-[18px] flex-none animate-spin text-mv-green-deep"
+                />
+                Searching the public record…
+              </span>
+            ) : results.error || records.length === 0 ? (
+              "Pick your record"
+            ) : narrowed ? (
+              `${shown.length.toLocaleString("en-US")} of ${records.length.toLocaleString("en-US")} owner record${records.length === 1 ? "" : "s"}`
+            ) : (
+              `${records.length.toLocaleString("en-US")} candidate owner record${records.length === 1 ? "" : "s"}`
+            )
           }
           /* The instruction has to match the view too. "Tick every record that
              is you" is advice for browsing a thousand candidates; over the two
@@ -599,12 +624,21 @@ export function StepPick({
                 view for as long as any part of the list is, and clamps it
                 inside the grid rather than letting it wander off the end. The
                 whole overlay is `pointer-events-none`; the rows underneath are
-                already inert while this is up. */}
+                already inert while this is up.
+
+                ── NEAR THE TOP OF THE LIST, NOT AT `38vh` ──
+
+                At 38vh the pill was pinned a third of the way down the screen,
+                which put it below the fold of anyone reading the top of the
+                card and made a running search look like nothing was happening.
+                Unscrolled it now sits at the first row; scrolled it pins just
+                under the portal's top bar, which is why the offset is 72px and
+                not zero. */}
             {refreshing && (
               <div className="pointer-events-none absolute inset-0 z-20 flex justify-center">
                 <span
                   role="status"
-                  className="sticky top-[38vh] flex h-fit items-center gap-2 rounded-full border border-mv-mint-edge bg-mv-card px-4 py-[9px] text-[12.5px] font-bold text-mv-green-deep shadow-mv-lg"
+                  className="sticky top-[72px] flex h-fit items-center gap-2 rounded-full border border-mv-mint-edge bg-mv-card px-4 py-[9px] text-[12.5px] font-bold text-mv-green-deep shadow-mv-lg"
                 >
                   <LoaderCircle
                     aria-hidden="true"

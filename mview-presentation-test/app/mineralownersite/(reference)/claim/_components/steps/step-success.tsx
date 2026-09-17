@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 
 import { PortalButtonLink } from "../../../../_components/ui/button";
-import { PrototypeButton } from "../../../../_components/ui/prototype-button";
 import type { ClaimAddressOutcome, ClaimResult } from "../../_api/claim-api";
 import type { OwnerRecord } from "../../_lib/claim-types";
 
@@ -284,20 +283,22 @@ export function StepSuccess({
               Go to dashboard →
             </PortalButtonLink>
 
-            {/* NO INVITE ROUTE EXISTS YET — the portal's own "Invite
-                  Co-Owners" nav item is a `soon` entry with no page behind it.
-                  This acknowledges in place rather than linking to a 404, and
-                  becomes a real link the moment that route lands. */}
-            <PrototypeButton
-              acknowledgement="Invites sent ✓ (prototype)"
+            {/* A REAL LINK NOW (requested). This was a `PrototypeButton` that
+                acknowledged in place — "Invites sent ✓ (prototype)" — because
+                at the time the portal's "Invite Co-Owners" nav item was a
+                `soon` entry with no page behind it, and a button that 404s is
+                worse than one that admits it is a stub.
+                `(reference)/invite` exists, and the settings card and the
+                sidebar both already link to it, so the note that said to make
+                this a link the moment the route landed is now spent. */}
+            <PortalButtonLink
+              variant="ghost"
               size="md"
-              icon={
-                <UserPlus aria-hidden="true" className="h-[15px] w-[15px]" />
-              }
-              title="Opens the co-owner invite flow"
+              href="/mineralownersite/invite"
             >
+              <UserPlus aria-hidden="true" className="h-[15px] w-[15px]" />
               Invite my co-owners
-            </PrototypeButton>
+            </PortalButtonLink>
 
             <button
               type="button"
