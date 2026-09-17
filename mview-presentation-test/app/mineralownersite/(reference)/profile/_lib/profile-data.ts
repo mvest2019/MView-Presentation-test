@@ -24,21 +24,17 @@ import { PHONE_PLACEHOLDER } from "@/lib/phone";
  *   · changing the mailing address RE-RUNS the claim address check before it
  *     applies, because that address is what proved the record was theirs.
  *
- * ── THE SECURITY CONTENT IS NEW, AND ITS DATA IS A FIXTURE ──
+ * ── THIS MODULE CARRIES COPY, NOT DATA ──
  *
- * Nothing in this repo records a password age, a two-factor position or a
- * session list, so the values below are prototype figures written to be
- * consistent with the rest of the portal's Suzie Smith / Beeville, TX fixture.
- * They are plausible, not real. `sessions` in particular will come from the
- * session store when there is one; until then the list is here so the card can
- * be laid out, read and reviewed.
- *
- * ── NOTHING ON THIS ROUTE IS WIRED ──
- *
- * The form does not submit, the switch does not flip and the sign-out buttons
- * do nothing. They are real inputs and real `<button>`s carrying the right
- * roles and ARIA state, so wiring each one is adding a handler rather than
- * rebuilding the control. See `README.md`.
+ * Labels, hints, legends and the state sentences — nothing that claims to be a
+ * fact about the reader's account. Every account fact on the route comes from
+ * `GET /users/me` (via `profile-api.ts`) or, for the strip's fallback, from
+ * the session cookie the sign-in flow stored. The Suzie Smith fixture that
+ * used to live here — form defaults, the "SS" monogram, a password age, a
+ * three-device session list, a $100 referral balance — is REMOVED, not kept as
+ * a fallback: when the API cannot answer, the page says so and disables the
+ * controls rather than rendering invented values as if they were the record.
+ * See `README.md`.
  */
 
 /** A card on this page: its heading, and the anchor a link can land on. */
@@ -70,16 +66,19 @@ export const PROFILE_SECTIONS = {
     heading: "Security & sign-in",
   },
   /*
-    INVITATIONS SITS WITH IDENTITY AND SIGN-IN, and that needs saying because
-    this page's header argues the opposite for plan and capacity.
+    INVITATIONS SITS WITH IDENTITY AND SIGN-IN. A referral credit is earned by
+    THIS PERSON doing something — writing to a co-owner they know — and the
+    balance is the only part of it that is theirs rather than the
+    subscription's; the card carries the rule and the two ways out (invite, or
+    read the full ledger) beside it.
 
-    The difference is whose it is. A plan is the ACCOUNT's and Billing owns it,
-    so a summary here would be a second answer to a question another page
-    answers properly. A referral credit is earned by THIS PERSON doing
-    something — writing to a co-owner they know — and the balance is the only
-    part of it that is theirs rather than the subscription's. It belongs beside
-    the person, and the card carries no plan, no price and no term: it shows the
-    balance, the rule, and the two ways out — invite, or read the full ledger.
+    ITS FIGURES ARE THE ONE FIXTURE LEFT ON THE ROUTE, KNOWINGLY. The balance
+    comes from `_lib/referral-credits.ts` — shared with Billing and Invite, so
+    there is exactly one copy — and the backend has no credits endpoint to
+    replace it yet ("no plan price exists anywhere in the backend",
+    PROFILE-API-FRONTEND.md §7). The card was briefly removed on those grounds
+    and RESTORED on request (user, 2026-09-17: keep the UI); when the credits
+    endpoint lands, `referral-credits.ts` is the one place to bind it.
   */
   invitations: {
     id: "profile-invitations",
@@ -105,7 +104,11 @@ export interface ProfileField {
   label: string;
   type: "text" | "email" | "tel";
   required: boolean;
-  defaultValue?: string;
+  /** shown but not editable — the box renders disabled and the submit ignores
+   *  it. The email wears this (user, 2026-09-17: "do not give option to edit
+   *  mail"); the backend's change-email endpoint stays wired in
+   *  `profile-actions.ts` for the day the option returns. */
+  locked?: boolean;
   placeholder?: string;
   hint?: string;
   autoComplete?: string;
@@ -123,12 +126,19 @@ export const identityForm = {
     {
       legend: "Who you are",
       fields: [
+        /*
+          NO `defaultValue` ON ANY FIELD, DELIBERATELY. Every box is seeded
+          from `GET /users/me` and from nowhere else — the Suzie Smith fixture
+          that used to sit here rendered as if it were the reader's record
+          whenever the API was down, which is a worse failure than an empty,
+          disabled form that says why. When the profile cannot be loaded the
+          card disables itself; it never invents values.
+        */
         {
           id: "profile-name",
           label: "Full name",
           type: "text",
           required: true,
-          defaultValue: "Suzie Smith",
           autoComplete: "name",
         },
         {
@@ -136,9 +146,14 @@ export const identityForm = {
           label: "Email",
           type: "email",
           required: true,
-          defaultValue: "suzie@example.com",
+          /*
+            NOT EDITABLE, ON REQUEST (user, 2026-09-17). The box shows the
+            sign-in address and nothing more; the old hint promised a 6-digit
+            code flow this page no longer offers, so it went with the control.
+          */
+          locked: true,
           autoComplete: "email",
-          hint: "Changing your email sends a 6-digit verification code before it takes effect.",
+          hint: "The address you sign in with. It can't be changed from this page.",
         },
         {
           id: "profile-phone",
@@ -154,21 +169,52 @@ export const identityForm = {
     {
       legend: "Where royalty mail arrives",
       fields: [
+        /*
+          THREE BOXES NOW, NOT ONE. `PATCH /users/me` stores the address as
+          street, city and ZIP separately (plus a state id this build cannot
+          edit — no states list ships in this repo, so it is omitted from every
+          save rather than guessed at or cleared). One box would have meant
+          jamming "100 Main St, Beeville 78102" into the street column.
+
+          THE OLD HINT PROMISED A RECORD RE-CHECK, AND THE API DOES NOT RUN
+          ONE — `PATCH /users/me` saves the address and nothing else
+          (PROFILE-API-FRONTEND.md §7). The line is dropped rather than
+          softened: a product rule stated in a hint and not kept by the save
+          under it is worse than no hint.
+        */
         {
           id: "profile-address",
-          label: "Mailing address",
+          label: "Street address",
           type: "text",
           required: true,
-          defaultValue: "Beeville, TX",
           autoComplete: "street-address",
-          hint: "This address verified your claim — changing it re-runs the record check before it applies.",
+        },
+        {
+          id: "profile-city",
+          label: "City",
+          type: "text",
+          required: false,
+          autoComplete: "address-level2",
+        },
+        {
+          id: "profile-zip",
+          label: "ZIP",
+          type: "text",
+          required: false,
+          autoComplete: "postal-code",
         },
       ],
     },
   ],
   idle: "Changes apply immediately after you save.",
   invalid: "Please fill in the required fields marked *",
-  saved: "Saved ✓ — your profile is up to date (prototype)",
+  savedLive: "Saved ✓ — your profile is up to date.",
+  noChanges: "No changes to save.",
+  saving: "Saving…",
+  /* the whole form's state when `GET /users/me` failed — the boxes stay empty
+     and disabled rather than wearing invented values */
+  unavailable:
+    "Your profile could not be loaded, so changes cannot be saved right now. Reload the page to try again.",
   submit: "Save profile",
 } as const satisfies {
   requiredNote: string;
@@ -176,58 +222,36 @@ export const identityForm = {
   groups: readonly ProfileGroup[];
   idle: string;
   invalid: string;
-  saved: string;
+  savedLive: string;
+  noChanges: string;
+  saving: string;
+  unavailable: string;
   submit: string;
 };
 
-/**
- * The identity strip at the top of the page.
- *
- * `initials` IS CARRIED RATHER THAN DERIVED FROM THE NAME. Splitting a name on
- * whitespace and taking first letters is wrong for a great many real names —
- * particles, multi-word surnames, single-word names, names whose first glyph is
- * a combining pair — and this is a mineral-rights product whose roll is full of
- * "SMITH, RAYMOND E" and trust names. A field the owner can be given control of
- * is the correct shape even while the value is a fixture.
+/*
+ * THE EMAIL-CHANGE PANEL'S COPY LIVED HERE (`emailVerify`: the sent line, the
+ * code box label, confirm/resend/cancel) and was REMOVED with the option to
+ * edit the address (user, 2026-09-17: "do not give option to edit mail"). The
+ * three-step flow it fronted — send-code, verify-code, `PATCH /users/me/email`
+ * — stays wired in `profile-actions.ts` / `profile-api.ts`, verified against
+ * the live API, so restoring the option is UI work only: this copy block and
+ * the panel in `identity-card.tsx` (both in git history, 2026-09-17).
  */
-export const identityStrip = {
-  initials: "SS",
-  /**
-   * The name and email the strip shows are READ OUT OF THE FORM below rather
-   * than typed again here. They sit six inches apart on the same screen, so a
-   * second copy is a defect waiting to happen — edit the field's
-   * `defaultValue` and the strip follows it.
-   */
-  name: fieldDefault("profile-name"),
-  email: fieldDefault("profile-email"),
-  photoNote: "Profile photos arrive with the community module.",
-} as const;
 
 /**
- * The default value of one identity field, by id.
+ * The identity strip at the top of the page — COPY ONLY.
  *
- * Throws rather than returning `""` if the id is not there: an empty name in
- * the page's largest heading is a bug that renders as a blank and gets shipped,
- * whereas a build that stops names the id you mistyped. This runs at module
- * load, so the failure is immediate and not request-dependent.
+ * The initials, name and email it used to carry as fixtures are gone: the
+ * strip renders `GET /users/me` (the server's own pre-formatted `initials` —
+ * never derived by splitting a name, which is wrong for particles, multi-word
+ * surnames and trust names), and falls back to the SESSION cookie's name and
+ * email — the record the sign-in flow stored — when the read fails. Nothing on
+ * it is invented.
  */
-function fieldDefault(id: string): string {
-  /*
-    Widened to `ProfileGroup[]` on the way in. `identityForm` is `as const`, so
-    each field's literal type carries only the keys that field actually has —
-    the phone has no `defaultValue` at all — and a union of those shapes has no
-    common `defaultValue` to read. The interface is the shape this lookup is
-    written against, and `satisfies` on the constant already guarantees the
-    value conforms to it.
-  */
-  const groups: readonly ProfileGroup[] = identityForm.groups;
-  for (const group of groups) {
-    for (const field of group.fields) {
-      if (field.id === id) return field.defaultValue ?? "";
-    }
-  }
-  throw new Error(`profile-data: no identity field with id "${id}"`);
-}
+export const identityStrip = {
+  photoNote: "Profile photos arrive with the community module.",
+} as const;
 
 /* ============================================================================
    2 · SECURITY & SIGN-IN
@@ -259,7 +283,22 @@ export const securityRows: SecurityRow[] = [
   {
     id: "security-password",
     label: "Password",
+    /*
+      THE UI PASS'S HINT, RESTORED ON REQUEST (user, 2026-09-17: "don't change
+      this UI"). It is the FALLBACK only: whenever `GET /users/me` answered,
+      `security-card.tsx` replaces it with the live "Last changed …" line built
+      from `password.last_changed_label` — a pre-formatted server string,
+      rendered rather than re-derived.
+
+      Two caveats the next reader should know it carries: the "4 months ago" is
+      the prototype figure (shown only when the record could not be read), and
+      "signs out every other device" is honoured by the on-screen device list
+      below — the API itself invalidates no server-side sessions yet
+      (PROFILE-API-FRONTEND.md §5).
+    */
     hint: "Last changed 4 months ago. A change signs out every other device.",
+    /* the mask is shown only when the API says a password exists — see
+       `security-card.tsx`; unqualified it would claim one on a Google account */
     value: "••••••••••••",
     action: "Change password",
     /* IT OPENS A PANEL IN THIS CARD, and does not leave for `/reset-password`.
@@ -286,6 +325,18 @@ export const securityRows: SecurityRow[] = [
     future: true,
   },
 ];
+
+/*
+ * THE DEVICE LIST — PROTOTYPE ROWS, RESTORED ON REQUEST.
+ *
+ * "Where you are signed in" was removed in the fixture purge (the API keeps no
+ * session store: PROFILE-API-FRONTEND.md §7, "The device list on screen today
+ * is not real data") and RESTORED as-was (user, 2026-09-17: "don't change this
+ * UI"). So these rows are the UI pass's prototype figures, the sign-outs act
+ * on local state only, and nothing persists a reload — exactly as before the
+ * wiring. When the server-side session store ships, this list becomes a read
+ * from it and the sign-out buttons get their endpoint.
+ */
 
 /** One signed-in device. */
 export interface ProfileSession {
@@ -368,14 +419,12 @@ export const changePassword = {
   submit: "Update password",
   cancel: "Cancel",
   /*
-   * "(prototype)" FOR THE SAME REASON THE PROFILE FORM SAYS IT: nothing is
-   * written anywhere. The second half is not a flourish — the row above this
-   * panel has always said "A change signs out every other device", so the panel
-   * does exactly that to the device list on success. A promise made in a hint
-   * and not kept by the control under it is worse than no hint.
+   * NO SIGN-OUT CLAIM IN THE SENTENCE. The old copy promised "every other
+   * device has been signed out" — the API keeps no server-side sessions to
+   * invalidate yet (PROFILE-API-FRONTEND.md §5), so the promise is dropped
+   * until the auth guard ships, not softened.
    */
-  saved:
-    "Password updated (prototype) — every other device has been signed out.",
+  saved: "Password updated ✓",
 } as const satisfies {
   legend: string;
   fields: readonly {
@@ -388,6 +437,21 @@ export const changePassword = {
   cancel: string;
   saved: string;
 };
+
+/** the password row's live hint, from the server's pre-formatted label */
+export const passwordCopy = {
+  lastChanged: (label: string) => `Last changed ${label}.`,
+  /* `last_changed_at: null` with `set: true` means NOT RECORDED — never shown
+     as `member_since`, which is a different fact (the day the account was
+     created) wearing the answer's clothes */
+  notRecorded: "Last changed: not recorded.",
+  /** the disabled button's tooltip on a Google account (user, 2026-09-17:
+   *  say WHY it is disabled where the reader's pointer already is). Names the
+   *  control they actually pressed at sign-up — "Continue with Google" — where
+   *  the row's hint carries the API's own longer sentence. */
+  googleDisabled:
+    "This account was created with “Continue with Google”, so it has no password to change.",
+} as const;
 
 export const securityNote = {
   glyph: "ⓘ",

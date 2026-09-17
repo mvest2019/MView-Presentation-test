@@ -9,8 +9,14 @@ import { Notice } from "../../../_components/ui/notice";
 import { FutureTag, SettingRow } from "../../settings/_components/setting-row";
 import { SettingToggle } from "../../settings/_components/setting-toggle";
 import {
+  changePasswordAction,
+  refreshProfileAction,
+} from "../_lib/profile-actions";
+import type { PasswordInfo } from "../_lib/profile-api";
+import {
   PROFILE_SECTIONS,
   changePassword,
+  passwordCopy,
   securityNote,
   securityRows,
   sessions,
@@ -18,54 +24,41 @@ import {
   type ProfileSession,
   type SecurityRow,
 } from "../_lib/profile-data";
+import { useProfileLive } from "./profile-live";
 import { PROFILE_INPUT_CLASS, ProfileCardShell } from "./profile-shell";
 
 /**
  * SECURITY & SIGN-IN — password, two-factor, passkeys, and the device list.
  *
- * ── THE CONTROLS ARE REAL; THE DATA IS A FIXTURE ──
+ * ── THE PASSWORD ROW IS LIVE; THE REST IS THE UI PASS, KEPT ON REQUEST ──
  *
- * Nothing in this repo records a password age, a two-factor position or a
- * session list, so the values come from `_lib/profile-data.ts` as prototype
- * figures. The CONTROLS are the real elements with the real roles: the
- * two-factor row is a `role="switch"` with `aria-checked` and the sign-outs are
- * `<button>`s.
+ * The password row's facts come from `GET /users/me` and its change goes to
+ * `PUT /users/me/password` — the only security endpoint that exists
+ * (PROFILE-API-FRONTEND.md). The other controls were briefly stripped in the
+ * fixture purge and RESTORED as the UI pass built them (user, 2026-09-17:
+ * "don't change this UI"):
  *
- * ── AND NOW EVERY ONE OF THEM ANSWERS ──
+ *   CHANGE PASSWORD  opens `ChangePasswordPanel`, below, INSIDE this card —
+ *                    not `/reset-password`, which is the FORGOTTEN-password
+ *                    path: it mails a single-use link because that visitor
+ *                    cannot prove who they are. A reader already signed in can,
+ *                    with the password they are replacing. The button is
+ *                    disabled only when the API SAYS no password exists (a
+ *                    Google account); an unreadable profile leaves it enabled,
+ *                    because an outage must not block a password change the
+ *                    PUT itself may accept.
  *
- * They all rendered enabled and did nothing when pressed. Asked for directly.
- * Each is wired to the most honest thing available to it, which is a different
- * thing in each case and deliberately so:
+ *   TWO-FACTOR       flips LOCAL state — there is nowhere to store it yet
+ *                    (contract §7); what the reader gets is a switch that
+ *                    behaves like one, and nothing persists a reload.
  *
- *   CHANGE PASSWORD  opens `ChangePasswordPanel`, below, INSIDE this card.
- *                    It briefly linked to `/reset-password` instead; asked for
- *                    directly, and the panel is the better answer anyway. That
- *                    route is the FORGOTTEN-password path: it mails a
- *                    single-use link because the visitor cannot prove who they
- *                    are. A reader already signed in can prove it, with the
- *                    password they are replacing — so the round trip through
- *                    their inbox bought nothing and cost the reader their place
- *                    on the page.
+ *   ADD A PASSKEY    is `disabled`, with the row's own "Future" tag saying
+ *                    why. Unbuilt is shown as unbuilt, never as working.
  *
- *   TWO-FACTOR       flips. Local state, because there is nowhere to store it;
- *                    what the reader gets is a switch that behaves like one.
- *
- *   SIGN OUT / ALL   drop rows out of the device list. That is the whole
- *                    visible consequence of the real action, and running it
- *                    locally is the closest honest thing to it. A `sr-only`
- *                    live region announces what left, because a row silently
- *                    vanishing is invisible to a screen reader.
- *
- *   ADD A PASSKEY    is `disabled`. It is the one control with nothing behind
- *                    it and no honest stand-in, and the row already says
- *                    "Future" beside it — so the button now LOOKS as inert as
- *                    it is instead of inviting a press that goes nowhere. That
- *                    is the same rule the invite rail and `portal-routes.ts`
- *                    follow: unbuilt is shown as unbuilt, never as working.
- *
- * NOTHING HERE PERSISTS, and nothing claims to. Reload and the fixture is back.
- * A confirmation that claimed a device had really been signed out would be the
- * one thing worse than a dead button.
+ *   THE DEVICE LIST  is the prototype's three rows; the sign-outs drop rows
+ *                    from local state, which is the visible consequence of the
+ *                    real action and the closest honest stand-in until the
+ *                    server-side session store exists.
  *
  * ── `SettingRow` AND `SettingToggle` ARE IMPORTED FROM THE SETTINGS ROUTE ──
  *
@@ -90,7 +83,11 @@ import { PROFILE_INPUT_CLASS, ProfileCardShell } from "./profile-shell";
  * suspicious-device sign-outs invites the misclick whose cost is losing the
  * session you were using to secure the account.
  */
-export function SecurityCard() {
+export function SecurityCard({ password }: { password: PasswordInfo | null }) {
+  /* the live profile, so a save in the identity card — or the refresh after a
+     password change — moves this card's facts without re-rendering the route */
+  const { profile: live, update: publishProfile } = useProfileLive();
+  const passwordInfo = live ? live.password : password;
   const [twoFactor, setTwoFactor] = useState(
     () => securityRows.find((row) => row.toggle)?.on ?? false,
   );
@@ -102,14 +99,44 @@ export function SecurityCard() {
   const [passwordOpen, setPasswordOpen] = useState(false);
 
   /* Signing out every device but this one. It is what "Sign out everywhere
-     else" does, and it is ALSO what the password row has always promised in
-     its hint — so both call this rather than each keeping its own copy of what
-     "everywhere else" means. */
+     else" does, and it is ALSO what the password row's hint promises — so the
+     password panel's save calls it too, keeping the on-screen list true to the
+     sentence above it. (The API itself invalidates no server-side sessions
+     yet; this list is the prototype's, restored on request.) */
   const signOutOthers = () => {
     const going = openSessions.filter((session) => !session.current).length;
     setOpenSessions((open) => open.filter((session) => session.current));
     return going;
   };
+
+  /*
+   * THE PASSWORD ROW, off `GET /users/me` — and off NOTHING ELSE.
+   *
+   *   · `last_changed_label` is the server's pre-formatted "4 months ago" —
+   *     rendered, never re-derived in the browser;
+   *   · `last_changed_at: null` with `set: true` renders as "not recorded",
+   *     and NEVER falls back to `member_since` — that is the account's
+   *     creation date, a different fact that would be shown as the answer;
+   *   · `set: false` is the Google account: no password exists, the button is
+   *     disabled, and the row says the API's own `unavailable_reason`. Left
+   *     enabled, the PUT would answer 409 `USERS_PASSWORD_NOT_SET` and the
+   *     reader would be told to fix a password they have never had;
+   *   · `password: null` — the read failed — leaves the button ENABLED with
+   *     the row's own copy hint. The gate exists for the one account shape the
+   *     API has NAMED as passwordless, not for outages: disabling here made a
+   *     broken GET block every password change even when the PUT would have
+   *     worked (user, 2026-09-17). If a Google account does slip through, the
+   *     PUT's 409 lands in the panel as the same sentence the gate would have
+   *     shown.
+   */
+  const passwordHint = passwordInfo
+    ? passwordInfo.set
+      ? passwordInfo.last_changed_label
+        ? passwordCopy.lastChanged(passwordInfo.last_changed_label)
+        : passwordCopy.notRecorded
+      : (passwordInfo.unavailable_reason ?? passwordCopy.notRecorded)
+    : null;
+  const canChangePassword = passwordInfo?.set !== false;
 
   return (
     <ProfileCardShell section={PROFILE_SECTIONS.security}>
@@ -123,25 +150,59 @@ export function SecurityCard() {
              it only names what to look for once you have been told to look. */
           <Fragment key={row.id}>
             <SecurityControlRow
-              row={row}
+              row={
+                row.panel
+                  ? {
+                      ...row,
+                      /* null → the row keeps its own copy hint (the GET
+                         failed, so there is no live fact to state) */
+                      hint: passwordHint ?? row.hint,
+                      /* the mask claims "a password is set" — only the API may
+                         say that, so it renders only when it did */
+                      value: passwordInfo?.set ? row.value : undefined,
+                    }
+                  : row
+              }
+              /* the switch flips LOCAL state — restored UI-pass behavior;
+                 there is no 2FA API yet (contract §7) so nothing persists */
               on={row.toggle ? twoFactor : undefined}
               onToggle={row.toggle ? setTwoFactor : undefined}
               panelId={row.panel ? PASSWORD_PANEL_ID : undefined}
               panelOpen={row.panel ? passwordOpen : undefined}
               onPanelToggle={
-                row.panel ? () => setPasswordOpen((open) => !open) : undefined
+                /* no handler only when the API SAID no password exists → the
+                   row's own fallback renders the button disabled, exactly
+                   like Passkey's */
+                row.panel && canChangePassword
+                  ? () => setPasswordOpen((open) => !open)
+                  : undefined
+              }
+              disabledTitle={
+                /* the tooltip says WHY, right under the pointer that just
+                   found a dead button (user, 2026-09-17) — only on the
+                   Google-account case; Passkey's "Future" tag speaks for
+                   itself */
+                row.panel && !canChangePassword
+                  ? passwordCopy.googleDisabled
+                  : undefined
               }
             />
             {row.panel && passwordOpen ? (
               <ChangePasswordPanel
                 onCancel={() => setPasswordOpen(false)}
-                onSaved={() => {
+                onSaved={(message) => {
+                  /* the hint above this panel promises "signs out every other
+                     device" — the on-screen list keeps that promise locally */
                   signOutOthers();
                   setPasswordOpen(false);
-                  /* The record's sentence and nothing appended. It already ends
-                     "every other device has been signed out", and a count after
-                     it said the same fact twice. */
-                  setAnnouncement(changePassword.saved);
+                  setAnnouncement(message);
+                  /* the fresh "Last changed …" label needs a GET (the PUT's
+                     response carries none) — one quick fetch into the live
+                     context, NOT `router.refresh()`, which would wait on the
+                     chrome's owner scan before the hint moved */
+                  void refreshProfileAction().then((r) => {
+                    if (r.ok) publishProfile(r.profile);
+                  });
                 }}
               />
             ) : null}
@@ -205,30 +266,40 @@ const PASSWORD_PANEL_ID = "profile-change-password";
  * renamed field then fails to compile here instead of silently losing its error
  * message at runtime.
  *
- * ── NOTHING IS SENT, AND THE COPY SAYS SO ──
+ * ── IT SENDS — `PUT /users/me/password`, AND ONLY THAT ──
  *
- * There is no change-password endpoint in this repo. On success the panel does
- * the one thing it can honestly do — the sign-out-everywhere the row above has
- * always promised — and says "(prototype)". It never claims the password was
- * stored.
+ * The panel can only open when `GET /users/me` answered `password.set: true`,
+ * so there is no prototype branch left: every submit that passes the schema
+ * goes to the API, and the API's refusals land on their own fields:
+ *
+ *   · 403 `USERS_PASSWORD_INCORRECT` → inline on the current-password box,
+ *     and nothing more — the response carries no details, deliberately;
+ *   · 400 `VALIDATION_ERROR` → each `details[].path` against its field;
+ *   · anything else → the one form-level line, with the requestId for support.
+ *
+ * PASSWORDS ARE NOT TRIMMED anywhere on the way through — spaces are part of
+ * the secret, and one trimmed here would not match at the next sign-in.
  */
 function ChangePasswordPanel({
   onCancel,
   onSaved,
 }: {
   onCancel: () => void;
-  onSaved: () => void;
+  onSaved: (message: string) => void;
 }) {
   const [errors, setErrors] = useState<Record<string, string[]>>({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   return (
     <form
       id={PASSWORD_PANEL_ID}
       noValidate
       className="mt-1 mb-3 rounded-xl border border-mv-line bg-mv-portal-explain px-3.5 pt-3 pb-3.5"
-      onSubmit={(event) => {
+      onSubmit={async (event) => {
         event.preventDefault();
-        const data = new FormData(event.currentTarget);
+        const form = event.currentTarget;
+        const data = new FormData(form);
         const parsed = changePasswordSchema.safeParse({
           currentPassword: String(data.get("currentPassword") ?? ""),
           password: String(data.get("password") ?? ""),
@@ -239,7 +310,32 @@ function ChangePasswordPanel({
           return;
         }
         setErrors({});
-        onSaved();
+        setFormError(null);
+
+        setBusy(true);
+        const result = await changePasswordAction(parsed.data);
+        setBusy(false);
+        if (!result.ok) {
+          if (result.fieldErrors) {
+            setErrors(
+              Object.fromEntries(
+                Object.entries(result.fieldErrors).map(([key, message]) => [
+                  key,
+                  [message],
+                ]),
+              ),
+            );
+          } else {
+            setFormError(
+              result.requestId
+                ? `${result.message} (request ${result.requestId})`
+                : result.message,
+            );
+          }
+          return;
+        }
+        form.reset();
+        onSaved(changePassword.saved);
       }}
     >
       <p className="mb-2.5 text-[10px] font-extrabold tracking-[0.09em] text-mv-muted uppercase">
@@ -281,11 +377,20 @@ function ChangePasswordPanel({
         );
       })}
 
+      {/* the one form-level line, for refusals that belong to no single box —
+          `role="alert"` so it is read on arrival, requestId included because it
+          is what support will ask for */}
+      {formError ? (
+        <p role="alert" className="mb-2.5 text-xs text-mv-required">
+          {formError}
+        </p>
+      ) : null}
+
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <PortalButton size="sm" onClick={onCancel}>
+        <PortalButton size="sm" onClick={onCancel} disabled={busy}>
           {changePassword.cancel}
         </PortalButton>
-        <PortalButton size="sm" variant="primary" type="submit">
+        <PortalButton size="sm" variant="primary" type="submit" disabled={busy}>
           {changePassword.submit}
         </PortalButton>
       </div>
@@ -301,6 +406,7 @@ function SecurityControlRow({
   panelId,
   panelOpen,
   onPanelToggle,
+  disabledTitle,
 }: {
   row: SecurityRow;
   /** The live position, for the one row that is a switch. */
@@ -311,6 +417,9 @@ function SecurityControlRow({
   panelId?: string;
   panelOpen?: boolean;
   onPanelToggle?: () => void;
+  /** the native tooltip on the DISABLED fallback button — why this press has
+   *  nowhere to go, said where the pointer already is */
+  disabledTitle?: string;
 }) {
   return (
     <SettingRow
@@ -359,9 +468,11 @@ function SecurityControlRow({
           ) : row.action ? (
             /* No panel and no handler: there is nowhere for this press to
                go, so it says so. `PortalButton` already dresses `:disabled` —
-               `cursor-not-allowed` and 55% opacity — and the row's own "Future"
-               tag gives the reason in words. */
-            <PortalButton size="sm" disabled>
+               `cursor-not-allowed` and 55% opacity — and the reason arrives in
+               words: the caller's `disabledTitle` as a tooltip under the
+               pointer (the Google-account password row), or the row's own
+               "Future" tag (Passkey). */
+            <PortalButton size="sm" disabled title={disabledTitle}>
               {row.action}
             </PortalButton>
           ) : null}
@@ -371,14 +482,19 @@ function SecurityControlRow({
   );
 }
 
+
 /**
- * WHERE YOU ARE SIGNED IN.
+ * WHERE YOU ARE SIGNED IN — the UI pass's list, restored on request.
  *
  * A `<ul>` and not a table: three columns of device, place and time look
  * tabular, but each row is one object with a control attached rather than a
  * grid of comparable values, and at phone width a table of this shape either
  * scrolls sideways or collapses into something a reader has to re-learn. The
  * list wraps.
+ *
+ * The rows are prototype figures and the sign-outs act on local state — there
+ * is no server-side session store yet (contract §7), so nothing here persists
+ * a reload and nothing claims to have reached a server.
  */
 function SessionList({
   openSessions,

@@ -26,9 +26,16 @@ import { profileMeta, type ProfileSection } from "../_lib/profile-data";
  * to the first. Two copies of a fourteen-utility string is how one of them ends
  * up with a different focus ring six months from now, so it is named once here
  * and imported by both.
+ *
+ * THE DISABLED STATE IS VISIBLE, not just functional (user, 2026-09-17: "show
+ * that it disable"). A disabled box that keeps the white editable look reads
+ * as a box that ignores keystrokes — a bug, not a rule. So it drops to the
+ * card wash, mutes its text and refuses the cursor, the same vocabulary
+ * `PortalButton`'s `:disabled` speaks. The locked email wears this always;
+ * every other box only when the whole form is disabled (profile unreadable).
  */
 export const PROFILE_INPUT_CLASS =
-  "w-full rounded-[9px] border border-mv-line-strong bg-mv-card px-3 py-[11px] text-sm text-mv-ink outline-none placeholder:text-mv-placeholder focus-visible:border-mv-green focus-visible:outline-2 focus-visible:outline-mv-green";
+  "w-full rounded-[9px] border border-mv-line-strong bg-mv-card px-3 py-[11px] text-sm text-mv-ink outline-none placeholder:text-mv-placeholder focus-visible:border-mv-green focus-visible:outline-2 focus-visible:outline-mv-green disabled:cursor-not-allowed disabled:border-mv-line disabled:bg-mv-portal-wash disabled:text-mv-muted";
 
 export function ProfileCardShell({
   section,

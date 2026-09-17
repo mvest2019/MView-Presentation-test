@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { getSessionUser } from "@/lib/session";
+
 import Portal from "../../_components/reference/Portal";
 import {
   getOwnerPayload,
@@ -12,8 +14,15 @@ import "../../page-gutters.css";
 import { IdentityCard } from "./_components/identity-card";
 import { IdentityStrip } from "./_components/identity-strip";
 import { InvitationsCard } from "./_components/invitations-card";
+import { ProfileLive } from "./_components/profile-live";
 import { SecurityCard } from "./_components/security-card";
 import { ProfileHeader } from "./_components/profile-shell";
+import {
+  fetchProfile,
+  patchProfile,
+  profileApiBase,
+  type UserProfile,
+} from "./_lib/profile-api";
 
 /**
  * MY PROFILE — `/mineralownersite/profile`.
@@ -30,15 +39,13 @@ import { ProfileHeader } from "./_components/profile-shell";
  * and how you get into the account. That is the whole scope (user, asked
  * explicitly).
  *
- * It also carries INVITATIONS & CREDITS, which looks like an exception to the
- * rule below and is not. A plan belongs to the account; a referral credit is
- * earned by this PERSON, by writing to a co-owner they know, and the balance is
- * the one figure on the billing page that is a consequence of something the
- * reader did rather than something they bought. The card shows the balance, the
- * rule and two links — no price, no term, no renewal arithmetic — and every
- * figure in it comes from `_lib/referral-credits.ts`, which Billing reads too.
- * One source, so there is no second answer to go stale. See
- * `_components/invitations-card.tsx`.
+ * It also carries INVITATIONS & CREDITS below the two cards. The card's
+ * balance comes from `_lib/referral-credits.ts` — one module shared with
+ * Billing and Invite, so there is exactly one copy to replace when the credits
+ * endpoint exists (there is none yet: contract §7). It was briefly removed in
+ * the fixture purge and RESTORED on request (user, 2026-09-17: keep the UI) —
+ * the balance is the one knowingly-fixture figure on the route, and the map
+ * entry in `profile-data.ts` says so where the next reader will look.
  *
  * It does NOT carry your owner records, your plan or your capacity, and their
  * absence is a decision rather than an omission:
@@ -155,12 +162,92 @@ export default async function ProfilePage({
     initial = null;
   }
 
+  /*
+   * `GET /users/me` — THE WHOLE SCREEN'S DATA, fetched here and handed down.
+   *
+   * The member id comes off the session cookie, the ONE place this app knows
+   * who is reading — the same identity rule `member-api.ts` records at length.
+   *
+   * NULL MEANS "COULD NOT BE READ", AND NOTHING PRETENDS OTHERWISE. There is
+   * no fixture fallback anywhere on this route (user, 2026-09-17). A failed or
+   * unconfigured read falls back to the SESSION COOKIE — the reader's own name
+   * and email, stored at sign-in — for the strip and the form's boxes, so a
+   * signed-in reader still sees and edits THEIR values (user, 2026-09-17:
+   * "if user login then take their info"); the first save patches them onto
+   * the record. Only the password control stays disabled, because gating it
+   * needs `password.set` and only the API can say that. A page that answered
+   * an outage with Suzie Smith's fixture was presenting invented values as the
+   * reader's account, and does not come back.
+   *
+   * A FAILED read is null rather than a thrown page: the shell and the head
+   * still stand, and the reason is logged where server fetches are visible —
+   * the terminal.
+   */
+  let profile: UserProfile | null = null;
+  const user = await getSessionUser();
+  const base = profileApiBase();
+  const sessionName = user
+    ? [user.firstName, user.lastName].filter(Boolean).join(" ").trim()
+    : "";
+  if (user && base) {
+    try {
+      profile = await fetchProfile(base, user.id);
+    } catch (e) {
+      console.error(
+        `[profile] GET /users/me failed for member ${user.id}:`,
+        e instanceof Error ? e.message : e,
+      );
+    }
+
+    /*
+     * AUTO-SEED FROM THE LOGIN, WHEN THE RECORD IS BLANKER THAN THE SESSION.
+     *
+     * The sign-in flow already knows the member's name — it is in the session
+     * cookie — but a backend record can predate the profile module and carry
+     * no `full_name` at all. Rather than greeting a signed-in reader with an
+     * empty name box for a name we are holding, the page PATCHes the session's
+     * name onto the record once, here, and renders the response like any other
+     * save. Only `full_name`, and only when the record has NONE: a stored name
+     * always wins over the cookie's copy, the email has its own OTP-gated
+     * endpoint, and the session holds nothing else to seed. Best-effort — a
+     * refusal is logged and the page renders what the GET said.
+     */
+    if (profile && !profile.full_name?.trim() && sessionName) {
+      try {
+        profile = (await patchProfile(base, user.id, { full_name: sessionName }))
+          .profile;
+      } catch (e) {
+        console.error(
+          `[profile] auto-seeding full_name for member ${user.id} failed:`,
+          e instanceof Error ? e.message : e,
+        );
+      }
+    }
+  }
+
+  /* the session cookie's name and email — the reader's real record, never a
+     fixture. The strip shows it when the GET failed, and the form seeds its
+     boxes from it so a signed-in reader edits THEIR values, not blanks; the
+     first save then patches them onto the record. */
+  const fallbackIdentity = user
+    ? { name: sessionName, email: user.email }
+    : null;
+
+  /* the session's picture from sign-in (already sanitised on read) — the
+     strip prefers the live profile's own `profile_pic` and falls back to
+     this. Null is the "not uploaded" case: the first name's letter shows. */
+  const sessionPhoto = user?.profileImage ?? null;
+
   return (
     <Portal route={null} initial={initial} shellClass="mv-wide-gutters">
       <section data-route="app-profile" className="active">
         <ProfileHeader />
 
-        <IdentityStrip />
+        {/* ONE LIVE PROFILE for the strip and both cards: seeded with the GET,
+            updated by each write's own response, so a save is visible the same
+            tick instead of after a whole-route refresh — see profile-live.tsx */}
+        <ProfileLive initial={profile}>
+          <IdentityStrip fallback={fallbackIdentity} sessionPhoto={sessionPhoto} />
 
         {/*
           TWO COLUMNS THAT END TOGETHER. This grid carried `items-start`, on the
@@ -186,10 +273,11 @@ export default async function ProfilePage({
           rather than below the device list. Stretch is inert there: one item to
           a row has nothing to match.
         */}
-        <div className="grid grid-cols-1 gap-[18px] min-[1024px]:grid-cols-2">
-          <IdentityCard />
-          <SecurityCard />
-        </div>
+          <div className="grid grid-cols-1 gap-[18px] min-[1024px]:grid-cols-2">
+            <IdentityCard profile={profile} seed={fallbackIdentity} />
+            <SecurityCard password={profile?.password ?? null} />
+          </div>
+        </ProfileLive>
 
         {/*
           FULL WIDTH AND BELOW THE TWO, not a third column and not squeezed

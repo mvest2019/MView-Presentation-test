@@ -1,96 +1,209 @@
 "use client";
 
-import { useState, type ChangeEvent } from "react";
+import { useState, type ChangeEvent, type FormEvent } from "react";
 
 import { formatPhoneNumber } from "@/lib/phone";
 
 import { PortalButton } from "../../../_components/ui/button";
+import { saveProfileAction } from "../_lib/profile-actions";
+import type { ProfilePatch, UserProfile } from "../_lib/profile-api";
 import {
   PROFILE_SECTIONS,
   identityForm,
   type ProfileField,
 } from "../_lib/profile-data";
+import { useProfileLive } from "./profile-live";
 import { PROFILE_INPUT_CLASS, ProfileCardShell } from "./profile-shell";
 
 /**
- * WHO YOU ARE — the page's only real form.
+ * WHO YOU ARE — the page's only real form, and IT SAVES NOW.
  *
- * MOVED HERE FROM `settings/_components/profile-card.tsx`, which is now a
- * pointer card. The markup is that component's, kept rather than rewritten, so
- * the move cannot have changed a hint, a `required`, an `autoComplete` or the
- * grouping. What follows is why it is shaped this way; all of it predates the
- * move.
+ * `profile` is `GET /users/me`. When that read failed, `seed` is the SESSION
+ * cookie's name and email — what the sign-in flow stored, so a signed-in
+ * reader still sees and edits THEIR values rather than blanks, and the first
+ * save patches them onto the record (user: "if user login then take their
+ * info auto patch"). The seed is the diff baseline like any other: only boxes
+ * the reader changes against it are sent. There is no fixture fallback and no
+ * prototype save — with neither a profile nor a session the boxes render
+ * empty and disabled with a sentence saying why. Everything below is the live
+ * path.
  *
- * SOURCE: `PG.members_entity` for name, email and phone; the mailing address is
- * the one that verified the claim.
+ * ── ONLY DIRTY FIELDS ARE SENT ──
  *
- * ── IT IS A CLIENT COMPONENT NOW, BECAUSE THE CONTROLS ANSWER ──
+ * `PATCH /users/me` reads `""` as "clear this field" and an omitted key as
+ * "leave it alone" — so a form that serialises every input would DELETE every
+ * stored value the reader left blank. `savedValues` holds what the record
+ * currently says (seeded from the GET, replaced from each write's own
+ * response), the submit diffs the boxes against it, and only what moved goes
+ * on the wire. A submit where nothing moved says "No changes" without a
+ * round trip, which is also what the endpoint's `changed: []` would answer.
  *
- * Every button on this page rendered enabled and did nothing when pressed —
- * the whole route was a server-rendered still. Asked for directly. Two things
- * moved here:
+ * ── THE EMAIL IS SHOWN, NOT EDITABLE ──
  *
- *   THE PHONE BOX FORMATS AS IT IS TYPED, the way the register form's does, off
- *   the same `formatPhoneNumber` — see `lib/phone.ts` for why there is one copy
- *   and why it caps at ten digits instead of using `maxLength`.
+ * The box renders disabled (`locked` on its field record) and the submit never
+ * reads it into the patch: `PATCH /users/me` refuses the `email` key anyway
+ * (400, unrecognized key). The card briefly offered the address's own
+ * three-step change — send-code, verify-code, `PATCH /users/me/email`, behind
+ * an inline code panel — and the OPTION was removed on request (user,
+ * 2026-09-17: "do not give option to edit mail"). The server half stays wired
+ * in `profile-actions.ts`, verified against the live API, so restoring the
+ * option is re-adding the panel (git history, 2026-09-17), not re-learning
+ * the contract.
  *
- *   SAVE VALIDATES AND SAYS SO, through the `aria-live` region that was already
- *   here waiting for it. `identityForm` already carried `idle`, `invalid` and
- *   `saved` strings for this; none of them is new copy.
+ * ── ONE NAME BOX MEANS `full_name`, AND THE SPLIT IS THE SERVER'S ──
  *
- * WHAT IT DOES NOT DO IS PRETEND TO PERSIST. `saved` says "(prototype)" in the
- * record because nothing is written anywhere — there is no profile endpoint in
- * this repo. A confirmation that claimed the change had been stored would be
- * the one thing worse than a dead button.
+ * The API prefers `first_name`/`last_name` because it splits `full_name` on
+ * the LAST space — right for "Mary Jane Smith", wrong for "Ana Van Der Berg".
+ * This screen keeps its single box (the register form's shape), so it sends
+ * `full_name` and accepts that documented behavior rather than re-guessing
+ * the split in the browser.
  *
- * BUILD-CONTRACT, and both halves are product rules rather than form
- * decoration:
- *   · changing the email sends a 6-digit code and the change waits for it;
- *   · changing the mailing address RE-RUNS the claim address check before it
- *     applies, because that address is what proved the record was theirs.
- * Both are stated in the field hints, where somebody about to make the change
- * will actually read them.
+ * ── EVERY SUCCESSFUL WRITE IS PUBLISHED TO `ProfileLive` ──
  *
- * ── THE UI PASS: MARKUP, NOT SUBMISSION ──
- *
- * There is no submit handler and no validation state yet. The fields are
- * uncontrolled (`defaultValue`), and `required` is on the inputs — which means
- * the browser's own constraint validation already works and the message line
- * shows its idle promise. Wiring is a handler on the `<form>` plus a state for
- * that one line; nothing about the layout has to change for it.
- *
- * ── WHY THE FIELDS ARE GROUPED ──
- *
- * "Who you are" and "Where royalty mail arrives" are genuinely different
- * subjects — one is identity, the other is a verified fact about a mineral
- * record — and the mailing address gets read as just another contact detail
- * when it sits under the phone number. A `<fieldset>` with a `<legend>` is the
- * element for that, and it gives a screen reader the same grouping the eye
- * gets.
- *
- * ── REQUIRED IS MARKED, OPTIONAL IS SAID OUT LOUD ──
- *
- * Three of the four are required and the phone is not. The required ones carry
- * a red asterisk AND the card says "everything else is optional", so the reader
- * never has to infer optionality from the absence of a mark. The asterisk is
- * decorative — `aria-hidden` — because `required` on the input is what actually
- * tells assistive tech, and "Full name star" is not a field name.
- *
- * ── THE MESSAGE LINE IS ALREADY A LIVE REGION ──
- *
- * `aria-live="polite"`, so when the validation and confirmation states land in
- * it they are announced rather than only shown. Declaring the region up front
- * matters: a live region created at the same moment its text arrives is the one
- * case where announcements are unreliable.
+ * Both writes answer with the complete fresh profile, and the strip above
+ * this card and the security card beside it read the live context — so a save
+ * shows everywhere the same tick. This replaced `router.refresh()`, which
+ * re-rendered the whole route and therefore waited on the chrome's
+ * multi-minute cold owner scan before the strip moved (user, 2026-09-17).
  */
-export function IdentityCard() {
-  /*
-   * `idle` UNTIL A PRESS, AND BACK TO `idle` ON THE NEXT KEYSTROKE. A "Saved ✓"
-   * left standing over a form the reader has since edited is a false statement
-   * about the current contents, and an "fill in the required fields" left
-   * standing after they have filled them in is nagging. Both clear on input.
-   */
-  const [status, setStatus] = useState<"idle" | "invalid" | "saved">("idle");
+
+/** the form's boxes, keyed by input id — what the record currently says */
+type BoxValues = Record<
+  | "profile-name"
+  | "profile-email"
+  | "profile-phone"
+  | "profile-address"
+  | "profile-city"
+  | "profile-zip",
+  string
+>;
+
+function boxesFrom(p: UserProfile): BoxValues {
+  return {
+    "profile-name": p.full_name ?? "",
+    "profile-email": p.email,
+    "profile-phone": p.phone ?? "",
+    "profile-address": p.mailing_address.street ?? "",
+    "profile-city": p.mailing_address.city ?? "",
+    "profile-zip": p.mailing_address.zip ?? "",
+  };
+}
+
+/** input id → PATCH field, for the five that ride `PATCH /users/me` */
+const PATCH_KEYS = {
+  "profile-name": "full_name",
+  "profile-phone": "phone",
+  "profile-address": "mailing_address",
+  "profile-city": "city",
+  "profile-zip": "zip",
+} as const;
+
+type Status =
+  | { kind: "idle" | "invalid" | "saving" | "noChanges" }
+  | { kind: "saved"; message: string }
+  | { kind: "error"; message: string; requestId?: string };
+
+export function IdentityCard({
+  profile,
+  seed,
+}: {
+  profile: UserProfile | null;
+  /** the session cookie's name and email — the boxes' values and diff baseline
+   *  when the GET failed, so their first save patches the login's own info */
+  seed: { name: string; email: string } | null;
+}) {
+  /* where every write's fresh profile goes, so the strip and the security
+     card reflect a save the same tick — see `profile-live.tsx` for why this
+     replaced `router.refresh()` (the route re-render dragged the chrome's
+     multi-minute owner scan along, and the reader watched the old name stand) */
+  const { update: publishProfile } = useProfileLive();
+  const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const [savedValues, setSavedValues] = useState<BoxValues | null>(() =>
+    profile
+      ? boxesFrom(profile)
+      : seed
+        ? {
+            "profile-name": seed.name,
+            "profile-email": seed.email,
+            "profile-phone": "",
+            "profile-address": "",
+            "profile-city": "",
+            "profile-zip": "",
+          }
+        : null,
+  );
+  const busy = status.kind === "saving";
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    /* unreachable while the button is disabled, kept as the guard it is */
+    if (!savedValues) return;
+
+    /* read through `form.elements`, NOT `FormData`: FormData omits disabled
+       inputs, so the locked email box would read as "" — which the required
+       check below would take for an emptied field and refuse every save */
+    const box = (id: keyof BoxValues) => {
+      const el = form.elements.namedItem(id);
+      return el instanceof HTMLInputElement ? el.value : "";
+    };
+
+    const patch: ProfilePatch = {};
+    for (const id of Object.keys(PATCH_KEYS) as (keyof typeof PATCH_KEYS)[]) {
+      const value = box(id);
+      if (value !== savedValues[id]) patch[PATCH_KEYS[id]] = value;
+    }
+
+    /*
+     * REQUIRED GUARDS THE STORED VALUE, NOT THE BOX. `form.checkValidity()`
+     * used to run here, and it refused the whole save while ANY required box
+     * was empty — so with the record unreadable (street seeded empty), editing
+     * just the name was blocked by a field the reader never touched (user,
+     * 2026-09-17: "editing my name but not work"). Only dirty fields are sent,
+     * so an untouched empty box was never going anywhere anyway.
+     *
+     * What `required` still refuses is EMPTYING one of those boxes: a dirty
+     * empty required field would be sent as `""`, which the API reads as
+     * "clear this stored value" — exactly what a required field must not let
+     * happen.
+     */
+    const requiredIds = identityForm.groups.flatMap((group) =>
+      group.fields.filter((f) => f.required).map((f) => f.id),
+    ) as (keyof BoxValues)[];
+    const emptiedRequired = requiredIds.some(
+      (id) => box(id).trim() === "" && box(id) !== savedValues[id],
+    );
+    if (emptiedRequired) {
+      setStatus({ kind: "invalid" });
+      return;
+    }
+
+    if (!Object.keys(patch).length) {
+      setStatus({ kind: "noChanges" });
+      return;
+    }
+
+    setStatus({ kind: "saving" });
+
+    const result = await saveProfileAction(patch);
+    if (!result.ok) {
+      setStatus({
+        kind: "error",
+        message: result.message,
+        requestId: result.requestId,
+      });
+      return;
+    }
+    setSavedValues(boxesFrom(result.profile));
+    publishProfile(result.profile);
+    setStatus({ kind: "saved", message: identityForm.savedLive });
+  }
+
+  const message = !savedValues
+    ? identityForm.unavailable
+    : status.kind === "saved" || status.kind === "error"
+      ? status.message
+      : identityForm[status.kind];
 
   return (
     <ProfileCardShell section={PROFILE_SECTIONS.identity} className="flex flex-col">
@@ -101,27 +214,18 @@ export function IdentityCard() {
         {identityForm.requiredNote}
       </p>
 
-      {/* `flex-1` TAKES WHATEVER THE ROW IS TALLER THAN THIS CARD. The grid
-          stretches both columns to the height of security, which runs ~260px
-          longer; without this the form would keep its natural height and hand
-          that 260px to the card as blank padding. With it the form owns the
-          slack and `mt-auto` on the save row below spends it, putting the
-          action on the card's bottom edge. At one column, or any width where
-          this card is the taller of the two, there is no slack and both rules
-          are inert — the row sits under the last fieldset exactly as before. */}
+      {/* `flex-1` takes whatever the row is taller than this card; `mt-auto`
+          on the save row spends it — see the grid note in `page.tsx`. */}
       <form
         className="flex flex-1 flex-col"
-        /* `noValidate` HANDS VALIDATION TO US, NOT TO THE BROWSER. Without it
-           the browser's own bubble fires first and the live region below never
-           gets a turn, so the page would say one thing and the tooltip
-           another. The `required` attributes stay on the inputs — they are what
-           `checkValidity()` reads, and what a screen reader announces. */
+        /* `noValidate` hands validation to us so the live region below speaks,
+           not the browser's bubble; `required` stays on the inputs for
+           assistive tech and the submit's own emptied-required check. */
         noValidate
-        onSubmit={(event) => {
-          event.preventDefault();
-          setStatus(event.currentTarget.checkValidity() ? "saved" : "invalid");
-        }}
-        onInput={() => setStatus("idle")}
+        onSubmit={onSubmit}
+        onInput={() =>
+          setStatus((s) => (s.kind === "saving" ? s : { kind: "idle" }))
+        }
       >
         {identityForm.groups.map((group) => (
           <fieldset
@@ -131,21 +235,55 @@ export function IdentityCard() {
             <legend className="px-1 text-[10px] font-extrabold tracking-[0.09em] text-mv-muted uppercase">
               {group.legend}
             </legend>
-            {group.fields.map((field) => (
-              <ProfileInput key={field.id} field={field} />
+            {group.fields.map((field: ProfileField) => (
+              <ProfileInput
+                key={field.id}
+                field={field}
+                /* the record's value, seeded once (uncontrolled) — or empty
+                   AND disabled when the record could not be read. No fixture.
+                   A `locked` field (the email) is disabled even when the
+                   record loaded: shown, never editable. */
+                value={
+                  savedValues ? savedValues[field.id as keyof BoxValues] : ""
+                }
+                disabled={!savedValues || Boolean(field.locked)}
+              />
             ))}
           </fieldset>
         ))}
 
-        <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-1">
+        {/* THE BUTTON MUST NOT MOVE WHEN THE MESSAGE GROWS (user, 2026-09-17).
+            A long message — a service error with its requestId — used to do it
+            twice over: `flex-wrap` pushed the button onto its own line, and
+            once that was fixed, `items-center` re-centered it in the taller
+            row, which grows UPWARD because `mt-auto` pins this row to the
+            card's bottom edge — measured, the button floated up 39px. So: no
+            wrap (the message owns the leftover width, `min-w-0 flex-1`, and
+            wraps inside it), the button is `shrink-0`, and the row is
+            `items-end` — the button hugs the pinned bottom edge and stays
+            exactly where it was pressed, however many lines the sentence
+            takes. */}
+        <div className="mt-auto flex items-end justify-between gap-2 pt-1">
           <span
             aria-live="polite"
-            className="text-[11px] leading-[1.5] text-mv-muted"
+            className={`min-w-0 flex-1 self-center text-[11px] leading-[1.5] ${
+              status.kind === "error" ? "text-mv-required" : "text-mv-muted"
+            }`}
           >
-            {identityForm[status]}
+            {message}
+            {status.kind === "error" && status.requestId ? (
+              /* what support will ask for, so it is on screen already */
+              <> (request {status.requestId})</>
+            ) : null}
           </span>
-          <PortalButton type="submit" variant="primary" size="sm">
-            {identityForm.submit}
+          <PortalButton
+            type="submit"
+            variant="primary"
+            size="sm"
+            className="shrink-0"
+            disabled={busy || !savedValues}
+          >
+            {status.kind === "saving" ? identityForm.saving : identityForm.submit}
           </PortalButton>
         </div>
       </form>
@@ -153,8 +291,26 @@ export function IdentityCard() {
   );
 }
 
+/*
+ * `EmailCodePanel` — the inline six-digit step of the email change — lived
+ * here and was removed WITH the option to edit the address (user, 2026-09-17:
+ * "do not give option to edit mail"). The panel, its copy (`emailVerify` in
+ * `profile-data.ts`) and the card's dirty-email branch are all in git history
+ * (2026-09-17); the server half — send-code, verify-code,
+ * `PATCH /users/me/email`, verified against the live API's own Swagger — stays
+ * wired in `profile-actions.ts`, so restoring the option is UI work only.
+ */
+
 /** One labelled input — the design's `.field` / `.hint` pair. */
-function ProfileInput({ field }: { field: ProfileField }) {
+function ProfileInput({
+  field,
+  value,
+  disabled,
+}: {
+  field: ProfileField;
+  value: string;
+  disabled?: boolean;
+}) {
   return (
     <div className="mb-3.5 flex flex-col gap-1.5">
       <label
@@ -177,16 +333,15 @@ function ProfileInput({ field }: { field: ProfileField }) {
         name={field.id}
         type={field.type}
         required={field.required}
-        defaultValue={field.defaultValue}
+        defaultValue={value}
+        disabled={disabled}
         placeholder={field.placeholder}
         autoComplete={field.autoComplete}
         {...(field.type === "tel"
           ? {
               inputMode: "tel" as const,
-              /* REWRITTEN IN THE EVENT, BEFORE REACT SEES IT — the same shape
-                 the register form uses. The box is uncontrolled (`defaultValue`
-                 from the record), so there is no state to round-trip through
-                 and no second source of truth for the value. */
+              /* rewritten in the event, before React sees it — the register
+                 form's shape; the box stays uncontrolled */
               onChange: (event: ChangeEvent<HTMLInputElement>) => {
                 event.target.value = formatPhoneNumber(event.target.value);
               },
