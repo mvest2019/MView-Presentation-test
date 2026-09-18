@@ -44,21 +44,23 @@ const T = 22;
 const B = 246;
 
 /**
- * GAS IS GREEN AND OIL IS GOLDEN, on this chart and on every figure beside it.
+ * GAS IS GOLDEN AND OIL IS GREEN, on this chart and on every figure beside it.
  *
- * QA's defect sheet fixes the pair explicitly — `#b8892F: Oil · #2E8F6D: Gas`
- * — so these four constants, the gauge strokes, the year columns, the legend
- * swatches and the scorecard tints in the stylesheet are all one scheme:
- * `--green-deep` `#2e8f6d` for gas, golden `#b8892f` for oil, each with the
+ * QA settled the pair the second time around — the sheet's hex labels read
+ * "#b8892F: Oil · #2E8F6D: Gas", but the retest asked for the opposite and
+ * final assignment: OIL is the green `#2e8f6d`, GAS is the golden `#b8892f`.
+ * These four constants, the gauge strokes, the year columns, the legend
+ * swatches, the scorecard tints in the stylesheet and the drawer charts
+ * (`chart.ts` / `LineChart`) are all this one scheme, each product with the
  * lighter tint its dashed projected half is drawn in.
  *
  * `VAL` is untouched: the money measure is neither product, and it is drawn
  * in blue precisely so it cannot be read as one of them.
  */
-const GAS = '#2e8f6d';
-const GAS_FC = '#7cc3a6';
-const OIL = '#b8892f';
-const OIL_FC = '#d8bb84';
+const GAS = '#b8892f';
+const GAS_FC = '#d8bb84';
+const OIL = '#2e8f6d';
+const OIL_FC = '#7cc3a6';
 const VAL = '#3b5bdb';
 const VAL_FC = '#93a7ea';
 

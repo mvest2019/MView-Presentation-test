@@ -525,10 +525,10 @@ export default function ProductionView(
                   />
                   <path
                     d="M 13 65 A 52 52 0 0 1 117 65" fill="none"
-                    /* green gas, golden oil — QA's pair (#2E8F6D gas ·
-                       #b8892F oil), the same one the key below, the year
-                       columns and the chart all use */
-                    stroke={k === 'gas' ? 'var(--green-deep)' : '#b8892f'}
+                    /* golden gas, green oil — QA's FINAL pair (gas #b8892F ·
+                       oil #2E8F6D, settled on retest), the same one the key
+                       below, the year columns and the chart all use */
+                    stroke={k === 'gas' ? '#b8892f' : 'var(--green-deep)'}
                     strokeWidth="10" strokeLinecap="round"
                     strokeDasharray={`${done} ${LEN}`}
                   />
