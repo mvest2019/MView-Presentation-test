@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Card } from "../../../../../_components/ui/card";
 import { fetchLeaseWells, LeasesApiError } from "../../../_api/leases-api";
 import type { WellReport } from "../../_lib/well-report";
+import { ReportSkeleton } from "../report-skeleton";
 import { pickWell, wellReportFromApi } from "../../_lib/well-report-from-api";
 import { AttachmentsCard, FilingsCard } from "./filings-card";
 import { WellChartCard } from "./well-chart-card";
@@ -97,22 +98,7 @@ export function ServedWellReport({
   }, [id, api10]);
 
   if (state.status === "loading") {
-    return (
-      <Card accent padded={false} className="mt-4 px-[22px] py-[18px]">
-        <h2 className="text-[15px] font-bold">Reading the wells on {id}…</h2>
-        <p className="mt-1.5 text-[12.5px] leading-[1.6] text-mv-muted">
-          The hole, every filing the state holds on it, and where it sits. The
-          first read of a lease can take a minute while the service builds it;
-          every read after that is instant.
-        </p>
-        <div
-          aria-hidden="true"
-          className="mt-3 h-1 w-full overflow-hidden rounded-full bg-mv-line"
-        >
-          <div className="h-full w-1/3 animate-pulse rounded-full bg-mv-green-deep" />
-        </div>
-      </Card>
-    );
+    return <ReportSkeleton what={`Reading the wells on ${id}…`} />;
   }
 
   if (state.status === "none") {

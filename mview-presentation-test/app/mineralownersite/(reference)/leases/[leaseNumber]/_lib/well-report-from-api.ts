@@ -93,6 +93,8 @@ function recordFrom(
     bottom: hasBottom
       ? [num(position?.bh_lon), num(position?.bh_lat)]
       : [lon, lat],
+    /* The legend row this hole is drawn as — see `WellRecord.icon`. */
+    icon: text(position?.icon),
   };
 }
 
@@ -157,6 +159,9 @@ function filingFrom(wire: WireWellCompletion): WellFiling {
             text(wire.recompleted_label) ||
             text(wire.drilled_label) ||
             text(wire.spud_label),
+          /* The packet itself. Its presence is what put this row on the card
+             in the first place, so by here it is known to be a string. */
+          url: text(wire.packet_url) || null,
         }
       : null,
   };
@@ -270,7 +275,8 @@ export function wellReportFromApi(wire: WireWells, well: WireWell): WellReport {
     /* The window is the series' own length when there is one — the counts are a
        fallback for a well with filings and no allocated months. */
     to: Math.max(
-      (months.length || num(well.filed_months) + num(well.projected_months)) - 1,
+      (months.length || num(well.filed_months) + num(well.projected_months)) -
+        1,
       0,
     ),
     /* The service measures well-to-well and keys the bands by miles; the card's

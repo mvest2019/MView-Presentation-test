@@ -9,7 +9,9 @@ import {
   LeasesApiError,
   type WireReservoirs,
 } from "../../../_api/leases-api";
+import type { LeaseRecord } from "../../../_lib/lease-types";
 import type { ReservoirReport } from "../../_lib/reservoir-report";
+import { ReportSkeleton } from "../report-skeleton";
 import {
   pickReservoir,
   reservoirReportFromApi,
@@ -61,6 +63,7 @@ export function ServedReservoirReport({
   id,
   reservoirKey,
   preloaded,
+  lease,
 }: {
   /** The service's lease key, straight off the route — `08_46924`. */
   id: string;
@@ -79,6 +82,14 @@ export function ServedReservoirReport({
    * `null` means the caller did not start one and this component should.
    */
   preloaded?: Promise<WireReservoirs> | null;
+  /**
+   * The lease, from the lease report this tab is rendered inside.
+   *
+   * The reservoir call answers about the rock and says nothing about the lease
+   * beyond its id, so the header's county, operator, acreage and interest come
+   * from the call that owns them. See `reservoirReportFromApi`.
+   */
+  lease: LeaseRecord;
 }) {
   const [state, setState] = useState<
     | { status: "loading" }
@@ -108,13 +119,20 @@ export function ServedReservoirReport({
 
         /* NO RESERVOIR IS AN ANSWER. A lease whose wells the state has never
            tied to a named rock returns an empty array, and that is a fact
-           about the filings rather than a failure of the read. */
-        if (!reservoir || !wire.lease) {
+           about the filings rather than a failure of the read.
+
+           IT USED TO ALSO REQUIRE `wire.lease`, WHICH THIS ENDPOINT HAS NEVER
+           SENT. Every successful response therefore fell through to "no named
+           reservoir on this lease" — a sentence about the STATE'S filings —
+           while the payload sat in the network panel with the rock named in it.
+           An empty `reservoirs` array is the only thing that means what that
+           notice says. */
+        if (!reservoir) {
           setState({ status: "none" });
           return;
         }
 
-        const report = reservoirReportFromApi(wire, reservoir);
+        const report = reservoirReportFromApi(wire, reservoir, lease);
 
         /* Both sides of the mapping, for `scripts/check-lease-binding.js`.
            Dev only — the constant fold strips it from the production bundle. */
@@ -140,26 +158,11 @@ export function ServedReservoirReport({
       });
 
     return () => controller.abort();
-  }, [id, reservoirKey, preloaded]);
+  }, [id, reservoirKey, preloaded, lease]);
 
   if (state.status === "loading") {
     return (
-      <Card accent padded={false} className="mt-4 px-[22px] py-[18px]">
-        <h2 className="text-[15px] font-bold">
-          Reading the reservoir behind lease {id}…
-        </h2>
-        <p className="mt-1.5 text-[12.5px] leading-[1.6] text-mv-muted">
-          Every well in the rock, its depths, its monthly record and where the
-          holes sit. The first read of a lease can take a minute while the
-          service builds it; every read after that is instant.
-        </p>
-        <div
-          aria-hidden="true"
-          className="mt-3 h-1 w-full overflow-hidden rounded-full bg-mv-line"
-        >
-          <div className="h-full w-1/3 animate-pulse rounded-full bg-mv-green-deep" />
-        </div>
-      </Card>
+      <ReportSkeleton what={`Reading the reservoir behind lease ${id}…`} />
     );
   }
 

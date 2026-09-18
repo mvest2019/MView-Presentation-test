@@ -136,9 +136,20 @@ export function WellChartCard({ report }: { report: WellReport }) {
           onChange={setMode}
           options={CHART_MODES}
         />
-        <p className="text-[12.5px] text-mv-muted">
-          {CHART_MODE_COPY[mode].note}
-        </p>
+        {/* THE PRESETS SIT WITH THE OTHER CONTROL, NOT UNDER THE CHART.
+            They were below the plot next to the "showing…" readout, which put
+            the two things that CHANGE the chart at opposite ends of the card
+            and left this row half empty. `ml-auto` rather than
+            `justify-between`, so the presets stay pinned right however wide
+            the control beside them ends up. */}
+        <div className="ml-auto">
+          <RangePresets
+            months={months}
+            lastPostedIndex={postedThrough}
+            length={length}
+            onChange={setRange}
+          />
+        </div>
       </div>
 
       <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
@@ -169,18 +180,10 @@ export function WellChartCard({ report }: { report: WellReport }) {
         summary={`Well ${report.well.name}, ${CHART_MODE_COPY[mode].title.toLowerCase()}, ${labelFor(range.from)} to ${labelFor(range.to)}. Filed through ${report.newestFiledMonth}; modelled after that.`}
       />
 
-      <div className="mt-3 mb-2 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[11.5px] text-mv-muted tabular-nums">
-          Showing {labelFor(range.from)} to {labelFor(range.to)} · {months}{" "}
-          months of {wholeRecord}
-        </p>
-        <RangePresets
-          months={months}
-          lastPostedIndex={postedThrough}
-          length={length}
-          onChange={setRange}
-        />
-      </div>
+      <p className="mt-3 mb-2 text-[11.5px] text-mv-muted tabular-nums">
+        Showing {labelFor(range.from)} to {labelFor(range.to)} · {months} months
+        of {wholeRecord}
+      </p>
 
       <ChartBrush
         values={streams.gas}

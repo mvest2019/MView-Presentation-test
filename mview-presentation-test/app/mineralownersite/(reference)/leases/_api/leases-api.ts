@@ -902,6 +902,13 @@ export interface WireReservoirMapWell {
   api10?: string;
   well_number?: string;
   label?: string;
+  /**
+   * WHICH LEGEND SYMBOL THIS WELL IS — "Gas", "Plugged Oil", "Injection /
+   * Disposal from Oil". It matches `description` on a row of
+   * `GET /api/v1/map/legends`, which is how the map draws the same mark the
+   * legend explains rather than a shape of its own invention.
+   */
+  icon?: string | null;
   profile?: string | null;
   lat?: number | null;
   lon?: number | null;
@@ -961,28 +968,28 @@ export interface WireReservoir {
   };
 }
 
+/**
+ * `GET /leases/reservoirs`.
+ *
+ * THERE IS NO LEASE BLOCK ON THIS PAYLOAD, and this type used to declare one.
+ * The service sends the lease's IDENTIFIERS — `lease_id`, `lease_number`,
+ * `district_code` — and nothing else about the lease: no county, no operator,
+ * no acreage, no interest. Everything else it sends is about the ROCK.
+ *
+ * That is a reasonable thing for a reservoir endpoint to do. The cost was that
+ * the tab guarded on `wire.lease` before rendering, so it read every successful
+ * response as "no named reservoir on this lease" and the tab never drew for any
+ * lease at all. The lease record now comes from the lease report, which is
+ * already in hand on the page that renders this tab.
+ */
 export interface WireReservoirs {
+  /** The owner the report was built for. */
   owner?: string;
-  lease?: {
-    lease_id?: string;
-    lease_name?: string;
-    label?: string;
-    lease_no?: string | null;
-    district_code?: string | null;
-    county?: string;
-    operator_name?: string;
-    acres?: number;
-    lease_status?: string;
-    interest?: number;
-    interest_label?: string;
-    owner_value?: number;
-    appraised_value?: number;
-    well_count?: number;
-    producing_wells?: number;
-    first_prod_label?: string;
-    last_posted_label?: string;
-    reservoirs?: { name?: string | null; wells?: number }[];
-  };
+  lease_id?: string;
+  lease_number?: string | number | null;
+  district_code?: string | null;
+  /** When the service built this, for the freshness line. */
+  built_at?: string;
   reservoirs?: WireReservoir[];
 }
 

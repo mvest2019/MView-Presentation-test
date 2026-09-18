@@ -19,6 +19,7 @@ import { leaseMapFromApi, type LeaseMapData } from "../_lib/lease-map-from-api";
 import { leaseReportFromApi } from "../_lib/lease-report-from-api";
 import { recordContext } from "../_lib/record-context";
 import { LeaseReportBody } from "./report-body";
+import { ReportSkeleton } from "./report-skeleton";
 import { ServedReservoirReport } from "./reservoir/served-reservoir-report";
 import { ServedWellReport } from "./well/served-well-report";
 import type { LeaseReportTab } from "./report-tabs";
@@ -58,12 +59,58 @@ import type { LeaseReportTab } from "./report-tabs";
 
 export function ServedLeaseReport({
   id,
-  tab,
+  tab: initialTab,
 }: {
   /** The service's key, straight off the route — `02_269507`. */
   id: string;
+  /** Which report the URL asked for. The strip takes it from here. */
   tab: LeaseReportTab;
 }) {
+  /*
+   * ── WHICH REPORT IS SHOWING IS HELD HERE, NOT ON THE SERVER ──
+   *
+   * It arrives from the server on the first render, because `?report=` has to
+   * work as a link, and after that the strip sets it directly.
+   *
+   * WHY IT IS NOT LEFT AS A SERVER NAVIGATION. This page is `force-dynamic`,
+   * so a `?report=` change re-ran the whole route — and the first thing the
+   * route awaits is the owner payload the CHROME needs: three upstream reads
+   * in parallel, 10 MB, 0.4 MB and 64 MB, the last of them twenty-one seconds.
+   * None of it differs between the three reports; it is the same header, the
+   * same value band, the same facts strip. So a reader pressing "Well report"
+   * waited twenty seconds to be handed the page they were already on, and only
+   * then did the well's own read begin.
+   *
+   * Everything that actually differs between the three is already decided in
+   * this component, in the browser. The switch is now free, and the tab's own
+   * data loads under a skeleton the way any other read on this page does.
+   */
+  const [tab, setTab] = useState(initialTab);
+
+  /* THE URL IS THE OTHER HALF OF THE STRIP. `ReportTabs` pushes an entry when
+     it switches, so Back and Forward move between the three reports without
+     touching the server either — and this is what hears them. It also catches
+     a `?report=` that changed for any other reason. */
+  useEffect(() => {
+    const sync = () => {
+      const asked = new URLSearchParams(window.location.search).get("report");
+      setTab(asked === "reservoir" || asked === "wells" ? asked : "lease");
+    };
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+
+  /* A LINK FROM SOMEWHERE ELSE TO A DIFFERENT REPORT ON THIS LEASE is still a
+     server render, and React keeps this component mounted through it — so
+     without this the strip would go on showing whichever report the reader was
+     on before. Adjusted during render rather than in an effect: React's own
+     pattern for state that has to follow a prop, and it re-renders before
+     anything is painted instead of showing the wrong tab for a frame. */
+  const [lastAsked, setLastAsked] = useState(initialTab);
+  if (initialTab !== lastAsked) {
+    setLastAsked(initialTab);
+    setTab(initialTab);
+  }
   const [state, setState] = useState<
     | { status: "loading" }
     | { status: "ready"; wire: WireLeaseReport }
@@ -280,6 +327,7 @@ export function ServedLeaseReport({
     <LeaseReportBody
       report={report}
       tab={tab}
+      onSelectTab={setTab}
       leaseMap={leaseMap ?? undefined}
       otherReport={
         tab === "wells" ? (
@@ -291,6 +339,7 @@ export function ServedLeaseReport({
                was started unkeyed above. */
             reservoirKey={report.lease.reservoir || null}
             preloaded={reservoirs}
+            lease={report.lease}
           />
         ) : null
       }
@@ -307,22 +356,7 @@ export function ServedLeaseReport({
  * read is there because two minutes with no explanation reads as a hang.
  */
 function ReportLoading({ id }: { id: string }) {
-  return (
-    <Card accent padded={false} className="mt-4 px-[22px] py-[18px]">
-      <h2 className="text-[15px] font-bold">Reading lease {id}…</h2>
-      <p className="mt-1.5 text-[12.5px] leading-[1.6] text-mv-muted">
-        The whole filing history and the model past it. The first read of a
-        lease can take a minute while the service builds it; every read after
-        that is instant.
-      </p>
-      <div
-        aria-hidden="true"
-        className="mt-3 h-1 w-full overflow-hidden rounded-full bg-mv-line"
-      >
-        <div className="h-full w-1/3 animate-pulse rounded-full bg-mv-green-deep" />
-      </div>
-    </Card>
-  );
+  return <ReportSkeleton what={`Reading lease ${id}…`} />;
 }
 
 function Notice({

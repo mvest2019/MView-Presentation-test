@@ -49,6 +49,7 @@ export function LeaseReportBody({
   tab,
   otherReport,
   leaseMap,
+  onSelectTab,
 }: {
   report: LeaseReport;
   tab: LeaseReportTab;
@@ -61,6 +62,8 @@ export function LeaseReportBody({
    * asks where anything is. Absent on the fixture path.
    */
   leaseMap?: LeaseMapData;
+  /** Switch tabs in place rather than navigating; see `ReportTabs`. */
+  onSelectTab?: (tab: LeaseReportTab) => void;
 }) {
   const { lease } = report;
 
@@ -89,6 +92,7 @@ export function LeaseReportBody({
         reservoir={lease.reservoir}
         firstPosting={report.firstPosting}
         lastPosting={report.lastPosting}
+        onSelect={onSelectTab}
       />
 
       {tab === "lease" && (

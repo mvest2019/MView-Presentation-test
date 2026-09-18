@@ -71,6 +71,18 @@ export interface WellRecord {
   /** Where the hole starts and finishes, as [longitude, latitude]. */
   surface: [number, number];
   bottom: [number, number];
+  /**
+   * WHICH LEGEND SYMBOL THE MAP DRAWS THIS WELL AS — "Gas", "Plugged Oil",
+   * "Injection / Disposal from Oil". It matches `description` on a row of
+   * `GET /api/v1/map/legends`, which is the same list the panel in the map's
+   * corner prints, so a reader sees the mark and its meaning together.
+   *
+   * OPTIONAL BECAUSE THE FIXTURE HAS NO STATUS TO NAME. These ten leases were
+   * written before the service answered, and a status invented for them would
+   * be a claim about wells that do not exist. A record without one is drawn as
+   * the plain marker.
+   */
+  icon?: string;
 }
 
 /**

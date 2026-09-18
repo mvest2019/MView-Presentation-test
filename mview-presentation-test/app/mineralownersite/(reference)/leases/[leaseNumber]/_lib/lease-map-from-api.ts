@@ -72,7 +72,11 @@ export type LeaseMapWell = Pick<
   | "bearing"
   | "surface"
   | "bottom"
-> & { gasFiled: number };
+> & {
+  gasFiled: number;
+  /** The legend row this well is drawn as — see `WireReservoirMapWell.icon`. */
+  icon: string;
+};
 
 function num(value: number | null | undefined): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -121,6 +125,7 @@ function wellFrom(wire: WireReservoirMapWell): LeaseMapWell {
        not print it; the wells table on the lease report is where a well's
        filed gas belongs. Zero rather than a borrowed figure. */
     gasFiled: 0,
+    icon: text(wire.icon),
   };
 }
 

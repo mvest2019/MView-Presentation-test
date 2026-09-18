@@ -1,4 +1,6 @@
-import { Droplet, FileText, Info, Layers, type LucideIcon } from "lucide-react";
+"use client";
+
+import { Info, Layers } from "lucide-react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 
@@ -22,36 +24,34 @@ import { leaseReportPath } from "../../_lib/lease-routes";
  * buttonable, and the page resolves it on the server. The prototype's version
  * toggled `display` on three divs, which meant a reader could not send anyone
  * the reservoir report.
- */
-
-export type LeaseReportTab = "lease" | "reservoir" | "wells";
-
-/**
- * WHAT EACH TAB IS CALLED AND WHAT IT LOOKS LIKE — EXPORTED, because two other
- * places on this page need the same two facts: the breadcrumb, which ends in
- * the name of the report you are actually reading, and the title's own glyph.
- * Held here rather than copied there, so a tab cannot be renamed in one place
- * and keep its old name in the other two.
  *
- * The icon is the COMPONENT, not an element, because each of the three sites
- * draws it at its own size — 17px in the tab, 22px beside the title.
+ * ── AND THEY SWITCH WITHOUT ASKING THE SERVER ──
+ *
+ * `onSelect` is what makes a tab press instant. Without it, every press was a
+ * full server navigation: the page is `force-dynamic`, and the first thing it
+ * awaits is the owner payload for the chrome — three upstream reads, the
+ * largest of them 64 MB, ~21 seconds — none of which differs between the three
+ * reports. A reader pressing "Well report" waited twenty seconds to be handed
+ * the same header they were already looking at.
+ *
+ * Where a caller passes `onSelect`, the press is handled here and the URL is
+ * corrected with `history.pushState`, so the address bar, Back and a copied
+ * link all keep working while nothing crosses the network. The `href` STAYS on
+ * every tab: middle-click, ctrl-click and "open in new tab" go through the
+ * browser, not through us, and a modified click is left alone below for
+ * exactly that reason.
+ *
+ * Without `onSelect` these are ordinary links and the server resolves them —
+ * which is what a fresh arrival and the fixture leases still do.
  */
-export const LEASE_REPORT_TABS: {
-  value: LeaseReportTab;
-  label: string;
-  Icon: LucideIcon;
-}[] = [
-  { value: "lease", label: "Lease report", Icon: FileText },
-  { value: "reservoir", label: "Reservoir report", Icon: Layers },
-  { value: "wells", label: "Well report", Icon: Droplet },
-];
 
-/** The one a page is on. Falls back to the lease report, which is the default. */
-export function leaseReportTab(value: LeaseReportTab) {
-  return (
-    LEASE_REPORT_TABS.find((tab) => tab.value === value) ?? LEASE_REPORT_TABS[0]
-  );
-}
+import { LEASE_REPORT_TABS, type LeaseReportTab } from "./report-tab-list";
+
+/* Re-exported so the many `import type { LeaseReportTab } from "./report-tabs"`
+   already in the tree keep working — a type erases, so it crosses the client
+   boundary freely. Anything that has to RUN on the server imports it from
+   `report-tab-list` instead; see the note there. */
+export type { LeaseReportTab };
 
 const TABS = LEASE_REPORT_TABS;
 
@@ -61,9 +61,15 @@ export function ReportTabs({
   reservoir,
   firstPosting,
   lastPosting,
+  onSelect,
 }: {
   slug: string;
   active: LeaseReportTab;
+  /**
+   * Switch in place instead of navigating. See the note above; omitted, the
+   * tabs are plain links and the server answers them.
+   */
+  onSelect?: (tab: LeaseReportTab) => void;
   /** The rock these three reports are all about. */
   reservoir: string;
   firstPosting: string;
@@ -112,14 +118,45 @@ export function ReportTabs({
       >
         {TABS.map((tab) => {
           const selected = tab.value === active;
+          const href =
+            tab.value === "lease"
+              ? leaseReportPath(slug)
+              : `${leaseReportPath(slug)}?report=${tab.value}`;
           return (
             <Link
               key={tab.value}
-              href={
-                tab.value === "lease"
-                  ? leaseReportPath(slug)
-                  : `${leaseReportPath(slug)}?report=${tab.value}`
-              }
+              href={href}
+              onClick={(event) => {
+                if (!onSelect) return;
+                /* A MODIFIED CLICK IS THE BROWSER'S. Ctrl, cmd, shift and the
+                   middle button all mean "somewhere else" — a new tab or a new
+                   window — and handling them here would open the report in
+                   this one instead, which is the opposite of what was asked. */
+                if (
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey ||
+                  event.button !== 0
+                ) {
+                  return;
+                }
+                event.preventDefault();
+                onSelect(tab.value);
+                /* `pushState` and not `replaceState`: each report is its own
+                   entry, so Back steps between the three the way a reader who
+                   arrived by link would expect. */
+                window.history.pushState(null, "", href);
+              }}
+              /* STAY WHERE THE READER IS.
+                 `<Link>` defaults to `scroll={true}`, and the App Router counts
+                 a `?report=` change as a new navigation — so pressing a tab
+                 threw the reader to the top of the page. The three reports are
+                 the same lease seen three ways and this strip is how you move
+                 between them; a reader comparing them wants the strip to stay
+                 under the cursor, not to be sent back past the header every
+                 time. Anyone who does want the top has the browser for it. */
+              scroll={false}
               aria-current={selected ? "page" : undefined}
               className={`flex items-center justify-center gap-2.5 rounded-mv border px-4 py-[14px] text-[15px] font-bold no-underline shadow-mv transition-colors ${
                 selected

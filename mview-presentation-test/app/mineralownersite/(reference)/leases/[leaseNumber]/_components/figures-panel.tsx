@@ -14,6 +14,7 @@ import {
 
 import { KpiTile } from "../../../../_components/ui/kpi-tile";
 import { LeaseOverviewHeader } from "./lease-overview-header";
+import { RangePresets } from "../../_components/financials/range-presets";
 import { ChartBrush } from "../../_components/financials/chart-brush";
 import { SegmentedControl } from "../../../../_components/ui/segmented-control";
 import { PillStrip } from "../../_components/financials/pill-strip";
@@ -97,6 +98,9 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
   });
 
   const factor = scope === "share" ? lease.decimalInterest : 1;
+
+  /** How wide the window is now — which preset reads as pressed. */
+  const months = range.to - range.from + 1;
 
   const streams = useMemo(() => {
     /* THE SERVICE SENDS BOTH SCOPES, so the toggle picks one rather than
@@ -235,6 +239,24 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
               ? `the same month at this lease's own decimal interest of ${formatDecimalInterest(lease.decimalInterest)}`
               : CHART_MODE_COPY[mode].note}
           </p>
+          {/* 2 YR · 5 YR · 10 YR · ALL, WHICH THIS TAB DID NOT HAVE.
+              The brush under the chart could always set the window, but only by
+              dragging — there was no way to ask for five years on the tab most
+              readers open first, while both of the other two offered it. The
+              presets are the same component and the same arithmetic, so a
+              window means the same thing on all three.
+
+              `ml-auto` rather than `justify-between` on the row: the note
+              beside the control varies with `scope` and `mode`, and the presets
+              stay pinned right whether it wraps or not. */}
+          <div className="ml-auto">
+            <RangePresets
+              months={months}
+              lastPostedIndex={postedThrough}
+              length={length}
+              onChange={setRange}
+            />
+          </div>
         </div>
 
         <LeaseChart

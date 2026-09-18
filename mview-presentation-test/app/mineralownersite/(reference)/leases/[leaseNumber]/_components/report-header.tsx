@@ -9,7 +9,7 @@ import {
 import Link from "next/link";
 
 import { LeasePicker } from "./lease-picker";
-import { leaseReportTab, type LeaseReportTab } from "./report-tabs";
+import { leaseReportTab, type LeaseReportTab } from "./report-tab-list";
 import type { LeaseStep } from "../_lib/lease-report";
 import { gates } from "../../../../_components/ui/portal-gating";
 import { PrototypeButton } from "../../../../_components/ui/prototype-button";

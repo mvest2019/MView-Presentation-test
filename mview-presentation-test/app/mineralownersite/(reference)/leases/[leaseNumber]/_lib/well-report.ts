@@ -44,6 +44,16 @@ export interface FilingDocument {
   tracking: string;
   /** The day the work the packet covers was done. */
   filedOn: string;
+  /**
+   * WHERE THE SCAN ACTUALLY IS — the Commission's packet, as the service
+   * hands it over.
+   *
+   * `packet_url` was already being read off every completion, but only to
+   * decide whether a row appeared at all; the link itself was dropped on the
+   * floor and the button beside it was a prototype. Null where the fixture
+   * builds a row, which has no scan behind it to open.
+   */
+  url: string | null;
 }
 
 export interface WellFiling {
@@ -221,6 +231,10 @@ function buildFilings(well: WellRecord): WellFiling[] {
         permitType: "Permit to Drill, Plug Back or Re-enter",
         tracking,
         filedOn: formatDay(well.spudded),
+        /* THE FIXTURE HAS NO SCAN. These ten leases are invented, so there is
+           no packet on file to open and a made-up URL would be worse than
+           none — the card renders the row without a link. */
+        url: null,
       },
     },
     {

@@ -4,7 +4,6 @@ import type {
   WireReservoirWell,
   WireReservoirs,
 } from "../../_api/leases-api";
-import { leaseRouteSlug } from "../../_lib/lease-routes";
 import type { LeaseRecord } from "../../_lib/lease-types";
 import type { WellRecord } from "../../_lib/well-records";
 import type { ReservoirReport, ReservoirWell } from "./reservoir-report";
@@ -65,41 +64,6 @@ function profileOf(value: string | null | undefined): WellRecord["drilled"] {
 }
 
 /**
- * The lease this reservoir sits on, in the shape the header and the map speak.
- *
- * ONLY WHAT THIS TAB READS. The reservoir payload carries a thinner lease block
- * than the lease report does — no forecast band, no ranking — and that is
- * enough: the cards here use the name, the county, the acreage, the interest
- * and the slug. Anything absent is floored rather than borrowed from elsewhere,
- * because a figure invented to fill a type is worse than a zero.
- */
-function recordFrom(wire: NonNullable<WireReservoirs["lease"]>): LeaseRecord {
-  const name = text(wire.lease_name) || text(wire.label);
-  const number = wire.lease_no ? String(wire.lease_no) : null;
-
-  return {
-    id: wire.lease_id,
-    number,
-    slug: leaseRouteSlug(wire.lease_id, number, name),
-    name,
-    status: text(wire.lease_status),
-    acres: num(wire.acres),
-    firstPosting: text(wire.first_prod_label),
-    mvestimate: num(wire.owner_value),
-    countyAppraised: num(wire.appraised_value),
-    county: text(wire.county),
-    operator: text(wire.operator_name),
-    reservoir: text(wire.reservoirs?.[0]?.name),
-    wells: num(wire.well_count),
-    producingWells: wire.producing_wells,
-    decimalInterest: num(wire.interest),
-    types: [],
-    production: { gasMcf: 0, oilBbl: 0 },
-    lastPosted: { month: text(wire.last_posted_label), gasMcf: 0 },
-  };
-}
-
-/**
  * One well, from both arrays.
  *
  * `[lon, lat]` AND NOT `[lat, lon]`, which is the order the map component and
@@ -152,6 +116,11 @@ function wellFrom(
       ? [num(position?.bh_lon), num(position?.bh_lat)]
       : [lon, lat],
 
+    /* The legend row this hole is drawn as — it rides on the map entry rather
+       than on the production row, because it is a fact about the wellbore's
+       status and not about what it filed. */
+    icon: text(position?.icon),
+
     gasFiled: num(well.gas_filed),
     sharePercent: num(well.share_pct),
     paidYou: num(well.cash_filed),
@@ -183,9 +152,22 @@ export function pickReservoir(
 export function reservoirReportFromApi(
   wire: WireReservoirs,
   reservoir: WireReservoir,
+  /**
+   * THE LEASE, FROM THE LEASE REPORT — because this payload does not carry one.
+   *
+   * `/leases/reservoirs` answers about the rock: wells, depths, volumes, the
+   * monthly series. The county, the operator, the acreage and the owner's
+   * interest are lease facts, and the only endpoint that states them is
+   * `/leases/lease`, which the page rendering this tab has already read. Taking
+   * them from there is not borrowing — it is reading each fact from the call
+   * that owns it, instead of flooring five header fields to zero.
+   */
+  leaseRecord: LeaseRecord,
 ): ReservoirReport {
-  const lease = recordFrom(wire.lease ?? {});
   const name = text(reservoir.name) || text(reservoir.reservoir_key);
+  /* The rock this tab is about, not whichever one the lease report led with —
+     a lease can name more than one and the header has to follow the tab. */
+  const lease: LeaseRecord = { ...leaseRecord, reservoir: name };
 
   /* ── the monthly series ──────────────────────────────────────────────── */
   const months = reservoir.series ?? [];
