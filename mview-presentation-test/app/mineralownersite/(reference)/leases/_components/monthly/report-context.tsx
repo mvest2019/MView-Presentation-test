@@ -55,6 +55,8 @@ export interface ReportFormat {
 }
 
 export interface ReportContextValue {
+  /** The service's own page headings, by page number. Absent on the fixture. */
+  pages?: { no: number; title: string; lead: string }[];
   /** The record's portfolio-wide figures — sample when unclaimed. */
   summary: typeof portfolioSummary;
   fmt: ReportFormat;
@@ -105,9 +107,21 @@ export function useReport(): ReportContextValue {
 
 export function ReportProvider({
   unclaimed,
+  pages,
   children,
 }: {
   unclaimed: boolean;
+  /**
+   * Each page's own heading and sub-line, when the report came from the
+   * service. `ReportPageCard` looks itself up by number.
+   *
+   * WHY NOT LEAVE THEM WRITTEN INTO THE PAGES. They were, and eleven of the
+   * twelve happened to agree with what the service sends. Page 11's had already
+   * drifted — the same page, two sub-lines, and no way to notice except by
+   * reading both. The service writes them per report; the pages print what it
+   * wrote.
+   */
+  pages?: { no: number; title: string; lead: string }[];
   children: ReactNode;
 }) {
   const value = useMemo<ReportContextValue>(
@@ -119,8 +133,9 @@ export function ReportProvider({
       summary: unclaimed ? sampleSummary() : portfolioSummary,
       fmt: unclaimed ? MASKED : REAL,
       masked: unclaimed,
+      pages,
     }),
-    [unclaimed],
+    [unclaimed, pages],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

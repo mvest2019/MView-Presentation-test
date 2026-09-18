@@ -129,6 +129,21 @@ const GET_PARAMS = {
    * `UPSTREAM_PATH` turns it back into `lease/map` on the way out.
    */
   "lease-map": ["id"],
+  /**
+   * `GET /api/v1/leases/monthly?member_id=&month=&owner=` — the twelve-page
+   * monthly report, all of it, in one read.
+   *
+   * THE UPSTREAM QUERY IS STRICT: an unknown parameter is a 400, not an ignored
+   * field. `format`, `page` and `refresh` included. That makes the allowlist
+   * here load-bearing rather than defensive — it is what stops a stray query
+   * string on our own URL turning into a rejected upstream call.
+   *
+   * `month` is `YYYYMM` and defaults to the newest month actually FILED. A
+   * month that was never filed comes back 404 `LEASES_MONTH_NOT_FILED` carrying
+   * the months that were, so the picker can correct itself rather than draw a
+   * page of zeroes.
+   */
+  monthly: ["month", "owner"],
 } as const satisfies Record<string, readonly string[]>;
 
 /**
@@ -153,6 +168,7 @@ const SIGN_IN_COPY: Record<Endpoint, string> = {
   lease: "Sign in to see this lease report.",
   reservoirs: "Sign in to see this reservoir report.",
   "lease-map": "Sign in to see where these wells are.",
+  monthly: "Sign in to see your monthly report.",
 };
 
 type Endpoint = keyof typeof GET_PARAMS;

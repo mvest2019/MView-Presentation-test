@@ -22,6 +22,25 @@ export function PageExecutive({ report }: { report: MonthlyReport }) {
   const { fmt, summary } = useReport();
   const fall = report.vsYearAgoPercent;
 
+  /* ── THE SERVICE WRITES THESE THREE COLUMNS ──
+     Nine sentences, and it writes all nine. They were composed here instead,
+     out of `useReport().summary` — which is the STATIC portfolio fixture, not
+     the record on screen. The header said "3 of 4 leases filed" off the served
+     totals while the column beneath it said "10 leases … run by 3 operators,
+     with 10 wells", because the two were reading different sources. The
+     service's own sentence for that record is "4 leases across 1 county, run by
+     1 operator".
+
+     Rendered VERBATIM. They arrive with the figures already in them and already
+     formatted; re-deriving any of them here is what produced the disagreement
+     in the first place. The composed versions stay as the fixture path's, which
+     is the only path that has no served sentences to print. */
+  const served = report.served?.summary;
+  const column = (index: number, fallback: (string | React.ReactNode)[]) =>
+    served?.[index]?.bullets.length ? served[index].bullets : fallback;
+  const heading = (index: number, fallback: string) =>
+    served?.[index]?.heading || fallback;
+
   return (
     <ReportPageCard
       number={1}
@@ -31,9 +50,9 @@ export function PageExecutive({ report }: { report: MonthlyReport }) {
     >
       <div className="mt-4 grid gap-6 lg:grid-cols-3 lg:divide-x lg:divide-mv-line">
         <section className="lg:pr-6">
-          <ReportHeading>Portfolio</ReportHeading>
+          <ReportHeading>{heading(0, "Portfolio")}</ReportHeading>
           <ReportList
-            items={[
+            items={column(0, [
               `${fmt.num(summary.leaseCount)} leases across ${fmt.num(summary.counties)} county, run by ${fmt.num(summary.operators)} operators, with ${fmt.num(summary.wells)} wells on the roster.`,
               `${fmt.num(summary.leaseCount)} of them were producing at the last posted month, and ${fmt.num(report.filedCount)} filed for ${report.month} itself.`,
               <>
@@ -41,14 +60,14 @@ export function PageExecutive({ report }: { report: MonthlyReport }) {
                 {fmt.compactDollars(summary.mvestimate)}, held at your own
                 decimal interest on every lease rather than one blended rate.
               </>,
-            ]}
+            ])}
           />
         </section>
 
         <section className="lg:px-6">
-          <ReportHeading>This month</ReportHeading>
+          <ReportHeading>{heading(1, "This month")}</ReportHeading>
           <ReportList
-            items={[
+            items={column(1, [
               <>
                 {fmt.dollars(report.yourShare)} to you:{" "}
                 {fmt.count(Math.round(report.yourGas))} MCF of gas and{" "}
@@ -68,14 +87,14 @@ export function PageExecutive({ report }: { report: MonthlyReport }) {
                   ? "One lease carries most of it, so its operator's decisions carry most of your income."
                   : "No single lease dominates the month."}
               </>,
-            ]}
+            ])}
           />
         </section>
 
         <section className="lg:pl-6">
-          <ReportHeading>Risks and what to do</ReportHeading>
+          <ReportHeading>{heading(2, "Risks and what to do")}</ReportHeading>
           <ReportList
-            items={[
+            items={column(2, [
               <>
                 The three-year projection has your monthly share falling{" "}
                 {Math.abs(threeYearOutlook.shareChangePercent).toFixed(1)}% by{" "}
@@ -93,7 +112,7 @@ export function PageExecutive({ report }: { report: MonthlyReport }) {
                 well stops.
               </>,
               "None of this is a statement. The public record carries volumes, not the price your operator actually received or the deductions they applied — if a cheque disagrees with this report, the cheque is the document to ask about.",
-            ]}
+            ])}
           />
         </section>
       </div>

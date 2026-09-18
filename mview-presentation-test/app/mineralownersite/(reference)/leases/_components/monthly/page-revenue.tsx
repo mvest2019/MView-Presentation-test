@@ -12,6 +12,7 @@ import {
 import { financialsSeries } from "../../_lib/financials-series";
 import { shortMonthLabel } from "../../_lib/months";
 import { revenueSeries } from "../../_lib/revenue-series";
+import type { MonthlyReport } from "../../_lib/monthly-report";
 import { ReportFootnote, ReportPageCard } from "./report-page";
 
 /**
@@ -37,14 +38,47 @@ import { ReportFootnote, ReportPageCard } from "./report-page";
 const MONTHS_BEHIND = 24;
 const MONTHS_AHEAD = 6;
 
-export function PageRevenue() {
-  const { firstMonth, lastPostedIndex, length } = financialsSeries;
-  const from = Math.max(0, lastPostedIndex - MONTHS_BEHIND);
-  const to = Math.min(length - 1, lastPostedIndex + MONTHS_AHEAD);
+export function PageRevenue({ report }: { report: MonthlyReport }) {
+  /* ── WHOSE THIRTY-SEVEN MONTHS THESE ARE ──
+     The service sends the band already windowed: twenty-four months back from
+     the report's own month and twelve forward, each with its gas and oil cash
+     and its own `forecast` flag. The fixture path slices a window out of the
+     shared series instead, which is why the two compute `from`/`to`
+     differently.
+
+     THE DIVIDER IS THE FLAG, NOT A COUNT. It used to be OR'd across every lease
+     upstream — one modelled row in a past month flagged the whole month
+     projected, and on a 782-lease record every month came back forecast, so the
+     chart had no solid section at all. It is the forecast boundary itself now:
+     25 filed, 12 modelled. */
+  const served = report.served?.revenue;
+
+  const gas = served ? served.map((month) => month.gasCash) : revenueSeries.gas;
+  const oil = served ? served.map((month) => month.oilCash) : revenueSeries.oil;
+
+  const { firstMonth, length } = financialsSeries;
+  let lastPostedIndex = financialsSeries.lastPostedIndex;
+  if (served) {
+    /* The last month still on the filed record — the point the wash starts
+       after. `-1` when the whole band is modelled, which draws no seam. */
+    lastPostedIndex = -1;
+    served.forEach((month, index) => {
+      if (!month.forecast) lastPostedIndex = index;
+    });
+  }
+
+  const from = served ? 0 : Math.max(0, lastPostedIndex - MONTHS_BEHIND);
+  const to = served
+    ? served.length - 1
+    : Math.min(length - 1, lastPostedIndex + MONTHS_AHEAD);
+
+  /** The axis label for a point — the service's own, or the shared calendar. */
+  const nameOf = (index: number) =>
+    served ? (served[index]?.label ?? "") : shortMonthLabel(firstMonth + index);
 
   let peak = 0;
   for (let index = from; index <= to; index += 1) {
-    const total = revenueSeries.gas[index] + revenueSeries.oil[index];
+    const total = (gas[index] ?? 0) + (oil[index] ?? 0);
     if (total > peak) peak = total;
   }
   const max = axisMax(peak);
@@ -67,7 +101,7 @@ export function PageRevenue() {
         viewBox={`0 0 ${CHART.width} ${CHART.height}`}
         className="mt-4 w-full"
         role="img"
-        aria-label={`Your monthly income from ${shortMonthLabel(firstMonth + from)} to ${shortMonthLabel(firstMonth + to)}, split into gas and oil. Filed through ${shortMonthLabel(firstMonth + lastPostedIndex)}; modelled after that.`}
+        aria-label={`Your monthly income from ${nameOf(from)} to ${nameOf(to)}, split into gas and oil. Filed through ${nameOf(lastPostedIndex)}; modelled after that.`}
       >
         {/* The modelled half, washed before anything is drawn over it. */}
         <rect
@@ -103,11 +137,11 @@ export function PageRevenue() {
             the volume, and a reader following the gas price looks for it at the
             bottom where a baseline makes it readable. */}
         <path
-          d={stackPath(revenueSeries.gas, null, from, to, max)}
+          d={stackPath(gas, null, from, to, max)}
           className="fill-mv-green-deep/85"
         />
         <path
-          d={stackPath(revenueSeries.oil, revenueSeries.gas, from, to, max)}
+          d={stackPath(oil, gas, from, to, max)}
           className="fill-mv-oil/85"
         />
 
@@ -129,7 +163,7 @@ export function PageRevenue() {
             textAnchor="middle"
             className="fill-mv-axis text-[11px]"
           >
-            {shortMonthLabel(firstMonth + index)}
+            {nameOf(index)}
           </text>
         ))}
 

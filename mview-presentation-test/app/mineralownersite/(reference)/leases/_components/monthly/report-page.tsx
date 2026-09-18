@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { Badge } from "../../../../_components/ui/badge";
+import { useReport } from "./report-context";
 import { Card } from "../../../../_components/ui/card";
 
 /**
@@ -26,12 +27,20 @@ export function ReportPageCard({
 }: {
   number: number;
   id: string;
+  /** What the page is called when the service did not say. */
   title: string;
   /** The page's scope — "10 leases", "published settlements". */
   chip?: string;
+  /** The sub-line, likewise. */
   lead: string;
   children: ReactNode;
 }) {
+  /* THE SERVICE'S OWN HEADING WHEN THERE IS ONE. The props stay as the fixture
+     path's wording and as the fallback — a served report that omits a page
+     still gets a heading rather than a blank one. */
+  const served = useReport().pages?.find((page) => page.no === number);
+  const heading = served?.title || title;
+  const subLine = served?.lead || lead;
   return (
     <Card
       id={id}
@@ -42,7 +51,7 @@ export function ReportPageCard({
         <span className="text-[10.5px] font-bold tracking-[0.12em] text-mv-muted uppercase">
           Page {number}
         </span>
-        <h3 className="text-[19px] font-bold">{title}</h3>
+        <h3 className="text-[19px] font-bold">{heading}</h3>
         {chip && (
           <Badge tone="slate" size="xs">
             {chip}
@@ -50,7 +59,7 @@ export function ReportPageCard({
         )}
       </div>
 
-      <p className="mt-3 text-[13px] text-mv-slate">{lead}</p>
+      <p className="mt-3 text-[13px] text-mv-slate">{subLine}</p>
 
       {children}
     </Card>

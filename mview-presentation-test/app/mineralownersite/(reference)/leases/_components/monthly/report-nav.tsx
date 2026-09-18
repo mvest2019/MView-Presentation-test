@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { REPORT_PAGES } from "../../_lib/report-fixtures";
+import { useReport } from "./report-context";
 
 /**
  * THE TWELVE JUMP CHIPS — and which page you are currently reading.
@@ -51,6 +52,8 @@ import { REPORT_PAGES } from "../../_lib/report-fixtures";
  */
 export function ReportNav() {
   const [active, setActive] = useState<string | null>(null);
+  /** The service's page names, when the report came from it. */
+  const served = useReport().pages;
 
   useEffect(() => {
     const sections = REPORT_PAGES.map((page) =>
@@ -88,6 +91,14 @@ export function ReportNav() {
       className="flex flex-wrap gap-2 border-t border-mv-line-strong bg-mv-bg px-4 py-3"
     >
       {REPORT_PAGES.map((page, position) => {
+        /* THE CHIP'S WORDS ARE THE SERVICE'S when it named the page. The
+           anchors stay the fixture's — `id` is what the page scrolls to and the
+           service does not send one. `nav` is the shortened label two pages
+           carry for this strip, and it wins over both. */
+        const label =
+          page.nav ??
+          served?.find((entry) => entry.no === position + 1)?.title ??
+          page.title;
         const current = active === page.id;
         return (
           <a
@@ -112,7 +123,7 @@ export function ReportNav() {
             </span>
             {/* The short name where a page has one — see `nav` on `ReportPage`
                 for why these are not truncated titles. */}
-            {page.nav ?? page.title}
+            {label}
           </a>
         );
       })}

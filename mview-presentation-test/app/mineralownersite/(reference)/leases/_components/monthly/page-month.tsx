@@ -17,6 +17,10 @@ import { useReport } from "./report-context";
  * a footnote, because it is about the headline figure directly above it.
  */
 export function PageMonth({ report }: { report: MonthlyReport }) {
+  /* "WHAT THE MONTH SAYS" IS THE SERVICE'S OWN, when it sent it — `insights[]`,
+     written against this record. Composing the same observations here from the
+     same figures is a second author for one page, and the two drift: the served
+     sentences already know which lease carried the month and by how much. */
   const { fmt } = useReport();
   const missing = report.leaseCount - report.filedCount;
   const top = report.leases[0];
@@ -62,44 +66,48 @@ export function PageMonth({ report }: { report: MonthlyReport }) {
 
       <h4 className="mt-5 text-[14px] font-bold">What the month says</h4>
       <ReportList
-        items={[
-          <>
-            {fmt.num(report.filedCount)} of your {fmt.num(report.leaseCount)}{" "}
-            leases filed production in {report.month}.{" "}
-            {missing > 0
-              ? `${missing} did not — a lease can file late, and a missing month is far more often the posting lag than a well that stopped.`
-              : "Nothing is outstanding."}
-          </>,
-          top && (
+        items={
+          report.served?.insights ??
+          [
             <>
-              {top.title} carried the month:{" "}
-              {fmt.count(Math.round(top.yourGas))} MCF to you,{" "}
-              {report.topLease.gasPercent.toFixed(1)}% of your gas.
-            </>
-          ),
-          report.steepestFall?.changePercent != null && (
+              {fmt.num(report.filedCount)} of your {fmt.num(report.leaseCount)}{" "}
+              leases filed production in {report.month}.{" "}
+              {missing > 0
+                ? `${missing} did not — a lease can file late, and a missing month is far more often the posting lag than a well that stopped.`
+                : "Nothing is outstanding."}
+            </>,
+            top && (
+              <>
+                {top.title} carried the month:{" "}
+                {fmt.count(Math.round(top.yourGas))} MCF to you,{" "}
+                {report.topLease.gasPercent.toFixed(1)}% of your gas.
+              </>
+            ),
+            report.steepestFall?.changePercent != null && (
+              <>
+                {report.steepestFall.title} fell{" "}
+                {report.steepestFall.changePercent.toFixed(1)}% against{" "}
+                {report.priorMonth}. On a decline curve a fall is normal; a
+                steep one is worth a question to the operator.
+              </>
+            ),
+            report.steepestRise?.changePercent != null && (
+              <>
+                {report.steepestRise.title} rose +
+                {report.steepestRise.changePercent.toFixed(1)}% — usually a
+                lease that filed late catching up, rather than the wells
+                speeding up.
+              </>
+            ),
             <>
-              {report.steepestFall.title} fell{" "}
-              {report.steepestFall.changePercent.toFixed(1)}% against{" "}
-              {report.priorMonth}. On a decline curve a fall is normal; a steep
-              one is worth a question to the operator.
-            </>
-          ),
-          report.steepestRise?.changePercent != null && (
-            <>
-              {report.steepestRise.title} rose +
-              {report.steepestRise.changePercent.toFixed(1)}% — usually a lease
-              that filed late catching up, rather than the wells speeding up.
-            </>
-          ),
-          <>
-            Your share of the month is {fmt.dollars(report.yourShare)} across{" "}
-            {fmt.num(report.leaseCount)} leases. That is the model&apos;s figure
-            for the volumes filed, not an amount owed — deductions and the price
-            your operator actually got are on the statement, not in the public
-            record.
-          </>,
-        ].filter(Boolean)}
+              Your share of the month is {fmt.dollars(report.yourShare)} across{" "}
+              {fmt.num(report.leaseCount)} leases. That is the model&apos;s
+              figure for the volumes filed, not an amount owed — deductions and
+              the price your operator actually got are on the statement, not in
+              the public record.
+            </>,
+          ].filter(Boolean)
+        }
       />
     </ReportPageCard>
   );

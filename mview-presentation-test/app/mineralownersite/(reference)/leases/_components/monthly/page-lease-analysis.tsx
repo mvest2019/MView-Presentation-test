@@ -26,13 +26,17 @@ import { useReport } from "./report-context";
  * same way: where the two disagree, the filing is the fact.
  */
 export function PageLeaseAnalysis({ report }: { report: MonthlyReport }) {
-  const { fmt, summary } = useReport();
+  /* THE LEASES ON THIS REPORT, not the portfolio fixture's count. The chip read
+     `summary.leaseCount` — the static figure — and said "10 leases" over a list
+     of 782. */
+  const leaseCount = report.leases.length || 0;
+  const { fmt } = useReport();
   return (
     <ReportPageCard
       number={4}
       id="lease-analysis"
       title="Lease analysis"
-      chip={`${fmt.num(summary.leaseCount)} leases`}
+      chip={`${fmt.num(leaseCount)} leases`}
       lead="Each lease against its own last twelve filed months."
     >
       <div className="mt-2 divide-y divide-mv-line">
@@ -76,7 +80,14 @@ function LeaseBlock({
           rows={[
             {
               label: "Acreage and wells",
-              value: `${fmt.acres(lease.acres)} acres, ${lease.wells} well${lease.wells === 1 ? "" : "s"}; first production ${lease.firstPosting}`,
+              /* THE SERVICE'S `well_note` AND `completion_span` WHEN IT SENT
+                 THEM — "4 wells, 4 drilled sideways" and "2020–2025". How the
+                 holes were drilled and the years they came on are facts the
+                 well count cannot carry, and this row was stating the count
+                 twice instead. The composed version is the fixture's. */
+              value: lease.wellNote
+                ? `${fmt.acres(lease.acres)} acres, ${lease.wellNote}${lease.completionSpan ? `; completed ${lease.completionSpan}` : ""}`
+                : `${fmt.acres(lease.acres)} acres, ${lease.wells} well${lease.wells === 1 ? "" : "s"}; first production ${lease.firstPosting}`,
             },
             { label: "Reservoir", value: lease.reservoir },
             {
@@ -98,7 +109,14 @@ function LeaseBlock({
                 </>
               ),
             },
-            { label: "Operators", value: lease.operatorRange },
+            {
+              label: "Operators",
+              /* EVERY company that has run it, with its dates — the service
+                 sends the whole history and the row printed only the first. */
+              value: lease.pastOperators.length
+                ? lease.pastOperators.join(" · ")
+                : lease.operatorRange,
+            },
           ]}
         />
 

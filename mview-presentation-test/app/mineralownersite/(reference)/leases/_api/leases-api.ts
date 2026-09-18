@@ -1097,6 +1097,282 @@ export async function fetchLeaseMap(
 }
 
 /* ============================================================================
+   THE TWELVE-PAGE MONTHLY REPORT
+   ============================================================================ */
+
+/** One month in the picker. `filed` says whether it was ever posted. */
+export interface WireMonthOption {
+  cycle?: string;
+  label?: string;
+  filed?: boolean;
+}
+
+/** A pre-formatted tile. `value` and `sub` are rendered verbatim. */
+export interface WireMonthlyStat {
+  label?: string;
+  value?: string;
+  sub?: string;
+  tone?: "up" | "down" | "warn";
+}
+
+/** One month on the revenue band. */
+export interface WireMonthlyRevenue {
+  cycle?: string;
+  label?: string;
+  gas_cash?: number;
+  oil_cash?: number;
+  /** Where the filed record ends — see the note on the revenue page. */
+  forecast?: boolean;
+}
+
+/** One lease as the month itself reports it — page 5. */
+export interface WireMonthlyRow {
+  lease_id?: string;
+  label?: string;
+  county?: string;
+  operator_name?: string;
+  /** A STRING here; `lease_analysis[].reservoirs` is an ARRAY. */
+  reservoir?: string;
+  interest_label?: string;
+  gas_gross?: number;
+  oil_gross?: number;
+  gas_share?: number;
+  oil_share?: number;
+  cash_share?: number;
+  /** Null where either month is absent — a lease that has not filed has not
+   *  fallen 100%. */
+  change_pct?: number | null;
+  reported?: boolean;
+  wells?: number;
+}
+
+/** The lease's own shape and its trailing twelve filed months — page 4. */
+export interface WireMonthlyAnalysis {
+  lease_id?: string;
+  label?: string;
+  county?: string;
+  operator_name?: string;
+  reservoirs?: string[];
+  acres?: number;
+  wells?: number;
+  well_note?: string;
+  completion_span?: string;
+  past_operators?: string[];
+  interest_label?: string;
+  lease_cash?: number;
+  owner_cash?: number;
+  month_gas?: number;
+  month_oil?: number;
+  month_gas_d?: number;
+  month_oil_d?: number;
+  reported?: boolean;
+  year?: {
+    months?: number;
+    gas_avg_d?: number;
+    gas_lo_d?: number;
+    gas_hi_d?: number;
+    oil_avg_d?: number;
+    oil_lo_d?: number;
+    oil_hi_d?: number;
+    peak_label?: string;
+    peak_gas_d?: number;
+    trough_label?: string;
+    trough_gas_d?: number;
+    rev_hi_label?: string;
+    rev_hi?: number;
+    rev_lo_label?: string;
+    rev_lo?: number;
+    gas_share_pct?: number;
+  };
+}
+
+export interface WireMonthly {
+  owner?: string;
+  label?: string;
+  cycle?: string;
+  prev_label?: string;
+  filed?: boolean;
+  built_at?: string;
+
+  totals?: {
+    leases?: number;
+    reporting?: number;
+    gas_gross?: number;
+    oil_gross?: number;
+    gas_share?: number;
+    oil_share?: number;
+    cash_share?: number;
+  };
+
+  available?: WireMonthOption[];
+  pages?: { no?: number; title?: string; lead?: string }[];
+
+  /* page 1 */
+  summary?: { heading?: string; bullets?: string[] }[];
+  /** Null where the model carries nothing twelve months back. */
+  vs_year_ago_pct?: number | null;
+  year_ago_label?: string;
+  top_lease?: {
+    lease_id?: string;
+    label?: string;
+    share_pct?: number;
+    gas_pct?: number;
+  };
+
+  /* page 2 */
+  stats?: WireMonthlyStat[];
+  insights?: string[];
+  note?: string;
+
+  /* page 3 */
+  revenue?: WireMonthlyRevenue[];
+  revenue_note?: string;
+
+  /* pages 4 and 5 — one row per lease each, joined on `lease_id` */
+  lease_analysis?: WireMonthlyAnalysis[];
+  rows?: WireMonthlyRow[];
+
+  /* page 6 */
+  outlook?: {
+    months?: number;
+    from_label?: string;
+    to_label?: string;
+    gas_start_d?: number;
+    gas_end_d?: number;
+    gas_change_pct?: number | null;
+    oil_start_d?: number;
+    oil_end_d?: number;
+    oil_change_pct?: number | null;
+    cash_start?: number;
+    cash_end?: number;
+    cash_change_pct?: number | null;
+    oil_share_pct?: number;
+    gas_share_pct?: number;
+    bullets?: string[];
+    note?: string;
+  };
+
+  /* page 7 */
+  development?: {
+    probability?: number;
+    /** Ordered BEST first; the chip prints worst first. */
+    probability_label?: string;
+    verdict?: string;
+    rings?: {
+      radius_mi?: number;
+      permits?: number;
+      /** The "LEASES" column binds to this — the names differ. */
+      neighbours?: number;
+      operators?: number;
+      producing?: number;
+    }[];
+    bullets?: string[];
+    /** How the ring counts were reached — counted once each across the whole
+     *  portfolio rather than once per lease. */
+    note?: string;
+  };
+
+  /* page 8 */
+  operators?: {
+    name?: string;
+    number?: string | number;
+    leases?: number;
+    lease_names?: string[];
+    counties?: string[];
+    tenure_label?: string;
+    first_label?: string;
+    cum_gas?: number;
+    cum_oil?: number;
+    owner_value?: number;
+    share_pct?: number;
+    overview?: string;
+    insight?: string;
+    month_gas?: number;
+    month_oil?: number;
+    wells?: number;
+  }[];
+
+  /* page 10 */
+  commodities?: {
+    label?: string;
+    unit?: string;
+    /** Pre-formatted to the contract's own decimals — do not re-round. */
+    display?: string;
+    change_pct?: number;
+    as_of?: string;
+    desc?: string;
+    means?: string;
+  }[];
+  commodity_note?: string;
+
+  /* page 11 */
+  news?: {
+    operator?: string;
+    mine?: boolean;
+    title?: string;
+    body?: string;
+    when?: string;
+  }[];
+  news_note?: string;
+
+  /* page 12 */
+  years?: {
+    year?: string | number;
+    gas_share?: number;
+    oil_share?: number;
+    cash_share?: number;
+    months?: number;
+    filed_months?: number;
+    whole?: boolean;
+  }[];
+  method?: { no?: number; title?: string; text?: string }[];
+  disclaimer?: string[];
+}
+
+/**
+ * THE WHOLE MONTHLY REPORT — all twelve pages, one read.
+ *
+ * ── ONE CALL, AND IT IS A BIG ONE ──
+ *
+ * A megabyte raw on a 782-lease record, 111KB on the wire after brotli, and
+ * 94% of it is the two per-lease arrays. It scales with how many leases the
+ * owner holds, not with the report: a ten-lease owner is a few KB.
+ *
+ * ── DO NOT FIRE IT BESIDE THE OTHER `/leases` READS ON A COLD CACHE ──
+ *
+ * They share one cached record per owner, and each cold request starts its own
+ * build — so two in flight together is the build done twice, not once shared.
+ * A cold read is 100 seconds and more; every read after it is sub-second. This
+ * is why the tab fetches on OPEN rather than with the page.
+ *
+ * ── `month` IS `YYYYMM`, AND A MONTH NEVER FILED IS A 404 ──
+ *
+ * Omitted, the service picks the newest month actually filed. Asked for a month
+ * that was never filed, it answers 404 `LEASES_MONTH_NOT_FILED` and names the
+ * months that were, so the picker can correct itself. That is deliberately not
+ * a page of zeroes, which reads as a portfolio that stopped.
+ *
+ * THE UPSTREAM QUERY IS STRICT — an unknown parameter is a 400 rather than an
+ * ignored field, which is why the forwarder's allowlist for this endpoint is
+ * load-bearing rather than defensive.
+ */
+export async function fetchMonthlyReport(
+  month?: string | null,
+  signal?: AbortSignal,
+): Promise<WireMonthly> {
+  const params = new URLSearchParams();
+  if (month) params.set("month", month);
+  const query = params.toString();
+
+  return request<WireMonthly>(
+    `/api/leases/monthly${query ? `?${query}` : ""}`,
+    "your monthly report",
+    signal,
+    REPORT_TIMEOUT_MS,
+  );
+}
+
+/* ============================================================================
    TRANSPORT
    ============================================================================ */
 

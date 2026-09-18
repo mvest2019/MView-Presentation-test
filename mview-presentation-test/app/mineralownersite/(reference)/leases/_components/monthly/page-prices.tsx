@@ -1,4 +1,5 @@
 import { PRICE_SETTLEMENTS } from "../../_lib/report-fixtures";
+import type { MonthlyReport } from "../../_lib/monthly-report";
 import { ReportFootnote, ReportPageCard } from "./report-page";
 
 /**
@@ -18,7 +19,11 @@ import { ReportFootnote, ReportPageCard } from "./report-page";
  * must not: a document whose figures change between two readings makes every
  * other figure in it suspect. See the note on the fixture.
  */
-export function PagePrices() {
+export function PagePrices({ report }: { report: MonthlyReport }) {
+  /* The service's four contracts when the report came from it, the fixture's
+     when it did not. `display` is rendered as sent — see `ServedMonthly`. */
+  const prices = report.served?.commodities ?? PRICE_SETTLEMENTS;
+
   return (
     <ReportPageCard
       number={10}
@@ -28,7 +33,7 @@ export function PagePrices() {
       lead="The settlements your income is priced against."
     >
       <div className="mt-4 grid gap-[18px] sm:grid-cols-2 xl:grid-cols-4">
-        {PRICE_SETTLEMENTS.map((price) => (
+        {prices.map((price) => (
           <div
             key={price.label}
             className="rounded-mv border border-mv-line bg-mv-card px-[18px] py-4 shadow-mv"
@@ -59,10 +64,19 @@ export function PagePrices() {
         ))}
       </div>
 
+      {/* THE SERVICE'S OWN CAPTION when it sent one — it explains what the
+          block above means for THIS record, where the sentence below is a
+          general statement written once. The fixture path keeps the general
+          one, which is all it has. */}
       <ReportFootnote>
-        Published settlements from the U.S. Energy Information Administration,
-        not the price your operator actually received. A statement carries that,
-        and the gap between the two is the differential and the deducts.
+        {report.served?.commodityNote || (
+          <>
+            Published settlements from the U.S. Energy Information
+            Administration, not the price your operator actually received. A
+            statement carries that, and the gap between the two is the
+            differential and the deducts.
+          </>
+        )}
       </ReportFootnote>
     </ReportPageCard>
   );

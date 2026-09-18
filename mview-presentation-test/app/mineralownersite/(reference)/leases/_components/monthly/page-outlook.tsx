@@ -1,5 +1,6 @@
 import { KpiTile } from "../../../../_components/ui/kpi-tile";
 import { threeYearOutlook } from "../../_lib/report-outlook";
+import type { MonthlyReport } from "../../_lib/monthly-report";
 import { ReportFootnote, ReportList, ReportPageCard } from "./report-page";
 import { useReport } from "./report-context";
 
@@ -22,9 +23,11 @@ import { useReport } from "./report-context";
  * because gas got cheaper. Without that qualifier the number reads as a
  * forecast of prices, which it is not and could not be.
  */
-export function PageOutlook() {
+export function PageOutlook({ report }: { report: MonthlyReport }) {
   const { fmt } = useReport();
-  const outlook = threeYearOutlook;
+  /* The service's own three years when the report came from it. Its bullets
+     and its caption come with it; the fixture has neither. */
+  const outlook = report.served?.outlook ?? threeYearOutlook;
 
   return (
     <ReportPageCard
@@ -60,40 +63,51 @@ export function PageOutlook() {
       </div>
 
       <ReportList
-        items={[
-          <>
-            Your gas begins the projection at{" "}
-            {outlook.gasPerDayStart.toFixed(0)} MCF a day and ends it at{" "}
-            {outlook.gasPerDayEnd.toFixed(1)} — a fall of{" "}
-            {Math.abs(outlook.gasChangePercent).toFixed(1)}% over three years.
-          </>,
-          <>
-            Your oil runs from {outlook.oilPerDayStart.toFixed(0)} to{" "}
-            {outlook.oilPerDayEnd.toFixed(1)} BBL a day, down{" "}
-            {Math.abs(outlook.oilChangePercent).toFixed(1)}%. Both products move
-            the same way.
-          </>,
-          <>
-            Your share runs from {fmt.dollars(outlook.shareStart)} a month to{" "}
-            {fmt.dollars(outlook.shareEnd)}, down{" "}
-            {Math.abs(outlook.shareChangePercent).toFixed(1)}%. Price is held at
-            the model&apos;s deck throughout, so this is the volume decline
-            showing through, not a forecast of the market.
-          </>,
-          <>
-            Across the three years oil carries{" "}
-            {outlook.oilRevenuePercent.toFixed(1)}% of your money and gas{" "}
-            {outlook.gasRevenuePercent.toFixed(1)}% — a split that rarely
-            matches the split of the volume, and the reason both prices matter
-            to you.
-          </>,
-        ]}
+        items={
+          report.served?.outlook.bullets ?? [
+            <>
+              Your gas begins the projection at{" "}
+              {outlook.gasPerDayStart.toFixed(0)} MCF a day and ends it at{" "}
+              {outlook.gasPerDayEnd.toFixed(1)} — a fall of{" "}
+              {Math.abs(outlook.gasChangePercent).toFixed(1)}% over three years.
+            </>,
+            <>
+              Your oil runs from {outlook.oilPerDayStart.toFixed(0)} to{" "}
+              {outlook.oilPerDayEnd.toFixed(1)} BBL a day, down{" "}
+              {Math.abs(outlook.oilChangePercent).toFixed(1)}%. Both products
+              move the same way.
+            </>,
+            <>
+              Your share runs from {fmt.dollars(outlook.shareStart)} a month to{" "}
+              {fmt.dollars(outlook.shareEnd)}, down{" "}
+              {Math.abs(outlook.shareChangePercent).toFixed(1)}%. Price is held
+              at the model&apos;s deck throughout, so this is the volume decline
+              showing through, not a forecast of the market.
+            </>,
+            <>
+              Across the three years oil carries{" "}
+              {outlook.oilRevenuePercent.toFixed(1)}% of your money and gas{" "}
+              {outlook.gasRevenuePercent.toFixed(1)}% — a split that rarely
+              matches the split of the volume, and the reason both prices matter
+              to you.
+            </>,
+          ]
+        }
       />
 
+      {/* THE SERVICE'S OWN CAPTION when it sent one — it explains what the
+          block above means for THIS record, where the sentence below is a
+          general statement written once. The fixture path keeps the general
+          one, which is all it has. */}
       <ReportFootnote>
-        A projection, not a promise. It is the decline the filed months imply
-        carried forward at a fixed price deck; a new well, a workover or a
-        shut-in would move it, and none of those is knowable in advance.
+        {report.served?.outlook.note || (
+          <>
+            A projection, not a promise. It is the decline the filed months
+            imply carried forward at a fixed price deck; a new well, a workover
+            or a shut-in would move it, and none of those is knowable in
+            advance.
+          </>
+        )}
       </ReportFootnote>
     </ReportPageCard>
   );
