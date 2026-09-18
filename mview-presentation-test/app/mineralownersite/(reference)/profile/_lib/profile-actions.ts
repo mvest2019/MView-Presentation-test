@@ -166,9 +166,32 @@ function failure(e: unknown, doing: string): ProfileActionFailure {
           "We could not find your account record. Sign out, sign back in, and try again.",
       };
     case "DATABASE_UNAVAILABLE":
+    case "SESSIONS_DB_UNAVAILABLE":
       return {
         ...base,
         message: `The profile service is temporarily unavailable, so we could not ${doing}. Please try again shortly.`,
+      };
+    /**
+     * ⚠ SIGN-OUT IS CONFIGURED OFF, AND THE READER MUST BE TOLD SO PLAINLY.
+     *
+     * The API answers this when it has no revocation store to record the
+     * sign-out in. It refuses rather than returning a 200 it could not honour —
+     * which is right, and makes the message here load-bearing: NOTHING was
+     * signed out, and "please try again shortly" would be a lie, because
+     * trying again changes nothing until an operator configures `REDIS_URL`.
+     *
+     * Before this case existed the 503 fell into the generic 5xx branch below
+     * and read "the profile service hit an error … please try again shortly",
+     * which sent members round a retry loop over a deployment setting.
+     */
+    case "SESSIONS_REVOCATION_UNAVAILABLE":
+    case "SESSIONS_AUTH_UNAVAILABLE":
+      return {
+        ...base,
+        message:
+          "Signing devices out is switched off on this deployment, so nothing " +
+          "was signed out. Contact support — retrying will not help until it " +
+          "is turned on.",
       };
     case "CLIENT_TIMEOUT":
       return {
