@@ -277,7 +277,8 @@ export const identityStrip = {
 /* ============================================================================
    2 · SECURITY & SIGN-IN
 
-   FIXTURE DATA — see the header note. Three rows plus the session list.
+   One row (the password) plus the live session list. Two-factor and passkey
+   were removed on request — see the note at the end of `securityRows`.
    ============================================================================ */
 
 /** One row of the security card: a fact, and the control that changes it. */
@@ -331,20 +332,14 @@ export const securityRows: SecurityRow[] = [
        form this card has room for. See `changePassword` below. */
     panel: true,
   },
-  {
-    id: "security-2fa",
-    label: "Two-factor authentication",
-    hint: "A 6-digit code from your phone on every new sign-in. Strongly recommended — your record carries your royalty figures.",
-    toggle: true,
-    on: false,
-  },
-  {
-    id: "security-passkey",
-    label: "Passkey",
-    hint: "Sign in with your device instead of a password — face, fingerprint or screen lock.",
-    action: "Add a passkey",
-    future: true,
-  },
+  /*
+   * TWO-FACTOR AND PASSKEY ARE OFF THE CARD (user, 2026-09-18: "remove this
+   * two, other as it is"). Both were controls with nothing behind them — no
+   * 2FA API, no WebAuthn (contract §7) — kept as honest prototypes until now;
+   * removed as rows of DATA, so the card's renderer, the `SecurityRow` type's
+   * `toggle`/`future` branches and the copy all stand ready for their return
+   * when the endpoints exist. The two entries are in git history (2026-09-18).
+   */
 ];
 
 /*
