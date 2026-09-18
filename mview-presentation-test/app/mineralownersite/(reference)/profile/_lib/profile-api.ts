@@ -17,6 +17,14 @@ import {
  *   POST  /api/v1/email-verification/send-code  step 1 of the email change
  *   POST  /api/v1/email-verification/verify-code step 2 of the email change
  *
+ * and the device panel (backend `src/modules/sessions`, branch
+ * `auto_log_out_devices`), which closes §7 — the contract's "the device list on
+ * screen today is not real data":
+ *
+ *   GET   /api/v1/users/me/sessions                    the live devices
+ *   POST  /api/v1/users/me/sessions/sign-out           end one
+ *   POST  /api/v1/users/me/sessions/sign-out-others    end everything but this
+ *
  * SAME HOST, SAME ENVELOPE AS `owner-api.ts` / `member-api.ts`. The contract's
  * error shape is byte-for-byte the `ApiErrorBody` those clients already decode
  * — `{error: {statusCode, code, message, details?, requestId}}` — so failures
@@ -133,6 +141,15 @@ async function req(
     method?: string;
     params?: Record<string, string>;
     body?: Record<string, unknown>;
+    /**
+     * The member's bearer token, for the routes that VERIFY one.
+     *
+     * Only the three device routes do. It is attached as a header rather than
+     * put in a body or a query, so it never reaches a URL — and it is never
+     * logged: the line below records the route and the status, never the
+     * headers.
+     */
+    token?: string;
   } = {},
 ): Promise<Response> {
   const qs = init.params ? "?" + new URLSearchParams(init.params) : "";
@@ -146,6 +163,7 @@ async function req(
       headers: {
         accept: "application/json",
         ...(init.body ? { "content-type": "application/json" } : {}),
+        ...(init.token ? { authorization: `Bearer ${init.token}` } : {}),
       },
       ...(init.body ? { body: JSON.stringify(init.body) } : {}),
       signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -234,19 +252,34 @@ export interface PasswordChangeResult {
   member_id: number;
   changed: boolean;
   changed_at: string;
-  /** the server's own caveat — no sessions are invalidated yet */
+  /**
+   * How many OTHER devices the change signed out.
+   *
+   * `0` is an ordinary success — nothing else was signed in. `null` means the
+   * sweep could not run at all, and **the password still changed**: the API had
+   * already written it before it tried. Render `null` as the caveat it is, never
+   * as a zero. `note` says the same thing in a sentence.
+   */
+  signed_out_devices?: number | null;
+  /** the server's own sentence about what this change actually did */
   note?: string;
 }
 
 /**
  * `PUT /users/me/password`. PASSWORDS ARE NOT TRIMMED — leading and trailing
  * spaces are part of the secret, here and at sign-in. Neither field is logged.
+ *
+ * `currentSessionId` is THIS browser's session, and it is what the API spares
+ * when it signs the member's other devices out. Omitted, there is no session to
+ * keep: the API sweeps what it can enumerate, sets no cut-off, and says so in
+ * `note` rather than claiming a clean sweep.
  */
 export async function putPassword(
   base: string,
   memberId: number,
   currentPassword: string,
   newPassword: string,
+  currentSessionId?: string,
 ): Promise<PasswordChangeResult> {
   const res = await req(base, "/users/me/password", {
     method: "PUT",
@@ -254,6 +287,7 @@ export async function putPassword(
       member_id: memberId,
       current_password: currentPassword,
       new_password: newPassword,
+      ...(currentSessionId ? { current_session_id: currentSessionId } : {}),
     },
   });
   return decode<PasswordChangeResult>("/users/me/password", res);
@@ -351,4 +385,127 @@ export async function verifyEmailCode(
       message: "That code is invalid or expired.",
     });
   }
+}
+
+/* ------------------------------------------- where you are signed in (§7) */
+
+/**
+ * One signed-in device, as `GET /users/me/sessions` reports it.
+ *
+ * Note what is NOT here: a rendered "Yesterday, 7:42 PM". The API sends ISO
+ * instants because that phrase belongs in the READER's timezone, which the API
+ * does not know — a member's stored address is where their minerals are, not
+ * where they are sitting. The formatting happens in the browser; see
+ * `lastActiveLabel` in `profile-data.ts`.
+ */
+export interface ApiSession {
+  id: string;
+  /** "Chrome on Windows", or "Unknown device". Never empty. */
+  device: string;
+  /**
+   * "Beeville, TX", or null.
+   *
+   * NULL IS THE NORMAL ANSWER TODAY — the API has no geolocation provider
+   * configured and will not guess a city. Render the row without it. Do not
+   * print "Unknown location": that reads as a fact about the session, under a
+   * heading telling the reader to sign out anything they do not recognise.
+   */
+  place: string | null;
+  /** ISO 8601. */
+  last_active_at: string;
+  /** ISO 8601 — when this device signed in. */
+  started_at: string;
+  /** The device this request came from. It gets no sign-out button. */
+  current: boolean;
+}
+
+export interface SessionListResult {
+  member_id: number;
+  sessions: ApiSession[];
+  /**
+   * Echoed back only when our `current_session_id` matched a LIVE row.
+   *
+   * `null` is informative rather than missing: it means the session this
+   * browser believes it is on is not live — signed out from another device, or
+   * predating the session store.
+   */
+  current_session_id: string | null;
+}
+
+export interface SignOutResult {
+  member_id: number;
+  /** How many live sessions the call actually ended. Zero is a success. */
+  signed_out: number;
+  /** True when one of them was this browser's own — clear the cookie. */
+  was_current: boolean;
+}
+
+/**
+ * `GET /users/me/sessions` — the panel's list.
+ *
+ * ── NO `member_id`, AND THAT IS THE WHOLE SECURITY MODEL OF THESE THREE ──
+ *
+ * Unlike every other call in this file, the device routes take no member id and
+ * no current-session id. Both come off the bearer token's signed claims at the
+ * API. They end sessions, so a `member_id` in the request would be a single
+ * unauthenticated call that logs any member out of every device — and member
+ * ids are small sequential integers.
+ *
+ * So `token` is not an optimisation here. Without it the API answers 401.
+ */
+export async function fetchSessions(
+  base: string,
+  token: string,
+): Promise<SessionListResult> {
+  const res = await req(base, "/users/me/sessions", { token });
+  return decode<SessionListResult>("/users/me/sessions", res);
+}
+
+/**
+ * `POST /users/me/sessions/sign-out` — end one device.
+ *
+ * A POST with a body rather than `DELETE /sessions/{id}`, which is the API's
+ * choice and worth repeating here: a session id in a URL reaches access logs,
+ * proxy logs and `Referer` headers.
+ *
+ * IDEMPOTENT. An id that is unknown, already signed out, or somebody else's all
+ * answer 200 with `signed_out: 0`, so a double-press is harmless and a stale
+ * row on screen cannot produce an error the reader has to interpret.
+ */
+export async function signOutSession(
+  base: string,
+  token: string,
+  sessionId: string,
+): Promise<SignOutResult> {
+  const route = "/users/me/sessions/sign-out";
+  const res = await req(base, route, {
+    method: "POST",
+    token,
+    /* `session_id` names the device to END — a row the token's own member owns,
+       which the API re-checks in SQL against the token's member id. It is the
+       one thing this body may carry, and it says nothing about who is asking. */
+    body: { session_id: sessionId },
+  });
+  return decode<SignOutResult>(route, res);
+}
+
+/**
+ * `POST /users/me/sessions/sign-out-others` — everything but this browser.
+ *
+ * NO BODY AT ALL. The session the API spares is the one the TOKEN names, which
+ * is exactly what makes a sweep safe to expose: there is no field in which a
+ * caller could nominate somebody else's session to keep and end all the rest.
+ *
+ * A token minted before the API kept sessions names no device, so there is
+ * nothing to spare — the API then ends the sessions it can enumerate and sets
+ * no cut-off. It never signs this browser out by surprise; it just cannot reach
+ * as far.
+ */
+export async function signOutOtherSessions(
+  base: string,
+  token: string,
+): Promise<SignOutResult> {
+  const route = "/users/me/sessions/sign-out-others";
+  const res = await req(base, route, { method: "POST", token, body: {} });
+  return decode<SignOutResult>(route, res);
 }

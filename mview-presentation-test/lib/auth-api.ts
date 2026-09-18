@@ -46,6 +46,47 @@ export interface AuthUser {
   email_id: string;
   member_type?: string;
   profile_pic?: string;
+  /**
+   * THIS SIGN-IN, AS THE API NAMES IT — the row the profile screen's "Where you
+   * are signed in" panel shows as "This device".
+   *
+   * The API records every login in `member_session` and hands the id back
+   * alongside the token. (It is also the token's `sid` claim, but this build has
+   * never decoded the token and is not starting now.) It is kept in the session
+   * cookie so the panel can mark its own row and — the part that matters — so
+   * "Sign out everywhere else" has a session to SPARE. Without it the API
+   * cannot tell the caller's device from the ones it is ending, and says so
+   * rather than guessing.
+   *
+   * OPTIONAL, AND EVERY READER MUST COPE WITHOUT IT. It is absent from every
+   * cookie written before this shipped, absent when the API could not record
+   * the session, and absent against an API that predates the feature. The panel
+   * degrades to leaving no row marked as this device; it does not break.
+   */
+  session_id?: string;
+  /**
+   * THE BEARER TOKEN — kept now, where this build used to throw it away.
+   *
+   * The API has always returned one and nothing here read it, because no
+   * endpoint verified one. The device panel's three endpoints DO: they end
+   * sessions, so they cannot accept a `member_id` from a request body — that
+   * would be a single unauthenticated call that logs any member out of every
+   * device they own. They take the member and the current device off this
+   * token's signed claims instead.
+   *
+   * ── IT IS A CREDENTIAL. IT NEVER REACHES THE BROWSER. ─────────────────────
+   *
+   * Stored in the httpOnly session cookie and read only by server actions,
+   * which attach it as an `Authorization` header from the server side. Page
+   * JavaScript cannot read the cookie and the token is never serialised into a
+   * prop, a payload or a log line.
+   *
+   * OPTIONAL, AND OLD SESSIONS DO NOT HAVE IT. Anyone signed in before this
+   * shipped has a cookie without it; they stay signed in everywhere else and
+   * the device panel asks them to sign in again, because there is genuinely no
+   * way to prove who they are until they do.
+   */
+  token?: string;
 }
 
 export type AuthResult =

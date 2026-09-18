@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useCallback, useState } from "react";
 import { z } from "zod";
 
 import { changePasswordSchema } from "../../../../_components/auth-schema";
@@ -8,15 +8,20 @@ import { PortalButton } from "../../../_components/ui/button";
 import { Notice } from "../../../_components/ui/notice";
 import { FutureTag, SettingRow } from "../../settings/_components/setting-row";
 import { SettingToggle } from "../../settings/_components/setting-toggle";
-import { changePasswordAction } from "../_lib/profile-actions";
+import {
+  changePasswordAction,
+  listSessionsAction,
+  signOutOtherSessionsAction,
+  signOutSessionAction,
+} from "../_lib/profile-actions";
 import type { PasswordInfo } from "../_lib/profile-api";
 import {
   PROFILE_SECTIONS,
   changePassword,
+  lastActiveLabel,
   passwordCopy,
   securityNote,
   securityRows,
-  sessions,
   sessionsBlock,
   type ProfileSession,
   type SecurityRow,
@@ -52,10 +57,15 @@ import { PROFILE_INPUT_CLASS, ProfileCardShell } from "./profile-shell";
  *   ADD A PASSKEY    is `disabled`, with the row's own "Future" tag saying
  *                    why. Unbuilt is shown as unbuilt, never as working.
  *
- *   THE DEVICE LIST  is the prototype's three rows; the sign-outs drop rows
- *                    from local state, which is the visible consequence of the
- *                    real action and the closest honest stand-in until the
- *                    server-side session store exists.
+ *   THE DEVICE LIST  IS REAL NOW. It reads `GET /users/me/sessions`, both
+ *                    sign-outs reach the API, and what they end stays ended
+ *                    across a reload — the server-side session store the note
+ *                    above was waiting for is `src/modules/sessions` on the
+ *                    backend. The markup did not change; only where the rows
+ *                    come from. The password row's hint about signing other
+ *                    devices out is now true as well: the API does that sweep
+ *                    itself, inside the write, so it reaches devices this page
+ *                    never listed.
  *
  * ── `SettingRow` AND `SettingToggle` ARE IMPORTED FROM THE SETTINGS ROUTE ──
  *
@@ -80,7 +90,32 @@ import { PROFILE_INPUT_CLASS, ProfileCardShell } from "./profile-shell";
  * suspicious-device sign-outs invites the misclick whose cost is losing the
  * session you were using to secure the account.
  */
-export function SecurityCard({ password }: { password: PasswordInfo | null }) {
+export function SecurityCard({
+  password,
+  sessions,
+  sessionsError: initialSessionsError,
+}: {
+  password: PasswordInfo | null;
+  /**
+   * The signed-in devices, read by the PAGE and handed down.
+   *
+   * Not fetched here. The list arrives with the first paint rather than after
+   * it, there is no loading state to render into a panel three rows tall, and
+   * this repo's React Compiler lint refuses `setState` inside an effect — which
+   * is what fetch-on-mount is. Re-reads after a sign-out run from an event
+   * handler, which is allowed and is also when they are actually needed.
+   */
+  sessions: ProfileSession[];
+  /**
+   * Set when the page's read FAILED, null when it succeeded.
+   *
+   * It is what tells an empty `sessions` apart from an unknown one: empty with
+   * this null means nothing else is signed in, empty with a message here means
+   * we could not look. The panel must never render the first when it has the
+   * second.
+   */
+  sessionsError: string | null;
+}) {
   /* the live profile, so a save in the identity card moves this card's facts
      without re-rendering the route */
   const { profile: live } = useProfileLive();
@@ -88,23 +123,41 @@ export function SecurityCard({ password }: { password: PasswordInfo | null }) {
   const [twoFactor, setTwoFactor] = useState(
     () => securityRows.find((row) => row.toggle)?.on ?? false,
   );
-  /* The fixture is the STARTING list, not the list. Signing a device out
-     removes it from here; `sessions` itself is never mutated, so a second
-     mount is unaffected by what happened on this screen. */
+  /* The page's read is the STARTING list. It moves from here on: a sign-out
+     re-reads and replaces it, so what is on screen is always an answer the
+     server gave rather than one this component inferred. */
   const [openSessions, setOpenSessions] = useState(sessions);
+  const [sessionsError, setSessionsError] = useState(initialSessionsError);
+  /* Which control is mid-flight: a session id, or ALL. Disables every button so
+     two overlapping requests cannot each be followed by a re-read, with the
+     older answer landing last and putting a signed-out row back. */
+  const [busy, setBusy] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const [passwordOpen, setPasswordOpen] = useState(false);
 
-  /* Signing out every device but this one. It is what "Sign out everywhere
-     else" does, and it is ALSO what the password row's hint promises — so the
-     password panel's save calls it too, keeping the on-screen list true to the
-     sentence above it. (The API itself invalidates no server-side sessions
-     yet; this list is the prototype's, restored on request.) */
-  const signOutOthers = () => {
-    const going = openSessions.filter((session) => !session.current).length;
-    setOpenSessions((open) => open.filter((session) => session.current));
-    return going;
-  };
+  /**
+   * RE-READ, NEVER SPLICE — after every sign-out and after a password change.
+   *
+   * Removing the row locally looks identical in the happy case and lies in two
+   * real ones: a device that signed in elsewhere while this page was open stays
+   * invisible, and a row the server did NOT end (an id already gone, a sweep
+   * that reached further than this list) changes on screen anyway. This panel's
+   * whole job is telling a member the truth about their own account, so it asks.
+   *
+   * Called from event handlers only — never from an effect.
+   */
+  const loadSessions = useCallback(async () => {
+    const result = await listSessionsAction();
+    if (result.ok) {
+      setOpenSessions(result.sessions);
+      setSessionsError(null);
+      return;
+    }
+    /* The list is LEFT AS IT WAS and the failure is stated beside it. Blanking
+       it would turn "we could not re-read" into "nothing is signed in" — the
+       one wrong answer on this panel that could matter. */
+    setSessionsError(result.message);
+  }, []);
 
   /*
    * THE PASSWORD ROW, off `GET /users/me` — and off NOTHING ELSE.
@@ -183,12 +236,15 @@ export function SecurityCard({ password }: { password: PasswordInfo | null }) {
               <ChangePasswordPanel
                 onCancel={() => setPasswordOpen(false)}
                 onSaved={(message) => {
-                  /* the hint above this panel promises "signs out every other
-                     device" — the on-screen list keeps that promise locally.
-                     Nothing is re-fetched: the contract carries no "last
-                     changed" fact any more, so the row has nothing new to
-                     learn from a GET. */
-                  signOutOthers();
+                  /* THE API DID THE SWEEP, so the list is RE-READ rather than
+                     edited. The hint above this panel promises a change "signs
+                     out every other device" and the server now keeps that
+                     promise itself — including for devices this page never
+                     listed. Re-reading shows what actually happened; splicing
+                     would show what we assumed. The server's own sentence is
+                     what gets announced, because only it knows whether the
+                     sweep ran and how far it reached. */
+                  void loadSessions();
                   setPasswordOpen(false);
                   setAnnouncement(message);
                 }}
@@ -200,14 +256,42 @@ export function SecurityCard({ password }: { password: PasswordInfo | null }) {
 
       <SessionList
         openSessions={openSessions}
-        onSignOut={(session) => {
-          setOpenSessions((open) => open.filter((s) => s.id !== session.id));
-          setAnnouncement(`${session.device} signed out.`);
-        }}
-        onSignOutAll={() => {
-          const going = signOutOthers();
+        error={sessionsError}
+        busy={busy}
+        onSignOut={async (session) => {
+          setBusy(session.id);
+          const result = await signOutSessionAction(session.id);
+          setBusy(null);
+          if (!result.ok) {
+            setSessionsError(result.message);
+            setAnnouncement(result.message);
+            return;
+          }
+          await loadSessions();
+          /* `signedOut: 0` is a SUCCESS — the row was already gone. Saying
+             "signed out" about it would be a small lie, and this panel is read
+             by somebody checking whether a stranger still has access. */
           setAnnouncement(
-            `${going} ${going === 1 ? "device" : "devices"} signed out. Only this one is left.`,
+            result.signedOut > 0
+              ? `${session.device} signed out.`
+              : `${session.device} was already signed out.`,
+          );
+        }}
+        onSignOutAll={async () => {
+          setBusy(ALL);
+          const result = await signOutOtherSessionsAction();
+          setBusy(null);
+          if (!result.ok) {
+            setSessionsError(result.message);
+            setAnnouncement(result.message);
+            return;
+          }
+          await loadSessions();
+          const going = result.signedOut;
+          setAnnouncement(
+            going === 0
+              ? "No other devices were signed in."
+              : `${going} ${going === 1 ? "device" : "devices"} signed out. Only this one is left.`,
           );
         }}
       />
@@ -323,7 +407,12 @@ function ChangePasswordPanel({
           return;
         }
         form.reset();
-        onSaved(changePassword.saved);
+        /* THE SERVER'S SENTENCE, when it has one. Only the API knows how many
+           other devices the change actually signed out — or that the sweep
+           could not run, which the member needs to hear because the password
+           DID change either way. `changePassword.saved` stays as the fallback
+           for an API that predates the sessions work. */
+        onSaved(result.note ?? changePassword.saved);
       }}
     >
       <p className="mb-2.5 text-[10px] font-extrabold tracking-[0.09em] text-mv-muted uppercase">
@@ -471,32 +560,51 @@ function SecurityControlRow({
 }
 
 
+/** `busy` when the "sign out everywhere else" request is in flight. */
+const ALL = "__all__";
+
 /**
- * WHERE YOU ARE SIGNED IN — the UI pass's list, restored on request.
+ * WHERE YOU ARE SIGNED IN — now a read from `GET /users/me/sessions`.
  *
  * A `<ul>` and not a table: three columns of device, place and time look
  * tabular, but each row is one object with a control attached rather than a
  * grid of comparable values, and at phone width a table of this shape either
  * scrolls sideways or collapses into something a reader has to re-learn. The
- * list wraps.
+ * list wraps. That was true of the prototype and is unchanged — the markup
+ * below is the UI pass's, to the class.
  *
- * The rows are prototype figures and the sign-outs act on local state — there
- * is no server-side session store yet (contract §7), so nothing here persists
- * a reload and nothing claims to have reached a server.
+ * ── WHAT CHANGED IS ONLY WHERE THE ROWS COME FROM ─────────────────────────
+ *
+ * They are the member's real sessions, the sign-outs reach a server, and both
+ * survive a reload. There is no loading state to render — the page reads the
+ * list before it paints — but there are now two answers the prototype never
+ * had, and they are NOT the same answer:
+ *
+ *   EMPTY         nothing else is signed in. Reassurance, and a real fact.
+ *   UNAVAILABLE   the read failed. Says so. "No other devices are signed in"
+ *                 when we could not look is the one wrong answer that would
+ *                 matter here — exactly the reassurance a member checking for
+ *                 an intruder must not be given falsely.
  */
 function SessionList({
   openSessions,
+  error,
+  busy,
   onSignOut,
   onSignOutAll,
 }: {
   openSessions: ProfileSession[];
+  /** Set when the last read or write failed; shown under the list. */
+  error: string | null;
+  /** A session id, or `ALL`, while that control's request is in flight. */
+  busy: string | null;
   onSignOut: (session: ProfileSession) => void;
   onSignOutAll: () => void;
 }) {
   /* Nothing left but the device you are reading on — so the button that would
      sign out "everywhere else" has no "else" to act on. Disabled rather than
      hidden: a control that disappears once used leaves the reader wondering
-     whether they imagined it. */
+     whether they imagined it. Disabled mid-request for the same reason. */
   const others = openSessions.filter((session) => !session.current).length;
 
   return (
@@ -508,7 +616,11 @@ function SessionList({
         >
           {sessionsBlock.heading}
         </h4>
-        <PortalButton size="sm" disabled={others === 0} onClick={onSignOutAll}>
+        <PortalButton
+          size="sm"
+          disabled={others === 0 || busy !== null}
+          onClick={onSignOutAll}
+        >
           {sessionsBlock.signOutAll}
         </PortalButton>
       </div>
@@ -521,21 +633,58 @@ function SessionList({
           <SessionItem
             key={session.id}
             session={session}
+            busy={busy === session.id}
+            disabled={busy !== null}
             onSignOut={() => onSignOut(session)}
           />
         ))}
       </ul>
+
+      {/* The empty line renders only on a read that SUCCEEDED and came back
+          with nothing. With an error standing, the error is the honest answer
+          and this sentence would contradict it. */}
+      {openSessions.length === 0 && !error ? (
+        <p className="mt-2 text-xs leading-[1.5] text-mv-muted">
+          {sessionsBlock.empty}
+        </p>
+      ) : null}
+
+      {/* `role="alert"` so it is read on arrival: the reader has just pressed
+          something and is waiting to be told what happened. */}
+      {error ? (
+        <p role="alert" className="mt-2 text-xs leading-[1.5] text-mv-required">
+          {error}
+        </p>
+      ) : null}
     </section>
   );
 }
 
 function SessionItem({
   session,
+  busy,
+  disabled,
   onSignOut,
 }: {
   session: ProfileSession;
+  /** This row's own request is in flight. */
+  busy: boolean;
+  /** Some other row's is — every button waits, so two cannot race. */
+  disabled: boolean;
   onSignOut: () => void;
 }) {
+  /**
+   * "Beeville, TX · Yesterday, 7:42 PM", or just the time.
+   *
+   * `place` is null on every row today (the API configures no geolocation
+   * provider) and the separator goes with it — a leading " · " would read as a
+   * fact that failed to load. The time is phrased HERE, in the browser, because
+   * the API sends an ISO instant and the phrase belongs in the reader's own
+   * timezone.
+   */
+  const when = lastActiveLabel(session.lastActive);
+  const detail = session.place ? `${session.place} · ${when}` : when;
+
   return (
     <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-mv-portal-hairline py-[11px] last:border-b-0">
       <div className="min-w-0 flex-1 basis-44">
@@ -543,7 +692,7 @@ function SessionItem({
           {session.device}
         </strong>
         <span className="mt-0.5 block text-xs leading-[1.5] text-mv-muted">
-          {session.place} · {session.lastActive}
+          {detail}
         </span>
       </div>
       <div className="ml-auto flex-none">
@@ -559,11 +708,17 @@ function SessionItem({
             size="sm"
             /* The visible label is "Sign out" on every row; the accessible name
                says which device, because three identical buttons read in
-               sequence give a screen-reader user no way to choose. */
-            aria-label={`${sessionsBlock.signOutOne} — ${session.device}, ${session.place}`}
+               sequence give a screen-reader user no way to choose. It names the
+               same `detail` line the row shows, so it never reads a location
+               that is not on screen. */
+            aria-label={`${sessionsBlock.signOutOne} — ${session.device}, ${detail}`}
+            /* Disabled while ANY sign-out is in flight, not just this row's: two
+               overlapping requests would each be followed by a re-read, and the
+               older answer could land last and put a signed-out row back. */
+            disabled={disabled}
             onClick={onSignOut}
           >
-            {sessionsBlock.signOutOne}
+            {busy ? "Signing out…" : sessionsBlock.signOutOne}
           </PortalButton>
         )}
       </div>

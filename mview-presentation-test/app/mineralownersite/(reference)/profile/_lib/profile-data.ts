@@ -348,48 +348,35 @@ export const securityRows: SecurityRow[] = [
 ];
 
 /*
- * THE DEVICE LIST — PROTOTYPE ROWS, RESTORED ON REQUEST.
+ * THE DEVICE LIST — REAL, AS OF THE SESSION STORE.
  *
- * "Where you are signed in" was removed in the fixture purge (the API keeps no
- * session store: PROFILE-API-FRONTEND.md §7, "The device list on screen today
- * is not real data") and RESTORED as-was (user, 2026-09-17: "don't change this
- * UI"). So these rows are the UI pass's prototype figures, the sign-outs act
- * on local state only, and nothing persists a reload — exactly as before the
- * wiring. When the server-side session store ships, this list becomes a read
- * from it and the sign-out buttons get their endpoint.
+ * "Where you are signed in" was removed in the fixture purge (§7 of
+ * PROFILE-API-FRONTEND.md: "The device list on screen today is not real data"),
+ * restored as the UI pass's prototype rows (user, 2026-09-17: "don't change this
+ * UI"), and is now a read from `GET /users/me/sessions`. The prototype rows are
+ * gone — the UI around them is not. Every class, every string below and the
+ * whole shape of `SessionList` are exactly what they were; only where the rows
+ * come from has changed, and the sign-outs now reach a server.
  */
 
-/** One signed-in device. */
+/** One signed-in device, as the panel renders it. */
 export interface ProfileSession {
   id: string;
   device: string;
-  place: string;
+  /**
+   * "Beeville, TX", or NULL — which is what the API sends today, on every row.
+   *
+   * It has no geolocation provider configured and will not guess a city. The
+   * row renders without it; it must NOT fall back to "Unknown location", which
+   * reads as a fact about the session under a heading that tells the reader to
+   * sign out anything unfamiliar.
+   */
+  place: string | null;
+  /** Already phrased for the reader — see `lastActiveLabel`. */
   lastActive: string;
   /** The one you are reading this on — it gets no sign-out button. */
   current?: boolean;
 }
-
-export const sessions: ProfileSession[] = [
-  {
-    id: "session-current",
-    device: "Chrome on Windows",
-    place: "Beeville, TX",
-    lastActive: "Active now",
-    current: true,
-  },
-  {
-    id: "session-iphone",
-    device: "Safari on iPhone",
-    place: "Beeville, TX",
-    lastActive: "Yesterday, 7:42 PM",
-  },
-  {
-    id: "session-ipad",
-    device: "Safari on iPad",
-    place: "Corpus Christi, TX",
-    lastActive: "3 weeks ago",
-  },
-];
 
 export const sessionsBlock = {
   heading: "Where you are signed in",
@@ -397,7 +384,82 @@ export const sessionsBlock = {
   currentTag: "This device",
   signOutOne: "Sign out",
   signOutAll: "Sign out everywhere else",
+  /**
+   * A SUCCESSFUL read that came back with nothing — reassurance, not an error.
+   *
+   * There is no matching "we could not look" string here on purpose: that
+   * sentence is produced by `failure()` in `profile-actions.ts`, which names
+   * the actual cause (unreachable, timed out, service down) rather than
+   * flattening all three into one line. Two copies of it would be one copy too
+   * many, and the vaguer one would win by being nearer.
+   */
+  empty: "No other devices are signed in.",
 } as const;
+
+/**
+ * "Active now", "Yesterday, 7:42 PM", "3 weeks ago".
+ *
+ * ── IT RUNS IN THE BROWSER, AND THAT IS THE POINT ─────────────────────────
+ *
+ * The API sends ISO instants and deliberately does not phrase them: the phrase
+ * belongs in the READER's timezone, and the API does not know it — a member's
+ * stored address is where their minerals are, not where they are sitting. Doing
+ * it server-side would render every session in the server's timezone and
+ * mis-state the hour for anyone outside it, on the one screen whose job is
+ * helping somebody recognise their own activity. `SecurityCard` is a client
+ * component, so this runs where the timezone is correct.
+ *
+ * ── THE THRESHOLDS MATCH WHAT THE SERVER MEANS ────────────────────────────
+ *
+ * "Active now" is under five minutes because that is the API's touch interval
+ * (`TOUCH_INTERVAL_MS`): it does not record activity more often than that, so a
+ * tighter window here would say "12 minutes ago" about a device being used
+ * right now. The rest are the ordinary human brackets, and beyond a week it
+ * gives a date — "8 weeks ago" is harder to place than "24 July".
+ */
+export function lastActiveLabel(iso: string, now: Date = new Date()): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "Unknown";
+
+  const seconds = Math.round((now.getTime() - at.getTime()) / 1000);
+
+  /* A clock skew between the server and this browser can put "last active" a
+     little in the future. Reading that as "in -3 minutes" would be absurd, so
+     anything up to the touch interval ahead is simply now. */
+  if (seconds < 5 * 60) return "Active now";
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} minutes ago`;
+
+  const time = at.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  if (isSameDay(at, now)) return `Today, ${time}`;
+  if (isSameDay(at, new Date(now.getTime() - DAY_MS))) return `Yesterday, ${time}`;
+
+  const days = Math.floor(seconds / 86_400);
+  if (days < 7) return `${days} days ago`;
+  if (days < 28) {
+    const weeks = Math.floor(days / 7);
+    return weeks === 1 ? "1 week ago" : `${weeks} weeks ago`;
+  }
+
+  /* Past a month a count stops helping — "11 weeks ago" is arithmetic the
+     reader has to do. A date is something they can place against a trip. */
+  return at.toLocaleDateString(undefined, { month: "long", day: "numeric" });
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function isSameDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
 
 /**
  * THE CHANGE-PASSWORD PANEL — every word of it.

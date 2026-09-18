@@ -59,6 +59,64 @@ export interface SessionUser {
    * and stays nowhere near the 4KB limit the note above is about.
    */
   profileImage?: string;
+  /**
+   * WHICH SIGN-IN THIS IS — the API's `member_session` id for this device.
+   *
+   * The profile screen's "Where you are signed in" panel needs it twice over:
+   * to mark one row "This device", and to tell "Sign out everywhere else" which
+   * session to KEEP. Without it that button cannot spare the browser it was
+   * pressed in, and the API refuses to guess rather than signing the reader out
+   * of the page they pressed it on.
+   *
+   * ── IT IS NOT A CREDENTIAL, AND IT IS NOT AUTHENTICATION ──────────────────
+   *
+   * Read the warning at the top of this file: this cookie is unsigned, so
+   * nothing in it may be trusted. An id here lets a caller name a session to
+   * sign OUT — a destructive action against their own account and nothing else.
+   * It grants no access and reads no data, and the API scopes every statement by
+   * member id regardless, so a forged one names a session that is not there.
+   * It is httpOnly all the same, so page JavaScript cannot read it out.
+   *
+   * ── OPTIONAL, AND OLDER COOKIES DO NOT HAVE IT ────────────────────────────
+   *
+   * Every cookie written before this shipped is missing it, and those sessions
+   * stay signed in — the field appears at their next sign-in. Readers cope with
+   * its absence rather than treating it as a broken session.
+   *
+   * A UUID, so it costs the cookie 36 characters and stays nowhere near the 4KB
+   * limit the note above is about.
+   */
+  sessionId?: string;
+  /**
+   * ⚠ THE API'S BEARER TOKEN. THIS ONE IS A REAL CREDENTIAL.
+   *
+   * Everything else in this cookie is for display and is explicitly not trusted
+   * — see the warning at the top of the file. This is different: it is signed by
+   * the API, the API verifies it, and whoever holds it can act as this member on
+   * the endpoints that check it. Treat it accordingly.
+   *
+   *   · NEVER return it from a server action, put it in a prop, or log it.
+   *     Server actions read it here and attach it as an `Authorization` header;
+   *     it goes from this cookie to the API and nowhere else.
+   *   · The cookie is httpOnly, so page JavaScript cannot read it, and
+   *     `sameSite: lax` keeps it off cross-site requests.
+   *   · It is what makes the device endpoints safe to expose at all. They end
+   *     sessions, so a `member_id` in a request body would be a single
+   *     unauthenticated call that logs any member out of every device.
+   *
+   * ── WHY THE FILE'S HEADER WARNING STILL STANDS ────────────────────────────
+   *
+   * That warning says this cookie is not an authorisation boundary, and it
+   * remains true for every OTHER field: they are unsigned and forgeable, and
+   * the API must not be given them as identity. This field is the exception
+   * only because the API verifies its SIGNATURE — a forged value here does not
+   * become a valid token by sitting in the cookie.
+   *
+   * A few hundred characters, so the 4KB limit is still not in sight. Optional:
+   * cookies written before this shipped have no token, and those readers are
+   * asked to sign in again when they open the device panel.
+   */
+  token?: string;
 }
 
 /**
@@ -101,6 +159,11 @@ export async function startSession(
     // Spread rather than `profileImage: image ?? undefined`, so an account with
     // no picture writes no key at all instead of `"profileImage":null`.
     ...(image ? { profileImage: image } : {}),
+    /* Same treatment, same reason. A login the API could not record carries no
+       `session_id`, and the absence is the honest cookie — a `null` in there
+       would have to be told apart from a real id by every reader. */
+    ...(user.session_id ? { sessionId: user.session_id } : {}),
+    ...(user.token ? { token: user.token } : {}),
   };
 
   (await cookies()).set(COOKIE, JSON.stringify(value), {
