@@ -239,7 +239,17 @@ export default async function ProfilePage({
   const sessionPhoto = user?.profileImage ?? null;
 
   return (
-    <Portal route={null} initial={initial} shellClass="mv-wide-gutters">
+    /*
+      NO `mv-wide-gutters` ANY MORE — the profile left the wide-gutter set
+      (user, 2026-09-18: "on side too much space"). The class added
+      clamp(36px, 7vw, 120px) a side on top of the shell's 1360px column, and
+      on a ~1900px screen the two stacked into ~390px of emptiness either side
+      of the cards. The page now wears the shell's own gutters
+      (clamp(18px, 2.6vw, 42px)) — the same measure the Dashboard reads at —
+      which the two-column grid spends comfortably. Invite, Billing and
+      Settings keep their wide gutters; see `page-gutters.css`.
+    */
+    <Portal route={null} initial={initial}>
       <section data-route="app-profile" className="active">
         <ProfileHeader />
 

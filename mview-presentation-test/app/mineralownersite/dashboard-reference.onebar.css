@@ -2920,3 +2920,38 @@ body .mv-ref-app .ownersw-skel-meta {
     background: #e7ecea;
   }
 }
+
+/* ----------------------------------------------------------------------------
+   THE PRICE STRIP'S CUT EDGE READS AS A FADE, NOT A BREAK.
+
+   §3's whole mechanism is that `.pin-spot` SCROLLS instead of clipping — every
+   settlement stays reachable at every width. But the scrollbar is deliberately
+   hidden (a bar across the numbers on a 58px row), so at any width where the
+   strip overflows, the last visible price is sliced mid-glyph at a hard edge
+   with nothing saying "there is more": on a phone NAT GAS is beheaded at the
+   viewport, and even a 1920px desktop in the trial state cut BRENT's delta in
+   half (user, 2026-09-18: "fix this header of mobile and tablet", with exactly
+   that cut boxed in the screenshot). A truncated number with no affordance
+   does not read as a scroller; it reads as a rendering bug.
+
+   A MASK ON THE TRAILING 26px fades the cut instead. Ellipsis-for-overflow is
+   the same idea in type; a fade is its idiom for a strip of tiles.
+
+   THE 28px PADDING IS THE MASK'S OTHER HALF. Scrolled fully to the end, the
+   last price would otherwise sit against the box edge INSIDE the fade zone and
+   render half-ghosted at the one position where nothing follows it. The
+   padding keeps the end-of-scroll resting place clear of the fade, so the fade
+   only ever covers glyphs that genuinely continue past the edge. The cost is
+   that a strip with under 28px of slack becomes scrollable by that padding —
+   scrolling which reveals empty space, which no one will do and nothing hides.
+
+   RIGHT EDGE ONLY. A symmetric mask would permanently fade the strip's first
+   price against the portfolio figure while unscrolled — the common state —
+   to cover the rare mid-scroll moment. The leading cut only exists after a
+   deliberate swipe, and the swiper knows where they came from.
+   ---------------------------------------------------------------------------- */
+.mv-ref-app .app-top #mvPinBar .pin-spot {
+  padding-right: 28px;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+}
