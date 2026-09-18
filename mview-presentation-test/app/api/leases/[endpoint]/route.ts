@@ -144,6 +144,13 @@ const GET_PARAMS = {
    * page of zeroes.
    */
   monthly: ["month", "owner"],
+  /**
+   * `GET /api/v1/leases/monthly/email?member_id=` — whether this deployment can
+   * send the report at all: `{transport, can_send, note}`. The button is
+   * labelled from it rather than promising a send that the server has no SMTP
+   * for.
+   */
+  "monthly-email": [],
 } as const satisfies Record<string, readonly string[]>;
 
 /**
@@ -158,6 +165,7 @@ const UPSTREAM_PATH: Partial<Record<string, string>> = {
   leases: "",
   /* One endpoint, two path segments — see the note on `lease-map` above. */
   "lease-map": "lease/map",
+  "monthly-email": "monthly/email",
 };
 
 /** What a signed-out caller is told, in the words of the thing they asked for. */
@@ -169,6 +177,7 @@ const SIGN_IN_COPY: Record<Endpoint, string> = {
   reservoirs: "Sign in to see this reservoir report.",
   "lease-map": "Sign in to see where these wells are.",
   monthly: "Sign in to see your monthly report.",
+  "monthly-email": "Sign in to email yourself this report.",
 };
 
 type Endpoint = keyof typeof GET_PARAMS;
@@ -226,6 +235,103 @@ export async function GET(
 
   const body = await upstream.text();
   return new NextResponse(body, {
+    status: upstream.status,
+    headers: {
+      "content-type":
+        upstream.headers.get("content-type") ?? "application/json",
+    },
+  });
+}
+
+/**
+ * THE ONE ENDPOINT THIS ROUTE WILL POST TO — sending the monthly report.
+ *
+ * ── THE CALLER CHOOSES THE MONTH AND NOTHING ELSE ──
+ *
+ * `member_id` and `to` are both taken from the session and written over
+ * whatever arrived. `member_id` for the reason the whole file exists: it decides
+ * whose portfolio is read, and a browser must not pick it.
+ *
+ * `to` MATTERS MORE, and it is the reason this is not a plain pass-through. The
+ * body names a recipient, so a forwarder that relayed the caller's `to` would
+ * let anyone who can reach this route mail a private owner's whole portfolio to
+ * an address of their choosing — the report itself is the payload. The button
+ * says "Email me this"; "me" is the signed-in session's own address and is not
+ * negotiable from the page.
+ *
+ * ── THE UPSTREAM BODY IS STRICT ──
+ *
+ * An unrecognised key is a 400, not an ignored field, so the body is rebuilt
+ * from an allowlist rather than spread from what arrived.
+ */
+const POST_BODY: Partial<Record<string, readonly string[]>> = {
+  "monthly-email": ["month"],
+};
+
+export async function POST(
+  req: Request,
+  ctx: { params: Promise<{ endpoint: string }> },
+) {
+  const { endpoint } = await ctx.params;
+  const allowed = POST_BODY[endpoint];
+  if (!allowed) {
+    return fail(404, "LEASES_UNKNOWN_ENDPOINT", "Unknown leases endpoint.");
+  }
+
+  const user = await getSessionUser();
+  if (!user) {
+    return fail(401, "NOT_SIGNED_IN", "Sign in to email yourself this report.");
+  }
+  if (!user.email) {
+    return fail(
+      400,
+      "NO_ADDRESS_ON_RECORD",
+      "Your account has no email address to send to.",
+    );
+  }
+
+  let incoming: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = await req.json();
+    if (parsed && typeof parsed === "object") {
+      incoming = parsed as Record<string, unknown>;
+    }
+  } catch {
+    /* An empty body is a send of the newest month, which is a fair default. */
+  }
+
+  const body: Record<string, unknown> = {};
+  for (const key of allowed) {
+    const value = incoming[key];
+    if (value !== undefined && value !== null && value !== "") {
+      body[key] = value;
+    }
+  }
+  /* LAST, so they win over anything the caller sent. See the note above. */
+  body.member_id = user.id;
+  body.to = user.email;
+
+  const tail = UPSTREAM_PATH[endpoint] ?? endpoint;
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${BASE}/api/v1/leases/${tail}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch {
+    return fail(
+      502,
+      "LEASES_UPSTREAM_UNREACHABLE",
+      "Could not reach the leases service. Try again in a moment.",
+    );
+  }
+
+  const text = await upstream.text();
+  return new NextResponse(text, {
     status: upstream.status,
     headers: {
       "content-type":

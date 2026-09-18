@@ -1372,6 +1372,70 @@ export async function fetchMonthlyReport(
   );
 }
 
+/** Whether this deployment can send the report, and how. */
+export interface MonthlyEmailState {
+  /** `"smtp"` — how it would go out. */
+  transport: string;
+  can_send: boolean;
+  /** Why, in the service's own words. Shown when it cannot. */
+  note: string;
+}
+
+/**
+ * CAN THIS DEPLOYMENT EMAIL THE REPORT AT ALL?
+ *
+ * Asked on render so the button can be labelled honestly rather than promising
+ * a send to a server with no SMTP behind it. `can_send: false` arrives with a
+ * `note` saying why, and the note is what the disabled button explains.
+ */
+export async function fetchMonthlyEmailState(
+  signal?: AbortSignal,
+): Promise<MonthlyEmailState> {
+  return request<MonthlyEmailState>(
+    "/api/leases/monthly-email",
+    "the email settings",
+    signal,
+  );
+}
+
+/**
+ * SEND THE MONTHLY REPORT TO THE SIGNED-IN READER.
+ *
+ * ── THE PAGE CHOOSES THE MONTH AND NOT THE RECIPIENT ──
+ *
+ * `to` is never sent from here. The forwarder fills it from the session's own
+ * address, because the body of this request names who receives a private
+ * portfolio and a page must not be able to answer that question. See the POST
+ * handler for the reasoning.
+ *
+ * `month` is the `YYYYMM` on screen; omitted, the service sends the newest
+ * month it has filed.
+ */
+export async function sendMonthlyReport(month?: string | null): Promise<void> {
+  const res = await fetch("/api/leases/monthly-email", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(month ? { month } : {}),
+    cache: "no-store",
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+
+  const text = await res.text();
+  if (res.ok) return;
+
+  let envelope: ErrorEnvelope = {};
+  try {
+    envelope = (text ? JSON.parse(text) : {}) as ErrorEnvelope;
+  } catch {
+    /* fall through to the status */
+  }
+  throw new LeasesApiError(
+    envelope.error?.code ?? "HTTP_ERROR",
+    res.status,
+    envelope.error?.message ?? "The report could not be sent.",
+  );
+}
+
 /* ============================================================================
    TRANSPORT
    ============================================================================ */

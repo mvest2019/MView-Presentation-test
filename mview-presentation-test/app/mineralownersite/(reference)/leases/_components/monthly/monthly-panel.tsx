@@ -307,34 +307,105 @@ function ReportBuilding({ month }: { month: string | null }) {
         </div>
       </Card>
 
-      {/* One page's worth of shape, so the wait has the document's proportions
-          rather than the header's alone. */}
-      <Card padded={false} className="mt-4 px-[22px] py-[18px]">
-        <span
-          aria-hidden="true"
-          className="block h-[22px] w-[240px] animate-pulse rounded bg-mv-portal-wash"
-        />
-        <div className="mt-4 grid gap-6 lg:grid-cols-3">
-          {Array.from({ length: 3 }, (_, column) => (
-            <div key={column} className="space-y-2.5">
-              {Array.from({ length: 4 }, (_, line) => (
+      {/* FIVE CARDS, AND THEY ARE NOT THE SAME CARD FIVE TIMES. One block of
+          shape told a reader something was coming; it did not tell them that
+          what is coming is a long document of differently shaped pages. Each
+          variant below is the silhouette of the page that will land in its
+          place — three columns for the summary, a tile row for the month, a
+          chart, a table, a split. Five is enough to fill the fold without
+          pretending to preview all twelve. */}
+      {SKELETON_PAGES.map((shape, page) => (
+        <Card key={page} padded={false} className="mt-4 px-[22px] py-[18px]">
+          <span
+            aria-hidden="true"
+            className="block h-[22px] animate-pulse rounded bg-mv-portal-wash"
+            style={{ width: shape.title }}
+          />
+
+          {shape.kind === "columns" && (
+            <div className="mt-4 grid gap-6 lg:grid-cols-3">
+              {Array.from({ length: 3 }, (_, column) => (
+                <Lines key={column} widths={[100, 92, 96, 64]} />
+              ))}
+            </div>
+          )}
+
+          {shape.kind === "tiles" && (
+            <>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {Array.from({ length: 4 }, (_, tile) => (
+                  <span
+                    key={tile}
+                    aria-hidden="true"
+                    className="block h-[74px] animate-pulse rounded-mv bg-mv-portal-wash"
+                  />
+                ))}
+              </div>
+              <div className="mt-4">
+                <Lines widths={[96, 88, 70]} />
+              </div>
+            </>
+          )}
+
+          {shape.kind === "chart" && (
+            <span
+              aria-hidden="true"
+              className="mt-4 block h-[210px] animate-pulse rounded-mv bg-mv-portal-wash"
+            />
+          )}
+
+          {shape.kind === "table" && (
+            <div className="mt-4 space-y-2.5">
+              {Array.from({ length: 6 }, (_, row) => (
                 <span
-                  key={line}
+                  key={row}
                   aria-hidden="true"
-                  className="block h-[13px] animate-pulse rounded bg-mv-portal-wash"
-                  style={{ width: `${[100, 92, 96, 64][line]}%` }}
+                  className="block h-[18px] animate-pulse rounded bg-mv-portal-wash"
                 />
               ))}
             </div>
-          ))}
-        </div>
-      </Card>
+          )}
+
+          {shape.kind === "split" && (
+            <div className="mt-4 grid gap-6 lg:grid-cols-2">
+              {Array.from({ length: 2 }, (_, column) => (
+                <Lines key={column} widths={[100, 84, 94, 72, 60]} />
+              ))}
+            </div>
+          )}
+        </Card>
+      ))}
 
       <p role="status" className="mt-4 text-center text-[11.5px] text-mv-muted">
         {month
           ? `Reading the filings for ${month}…`
           : "Reading the filings for every lease on your record…"}
       </p>
+    </div>
+  );
+}
+
+/** The silhouettes the loading report draws, in the document's own order. */
+const SKELETON_PAGES = [
+  { kind: "columns", title: "240px" },
+  { kind: "tiles", title: "160px" },
+  { kind: "chart", title: "200px" },
+  { kind: "table", title: "260px" },
+  { kind: "split", title: "180px" },
+] as const;
+
+/** A stack of lines at given widths, in percent. */
+function Lines({ widths }: { widths: number[] }) {
+  return (
+    <div className="space-y-2.5">
+      {widths.map((width, line) => (
+        <span
+          key={line}
+          aria-hidden="true"
+          className="block h-[13px] animate-pulse rounded bg-mv-portal-wash"
+          style={{ width: `${width}%` }}
+        />
+      ))}
     </div>
   );
 }

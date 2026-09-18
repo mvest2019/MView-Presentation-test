@@ -1,3 +1,5 @@
+"use client";
+
 import {
   AXIS_LABEL_Y,
   CHART,
@@ -12,6 +14,14 @@ import {
 import { financialsSeries } from "../../_lib/financials-series";
 import { shortMonthLabel } from "../../_lib/months";
 import { revenueSeries } from "../../_lib/revenue-series";
+import { useState } from "react";
+
+import {
+  ReadoutCard,
+  ReadoutMarks,
+  readoutValue,
+  type Readout,
+} from "../financials/chart-readout";
 import type { MonthlyReport } from "../../_lib/monthly-report";
 import { ReportFootnote, ReportPageCard } from "./report-page";
 
@@ -90,6 +100,55 @@ export function PageRevenue({ report }: { report: MonthlyReport }) {
 
   const splitX = xAt(lastPostedIndex, from, to);
 
+  /* ── THE HOVER READOUT ──
+     The same card every other chart in the module drops, from
+     `chart-readout.tsx`, sharing this chart's own 1000-unit viewBox so the
+     guide line lands on the month rather than near it.
+
+     TWO ROWS, BECAUSE THE CHART IS A STACK. Gas and oil are the whole point of
+     splitting it — a statement arrives as one number and gives a reader no way
+     to see which product moved — so the tooltip names both rather than the
+     total they add up to. The dots sit at the two boundaries of the stack: gas
+     at its own top, oil at the top of the pair. */
+  const [readout, setReadout] = useState<Readout | null>(null);
+
+  const stackedAt = (index: number) => {
+    const g = gas[index] ?? 0;
+    return { gas: g, oil: oil[index] ?? 0, top: g + (oil[index] ?? 0) };
+  };
+
+  function track(event: React.PointerEvent<SVGRectElement>): void {
+    const box = event.currentTarget.ownerSVGElement?.getBoundingClientRect();
+    if (!box || box.width === 0) return;
+
+    const unitsX = ((event.clientX - box.left) / box.width) * CHART.width;
+    const span = Math.max(to - from, 1);
+    const raw = from + ((unitsX - PLOT.left) / (PLOT.right - PLOT.left)) * span;
+    const index = Math.min(to, Math.max(from, Math.round(raw)));
+    const point = stackedAt(index);
+
+    setReadout({
+      index,
+      month: nameOf(index),
+      posted: index <= lastPostedIndex,
+      /* The card places itself against the TOP of the stack, which is the mark
+         a reader's eye is nearest when hovering over a filled area. */
+      pointDepth: (yAt(point.top, max) - PLOT.top) / (PLOT.bottom - PLOT.top),
+      rows: [
+        {
+          tone: "gas",
+          label: "Gas",
+          value: readoutValue(point.gas, "Gas", true),
+        },
+        {
+          tone: "oil",
+          label: "Oil",
+          value: readoutValue(point.oil, "Oil", true),
+        },
+      ],
+    });
+  }
+
   return (
     <ReportPageCard
       number={3}
@@ -97,79 +156,111 @@ export function PageRevenue({ report }: { report: MonthlyReport }) {
       title="Revenue trend"
       lead="Your income by month, split by the product that earned it."
     >
-      <svg
-        viewBox={`0 0 ${CHART.width} ${CHART.height}`}
-        className="mt-4 w-full"
-        role="img"
-        aria-label={`Your monthly income from ${nameOf(from)} to ${nameOf(to)}, split into gas and oil. Filed through ${nameOf(lastPostedIndex)}; modelled after that.`}
-      >
-        {/* The modelled half, washed before anything is drawn over it. */}
-        <rect
-          x={splitX}
-          y={PLOT.top}
-          width={PLOT.right - splitX}
-          height={PLOT.bottom - PLOT.top}
-          className="fill-mv-mint/45"
-        />
+      {/* THE CARD IS HTML OVER THE SVG, so the chart needs a positioned
+          parent of its own — and only the chart, so the card's placement is a
+          percentage of the plot rather than of the plot plus its caption. */}
+      <div className="relative">
+        {readout && <ReadoutCard readout={readout} from={from} to={to} />}
 
-        {ticks.map((value) => (
-          <g key={value}>
-            <line
-              x1={PLOT.left}
-              x2={PLOT.right}
-              y1={yAt(value, max)}
-              y2={yAt(value, max)}
-              className="stroke-mv-line"
-              strokeWidth={1}
-            />
-            <text
-              x={PLOT.left - 10}
-              y={yAt(value, max) + 4}
-              textAnchor="end"
-              className="fill-mv-axis text-[11px] font-semibold"
-            >
-              {formatTick(value, true)}
-            </text>
-          </g>
-        ))}
+        <svg
+          viewBox={`0 0 ${CHART.width} ${CHART.height}`}
+          className="mt-4 w-full"
+          role="img"
+          aria-label={`Your monthly income from ${nameOf(from)} to ${nameOf(to)}, split into gas and oil. Filed through ${nameOf(lastPostedIndex)}; modelled after that.`}
+        >
+          {/* The modelled half, washed before anything is drawn over it. */}
+          <rect
+            x={splitX}
+            y={PLOT.top}
+            width={PLOT.right - splitX}
+            height={PLOT.bottom - PLOT.top}
+            className="fill-mv-mint/45"
+          />
 
-        {/* Gas on the floor, oil stacked on top of it — gas first because it is
+          {ticks.map((value) => (
+            <g key={value}>
+              <line
+                x1={PLOT.left}
+                x2={PLOT.right}
+                y1={yAt(value, max)}
+                y2={yAt(value, max)}
+                className="stroke-mv-line"
+                strokeWidth={1}
+              />
+              <text
+                x={PLOT.left - 10}
+                y={yAt(value, max) + 4}
+                textAnchor="end"
+                className="fill-mv-axis text-[11px] font-semibold"
+              >
+                {formatTick(value, true)}
+              </text>
+            </g>
+          ))}
+
+          {/* Gas on the floor, oil stacked on top of it — gas first because it is
             the volume, and a reader following the gas price looks for it at the
             bottom where a baseline makes it readable. */}
-        <path
-          d={stackPath(gas, null, from, to, max)}
-          className="fill-mv-green-deep/85"
-        />
-        <path
-          d={stackPath(oil, gas, from, to, max)}
-          className="fill-mv-oil/85"
-        />
+          <path
+            d={stackPath(gas, null, from, to, max)}
+            className="fill-mv-green-deep/85"
+          />
+          <path
+            d={stackPath(oil, gas, from, to, max)}
+            className="fill-mv-oil/85"
+          />
 
-        <line
-          x1={splitX}
-          x2={splitX}
-          y1={PLOT.top}
-          y2={PLOT.bottom}
-          className="stroke-mv-line-strong"
-          strokeWidth={1}
-          strokeDasharray="4 4"
-        />
+          <line
+            x1={splitX}
+            x2={splitX}
+            y1={PLOT.top}
+            y2={PLOT.bottom}
+            className="stroke-mv-line-strong"
+            strokeWidth={1}
+            strokeDasharray="4 4"
+          />
 
-        {labelIndices(from, to, 5).map((index) => (
-          <text
-            key={index}
-            x={xAt(index, from, to)}
-            y={AXIS_LABEL_Y}
-            textAnchor="middle"
-            className="fill-mv-axis text-[11px]"
-          >
-            {nameOf(index)}
-          </text>
-        ))}
+          {labelIndices(from, to, 5).map((index) => (
+            <text
+              key={index}
+              x={xAt(index, from, to)}
+              y={AXIS_LABEL_Y}
+              textAnchor="middle"
+              className="fill-mv-axis text-[11px]"
+            >
+              {nameOf(index)}
+            </text>
+          ))}
 
-        <Chip x={splitX - 46} y={CHIP_Y} tone="slate" text="POSTED" />
-        <Chip x={splitX + 46} y={CHIP_Y} tone="mint" text="FORECAST" />
-      </svg>
+          <Chip x={splitX - 46} y={CHIP_Y} tone="slate" text="POSTED" />
+          <Chip x={splitX + 46} y={CHIP_Y} tone="mint" text="FORECAST" />
+
+          {readout && (
+            <ReadoutMarks
+              readout={readout}
+              from={from}
+              to={to}
+              points={[
+                { tone: "gas", y: yAt(stackedAt(readout.index).gas, max) },
+                { tone: "oil", y: yAt(stackedAt(readout.index).top, max) },
+              ]}
+            />
+          )}
+
+          {/* Transparent, over the whole plot: a reader should not have to find
+            the band, only the month it is above. */}
+          <rect
+            aria-hidden="true"
+            x={PLOT.left}
+            y={PLOT.top}
+            width={PLOT.right - PLOT.left}
+            height={PLOT.bottom - PLOT.top}
+            fill="transparent"
+            onPointerMove={track}
+            onPointerLeave={() => setReadout(null)}
+          />
+        </svg>
+      </div>
 
       <div className="mt-1 flex flex-wrap gap-4 text-[12px] font-semibold">
         <LegendSwatch className="bg-mv-green-deep/85" label="Gas" />
