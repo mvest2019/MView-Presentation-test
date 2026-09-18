@@ -70,7 +70,91 @@ function hasSession(request: NextRequest): boolean {
   }
 }
 
-export function proxy(request: NextRequest) {
+/** The bearer token in the session cookie, or null on an older cookie. */
+function sessionToken(request: NextRequest): string | null {
+  const raw = request.cookies.get("mv_user")?.value;
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { token?: unknown };
+    return typeof parsed?.token === "string" ? parsed.token : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * HAS THIS DEVICE BEEN SIGNED OUT FROM ANOTHER ONE?
+ *
+ * ── WHY THIS IS HERE AND NOT ON THE PROFILE PAGE ──────────────────────────
+ *
+ * Signing a device out has to actually sign that device out. The API refuses
+ * the dead token the moment it is revoked — but a browser holding the session
+ * cookie carries on rendering portal pages, because the cookie is what this
+ * gate reads and the cookie knows nothing. Before this check, a member who
+ * signed their laptop out from their phone saw the laptop keep working, with
+ * one red line on one settings panel as the only hint.
+ *
+ * So the question is asked HERE, where every portal navigation already passes,
+ * and a dead token ends the session properly: cookie dropped, reader sent to
+ * sign in, with a line saying why.
+ *
+ * ── THE COST IS ONE REDIS READ ────────────────────────────────────────────
+ *
+ * `/users/me/sessions/check` verifies the signature and reads one key. No
+ * database, no query, nothing proportional to anything — it exists to be called
+ * on every navigation. A 1.5s deadline caps the worst case.
+ *
+ * ── ⚠ IT FAILS OPEN, AND THAT IS DELIBERATE ───────────────────────────────
+ *
+ * Unreachable API, timeout, 500, anything that is not a clear 401 → the reader
+ * goes through. The alternative is that one API blip signs out every member of
+ * a live platform at once, which is a far worse incident than a revocation
+ * lagging by a few minutes. The revocation store behind it fails open for the
+ * same reason. Only an explicit 401 — "this token is dead" — ends the session.
+ *
+ * ── AN OLD COOKIE WITH NO TOKEN IS LEFT ALONE ─────────────────────────────
+ *
+ * Anyone who signed in before the token was kept has nothing to check. They
+ * stay signed in; they simply cannot be remotely signed out until their next
+ * sign-in. Treating "no token" as "revoked" would log out every existing member
+ * the moment this deployed.
+ */
+async function isRevoked(request: NextRequest): Promise<boolean> {
+  const token = sessionToken(request);
+  if (!token) return false;
+
+  const base = process.env.MINERALVIEW_API_BASE_URL?.replace(/\/+$/, "");
+  if (!base) return false;
+
+  try {
+    const res = await fetch(`${base}/api/v1/users/me/sessions/check`, {
+      headers: { accept: "application/json", authorization: `Bearer ${token}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(1_500),
+    });
+    /* ONLY 401. A 503 means the API cannot check right now, which is not the
+       same statement as "you are signed out" and must not be treated as one. */
+    return res.status === 401;
+  } catch {
+    return false;
+  }
+}
+
+/** Signed out elsewhere: drop the cookie and say why on the sign-in page. */
+function endSessionAndRedirect(request: NextRequest): NextResponse {
+  const login = new URL("/login", request.url);
+  login.searchParams.set("signedOut", "1");
+
+  const response = NextResponse.redirect(login);
+  /* The cookie goes HERE rather than being left for a later request to notice.
+     A browser still holding it would keep being waved through this gate on
+     every navigation, each one costing a check that can only say the same
+     thing. */
+  response.cookies.delete("mv_user");
+  return response;
+}
+
+export async function proxy(request: NextRequest) {
   const { pathname, search, searchParams } = request.nextUrl;
   const signedIn = hasSession(request);
 
@@ -78,10 +162,14 @@ export function proxy(request: NextRequest) {
     pathname === PORTAL_HOME || pathname.startsWith(`${PORTAL_HOME}/`);
 
   if (inPortal) {
-    if (signedIn) return NextResponse.next();
-    const login = new URL("/login", request.url);
-    login.searchParams.set("next", `${pathname}${search}`);
-    return NextResponse.redirect(login);
+    if (!signedIn) {
+      const login = new URL("/login", request.url);
+      login.searchParams.set("next", `${pathname}${search}`);
+      return NextResponse.redirect(login);
+    }
+    /* Signed in by the cookie — but is the session still live? */
+    if (await isRevoked(request)) return endSessionAndRedirect(request);
+    return NextResponse.next();
   }
 
   /* `/login` or `/register`, per the matcher. Signed out they render as

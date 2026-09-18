@@ -277,7 +277,8 @@ export const identityStrip = {
 /* ============================================================================
    2 · SECURITY & SIGN-IN
 
-   FIXTURE DATA — see the header note. Three rows plus the session list.
+   One row (the password) plus the live session list. Two-factor and passkey
+   were removed on request — see the note at the end of `securityRows`.
    ============================================================================ */
 
 /** One row of the security card: a fact, and the control that changes it. */
@@ -331,65 +332,67 @@ export const securityRows: SecurityRow[] = [
        form this card has room for. See `changePassword` below. */
     panel: true,
   },
-  {
-    id: "security-2fa",
-    label: "Two-factor authentication",
-    hint: "A 6-digit code from your phone on every new sign-in. Strongly recommended — your record carries your royalty figures.",
-    toggle: true,
-    on: false,
-  },
-  {
-    id: "security-passkey",
-    label: "Passkey",
-    hint: "Sign in with your device instead of a password — face, fingerprint or screen lock.",
-    action: "Add a passkey",
-    future: true,
-  },
+  /*
+   * TWO-FACTOR AND PASSKEY ARE OFF THE CARD (user, 2026-09-18: "remove this
+   * two, other as it is"). Both were controls with nothing behind them — no
+   * 2FA API, no WebAuthn (contract §7) — kept as honest prototypes until now;
+   * removed as rows of DATA, so the card's renderer, the `SecurityRow` type's
+   * `toggle`/`future` branches and the copy all stand ready for their return
+   * when the endpoints exist. The two entries are in git history (2026-09-18).
+   */
 ];
 
 /*
- * THE DEVICE LIST — PROTOTYPE ROWS, RESTORED ON REQUEST.
+ * THE DEVICE LIST — REAL, AS OF THE SESSION STORE.
  *
- * "Where you are signed in" was removed in the fixture purge (the API keeps no
- * session store: PROFILE-API-FRONTEND.md §7, "The device list on screen today
- * is not real data") and RESTORED as-was (user, 2026-09-17: "don't change this
- * UI"). So these rows are the UI pass's prototype figures, the sign-outs act
- * on local state only, and nothing persists a reload — exactly as before the
- * wiring. When the server-side session store ships, this list becomes a read
- * from it and the sign-out buttons get their endpoint.
+ * "Where you are signed in" was removed in the fixture purge (§7 of
+ * PROFILE-API-FRONTEND.md: "The device list on screen today is not real data"),
+ * restored as the UI pass's prototype rows (user, 2026-09-17: "don't change this
+ * UI"), and is now a read from `GET /users/me/sessions`. The prototype rows are
+ * gone — the UI around them is not. Every class, every string below and the
+ * whole shape of `SessionList` are exactly what they were; only where the rows
+ * come from has changed, and the sign-outs now reach a server.
  */
 
-/** One signed-in device. */
+/**
+ * THIS DEVICE HAS BEEN SIGNED OUT FROM ANOTHER ONE.
+ *
+ * The code a session action returns when the API refuses its token with a 401.
+ * The panel switches on it and sends the reader to sign in again.
+ *
+ * ── WHY IT LIVES HERE, BESIDE UI COPY, AND NOT WITH THE ACTIONS ───────────
+ *
+ * Because a `"use server"` module may export ONLY async functions. Declaring
+ * this const in `profile-actions.ts` makes the bundler report that file as
+ * having NO EXPORTS AT ALL — every action in it stops resolving, and the build
+ * fails with a message naming some unrelated import three files away. This
+ * module has no directive, so both the server actions and the client component
+ * can import it, which is exactly what a shared constant needs.
+ *
+ * Shared rather than typed twice: a string literal written in two places is one
+ * that eventually differs by a character and silently stops matching, and the
+ * failure mode here is a signed-out device quietly staying on the page.
+ */
+export const SESSION_REVOKED = "SESSION_REVOKED";
+
+/** One signed-in device, as the panel renders it. */
 export interface ProfileSession {
   id: string;
   device: string;
-  place: string;
+  /**
+   * "Beeville, TX", or NULL — which is what the API sends today, on every row.
+   *
+   * It has no geolocation provider configured and will not guess a city. The
+   * row renders without it; it must NOT fall back to "Unknown location", which
+   * reads as a fact about the session under a heading that tells the reader to
+   * sign out anything unfamiliar.
+   */
+  place: string | null;
+  /** Already phrased for the reader — see `lastActiveLabel`. */
   lastActive: string;
   /** The one you are reading this on — it gets no sign-out button. */
   current?: boolean;
 }
-
-export const sessions: ProfileSession[] = [
-  {
-    id: "session-current",
-    device: "Chrome on Windows",
-    place: "Beeville, TX",
-    lastActive: "Active now",
-    current: true,
-  },
-  {
-    id: "session-iphone",
-    device: "Safari on iPhone",
-    place: "Beeville, TX",
-    lastActive: "Yesterday, 7:42 PM",
-  },
-  {
-    id: "session-ipad",
-    device: "Safari on iPad",
-    place: "Corpus Christi, TX",
-    lastActive: "3 weeks ago",
-  },
-];
 
 export const sessionsBlock = {
   heading: "Where you are signed in",
@@ -397,7 +400,82 @@ export const sessionsBlock = {
   currentTag: "This device",
   signOutOne: "Sign out",
   signOutAll: "Sign out everywhere else",
+  /**
+   * A SUCCESSFUL read that came back with nothing — reassurance, not an error.
+   *
+   * There is no matching "we could not look" string here on purpose: that
+   * sentence is produced by `failure()` in `profile-actions.ts`, which names
+   * the actual cause (unreachable, timed out, service down) rather than
+   * flattening all three into one line. Two copies of it would be one copy too
+   * many, and the vaguer one would win by being nearer.
+   */
+  empty: "No other devices are signed in.",
 } as const;
+
+/**
+ * "Active now", "Yesterday, 7:42 PM", "3 weeks ago".
+ *
+ * ── IT RUNS IN THE BROWSER, AND THAT IS THE POINT ─────────────────────────
+ *
+ * The API sends ISO instants and deliberately does not phrase them: the phrase
+ * belongs in the READER's timezone, and the API does not know it — a member's
+ * stored address is where their minerals are, not where they are sitting. Doing
+ * it server-side would render every session in the server's timezone and
+ * mis-state the hour for anyone outside it, on the one screen whose job is
+ * helping somebody recognise their own activity. `SecurityCard` is a client
+ * component, so this runs where the timezone is correct.
+ *
+ * ── THE THRESHOLDS MATCH WHAT THE SERVER MEANS ────────────────────────────
+ *
+ * "Active now" is under five minutes because that is the API's touch interval
+ * (`TOUCH_INTERVAL_MS`): it does not record activity more often than that, so a
+ * tighter window here would say "12 minutes ago" about a device being used
+ * right now. The rest are the ordinary human brackets, and beyond a week it
+ * gives a date — "8 weeks ago" is harder to place than "24 July".
+ */
+export function lastActiveLabel(iso: string, now: Date = new Date()): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "Unknown";
+
+  const seconds = Math.round((now.getTime() - at.getTime()) / 1000);
+
+  /* A clock skew between the server and this browser can put "last active" a
+     little in the future. Reading that as "in -3 minutes" would be absurd, so
+     anything up to the touch interval ahead is simply now. */
+  if (seconds < 5 * 60) return "Active now";
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} minutes ago`;
+
+  const time = at.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  if (isSameDay(at, now)) return `Today, ${time}`;
+  if (isSameDay(at, new Date(now.getTime() - DAY_MS))) return `Yesterday, ${time}`;
+
+  const days = Math.floor(seconds / 86_400);
+  if (days < 7) return `${days} days ago`;
+  if (days < 28) {
+    const weeks = Math.floor(days / 7);
+    return weeks === 1 ? "1 week ago" : `${weeks} weeks ago`;
+  }
+
+  /* Past a month a count stops helping — "11 weeks ago" is arithmetic the
+     reader has to do. A date is something they can place against a trip. */
+  return at.toLocaleDateString(undefined, { month: "long", day: "numeric" });
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function isSameDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
 
 /**
  * THE CHANGE-PASSWORD PANEL — every word of it.

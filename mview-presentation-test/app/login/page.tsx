@@ -4,11 +4,11 @@ import { PORTAL_HOME } from "@/lib/routes";
 
 import { AuthShell } from "../_components/auth-shell";
 import { LoginForm } from "./_components/login-form";
+import { RefreshAfterSignOut } from "./_components/refresh-after-sign-out";
 
 export const metadata: Metadata = {
   title: "Sign in | Mineral View",
   description: "Sign in to your Mineral View account.",
-  // A sign-in page in search results is noise.
   robots: { index: false, follow: true },
 };
 
@@ -60,8 +60,43 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const requested = Array.isArray(params.next) ? params.next[0] : params.next;
   const next = requested && /^\/(?!\/)/.test(requested) ? requested : PORTAL_HOME;
 
+  /**
+   * `?signedOut=1` — THIS DEVICE WAS SIGNED OUT FROM ANOTHER ONE.
+   *
+   * Set by `proxy.ts` when the API reports the session dead. It arrives with
+   * the cookie already deleted, so the reader really is signed out by the time
+   * they see this; the notice explains a sign-in screen they did not ask for.
+   *
+   * WITHOUT IT, being bounced to a login page mid-session reads as a bug or a
+   * crash — and the one member who most needs to understand it is the one who
+   * just signed a stolen device out and is watching to see it work.
+   *
+   * It is a presence check on our own flag, not a message from the query
+   * string: nothing here renders text a URL supplied.
+   */
+  const signedOutElsewhere = params.signedOut === "1";
+
   return (
     <AuthShell>
+      {signedOutElsewhere ? (
+        <>
+          {/* Renders nothing. The redirect that lands here arrives as a SOFT
+              navigation, so Next reuses the cached ROOT LAYOUT — which was
+              rendered while signed in and still greets the reader by name with
+              a "Go to your portal" button, above a sign-in form they are only
+              seeing because they are signed out. This re-fetches the tree so
+              the header re-reads the (deleted) cookie. See the component. */}
+          <RefreshAfterSignOut />
+          <p
+            role="status"
+            className="mx-auto mb-4 max-w-md rounded-lg border border-mv-line bg-mv-portal-explain px-4 py-3 text-center text-sm leading-[1.5]"
+          >
+            <strong className="block font-bold">You were signed out</strong>
+            This device was signed out from another one. Sign in again to
+            continue.
+          </p>
+        </>
+      ) : null}
       <LoginForm next={next} />
     </AuthShell>
   );

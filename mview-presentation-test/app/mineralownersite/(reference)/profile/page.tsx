@@ -17,12 +17,14 @@ import { InvitationsCard } from "./_components/invitations-card";
 import { ProfileLive } from "./_components/profile-live";
 import { SecurityCard } from "./_components/security-card";
 import { ProfileHeader } from "./_components/profile-shell";
+import { listSessionsAction } from "./_lib/profile-actions";
 import {
   fetchProfile,
   patchProfile,
   profileApiBase,
   type UserProfile,
 } from "./_lib/profile-api";
+import type { ProfileSession } from "./_lib/profile-data";
 
 /**
  * MY PROFILE — `/mineralownersite/profile`.
@@ -225,6 +227,40 @@ export default async function ProfilePage({
     }
   }
 
+  /**
+   * THE SIGNED-IN DEVICES, READ HERE RATHER THAN IN THE CARD.
+   *
+   * `SecurityCard` is a client component and could fetch them on mount, but it
+   * should not: that costs the reader a second round trip after the page has
+   * painted, flashes a loading line into a panel three rows tall, and — the
+   * reason it is not merely a preference — this repo's React Compiler lint
+   * refuses `setState` inside an effect, which is what fetch-on-mount is.
+   *
+   * So the list arrives with the page, like `profile` above and for the same
+   * reasons. The card still re-reads after every sign-out, through a server
+   * action, which is an event handler rather than an effect.
+   *
+   * A FAILED read is a message, not a thrown page and NOT an empty list. "No
+   * other devices are signed in" is a security claim, and making it when we
+   * could not look is the one wrong answer on this panel that could matter —
+   * it is precisely the reassurance a member checking for an intruder must not
+   * be given falsely.
+   */
+  let sessions: ProfileSession[] = [];
+  let sessionsError: string | null = null;
+  if (user && base) {
+    const result = await listSessionsAction();
+    if (result.ok) {
+      sessions = result.sessions;
+    } else {
+      sessionsError = result.message;
+      console.error(
+        `[profile] GET /users/me/sessions failed for member ${user.id}:`,
+        result.message,
+      );
+    }
+  }
+
   /* the session cookie's name and email — the reader's real record, never a
      fixture. The strip shows it when the GET failed, and the form seeds its
      boxes from it so a signed-in reader edits THEIR values, not blanks; the
@@ -285,7 +321,11 @@ export default async function ProfilePage({
         */}
           <div className="grid grid-cols-1 gap-[18px] min-[1024px]:grid-cols-2">
             <IdentityCard profile={profile} seed={fallbackIdentity} />
-            <SecurityCard password={profile?.password ?? null} />
+            <SecurityCard
+              password={profile?.password ?? null}
+              sessions={sessions}
+              sessionsError={sessionsError}
+            />
           </div>
         </ProfileLive>
 

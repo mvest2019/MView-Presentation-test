@@ -1,5 +1,7 @@
 import "server-only";
 
+import { headers } from "next/headers";
+
 import { getVisitorId } from "./visitor-id";
 
 /**
@@ -46,6 +48,47 @@ export interface AuthUser {
   email_id: string;
   member_type?: string;
   profile_pic?: string;
+  /**
+   * THIS SIGN-IN, AS THE API NAMES IT — the row the profile screen's "Where you
+   * are signed in" panel shows as "This device".
+   *
+   * The API records every login in `member_session` and hands the id back
+   * alongside the token. (It is also the token's `sid` claim, but this build has
+   * never decoded the token and is not starting now.) It is kept in the session
+   * cookie so the panel can mark its own row and — the part that matters — so
+   * "Sign out everywhere else" has a session to SPARE. Without it the API
+   * cannot tell the caller's device from the ones it is ending, and says so
+   * rather than guessing.
+   *
+   * OPTIONAL, AND EVERY READER MUST COPE WITHOUT IT. It is absent from every
+   * cookie written before this shipped, absent when the API could not record
+   * the session, and absent against an API that predates the feature. The panel
+   * degrades to leaving no row marked as this device; it does not break.
+   */
+  session_id?: string;
+  /**
+   * THE BEARER TOKEN — kept now, where this build used to throw it away.
+   *
+   * The API has always returned one and nothing here read it, because no
+   * endpoint verified one. The device panel's three endpoints DO: they end
+   * sessions, so they cannot accept a `member_id` from a request body — that
+   * would be a single unauthenticated call that logs any member out of every
+   * device they own. They take the member and the current device off this
+   * token's signed claims instead.
+   *
+   * ── IT IS A CREDENTIAL. IT NEVER REACHES THE BROWSER. ─────────────────────
+   *
+   * Stored in the httpOnly session cookie and read only by server actions,
+   * which attach it as an `Authorization` header from the server side. Page
+   * JavaScript cannot read the cookie and the token is never serialised into a
+   * prop, a payload or a log line.
+   *
+   * OPTIONAL, AND OLD SESSIONS DO NOT HAVE IT. Anyone signed in before this
+   * shipped has a cookie without it; they stay signed in everywhere else and
+   * the device panel asks them to sign in again, because there is genuinely no
+   * way to prove who they are until they do.
+   */
+  token?: string;
 }
 
 export type AuthResult =
@@ -136,6 +179,59 @@ function messageFrom(body: unknown, fallback: string): string {
     }
   }
   return fallback;
+}
+
+/**
+ * THE VISITOR'S BROWSER AND ADDRESS, FORWARDED ONTO THE LOGIN CALL.
+ *
+ * ── THE BUG THIS FIXES ────────────────────────────────────────────────────
+ *
+ * Login is SERVER-TO-SERVER. The browser posts to a server action here, and
+ * this file then makes its own `fetch` to the API — a fresh request with none
+ * of the visitor's headers on it. So the API, which records the device a
+ * session was opened on, was reading the User-Agent of *this Next.js server*
+ * and the IP of *this Next.js server*.
+ *
+ * Every row in "Where you are signed in" therefore said **"Unknown device"**,
+ * on a screen whose entire job is helping a member recognise their own devices.
+ * The API was not wrong — it never saw the browser. This is where the browser
+ * is, so this is where the two facts have to be picked up.
+ *
+ * ── WHY THESE TWO HEADERS SPECIFICALLY ────────────────────────────────────
+ *
+ *   `user-agent`       the API turns it into "Chrome on Windows".
+ *   `x-forwarded-for`  Fastify runs with `trustProxy`, so forwarding this makes
+ *                      `request.ip` the visitor's address rather than this
+ *                      server's. Vercel already sets it on the way in.
+ *
+ * ── THEY ARE DESCRIPTIVE, NEVER AUTHORISATION ─────────────────────────────
+ *
+ * Both are client-supplied and always were — a User-Agent says whatever its
+ * sender likes. The API stores them to describe a session and decides nothing
+ * with them; it caps and sanitises both on the way into the database. Nothing
+ * here widens what a visitor can claim about *who* they are.
+ *
+ * ── IT NEVER THROWS ───────────────────────────────────────────────────────
+ *
+ * `headers()` needs a request scope, and this module is also reachable from
+ * places that have none. No headers is the pre-existing behaviour — an
+ * "Unknown device" row — so a failure here degrades to exactly what we had,
+ * rather than failing a login over a label.
+ */
+async function visitorHeaders(): Promise<Record<string, string>> {
+  try {
+    const incoming = await headers();
+    const userAgent = incoming.get("user-agent");
+    const forwardedFor =
+      incoming.get("x-forwarded-for") ?? incoming.get("x-real-ip");
+
+    return {
+      ...(userAgent ? { "user-agent": userAgent } : {}),
+      ...(forwardedFor ? { "x-forwarded-for": forwardedFor } : {}),
+    };
+  } catch {
+    return {};
+  }
 }
 
 async function post(
@@ -481,12 +577,20 @@ export async function loginUser(
   }
 
   try {
-    const { status, body } = await post("/User/login_user", {
-      email_id: email,
-      password,
-      visitorId: await getVisitorId(),
-      id: null,
-    });
+    const { status, body } = await post(
+      "/User/login_user",
+      {
+        email_id: email,
+        password,
+        visitorId: await getVisitorId(),
+        id: null,
+      },
+      "POST",
+      /* The visitor's browser and address — see `visitorHeaders`. Without
+         these the API records "Unknown device" for every sign-in, because a
+         server-to-server fetch carries neither. */
+      await visitorHeaders(),
+    );
 
     /*
      * A 200 with NO envelope, just `{message}`: the account exists but its email
@@ -559,8 +663,10 @@ export async function loginWithGoogle(
   memberType?: MemberTypeValue,
 ): Promise<AuthResult> {
   try {
-    const { status, body } = await post("/User/login_user", {
-      GoogleToken: idToken,
+    const { status, body } = await post(
+      "/User/login_user",
+      {
+        GoogleToken: idToken,
       /*
        * OMITTED ENTIRELY when we were not told one — signing IN must never carry
        * a type, or a returning member could have theirs overwritten by whatever
@@ -569,11 +675,16 @@ export async function loginWithGoogle(
        * is refused with "member_type must be one of: …". Sign-up passes one
        * because the visitor was actually asked.
        */
-      ...(memberType
-        ? { member_type: memberTypeFor("login", memberType) }
-        : {}),
-      visitorId: await getVisitorId(),
-    });
+        ...(memberType
+          ? { member_type: memberTypeFor("login", memberType) }
+          : {}),
+        visitorId: await getVisitorId(),
+      },
+      "POST",
+      /* Same as the password path: without these the API records "Unknown
+         device" for every Google sign-in too. */
+      await visitorHeaders(),
+    );
 
     const data = (body as { data?: AuthUser & { alreadyExist?: boolean } } | null)
       ?.data;
