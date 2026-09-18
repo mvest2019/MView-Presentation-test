@@ -29,7 +29,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { createPortal } from 'react-dom';
-import type { Payload } from '../../_lib/reference/payload';
+import type { Drawer, Payload } from '../../_lib/reference/payload';
 import { usePortalMember } from '../portal-session';
 import {
   n0, n1, usd, usdShort, usdScaled, pctS, vol, volWords, plural, productWord, interest, nShort,
@@ -63,6 +63,21 @@ export interface DashProps extends ViewProps {
   reloadActiveOwner: () => Promise<boolean>;
   trialStarted: string | null;
   setFunnel: (f: FunnelKey) => void;
+  /**
+   * OPEN A PANEL THIS PAGE BUILT, rather than a key into `p.drawers`.
+   *
+   * Three cards on this page list ROWS — one operator, one county, one radius
+   * — and every row opened the card's own general explainer: an operator row
+   * opened "Who operates your leases", a county row opened "Your value — how
+   * it is built", and 1, 3 and 5 miles all opened the same permits panel.
+   * Defect sheet rows 64, 68 and 69, which are one fault reported three times.
+   *
+   * The service has no key for a single operator, county or ring, so the row's
+   * own panel is composed here out of the figures the row is already drawing —
+   * the same arrangement `member-drawers.ts` uses for a lease or a well, and
+   * the same channel the Activities timeline uses for an event.
+   */
+  openEvent: (d: Drawer) => void;
 }
 
 /* the switchable lease chart, exactly v1's set */
@@ -78,7 +93,7 @@ export default function Dashboard(
      passes them and the plan card used to read them. They are accepted and
      not destructured so the shell's call site is unchanged and the props stay
      available the moment anything on this page needs the trial stamp again. */
-  { p, tier, funnel, sample, open, go, reloadActiveOwner }: DashProps,
+  { p, tier, funnel, sample, open, go, reloadActiveOwner, openEvent }: DashProps,
 ) {
   const t = p.totals;
   const a = p.as_of;
@@ -375,7 +390,26 @@ export default function Dashboard(
                   names={t.counties} max={MAX_COUNTY_NAMES}
                   one="county" many="counties"
                 /> ·{' '}
-                {t.operator_count} {plural(t.operator_count, 'operator')}
+                {/* THE OPERATORS COLLAPSE LIKE THE COUNTIES AND THE PLAYS, and for
+                    the reason QA gave: the line already names two lists a
+                    reader can hover to read in full, and the third printed a
+                    bare count with no way to see who they are. `operator_names`
+                    is on the payload beside `operator_count`, so the names are
+                    already here.
+
+                    THE COUNT IS THE FALLBACK, NOT THE OTHER WAY AROUND. A
+                    record whose payload carries no names still prints
+                    "20 operators" exactly as before — `NameList` renders
+                    nothing at all for an empty list, and a silent gap in that
+                    line would be worse than a count with no tooltip. */}
+                {t.operator_names?.length
+                  ? (
+                    <NameList
+                      names={t.operator_names} max={MAX_OPERATOR_NAMES}
+                      one="operator" many="operators"
+                    />
+                  )
+                  : <>{t.operator_count} {plural(t.operator_count, 'operator')}</>}
                 {/* THE PLAYS COLLAPSE THE SAME WAY THE COUNTIES DO, and for the
                     same measured reason. Four play names — "EAGLE FORD SHALE,
                     GRANITE WASH, HAYNESVILLE/BOSSIER SHALE, PERMIAN BASIN" — is
@@ -385,7 +419,10 @@ export default function Dashboard(
                   ? (
                     <>
                       {' · '}
-                      <NameList names={t.plays} max={MAX_PLAY_NAMES} one="play" many="plays" />
+                      <NameList
+                        names={t.plays} max={MAX_PLAY_NAMES}
+                        one="Play Type" many="Play Types"
+                      />
                     </>
                   )
                   : null}
@@ -616,7 +653,7 @@ export default function Dashboard(
                       exactly the difference; measured after the move, 2,367
                       against 2,410, a 2% gap. Pro keeps it here, where its own
                       rails are already balanced by the lease table. */}
-                  {tier === 'pro' ? <Operators p={p} open={open} /> : null}
+                  {tier === 'pro' ? <Operators p={p} open={open} openEvent={openEvent} /> : null}
                   {/* The price deck now sits on the right in BOTH tiers. It
                       used to cross to the left at Detailed, to fill a right
                       rail that ran short — but Detailed has since given up the
@@ -659,10 +696,10 @@ export default function Dashboard(
                   <Watched p={p} open={open} />
                   <PriceDeck p={p} open={open} />
                   <Reserves p={p} open={open} />
-                  {tier === 'pro' ? null : <Operators p={p} open={open} />}
-                  {tier === 'pro' ? <Neighbors p={p} open={open} go={go} /> : null}
+                  {tier === 'pro' ? null : <Operators p={p} open={open} openEvent={openEvent} />}
+                  {tier === 'pro' ? <Neighbors p={p} go={go} openEvent={openEvent} /> : null}
                   {tier === 'pro' ? <Wells p={p} open={open} /> : null}
-                  <ValueMix p={p} open={open} />
+                  <ValueMix p={p} openEvent={openEvent} />
                   {tier === 'pro' ? <Provenance p={p} open={open} /> : null}
                 </div>
               </div>
@@ -699,9 +736,21 @@ function UltraHero(
       <p className="u-status">
         {unclaimed
           ? `Appraised at ${usdScaled(t.appraised_value)} on the ${t.appraised_year} roll. Claiming is free.`
-          : `Your share across ${t.lease_count} ${plural(t.lease_count, 'lease')}. ` +
-            `${t.reporting_count} filed ${productWord(t.has_gas, t.has_oil)} in ${a.data_month_label} — ` +
-            `${volWords(t.anchor_gas_net, t.anchor_oil_net)} to you.`}
+          : (
+            <>
+              {`Your share across ${t.lease_count} ${plural(t.lease_count, 'lease')}. `}
+              {`${t.reporting_count} filed ${productWord(t.has_gas, t.has_oil)} in ${a.data_month_label} — `}
+              {/* THE VOLUMES ARE A PORTFOLIO TOTAL, so `lapsed` has to be able
+                  to reach them — "portfolio totals are held back" is what that
+                  state says it does, and this sentence carried the same two
+                  figures the tiles below print (defect sheet row 50, re-opened
+                  for Ultra). It is a SPAN and not `.cl-lock` because `.cl-lock`
+                  is covered in `claimed` too, and on the free tier the volumes
+                  are not the withheld thing — the estimate is. */}
+              <span className="u-tot">{volWords(t.anchor_gas_net, t.anchor_oil_net)}</span>
+              {' to you.'}
+            </>
+          )}
       </p>
       {/* WHAT CHANGED, INSIDE THE HERO — the Alerts route's own Ultra, which
           is the design this tier is supposed to share.
@@ -1596,8 +1645,96 @@ function PriceSpark({ hist, k }: { hist: { label: string | null; gas: number; oi
   );
 }
 
+/* ------------------------------------------- the panels a row opens itself */
+/**
+ * ONE OPERATOR'S PANEL, out of the row the reader pressed.
+ *
+ * Everything here is already on screen in that row or one field away in the
+ * payload — the lease count, the producing count, last month's volumes, the
+ * share of value and the lease names. Nothing is computed that the card does
+ * not compute, and nothing is invented: a field the payload does not carry is
+ * left out of the sentence rather than filled in.
+ */
+function operatorDrawer(
+  op: Payload['operators']['operators'][number], t: Payload['totals'],
+): Drawer {
+  const share = t.owner_value ? (op.owner_share_value / t.owner_value) * 100 : 0;
+  const names = op.lease_names ?? [];
+  return {
+    title: op.operator_name,
+    sub: `Operator${op.operator_no ? ' ' + op.operator_no : ''} · `
+      + `${op.lease_count} of your ${plural(op.lease_count, 'lease')}`,
+    tone: 'record',
+    stats: [
+      { label: 'Your leases', value: n0(op.lease_count) ?? '—',
+        sub: `${n0(op.producing) ?? '—'} producing` },
+      { label: 'Your value here', value: usdShort(op.owner_share_value) ?? '—',
+        sub: `${share.toFixed(0)}% of your value` },
+      { label: 'To you last filed month',
+        value: vol(op.last_month_gas_net, op.last_month_oil_net, true) },
+    ],
+    what: `<strong>${op.operator_name}</strong> runs <strong>${n0(op.lease_count) ?? '—'}</strong> of `
+      + `your ${plural(op.lease_count, 'lease')}, ${n0(op.producing) ?? '—'} of which `
+      + `${op.producing === 1 ? 'is' : 'are'} producing. That is `
+      + `<strong>${share.toFixed(0)}%</strong> of your value.`,
+    means: 'The operator is who files the production, who the state holds responsible for the '
+      + 'well, and who your statement comes from. A large share sitting with one operator is not '
+      + 'a problem in itself — it is a single relationship to keep right, and the one to check '
+      + 'first when a division order or a payment address changes.',
+    evidence: names.slice(0, 9).map((n) => `<strong>${n}</strong> — operated by ${op.operator_name}`),
+    chips: [],
+    next: 'Nothing to do from here. If a payment looks wrong on one of these leases, this is the '
+      + 'name to quote when you ask.',
+  };
+}
+
+/**
+ * ONE RADIUS BAND'S PANEL — 1, 3 or 5 miles, told apart.
+ *
+ * All three rows opened the same panel, so the reader could not tell which
+ * ring they had pressed. The counts differ by an order of magnitude between
+ * them, which is the whole point of having three.
+ */
+function ringDrawer(band: '1' | '3' | '5', r: Payload['radius']['1'], p: Payload): Drawer {
+  const miles = Number(band);
+  return {
+    title: `Standing permits within ${band} ${plural(miles, 'mile')}`,
+    sub: p.radius_stamp ? `Survey rebuilt ${p.radius_stamp}` : 'Standing permits, as filed',
+    tone: 'activity',
+    stats: [
+      { label: 'Permits', value: n0(r.permit_count) ?? '—',
+        sub: `within ${band} ${plural(miles, 'mile')}` },
+      { label: 'Neighbouring leases', value: n0(r.neighbour_lease_count) ?? '—',
+        sub: 'your own excluded' },
+    ],
+    what: `<strong>${n0(r.permit_count) ?? '—'}</strong> standing `
+      + `${plural(r.permit_count, 'permit')} sit within <strong>${band} `
+      + `${plural(miles, 'mile')}</strong> of your acreage, across `
+      + `<strong>${n0(r.neighbour_lease_count) ?? '—'}</strong> neighbouring `
+      + `${plural(r.neighbour_lease_count, 'lease')}. Your own `
+      + `${plural(p.totals.lease_count, 'lease')} are excluded from that count.`,
+    means: 'A permit is an intention to drill, filed with the state — not a well, and not yet '
+      + 'production. Activity close to your acreage is the earliest public signal that the rock '
+      + 'around you is being worked; it says nothing about your own leases on its own. The wider '
+      + 'the ring, the more it describes the area rather than your position in it.',
+    evidence: [
+      `Within ${band} ${plural(miles, 'mile')} — ${n0(r.permit_count) ?? '—'} `
+        + `${plural(r.permit_count, 'permit')} on ${n0(r.neighbour_lease_count) ?? '—'} `
+        + `neighbouring ${plural(r.neighbour_lease_count, 'lease')}`,
+      'Your own leases are excluded — several sit inside one another’s rings, and counting '
+        + 'those would inflate the number.',
+      ...(p.radius_note ? [p.radius_note] : []),
+    ],
+    chips: [`${band}-mile ring`],
+    next: 'Nothing to do. This is context for the area, not a finding on a lease you hold.',
+  };
+}
+
 /* =========================================================== operators */
-function Operators({ p, open }: { p: Payload; open: (k: string) => void }) {
+function Operators(
+  { p, open, openEvent }:
+  { p: Payload; open: (k: string) => void; openEvent: (d: Drawer) => void },
+) {
   const o = p.operators;
   const t = p.totals;
   /* BEFORE THE EARLY RETURN, because it is a hook. An owner whose operator
@@ -1643,8 +1780,8 @@ function Operators({ p, open }: { p: Payload; open: (k: string) => void }) {
         {pg.rows.map((op) => (
           <div
             className="opscore" key={op.operator_name} role="button" tabIndex={0}
-            onClick={() => open('operators')}
-            onKeyDown={(e) => { if (e.key === 'Enter') open('operators'); }}
+            onClick={() => openEvent(operatorDrawer(op, t))}
+            onKeyDown={(e) => { if (e.key === 'Enter') openEvent(operatorDrawer(op, t)); }}
           >
             <div style={{ minWidth: 0 }}>
               <strong className="small">{op.operator_name}</strong>
@@ -1947,7 +2084,10 @@ function Reserves({ p, open }: { p: Payload; open: (k: string) => void }) {
 
 /* ========================================================== neighbours */
 function Neighbors(
-  { p, open, go }: { p: Payload; open: (k: string) => void; go: (r: Route, params?: Record<string, string | null>) => void },
+  { p, go, openEvent }: {
+    p: Payload; openEvent: (d: Drawer) => void;
+    go: (r: Route, params?: Record<string, string | null>) => void;
+  },
 ) {
   const rad = p.radius;
   const ac = p.activities;
@@ -1965,8 +2105,8 @@ function Neighbors(
           return (
             <div
               className="setrow" key={b} role="button" tabIndex={0}
-              onClick={() => open('permits')}
-              onKeyDown={(e) => { if (e.key === 'Enter') open('permits'); }}
+              onClick={() => openEvent(ringDrawer(b, r, p))}
+              onKeyDown={(e) => { if (e.key === 'Enter') openEvent(ringDrawer(b, r, p)); }}
             >
               <div style={{ minWidth: 0 }}>
                 <strong className="small">Within {b} {plural(Number(b), 'mile')}</strong>
@@ -2116,19 +2256,23 @@ function NameList(
   { names, max, one, many }:
   { names: string[]; max: number; one: string; many?: string },
 ) {
-  const [open, setOpen] = useState(false);
   if (!names.length) return null;
   if (names.length <= max) return <>{names.join(', ')}</>;
-  const all = names.join(', ');
+  /* HOVER READS IT; NOTHING OPENS.
+   *
+   * This was a button that expanded the full list inline under the subhead.
+   * QA asked for that to go: the list dropping in pushed the page down, and the
+   * tooltip beside it already answers the same question without moving
+   * anything.
+   *
+   * SO IT IS NO LONGER A BUTTON — nothing to press, so it does not claim to be
+   * pressable: no caret, no `aria-expanded`, and `cursor: help` in the sheet
+   * rather than the pointer a control carries. `tabIndex` stays, because the
+   * tooltip shows on focus as well as hover and a keyboard has to reach it. */
   return (
-    <button
-      type="button" className="linklike name-list" title={all}
-      aria-expanded={open}
-      onClick={() => setOpen((v) => !v)}
-    >
-      {open ? all : `${names.length} ${plural(names.length, one, many)}`}
-      <span aria-hidden="true">{open ? ' ▴' : ' ▾'}</span>
-    </button>
+    <span className="name-list" data-tip={names.join(', ')} tabIndex={0}>
+      {`${names.length} ${plural(names.length, one, many)}`}
+    </span>
   );
 }
 
@@ -2169,11 +2313,15 @@ const MAX_OPERATOR_NAMES = 3;
  * The counties get five because they are the line's subject; the plays trail
  * it, and their names are long — "HAYNESVILLE/BOSSIER SHALE" is one fact and
  * twenty-five characters. Four of them added 118 characters to a line already
- * carrying six figures and pushed the subhead onto a third row. Two names is
- * still an answer ("Eagle Ford and Permian"); past that the count is the more
- * useful fact and the names stay on the `title`.
+ * carrying six figures and pushed the subhead onto a third row.
+ *
+ * ONE, NOT TWO, AND QA SET THE THRESHOLD. It was two, on the argument that
+ * "Eagle Ford and Permian" is still an answer. The defect sheet asks for the
+ * opposite and is explicit about it — "more than one playtype: show only
+ * count" — so a single play prints its name and anything past one is a count.
+ * The names are never lost: they stay on the `title` and behind the expander.
  */
-const MAX_PLAY_NAMES = 2;
+const MAX_PLAY_NAMES = 1;
 
 /* ============================================================ owner switch */
 /**

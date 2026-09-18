@@ -950,6 +950,25 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
           ?? data?.drawers?.prices ?? null)
         : (data?.drawers?.[drawer] ?? null);
 
+  /**
+   * HOW MANY ROWS EACH PANEL IS ABOUT, for the ones the payload can answer.
+   *
+   * The evidence list is a sample — nine lines for a record of hundreds — and
+   * a list that stops with no remark reads as the whole list (defect sheet
+   * row 17). `DrawerPanel` prints "9 of 762" and names where the rest are, but
+   * only when it is given a total, and it is only given one where the payload
+   * carries an unambiguous universe for that panel. Every number here is a
+   * field the service already sends; none is derived from the panel's prose.
+   */
+  const evidenceTotal = useMemo(() => {
+    const t0 = data?.totals;
+    if (!t0 || typeof drawer !== 'string') return null;
+    if (drawer === 'producing') return t0.producing_count ?? null;
+    if (drawer === 'appraised') return t0.valued_count ?? null;
+    if (drawer === 'operators') return t0.operator_count ?? null;
+    return null;
+  }, [drawer, data?.totals]);
+
   /* every panel goes through the same reduction — see `collapseNames` */
   const counties = data?.totals.counties;
   const operatorNames = data?.totals.operator_names;
@@ -1058,6 +1077,7 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
                   p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go}
                   trialStarted={trialStarted} setFunnel={pickFunnel}
                   reloadActiveOwner={reloadActiveOwner}
+                  openEvent={openEventDrawer}
                 />
               ))
   );
@@ -1109,6 +1129,8 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
       <DrawerPanel
         copy={copy} onClose={() => setDrawer(null)}
         sample={sample} sourceNote={data?.owner.identity_note ?? null}
+        evidenceTotal={evidenceTotal}
+        panelKey={typeof drawer === 'string' ? drawer : null}
       />
     </div>
   );

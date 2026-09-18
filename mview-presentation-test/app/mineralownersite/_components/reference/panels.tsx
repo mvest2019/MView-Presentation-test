@@ -19,7 +19,7 @@
  *   concentration is the one thing an owner cannot see from a list.
  */
 import React, { useMemo } from 'react';
-import type { Payload } from '../../_lib/reference/payload';
+import type { Drawer, Payload } from '../../_lib/reference/payload';
 import { n0, usd, usdShort, usdScaled, pct0, vol, plural, productWord, MCF, BBL } from '../../_lib/reference/fmt';
 import { Pager, usePaged } from './bits';
 import type { Route } from './Portal';
@@ -482,7 +482,48 @@ export function Wells({ p, open }: { p: Payload; open: (k: string) => void }) {
  * Said twice — by county and by operator — because those are the two ways it
  * matters: county is where the rock is, operator is who has to pay you.
  */
-export function ValueMix({ p, open }: { p: Payload; open: (k: string) => void }) {
+/**
+ * ONE COUNTY'S PANEL, out of the row the reader pressed.
+ *
+ * Every county row opened "Your value — how it is built", which explains the
+ * WHOLE estimate and says nothing about the county pressed (defect sheet row
+ * 68). The card already knows the county's share and its rank; the panel says
+ * that and stops, because the payload carries no other county-keyed figure.
+ */
+function countyDrawer(
+  name: string, value: number, rank: number, of: number, t: Payload['totals'],
+): Drawer {
+  const share = t.owner_value ? (value / t.owner_value) * 100 : 0;
+  return {
+    title: `${name} — your value there`,
+    sub: `${rank} of ${of} ${of === 1 ? 'county' : 'counties'} by value`,
+    tone: 'money',
+    stats: [
+      { label: 'Your value here', value: usdShort(value) ?? '—',
+        sub: `${share.toFixed(1)}% of your value` },
+      { label: 'Rank', value: `${rank} of ${of}`, sub: 'by value, across your counties' },
+    ],
+    what: `<strong>${usd(value) ?? '—'}</strong> of your six-year estimate sits in `
+      + `<strong>${name}</strong> — <strong>${share.toFixed(1)}%</strong> of your value, and the `
+      + `${rank}${rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th'} largest of your `
+      + `${of} ${of === 1 ? 'county' : 'counties'}.`,
+    means: 'Where the acreage is decides which rules, which operators and which pipelines apply '
+      + 'to it. A county carrying most of your value is the one whose activity matters most to '
+      + 'you — and the split is a useful thing to know before reading anything about a single '
+      + 'county’s permits or prices as though it moved your whole position.',
+    evidence: [
+      `<strong>${name}</strong> — ${usd(value) ?? '—'} of your estimate, ${share.toFixed(1)}% of the total`,
+      'The split is your share of the six-year estimate, by where the acreage sits.',
+    ],
+    chips: [name],
+    next: 'Nothing to do. If you want the leases behind this figure, My Leases can be filtered by '
+      + 'county.',
+  };
+}
+
+export function ValueMix(
+  { p, openEvent }: { p: Payload; openEvent: (d: Drawer) => void },
+) {
   const t = p.totals;
 
   /* ROLLED UP BEFORE THE EARLY RETURN, because `usePaged` below is a hook and
@@ -520,11 +561,13 @@ export function ValueMix({ p, open }: { p: Payload; open: (k: string) => void })
         Your share of the six-year estimate, split by where the acreage is.
       </p>
 
-      {pg.rows.map(([name, v]) => (
+      {pg.rows.map(([name, v], i) => (
         <div
           className="lbar" key={name} role="button" tabIndex={0}
-          onClick={() => open('value')}
-          onKeyDown={(e) => { if (e.key === 'Enter') open('value'); }}
+          onClick={() => openEvent(countyDrawer(name, v, pg.start + i + 1, counties.length, t))}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') openEvent(countyDrawer(name, v, pg.start + i + 1, counties.length, t));
+          }}
           title={`${name} — ${usd(v)}, ${((v / t.owner_value) * 100).toFixed(1)}% of your value`}
         >
           <span className="lb-name">{name}</span>

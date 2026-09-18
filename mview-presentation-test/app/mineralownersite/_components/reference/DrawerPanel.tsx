@@ -122,15 +122,39 @@ function isValue(m: string): boolean {
  *
  * IT RUNS IN EVERY STATE and marks the same spans every time, so there is no
  * second render path to keep in step: the stylesheet decides whether a marked
- * figure is covered, and only `state-lapsed` says yes.
+ * figure is covered. `state-lapsed` covers every marked figure; `state-claimed`
+ * covers only those also marked `.cl-money` — see `isMoney`.
  */
+/**
+ * IS THIS FIGURE MONEY? — the difference between the two covered states.
+ *
+ * `lapsed` holds back the portfolio TOTALS, so every figure in a panel is
+ * covered there. `claimed · free` withholds one thing only, and the state menu
+ * says which: "the value estimate is the paid feature". Volumes, month counts,
+ * lease counts and percentages are not the paid feature, and a free reader is
+ * meant to have them.
+ *
+ * So the marking carries a second class for the figures that ARE money, and the
+ * stylesheet covers `.cl-fig` in lapsed and only `.cl-money` in claimed. Defect
+ * sheet row 19: the page covered the estimate, the reader pressed "How it is
+ * built", and the panel printed the same number in the clear beside its range
+ * and the whole-lease value.
+ *
+ * THE TEST IS THE CURRENCY MARK, nothing cleverer. `FIGURE` already captures a
+ * leading "$", so a match either opens with one or it does not; no figure is
+ * classified by what it happens to sit near.
+ */
+function isMoney(m: string): boolean {
+  return m.trim().startsWith('$');
+}
+
 export function lockFigures(html: string): string {
   return html
     .split(/(<[^>]*>)/)
     .map((part, i) => (i % 2 === 1
       ? part
       : serviceText(part).replace(FIGURE, (m) => (isValue(m)
-        ? '<span class="cl-fig">' + m + '</span>'
+        ? '<span class="cl-fig' + (isMoney(m) ? ' cl-money' : '') + '">' + m + '</span>'
         : m))))
     .join('');
 }
@@ -156,7 +180,9 @@ function LockFigures({ text }: { text: string }) {
     const at = m.index ?? 0;
     if (!isValue(m[0])) continue;
     if (at > last) out.push(text.slice(last, at));
-    out.push(<span className="cl-fig" key={k++}>{m[0]}</span>);
+    out.push(
+      <span className={'cl-fig' + (isMoney(m[0]) ? ' cl-money' : '')} key={k++}>{m[0]}</span>,
+    );
     last = at + m[0].length;
   }
   if (!out.length) return <>{text}</>;
@@ -204,8 +230,39 @@ const TONE_LABEL: Record<string, string> = {
 };
 
 export default function DrawerPanel(
-  { copy, onClose, sample, sourceNote }:
-  { copy: Drawer | null; onClose: () => void; sample: boolean; sourceNote: string | null },
+  { copy, onClose, sample, sourceNote, evidenceTotal, panelKey }:
+  {
+    copy: Drawer | null; onClose: () => void; sample: boolean; sourceNote: string | null;
+    /**
+     * WHICH PANEL THIS IS, for the one rule that has to tell them apart.
+     *
+     * `claimed · free` withholds the value ESTIMATE and nothing else, so the
+     * cover in that state has to reach the estimate's own panel and stop
+     * there — the county roll is public record and the page prints it in the
+     * clear beside the covered estimate. Without this the sheet could only say
+     * "money in a drawer", which covered `$1,708,163,073` of appraised value
+     * that the tile behind it was showing openly.
+     *
+     * Null for a panel a view composed itself (an Activities event), which has
+     * no key and is never the estimate.
+     */
+    panelKey?: string | null;
+    /**
+     * HOW MANY ROWS THE PANEL IS ACTUALLY ABOUT, when the payload knows.
+     *
+     * The evidence list is a SAMPLE of the record — the service sends nine
+     * lines for a record holding hundreds — and it said so in a way that read
+     * as the whole story: "9 lines from the record", with nothing to tell a
+     * reader that 753 more existed. On a 575-lease record QA read the panel as
+     * claiming six leases were all there was.
+     *
+     * `Portal` supplies this only for the keys where the payload carries an
+     * unambiguous universe for that panel; everywhere else it is null and the
+     * note is what it always was. Nothing is inferred from the prose, and no
+     * number here is computed — it is a field the service already sends.
+     */
+    evidenceTotal?: number | null;
+  },
 ) {
   const panel = useRef<HTMLDivElement | null>(null);
   const body = useRef<HTMLDivElement | null>(null);
@@ -299,6 +356,7 @@ export default function DrawerPanel(
       />
       <div
         className={'ctx-drawer dx dx-' + tone} id="ctxDrawer" ref={panel}
+        data-panel={panelKey ?? undefined}
         role="dialog" aria-modal="true" aria-label={copy?.title ?? 'Explanation'}
         style={open ? undefined : { display: 'none' }}
       >
@@ -411,7 +469,9 @@ export default function DrawerPanel(
                   ? (
                     <Step
                       n={3} head="What this is built on"
-                      note={`${copy.evidence.length} ${copy.evidence.length === 1 ? 'line' : 'lines'} from the record`}
+                      note={evidenceTotal != null && evidenceTotal > copy.evidence.length
+                        ? `${copy.evidence.length} of ${evidenceTotal.toLocaleString('en-US')} from the record`
+                        : `${copy.evidence.length} ${copy.evidence.length === 1 ? 'line' : 'lines'} from the record`}
                     >
                       <ul className="dx-evid">
                         {copy.evidence.map((e, i) => (
@@ -421,6 +481,19 @@ export default function DrawerPanel(
                           </li>
                         ))}
                       </ul>
+                      {/* THE REST ARE NOT MISSING, THEY ARE ELSEWHERE — and
+                          saying where is the whole of this line's job. A list
+                          that stops at nine with no remark reads as a complete
+                          list. */}
+                      {evidenceTotal != null && evidenceTotal > copy.evidence.length
+                        ? (
+                          <p className="tiny muted dx-evid-rest">
+                            The other{' '}
+                            {(evidenceTotal - copy.evidence.length).toLocaleString('en-US')}{' '}
+                            are on My Leases — these are the largest.
+                          </p>
+                        )
+                        : null}
                     </Step>
                   )
                   : null}

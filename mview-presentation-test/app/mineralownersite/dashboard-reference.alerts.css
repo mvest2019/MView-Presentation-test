@@ -122,6 +122,33 @@ body .mv-ref-app.state-lapsed .ctx-drawer .cl-fig {
 }
 
 /* ===========================================================================
+   19 · THE CLAIMED COVER REACHES THE DETAIL PANEL TOO — BUT ONLY THE MONEY
+   ---------------------------------------------------------------------------
+   The same defect as the block above, one state over. `claimed · free` covers
+   the value estimate on the page; the reader pressed "How it is built" and the
+   panel printed "$5,438,062,182" in the clear, beside its range and the
+   whole-lease value. Defect sheet row 19, re-opened by QA.
+
+   IT CANNOT REUSE THE LAPSED RULE. That one covers every marked figure, which
+   is right for lapsed — the portfolio totals are held back — and wrong here:
+   the state menu says "the value estimate is the paid feature", so volumes,
+   month counts and lease counts stay legible on the free tier. `DrawerPanel`
+   marks currency figures with `.cl-money` as well as `.cl-fig`, and this rule
+   reaches only those.
+
+   AND ONLY IN THE ESTIMATE'S OWN PANEL. Scoped by `data-panel` because money
+   in a drawer is not all the same money: the county roll is PUBLIC RECORD and
+   the tile behind prints `$1.71B` of it openly, so covering the appraisal
+   panel would have hidden a figure the page was already showing. `value` is
+   the panel the free tier withholds; the rest keep their figures.
+   ======================================================================== */
+body .mv-ref-app.state-claimed .ctx-drawer[data-panel="value"] .cl-money {
+  filter: blur(6px);
+  opacity: .55;
+  user-select: none;
+}
+
+/* ===========================================================================
    25 · THE SIDEBAR KEEPS ITS SCROLL TO ITSELF
    ---------------------------------------------------------------------------
    `.app-side` is `overflow-y:auto` and `height:100vh`, so on a short viewport
