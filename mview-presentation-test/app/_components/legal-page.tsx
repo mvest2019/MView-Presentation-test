@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
+import {
+  LEGAL_DOCS,
+  formatEffectiveDate,
+  type LegalDocId,
+} from "@/lib/legal/versions";
 import type { TocItem } from "@/lib/toc";
 
 import { Breadcrumb } from "./breadcrumb";
@@ -13,9 +18,15 @@ import { headingBase } from "./typography";
  *
  * The COPY on those pages is ported verbatim from the live site
  * (`app/privacy-policy` and `app/terms-condition` in the Next repo). It is legal
- * text: it may be restyled, never reworded, reordered or summarised. Only two
- * edits were made, both deliberate and noted at the call sites — the support
- * address, and Mineral View's own URL now pointing at internal routes.
+ * text: it may be restyled, never reworded, reordered or summarised. The edits
+ * that were made are deliberate and noted at the call sites — the support
+ * address, and (since the 9/16 port) the privacy policy's cookie wording,
+ * which lists only what THIS site runs.
+ *
+ * VERSIONED. Each page names its document (`doc="MV-TOU"` / `"MV-PRIV"`) and
+ * the version line under the title is read from `lib/legal/versions.ts`. The
+ * page SOURCES are hashed by `scripts/legal-hash.mjs`; this shell is not, so
+ * restyling here is not a new version of either document.
  *
  * The layout is this build's, not the live site's: same 1200px wrap, breadcrumb,
  * contents rail and card treatment as an article, so a legal page reads as part
@@ -141,7 +152,7 @@ export function LegalSection({
 }
 
 /**
- * Page frame: breadcrumb, title, "last updated", then the sections beside a
+ * Page frame: breadcrumb, title, version line, then the sections beside a
  * sticky contents rail.
  *
  * The rail is desktop-only and the sections carry their own ids, so below 1024px
@@ -152,14 +163,19 @@ export function LegalSection({
 export function LegalPage({
   title,
   lede,
-  updated,
+  doc,
   sections,
   children,
 }: {
   title: string;
   lede: string;
-  /** Effective date, as the live site states it. Not a build timestamp. */
-  updated: string;
+  /**
+   * Which document this is. The version and effective date printed under the
+   * title come from `lib/legal/versions.ts` — the same constants the register
+   * form and the consent record send — so the page cannot state one version
+   * while acceptances are recorded against another.
+   */
+  doc: LegalDocId;
   /** Contents rows — must match the `LegalSection` ids, in order. */
   sections: TocItem[];
   children: ReactNode;
@@ -180,8 +196,15 @@ export function LegalPage({
           {title}
         </h1>
         <p className="m-0 max-w-[680px] text-mv-muted">{lede}</p>
+        {/* "Version 2026.09.16 · Effective September 16, 2026" (consent
+            contract §4), replacing the hardcoded "Last updated" date. */}
         <p className="mt-2 text-[13px] text-mv-muted">
-          Last updated: <strong className="font-semibold">{updated}</strong>
+          Version{" "}
+          <strong className="font-semibold">{LEGAL_DOCS[doc].version}</strong>
+          {" · "}Effective{" "}
+          <strong className="font-semibold">
+            {formatEffectiveDate(LEGAL_DOCS[doc].effectiveDate)}
+          </strong>
         </p>
 
         <div className="mt-6 grid grid-cols-[minmax(0,1fr)_300px] items-start gap-x-10 max-[1023px]:grid-cols-[minmax(0,1fr)]">

@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --test scripts/*.test.mjs",
+    "legal:check": "node scripts/legal-hash.mjs --check",
+    "legal:hash": "node scripts/legal-hash.mjs --write"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

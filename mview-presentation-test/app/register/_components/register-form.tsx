@@ -28,6 +28,7 @@ import {
 } from "@/app/_components/auth-shell";
 import { GoogleSignIn } from "@/app/_components/google-sign-in";
 import { INVITE_REDEEM_PARAM, normalizeInviteCode } from "@/lib/invite-code";
+import { LEGAL_DOCS } from "@/lib/legal/versions";
 import { PORTAL_HOME } from "@/lib/routes";
 import { PHONE_PLACEHOLDER, formatPhoneNumber } from "@/lib/phone";
 
@@ -871,27 +872,32 @@ export function RegisterForm({
           tab deliberately: those are exits, not detours.
         */}
         <div className="mb-3 mt-[2px]">
+          {/* THE VERSIONS ARE ON THE LABEL (consent contract §4). What the
+              visitor agrees to is a specific version of each document, and
+              `registerUser` records exactly these two versions as
+              `acceptedDocuments` — so the label, the pages and the record all
+              read `lib/legal/versions.ts` and cannot drift apart. */}
           <CheckRow {...register("terms")}>
             <strong className="font-bold text-mv-ink">
               I agree to the{" "}
               <Link
-                href="/terms-condition"
+                href={LEGAL_DOCS["MV-TOU"].path}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-mv-green-deep no-underline hover:underline"
               >
-                Terms of Use
+                {LEGAL_DOCS["MV-TOU"].title}
               </Link>{" "}
-              and{" "}
+              (v{LEGAL_DOCS["MV-TOU"].version}) and{" "}
               <Link
-                href="/privacy-policy"
+                href={LEGAL_DOCS["MV-PRIV"].path}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-mv-green-deep no-underline hover:underline"
               >
-                Privacy Policy
-              </Link>
-              .
+                {LEGAL_DOCS["MV-PRIV"].title}
+              </Link>{" "}
+              (v{LEGAL_DOCS["MV-PRIV"].version}).
             </strong>
             {errors.terms && (
               <span className="mt-1 block font-semibold text-[#b3261e]">

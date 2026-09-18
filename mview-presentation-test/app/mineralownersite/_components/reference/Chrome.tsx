@@ -37,6 +37,7 @@
  *    gas, Brent and propane as published by the EIA, each with its settlement
  *    date. A series that failed shows "n/a", never a last-known value.
  */
+import { CookieSettingsButton } from '@/app/_components/consent/cookie-settings-button';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -775,6 +776,16 @@ export default function Chrome(c: ChromeProps) {
               <button className="mi" onClick={() => { setMenu(false); c.open('identity'); }}>
                 <Icon id="mvi-audit" /> How this record was identified
               </button>
+              {/* COOKIE SETTINGS — the portal has no marketing footer, so this is
+                  where a member changes or withdraws cookie consent. Same
+                  `.mi` row as the button above. */}
+              <CookieSettingsButton
+                role="menuitem"
+                className="mi"
+                onOpen={() => setMenu(false)}
+              >
+                <Icon id="mvi-audit" /> Cookie settings
+              </CookieSettingsButton>
 
               {/* LOG OUT — last, behind its own rule. Bottom of the menu and
                   separated is where a signed-in product puts it, and it keeps

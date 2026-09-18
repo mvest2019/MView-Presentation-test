@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { CookieSettingsButton } from "@/app/_components/consent/cookie-settings-button";
+
 import { MobilePreview } from "./mobile-preview";
 import { PortalAvatar } from "./portal-avatar";
 import { PortalIcon } from "./portal-icon";
@@ -202,6 +204,17 @@ export function PortalProfileMenu() {
           </span>
         </div>
         <ViewTierSwitch onNavigate={() => setOpen(false)} />
+
+        {/* COOKIE SETTINGS. The portal has no marketing footer, so this is
+            where a signed-in member withdraws or changes cookie consent — the
+            contract requires that to be as easy as giving it. */}
+        <div className="v41-avsec border-t border-mv-line">
+          <CookieSettingsButton
+            role="menuitem"
+            onOpen={() => setOpen(false)}
+            className="cursor-pointer border-0 bg-transparent p-0 text-left text-[13px] font-semibold text-mv-green-deep hover:underline"
+          />
+        </div>
 
         {!inPreview && (
           <div className="v41-avsec border-t border-mv-line">

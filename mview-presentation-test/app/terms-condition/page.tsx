@@ -13,14 +13,29 @@ import { LegalContact } from "../_components/legal-contact";
  *
  * The 16 section ids are the live site's too, so any existing deep link into a
  * clause still resolves.
+ *
+ * ── THE 9/16 REWRITE (version 2026.09.16) ─────────────────────────────────
+ *
+ * Brought up to the live site's text as of commit 2085fb9 on
+ * `Mview-Production_V1` ("Update Privacy Policy and Terms & Conditions
+ * content", 2026-09-16): the account-creation arbitration notice in §1.1,
+ * Community Guidelines (§4.3), Automatic Renewal (§5.2), Cancellation (§5.4),
+ * and §13.5–13.7 (arbitration opt-out, coordinated proceedings, arbitrator
+ * authority). Everything else was already identical to the live text.
+ *
+ * Three deliberate differences from live, each marked where it sits:
+ * `support@` for the live text's `help@` (the site's standing substitution);
+ * the checkout tick-box specimen is disabled; and two `underline` classes are
+ * kept because they make a disclaimer conspicuous.
+ *
+ * THE VERSION LINE comes from `lib/legal/versions.ts` (MV-TOU). Any change to
+ * this file's text needs a version bump there and `npm run legal:hash` —
+ * `npm test` fails otherwise.
  */
 
 const TITLE = "Terms & Conditions";
 const LEDE =
   "Welcome to Mineral View. Please read these terms and conditions carefully before using our services. By accessing our website, creating an account, or purchasing any plan, you agree to be bound by these terms.";
-
-/** The live site's stated effective date, not a build timestamp. */
-const UPDATED = "March 18, 2026";
 
 export const metadata = legalMetadata(TITLE, LEDE);
 
@@ -45,7 +60,7 @@ const SECTIONS = [
 
 export default function TermsConditionsPage() {
   return (
-    <LegalPage title={TITLE} lede={LEDE} updated={UPDATED} sections={SECTIONS}>
+    <LegalPage title={TITLE} lede={LEDE} doc="MV-TOU" sections={SECTIONS}>
         <LegalSection
           id="introduction-acceptance"
           title="1. INTRODUCTION AND ACCEPTANCE OF TERMS"
@@ -71,6 +86,14 @@ export default function TermsConditionsPage() {
             (the &quot;Website&quot; or &quot;Platform&quot;), you are
             confirming that you have read, understood, and agreed to be
             bound by the totality of these Terms and Conditions.
+          </p>
+          <p>
+            By clicking &quot;Create account&quot;, you confirm that you
+            have read and agree to Mineral View&apos;s Terms &amp;
+            Conditions and Privacy Policy. These include a binding
+            arbitration agreement and a class action waiver in Section 13,
+            which affect how disputes between us are resolved and limit your
+            right to bring a claim in court or as part of a group.
           </p>
 
           <h3>
@@ -457,27 +480,70 @@ export default function TermsConditionsPage() {
           </ul>
 
           <h3>
-            3. Community Feature and Forum Interaction
+            3. Community Guidelines
           </h3>
           <p>
-            The Community is a platform for peer-to-peer communication.
+            The Community is a public forum. Anything you post can be read
+            by other users, indexed by search engines, and copied by others.
+          </p>
+          <p>
+            You agree not to post:
           </p>
 
           <ul>
             <li>
-              <strong>Third-Party Content:</strong> Information, advice, or
-              opinions shared within the forums are provided by users, not
-              Mineral View. We do not vet user contributions for accuracy or
-              legal compliance.
+              personal information about another individual — including
+              names, addresses, telephone numbers, or ownership details —
+              without their consent;
             </li>
             <li>
-              <strong>User Caution:</strong> You should never share
-              sensitive personal information or specific financial details
-              in the Community forum. Acting on advice found in the forum
-              without professional verification is done solely at your own
-              risk.
+              statements presented as fact about identifiable people or
+              companies that you know, or should know, to be untrue;
+            </li>
+            <li>
+              specific allegations of wrongdoing against a named operator,
+              purchaser, or individual;
+            </li>
+            <li>
+              confidential lease terms, division orders, or settlement
+              agreements you are not permitted to disclose;
+            </li>
+            <li>
+              your own account credentials, financial details, or the
+              specifics of your ownership interests;
+            </li>
+            <li>
+              advertising, solicitations, or offers to buy or sell mineral
+              interests, except in areas we designate;
+            </li>
+            <li>
+              content that is unlawful, harassing, threatening, or infringes
+              on another person&apos;s rights.
             </li>
           </ul>
+
+          <p>
+            <strong>Reporting.</strong> Use the Report button on any post,
+            or email{' '}
+            {/* support@, not the live text's help@ — this site's standing
+                substitution (Ryan, 2026-08-13; see `legal-contact.tsx`). */}
+            <a href="mailto:support@mineralview.com">
+              support@mineralview.com
+            </a>
+            . We review every report and may remove content or suspend
+            accounts.
+          </p>
+          <p>
+            {/* `underline` kept from the live markup: it is what makes this
+                disclaimer conspicuous, which is a legal property rather than
+                a styling one. */}
+            <strong className="underline">
+              Our role. Content in the Community is provided by users, not
+              by Mineral View. We do not verify its accuracy and it is not
+              advice. We are not obliged to monitor the Community, but we
+              may remove any content at our discretion.
+            </strong>
+          </p>
 
           <h3>
             4. Texas Interactive Maps (Leases & Wells)
@@ -539,28 +605,50 @@ export default function TermsConditionsPage() {
           </p>
 
           <h3>
-            2. Subscription Structures and Auto-Renewal
+            2. Automatic Renewal
           </h3>
           <p>
-            Mineral View offers various tiers of access through subscription
-            models.
+            Subscriptions to Mineral View renew automatically until you
+            cancel. Before you complete your purchase, we will show you
+            clearly and conspicuously that your subscription renews
+            automatically until cancelled, how often it renews (monthly or
+            annually), the amount charged on each renewal, the date of your
+            first renewal charge, and how to cancel.
           </p>
-
-          <ul>
-            <li>
-              <strong>Authorization to Charge:</strong> By subscribing, you
-              expressly authorize Mineral View to charge your provided
-              payment method <b>(Credit Card or PayPal)</b> at the beginning
-              of each billing cycle <strong>(monthly or annually)</strong>{' '}
-              until you cancel.
-            </li>
-            <li>
-              <strong>Price Adjustments:</strong> We reserve the right to
-              change subscription pricing; however, we will provide you with
-              at least 30 days&apos; notice before any price change takes
-              effect for your next renewal.
-            </li>
-          </ul>
+          <p>
+            You must separately acknowledge these renewal terms before
+            payment is taken. Acceptance of these Terms as a whole is not
+            sufficient. After purchase, we will email you an acknowledgment
+            containing the renewal terms and cancellation instructions in a
+            form you can keep.
+          </p>
+          <p>
+            <strong>Price changes.</strong> We will give you at least thirty
+            (30) days&apos; written notice before any change to your renewal
+            price takes effect. If you do not wish to accept the new price,
+            you may cancel before the renewal date.
+          </p>
+          <p>
+            <strong>Checkout tick box (never pre-ticked):</strong>
+          </p>
+          {/* A SPECIMEN of the checkout box, as the live page shows it — the
+              wording is the clause, the box an illustration. DISABLED here,
+              where the live page leaves it clickable: ticking a box inside the
+              terms records nothing and would only suggest that it had. */}
+          <div className="mb-3 flex items-start gap-3 rounded-[10px] border border-mv-line bg-mv-bg p-4">
+            <input
+              type="checkbox"
+              id="auto-renewal-acknowledgement"
+              disabled
+              className="mt-1 h-4 w-4 flex-shrink-0"
+            />
+            <label htmlFor="auto-renewal-acknowledgement">
+              I understand that my Mineral View subscription will renew
+              automatically at $[AMOUNT] every [month/year] beginning
+              [DATE], and will continue until I cancel. I can cancel at any
+              time from my account.
+            </label>
+          </div>
 
           <h3>
             3. The Mineral View Free Plan
@@ -593,32 +681,39 @@ export default function TermsConditionsPage() {
           </ul>
 
           <h3>
-            4. Cancellation and Termination
+            4. Cancellation
           </h3>
-
-          <ul>
-            <li>
-              <strong>User-Initiated Cancellation:</strong> You may cancel
-              your subscription at any time through the{' '}
-              <b>&quot;Manage Subscription Plan&quot;</b> section of your
-              user profile.
-            </li>
-            <li>
-              <strong>End of Term:</strong> Upon cancellation, you will
-              retain access to the paid features until the end of the
-              current billing cycle.
-            </li>
-            <li>
-              <strong>No Partial Refunds:</strong> Mineral View does not
-              provide prorated or partial refunds for the remaining days in
-              a subscription period.
-            </li>
-          </ul>
-
           <p>
-            If you have utilized all available data attempts or search
-            limits included in your current premium plan and require
-            additional access, you may contact us at any time.
+            You may cancel your subscription at any time, using the same
+            method you used to subscribe.
+          </p>
+          <p>
+            <strong>Online.</strong> Sign in and go to{' '}
+            <b>Manage Subscription Plan</b> in your profile. Cancellation
+            takes effect immediately. No telephone call, email, or
+            conversation with our team is required.
+          </p>
+          <p>
+            <strong>By telephone.</strong> If you subscribed by telephone,
+            you may also cancel by calling{' '}
+            <a href="tel:+18666468439">
+              (866) 646-8439
+            </a>
+            , or cancel online.
+          </p>
+          <p>
+            <strong>What happens next.</strong> You will keep access to paid
+            features until the end of your current billing period.
+          </p>
+          <p>
+            <strong className="underline">
+              We do not provide prorated refunds for the unused portion of a
+              billing period, except where required by law.
+            </strong>
+          </p>
+          <p>
+            <strong>Confirmation.</strong> We will email you confirming your
+            cancellation and the date your access ends.
           </p>
 
           <h3>
@@ -1364,6 +1459,79 @@ export default function TermsConditionsPage() {
             after such claim or cause of action arose. If a claim is not
             filed within this one-year period, it is forever barred, and you
             forfeit all rights to pursue that claim.
+          </p>
+
+          <h3>
+            5. Right to Opt Out of Arbitration
+          </h3>
+          <p>
+            You may choose not to be bound by the arbitration agreement in
+            Section 13.2 or the class action waiver in Section 13.3. To opt
+            out, send written notice within thirty (30) days of the date you
+            first accept these Terms, to{' '}
+            {/* support@, not the live text's help@ — this site's standing
+                substitution (Ryan, 2026-08-13). FLAGGED FOR COUNSEL: this is
+                a notice address for a legal election, so confirm it. */}
+            <a href="mailto:support@mineralview.com">
+              support@mineralview.com
+            </a>{' '}
+            or to Mineral View, LLC, Attn: Legal Department, 7301 Ranch Road
+            620 N, Suite 155-194, Austin, TX 78726-4537.
+          </p>
+          <p>
+            Your notice must include your full name, the email address
+            associated with your account, and a clear statement that you
+            wish to opt out of arbitration. Opting out will not affect any
+            other provision of these Terms, and will not affect your access
+            to the Platform. If you opt out, disputes will be resolved in
+            the state or federal courts located in Travis County, Texas. If
+            you do not opt out within thirty (30) days, you will be bound by
+            Sections 13.2 and 13.3.
+          </p>
+
+          <h3>
+            6. Coordinated Arbitration Proceedings
+          </h3>
+          <p>
+            If twenty-five (25) or more demands for arbitration raising
+            substantially similar claims are filed against Mineral View by,
+            or with the assistance of, the same law firm or a coordinated
+            group of counsel within a ninety (90) day period, those demands
+            will be administered in sequential batches of no more than fifty
+            (50). Mineral View and counsel for the claimants will each
+            select twenty-five (25) demands for each batch, and a single
+            arbitrator will be appointed for that batch.
+          </p>
+          <p>
+            Only the demands in the current batch will be filed, and
+            arbitration fees will be assessed only for that batch. Following
+            resolution of the first batch, the parties will participate in
+            good-faith mediation of the remaining demands before the next
+            batch proceeds. Any applicable statute of limitations will be
+            tolled for all demands in the group from the date the first
+            demand is submitted until that demand&apos;s batch is resolved.
+            This provision does not limit any individual claimant&apos;s
+            right to have their claim heard in arbitration.
+          </p>
+
+          <h3>
+            7. Authority of the Arbitrator
+          </h3>
+          <p>
+            The arbitrator, and not any federal, state, or local court or
+            agency, has exclusive authority to resolve any dispute relating
+            to the interpretation, applicability, enforceability,
+            unconscionability, or formation of this arbitration agreement,
+            including any claim that all or any part of it is void or
+            voidable. The arbitrator may award any relief that a court could
+            award on an individual basis, and may not preside over any
+            class, collective, consolidated, or representative proceeding,
+            except as provided in Section 13.6. Notwithstanding the above, a
+            court of competent jurisdiction retains exclusive authority to
+            determine the enforceability of the class action waiver in
+            Section 13.3. If that waiver is found unenforceable as to any
+            claim, that claim alone will be severed from arbitration and
+            proceed in court.
           </p>
         </LegalSection>
 

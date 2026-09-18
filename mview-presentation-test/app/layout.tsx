@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { Lexend_Deca } from "next/font/google";
+import Script from "next/script";
 
+import { ConsentManager } from "./_components/consent/consent-manager";
+import { CONSENT_DEFAULT_SCRIPT } from "./_components/consent/consent-mode";
 import { HideInPortal } from "./_components/hide-in-portal";
 import { ScrollToTopOnNavigate } from "./_components/scroll-to-top";
 import { SiteFooter } from "./_components/site-footer";
@@ -47,6 +50,17 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       className={`${lexendDeca.variable} h-full scroll-smooth antialiased`}
     >
       <body className="flex min-h-full flex-col bg-mv-bg font-sans text-[15px] leading-[1.55] text-mv-ink max-[767px]:text-[14px]">
+        {/* GOOGLE CONSENT MODE v2 DEFAULTS — everything denied until the
+            visitor chooses. `beforeInteractive` puts it in the <head> ahead of
+            every other script, which is the whole point: any tag manager added
+            later must find consent already defaulted to denied. No tracker
+            runs on this site today; see `consent/consent-mode.ts` for how to
+            add one behind this. */}
+        <Script
+          id="mv-consent-default"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{ __html: CONSENT_DEFAULT_SCRIPT }}
+        />
         {/* Renders nothing — it only resets the scroll position after a route
             change, because Next 16 otherwise CARRIES IT OVER to the new page.
             See the component for the doc quote and the two cases it skips. */}
@@ -66,6 +80,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             Field validation stays inline against the field it is about, where a
             screen reader meets it in the form's own tab order. */}
         <Toaster />
+        {/* The cookie popup. Outside `HideInPortal` on purpose: a visitor
+            whose first page is inside the portal must still be asked once. */}
+        <ConsentManager memberId={user?.id ?? null} />
       </body>
     </html>
   );

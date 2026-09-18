@@ -126,6 +126,22 @@ const nextConfig: NextConfig = {
       process.env.MINERALVIEW_API_BASE_URL ||
       "https://mview-dev-api.mineralview.com",
 
+    // Consent records — mineralview-api's `POST /legal/consent` (consent
+    // contract §5). CARRIES THE `/api/v1` PREFIX, like AUTH_API_URL, because it
+    // is the same service: the client appends `/legal/consent` and nothing
+    // else. Defaults to AUTH_API_URL so the two cannot point at different
+    // environments by accident.
+    //
+    // `NEXT_PUBLIC_` ON PURPOSE. The popup posts from the BROWSER so the API
+    // records the visitor's own IP (first hop of x-forwarded-for), not
+    // Vercel's. The endpoint is public, unauthenticated and CORS-enabled by
+    // design, so the host being visible in the bundle costs nothing — the same
+    // trade NEXT_PUBLIC_CLAIM_API_BASE_URL makes. No key or token belongs here.
+    NEXT_PUBLIC_MV_LEGAL_API_BASE:
+      process.env.NEXT_PUBLIC_MV_LEGAL_API_BASE ||
+      process.env.AUTH_API_URL ||
+      "https://mview-dev-api.mineralview.com/api/v1",
+
     /*
      * WHERE THIS DEPLOYMENT LIVES. Two jobs:
      *

@@ -2,6 +2,7 @@ import "server-only";
 
 import { headers } from "next/headers";
 
+import { legalDocRef } from "./legal/versions";
 import { getVisitorId } from "./visitor-id";
 
 /**
@@ -415,6 +416,21 @@ export async function registerUser(input: RegisterInput): Promise<AuthResult> {
       subscriptionid: FREE_SUBSCRIPTION_ID,
       // `tnc`, not `terms` — the API's own field name. See `acceptedTerms`.
       tnc: input.acceptedTerms,
+      /*
+       * WHICH TERMS, EXACTLY (consent contract §5). `tnc` says the box was
+       * ticked; this says what it was ticked against — the MV-TOU and MV-PRIV
+       * versions, and the sha256 of the text, that the form showed beside the
+       * checkbox. Both come from `lib/legal/versions.ts`, the same constants
+       * the form and the legal pages read, so they cannot disagree.
+       *
+       * Sent only when `tnc` is true: a list of accepted documents alongside
+       * "not accepted" would be a contradiction for the server to resolve.
+       * An API that does not read the field yet ignores it (as it did
+       * `invite_code`); one that does records a `terms_acceptance` row.
+       */
+      ...(input.acceptedTerms
+        ? { acceptedDocuments: [legalDocRef("MV-TOU"), legalDocRef("MV-PRIV")] }
+        : {}),
       /* Spread so the key is ABSENT rather than null when there is no code —
          see `inviteCode` on `RegisterInput` for why the distinction matters to
          whoever implements the server side. */

@@ -154,8 +154,56 @@ function endSessionAndRedirect(request: NextRequest): NextResponse {
   return response;
 }
 
+/**
+ * THE ANONYMOUS VISITOR ID — `guestUserID`, minted here if the browser has none.
+ *
+ * `lib/visitor-id.ts`, `lib/claim-search/api.ts` and the article pages all
+ * said this proxy set it; it did not, so a first visit read an empty id and
+ * the claim search fell back to a localStorage copy. It is minted now, and the
+ * consent popup files its record under it (consent contract §1: the visitor id
+ * used for the consent record is STRICTLY NECESSARY — it is how a withdrawal is
+ * matched to the grant it withdraws).
+ *
+ * Same name and 30-day lifetime as the live site's client-minted cookie, so a
+ * visitor keeps one identity across both apps. NOT httpOnly: the claim search
+ * and the consent popup read it in the browser. It identifies a browser, not a
+ * person, and carries nothing else.
+ */
+const GUEST_COOKIE = "guestUserID";
+const GUEST_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
+
+function withVisitorId(request: NextRequest, response: NextResponse): NextResponse {
+  if (request.cookies.get(GUEST_COOKIE)?.value) return response;
+  response.cookies.set(GUEST_COOKIE, crypto.randomUUID(), {
+    path: "/",
+    maxAge: GUEST_COOKIE_MAX_AGE,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    httpOnly: false,
+  });
+  return response;
+}
+
 export async function proxy(request: NextRequest) {
+  return withVisitorId(request, await gate(request));
+}
+
+function isAuthGated(pathname: string): boolean {
+  return (
+    pathname === PORTAL_HOME ||
+    pathname.startsWith(`${PORTAL_HOME}/`) ||
+    pathname === "/login" ||
+    pathname === "/register"
+  );
+}
+
+async function gate(request: NextRequest): Promise<NextResponse> {
   const { pathname, search, searchParams } = request.nextUrl;
+
+  /* Everything outside the auth boundary only needs the visitor id, which
+     `proxy` adds on the way out. */
+  if (!isAuthGated(pathname)) return NextResponse.next();
+
   const signedIn = hasSession(request);
 
   const inPortal =
@@ -195,8 +243,15 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // `:path*` is zero or more, so the bare `/mineralownersite` is matched too.
-  // Anchored to the path start — `/blog/mineralownersite` is not this gate's
-  // business, and neither are the marketing routes or static assets.
-  matcher: ["/mineralownersite/:path*", "/login", "/register"],
+  // EVERY PAGE, because every page needs the visitor id minted — not only the
+  // three the auth gate cares about. Which paths are GATED is decided by
+  // `isAuthGated` in code now, not by this list; everything else passes
+  // straight through `gate` untouched.
+  //
+  // Excluded: Next's own static and image routes, the API route handlers, and
+  // any path ending in a file extension (public assets, the map's static
+  // HTML) — none of them render a page, so none needs the cookie.
+  matcher: [
+    "/((?!_next/static|_next/image|api/|favicon\\.ico|.*\\.[a-zA-Z0-9]+$).*)",
+  ],
 };

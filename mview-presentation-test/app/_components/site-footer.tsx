@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import { CookieSettingsButton } from "./consent/cookie-settings-button";
 import {
   footerColumns,
   footerCompanyLinksBottom,
@@ -84,6 +85,15 @@ export function SiteFooter() {
                 {link.label}
               </Link>
             ))}
+
+            {/* Reopens the cookie popup. On every marketing page because
+                withdrawing consent has to be as easy as giving it; the portal,
+                which has no footer, carries the same control in its account
+                menu. A client island — the footer itself stays a server
+                component. */}
+            <CookieSettingsButton
+              className={`${footerLink} cursor-pointer border-0 bg-transparent p-0 text-left`}
+            />
           </div>
         </div>
 
