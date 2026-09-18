@@ -4,17 +4,32 @@ import { ChevronDown, LogOut, UserRound } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { PortalAvatar } from "@/app/mineralownersite/_components/portal-avatar";
 import { signOutAction } from "./auth-actions";
 import type { SessionUser } from "@/lib/session";
 
 /**
- * The signed-in cluster in the header: the visitor's name, and Sign out.
+ * The signed-in cluster in the header: the visitor's avatar and name, and
+ * Sign out.
  *
  * The design's own header only swaps its two CTAs for "Go to your portal →" when
  * signed in (`data-auth="in"` in `shell/chunk-005.html`) — it shows no name and
  * offers no way out, because the prototype hands off to the owner portal at that
  * point. Both were asked for here, so this follows the live site's shape
  * instead: the name with a small menu under it.
+ *
+ * ── THE AVATAR, WHERE A GENERIC PERSON GLYPH USED TO STAND ──
+ *
+ * The same identity the portal bar shows (user, 2026-09-18: "here also add
+ * profile"): the member's picture off the SESSION — the uploaded photo's proxy
+ * URL once they have opened My Profile, or their sign-in picture — else the
+ * first name's first letter in the mint circle, else the old glyph for a
+ * session with no name at all. `PortalAvatar` is imported from the portal tree
+ * DELIBERATELY despite the marketing/portal split: the split protects each
+ * side's type scale and geometry, and that component carries neither — its
+ * tile class is passed in by the caller — while its dead-URL fallback (the
+ * cookie can outlive the photo behind it) is exactly the part that must not
+ * be re-implemented to drift.
  *
  * A CLICK menu, not the hover panels Explore and Learn use. Signing out is
  * destructive enough that it should not sit under a pointer that happens to
@@ -54,6 +69,14 @@ export function AccountMenu({ user }: { user: SessionUser }) {
     .join(" ")
     .trim();
 
+  /* the avatar's letter — from the REAL first name only, never from the
+     "there" greeting fallback; taken whole so a surrogate-pair glyph is not
+     split into a broken half */
+  const letter = user.firstName?.trim()
+    ? (Array.from(user.firstName.trim())[0]?.toUpperCase() ?? "")
+    : "";
+  const image = user.profileImage ?? null;
+
   function signOut() {
     startTransition(async () => {
       await signOutAction();
@@ -73,7 +96,17 @@ export function AccountMenu({ user }: { user: SessionUser }) {
         aria-haspopup="menu"
         className="flex cursor-pointer items-center gap-[6px] rounded-lg border-0 bg-transparent px-1 py-1 font-sans text-sm font-semibold text-mv-slate hover:text-mv-green-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
       >
-        <UserRound aria-hidden="true" className="h-[17px] w-[17px]" />
+        {image || letter ? (
+          <PortalAvatar
+            image={image}
+            initials={letter}
+            className="grid size-6 flex-none place-items-center overflow-hidden rounded-full bg-mv-mint text-[11px] font-extrabold text-mv-green-ink"
+          />
+        ) : (
+          /* a session with no picture and no name keeps the old glyph — a
+             blank mint circle would read as a rendering fault */
+          <UserRound aria-hidden="true" className="h-[17px] w-[17px]" />
+        )}
         <span className="max-[767px]:hidden">Hi, {firstName}</span>
         <ChevronDown aria-hidden="true" className="h-4 w-4" />
       </button>
