@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import type { ReactNode } from "react";
 import Link from "next/link";
 
 import { alertCounts } from "../(portal)/alerts/_lib/alert-counts";
@@ -106,10 +107,18 @@ const TOP_LOGO = {
  *   copy of one action.
  */
 export function PortalTopNav({
-  pageName,
+  pinnedBar,
   onOpenDrawer,
 }: {
-  pageName: string;
+  /**
+   * The pinned value group, rendered INSIDE this row rather than as a bar
+   * beneath it. See `portal.onebar.css` — this is the one structural half
+   * of that sheet, and the reason `#mvPinBar` is no longer sticky.
+   *
+   * It arrives as a node because it is a SERVER component reading its own
+   * data, and this bar is a client component.
+   */
+  pinnedBar: ReactNode;
   onOpenDrawer: () => void;
 }) {
   const { funnelState } = usePortalState();
@@ -167,11 +176,15 @@ export function PortalTopNav({
         />
       </Link>
 
-      <span className="pagename">{pageName}</span>
 
       <span className="mv-demochip" title={demoDisclosure.ribbon}>
         {demoDisclosure.chip}
       </span>
+
+      {/* BEFORE THE SPRING, matching `Chrome`'s order in the reference
+          group. The pinned group is the elastic item in this row now, which
+          is why `portal.onebar.css` retires the spacer above 1024px. */}
+      {pinnedBar}
 
       <span className="spacer" />
 

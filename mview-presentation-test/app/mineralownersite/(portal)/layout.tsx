@@ -3,11 +3,15 @@ import type { Metadata } from "next";
 import { PinnedValueBar } from "../_components/pinned-value-bar";
 import { PortalFunnelBar } from "../_components/portal-funnel-bar";
 import { PortalSessionProvider } from "../_components/portal-session";
+import { SessionIdentitySync } from "../_components/session-identity-sync";
 import { PortalShell } from "../_components/portal-shell";
 import { PortalStateProvider } from "../_components/portal-state-provider";
 import { demoDisclosure } from "../_lib/portal-demo-data";
 import { getSessionUser } from "@/lib/session";
 import "../portal.css";
+/* AFTER `portal.css`, AND UNLAYERED LIKE IT — that is what lets it override
+   the `.app-top` and `#mvPinBar` blocks. See the sheet's own header. */
+import "../portal.onebar.css";
 
 /**
  * THE MINERAL OWNER PORTAL — `/mineralownersite/*`.
@@ -19,10 +23,16 @@ import "../portal.css";
  * `portal.css` for the design system. Nothing outside imports from here, and
  * the only thing this tree reaches out for is the shared logo config.
  *
- * ADDING A MODULE means adding a folder — `alerts/page.tsx`, `leases/page.tsx` —
- * and giving that row its `href` in `_lib/portal-nav.ts`. The shell, both
- * pinned bars, the sidebar, the drawer and the tab bar all come from this
- * layout, so no new module restructures anything or re-implements chrome.
+ * WHAT IS STILL IN THIS GROUP: the claim flow and Settings. Everything else —
+ * the Dashboard, the Weekly Report, Alerts, Activities, Production, the Map and
+ * now My Leases — renders through `Portal` in `(reference)`, so they all wear
+ * one header from one file. A new module belongs there unless it has a reason
+ * not to; see the note at the top of `(reference)/layout.tsx`.
+ *
+ * ADDING A MODULE HERE means adding a folder and giving that row its `href` in
+ * `_lib/portal-nav.ts`. The shell, both pinned bars, the sidebar, the drawer
+ * and the tab bar all come from this layout, so no new module restructures
+ * anything or re-implements chrome.
  *
  * SEO. The route stays `mineralownersite` because it is descriptive and stable,
  * as asked. Every page under it is `noindex, nofollow`: this is a signed-in
@@ -31,21 +41,21 @@ import "../portal.css";
  * covers the whole subtree, so a module added later inherits it and cannot
  * accidentally ship indexable.
  *
- * WHAT THIS LAYOUT IS NOT: an auth boundary. The portal is reachable by anyone
- * with the URL, and the demo record it prints is fictional, so nothing private
- * is exposed today. The moment it shows a real owner's figures it needs a
- * server-side check here and an API that authorises each read — see the note at
- * the foot of `_lib/portal-state.ts` and the warning in `lib/session.ts`.
+ * WHAT THIS LAYOUT IS STILL NOT: the auth boundary. The portal is gated now —
+ * a request with no `mv_user` session is redirected to `/login` — but that
+ * gate lives in `proxy.ts` at the app root, not here: the proxy runs on every
+ * request, where a layout only re-runs when the server renders it, so an
+ * expired cookie is caught even on a client navigation between portal routes.
+ * The cookie it checks is unsigned (see `lib/session.ts`), so the gate keeps
+ * honest visitors out; per-read authorisation still belongs to the API.
  *
  * IT DOES READ THE SESSION, and reading is not gating. `getSessionUser()` is
  * awaited here so the chrome can print the member's own name, email and picture
  * instead of the demo persona's, and the value goes into
  * `PortalSessionProvider` because the cookie is httpOnly and the shell is a
- * client component. NOTHING IS REDIRECTED ON A NULL — a signed-out visitor still
- * gets the whole portal, as before, with the demo identity in the account menu.
- * Adding a redirect here would be the auth boundary this paragraph says the
- * layout is not, and it needs the API-side authorisation described above rather
- * than a cookie check.
+ * client component. A null still renders rather than redirecting — the proxy
+ * means one should never reach here, but a layout that 500'd or bounced on a
+ * race would be worse than one that quietly shows the demo identity.
  *
  * The marketing header and footer from the root layout still wrap this, so a
  * visitor keeps one way back to the public site. The portal's own sidebar foot
@@ -118,6 +128,12 @@ export default async function MineralOwnerPortalLayout({
           changing fact. The same provider wraps the reference group's shell —
           see `portal-session.tsx`. */}
       <PortalSessionProvider user={user}>
+        {/* the cookie can lag the record (a fresh login, a photo uploaded on
+            another device) — this heals the header on WHATEVER page loads
+            first, not only on My Profile. Renders nothing. */}
+        {user ? (
+          <SessionIdentitySync sessionHasPhoto={Boolean(user.profileImage)} />
+        ) : null}
         <PortalStateProvider>{shell}</PortalStateProvider>
       </PortalSessionProvider>
 

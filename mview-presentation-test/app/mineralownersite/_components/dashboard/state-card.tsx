@@ -90,7 +90,7 @@ export function StateCard() {
         and mailed. <span className="hide-u">Nothing on this screen is a preview. </span>
         When the trial ends, one lease stays live and the rest go on hold.
         <StateCardRow
-          primary="Upgrade to Premium — $99.95/mo"
+          primary="Upgrade to Premium — $99.99/mo"
           secondary="See everything you have →"
         />
       </div>

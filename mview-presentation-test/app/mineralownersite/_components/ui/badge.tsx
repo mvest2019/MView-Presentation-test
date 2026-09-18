@@ -9,6 +9,14 @@ import type { ReactNode } from "react";
  *
  *   mint        good / live / ready — a producing lease, a ready statement
  *   slate       neutral state — inactive, archived, "illustrative"
+ *   quiet       A CARD'S OWN FOOTNOTE — the scope or sort order printed beside
+ *               a card heading: "most notable first", "imagery from Esri",
+ *               "volumes allocated · money split". These are not states and
+ *               they are not signals; they qualify the card they sit on. They
+ *               were `slate`, whose grey fill made them the one filled object
+ *               on reports where every tile, stat and fact is an outlined card
+ *               — so a footnote read louder than the figures it qualified.
+ *               Outlined and muted, it annotates without competing.
  *   estimate    ⚠ THE HONESTY LABEL. Amber, and it appears beside every
  *               forward-looking figure on the page: "Estimate — not an
  *               appraisal". Never used decoratively.
@@ -22,11 +30,18 @@ import type { ReactNode } from "react";
  * `style="font-size:9.5px"` attributes on individual chips.
  */
 
-export type BadgeTone = "mint" | "slate" | "estimate" | "blue" | "flag";
+export type BadgeTone =
+  | "mint"
+  | "slate"
+  | "quiet"
+  | "estimate"
+  | "blue"
+  | "flag";
 
 const TONES: Record<BadgeTone, string> = {
   mint: "rounded-full bg-mv-mint text-mv-green-ink",
   slate: "rounded-full bg-mv-portal-wash text-mv-slate",
+  quiet: "rounded-full border border-mv-line bg-mv-card text-mv-muted",
   estimate: "rounded-full bg-mv-amber-bg text-mv-amber",
   blue: "rounded-full bg-mv-blue-bg text-mv-blue",
   flag: "rounded-md bg-mv-amber-bg text-mv-amber whitespace-nowrap",

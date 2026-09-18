@@ -106,6 +106,80 @@ export interface OwnerSelection {
  * import and every request reads the result.
  */
 const FIXTURE = americanize(raw as unknown as Payload);
+repairForecastNets(FIXTURE.forecast);
+
+/**
+ * A FILED MONTH'S NET CANNOT EQUAL ITS GROSS WHILE A REMOVAL IS FILED AGAINST
+ * IT — and on a handful of months the service says exactly that.
+ *
+ * Measured on this record (and confirmed against the live Mongo by QA):
+ * lease 02_290271 @ 202606 arrives `gas_gross 77,818 · gas_net 77,818 ·
+ * removed 3,357`, while the disposition filing itself says 3,357 MCF of that
+ * month never reached the sales meter — so the true net is gross − removed
+ * (the DB's own figure, 74,464, differs only by the filing's sub-MCF
+ * rounding). The same shape sits on ~15 portfolio months (202606, 202604,
+ * 202407, 201911–202011). "After removal" is the measure a royalty is read
+ * against, so an unreduced net is the one figure on the page that overstates
+ * what the reader is paid on.
+ *
+ * REPAIRED AT THE SEAM, for both sources: the committed capture (above) and
+ * the live `/production/forecast` response (in `buildMemberPayload`), because
+ * both carry it — it is the service's own join that drops the deduction on
+ * those months, and this module is the one place that knows where a figure
+ * comes from. `gas_share` is `gas_net × interest` on every clean month, so it
+ * is re-derived from the repaired net; the portfolio month's share comes down
+ * by the sum of its leases' corrections, which is the same identity the clean
+ * months already satisfy.
+ *
+ * NARROW ON PURPOSE: only a FILED month, only where `removed > 0`, and only
+ * where net still equals gross — a month the service already reduced is left
+ * exactly as it answered.
+ */
+function repairForecastNets(f: Payload['forecast']): void {
+  /* per cycle, how much owner share the lease repairs removed */
+  const shareDelta = new Map<string, number>();
+  for (const l of f.leases) {
+    for (const m of l.months) {
+      if (m.forecast || m.removed == null || !(m.removed > 0)) continue;
+      if (m.gas_net !== m.gas_gross) continue;
+      m.gas_net = Math.max(0, m.gas_gross - m.removed);
+      const before = m.gas_share;
+      m.gas_share = m.gas_net * l.interest;
+      shareDelta.set(m.cycle, (shareDelta.get(m.cycle) ?? 0) + (before - m.gas_share));
+    }
+  }
+  for (const m of f.months) {
+    if (m.forecast || m.removed == null || !(m.removed > 0)) continue;
+    if (m.gas_net !== m.gas_gross) continue;
+    m.gas_net = Math.max(0, m.gas_gross - m.removed);
+    m.gas_share = Math.max(0, m.gas_share - (shareDelta.get(m.cycle) ?? 0));
+  }
+}
+
+/**
+ * THE ONE RECORD THE NOT-CLAIMED PREVIEW IS BUILT FROM, for every reader.
+ *
+ * `sampleize` rewrites a payload into a sample of itself, and it used to be
+ * handed the READER'S OWN snapshot. Anonymised and scaled, so nothing of theirs
+ * was published — but it meant the preview was a different record for every
+ * visitor: different lease count, different counties, different volumes, and
+ * for a member who had claimed something it was visibly their own portfolio
+ * wearing invented names. "This is what your inbox looks like once you claim"
+ * is a promise about the PRODUCT, and it cannot be made from the record of
+ * somebody who has not claimed one.
+ *
+ * So the preview is drawn from the capture instead: one record, ten leases, one
+ * county, a full timeline and every drawer key — the same shop window for
+ * everybody, and the one the copy was written against.
+ *
+ * SERVER ONLY, DELIBERATELY. This module imports 2 MB of JSON. `Portal` is a
+ * client component, so it fetches this through `/api/portfolio/sample` rather
+ * than importing it — an import would put the whole capture in the browser
+ * bundle of every portal route, claimed readers included.
+ */
+export function sampleFixture(): Payload {
+  return FIXTURE;
+}
 
 /** what a caller is willing to wait for */
 export interface PayloadOptions {
@@ -297,13 +371,20 @@ export async function currentMemberTarget(): Promise<
  * cards open, so Production & Forecast is live for a signed-in member and the
  * capture is not read for it at all.
  *
- * WHAT THIS STILL DOES NOT SERVE, and why the capture does. `my_leases` has no
- * endpoint at all, and `timeline` and `rings` are the owner-keyed half of the
- * API rather than this one. None of the three is read by the Dashboard, the
- * Weekly Report or Production & Forecast — they belong to My Leases and
- * Activities, which are outside this work — so they are left exactly as they
- * were rather than being quietly re-pointed. See `.env.example` for what that
- * means for those routes.
+ * ACTIVITY IS LIVE FOR A MEMBER TOO. `timeline`, `rings`, `activities` and
+ * `series` are the owner-keyed half of the API (`OWNER-ALERTS-ACTIVITY-API.md`
+ * §9-§11), and they used to be pinned to the capture here — a signed-in
+ * member's Activities page showed the sample owner's 893 events under their
+ * own name, which is the defect sheet's #3 and #7. The owner identity those
+ * four reads need is exactly what `/dashboard` resolves (`dash.owner`), so
+ * they ride the second round beside the drawers: `fetchOwnerLiveBlocks`
+ * already fetches in the contract's order (`/alerts` alone to warm the
+ * snapshot, then the three activity reads together) and a failure THROWS,
+ * like `/weekly`'s does — patching Activities with the capture would put the
+ * sample owner's feed under this member's name and say nothing.
+ *
+ * WHAT THIS STILL DOES NOT SERVE, and why the capture does: `my_leases` has
+ * no endpoint at all. See `.env.example` for what that means for that route.
  */
 async function buildMemberPayload(base: string, member: string): Promise<Payload> {
   /* `/dashboard` is the long read — 648 KB, eight seconds cold — so `/weekly`
@@ -347,6 +428,10 @@ async function buildMemberPayload(base: string, member: string): Promise<Payload
       return null;
     }),
   ]);
+
+  /* the same net repair the capture gets at module load — see the note on
+     `repairForecastNets`: the live service carries the identical fault */
+  repairForecastNets(forecast);
 
   /* THE CURRENT ISSUE IS DROPPED, and that is the whole of the mapping.
      `/weekly/history` returns the issue this report IS alongside the ones
@@ -402,9 +487,19 @@ async function buildMemberPayload(base: string, member: string): Promise<Payload
      is the fourth insight ("Removed before the sales meter"); the card in the
      reference that reads "What this is →" is `pf_blind`. Serving one and not
      the other eleven would leave eleven dead controls. */
-  const [served, pfServed] = await Promise.all([
+  const [served, pfServed, live] = await Promise.all([
     fetchDrawers(base, member, dash.owner.ownername, flatKeys),
     fetchForecastDrawers(base, member, forecast.drawer_keys),
+    /* THE OWNER-KEYED ACTIVITY BLOCKS, for the owner `/dashboard` resolved.
+       `num` and `dist` ride along where the dashboard carries them — §2 rule 2:
+       an owner number is a county appraisal key and only pins the identity
+       together with the name. The first read on a cold owner is 23-28 seconds;
+       `owner-api.ts` already carries the contract's 60-second deadline. */
+    fetchOwnerLiveBlocks(base, {
+      owner: dash.owner.ownername,
+      num: dash.owner.ownernumber ?? null,
+      dist: dash.owner.districtcode ?? null,
+    }),
   ]);
 
   return {
@@ -416,12 +511,9 @@ async function buildMemberPayload(base: string, member: string): Promise<Payload
     alerts: { ...dash.alerts, ledger: dash.alerts.ledger ?? EMPTY_LEDGER },
     weekly: { ...weekly, archive },
     nearby: NO_NEARBY,
-    activities: {
-      ...dash.activities,
-      ...ACTIVITY_GAPS,
-      nearby: trimNearby(dash.activities.nearby),
-      counts: { ...dash.activities.counts, production: dash.activities.counts.production ?? 0 },
-    },
+    /* the four Activity blocks come from the owner-keyed API — one snapshot,
+       the same one the anonymous owner path reads (see the header note) */
+    activities: { ...live.activities, nearby: trimNearby(live.activities.nearby) },
     drawers: {
       ...served,
       /* the twelve Production & Forecast panels, from their own endpoint */
@@ -432,8 +524,11 @@ async function buildMemberPayload(base: string, member: string): Promise<Payload
          404s: filed-<YYYYMM>, handover-<lease>, trend-<lease> */
       ...withAlertDrawers({}, dash.alerts.items),
     },
-    timeline: FIXTURE.timeline,
-    rings: FIXTURE.rings,
+    timeline: live.timeline,
+    rings: live.rings,
+    /* `series_months`, lifted out of `/activity/summary` by `owner-api.ts` —
+       the only source for "Your own filed months" the contract names */
+    series: live.series,
     /* THE ASSIGNMENT IS THE CONTRACT TEST — `ForecastResponse` is
        `ForecastPayload` plus the service's three self-report fields, so a
        renamed or newly-nullable field stops `tsc` here rather than reaching
@@ -484,12 +579,6 @@ const OWNER_GAPS = {
   districtcode: null,
   identities_matched: 0,
 } satisfies Partial<Payload['owner']>;
-
-const ACTIVITY_GAPS = {
-  kpis_mine: [],
-  kpis_nearby: [],
-  production: [],
-} satisfies Partial<Payload['activities']>;
 
 const EMPTY_LEDGER: Payload['alerts']['ledger'] = {
   leases: 0, counties: 0, adjacent_leases: 0, standing_permits: 0,
@@ -691,6 +780,42 @@ function withAlertDrawers(
     };
   }
   return out;
+}
+
+/**
+ * THE NOT-CLAIMED PREVIEW'S BASE RECORD — one record, the same for everybody.
+ *
+ * WHY THIS EXISTS. `sampleize` rewrites a payload into a sample of itself, and
+ * until now the payload it rewrote was the READER'S OWN — whichever record the
+ * page had loaded for that member. It renames and it scales, but it maps over
+ * the live arrays, so the shape underneath stayed the reader's: a member with
+ * ten leases previewed ten, a member with 1,555 previewed 1,555, and every
+ * figure was that member's own multiplied by a thousand. Two not-claimed
+ * readers therefore saw two different products, and the "sample" was a
+ * derivative of private data rather than a fixed illustration. Defect sheet
+ * rows 51 and 54.
+ *
+ * WHAT IT RETURNS. The committed capture, and nothing else — no session read,
+ * no `member_id`, no live blocks, no owner from the query string. `FIXTURE` is
+ * a constant in the bundle, so the preview cannot vary by user, by request or
+ * by what the upstream service is doing; a second reader gets byte-identical
+ * content.
+ *
+ * WHY THE CAPTURE RATHER THAN A HAND-WRITTEN RECORD. `Payload` is forty-odd
+ * blocks and every surface under the shell reads some of them; a literal would
+ * be thousands of lines to maintain and would drift out of the type the moment
+ * the contract moved. The capture is already static, already committed,
+ * already type-checked against `Payload`, and is already what this app serves
+ * when no API is configured. `sampleize` then renames and scales it exactly as
+ * before, so the preview looks the way it always did — it simply no longer
+ * looks different to each reader.
+ *
+ * IT IS NOT A CLAIMED READER'S PATH. Nothing here is reachable from the
+ * claimed states: `Portal` asks for this only while the funnel is `unclaimed`,
+ * and a claimed reader's own payload is untouched.
+ */
+export async function getSamplePayload(): Promise<Payload> {
+  return FIXTURE;
 }
 
 /** the reference's `selectionFrom(url)`, reading the same four parameters */

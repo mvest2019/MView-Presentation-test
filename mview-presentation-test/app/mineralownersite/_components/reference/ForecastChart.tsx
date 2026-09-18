@@ -46,14 +46,13 @@ const B = 246;
 /**
  * GAS IS GOLDEN AND OIL IS GREEN, on this chart and on every figure beside it.
  *
- * The two were the other way round here while the gauge keys
- * (`.pf2-gk.gas` / `.pf2-gk.oil`) and the year columns
- * (`.pf2-yrcol i.gas` / `i.oil`) already read gas-golden and oil-green — so
- * the same product wore one colour in the chart and the other in the card
- * above it. These four constants, the oil axis labels below and the value
- * colours in the stylesheet are now one scheme: golden `#b8892f` for gas,
- * `--green-deep` `#2e8f6d` for oil, each with the lighter tint its dashed
- * projected half is drawn in.
+ * QA settled the pair the second time around — the sheet's hex labels read
+ * "#b8892F: Oil · #2E8F6D: Gas", but the retest asked for the opposite and
+ * final assignment: OIL is the green `#2e8f6d`, GAS is the golden `#b8892f`.
+ * These four constants, the gauge strokes, the year columns, the legend
+ * swatches, the scorecard tints in the stylesheet and the drawer charts
+ * (`chart.ts` / `LineChart`) are all this one scheme, each product with the
+ * lighter tint its dashed projected half is drawn in.
  *
  * `VAL` is untouched: the money measure is neither product, and it is drawn
  * in blue precisely so it cannot be read as one of them.
@@ -348,18 +347,32 @@ export default function ForecastChart(
           );
         }) : null}
 
-        {/* the oil axis, on the right, with its own scale — the two are never
-            added, so they never share one */}
+        {/* the oil axis, with its own scale — the two are never added, so they
+            never share one. WITH GAS HIDDEN IT MOVES TO THE LEFT: "Oil only"
+            drew nothing in the left gutter and its numbers off at the far
+            right, so the plot sat between two bands of white space (QA). The
+            gridlines come with it, because the gas axis that used to draw them
+            is not there. */}
         {showOil ? Array.from({ length: 5 }, (_, k) => {
           const v = (geom.oAxis.top * k) / 4;
-          return (
-            <text
-              key={`cy${k}`} x={R + 7} y={geom.YO(v) + 3.5}
-              fontSize="10" fill={OIL} textAnchor="start"
-            >
-              {short(v)}
-            </text>
-          );
+          const y = geom.YO(v);
+          return showGas
+            ? (
+              <text
+                key={`cy${k}`} x={R + 7} y={y + 3.5}
+                fontSize="10" fill={OIL} textAnchor="start"
+              >
+                {short(v)}
+              </text>
+            )
+            : (
+              <g key={`cy${k}`}>
+                <line x1={L} x2={R} y1={y} y2={y} stroke="#eef2f1" strokeWidth="1" />
+                <text x={L - 7} y={y + 3.5} fontSize="10" fill={OIL} textAnchor="end">
+                  {short(v)}
+                </text>
+              </g>
+            );
         }) : null}
 
         <line x1={L} x2={R} y1={B} y2={B} stroke="#cfd8d5" strokeWidth="1" />
@@ -411,14 +424,27 @@ export default function ForecastChart(
             {money ? 'YOUR SHARE · $ / month' : `GAS · ${MCF} / month`}
           </text>
         ) : null}
+        {/* the oil title follows its axis: right beside gas, left on its own */}
         {showOil ? (
-          <text
-            x={746} y={(T + B) / 2} fontSize="10.5" fontWeight="700"
-            fill={OIL} textAnchor="middle"
-            transform={`rotate(90 746 ${(T + B) / 2})`}
-          >
-            {`OIL · ${BBL} / month`}
-          </text>
+          showGas
+            ? (
+              <text
+                x={746} y={(T + B) / 2} fontSize="10.5" fontWeight="700"
+                fill={OIL} textAnchor="middle"
+                transform={`rotate(90 746 ${(T + B) / 2})`}
+              >
+                {`OIL · ${BBL} / month`}
+              </text>
+            )
+            : (
+              <text
+                x={16} y={(T + B) / 2} fontSize="10.5" fontWeight="700"
+                fill={OIL} textAnchor="middle"
+                transform={`rotate(-90 16 ${(T + B) / 2})`}
+              >
+                {`OIL · ${BBL} / month`}
+              </text>
+            )
         ) : null}
 
         {/* the crosshair and its readout */}
@@ -442,9 +468,11 @@ export default function ForecastChart(
             ) : null}
             {(() => {
               const lines: string[] = [curMonth.label ?? curMonth.cycle];
-              if (showGas) lines.push(`${gasName} ${readout(M.gas(curMonth), money)}`
+              /* "Gas: 42,006 MCF" — the colon separates the label from its
+                 value; without it the two read as one run of text (QA). */
+              if (showGas) lines.push(`${gasName}: ${readout(M.gas(curMonth), money)}`
                 + (money ? '' : ` ${MCF}`));
-              if (showOil) lines.push(`Oil ${readout(M.oil(curMonth), false)} ${BBL}`);
+              if (showOil) lines.push(`Oil: ${readout(M.oil(curMonth), false)} ${BBL}`);
               lines.push(curMonth.forecast ? 'projected — model' : 'posted — state filing');
               const wBox = 152;
               const hBox = 15 * lines.length + 10;

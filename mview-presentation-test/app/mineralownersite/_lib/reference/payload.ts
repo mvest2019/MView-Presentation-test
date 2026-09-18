@@ -956,6 +956,13 @@ export interface Payload {
       stats: EventStat[];
       ring_stats: Record<RingKey, EventStat[]> | null;
       ctx: string;
+      /** THE EVENT'S OWN DETAIL PANEL (defect sheet #12-#14). `ctx` is a
+       *  KIND-level explainer key, identical on every row of a kind, which is
+       *  why one panel once described them all. The API now sends each row's
+       *  own facts here — `sub` carries the clicked card's date/identity.
+       *  Optional and partial: captures taken before the field existed do not
+       *  carry it, and the view fills whatever is missing from the row. */
+      detail?: Partial<Drawer> | null;
     })[];
     kinds: ({
       kind: EventKind;

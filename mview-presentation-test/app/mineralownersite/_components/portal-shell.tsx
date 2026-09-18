@@ -10,7 +10,6 @@ import { PortalPagePurpose } from "./portal-page-purpose";
 import { PortalSideNav } from "./portal-side-nav";
 import { PortalTabBar } from "./portal-tab-bar";
 import { PortalTopNav } from "./portal-top-nav";
-import { pageNameForPath } from "../_lib/portal-nav";
 import { showsFunnelBar } from "../_lib/portal-page-furniture";
 
 /**
@@ -93,11 +92,23 @@ export function PortalShell({
         <PortalSideNav />
 
         <div className="app-main">
+          {/*
+            ONE ROW, NOT TWO. The pinned value group goes INSIDE the top
+            bar (user, 2026-09-14: "need this header in all portal
+            pages") so these four routes carry the same merged black
+            chrome row the `(reference)` group's eight already do.
+            `portal.onebar.css` is the other half of the change and
+            carries the reasoning; it is the portal twin of
+            `dashboard-reference.onebar.css`.
+
+            The page name went with the split: the reference row has
+            never had one, and every page under here opens with its own
+            heading a few pixels below.
+          */}
           <PortalTopNav
-            pageName={pageNameForPath(pathname)}
+            pinnedBar={pinnedBar}
             onOpenDrawer={() => setDrawerOpen(true)}
           />
-          {pinnedBar}
           {/* Not on the claim flow — see `ROUTES_WITHOUT_FUNNEL_BAR`. Skipped
               rather than hidden with CSS so the contradictory sentence is not
               in the document at all: `display:none` would still leave it in the

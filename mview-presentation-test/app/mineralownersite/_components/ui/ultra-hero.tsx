@@ -18,6 +18,18 @@ import type { ReactNode } from "react";
  *
  * Every measurement is that stylesheet's, the two phone breakpoints included —
  * 42px headline down to 32px, 8vh top margin down to 3vh below 520px.
+ *
+ * ── `footer` ATTACHES A BLOCK TO THE CARD'S FOOT, AND CHANGES ITS PROPORTIONS ──
+ *
+ * My Leases at Ultra is this hero with the portfolio's five figures under it.
+ * They used to be a separate full-width dark strip below a 640px card, which
+ * read as two objects that happened to be stacked — and the strip's fifth
+ * figure wrapped onto a second row, leaving a quarter of it empty.
+ *
+ * Passing the block as `footer` puts it inside the card, full bleed, with the
+ * card widened to 840px and its lower padding removed so the two are one
+ * object. The measurements above are kept EXACTLY as the stylesheet has them
+ * whenever no footer is passed, so a plain hero is untouched.
  */
 
 export function UltraHero({
@@ -26,6 +38,7 @@ export function UltraHero({
   status,
   action,
   note,
+  footer,
   className = "",
 }: {
   kicker: string;
@@ -34,11 +47,23 @@ export function UltraHero({
   status: ReactNode;
   action?: ReactNode;
   note?: ReactNode;
+  /** A full-bleed block at the foot of the card. See the note above. */
+  footer?: ReactNode;
   className?: string;
 }) {
   return (
     <div
-      className={`mx-auto mt-[3vh] max-w-[640px] rounded-[22px] bg-mv-card px-5 pt-10 pb-9 text-center shadow-[0_1px_2px_rgba(13,14,23,.05),0_12px_40px_rgba(13,14,23,.06)] min-[520px]:mt-[8vh] min-[520px]:px-7 min-[520px]:pt-14 min-[520px]:pb-12 ${className}`.trim()}
+      className={`mx-auto rounded-[22px] bg-mv-card text-center shadow-[0_1px_2px_rgba(13,14,23,.05),0_12px_40px_rgba(13,14,23,.06)] ${
+        footer
+          ? /* WIDER, SHORTER AND WITH NO BOTTOM PADDING once something is
+               attached. A 640px column of text above a full-width dark strip
+               read as two unrelated objects stacked; at the page's own width
+               with the strip inside it, it is one card. The vertical measures
+               come down with it because the card is no longer three lines of
+               text in a large empty box — it now has a foot. */
+            "mt-[3vh] max-w-[840px] px-5 pt-9 min-[520px]:mt-[5vh] min-[520px]:px-7 min-[520px]:pt-11"
+          : "mt-[3vh] max-w-[640px] px-5 pt-10 pb-9 min-[520px]:mt-[8vh] min-[520px]:px-7 min-[520px]:pt-14 min-[520px]:pb-12"
+      } ${className}`.trim()}
     >
       <div
         aria-hidden="true"
@@ -63,9 +88,24 @@ export function UltraHero({
       </p>
       {action}
       {note && (
-        <p className="mt-[26px] text-sm leading-[1.55] text-mv-sublabel">
+        <p
+          className={`text-sm leading-[1.55] text-mv-sublabel ${
+            footer ? "mt-[22px]" : "mt-[26px]"
+          }`}
+        >
           {note}
         </p>
+      )}
+
+      {/* FULL BLEED. The negative margin cancels the card's own horizontal
+          padding so the block meets both edges, and the bottom corners are
+          rounded to the card's radius so it reads as the card's foot rather
+          than as something sitting inside it. Given the full width because the
+          five figures it carries only fit on one line when they have it. */}
+      {footer && (
+        <div className="-mx-5 mt-7 overflow-hidden rounded-b-[22px] text-left min-[520px]:-mx-7">
+          {footer}
+        </div>
       )}
     </div>
   );

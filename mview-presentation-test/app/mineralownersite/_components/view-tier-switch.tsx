@@ -2,7 +2,8 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-import { usePortalState } from "./portal-state-provider";
+import { usePortalStateOptional } from "./portal-state-provider";
+import { usePortalViewState } from "./reference/view-state";
 import { writeViewTier } from "../_lib/view-tier-store";
 import {
   VIEW_TIERS,
@@ -55,13 +56,30 @@ export function ViewTierSwitch({
   onNavigate?: () => void;
   compact?: boolean;
 }) {
-  const { viewTier } = usePortalState();
+  /*
+   * TWO SHELLS, ONE SWITCH.
+   *
+   * `(reference)` pages — the Dashboard, Alerts, Invite, Billing, Settings and
+   * Profile — are wrapped by `Portal`, which owns the density in React state
+   * and persists it under `mv.tier`. `(portal)` pages still use
+   * `PortalStateProvider`, which reads `?view=` and the other store.
+   *
+   * THE REFERENCE ONE WINS WHERE IT EXISTS, and it has to: under that shell
+   * `writeViewTier` writes a key nothing reads, so the switch would show the
+   * right value and do nothing when pressed. `usePortalViewState()` returns
+   * null outside that shell, which is the documented way it says so, and the
+   * old provider answers instead.
+   */
+  const reference = usePortalViewState();
+  const legacy = usePortalStateOptional();
+  const viewTier = reference?.tier ?? legacy?.viewTier ?? "detailed";
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
 
   function choose(tier: (typeof VIEW_TIERS)[number]): void {
-    writeViewTier(tier);
+    if (reference) reference.setTier(tier);
+    else writeViewTier(tier);
 
     if (params.has("view")) {
       const next = new URLSearchParams(params.toString());

@@ -1,0 +1,314 @@
+/*
+ * ONE CHROME ROW, FOR THE `(portal)` GROUP — the top bar and the pinned value
+ * bar, combined.
+ *
+ * WHY THIS SHEET EXISTS AT ALL. The `(reference)` group's eight routes already
+ * render their chrome as a single black row; `(portal)`'s four — Settings, My
+ * Leases, Claim and My Profile — rendered a white 58px bar with the wordmark
+ * and the page name in it, then a separate dark value band underneath. Two
+ * headers for one product (user, 2026-09-14: "need this header in all portal
+ * pages", pointing at the reference row). This sheet and the two JSX changes
+ * beside it bring the portal group onto the same row.
+ *
+ * IT IS THE PORTAL TWIN OF `dashboard-reference.onebar.css`, and deliberately
+ * so: that sheet's §1 and §2 are the design, this one re-states them for
+ * `.mv-portal`. Read that file first — its header carries the reasoning for the
+ * things that look arbitrary here, in particular WHY THE ROW IS `--ink` AND NOT
+ * `#000` OR A GRADIENT (the sidebar is already flat `--ink`, so the two meet
+ * seamlessly; `#000` sits one shade off and reads as a mistake, and the owner
+ * search directly above already owns the `160deg, #0d0e17, #16342a` gradient,
+ * so gradient-under-gradient would show a seam).
+ *
+ * ── WHY A SEPARATE FILE RATHER THAN EDITING `portal.css` ──
+ *
+ * Same reason the reference has one. `portal.css` is 137 KB of extracted
+ * prototype CSS whose `.app-top` and `#mvPinBar` blocks are the prototype's,
+ * and a future re-extraction would silently revert a local design decision made
+ * inside them. The blocks are left alone and this sheet overrides them.
+ *
+ * ── HOW IT WINS, AND WHY IT IS NOT IN A CASCADE LAYER ──
+ *
+ * `portal.css` is imported straight from `(portal)/layout.tsx` with no
+ * `layer()`, so it lands in the UNLAYERED origin, which outranks every layer in
+ * `globals.css`'s `@layer` list. A layered override could therefore never reach
+ * it. So this sheet is unlayered too and imported immediately after it: equal
+ * specificity, later source, this one wins. That is also why the selectors here
+ * mirror the originals' shape instead of being made more specific — they do not
+ * need to be, and `!important` is only used where the original used it
+ * (`.btn-ghost`'s colour).
+ *
+ * ── THE THREE THINGS IT DOES ──
+ *
+ *   1 · strips `#mvPinBar` of its bar chrome — sticky position, background,
+ *       border, padding, min-height — because it is no longer a bar, and paints
+ *       the merged row `--ink`.
+ *   2 · recolours the controls that were designed against white: the ghost
+ *       button, the bell, the hamburger, and the delta arrows.
+ *   3 · rebuilds how the row absorbs a narrow window, dropping the pinned
+ *       group's optional parts in order and finally giving it a row of its own.
+ *
+ * ── TWO PLACES THIS DIFFERS FROM THE REFERENCE SHEET, BOTH BECAUSE THE MARKUP
+ *    DIFFERS, NOT BECAUSE THE DESIGN DOES ──
+ *
+ *   · `.pagename`. The reference bar has no page name; the portal bar had one.
+ *     It is hidden here rather than deleted from `PortalTopNav`… no — it IS
+ *     deleted there, and this sheet keeps a belt-and-braces rule only because
+ *     `portal.css` still styles the class and a future page may re-add it
+ *     without meaning to put it back in a black bar.
+ *   · the account menus are `.v41-avmenu` here, not the reference's `.mv-menu`.
+ *     One rule covers both dropdowns, because `portal.css` reuses that class
+ *     for the funnel-state panel as well as the avatar's.
+ */
+
+/* ----------------------------------------------------------------------------
+   1 · THE MERGED ROW
+   ---------------------------------------------------------------------------- */
+
+/*
+  `flex-wrap: nowrap` IS LOAD-BEARING, not tidying, and it is overriding a real
+  rule: `portal.css` sets `flex-wrap: wrap` on `.app-top` at its 900px and
+  767px breakpoints so the controls could drop a line on a phone. With the
+  elastic pinned group in the row that stops being a graceful fallback and
+  becomes the failure mode — the row is now always exactly full, so the first
+  sub-pixel rounding error drops whatever is last, which is the avatar. Wrapping
+  is re-enabled deliberately at 1024px in §3, where it is the intended
+  behaviour and the pinned group gets a whole row to itself.
+
+  `height: auto` + `min-height` because the 26px value figure, not a constant,
+  now decides how tall this is. `portal.css` sets a flat `height: 58px`.
+
+  THE BOTTOM BORDER GOES TO `--ink` RATHER THAN BEING REMOVED. `portal.css` has
+  `1px solid var(--line)`, a #e5e7eb hairline that would glow across the foot of
+  a black row; dropping the border outright would shift every pixel below it up
+  by one. Same box, no seam.
+*/
+.mv-portal .app-top {
+  background: var(--ink);
+  border-bottom-color: var(--ink);
+  color: #d7efe3;
+  height: auto;
+  min-height: 58px;
+  gap: 8px 16px;
+  flex-wrap: nowrap;
+  /* Above `#mvPinBar`'s old 45 — it is a child now, and the drawer and the
+     dropdowns still have to clear it. */
+  z-index: 50;
+}
+
+/*
+  THE PINNED BAR STOPS BEING A BAR. `position: sticky; top: 58px` was pinning it
+  under the old white row; as a child of that row it must be a plain flex item or
+  it detaches from the thing it is inside.
+
+  `flex: 1 1 auto; min-width: 0` is what lets the settlements column shrink
+  instead of pushing the account controls off the end — without `min-width: 0` a
+  flex item refuses to go below its content's intrinsic width, which is the
+  whole reason the row would overflow.
+*/
+.mv-portal .app-top #mvPinBar {
+  position: static;
+  top: auto;
+  z-index: auto;
+  background: none;
+  border-bottom: 0;
+  padding: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 6px 14px;
+  flex-wrap: nowrap;
+}
+
+/* The pinned group is the elastic thing now, so the old spring is redundant —
+   two of them fight and the group loses. It comes back at 1024px, where the
+   group has its own row and the controls need spacing again. */
+.mv-portal .app-top .spacer {
+  display: none;
+}
+
+/* The value never shrinks; the settlements do. */
+.mv-portal .app-top #mvPinBar .pin-val-wrap {
+  flex: none;
+}
+
+/*
+  `margin-left: auto` in `portal.css` pushed the settlements to the far right of
+  their own bar. In the merged row that would shove them into the account
+  controls, so they sit directly after the value and scroll horizontally when
+  there is not enough room — with the scrollbar hidden, because a visible one
+  inside a 58px black row reads as a rendering fault.
+*/
+.mv-portal .app-top #mvPinBar .pin-spot {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 0;
+  justify-content: flex-start;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.mv-portal .app-top #mvPinBar .pin-spot::-webkit-scrollbar {
+  display: none;
+}
+
+.mv-portal .app-top #mvPinBar .pin-note {
+  flex: none;
+  margin-right: 2px;
+}
+
+.mv-portal .app-top .plan-pill {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* ----------------------------------------------------------------------------
+   2 · THE CONTROLS, RECOLOURED
+
+   Every colour inside the pinned group — `--green` for the figure, `#fff` for
+   the settlements, the pale greys for the labels — was already chosen against
+   `#0d0e17`, so on a black row it is back where it was designed to be. This
+   section is only about the controls that were drawn for a white bar.
+   ---------------------------------------------------------------------------- */
+
+/* The funnel-state button. `!important` because `portal.css`'s own rule has it
+   — this is matching the original's weight, not escalating. */
+.mv-portal .app-top .btn-ghost {
+  background: rgba(255, 255, 255, 0.08);
+  color: #d7efe3 !important;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.mv-portal .app-top .btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.mv-portal .app-top .bellbtn {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #d7efe3;
+}
+
+.mv-portal .app-top .bellbtn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* The badge is cut out of the bar it sits on, so its ring follows the bar. */
+.mv-portal .app-top .bellbtn .bdg {
+  border-color: var(--ink);
+}
+
+.mv-portal .app-top .app-hamburger {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+/*
+  THE DROPDOWN PANELS STAY DARK-ON-WHITE. Both the avatar menu and the
+  funnel-state panel are `.v41-avmenu` and both are inside `.app-top`, so
+  without this they inherit the row's `#d7efe3` and render pale text on their
+  own white ground. `color` is the only thing inherited that matters — their
+  background, border and shadow are set on the panel itself.
+*/
+.mv-portal .app-top .v41-avmenu {
+  color: var(--ink);
+}
+
+/*
+  NO PAGE NAME IN A MERGED ROW. `PortalTopNav` no longer renders it — the
+  reference row has never had one, and every portal page prints its own heading
+  as the first thing in the body. This rule is the belt to that braces: the
+  class is still styled in `portal.css`, so a page that re-adds it by accident
+  does not put 15px of bold ink-coloured text on a black bar.
+*/
+.mv-portal .app-top .pagename {
+  display: none;
+}
+
+/*
+  THE WORDMARK IS THE RAIL'S JOB above the sidebar breakpoint. `portal.css`
+  shows `.app-brand`'s compact mark in the bar at all widths, which put the logo
+  on screen twice — once in the rail, once 40px to its right. Below 1024px the
+  rail is `display: none` and the bar's logo becomes the only one, so it comes
+  back there (§3).
+*/
+.mv-portal .app-top .app-brand {
+  display: none;
+}
+
+/* The delta arrows. `portal.css` colours these for a dark ground already, so
+   they are restated here only to keep the pair in one place with the rest of
+   the row's colour decisions — remove these two and nothing changes today, but
+   the next edit to either sheet has one place to look. */
+.mv-portal .app-top #mvPinBar .pin-tk .tk-chg.tk-up {
+  color: #7fe3bd;
+}
+
+.mv-portal .app-top #mvPinBar .pin-tk .tk-chg.tk-dn {
+  color: #ff9a8b;
+}
+
+/* ----------------------------------------------------------------------------
+   3 · HOW THE ROW ABSORBS A NARROW WINDOW
+
+   The order is the reference's, and it is by value to the reader: the
+   settlement basis note goes first, then the value's own sub-line, then the
+   "YOUR MINERALS" label — the figure and the four prices are the last things
+   standing. Below the sidebar breakpoint the pinned group takes a row of its
+   own, which is where wrapping becomes correct rather than a failure.
+   ---------------------------------------------------------------------------- */
+
+@media (max-width: 1700px) {
+  .mv-portal .app-top #mvPinBar .pin-note {
+    display: none;
+  }
+}
+
+@media (max-width: 1500px) {
+  .mv-portal .app-top #mvPinBar .pin-sub {
+    display: none;
+  }
+}
+
+@media (max-width: 1300px) {
+  .mv-portal .app-top #mvPinBar .pin-label {
+    display: none;
+  }
+}
+
+@media (max-width: 1024px) {
+  /* Two rows on purpose now: controls on the first, the whole pinned group on
+     the second. `order: 1` puts the group after the controls in the visual
+     order while leaving it before them in the DOM, where the value belongs. */
+  .mv-portal .app-top {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    padding-bottom: 6px;
+  }
+
+  .mv-portal .app-top .spacer {
+    display: block;
+  }
+
+  .mv-portal .app-top #mvPinBar {
+    order: 1;
+    flex: 1 0 100%;
+    width: 100%;
+  }
+
+  /* It has a row to itself, so the label fits again. */
+  .mv-portal .app-top #mvPinBar .pin-label {
+    display: inline;
+  }
+
+  /* The rail is gone below here, so the bar carries the only logo. */
+  .mv-portal .app-top .app-brand {
+    display: flex;
+  }
+}
+
+@media (max-width: 767px) {
+  .mv-portal .app-top #mvPinBar {
+    padding: 0;
+  }
+}

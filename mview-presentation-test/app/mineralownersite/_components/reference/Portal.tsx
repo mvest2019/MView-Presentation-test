@@ -60,7 +60,7 @@
  *      The other four states are still the menu's, because nothing any source
  *      returns distinguishes them.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -74,14 +74,122 @@ import WeeklyView from './WeeklyView';
 import AlertsView from './AlertsView';
 import ActivitiesView from './ActivitiesView';
 import DrawerPanel from './DrawerPanel';
+import type { SpotQuote } from './Chrome';
 import Loader, { type Step } from './Loader';
 import ProductionView from './ProductionView';
 import { PortalViewStateProvider } from './view-state';
+import { usePortalPrefs, writePortalPref } from './prefs-context';
+import {
+  PORTAL_FUNNEL_COOKIE,
+  PORTAL_TIER_COOKIE,
+} from '../../_lib/reference/portal-prefs';
 
 export type Route = 'dashboard' | 'alerts' | 'activities' | 'leases'
   | 'production' | 'weekly' | 'map';
 
 /** the five funnel states, in funnel order — the prototype's own sequence */
+/** the brief's interval, and the only thing on this page that repeats */
+const SPOT_POLL_MS = 10_000;
+
+/* ------------------------------------------- long name lists in a drawer */
+/**
+ * PAST THREE NAMES, A LIST IS A COUNT.
+ *
+ * WHAT THIS FIXES. The service composes each explainer's prose itself, and for
+ * a portfolio of any size it spells the whole county list into the middle of a
+ * sentence: "284 wells have been completed and reported in ANDREWS, BORDEN,
+ * BURLESON, CROCKETT, CULBERSON, DAWSON, FREESTONE, GLASSCOCK, GRAYSON,
+ * GRIMES, HOWARD, IRION, JONES, LEE, LEON, LIBERTY, LOVING, MARTIN, MIDLAND,
+ * PECOS, REEVES, UPTON, WINKLER in the last 24 months." Twenty-three names is
+ * not a fact a reader takes in; the number is. Measured on the live record,
+ * that exact list is inlined in four places across the drawers — `completions`
+ * and `status` in their opening line, and the `alert:completions` and
+ * `alert:permits-filed` panels in their titles.
+ *
+ * IT MATCHES THE PAYLOAD'S OWN LIST, VERBATIM, AND NOTHING ELSE. `totals`
+ * carries `counties` and `operator_names`, which are the same arrays the
+ * service builds that sentence from, so the whole joined string is searched
+ * for as one literal and swapped for its count.
+ *
+ * A PATTERN WOULD HAVE BEEN WRONG, and this is not a theoretical objection.
+ * The obvious alternative — collapse any run of comma-separated capitalised
+ * words — rewrites things that are not name lists at all: `alert:permits-filed`
+ * has the evidence row "JETTA OPERATING COMPANY, INC., New Drill", where the
+ * commas are inside ONE operator's name and the run is three "items" long.
+ * Matching the known list exactly cannot misfire on prose it was not meant to
+ * touch, and cannot collapse a list of two counties that happens to sit beside
+ * two other capitalised words.
+ *
+ * THE CONSEQUENCE, STATED: where the service composes a DIFFERENT selection —
+ * a subset, another order, another separator — nothing matches and the text is
+ * left exactly as it came. That is the intended trade. Leaving a sentence
+ * untouched is a much smaller fault than rewriting one this did not understand.
+ *
+ * AT THE DRAWER, NOT AT THE PAYLOAD, so this reaches every right-side panel —
+ * the eleven flat ones, the twelve `pf_*`, and each `lease:*`, `well:*` and
+ * `alert:*` — and reaches nothing else. The Dashboard page has its own, older
+ * answer to the same problem in `NameList`, which collapses the greeting line's
+ * counties at five and its operators at three and gives the reader a control to
+ * expand them; that is untouched, and so are the alert cards on the Alerts page
+ * whose titles these drawers borrow.
+ */
+const MAX_DRAWER_NAMES = 3;
+
+function collapseList(text: string, names: string[], many: string): string {
+  if (names.length <= MAX_DRAWER_NAMES) return text;
+  const joined = names.join(', ');
+  if (!joined || !text.includes(joined)) return text;
+  return text.split(joined).join(`${names.length} ${many}`);
+}
+
+/**
+ * One panel with its county and operator lists reduced to counts.
+ *
+ * Returns the SAME object when nothing matched, so a panel the service wrote
+ * without a list in it keeps its identity across renders — `DrawerPanel` keys
+ * its scroll reset on `copy.title`, and there is no reason to hand it a new
+ * object to compare.
+ */
+function collapseNames(
+  d: DrawerCopy | null, counties: string[], operators: string[],
+): DrawerCopy | null {
+  if (!d) return null;
+  if (counties.length <= MAX_DRAWER_NAMES && operators.length <= MAX_DRAWER_NAMES) return d;
+  const fix = (t: string) =>
+    collapseList(collapseList(t, counties, 'counties'), operators, 'operators');
+
+  let touched = false;
+  const one = (t: string) => { const v = fix(t); if (v !== t) touched = true; return v; };
+
+  const next: DrawerCopy = {
+    ...d,
+    title: one(d.title),
+    sub: one(d.sub),
+    what: one(d.what),
+    means: one(d.means),
+    next: one(d.next),
+    evidence: d.evidence.map(one),
+    chips: d.chips.map(one),
+    /* THE STATS BAND TOO, AND IT WAS THE ONE PLACE THIS FIRST MISSED.
+       `AlertStat` looked like a label and a figure — nothing a list would fit
+       in — so it was left out. It is where the list is most visible: the
+       completions and permits panels put the whole thing in `sub` under the
+       count ("Wells completed / 284 / in ANDREWS, BORDEN, ..."), and the
+       `completions` panel has a third tile whose `value` IS the bare list.
+       So all three text fields go through, and `tone` is carried across
+       untouched by the spread. */
+    ...(d.stats
+      ? { stats: d.stats.map((st) => ({
+        ...st,
+        label: one(st.label),
+        value: one(st.value),
+        ...(st.sub === undefined ? {} : { sub: one(st.sub) }),
+      })) }
+      : {}),
+  };
+  return touched ? next : d;
+}
+
 export const FUNNEL = [
   { key: 'unclaimed', label: 'Not claimed',
     note: 'Nothing is claimed yet, so every figure is a sample.' },
@@ -215,7 +323,13 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
      claimed a record yet — read as "That did not load" and was offered a
      reload that answers the same way every time. */
   const [errorCode, setErrorCode] = useState<string | null>(null);
-  const [tier, setTier] = useState<Tier>('detailed');
+  /* THE REQUEST'S OWN ANSWER FIRST — see `prefs-context.tsx`. `pref.tier` is
+     the density cookie, which the server read and rendered with, so opening on
+     it is what makes the server's tree and this one agree. `null` means the
+     request carried nothing, and then `'detailed'` is the same default the
+     server used. */
+  const pref = usePortalPrefs();
+  const [tier, setTier] = useState<Tier>(pref.tier ?? 'detailed');
   /* ADAPTED 5 · THE FUNNEL STATE OPENS ON WHAT THE RECORD SAYS, not on a
      constant. It used to start at `'paid'` for everybody, so a visitor with
      nothing claimed was shown a paid dashboard, and the one thing this state
@@ -234,45 +348,131 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
      inventing an entitlement. The demo menu and its `localStorage` memory are
      left exactly as they were, and they still override this. */
   const [funnel, setFunnel] = useState<FunnelKey>(
-    /* `?.length === 0` and not `!length`: the capture has no such field, and
+    /* THE COOKIE OUTRANKS THE RECORD HERE, because the menu always did. This
+       state is the demo switch, `pickFunnel` persists it, and a reader who
+       chose "Lapsed" last visit must not be put back on `paid` by a claim
+       signal they have already overridden. With no cookie the record decides,
+       exactly as before.
+
+       `?.length === 0` and not `!length`: the capture has no such field, and
        "this source does not say" must keep the old default rather than
        declaring the record unclaimed. Only an explicitly EMPTY list flips it. */
-    initial?.owner.claimed_owners?.length === 0 ? 'unclaimed' : 'paid',
+    pref.funnel
+      ?? (initial?.owner.claimed_owners?.length === 0 ? 'unclaimed' : 'paid'),
   );
-  const [drawer, setDrawer] = useState<string | null>(null);
+  /* a string is a key into `data.drawers`; an object is a panel built by a
+     view from one specific record — the Activities timeline builds one per
+     event so the detail matches the card that was clicked (defects #12-#14,
+     #17) */
+  const [drawer, setDrawer] = useState<string | DrawerCopy | null>(null);
   const [loadingName, setLoadingName] = useState<string | null>(null);
   const [trialStarted, setTrialStarted] = useState<string | null>(null);
   /* WHICH ALERTS THIS READER HAS OPENED — see `markRead` below for why it
      lives up here rather than inside `AlertsView`. */
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  /**
+   * HAS `mv.alertsRead` BEEN READ YET? — the flash this closes.
+   *
+   * The set lives in `localStorage`, so the server renders every unread FIGURE
+   * — the header's "Mark all 6 read", the Unread pill, the sidebar rail badge
+   * and the bell — from `alerts.items[].unread` alone, which is the server's
+   * opinion and knows nothing about what this browser has already opened. A
+   * reader who marked everything read, reloaded, and watched "6" sit there for
+   * the length of a hydration before correcting itself to "4" was not seeing a
+   * stale cache: they were seeing the only answer the server has, held on
+   * screen until the browser's answer arrived.
+   *
+   * `false` on the server AND on the first client render, so there is no
+   * hydration mismatch; flipped in a LAYOUT effect, so the true count paints in
+   * the same frame hydration commits rather than one frame later. Every
+   * consumer renders the count only once it is true — a figure briefly absent
+   * is honest, a figure briefly wrong is not.
+   */
+  const [readReady, setReadReady] = useState(false);
+  /**
+   * HAS THE READER'S OWN DENSITY AND STATE BEEN READ YET? — the flash this
+   * closes, and it is the same argument as `readReady` one field up.
+   *
+   * `tier` opens at `'detailed'` and `funnel` at whatever the claim signal
+   * says, because the server has to render SOMETHING and it cannot see
+   * `localStorage`. The reader's actual choice arrives a moment later, in the
+   * layout effect below. Between those two moments the browser paints a whole
+   * page at the wrong density: the reported shape was "after refresh the page
+   * shows pro mode for some time and then shows ultra or essentials".
+   *
+   * The shell skeleton that used to cover that window was removed at QA's
+   * request — the page now renders immediately at the density in state, and
+   * the one frame a pre-cookie `localStorage` choice corrects in is accepted.
+   * The cookie (`prefs-context`) keeps that frame from existing for anyone who
+   * has picked a density since it was introduced.
+   *
+   * The flag itself remains, with one job left: the "no owner is loaded" error
+   * card below must not flash before the preferences have been read.
+   * `false` on the server AND on the first client render, so hydration matches
+   * exactly; flipped in the same LAYOUT effect that reads the preference.
+   */
+  const [prefsReady, setPrefsReady] = useState(
+    /* A cookie means the server already rendered this reader's own density,
+       so there is nothing left to wait for. */
+    pref.tier != null,
+  );
   const seq = useRef(0);
   const router = useRouter();
 
   /* ---------------------------------------------------- the derived flags */
   const sample = funnel === 'unclaimed';
-  /* THE UNCLAIMED VIEW IS ALWAYS THE FULLEST ONE.
-     Someone deciding whether to claim is looking at a shop window: the point is
-     to show everything the record becomes, so the density preference is
-     overridden to `pro` while nothing is claimed. The persona buttons keep
-     their own state and take effect the moment the record is claimed.
-     Declared here rather than beside the render because the class effect
-     below reads it. */
-  const effTier: Tier = funnel === 'unclaimed' ? 'pro' : tier;
+  /* ONE UI FOR EVERY ACCOUNT STATE (defect #6). Unclaimed used to override
+     the density to `pro` as a shop window, so the sample page carried card
+     paragraphs and tables that vanished the moment the record was claimed —
+     QA read that as two different UIs for the same page. The density now
+     follows the reader's own choice in every state; what marks the sample is
+     the labeling (claim rail, sample badges, amber borders), not a different
+     layout. Declared here rather than beside the render because the class
+     effect below reads it. */
+  const effTier: Tier = tier;
 
   /* ------------------------------------------------------ persisted choice */
   /* Density and funnel state are the reader's own preference, not data, so they
      live in the browser. Read in an effect rather than in the initial state so
      the server and the first client render agree. */
-  useEffect(() => {
+  /* A LAYOUT EFFECT, not a passive one, and only for this reason: it runs
+     before the browser paints the hydrated tree, so the alert counts go
+     straight from absent to correct instead of painting the server's number
+     for a frame first. See `readReady`. The work is four synchronous
+     `localStorage` reads, which is not enough to be worth a frame of jank. */
+  useLayoutEffect(() => {
     try {
+      /* AND THE MIGRATION, which is the only reason this still reads `tier`
+         and `funnel` at all. A reader who chose a density before the cookie
+         existed has it in `localStorage` and nowhere the server can see, so
+         their first visit renders the default, corrects here, and WRITES THE
+         COOKIE — after which every later request is served at the right
+         density with no skeleton and no correction. A reader who already had
+         the cookie takes the same path and changes nothing: the value read is
+         the value already on screen, and `setTier` with an equal value is a
+         no-op. */
       const t = localStorage.getItem('mv.tier') as Tier | null;
-      if (t && PERSONAS.some((p) => p.key === t)) setTier(t);
+      if (t && PERSONAS.some((p) => p.key === t)) {
+        setTier(t);
+        writePortalPref(PORTAL_TIER_COOKIE, t);
+      }
       const f = localStorage.getItem('mv.funnel') as FunnelKey | null;
-      if (f && FUNNEL.some((s) => s.key === f)) setFunnel(f);
+      if (f && FUNNEL.some((s) => s.key === f)) {
+        setFunnel(f);
+        writePortalPref(PORTAL_FUNNEL_COOKIE, f);
+      }
       setTrialStarted(localStorage.getItem('mv.trialStart'));
       const r = JSON.parse(localStorage.getItem(READ_KEY) ?? '[]') as unknown;
       if (Array.isArray(r)) setReadIds(new Set(r.filter((x): x is string => typeof x === 'string')));
     } catch { /* private mode — nothing read yet is the correct default */ }
+    /* OUTSIDE THE `try`. A browser that throws on `localStorage` still has a
+       read-state — the empty one — and holding `readReady` at false there would
+       hide the count for the whole visit rather than for a frame. And a browser
+       that throws still has a DENSITY — the default one — so `prefsReady` has
+       to flip for the same reason: the error card below must stay reachable in
+       a private window for the rest of the visit. */
+    setReadReady(true);
+    setPrefsReady(true);
   }, []);
 
   /**
@@ -312,12 +512,19 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
       return next;
     });
   }, []);
+  /* BOTH STORES, ALWAYS TOGETHER — see `prefs-context.tsx`. `localStorage`
+     stays the reader's record of the choice; the cookie is the copy the SERVER
+     can read, and it is what lets the next request render this density
+     directly instead of guessing and correcting. Writing one without the other
+     is what would put the flash back. */
   const pickTier = useCallback((t: Tier) => {
     setTier(t);
     try { localStorage.setItem('mv.tier', t); } catch { /* ignore */ }
+    writePortalPref(PORTAL_TIER_COOKIE, t);
   }, []);
   const pickFunnel = useCallback((f: FunnelKey) => {
     setFunnel(f);
+    writePortalPref(PORTAL_FUNNEL_COOKIE, f);
     try {
       localStorage.setItem('mv.funnel', f);
       /* Stamp the trial the first time it starts, so "4 days left" counts down
@@ -384,7 +591,30 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
     return () => window.removeEventListener('popstate', onPop);
   }, [initialRoute]);
 
-  const go = useCallback((r: Route) => {
+  /**
+   * `params` CARRIES A DESTINATION'S OWN STATE IN THE QUERY STRING.
+   *
+   * Added for the Dashboard's alert category chips: "2 Money" used to call a
+   * bare `go('alerts')` and land on the unfiltered list with "All" active, so
+   * the count the reader clicked and the count they arrived at disagreed. A
+   * chip now passes `{ cat: 'money' }` and `AlertsView` reads it on mount.
+   *
+   * IT MERGES RATHER THAN REPLACES. The owner is in the query string too, and
+   * the note below is explicit that every route change has to keep it — so the
+   * extra keys are written on top of `window.location.search` instead of
+   * standing in for it. A key whose value is null is DELETED, which is what
+   * lets a later navigation clear a filter it does not want.
+   */
+  const go = useCallback((r: Route, params?: Record<string, string | null>) => {
+    const query = (() => {
+      const q = new URLSearchParams(window.location.search);
+      for (const [k, v] of Object.entries(params ?? {})) {
+        if (v == null) q.delete(k);
+        else q.set(k, v);
+      }
+      const str = q.toString();
+      return str ? '?' + str : '';
+    })();
     /* THE FOUR ROUTES THIS SHELL OWNS SWITCH WITHOUT A REQUEST — the
        reference's own arrangement, for the reference's own reason: "a route
        change must not discard a snapshot that took seconds to build". The Map
@@ -401,13 +631,12 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
        were looking at. */
     if (children || !OWNED.includes(r)) {
       setDrawer(null);
-      router.push(ROUTE_PATH[r] + window.location.search);
+      router.push(ROUTE_PATH[r] + query);
       return;
     }
     setRoute(r);
     setDrawer(null);
-    const q = window.location.search;
-    window.history.pushState({ r }, '', ROUTE_PATH[r] + q);
+    window.history.pushState({ r }, '', ROUTE_PATH[r] + query);
     window.scrollTo({ top: 0, behavior: 'auto' });
   }, [router, children]);
 
@@ -451,6 +680,46 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
     }
   }, []);
 
+  /**
+   * RE-READ THIS MEMBER'S PAYLOAD, AND RESOLVE WHEN IT IS IN STATE.
+   *
+   * WHY NOT `router.refresh()`. That was the first answer here and it is the
+   * wrong tool for a caller that has to KNOW when the data landed. `refresh()`
+   * returns void: wrapped in `startTransition`, `isPending` tracks React's own
+   * render, not the round trip behind it, so on a large record it settled
+   * seconds before the new payload arrived. Anything keyed on it — a loader,
+   * a disabled control — came down over the PREVIOUS owner's figures and sat
+   * there until the refresh finally delivered. Measured on a 100+ lease
+   * record: ten to eleven seconds of the old owner's dashboard after the
+   * loading state had already ended.
+   *
+   * An awaited fetch has no such gap. It resolves exactly once `setLive` has
+   * been called, so a caller can hold its loading state across the whole wait
+   * and drop it in the same tick the data becomes renderable — React batches
+   * that `setLive` with whatever the caller sets next, so the new payload and
+   * the end of the wait reach the screen in ONE render rather than two.
+   *
+   * NO PARAMETERS, DELIBERATELY. `/api/portfolio` resolves a signed-in member
+   * through `currentMemberTarget()` and answers with whichever record is
+   * ACTIVE, so after the active record has been changed this reads the new one
+   * by asking for nothing. `load()` beside it is the owner-PICKER's path and
+   * writes `?owner=` into the address bar; this must not, because the member's
+   * active record is not a URL-selected owner.
+   */
+  const reloadActiveOwner = useCallback(async (): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/portfolio', { cache: 'no-store' });
+      if (!res.ok) return false;
+      const data = (await res.json()) as Payload;
+      setLive(data);
+      /* the open drawer belongs to the record that is going away */
+      setDrawer(null);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
   /* If the server could not build the first payload, retry from the client
      instead of showing a dead page. */
   useEffect(() => {
@@ -466,13 +735,66 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
   }, []);
 
   /* ------------------------------------------------------- the sample view */
-  /* Not claimed means the reader has not proved these interests are theirs, so
-     the payload is rewritten as a sample of itself — same shape, same code path,
-     real dates, illustrative figures. Memoised on the payload identity: the
-     transform walks every lease and month, and re-running it on each keystroke
-     in the search box was measurable. */
+  /**
+  /**
+   * ONE SAMPLE RECORD, THE SAME ONE FOR EVERY READER.
+   *
+   * Not claimed means the reader has not proved these interests are theirs, so
+   * the payload is rewritten as a sample of itself — same shape, same code
+   * path, real dates, illustrative figures.
+   *
+   * WHAT CHANGED: WHICH PAYLOAD IS REWRITTEN. `sampleize` renames and scales,
+   * but it MAPS OVER the payload it is given — and it was given `live`, the
+   * READER'S OWN snapshot. Nothing of theirs was published, since the transform
+   * substitutes every name and number, but the preview was then a different
+   * record for every visitor: ten leases for one reader, 1,555 for another,
+   * every figure their own multiplied by a thousand. The page says "this is
+   * what your record looks like once you claim it", which is a promise about
+   * the PRODUCT; it cannot be made out of the record of somebody who has not
+   * claimed one. Defect sheet rows 51 and 54.
+   *
+   * So the preview is drawn from the committed capture — ten leases, one
+   * county, a full timeline, every drawer key — served by
+   * `/api/portfolio/sample`. See that route for why it is a fetch and not an
+   * import: the capture is 2 MB and this is a client component, so importing it
+   * would put all of it in the bundle every reader downloads, claimed or not.
+   *
+   * IT DOES NOT FALL BACK TO `live`, AND THAT IS THE POINT OF THE FIX. A failed
+   * read leaves the preview empty rather than quietly serving the per-reader
+   * version again — "the same record for every user, independent of member_id,
+   * user, session or API data" is the requirement, and a fallback that is
+   * per-reader on the unhappy path does not meet it. The shell already has an
+   * honest place to say nothing loaded.
+   *
+   * ASKED ONCE, IN A REF, AND THE DEPENDENCY LIST IS JUST `sample`. Guarding on
+   * the busy flag and listing it as a dependency deadlocked: setting it re-ran
+   * the effect, the re-run's cleanup invalidated the request still in flight,
+   * and the `finally` that clears the flag was inside that invalidated closure —
+   * so the flag stayed true and the loader never came down. A ref is the right
+   * shape for "has this been asked for yet": it is not render state, and it
+   * cannot make the effect re-enter itself.
+   *
+   * MEMOISED ON THE SOURCE: the transform walks every lease and month, and
+   * re-running it on each keystroke in the search box was measurable.
+   */
+  const [fixture, setFixture] = useState<Payload | null>(null);
+  const [sampleBusy, setSampleBusy] = useState(false);
+  const sampleAsked = useRef(false);
+
+  useEffect(() => {
+    if (!sample || sampleAsked.current) return;
+    sampleAsked.current = true;
+    setSampleBusy(true);
+    fetch('/api/portfolio/sample')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j) setFixture(j as Payload); })
+      .catch(() => { /* reported by the empty state below */ })
+      .finally(() => setSampleBusy(false));
+  }, [sample]);
+
+  const sampleSource = sample ? fixture : null;
   const shown = useMemo(
-    () => (live && sample ? sampleize(live) : null), [live, sample]);
+    () => (sampleSource ? sampleize(sampleSource) : null), [sampleSource]);
   const data: Payload | null = sample ? (shown?.payload ?? null) : live;
 
   /* Drop ids the payload no longer carries — see `markRead`. Runs on every
@@ -491,8 +813,150 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
   }, [data?.alerts.items]);
 
   const openDrawer = useCallback((key: string) => setDrawer(key), []);
-  const copy: DrawerCopy | null = drawer ? (data?.drawers?.[drawer] ?? null) : null;
 
+  /* ----------------------------------- the settlements, and their explainer */
+  /**
+   * ONE TIMER READS BOTH, AND THAT IS THE WHOLE POINT OF THIS BLOCK.
+   *
+   * WHAT WENT WRONG. The strip polled `/api/prices` from its own interval
+   * inside `Chrome`, and the panel read `/api/drawers/prices` once, when it
+   * opened. Two timers, two moments. The service advances its price snapshot
+   * about every ten seconds (measured: `fetched_iso` moved 05:38:21 ->
+   * 05:38:31 -> 05:38:41 -> 05:38:57), so within one tick of opening the panel
+   * the bar had moved on and the panel had not — `WTI $102.23` over the strip
+   * and `WTI $102.16` in the explainer it had just been opened from, and it
+   * stayed wrong for as long as the panel was up, because nothing re-read it.
+   *
+   * THE TWO ENDPOINTS WERE NEVER THE PROBLEM. Fetched at the same instant they
+   * agree exactly — three simultaneous pairs, all three identical on all three
+   * settlements — because both are served from the same cached snapshot
+   * upstream. So the fix is not to reconcile two answers, it is to stop asking
+   * at two different times.
+   *
+   * HENCE ONE `read()`, ISSUING BOTH REQUESTS IN THE SAME `Promise.all`, and it
+   * lives here rather than in `Chrome` because this is where `drawer` is: the
+   * poller has to know whether the panel is open to know whether the second
+   * request is worth making. The strip gets its values from here as a prop.
+   *
+   * THE EXPLAINER IS ONLY READ WHILE IT IS ON SCREEN. `pricesOpen` is in the
+   * dependency list, so opening the panel rebuilds the timer and fires an
+   * immediate paired read — the panel does not sit on stale copy waiting up to
+   * ten seconds for the next tick, and the bar re-syncs in the same breath.
+   * Closing it drops the second request again. No other Dashboard read is
+   * repeated at any point.
+   *
+   * THE PAYLOAD'S OWN COPY STAYS ON SCREEN UNTIL THE FRESH ONE ARRIVES, and on
+   * a failure too. `owner-data.ts` already fetched all eleven flat explainers
+   * from this same endpoint during the payload build, so the fallback is not a
+   * different kind of answer, only an older one — and a panel that opens with
+   * its content already in it is the behaviour every other panel has. A spinner
+   * here, or an error card over a readable explainer, would be the worse page.
+   *
+   * KEYED ON THE OWNER IT WAS READ FOR. The explainer endpoint takes
+   * `member_id`, so a cached copy belongs to whoever was active when it
+   * answered; switching owner makes it somebody else's. Comparing the name is
+   * self-contained here — clearing it from the owner-switch path instead would
+   * put a second place in this file that has to remember this cache exists.
+   *
+   * A FAILED POLL KEEPS THE LAST GOOD SETTLEMENTS AND SAYS NOTHING. Every value
+   * ever shown is one the service really returned, carrying its own `as_of` in
+   * the tooltip, so nothing is invented and nothing is extrapolated — which is
+   * the line `spot-prices.ts` draws, and draws for good reason: what it
+   * replaced was a hardcoded seed pushed through a random walk. Not updating
+   * for a tick is not the same act as manufacturing a number, and blanking the
+   * bar on a transient 502 would take a true settlement off the screen and put
+   * nothing in its place.
+   *
+   * NO OVERLAPPING REQUESTS, and the guard is a LOCAL rather than a ref. A ref
+   * outlives the effect while the timer it guards does not, which breaks on the
+   * first render under React's development double-invoke: the first effect
+   * starts a request, its cleanup aborts it, the second effect runs before that
+   * abort has rejected and finds the flag still raised, so it returns WITHOUT
+   * ASKING — and the strip then has no live settlements until the 10s tick,
+   * which is precisely the delay in front of the first call that must not be
+   * there. A local is scoped to exactly the run that owns the timer.
+   *
+   * TORN DOWN WITH THE COMPONENT, and the open requests with it: `clearInterval`
+   * stops the timer, `abort()` drops whatever is in flight, and `mounted` stops
+   * a reply that was already decoding from setting state on a dead tree. All
+   * three, because each covers a moment the other two do not.
+   */
+  const [spot, setSpot] = useState<SpotQuote[] | null>(null);
+  const [priceCopy, setPriceCopy] =
+    useState<{ owner: string; drawer: DrawerCopy } | null>(null);
+  const ownerName = data?.owner.ownername ?? '';
+  const pricesOpen = drawer === 'prices';
+
+  useEffect(() => {
+    let mounted = true;
+    let busy = false;
+    const ac = new AbortController();
+
+    const read = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        /* TOGETHER, NOT ONE AFTER THE OTHER. Both are served from the same
+           upstream snapshot, so issuing them in parallel is what makes the bar
+           and the panel quote the same three numbers. */
+        const [stripRes, panelRes] = await Promise.all([
+          fetch('/api/prices', { cache: 'no-store', signal: ac.signal }),
+          pricesOpen
+            ? fetch('/api/drawers/prices', { cache: 'no-store', signal: ac.signal })
+            : null,
+        ]);
+        const strip = stripRes.ok
+          ? ((await stripRes.json()) as { items?: SpotQuote[] })
+          : null;
+        const panel = panelRes?.ok
+          ? ((await panelRes.json()) as { drawer?: DrawerCopy | null })
+          : null;
+        if (!mounted) return;
+        /* AN EMPTY LIST IS NOT AN ANSWER TO BIND. `ok_count` can be zero
+           upstream, and replacing three real settlements with nothing would
+           empty the bar on a bad read — the same argument as the catch. */
+        if (strip?.items?.length) setSpot(strip.items);
+        /* `drawer: null` is what the route answers for a signed-out reader —
+           it has nothing newer, so the payload's copy goes on rendering. */
+        if (panel?.drawer) setPriceCopy({ owner: ownerName, drawer: panel.drawer });
+      } catch {
+        /* aborted, offline, or unparseable — the last good values stand */
+      } finally {
+        busy = false;
+      }
+    };
+
+    void read();
+    const timer = setInterval(() => { void read(); }, SPOT_POLL_MS);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+      ac.abort();
+    };
+  }, [pricesOpen, ownerName]);
+
+  /* A PANEL A VIEW BUILT ITSELF, rather than a key into `data.drawers`. The
+     Activities timeline composes one per event so the detail matches the card
+     that was clicked (defects #12-#14, #17); it arrives already complete, so
+     there is nothing to look up and the string branches below do not apply. */
+  const openEventDrawer = useCallback((d: DrawerCopy) => setDrawer(d), []);
+
+  const rawCopy: DrawerCopy | null = !drawer
+    ? null
+    : typeof drawer !== 'string'
+      ? drawer
+      : drawer === 'prices'
+        ? ((priceCopy?.owner === ownerName ? priceCopy.drawer : null)
+          ?? data?.drawers?.prices ?? null)
+        : (data?.drawers?.[drawer] ?? null);
+
+  /* every panel goes through the same reduction — see `collapseNames` */
+  const counties = data?.totals.counties;
+  const operatorNames = data?.totals.operator_names;
+  const copy = useMemo(
+    () => collapseNames(rawCopy, counties ?? [], operatorNames ?? []),
+    [rawCopy, counties, operatorNames],
+  );
   /* Esc closes the drawer wherever focus is — a panel that can only be closed
      by hitting its own button is a trap for a keyboard user. */
   const wrap = useRef<HTMLDivElement | null>(null);
@@ -507,15 +971,69 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
     const el = wrap.current;
     document.body.classList.add('ctx-open');
     el?.classList.add('ctx-open');
+
+    /* THE PAGE BEHIND THE PANEL IS HELD STILL WHILE IT IS OPEN.
+     *
+     * ONE LOCK FOR EVERY DRAWER, because there is only one drawer. Each of the
+     * explainers — the eleven flat ones, the twelve `pf_*`, every `lease:*`,
+     * `well:*` and `alert:*` panel — is the SAME `DrawerPanel` with different
+     * copy in it, opened through this one piece of state. So locking here is
+     * what makes the behaviour identical across all of them, and there is no
+     * second panel anywhere in this shell to keep in step: `.ctx-drawer` and
+     * `.ctx-scrim` are the only fixed right-side elements the reference sheet
+     * declares.
+     *
+     * THE MEASUREMENT HAS TO HAPPEN BEFORE THE CLASS GOES ON, which is the
+     * whole reason this is not two lines of CSS. Taking the page's overflow
+     * away takes its scrollbar with it, and on a platform with a CLASSIC
+     * scrollbar that hands 15px back to the layout: measured at 1440x900, the
+     * content and the top row both jumped from x=1425 to x=1440 the instant
+     * `overflow: hidden` applied. A modal that shoves the page sideways as it
+     * opens is a worse defect than the one being fixed, and it is exactly why
+     * the note in `onebar.css` declined this lock when row 55 was fixed.
+     *
+     * `scrollbar-gutter: stable` IS THE COMPENSATION, and it goes on the ROOT.
+     * Measured all four ways: `overflow: hidden` on `html` or on `body` both
+     * stop the page (`body` works because the root's overflow is `visible`, so
+     * the viewport takes its overflow from the body) — but the gutter is only
+     * honoured on `html`. On `body` it is ignored and the 15px jump stays. So
+     * both declarations sit on the root element, and the shift measures zero.
+     *
+     * THE GUTTER IS CONDITIONAL, and that is what makes this right on a phone.
+     * `scrollbar-gutter` reserves the track whenever the container is not
+     * `overflow: visible` — including on a page that never had a scrollbar to
+     * begin with, where reserving one would shift the layout the OTHER way. So
+     * the class is added only when a classic scrollbar was actually measured.
+     * Overlay scrollbars — every touch platform, and macOS unless a mouse is
+     * attached — measure 0 and get the lock with no gutter, which is correct:
+     * an overlay scrollbar takes no layout space, so there is nothing to
+     * give back.
+     */
+    const root = document.documentElement;
+    const gutter = window.innerWidth - root.clientWidth;
+    root.classList.add('mv-ctx-lock');
+    if (gutter > 0) root.classList.add('mv-ctx-gutter');
+
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.classList.remove('ctx-open');
       el?.classList.remove('ctx-open');
+      /* THE PAGE SCROLLS AGAIN, AND FROM WHERE IT LEFT OFF. `overflow: hidden`
+         on the root clips the page without unsetting `scrollTop`, so nothing
+         has to be saved and restored here — the reader is returned to the same
+         position they opened the panel from. */
+      root.classList.remove('mv-ctx-lock', 'mv-ctx-gutter');
     };
   }, [drawer]);
 
   const view = (
     children ??
+    /* The view renders as soon as the payload is here, at the density in
+       state — the cookie's when the request carried one, the default
+       otherwise. QA asked for the loading skeletons to go, so the one frame a
+       pre-cookie `localStorage` choice corrects in is accepted rather than
+       covered. `children` is exempt: a page that brought its own view (the
+       Map) does not read the density at all. */
     (!data ? null
       : route === 'weekly'
         ? <WeeklyView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
@@ -523,17 +1041,23 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
           ? (
             <AlertsView
               p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go}
-              readIds={readIds} markRead={markRead}
+              readIds={readIds} markRead={markRead} readReady={readReady}
             />
           )
           : route === 'activities'
-            ? <ActivitiesView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
+            ? (
+              <ActivitiesView
+                p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go}
+                openEvent={openEventDrawer}
+              />
+            )
             : route === 'production'
               ? <ProductionView p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go} />
               : (
                 <Dashboard
                   p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go}
                   trialStarted={trialStarted} setFunnel={pickFunnel}
+                  reloadActiveOwner={reloadActiveOwner}
                 />
               ))
   );
@@ -543,7 +1067,7 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
       {/* The two axes, readable by anything under the chrome. `tier` and not
           `effTier`: the raw choice, so a surface with its own ceiling rule can
           apply it rather than inherit this one's. See `view-state.tsx`. */}
-      <PortalViewStateProvider tier={tier} funnel={funnel}>
+      <PortalViewStateProvider tier={tier} funnel={funnel} setTier={pickTier}>
       {/* `onOwner` AND `busy` NO LONGER GO TO THE CHROME. The owner-search band
           was their only consumer and it has been removed (see `Chrome`); `load`
           and `busy` are still owned here — `load` for the URL-driven read in the
@@ -551,8 +1075,9 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
           owner read changed, only who is told about it. */}
       <Chrome
         p={data} route={route} go={go} tier={tier} setTier={pickTier} readIds={readIds}
+        readReady={readReady}
         funnel={funnel} setFunnel={pickFunnel} sample={sample}
-        open={openDrawer}
+        open={openDrawer} spot={spot}
         sampleNote={shown?.note ?? null} trialStarted={trialStarted}
       >
         {error
@@ -569,11 +1094,17 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
         {/* The copy no longer says "search for a name above" — there is no
             search box above it any more. The owner comes from the URL or from
             the default read, so a reload is the honest suggestion. */}
-        {!children && !data && !error && !busy ? <ErrorCard detail="No owner is loaded yet. Reload the page, or open a link that names one." /> : null}
+        {/* `prefsReady` too: until the preferences are read the page may still
+            be about to render, and "no owner is loaded" before that would be a
+            wrong answer flashed for a frame. */}
+        {prefsReady && !children && !data && !error && !busy ? <ErrorCard detail="No owner is loaded yet. Reload the page, or open a link that names one." /> : null}
       </Chrome>
       </PortalViewStateProvider>
 
-      <Loader on={busy} name={loadingName} steps={STEPS} />
+      {/* `sampleBusy` too: entering the not-claimed state fetches its fixed
+          base record, and without this the page showed the "nothing loaded"
+          card for the length of that request. */}
+      <Loader on={busy || sampleBusy} name={loadingName} steps={STEPS} />
 
       <DrawerPanel
         copy={copy} onClose={() => setDrawer(null)}

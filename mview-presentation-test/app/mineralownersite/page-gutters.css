@@ -1,0 +1,66 @@
+/*
+ * WIDER SIDE SPACE FOR THREE OF THE ACCOUNT PAGES.
+ *
+ * Invite, Billing and Settings. Asked for directly: more room on the left and
+ * the right. PROFILE LEFT THE SET (user, 2026-09-18): with its two-column
+ * grid, the wide gutters stacked on the shell's 1360px column read as "too
+ * much space" on a wide screen, so that page wears the shell's own gutters
+ * again — see the note in `profile/page.tsx`.
+ *
+ * ── WHAT THEY HAD ──
+ *
+ * `dashboard-reference.css` gives every page on this shell
+ * `padding-inline: clamp(18px, 2.6vw, 42px)` inside a `max-width: 1360px`
+ * column. MEASURED: 26.6px of gutter at a 1024px viewport, 39px at 1500px,
+ * 42px from about 1615px up, where the clamp stops growing.
+ *
+ * ── WHAT THEY HAVE NOW ──
+ *
+ *   padding-inline: clamp(36px, 7vw, 120px)
+ *
+ * which is 72px at 1024, 105px at 1500 and 120px from ~1715px up — between two
+ * and three times what the shell gives, and the same figure on both sides
+ * because it is one `padding-inline` rather than a left and a right that can
+ * drift apart.
+ *
+ * THE FLOOR AND THE CEILING BOTH DO WORK. 7vw alone would be 54px on a
+ * just-past-768px tablet, which is most of the room that width has; and 133px
+ * a side on a 1900px screen, which starts to strand the content in the middle.
+ * The 36px floor and 120px ceiling are where those two stop.
+ *
+ * ── WHY PADDING AND NOT A NARROWER `max-width` ──
+ *
+ * `max-width` is the TIER's to set. `view-simple` takes the column to 1120px,
+ * `view-ultra` to 860px and `view-pro` to 1440px, and each of those is a
+ * deliberate reading measure for a density. Writing a fifth max-width here
+ * would silently outrank three of them and make Ultra and Pro identical on
+ * these four pages. `.app-body` is `box-sizing: border-box`, so padding eats
+ * into whichever width the tier chose: the gutters widen, the column narrows by
+ * the same amount, and every tier keeps its own proportions.
+ *
+ * ── AND ONLY ABOVE 768px ──
+ *
+ * Below that the shell already drops to a 14px gutter, because a 375px screen
+ * has no space to give away — 120px a side would leave 135px of content. The
+ * media query keeps this to the widths where there is something to spend.
+ *
+ * ── HOW IT REACHES `.app-body`, WHICH NONE OF THE FOUR RENDERS ──
+ *
+ * `Portal`'s `shellClass` prop — the mechanism the Map uses for its full-height
+ * layout. The body is an ANCESTOR of `children`, so a page cannot style it from
+ * the inside. All three pass `mv-wide-gutters`.
+ *
+ * ── AND WHY THE ALERTS AND THE DASHBOARD ARE LEFT ALONE ──
+ *
+ * They were not in the ask, and they are the two pages that most want the
+ * width: Alerts runs a full-bleed list and the Dashboard a grid of cards, while
+ * these four are forms and tables that read better in a narrower measure.
+ * Unlayered, like every page-imported sheet here, so it beats
+ * `dashboard-reference.css` without a specificity contest.
+ */
+
+@media (min-width: 768px) {
+  .mv-ref-app.mv-wide-gutters .app-body {
+    padding-inline: clamp(36px, 7vw, 120px);
+  }
+}

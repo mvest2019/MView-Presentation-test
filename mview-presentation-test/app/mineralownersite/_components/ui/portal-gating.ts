@@ -53,6 +53,15 @@ export const portalGate = {
    */
   lockedValue: "cl-lock",
   /**
+   * A PAGE THAT TAKES THE WIDE COLUMN whatever the density tier says.
+   *
+   * `portal.css` narrows `.app-body` to 920px in Essentials so a short page
+   * does not sprawl across a wide monitor. A module built around a wide table
+   * and full-width charts is not that page, and this marker opts it out — see
+   * the rule beside the tier widths.
+   */
+  wideColumn: "mv-wide",
+  /**
    * THE PAGE ROOT. `portal.css` selects DIRECT CHILDREN of this element for
    * both the unclaimed swap and the Ultra page replacement, so a module's
    * top-level sections must be its direct children or neither gate reaches

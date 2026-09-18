@@ -1,5 +1,10 @@
 "use server";
 
+import { avatarProxyUrl } from "@/app/mineralownersite/(reference)/profile/_lib/avatar-url";
+import {
+  fetchProfile,
+  profileApiBase,
+} from "@/app/mineralownersite/(reference)/profile/_lib/profile-api";
 import {
   loginUser,
   loginWithGoogle,
@@ -8,6 +13,7 @@ import {
   resetPassword,
   sendVerificationCode,
   splitName,
+  type AuthUser,
   type MemberTypeValue,
   verifyCode,
 } from "@/lib/auth-api";
@@ -17,6 +23,8 @@ import {
   recordLoginFailure,
 } from "@/lib/login-throttle";
 import { endSession, startSession } from "@/lib/session";
+
+import { normalizeInviteCode } from "@/lib/invite-code";
 
 import {
   codeSchema,
@@ -43,6 +51,52 @@ import {
  */
 
 export type ActionResult = { ok: true } | { ok: false; message: string };
+
+/**
+ * ADOPT THE UPLOADED AVATAR INTO A FRESH SIGN-IN.
+ *
+ * The login response comes from the AUTH API, whose `profile_pic` predates the
+ * users module — it knows nothing about a photo uploaded on My Profile
+ * (`member_profile_image`, served as `profile_image_url` on `GET /users/me`).
+ * So a fresh sign-in used to write a cookie without the uploaded photo, and
+ * the header greeted the member with initials until they happened to open
+ * My Profile again (user, 2026-09-18: "if I log out and login again it shows
+ * no profile, but I already uploaded"). This runs right after `startSession`
+ * on both login flows and rewrites the cookie with the photo's proxy URL when
+ * the record has one.
+ *
+ * BEST-EFFORT AND BOUNDED: a sign-in must neither fail nor visibly stall over
+ * an avatar, so the profile read gets five seconds and any failure is
+ * swallowed — the profile page's own mount sync remains the fallback. Not
+ * called after REGISTRATION: a brand-new account cannot have uploaded a photo.
+ */
+async function adoptUploadedPhoto(user: AuthUser): Promise<void> {
+  try {
+    const base = profileApiBase();
+    if (!base || !user.member_id) return;
+    const profile = await Promise.race([
+      fetchProfile(base, user.member_id),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("profile read too slow for sign-in")), 5000),
+      ),
+    ]);
+    const photo = avatarProxyUrl(profile.profile_image_url);
+    if (photo) await startSession({ ...user, profile_pic: photo }, true);
+    /* one line in the terminal so a "photo missing after login" report can be
+       traced to this step instead of guessed at */
+    console.info(
+      `[auth] sign-in avatar adoption for member ${user.member_id}: ${photo ? "adopted" : "record has no photo"}`,
+    );
+  } catch (e) {
+    /* the cookie keeps the login response's own picture, if any; the portal
+       layouts' SessionIdentitySync is the fallback that heals it on the first
+       page after sign-in */
+    console.error(
+      `[auth] sign-in avatar adoption failed for member ${user.member_id}:`,
+      e instanceof Error ? e.message : e,
+    );
+  }
+}
 
 export async function signInAction(values: unknown): Promise<ActionResult> {
   const parsed = loginSchema.safeParse(values);
@@ -91,6 +145,9 @@ export async function signInAction(values: unknown): Promise<ActionResult> {
      flow below, which already passed `true` on the grounds that choosing Google is
      a deliberate sign-in on this device. */
   await startSession(result.user, true);
+  /* the auth API's login response predates the uploaded avatar — see
+     `adoptUploadedPhoto` */
+  await adoptUploadedPhoto(result.user);
   return { ok: true };
 }
 
@@ -157,7 +214,7 @@ export async function registerAction(values: unknown): Promise<ActionResult> {
     return { ok: false, message: "Please check the details above." };
   }
 
-  const { fullName, email, password, phone, mailingAddress, terms } =
+  const { fullName, email, password, phone, mailingAddress, terms, inviteCode } =
     parsed.data;
 
   const created = await registerUser({
@@ -167,6 +224,21 @@ export async function registerAction(values: unknown): Promise<ActionResult> {
     phone,
     mailingAddress,
     memberType: DEFAULT_MEMBER_TYPE,
+    /*
+     * THE INVITATION CODE, NORMALIZED HERE AND NOWHERE ELSE.
+     *
+     * The field accepts `3159-7778` because that is what the letter prints; the
+     * API is sent the eight digits. `normalizeInviteCode` returns null for
+     * anything that is not eight digits, INCLUDING the empty string, so an
+     * ordinary registration sends no code at all rather than an empty one — the
+     * two are different things to a server deciding whether to post a credit.
+     *
+     * THE SCHEMA HAS ALREADY REFUSED A MALFORMED CODE, so this cannot silently
+     * drop something the reader typed and believed was accepted: a wrong shape
+     * fails at the field with a message, and only a well-formed code or nothing
+     * at all reaches here.
+     */
+    inviteCode: normalizeInviteCode(inviteCode) ?? undefined,
     /* Goes to the API as `tnc`. Taken from the parsed form rather than passed as
        `true`: the schema's `z.literal(true)` means this action cannot get here
        with it unticked, so the two agree — but the value that asserts consent
@@ -287,6 +359,9 @@ export async function signInWithGoogleAction(
   // Choosing Google is a deliberate sign-in on this device, so it gets the
   // persistent cookie rather than a session one.
   await startSession(result.user, true);
+  /* the auth API's login response predates the uploaded avatar — see
+     `adoptUploadedPhoto` */
+  await adoptUploadedPhoto(result.user);
   return { ok: true };
 }
 

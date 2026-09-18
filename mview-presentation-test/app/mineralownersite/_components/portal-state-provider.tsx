@@ -11,6 +11,11 @@ import {
 import { useSearchParams } from "next/navigation";
 
 import {
+  readFunnelState,
+  readFunnelStateOnServer,
+  subscribeFunnelState,
+} from "../_lib/funnel-state-store";
+import {
   readViewTier,
   readViewTierOnServer,
   subscribeViewTier,
@@ -79,17 +84,54 @@ export function usePortalState(): PortalStateValue {
   return value;
 }
 
+/**
+ * THE SAME VALUE, OR `null` OUTSIDE THIS PROVIDER — for a component that can
+ * legitimately render under either shell.
+ *
+ * WHY THIS EXISTS. `usePortalState` throws, which is right for a component that
+ * has no meaning without the provider. But `ViewTierSwitch` now renders under
+ * BOTH shells: the `(portal)` one, which has this provider, and `(reference)`,
+ * which has `PortalViewStateProvider` instead. A hook that throws cannot be
+ * called speculatively — and React forbids calling it conditionally — so the
+ * switch needs a reader that answers "not here" rather than raising.
+ *
+ * Mirrors `usePortalViewState()` in `reference/view-state.tsx`, which is
+ * nullable for the same reason and documents it the same way.
+ */
+export function usePortalStateOptional(): PortalStateValue | null {
+  return useContext(PortalStateContext);
+}
+
 export function PortalStateProvider({ children }: { children: ReactNode }) {
   const params = useSearchParams();
 
   const stateParam = params.get("state");
   const viewParam = params.get("view");
 
-  // The funnel state is URL-only: it is a demo affordance, and persisting it
-  // would leave a reviewer stuck in whatever state they last looked at.
+  /*
+   * THE FUNNEL STATE COMES FROM THE STORE, NOT THE ADDRESS BAR.
+   *
+   * It used to be read straight off `?state=`, which meant the demo menu had to
+   * navigate to change it and every URL carried the state it was picked in. The
+   * Dashboard changes state with no URL at all, and the density switch was
+   * moved off `?view=` for the same reason — see `funnel-state-store.ts`.
+   *
+   * `?state=` STILL WORKS AS A DEEP LINK, because the reference's contract says
+   * it must and those links are already out there. It wins for the first paint
+   * and is never written back, so opening one puts you in that state and the
+   * menu takes over from there.
+   */
+  const storedState = useSyncExternalStore(
+    subscribeFunnelState,
+    readFunnelState,
+    readFunnelStateOnServer,
+  );
+
   const funnelState = stateParam
     ? toFunnelState(normaliseStateParam(stateParam))
-    : DEFAULT_FUNNEL_STATE;
+    : storedState
+      ? toFunnelState(storedState)
+      : DEFAULT_FUNNEL_STATE;
 
   // `null` until the first client read — which on the server, and on the very
   // first paint, means the default. See the note on the store above.

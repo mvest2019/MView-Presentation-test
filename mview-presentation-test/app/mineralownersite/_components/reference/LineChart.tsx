@@ -25,6 +25,7 @@
  */
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import type { ChartSpec } from '../../_lib/reference/chart';
+import { spanLabel, units } from '../../_lib/reference/fmt';
 
 const VB_W = 600;
 const VB_H = 150;
@@ -43,11 +44,39 @@ function fmt(v: number, dp: number): string {
  * index, and the chart says so in its own hint line rather than leaving the
  * reader to discover it.
  */
+/**
+ * THE PRODUCT COLOURS ARE PINNED AT THE RENDER BOUNDARY (QA's FINAL pair,
+ * settled on retest: gas is the golden `#b8892F`, oil is the green `#2E8F6D`).
+ *
+ * A spec built in this app already carries that pair — `chart.ts` sets it —
+ * but a spec that came down inside a DRAWER carries whatever colour the
+ * service composed, so the right-side drawer's charts could disagree with the
+ * page they open over. Normalised once, here, exactly like `units()` two lines
+ * down: every SVG in the app renders through this component, so the drawer and
+ * the page cannot disagree. Matched on the series NAME, whole word, so
+ * 'Gas'/'Oil' are repaired and a price series ('WTI', 'BRENT') keeps the
+ * colour it was sent with.
+ */
+const PRODUCT_COLOUR: Record<string, string> = { gas: '#b8892f', oil: '#2e8f6d' };
+
+function withProductColours(spec: ChartSpec): ChartSpec {
+  let touched = false;
+  const series = spec.series.map((s) => {
+    const want = PRODUCT_COLOUR[s.name.trim().toLowerCase()];
+    if (!want || s.colour.toLowerCase() === want) return s;
+    touched = true;
+    return { ...s, colour: want };
+  });
+  /* the same object when nothing changed, so memos keyed on the spec hold */
+  return touched ? { ...spec, series } : spec;
+}
+
 export default function LineChart(
-  { spec, onPick }: { spec: ChartSpec; onPick?: (index: number) => void },
+  { spec: rawSpec, onPick }: { spec: ChartSpec; onPick?: (index: number) => void },
 ) {
   const [hover, setHover] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const spec = useMemo(() => withProductColours(rawSpec), [rawSpec]);
 
   const geom = useMemo(() => {
     const all = spec.series.flatMap((s) => s.points).filter((v): v is number => v != null);
@@ -135,6 +164,13 @@ export default function LineChart(
   const { x, y, lo, hi } = geom;
   const n = spec.x.length;
   const cursor = hover;
+  /* THE UNIT AS THIS APP SPELLS IT. A spec built here already carries `MCF` or
+     `BBL`; a spec that came down with a drawer carries whatever the service
+     wrote, and the service writes "bbl". Normalised once, here, so the readout,
+     the axis and the accessible label cannot disagree with each other or with
+     the page around them. See `units()` in `fmt.ts` for what is changed and
+     what — `MMBtu` — deliberately is not. */
+  const unit = units(spec.unit);
 
   /* the label for the whole chart when nothing is hovered: the latest reading */
   const lastIdx = (() => {
@@ -150,18 +186,81 @@ export default function LineChart(
     : lastIdx;
   const showCursor = readIdx === cursor;
 
+  /* ==================================================== THE READOUT HOLDS STILL
+   *
+   * WHAT THE READER SEES. Sweep the pointer along the oil chart and the figure
+   * under your eye slides left and right. Measured on the paid dashboard at
+   * 1440px: the month label is 64.2px on "Sep 2026" and 68.7px on "Nov 2026",
+   * and the oil figure is 53px on "665 BBL" and 63.6px on "1,568 BBL". Every
+   * one of those changes on every pointer move, and `.lc-read` is a flex row —
+   * so the coloured dot and the figure beside it walk about 13px back and forth
+   * as the cursor crosses the series. Defect sheet row 11.
+   *
+   * WHY IT IS THE OIL CHART THAT WAS FILED. Gas runs 14,245–22,735 — five
+   * digits the whole way, so its figure only moves ~3px. Oil runs 665–1,568,
+   * which crosses a digit boundary, so it moves four times as far. Same row,
+   * same cause, different amplitude; the fix is on the row, not on the series.
+   *
+   * WHAT THE EARLIER PASS FIXED, AND WHAT IT LEFT. `min-height` on `.lc-read`
+   * stopped the row changing from two lines to one, which is what moved the
+   * chart VERTICALLY. Nothing addressed the horizontal walk, and that is what
+   * is left to see once the vertical jump is gone.
+   *
+   * THE FIX IS TO RESERVE THE WIDEST READING EACH SLOT CAN EVER HOLD, so the
+   * boxes are sized once from the data rather than re-sized from whatever is
+   * under the pointer. The widths below are CHARACTER COUNTS, applied in `ch`.
+   * That is exact for the digits — `.lc-val b` and, from this commit, the
+   * month label are `tabular-nums`, so a digit is one `ch` by definition — and
+   * it over-reserves slightly for letters, because in this face `0` is wider
+   * than a letter (measured: `1ch` is 9.6px on the label, where the widest
+   * eight-character month is 68.7px against the 76.8px eight `ch` buy). Over-
+   * reserving is the safe direction: the spare goes into the flexible gap
+   * before the right-aligned hint, and nothing else on the row can move.
+   *
+   * IT IS A FLOOR, NOT A WIDTH. A reading wider than its reservation still
+   * grows its box — the row behaves exactly as it does today rather than
+   * clipping a figure — so the worst case of a mis-estimate is the bug we
+   * started with on that one chart, never a lost digit.
+   */
+  const reading = (s: ChartSpec['series'][number], i: number): string => {
+    const v = s.points[i];
+    if (v == null) return 'not filed';
+    if (v === 0 && spec.kind === 'bars') return 'none';
+    return fmt(v, spec.dp) + (unit ? ' ' + unit : '');
+  };
+  /** the longest reading this series can put in the row, in characters */
+  const figCh = spec.series.map(
+    (s) => Math.max(0, ...s.points.map((_p, i) => reading(s, i).length)),
+  );
+  /** the longest period label, likewise */
+  const whenCh = spec.x.reduce((w, lbl) => Math.max(w, lbl.length), 0);
+  /* The hint swaps between two sentences of very different lengths; it is
+     right-aligned, so only its own left edge moves — but the floor keeps that
+     edge still too, and it is the same measurement as the other two. */
+  const hintCh = Math.max(
+    `${n} of ${n}${onPick ? ' · click to filter' : ''}`.length,
+    (onPick ? 'click any month to filter the timeline to it' : 'hover or arrow-key any period').length,
+  );
+
   return (
     <div className="lc">
       <div className="lc-head">
         <strong>{spec.label}</strong>
-        <span>{spec.sub}</span>
+        {/* `spanLabel` turns the service's "24 months to June 2026" into "Last
+            24 months through June 2026" and leaves every other span it writes
+            alone — see `fmt.ts`. Applied here because this is the one element
+            that renders a chart's span, so every chart on every surface gets
+            the same wording from one place. */}
+        <span>{spanLabel(spec.sub)}</span>
       </div>
 
       {/* the readout: the exact figures for whatever the pointer is on */}
       <div className="lc-read" aria-live="polite">
-        <span className="lc-when">{spec.x[readIdx]}</span>
-        {spec.series.map((s) => {
+        {/* the three reservations — see "THE READOUT HOLDS STILL" above */}
+        <span className="lc-when" style={{ minWidth: `${whenCh}ch` }}>{spec.x[readIdx]}</span>
+        {spec.series.map((s, si) => {
           const v = s.points[readIdx];
+          const fig = { minWidth: `${figCh[si]}ch` };
           return (
             <span className="lc-val" key={s.name}>
               <i style={{ background: s.colour }} />
@@ -172,21 +271,21 @@ export default function LineChart(
                   a real measured month and "none" would overstate it — the
                   null case above already covers a month nobody filed there. */}
               {v == null
-                ? <b className="lc-none">not filed</b>
+                ? <b className="lc-none" style={fig}>not filed</b>
                 : v === 0 && spec.kind === 'bars'
-                  ? <b className="lc-none">none</b>
-                  : <b>{fmt(v, spec.dp)}<u>{spec.unit ? ' ' + spec.unit : ''}</u></b>}
+                  ? <b className="lc-none" style={fig}>none</b>
+                  : <b style={fig}>{fmt(v, spec.dp)}<u>{unit ? ' ' + unit : ''}</u></b>}
             </span>
           );
         })}
         {showCursor
           ? (
-            <span className="lc-hint">
+            <span className="lc-hint" style={{ minWidth: `${hintCh}ch` }}>
               {readIdx + 1} of {n}{onPick ? ' · click to filter' : ''}
             </span>
           )
           : (
-            <span className="lc-hint">
+            <span className="lc-hint" style={{ minWidth: `${hintCh}ch` }}>
               {onPick ? 'click any month to filter the timeline to it' : 'hover or arrow-key any period'}
             </span>
           )}
@@ -202,9 +301,9 @@ export default function LineChart(
         aria-label={
           `${spec.label}. ${spec.series.map((s) => {
             const v = s.points[lastIdx];
-            return `${s.name} ${v == null ? 'not filed' : fmt(v, spec.dp) + ' ' + spec.unit}`;
+            return `${s.name} ${v == null ? 'not filed' : fmt(v, spec.dp) + ' ' + unit}`;
           }).join(', ')} at ${spec.x[lastIdx]}. Range ${fmt(lo, spec.dp)} to ${fmt(hi, spec.dp)} `
-          + `${spec.unit} across ${n} periods. Use the left and right arrow keys to read each one.`
+          + `${unit} across ${n} periods. Use the left and right arrow keys to read each one.`
         }
         style={onPick ? { cursor: 'pointer' } : undefined}
         onClick={onPick
@@ -370,7 +469,7 @@ export default function LineChart(
         <span>{spec.x[0]}</span>
         <span className="lc-range">
           {geom.isVolume ? 'peak' : 'low'} {fmt(geom.isVolume ? hi : lo, spec.dp)}
-          {geom.isVolume ? '' : ` · high ${fmt(hi, spec.dp)}`} {spec.unit}
+          {geom.isVolume ? '' : ` · high ${fmt(hi, spec.dp)}`} {unit}
         </span>
         <span>{spec.x[n - 1]}</span>
       </div>

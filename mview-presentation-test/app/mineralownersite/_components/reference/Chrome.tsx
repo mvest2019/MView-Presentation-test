@@ -160,9 +160,13 @@ const NAV: {
 
 /** where the account menu's four rows go in this app */
 const ACCOUNT: { label: string; href?: string }[] = [
-  { label: 'My Profile' },
+  { label: 'My Profile', href: '/mineralownersite/profile' },
   { label: 'Settings', href: '/mineralownersite/settings' },
-  { label: 'Billing & Plan' },
+  /* THE MODULE HAS SHIPPED. This row carried no `href`, so the map below sent
+     it to `/soon/billing-and-plan` — a card announcing that Billing & Plan had
+     not opened yet. `(reference)/billing` is that page now, and the slug
+     redirects to it. */
+  { label: 'Billing & Plan', href: '/mineralownersite/billing' },
   { label: 'Contact Us', href: '/contact-us' },
 ];
 
@@ -176,7 +180,7 @@ export interface ChromeProps {
    *  the prop's own note on `Portal`. Every `route ===` test below misses on
    *  `null`, which lights nothing and marks nothing `aria-current`. */
   route: Route | null;
-  go: (r: Route) => void;
+  go: (r: Route, params?: Record<string, string | null>) => void;
   tier: Tier; setTier: (t: Tier) => void;
   funnel: FunnelKey; setFunnel: (f: FunnelKey) => void;
   sample: boolean;
@@ -187,9 +191,18 @@ export interface ChromeProps {
      render. `Portal` still owns both (`load` for the URL-driven read on mount,
      `busy` for the Loader); they simply no longer reach the chrome. */
   open: (key: string) => void;
+  /** the settlements as last polled, or null before the first answer — owned by
+   *  `Portal` so the bar and the prices explainer cannot disagree, which is the
+   *  same argument as `readIds` below. See `useSpotPrices` there. */
+  spot: SpotQuote[] | null;
   /** the alerts this reader has opened, owned by `Portal` so the rail badge
    *  and the Alerts page cannot disagree — see `markRead` there */
   readIds: Set<string>;
+  /** has `mv.alertsRead` been loaded yet? — see `readReady` in `Portal`. The
+   *  rail badge and the bell are unread FIGURES, so they wait for it too: a
+   *  badge that paints 6 and settles on 4 is the same flash the Alerts header
+   *  was showing, in the one place that is on screen on every route. */
+  readReady: boolean;
   children: React.ReactNode;
 }
 
@@ -209,6 +222,19 @@ export default function Chrome(c: ChromeProps) {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const stateRef = useRef<HTMLDivElement | null>(null);
   const router = useRouter();
+
+  /* ESCAPE CLOSES THE NAVIGATION PANEL, for the same reason it closes the
+     explainer drawer: a panel that covers the page and can only be dismissed by
+     hitting its own scrim is a trap for anybody not using a pointer. The two
+     menus beside it (`menu`, `stateMenu`) already close on Escape through their
+     own effects; this one had no presentation at all until now, so it had
+     nothing to close. */
+  useEffect(() => {
+    if (!nav) return undefined;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setNav(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [nav]);
 
   /**
    * A COMING-SOON ROW CARRIES THE OWNER ACROSS WITH IT.
@@ -270,8 +296,9 @@ export default function Chrome(c: ChromeProps) {
   /* `a.unread` is the SERVER'S opinion and `readIds` is this reader's, so the
      badge subtracts one from the other. Counting the payload alone left the
      rail saying 6 after the page had been marked all read. */
-  const unread = c.p?.alerts.items
-    .filter((a) => a.unread && !c.readIds.has(a.id)).length ?? 0;
+  const unread = c.readReady
+    ? (c.p?.alerts.items.filter((a) => a.unread && !c.readIds.has(a.id)).length ?? 0)
+    : 0;
   const state = FUNNEL.find((s) => s.key === c.funnel)!;
   const persona = PERSONAS.find((x) => x.key === c.tier)!;
   /* The avatar is the MEMBER when there is one. Its old value — the owner
@@ -282,8 +309,37 @@ export default function Chrome(c: ChromeProps) {
 
   return (
     <div className="app-shell" id="appShell">
+      {/* THE SCRIM BEHIND THE NAVIGATION PANEL ON A SMALL SCREEN.
+
+          The rail is `display: none` below 860px and the bottom bar takes over,
+          and the bottom bar carries five of the eleven destinations — Activities,
+          the Map, Lease Audit, Groups and Invite Co-Owners are only in the rail.
+          The hamburger beside the wordmark has always toggled `nav` and put
+          `.open` on the rail, and NO STYLESHEET HAS EVER CARRIED A RULE FOR
+          `.app-side.open`: the class landed on an element that was still
+          `display: none !important`, so the control was inert at every width it
+          appears at and six sections of the portal had no route from a phone.
+          The rule that gives it a presentation is in `dashboard-reference.
+          onebar.css` §13; this is the half of it that has to be markup.
+
+          A BUTTON, NOT A DIV. It is the tap-anywhere-else dismissal, which is a
+          real control — as a `div` it would be invisible to a keyboard and to a
+          screen reader, both of which then have only Escape (added above) and
+          the panel's own links. Rendered only while the panel is open, so on a
+          desktop it does not exist at all. */}
+      {nav
+        ? (
+          <button
+            type="button" className="app-side-scrim" aria-label="Close navigation"
+            onClick={() => setNav(false)}
+          />
+        )
+        : null}
       {/* ------------------------------------------------------------ side */}
-      <aside className={'app-side' + (nav ? ' open' : '')} role="navigation" aria-label="Portal navigation">
+      <aside
+        id="appSideNav" className={'app-side' + (nav ? ' open' : '')}
+        role="navigation" aria-label="Portal navigation"
+      >
         {/* THE REAL WORDMARK, not the two-tone text that used to be here — see
             `LOGO` above. `height: 30px; width: auto` is what the reference build
             renders this same file at on this same rail
@@ -434,7 +490,16 @@ export default function Chrome(c: ChromeProps) {
             unreachable code is how a component stops being maintained, and git
             has it if the search is wanted back. */}
         <div className="app-top">
-          <button className="app-hamburger" onClick={() => setNav((v) => !v)} aria-label="Menu">☰</button>
+          {/* `type="button"` because this sits inside a shell that other pages
+              put forms in, and `aria-expanded` because it now actually expands
+              something — see the scrim above. */}
+          <button
+            type="button" className="app-hamburger"
+            onClick={() => setNav((v) => !v)}
+            aria-label="Menu" aria-expanded={nav} aria-controls="appSideNav"
+          >
+            ☰
+          </button>
 
           {/* THE LOGO ON THE CHROME ROW, which had none.
 
@@ -560,7 +625,7 @@ export default function Chrome(c: ChromeProps) {
                 </div>
               )}
 
-            <PriceStrip ticker={c.p?.ticker ?? null} open={c.open} />
+            <PriceStrip ticker={c.p?.ticker ?? null} spot={c.spot} open={c.open} />
 
             {c.p
               ? (
@@ -746,10 +811,18 @@ export default function Chrome(c: ChromeProps) {
             position rather than two and this is it. `#mvFunnelBar` is
             display:none by default and revealed per state by
             mvfunnelstates.css, so `paid` correctly shows nothing at all. */}
-        <FunnelBar
-          p={c.p} funnel={c.funnel} trialStarted={c.trialStarted}
-          setFunnel={c.setFunnel} go={c.go} open={c.open}
-        />
+        {/* NOT ON ACTIVITIES (defect #22): QA asked for the plan text and its
+            buttons to come off that page — the feed is the content there, and
+            the same plan message still meets the reader on every other route
+            and on the dashboard state card. */}
+        {c.route === 'activities'
+          ? null
+          : (
+            <FunnelBar
+              p={c.p} funnel={c.funnel} trialStarted={c.trialStarted}
+              setFunnel={c.setFunnel} go={c.go} open={c.open}
+            />
+          )}
 
         <div className="app-body">
           {c.children}
@@ -792,11 +865,83 @@ export default function Chrome(c: ChromeProps) {
  * value: the prototype's own comment records that this strip once random-walked
  * from a hardcoded $68.78 WTI seed while the real settlement was $84.38.
  */
-function PriceStrip({ ticker, open }: { ticker: Payload['ticker']; open: (k: string) => void }) {
-  if (!ticker || !ticker.items.length) return <span className="spacer" />;
+/**
+ * WHICH SETTLEMENTS THIS ROW CARRIES — three, not the four the payload sends.
+ *
+ * PROPANE IS DROPPED HERE, at the owner's request, and this is the only place
+ * it is dropped. `spot-prices.ts` still reads all four and the payload still
+ * carries all four, so the prices explainer — which is written about the whole
+ * set and is built by the service — is unchanged, and so is anything else that
+ * reads `ticker.items`. This is a decision about what the chrome row shows.
+ *
+ * IT ALSO BUYS THE ROW ITS WIDTH BACK. The four settlements are 696px and the
+ * row has never had that much to give them at any ordinary window size; three
+ * is what lets the reference's own ladder in `dashboard-reference.onebar.css`
+ * §3 — the note at 1700, the range at 1500, the label at 1300, the whole group
+ * onto its own line at 1024 — hold the row on one line again, which is the
+ * arrangement this bar is meant to have.
+ *
+ * BY KEY, NOT BY LABEL. `SpotKey` is the payload's own identifier; the label is
+ * display text and changing "PROPANE" to "Propane" upstream would silently put
+ * it back.
+ */
+const HIDDEN_IN_CHROME: ReadonlySet<string> = new Set(['propane']);
+
+/**
+ * THE FIELDS THIS STRIP RENDERS, and only those.
+ *
+ * `Payload['ticker']['items'][number]` is wider than this — it also declares
+ * `value`, `prev`, `low`, `high`, `change_30d_pct` and a required `history` —
+ * and it is structurally assignable to this, so the server-rendered seed and
+ * the polled response can both feed the same component.
+ *
+ * DECLARED SEPARATELY BECAUSE THE PAYLOAD TYPE IS WRONG ABOUT `history`: it
+ * marks it required, and neither `/api/v1/dashboard` nor
+ * `/api/v1/dashboard/prices` sends it (measured against the live service on
+ * both routes). Typing the poll as `Payload['ticker']` would therefore be a
+ * claim about the response that the response does not honour. Correcting the
+ * payload type is a separate change with its own callers to check, so this
+ * names what is actually read instead.
+ *
+ * EXPORTED BECAUSE `Portal` DOES THE POLLING. The strip renders these; it does
+ * not fetch them. See `useSpotPrices` there for why the two had to move apart.
+ */
+export type SpotQuote = {
+  key: string;
+  label: string;
+  display: string;
+  unit: string;
+  desc: string;
+  as_of: string;
+  change_pct: number | null;
+  error: string | null;
+};
+
+/**
+ * THE LIVE SETTLEMENTS ARRIVE AS A PROP, and this component fetches nothing.
+ *
+ * It polled `/api/prices` itself at first, on its own 10s interval, and that is
+ * exactly what put a different WTI in the bar from the one in the panel below
+ * it. The explainer is read from a SECOND endpoint, and that read lives in
+ * `Portal` because `Portal` owns the drawer. Two independent timers meant two
+ * reads at two different moments, and since the service advances its snapshot
+ * every ten seconds or so, the panel froze at whatever the price was when it
+ * opened while the bar above it kept moving.
+ *
+ * One timer now drives both, in `Portal`, and it issues the two requests
+ * together — see the note there. `seed` remains the server-rendered
+ * `Payload.ticker`, so the first paint is unchanged and there is no empty frame
+ * before the first poll answers.
+ */
+function PriceStrip(
+  { ticker, spot, open }:
+  { ticker: Payload['ticker']; spot: SpotQuote[] | null; open: (k: string) => void },
+) {
+  const items = (spot ?? ticker?.items ?? []).filter((q) => !HIDDEN_IN_CHROME.has(q.key));
+  if (!items.length) return <span className="spacer" />;
   return (
     <div className="pin-spot">
-      {ticker.items.map((q) => (
+      {items.map((q) => (
         <span
           key={q.key} className="pin-tk tk-click" role="button" tabIndex={0}
           onClick={() => open('prices')}

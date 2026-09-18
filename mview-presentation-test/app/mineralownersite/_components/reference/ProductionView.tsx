@@ -45,7 +45,7 @@
  * MCF AND BBL ARE NEVER ADDED. No BOE appears on this page in any form — two
  * axes, two colours, two columns everywhere the two products both appear.
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { ForecastLease, ForecastMonth, ForecastStat } from '../../_lib/reference/forecast';
 import { MCF, BBL, n0, n1, nShort, usd, usdShort, pctS, pct1, plural } from '../../_lib/reference/fmt';
 import ForecastChart, { Brush, MEASURE, type Measure, type Products } from './ForecastChart';
@@ -76,10 +76,19 @@ function windowFor(key: WinKey, n: number, seam: number): [number, number] {
   const lastPosted = Math.max(2, s - 1);
   switch (key) {
     case 'posted': return [0, lastPosted];
-    case 'last24': return [Math.max(0, s - 25), Math.min(last, s + 1)];
+    /* EXACTLY 24 POSTED MONTHS, ENDING AT THE LAST POSTED ONE. This window
+       used to run `s - 25` to `s + 1` — 27 months, two of them projected — so
+       a control labelled "Last 24 posted" opened on Aug 2026 while the record
+       stops at June 2026 (QA, twice: "shows 27 months" and "need to show june
+       2026"). */
+    case 'last24': return [Math.max(0, lastPosted - 23), lastPosted];
     case 'forecast': return [Math.max(0, s - 1), last];
-    /* three months of context, then exactly twelve projected months */
-    case 'next12': return [Math.max(0, s - 3), Math.min(last, s + 11)];
+    /* EXACTLY THE TWELVE PROJECTED MONTHS, from the first one. The three
+       months of posted context this used to prepend put "Apr 2026" at the
+       front of a window called "Next 12 months" (QA: "need to show from july
+       2026"). `last - 1` keeps two points drawable on a record with nothing
+       projected. */
+    case 'next12': return [Math.max(0, Math.min(s, last - 1)), Math.min(last, s + 11)];
     default: return [0, last];
   }
 }
@@ -88,6 +97,28 @@ function windowFor(key: WinKey, n: number, seam: number): [number, number] {
 
 function Unit({ children }: { children: React.ReactNode }) {
   return <span className="pf2-u">{children}</span>;
+}
+
+/**
+ * A gauge figure, rounded the way its own explainer rounds it.
+ *
+ * The card read "755.89M BBL still to come" while the panel it opens said
+ * "756M BBL" — the same quantity at two precisions, which QA read as two
+ * different values. The explainers keep two decimals under 100 of a unit
+ * ("12.58M", "1.94M") and a whole number from 100 up ("756K"), so this does
+ * exactly that, with a B rung `nShort` lacks — without it the sample view's
+ * thousandfold figures printed "28022.39M MCF".
+ */
+function gaugeShort(v: number): string {
+  const a = Math.abs(v);
+  const [div, tag] = a >= 1e9 ? [1e9, 'B'] as const
+    : a >= 1e6 ? [1e6, 'M'] as const
+      : a >= 1e3 ? [1e3, 'K'] as const : [1, ''] as const;
+  if (!tag) return n0(v) ?? '0';
+  const n = v / div;
+  return (Math.abs(n) >= 100
+    ? Math.round(n).toLocaleString('en-US')
+    : n.toFixed(2).replace(/\.?0+$/, '')) + tag;
 }
 
 /** One cell of the dark scorecard: a figure and its unit, or an em dash. */
@@ -184,6 +215,17 @@ export default function ProductionView(
      THE LEASE `<select>` ABOVE IS NOT PAGED, deliberately: it is how a reader
      reaches a lease that is not on this page, so it has to keep all of them. */
   const paged = usePaged(f.leases);
+  /* THE PER-LEASE LIFE BARS PAGE THE SAME WAY (QA: "for more leases need to
+     show proper pagination"). On a large account the grid printed every lease
+     — hundreds of bars — and became most of the page. Same hook, same
+     control, same ten; on a ten-lease record the pager renders nothing and
+     the grid is unchanged. Sorted once, because `usePaged` slices what it is
+     given and the order is the information here. */
+  const lifeSorted = useMemo(
+    () => [...f.leases].sort((a, b2) => (b2.pct_produced ?? -1) - (a.pct_produced ?? -1)),
+    [f.leases],
+  );
+  const life = usePaged(lifeSorted);
   const chartRef = useRef<HTMLDivElement | null>(null);
 
   /** the series the chart draws: the portfolio, or one lease */
@@ -210,6 +252,17 @@ export default function ProductionView(
     setWin(windowFor(k, series.length, seam));
   };
 
+  /* A CHANGE OF DENSITY RE-DERIVES THE OPENING WINDOW. The initial state above
+     is read once, at mount — but the tier is not fixed at mount: the avatar
+     menu switches it live, and a pre-cookie reader's stored choice lands one
+     hydration after the first render. Either way an Ultra or Essentials page
+     kept the window the previous tier opened on, so both were seen opening on
+     "All" instead of "Last 24 posted" (QA). */
+  useEffect(() => {
+    setPreset(simple ? 'last24' : 'all');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [simple]);
+
   /* the scorecard always has a lease: the largest by value when none is
      picked, so the panel is never an empty frame */
   const card = picked ?? f.leases[0] ?? null;
@@ -223,12 +276,11 @@ export default function ProductionView(
   const b = f.boundary;
   const d = f.depletion;
 
-  /* the strip: posted · blind · projected, in months, as three proportional
-     segments of one bar */
+  /* the strip: posted · blind · projected, in months, three segments of one
+     bar (equal-sized — see the note on the strip itself) */
   const postedMonths = seam > 0 ? seam : series.length;
   const blindMonths = b.blind_months.length;
   const projMonths = Math.max(0, b.forecast_months - blindMonths);
-  const stripTotal = Math.max(1, postedMonths + projMonths + blindMonths);
 
   return (
     /* `active` IS LOAD-BEARING. The inherited stylesheet is
@@ -331,11 +383,15 @@ export default function ProductionView(
           </span>
         </div>
 
+        {/* THE THREE SEGMENTS ARE THE SAME SIZE — `.pf2-seg`'s own `flex: 1 1 0`.
+            They used to carry inline `flexGrow`s proportional to their month
+            counts, so a record 189 months deep drew one huge card and two
+            slivers; QA asked for three equal cards. The counts still say the
+            proportion in figures. */}
         <div className="pf2-strip" role="group" aria-label="The record in three parts">
           <button
             type="button"
             className="pf2-seg posted"
-            style={{ flexGrow: postedMonths / stripTotal }}
             onClick={() => jump('posted')}
             aria-label={`${postedMonths} posted months. Show them in the chart.`}
           >
@@ -347,7 +403,6 @@ export default function ProductionView(
             <button
               type="button"
               className="pf2-seg blind"
-              style={{ flexGrow: Math.max(0.5, (blindMonths / stripTotal) * 3) }}
               onClick={() => jump('next12')}
               aria-label={`${blindMonths} months produced but not yet posted. Show them.`}
             >
@@ -359,7 +414,6 @@ export default function ProductionView(
           <button
             type="button"
             className="pf2-seg proj"
-            style={{ flexGrow: projMonths / stripTotal }}
             onClick={() => jump('forecast')}
             aria-label={`${projMonths} projected months. Show them in the chart.`}
           >
@@ -471,8 +525,9 @@ export default function ProductionView(
                   />
                   <path
                     d="M 13 65 A 52 52 0 0 1 117 65" fill="none"
-                    /* golden gas, green oil — the same pair the key below,
-                       the year columns and the chart all use */
+                    /* golden gas, green oil — QA's FINAL pair (gas #b8892F ·
+                       oil #2E8F6D, settled on retest), the same one the key
+                       below, the year columns and the chart all use */
                     stroke={k === 'gas' ? '#b8892f' : 'var(--green-deep)'}
                     strokeWidth="10" strokeLinecap="round"
                     strokeDasharray={`${done} ${LEN}`}
@@ -493,10 +548,10 @@ export default function ProductionView(
                 <div className="pf2-gaugefacts">
                   <span className={`pf2-gk ${k}`}>{k === 'gas' ? 'Gas' : 'Oil'}</span>
                   <span className="pf2-gr">
-                    <em>{nShort(produced)}</em> {unit} out of the ground
+                    <em>{gaugeShort(produced)}</em> {unit} out of the ground
                   </span>
                   <span className="pf2-gr">
-                    <em>{nShort(remaining)}</em> {unit} still to come
+                    <em>{gaugeShort(remaining)}</em> {unit} still to come
                   </span>
                   {k === 'gas' && d.half_by_label ? (
                     <span className="pf2-gr half">
@@ -512,12 +567,12 @@ export default function ProductionView(
         <p className="pf2-note">{d.note}</p>
 
         {!simple ? (
+          <>
           <div className="pf2-lifegrid">
             {/* SORTED BY DEPLETION, not by value. The row order is information
                 here: nearest the end of its life first, so the list itself
                 answers "which of mine are nearly done". */}
-            {[...f.leases]
-              .sort((a, b2) => (b2.pct_produced ?? -1) - (a.pct_produced ?? -1))
+            {life.rows
               .map((l) => (
               <button
                 key={l.lease_id}
@@ -542,6 +597,12 @@ export default function ProductionView(
               </button>
               ))}
           </div>
+          <Pager
+            page={life.page} pages={life.pages} setPage={life.setPage}
+            start={life.start} shown={life.rows.length} total={lifeSorted.length}
+            label="Lease life bar pages"
+          />
+          </>
         ) : null}
       </div>
 
@@ -1059,20 +1120,20 @@ export default function ProductionView(
                 </span>
               </div>
               {/* THE OWNER'S SHARE OF EUR IS NOT IN THE PAYLOAD, so these two
-                  pass `null` and print a dash. It is a real quantity though —
-                  ultimate recovery at this lease's own decimal interest — so
-                  on the SAMPLE page, where a blank is the one thing the window
-                  cannot afford, it is derived rather than left empty. Gated on
-                  `sample`: the claimed page still shows a dash rather than a
-                  figure the record did not report. */}
+                  are DERIVED — ultimate recovery at this lease's own decimal
+                  interest, the same multiplication every other share column is.
+                  They used to be derived only on the sample page and print a
+                  dash on a claimed one; QA flagged the dash ("eur of your
+                  share is show '-'"), and a figure the reader can compute from
+                  two numbers already on the row is not one worth withholding. */}
               <Cell v={card.eur_gas} unit={MCF} kind="gas" />
               <Cell
-                v={sample && card.eur_gas != null ? card.eur_gas * card.interest : null}
+                v={card.eur_gas != null ? card.eur_gas * card.interest : null}
                 unit={MCF} kind="gas" share
               />
               <Cell v={card.eur_oil} unit={BBL} kind="oil" />
               <Cell
-                v={sample && card.eur_oil != null ? card.eur_oil * card.interest : null}
+                v={card.eur_oil != null ? card.eur_oil * card.interest : null}
                 unit={BBL} kind="oil" share
               />
             </div>
@@ -1210,13 +1271,24 @@ export default function ProductionView(
                   Removed, month by month · last {f.disposition.months.length} posted months
                 </span>
                 <div className="pf2-minibars">
+                  {/* THE HIT AREA IS THE FULL-HEIGHT COLUMN, NOT THE BAR.
+                      The `title` used to sit on the bar itself, which on a
+                      quiet month is a few pixels tall — so mousing over the
+                      strip mostly hit the empty space above the bars and no
+                      tooltip ever appeared (QA). Each month is now a
+                      full-height column carrying the tooltip, with the bar
+                      drawn at its foot. */}
                   {f.disposition.months.map((m) => (
                     <span
                       key={m.cycle}
-                      className="pf2-minib"
-                      style={{ height: `${Math.min(100, ((m.removed_pct ?? 0) / 20) * 100)}%` }}
+                      className="pf2-minibw"
                       title={`${m.label}: ${pct1(m.removed_pct)} of ${n0(m.accounted)} ${MCF} removed`}
-                    />
+                    >
+                      <i
+                        className="pf2-minib"
+                        style={{ height: `${Math.min(100, ((m.removed_pct ?? 0) / 20) * 100)}%` }}
+                      />
+                    </span>
                   ))}
                 </div>
                 <span className="pf2-minis">

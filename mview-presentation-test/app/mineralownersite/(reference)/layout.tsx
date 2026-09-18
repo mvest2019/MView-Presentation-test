@@ -1,6 +1,17 @@
 import type { Metadata } from "next";
 
+import { cookies } from "next/headers";
+
 import { PortalSessionProvider } from "../_components/portal-session";
+import { SessionIdentitySync } from "../_components/session-identity-sync";
+import { PortalPrefsProvider } from "../_components/reference/prefs-context";
+import {
+  PORTAL_FUNNELS,
+  PORTAL_FUNNEL_COOKIE,
+  PORTAL_TIERS,
+  PORTAL_TIER_COOKIE,
+  readPortalPref,
+} from "../_lib/reference/portal-prefs";
 import { Sprite } from "../_components/reference/Sprite";
 import { getSessionUser } from "@/lib/session";
 import "../dashboard-reference.layer.css";
@@ -9,22 +20,29 @@ import "../dashboard-reference.layer.css";
  * THE REFERENCE SHELL — `/mineralownersite`, `/mineralownersite/briefing` and
  * `/mineralownersite/map`.
  *
- * WHY THIS IS A ROUTE GROUP. The first two routes are the reference build's,
+ * WHY THIS IS A ROUTE GROUP. Most routes under here are the reference build's,
  * chrome included: its owner search, its pinned value line with the four EIA
  * settlements, its account-state menu, its avatar menu carrying the four
- * density tabs, its sidebar and its phone bottom bar. The other four portal
- * routes — Alerts, My Leases, Activities, Settings — keep the shell this app
- * already had, which lives in `(portal)/layout.tsx`. Two groups, two shells,
- * one URL space: `(reference)/page.tsx` is still `/mineralownersite` and
- * `(portal)/alerts/page.tsx` is still `/mineralownersite/alerts`, because a
+ * density tabs, its sidebar and its phone bottom bar. Only the claim flow and
+ * Settings are left in the shell this app already had, which lives in
+ * `(portal)/layout.tsx`. Two groups, two shells, one URL space:
+ * `(reference)/page.tsx` is still `/mineralownersite` and
+ * `(portal)/settings/page.tsx` is still `/mineralownersite/settings`, because a
  * route group's name never appears in a path.
  *
  * THE MAP JOINED THIS GROUP RATHER THAN THE OTHER ONE, and that was the whole
  * point of moving it here from `/map-explorer`: an owner opening the map should
  * find the same sidebar and the same top bar they just left, not a second
- * arrangement of the same idea. It is the one route under here that is not the
- * reference build's own — it renders itself and borrows the chrome through
- * `Portal`'s `children`.
+ * arrangement of the same idea. It renders itself and borrows the chrome
+ * through `Portal`'s `children`.
+ *
+ * MY LEASES MOVED HERE FOR THE SAME REASON, and it was asked for in those
+ * words: the list and the lease report had grown a top bar of their own, so the
+ * portal showed two different headers depending on which page you were on.
+ * They are `Portal` callers now, like everything else here, and they bring
+ * their own body through `children` exactly as the Map does. Their own
+ * stylesheet starts below the chrome — see
+ * `leases/_components/leases-portal-root.tsx`.
  *
  * There is deliberately NO layout at `app/mineralownersite/layout.tsx`. A
  * parent layout there would wrap both groups, and the whole point is that they
@@ -59,9 +77,10 @@ import "../dashboard-reference.layer.css";
  *     to be forked to carry a value it never uses. One read in this layout, one
  *     context, `Portal.tsx` untouched. See `portal-session.tsx`.
  *
- *     READING IS NOT GATING. Nothing is redirected on a null: this layout is no
- *     more an auth boundary than the other group's, and a signed-out visitor
- *     still gets the whole shell.
+ *     READING IS NOT GATING. The sign-in gate for the whole portal lives in
+ *     `proxy.ts` at the app root — a request with no session never reaches
+ *     this layout. A null here (a race, an expired cookie mid-render) still
+ *     renders the shell rather than redirecting, same as the other group's.
  *
  *   · nothing else. The shell is `Chrome`, and `Chrome` is rendered by
  *     `Portal`, which each page renders with its own `route` prop. That is the
@@ -86,17 +105,43 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * THE READER'S DENSITY, READ ON THE SERVER — see `prefs-context.tsx`.
+ *
+ * `mv.tier` and `mv.funnel` are mirrored into cookies so this layout can hand
+ * them to `Portal` as its opening state. Without them the server rendered
+ * `detailed` for everybody and the reader's own choice replaced it one
+ * hydration later, which is the "shows pro mode and then shows ultra" defect.
+ *
+ * The names, the key lists and `readPortalPref` come from `_lib/reference/
+ * portal-prefs`, which carries NO `'use client'` directive — importing them
+ * from the context module instead gave this server component a client
+ * reference rather than the array, and the validation threw.
+ */
 export default async function ReferencePortalLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const user = await getSessionUser();
+  const [user, jar] = await Promise.all([getSessionUser(), cookies()]);
+
+  const tier = readPortalPref(jar.get(PORTAL_TIER_COOKIE)?.value, PORTAL_TIERS);
+  const funnel = readPortalPref(jar.get(PORTAL_FUNNEL_COOKIE)?.value, PORTAL_FUNNELS);
 
   return (
     <>
       <Sprite />
-      <PortalSessionProvider user={user}>{children}</PortalSessionProvider>
+      <PortalSessionProvider user={user}>
+        {/* the cookie can lag the record (a fresh login, a photo uploaded on
+            another device) — this heals the header on WHATEVER page loads
+            first, not only on My Profile. Renders nothing. */}
+        {user ? (
+          <SessionIdentitySync sessionHasPhoto={Boolean(user.profileImage)} />
+        ) : null}
+        <PortalPrefsProvider tier={tier} funnel={funnel}>
+          {children}
+        </PortalPrefsProvider>
+      </PortalSessionProvider>
     </>
   );
 }

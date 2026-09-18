@@ -18,10 +18,17 @@
  *   headings to `font-size:inherit`, strips link colour and zeroes margins —
  *   run over the reference sheet, it would flatten the whole Dashboard.
  *
- *   `mv-map-reset` sits just above it, and holds one thing: the map's undo of
- *   the reference's form-control reset. See `(reference)/map/map-shell.css`.
- *   It has to beat `mv-reference` and still lose to `utilities`, which is
- *   exactly one slot, and this is it.
+ *   `mv-map-reset` sits just above it, and holds one thing: the undo of the
+ *   reference's form-control reset, for the Tailwind-built pages that wear the
+ *   reference chrome. It has to beat `mv-reference` and still lose to
+ *   `utilities`, which is exactly one slot, and this is it.
+ *
+ *   TWO PAGES USE IT NOW — `(reference)/map/map-shell.css` and
+ *   `(reference)/leases/leases-shell.css`, each scoping the undo to its own
+ *   subtree. The name is the Map's, from when it was the only one; it is left
+ *   alone because renaming a layer means editing the statement below, which has
+ *   to be the first thing in the first stylesheet. A third page that is built
+ *   in Tailwind and rendered inside `Portal` will want this slot too.
  *
  *   BEFORE `utilities`, so a Tailwind class CAN override it. That is the point.
  *   `dashboard-reference.css` scopes ~600 rules to `.mv-ref-app`, and around
@@ -248,6 +255,26 @@
      is exactly where a near-miss shows. */
   --color-mv-portal-drawer-sub: #9fc9b8;
   --color-mv-portal-drawer-back-hover: #d9efe6;
+
+  /* THE TWO PRODUCTS, WHEREVER THEY ARE DRAWN — a line, a donut ring, a bar,
+     a legend swatch. Gas is the brand green; oil is red.
+
+     OIL HAS A TOKEN OF ITS OWN BECAUSE IT USED TO SHARE ONE. It was drawn in
+     `mv-sand`, which is ALSO the gold notice tone — `notice.tsx`, the claim
+     steps, the map's nearby panel — and those two have nothing to do with each
+     other. Recolouring oil through `mv-sand` would have turned every gold note
+     on the portal red. Change oil here; the gold notes keep `mv-sand`. */
+  --color-mv-oil: #c0392b;
+
+  /* CASH IS THE THIRD SERIES AND IT HAD NO COLOUR OF ITS OWN — it was drawn in
+     `mv-green-deep`, which is gas. On a chart with a Gas / Oil / Cash switch
+     that means two of the three modes redraw the same green line against a
+     different axis, and the only thing saying which one you are looking at is
+     the axis label. Blue is the design's, and it is a token rather than
+     `mv-blue` for the reason `mv-oil` is not `mv-sand`: `mv-blue` is the chip
+     tone for a note about the data itself, and a series colour and a status
+     colour that share a variable get changed into each other. */
+  --color-mv-cash: #4a63d8;
 
   /* Status */
   --color-mv-amber: #b45309;
