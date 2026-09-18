@@ -51,7 +51,11 @@ function leaseDrawer(l: Lease, t: Totals): Drawer {
       + `${l.operator_name ?? 'not recorded'}`,
     what: `You hold a <strong>${(l.interest_type ?? 'interest').toLowerCase()}</strong> of `
       + `<strong>${interest(l.interest_value)}</strong> in this lease. The model values the whole `
-      + `lease at <strong>${usd(l.gross_value)}</strong>, which makes your share `
+      /* NO COMMA STRAIGHT AFTER THE FIGURE. "…at $5,111,186, which makes your
+         share…" puts a comma against a comma-grouped number, where it reads as
+         part of the number rather than as punctuation. Split rather than
+         delete: dropping the comma alone would leave "which" with none. */
+      + `lease at <strong>${usd(l.gross_value)}</strong>. Your share of that is `
       + `<strong>${usd(l.owner_value)}</strong>`
       + (share ? ` — ${share.toFixed(1)}% of your whole portfolio` : '') + '.',
     means: `It last filed production for <strong>${l.anchor_label ?? 'never'}</strong>: `

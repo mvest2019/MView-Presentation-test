@@ -2920,3 +2920,107 @@ body .mv-ref-app .ownersw-skel-meta {
     background: #e7ecea;
   }
 }
+
+
+/* ----------------------------------------------------------------------------
+   THE NAME LISTS GET A TOOLTIP THAT KNOWS HOW WIDE IT IS.
+
+   `NameList` collapses the counties, the operators and the play types to a
+   count and put the full list on `title`. That reads fine for thirteen
+   counties and badly for forty-four operators: a native tooltip is laid out by
+   the browser, its box cannot be reached from a stylesheet, and the whole list
+   came out as a single band running almost the width of the page, over the
+   strip beneath it.
+
+   SO THE LIST MOVES TO `data-tip` AND THIS DRAWS IT. Same string, same trigger,
+   but a box this sheet controls: capped, wrapped and readable in a few lines
+   rather than one long line.
+
+   ON FOCUS AS WELL AS HOVER, because the trigger is a real button and a
+   keyboard reaches it. Pressing it still expands the list inline, which is the
+   answer for anyone not using a pointer at all — the tooltip is the shortcut,
+   not the only way in.
+
+   `min(360px, 60vw)` — 360px holds about four lines of operator names at this
+   size, and the viewport clause keeps it inside a phone. `.app-main` is
+   `overflow-x: clip`, so the box is anchored to the control's LEFT edge and
+   grows down and right, where there is room; anchoring right would push it
+   into the clip on the narrow side.
+   ---------------------------------------------------------------------------- */
+/* THE TOOLTIP HANGS OFF THE LINE, NOT OFF THE WORD — defect sheet row 66,
+   "tooltip goes out of the box". Anchored to the control, a 360px box opening
+   at the last item on the subhead runs past the right edge, and `.app-main` is
+   `overflow-x: clip`, so it is cut rather than shown. The greeting block is the
+   containing block instead: every tooltip starts at the line's left edge, where
+   there is always room for it, whichever word was hovered. */
+body .mv-ref-app .mv-greet {
+  position: relative;
+}
+
+body .mv-ref-app .name-list {
+  /* NOT A CONTROL ANY MORE — see `NameList`. It says "there is more here" with
+     the cursor, the way `.gloss` does, rather than with the underline and
+     pointer of something that can be pressed. */
+  cursor: help;
+  color: var(--green-deep);
+  border-bottom: 1px dotted var(--green-deep);
+}
+
+body .mv-ref-app .name-list[data-tip]:hover::after,
+body .mv-ref-app .name-list[data-tip]:focus-visible::after {
+  content: attr(data-tip);
+  position: absolute;
+  /* against `.mv-greet`, so the box cannot run off the right edge */
+  top: 100%;
+  left: 0;
+  z-index: 60;
+  width: max-content;
+  max-width: min(360px, 60vw);
+  white-space: normal;
+  text-align: left;
+  font: 400 11.5px/1.5 var(--sans);
+  letter-spacing: 0;
+  color: #f4f8f6;
+  background: var(--ink);
+  border-radius: 8px;
+  padding: 7px 9px;
+  box-shadow: 0 6px 18px rgba(4, 35, 26, .28);
+  pointer-events: none;
+}
+
+/* The panel is a hover affordance, so it does not animate in for a reader who
+   has asked for less motion — there is nothing to animate here, but the rule
+   keeps the intent explicit if one is ever added. */
+@media (prefers-reduced-motion: reduce) {
+  body .mv-ref-app .name-list[data-tip]:hover::after,
+  body .mv-ref-app .name-list[data-tip]:focus-visible::after {
+    transition: none;
+  }
+}
+
+
+/* ----------------------------------------------------------------------------
+   50 · THE LAPSED COVER REACHES THE ULTRA HERO.
+
+   "Need to blur the values ... for all modes ultra, essentials, detailed, pro",
+   re-opened by QA with "not done for ultra".
+
+   The lapsed rules already cover `.k-val`, `.pf-val` and the headline, which is
+   every figure the Detailed and Pro layouts show — but Ultra does not use those
+   elements. Its card is its own: `.u-headline` for the estimate, `.u-fig-v` for
+   the two filed volumes, and a sentence that repeats the same two volumes in
+   prose. The headline was covered and the other three were not, so a lapsed
+   reader on Ultra saw the portfolio totals the state says are held back.
+
+   ONLY IN LAPSED, and that is the whole reason `.u-tot` is not `.cl-lock`.
+   `claimed · free` withholds the value ESTIMATE and nothing else — volumes are
+   free on that tier — and `.cl-lock` is covered in both states. A figure that
+   is public on one tier and withheld on another needs its own marker.
+   ---------------------------------------------------------------------------- */
+body .mv-ref-app.state-lapsed .ultra-hero .u-fig-v,
+body .mv-ref-app.state-lapsed .ultra-hero .u-tot {
+  filter: blur(6px);
+  opacity: .55;
+  user-select: none;
+}
+
