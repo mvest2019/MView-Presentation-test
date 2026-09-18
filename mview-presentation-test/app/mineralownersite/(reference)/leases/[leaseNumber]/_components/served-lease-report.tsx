@@ -20,6 +20,7 @@ import { leaseReportFromApi } from "../_lib/lease-report-from-api";
 import { recordContext } from "../_lib/record-context";
 import { LeaseReportBody } from "./report-body";
 import { ServedReservoirReport } from "./reservoir/served-reservoir-report";
+import { ServedWellReport } from "./well/served-well-report";
 import type { LeaseReportTab } from "./report-tabs";
 
 /**
@@ -281,7 +282,9 @@ export function ServedLeaseReport({
       tab={tab}
       leaseMap={leaseMap ?? undefined}
       otherReport={
-        tab === "reservoir" ? (
+        tab === "wells" ? (
+          <ServedWellReport id={id} />
+        ) : tab === "reservoir" ? (
           <ServedReservoirReport
             id={id}
             /* The key is only used to PICK from what came back; the read itself
@@ -289,9 +292,7 @@ export function ServedLeaseReport({
             reservoirKey={report.lease.reservoir || null}
             preloaded={reservoirs}
           />
-        ) : (
-          <NotYetServed />
-        )
+        ) : null
       }
     />
   );
@@ -343,29 +344,6 @@ function Notice({
           Back to My Leases
         </Link>
         .
-      </p>
-    </Card>
-  );
-}
-
-/**
- * The well tab on a served lease.
- *
- * THE RESERVOIR TAB IS WIRED — see `ServedReservoirReport`. This is the well
- * report alone now: `buildWellReport` resolves a well against the local series
- * and THROWS when there is no row for it, so a served lease opening it would be
- * a crashed page rather than a thin one. No endpoint fills it yet.
- */
-function NotYetServed() {
-  return (
-    <Card accent padded={false} className="mt-4 px-[22px] py-[18px]">
-      <h2 className="text-[15px] font-bold">
-        The well report is not on the service yet
-      </h2>
-      <p className="mt-1.5 text-[12.5px] leading-[1.6] text-mv-muted">
-        The lease and reservoir reports are this lease&rsquo;s own record. The
-        well report is still drawn from sample data, so it is held back rather
-        than shown against a lease it does not describe.
       </p>
     </Card>
   );

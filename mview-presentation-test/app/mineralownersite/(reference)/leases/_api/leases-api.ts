@@ -1437,6 +1437,167 @@ export async function sendMonthlyReport(month?: string | null): Promise<void> {
 }
 
 /* ============================================================================
+   ONE WELL
+   ============================================================================ */
+
+/** One filing on a wellbore — the state's own paperwork for it. */
+export interface WireWellCompletion {
+  spud_label?: string | null;
+  drilled_label?: string | null;
+  recompleted_label?: string | null;
+  first_prod_label?: string | null;
+  permit_label?: string | null;
+  permit_type?: string | null;
+  permit_number?: string | null;
+  filing_purpose?: string | null;
+  filing_welltype?: string | null;
+  perf_top?: number | null;
+  perf_bottom?: number | null;
+  fracced?: boolean;
+  reservoir?: string | null;
+  tracking_no?: string | null;
+  /** The scanned packet, where one was captured. */
+  packet_url?: string | null;
+}
+
+/** One entry in the lease's own well list — every well, however it is paged. */
+export interface WireWellPick {
+  api10?: string;
+  well_number?: string;
+  label?: string;
+  reservoir?: string | null;
+  active?: boolean;
+  gas_filed?: number;
+}
+
+export interface WireWell {
+  api10?: string;
+  well_number?: string;
+  well_name?: string;
+  label?: string;
+  lease_id?: string;
+  lease_label?: string;
+  reservoir?: string | null;
+  county?: string;
+  field_name?: string;
+  well_type?: string;
+  status?: string;
+  profile?: string | null;
+  operator_name?: string;
+  completion_operator?: string;
+
+  /* the hole */
+  depth_ft?: number | null;
+  depth_basis?: string | null;
+  tvd_ft?: number | null;
+  md_ft?: number | null;
+  perf_top_ft?: number | null;
+  perf_bottom_ft?: number | null;
+  perf_thickness_ft?: number | null;
+  lateral_ft?: number | null;
+  bearing_deg?: number | null;
+  bearing_compass?: string | null;
+  elevation_ft?: number | null;
+  spud_label?: string | null;
+  first_prod_label?: string | null;
+  age_years?: number | null;
+
+  /* what it has made */
+  gas_filed?: number;
+  oil_filed?: number;
+  gas_projected?: number;
+  oil_projected?: number;
+  cash_filed?: number;
+  cash_projected?: number;
+  filed_months?: number;
+  projected_months?: number;
+  last_filed_label?: string | null;
+  peak_gas?: number | null;
+  peak_gas_label?: string | null;
+  recent_avg_gas?: number | null;
+  gas_per_open_ft?: number | null;
+  yield_bbl_per_mmcf?: number | null;
+  decline_pct?: number | null;
+  depleted_pct?: number | null;
+  oil_depleted_pct?: number | null;
+
+  /* against the others in the same rock */
+  reservoir_wells?: number;
+  rank_in_reservoir?: number;
+  peer_gas_per_open_ft?: number | null;
+  gas_per_open_ft_vs_peers_pct?: number | null;
+  open_interval_share_pct?: number | null;
+  share_of_reservoir_gas?: number;
+  share_of_lease_gas?: number;
+
+  /**
+   * THE WELL'S OWN MONTH-BY-MONTH RECORD, filed then modelled.
+   *
+   * `WireReservoirMonth` deliberately: the reservoir endpoint sends the same
+   * eight fields under the same names, and one type means one mapping. Empty
+   * with `seam: -1` where the allocation store holds no row for the wellbore —
+   * see `note`.
+   */
+  series?: WireReservoirMonth[];
+  /** The COUNT of filed months, so the last of them is `seam - 1`. */
+  seam?: number;
+
+  completions?: WireWellCompletion[];
+  completion_count?: number;
+  /** Wells within one, three and five miles. */
+  neighbour_bands?: { band?: number; wells?: number }[];
+  map?: { wells?: WireReservoirMapWell[]; note?: string | null };
+  insights?: string[];
+  stats?: { label?: string; value?: string; sub?: string }[];
+  note?: string | null;
+  active?: boolean;
+}
+
+export interface WireWells {
+  owner?: string;
+  lease_id?: string;
+  lease_number?: string | null;
+  district_code?: string | null;
+  wells?: WireWell[];
+  /** EVERY well on the lease, paging aside — how another page is reached. */
+  picker?: WireWellPick[];
+}
+
+/**
+ * ONE WELL'S REPORT — the hole, its filings, what it has made and where it is.
+ *
+ * ── `api10` PICKS THE WELL, AND THE LIST COMES BACK ANYWAY ──
+ *
+ * Narrowed to one well the response is 27KB. `picker[]` is in it either way and
+ * lists every well on the lease — 138 on this one — because the list is paged
+ * and a reader jumping to a well on page 3 has to be able to find it without
+ * walking the pages.
+ *
+ * ── A WELL CAN HAVE FILINGS AND NO PRODUCTION ──
+ *
+ * `series` comes back empty with `seam: -1` where the allocation store holds no
+ * row for the wellbore: the paperwork, the depths and the perforations are all
+ * real, and the volumes simply are not split out from the lease total. The
+ * service says so in `note`, and the page prints that rather than drawing an
+ * empty chart.
+ */
+export async function fetchLeaseWells(
+  id: string,
+  api10?: string | null,
+  signal?: AbortSignal,
+): Promise<WireWells> {
+  const params = new URLSearchParams({ id });
+  if (api10) params.set("api10", api10);
+
+  return request<WireWells>(
+    `/api/leases/wells?${params}`,
+    "this well report",
+    signal,
+    REPORT_TIMEOUT_MS,
+  );
+}
+
+/* ============================================================================
    TRANSPORT
    ============================================================================ */
 

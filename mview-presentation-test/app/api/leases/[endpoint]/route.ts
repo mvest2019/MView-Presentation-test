@@ -151,6 +151,14 @@ const GET_PARAMS = {
    * for.
    */
   "monthly-email": [],
+  /**
+   * `GET /api/v1/leases/wells?member_id=&id=&api10=` — one lease's wells.
+   *
+   * `api10` NARROWS IT TO ONE WELL, which is what the well report asks for. The
+   * response still carries `picker[]` — EVERY well on the lease, however the
+   * list is paged — because that is how a well on another page is reached.
+   */
+  wells: ["id", "api10", "page", "page_size"],
 } as const satisfies Record<string, readonly string[]>;
 
 /**
@@ -178,6 +186,7 @@ const SIGN_IN_COPY: Record<Endpoint, string> = {
   "lease-map": "Sign in to see where these wells are.",
   monthly: "Sign in to see your monthly report.",
   "monthly-email": "Sign in to email yourself this report.",
+  wells: "Sign in to see this well report.",
 };
 
 type Endpoint = keyof typeof GET_PARAMS;

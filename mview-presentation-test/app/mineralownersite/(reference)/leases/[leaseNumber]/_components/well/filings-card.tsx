@@ -35,7 +35,8 @@ export function FilingsCard({ report }: { report: WellReport }) {
       <CardHeader
         title={
           <h3 className="text-[15px] font-bold">
-            Every filing on this wellbore — {report.filings.length} filings
+            Every filing on this wellbore — {report.filings.length} filing
+            {report.filings.length === 1 ? "" : "s"}
           </h3>
         }
       />
@@ -79,9 +80,9 @@ export function FilingsCard({ report }: { report: WellReport }) {
 
       <p className="mt-3 text-[11.5px] leading-[1.55] text-mv-muted">
         Each row is a separate filing rather than a duplicate of the one above
-        it: a recompletion is a new document on the same hole. The newest is what
-        the wellbore is today, and the ones behind it are what was done to get
-        there.
+        it: a recompletion is a new document on the same hole. The newest is
+        what the wellbore is today, and the ones behind it are what was done to
+        get there.
       </p>
     </Card>
   );
@@ -216,4 +217,3 @@ function RowFact({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-

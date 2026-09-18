@@ -121,6 +121,32 @@ export interface WellReport {
   to: number;
   /** How many other wells sit within each ring. */
   neighbours: { label: string; count: number }[];
+
+  /**
+   * THIS WELL'S OWN MONTHS, WHEN THE SERVICE SENT THEM.
+   *
+   * ABSENT ON THE FIXTURE PATH, where the chart reads `financialsSeries` by
+   * lease slug and splits the lease's months across its wells. A served well is
+   * in no such table: its allocation arrives with it, and it is the WELL's
+   * record rather than the lease's — which is the whole point of a well report.
+   * Falling back to the lease lookup drew an empty chart on a 228-month axis
+   * that had nothing to do with the well.
+   *
+   * EMPTY IS A REAL ANSWER. A wellbore the allocation store holds no row for
+   * has filings, depths and perforations and no attributed months; the card
+   * says so rather than drawing an axis with no line on it.
+   */
+  series?: {
+    /** `"May 2015"` — one per index, the axis labels. */
+    labels: string[];
+    /** The well's own volumes. */
+    gas: number[];
+    oil: number[];
+    /** The reader's share of its cash. */
+    cash: number[];
+    /** Where the filed record ends; -1 when nothing is filed. */
+    lastPostedIndex: number;
+  };
 }
 
 function seriesFor(slug: string) {
