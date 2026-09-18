@@ -38,12 +38,14 @@ export interface ChartSpec {
 }
 
 export const COLOURS = {
-  /* PER THE DEFECT SHEET (Activity #28): oil is the gold #b8892f, gas is the
-     green #2e8f6d. Changed HERE rather than at each chart, because every SVG
-     series on every page reads these two — the dashboard's two month-by-month
-     panels, the per-lease drawer charts and Production & Forecast's own chart. */
-  gas: '#2e8f6d',
-  oil: '#b8892f',
+  /* QA'S FINAL PAIR, settled on the Production & Forecast retest: GAS is the
+     golden #b8892f, OIL is the green #2e8f6d — reversing what Activity #28's
+     wording had put here, so the drawers and every page now read one scheme.
+     Changed HERE rather than at each chart, because every SVG series on every
+     page reads these two — the dashboard's two month-by-month panels, the
+     per-lease drawer charts and Production & Forecast's own chart. */
+  gas: '#b8892f',
+  oil: '#2e8f6d',
   value: '#54bf96',
   slate: '#64748b',
   blue: '#3b5bdb',

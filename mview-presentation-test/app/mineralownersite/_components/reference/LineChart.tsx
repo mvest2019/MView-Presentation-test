@@ -45,20 +45,19 @@ function fmt(v: number, dp: number): string {
  * reader to discover it.
  */
 /**
- * THE PRODUCT COLOURS ARE PINNED AT THE RENDER BOUNDARY (QA defect: oil is
- * `#b8892F`, gas is `#2E8F6D`).
+ * THE PRODUCT COLOURS ARE PINNED AT THE RENDER BOUNDARY (QA's FINAL pair,
+ * settled on retest: gas is the golden `#b8892F`, oil is the green `#2E8F6D`).
  *
  * A spec built in this app already carries that pair — `chart.ts` sets it —
  * but a spec that came down inside a DRAWER carries whatever colour the
- * service composed, and the service still sends the pair the other way round
- * on some panels, so the right-side drawer's gas chart drew golden over a page
- * whose gas is green. Normalised once, here, exactly like `units()` two lines
+ * service composed, so the right-side drawer's charts could disagree with the
+ * page they open over. Normalised once, here, exactly like `units()` two lines
  * down: every SVG in the app renders through this component, so the drawer and
- * the page it opens over cannot disagree. Matched on the series NAME, whole
- * word, so 'Gas'/'Oil' are repaired and a price series ('WTI', 'BRENT') keeps
- * the colour it was sent with.
+ * the page cannot disagree. Matched on the series NAME, whole word, so
+ * 'Gas'/'Oil' are repaired and a price series ('WTI', 'BRENT') keeps the
+ * colour it was sent with.
  */
-const PRODUCT_COLOUR: Record<string, string> = { gas: '#2e8f6d', oil: '#b8892f' };
+const PRODUCT_COLOUR: Record<string, string> = { gas: '#b8892f', oil: '#2e8f6d' };
 
 function withProductColours(spec: ChartSpec): ChartSpec {
   let touched = false;

@@ -1964,16 +1964,16 @@ body .mv-ref-app.view-simple:not(.no-claim) section[data-route="app-briefing"] #
 .mv-ref-app .pf2-sub .pf2-dot { color: #c3ccd4; margin: 0 6px; }
 .mv-ref-app .pf2-legend { display: flex; gap: 8px 16px; flex-wrap: wrap; align-items: center;
               font-size: 12px; font-weight: 700; color: var(--ink); padding-top: 3px; }
-/* GREEN GAS, GOLDEN OIL — QA's pair: #2E8F6D gas · #b8892F oil.
-   The bare `.pf2-sw` IS the gas swatch — the legend
+/* GOLDEN GAS, GREEN OIL — QA's FINAL pair, settled on retest: gas #b8892F ·
+   oil #2E8F6D. The bare `.pf2-sw` IS the gas swatch — the legend
    renders gas with no modifier and oil as `.pf2-sw.oil` — so the base colour
    is gas's. `.gas` and `.oil` used to share one golden rule, which made the
    two legend keys identical whatever the base said; they are separated now so
    each names its own product. */
-.mv-ref-app .pf2-sw { display: inline-block; width: 20px; border-top: 3px solid #2e8f6d;
+.mv-ref-app .pf2-sw { display: inline-block; width: 20px; border-top: 3px solid #b8892f;
           border-radius: 2px; vertical-align: middle; margin-right: 7px; }
-.mv-ref-app .pf2-sw.gas { border-top-color: #2e8f6d; }
-.mv-ref-app .pf2-sw.oil { border-top-color: #b8892f; }
+.mv-ref-app .pf2-sw.gas { border-top-color: #b8892f; }
+.mv-ref-app .pf2-sw.oil { border-top-color: var(--green-deep); }
 .mv-ref-app .pf2-lgnote { font-size: 11px; font-weight: 600; color: var(--slate); opacity: .85;
               border-left: 1px solid #e2e8f0; padding-left: 14px; }
 @media (max-width: 560px) {
@@ -2070,8 +2070,8 @@ body .mv-ref-app.view-simple:not(.no-claim) section[data-route="app-briefing"] #
 .mv-ref-app .pf2-c.sh { background: rgba(255, 255, 255, .04); padding-left: 10px; padding-right: 8px; }
 .mv-ref-app .pf2-c.gh { border-top: none; padding-top: 4px; padding-bottom: 2px; font-size: 10.5px;
             font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-.mv-ref-app .pf2-c.gh.o { color: #ecc07c; }
-.mv-ref-app .pf2-c.gh.g { color: #9fd3ba; }
+.mv-ref-app .pf2-c.gh.o { color: #9fd3ba; }
+.mv-ref-app .pf2-c.gh.g { color: #ecc07c; }
 .mv-ref-app .pf2-c.shh { border-top: none; padding-top: 2px; padding-bottom: 7px; font-size: 9.5px;
              font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
              color: #8fa3ad; }
@@ -2081,12 +2081,12 @@ body .mv-ref-app.view-simple:not(.no-claim) section[data-route="app-briefing"] #
 .mv-ref-app .pf2-vo,
 .mv-ref-app .pf2-vg { font-variant-numeric: tabular-nums; font-weight: 800; font-size: 14px;
                    line-height: 1.35; white-space: nowrap; }
-.mv-ref-app .pf2-vg { color: #9fd3ba; }
-.mv-ref-app .pf2-vo { color: #ecc07c; }
+.mv-ref-app .pf2-vg { color: #ecc07c; }
+.mv-ref-app .pf2-vo { color: #9fd3ba; }
 .mv-ref-app .pf2-vs { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 12.5px;
           line-height: 1.35; white-space: nowrap; }
-.mv-ref-app .pf2-vs.g { color: #d8ede3; }
-.mv-ref-app .pf2-vs.o { color: #e9d1a4; }
+.mv-ref-app .pf2-vs.g { color: #e9d1a4; }
+.mv-ref-app .pf2-vs.o { color: #d8ede3; }
 .mv-ref-app .pf2-vs.na { color: #5f7482; font-weight: 600; }
 .mv-ref-app .pf2-u { font-size: 10px; font-weight: 700; color: #8fa3ad; margin-left: 3px; }
 .mv-ref-app .pf2-kstrip { display: flex; flex-wrap: wrap; gap: 6px 22px; padding: 11px 20px;
@@ -2173,8 +2173,8 @@ body .mv-ref-app.view-simple:not(.no-claim) section[data-route="app-briefing"] #
 .mv-ref-app .pf2-gaugefacts { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .mv-ref-app .pf2-gk { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
           margin-bottom: 2px; }
-.mv-ref-app .pf2-gk.gas { color: var(--green-deep); }
-.mv-ref-app .pf2-gk.oil { color: #a07a2c; }
+.mv-ref-app .pf2-gk.gas { color: #a07a2c; }
+.mv-ref-app .pf2-gk.oil { color: var(--green-deep); }
 .mv-ref-app .pf2-gr { font-size: 12px; color: var(--slate); line-height: 1.5; }
 .mv-ref-app .pf2-gr em { font-style: normal; font-weight: 800; color: var(--ink);
              font-variant-numeric: tabular-nums; }
@@ -2201,8 +2201,8 @@ body .mv-ref-app.view-simple:not(.no-claim) section[data-route="app-briefing"] #
                font-variant-numeric: tabular-nums; }
 .mv-ref-app .pf2-dotk { display: inline-block; width: 9px; height: 9px; border-radius: 3px;
             margin-right: 6px; vertical-align: 0; }
-.mv-ref-app .pf2-dotk.gas { background: #2e8f6d; }
-.mv-ref-app .pf2-dotk.oil { background: #b8892f; }
+.mv-ref-app .pf2-dotk.gas { background: #b8892f; }
+.mv-ref-app .pf2-dotk.oil { background: var(--green-deep); }
 .mv-ref-app .pf2-years { display: flex; align-items: flex-end; gap: 10px; height: 190px;
              padding: 6px 2px 0; }
 .mv-ref-app .pf2-yr { flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column;
@@ -2215,8 +2215,8 @@ body .mv-ref-app.view-simple:not(.no-claim) section[data-route="app-briefing"] #
              flex-direction: column; border-radius: 5px 5px 0 0; overflow: hidden;
              min-height: 3px; }
 .mv-ref-app .pf2-yrcol i { display: block; width: 100%; }
-.mv-ref-app .pf2-yrcol i.gas { background: #2e8f6d; }
-.mv-ref-app .pf2-yrcol i.oil { background: #b8892f; }
+.mv-ref-app .pf2-yrcol i.gas { background: #b8892f; }
+.mv-ref-app .pf2-yrcol i.oil { background: var(--green-deep); }
 .mv-ref-app .pf2-yrl { font-size: 11px; font-weight: 700; color: var(--slate); white-space: nowrap;
            font-variant-numeric: tabular-nums; }
 .mv-ref-app .pf2-yrl em { font-style: normal; font-size: 9px; font-weight: 800; color: var(--amber);
