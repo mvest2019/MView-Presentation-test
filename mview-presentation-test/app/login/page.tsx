@@ -8,7 +8,6 @@ import { LoginForm } from "./_components/login-form";
 export const metadata: Metadata = {
   title: "Sign in | Mineral View",
   description: "Sign in to your Mineral View account.",
-  // A sign-in page in search results is noise.
   robots: { index: false, follow: true },
 };
 
