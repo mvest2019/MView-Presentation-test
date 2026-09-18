@@ -17,6 +17,7 @@ import {
 import type { PasswordInfo } from "../_lib/profile-api";
 import {
   PROFILE_SECTIONS,
+  SESSION_REVOKED,
   changePassword,
   lastActiveLabel,
   passwordCopy,
@@ -153,6 +154,7 @@ export function SecurityCard({
       setSessionsError(null);
       return;
     }
+    if (result.code === SESSION_REVOKED) return signInAgain();
     /* The list is LEFT AS IT WAS and the failure is stated beside it. Blanking
        it would turn "we could not re-read" into "nothing is signed in" — the
        one wrong answer on this panel that could matter. */
@@ -263,6 +265,7 @@ export function SecurityCard({
           const result = await signOutSessionAction(session.id);
           setBusy(null);
           if (!result.ok) {
+            if (result.code === SESSION_REVOKED) return signInAgain();
             setSessionsError(result.message);
             setAnnouncement(result.message);
             return;
@@ -282,6 +285,7 @@ export function SecurityCard({
           const result = await signOutOtherSessionsAction();
           setBusy(null);
           if (!result.ok) {
+            if (result.code === SESSION_REVOKED) return signInAgain();
             setSessionsError(result.message);
             setAnnouncement(result.message);
             return;
@@ -562,6 +566,39 @@ function SecurityControlRow({
 
 /** `busy` when the "sign out everywhere else" request is in flight. */
 const ALL = "__all__";
+
+/**
+ * THIS DEVICE HAS BEEN SIGNED OUT — leave, properly.
+ *
+ * The action has already dropped the session cookie by the time this runs, so
+ * the reader really is signed out; this is what makes the screen agree with
+ * that. `/login?signedOut=1` explains the sign-in page they did not ask for.
+ *
+ * ── A FULL NAVIGATION, NOT A ROUTER PUSH ──────────────────────────────────
+ *
+ * `window.location.assign` throws the whole page away. A soft navigation would
+ * keep this React tree alive — including the portal chrome still showing a
+ * signed-in member's name and whatever data the other cards had already
+ * loaded. A device that has been signed out must not be left wearing the
+ * signed-in shell.
+ *
+ * ── AND NOT A DISMISSABLE DIALOG ──────────────────────────────────────────
+ *
+ * A modal saying "you were signed out" leaves a reader who presses Escape
+ * sitting on a private page their session no longer backs, with every control
+ * silently broken. The honest response to "you are signed out" is the sign-in
+ * screen.
+ */
+function signInAgain(): void {
+  /* eslint-disable-next-line @next/next/no-location-assign-relative-destination --
+     The rule prefers `router.push` for internal routes, and it is right almost
+     everywhere. Not here: a soft navigation is exactly what must NOT happen.
+     This is a sign-out, and the point is that nothing of the signed-in session
+     survives it — no client cache, no already-fetched account data, no chrome
+     still holding the member's name. A full document load guarantees that; a
+     push only unmounts the route. */
+  window.location.assign("/login?signedOut=1");
+}
 
 /**
  * WHERE YOU ARE SIGNED IN — now a read from `GET /users/me/sessions`.

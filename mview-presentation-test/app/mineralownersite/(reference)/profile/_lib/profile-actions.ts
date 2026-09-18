@@ -4,7 +4,12 @@ import { changePasswordSchema, codeSchema } from "@/app/_components/auth-schema"
 import { endSession, getSessionUser, startSession } from "@/lib/session";
 
 import { avatarProxyUrl } from "./avatar-url";
-import type { ProfileSession } from "./profile-data";
+/* `SESSION_REVOKED` lives in `profile-data.ts`, not here, and it has to: a
+   `"use server"` module may export ONLY async functions. A single exported
+   const in this file makes the bundler report it as having NO EXPORTS AT ALL,
+   and every action in it stops resolving — a build error whose message names
+   an unrelated import. See that file's note. */
+import { SESSION_REVOKED, type ProfileSession } from "./profile-data";
 
 import { OwnerApiError } from "../../../_lib/reference/owner-api";
 import {
@@ -597,6 +602,44 @@ const NO_TOKEN: ProfileActionFailure = {
     "before device management existed.",
 };
 
+/**
+ * THIS DEVICE HAS BEEN SIGNED OUT — end the session properly, here and now.
+ *
+ * `proxy.ts` catches this on every portal NAVIGATION, so most readers never
+ * reach this path. It exists for the one who is already sitting on the profile
+ * page when another device signs them out: they navigate nowhere, so the gate
+ * never runs, and the next button they press is the first thing to find out.
+ *
+ * The cookie is dropped here rather than left for the gate, so the reader is
+ * genuinely signed out the moment we learn it — not merely told they are. The
+ * panel then sends them to `/login?signedOut=1`, which explains the sign-in
+ * screen they did not ask for.
+ */
+async function revokedHere(): Promise<ProfileActionFailure> {
+  try {
+    await endSession();
+  } catch {
+    /* The redirect still stands; the gate drops the cookie on arrival. */
+  }
+  return {
+    ok: false,
+    code: SESSION_REVOKED,
+    message: "This device was signed out. Sign in again to continue.",
+  };
+}
+
+/**
+ * Was this refused because the session is dead, rather than because something
+ * broke?
+ *
+ * ONLY A 401 COUNTS. A 503 means the API could not check, which is a different
+ * statement and must not sign anybody out — see the fail-open note in
+ * `proxy.ts`.
+ */
+function isRevocation(e: unknown): boolean {
+  return e instanceof OwnerApiError && e.status === 401;
+}
+
 export type SessionListActionResult =
   | { ok: true; sessions: ProfileSession[] }
   | ProfileActionFailure;
@@ -642,6 +685,7 @@ export async function listSessionsAction(): Promise<SessionListActionResult> {
       })),
     };
   } catch (e) {
+    if (isRevocation(e)) return revokedHere();
     return failure(e, "load your signed-in devices");
   }
 }
@@ -672,6 +716,7 @@ export async function signOutSessionAction(
     const result = await signOutSession(base, token, sessionId);
     return afterSignOut(result.signed_out, result.was_current);
   } catch (e) {
+    if (isRevocation(e)) return revokedHere();
     return failure(e, "sign that device out");
   }
 }
@@ -687,6 +732,7 @@ export async function signOutOtherSessionsAction(): Promise<SignOutActionResult>
     const result = await signOutOtherSessions(base, token);
     return afterSignOut(result.signed_out, result.was_current);
   } catch (e) {
+    if (isRevocation(e)) return revokedHere();
     return failure(e, "sign your other devices out");
   }
 }

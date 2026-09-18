@@ -359,6 +359,27 @@ export const securityRows: SecurityRow[] = [
  * come from has changed, and the sign-outs now reach a server.
  */
 
+/**
+ * THIS DEVICE HAS BEEN SIGNED OUT FROM ANOTHER ONE.
+ *
+ * The code a session action returns when the API refuses its token with a 401.
+ * The panel switches on it and sends the reader to sign in again.
+ *
+ * ── WHY IT LIVES HERE, BESIDE UI COPY, AND NOT WITH THE ACTIONS ───────────
+ *
+ * Because a `"use server"` module may export ONLY async functions. Declaring
+ * this const in `profile-actions.ts` makes the bundler report that file as
+ * having NO EXPORTS AT ALL — every action in it stops resolving, and the build
+ * fails with a message naming some unrelated import three files away. This
+ * module has no directive, so both the server actions and the client component
+ * can import it, which is exactly what a shared constant needs.
+ *
+ * Shared rather than typed twice: a string literal written in two places is one
+ * that eventually differs by a character and silently stops matching, and the
+ * failure mode here is a signed-out device quietly staying on the page.
+ */
+export const SESSION_REVOKED = "SESSION_REVOKED";
+
 /** One signed-in device, as the panel renders it. */
 export interface ProfileSession {
   id: string;
