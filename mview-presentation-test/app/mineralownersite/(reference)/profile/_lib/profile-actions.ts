@@ -217,17 +217,23 @@ function failure(e: unknown, doing: string): ProfileActionFailure {
  * every LATER page's header is right; the page's own chrome is patched
  * client-side by `ProfileLive` in the same moment. Best-effort and silent —
  * a page load must not grow a failure state over a cookie nicety.
+ *
+ * RETURNS THE FRESH PROFILE (or null on any failure) so a caller that wants to
+ * patch the on-screen chrome — `SessionIdentitySync` on every portal page —
+ * has the record without a second read. `ProfileLive` ignores the return.
  */
-export async function syncSessionFromRecordAction(): Promise<void> {
+export async function syncSessionFromRecordAction(): Promise<UserProfile | null> {
   const memberId = await requireMember();
-  if (memberId == null) return;
+  if (memberId == null) return null;
   const base = profileApiBase();
-  if (!base) return;
+  if (!base) return null;
   try {
     const profile = await fetchProfile(base, memberId);
     await syncSession(profile);
+    return profile;
   } catch {
     /* the next visit or the next save will try again */
+    return null;
   }
 }
 

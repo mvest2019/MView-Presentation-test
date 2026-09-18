@@ -112,8 +112,11 @@ export function ProfileLive({
  * `portalMember`, the chrome's OWN derivation, so the bar's initials cannot
  * disagree with themselves. The photo rides along only when the record has
  * one; a null must not erase the session's sign-in picture.
+ *
+ * Exported for `SessionIdentitySync`, which applies the same patch on every
+ * portal page — one derivation, wherever the chrome learns about the record.
  */
-function chromePatchFrom(fresh: UserProfile): Partial<PortalMember> | null {
+export function chromePatchFrom(fresh: UserProfile): Partial<PortalMember> | null {
   const derived = portalMember({
     id: fresh.member_id,
     firstName: fresh.first_name ?? "",

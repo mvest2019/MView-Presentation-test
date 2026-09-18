@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { PinnedValueBar } from "../_components/pinned-value-bar";
 import { PortalFunnelBar } from "../_components/portal-funnel-bar";
 import { PortalSessionProvider } from "../_components/portal-session";
+import { SessionIdentitySync } from "../_components/session-identity-sync";
 import { PortalShell } from "../_components/portal-shell";
 import { PortalStateProvider } from "../_components/portal-state-provider";
 import { demoDisclosure } from "../_lib/portal-demo-data";
@@ -127,6 +128,12 @@ export default async function MineralOwnerPortalLayout({
           changing fact. The same provider wraps the reference group's shell —
           see `portal-session.tsx`. */}
       <PortalSessionProvider user={user}>
+        {/* the cookie can lag the record (a fresh login, a photo uploaded on
+            another device) — this heals the header on WHATEVER page loads
+            first, not only on My Profile. Renders nothing. */}
+        {user ? (
+          <SessionIdentitySync sessionHasPhoto={Boolean(user.profileImage)} />
+        ) : null}
         <PortalStateProvider>{shell}</PortalStateProvider>
       </PortalSessionProvider>
 

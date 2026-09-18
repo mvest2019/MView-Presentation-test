@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 
 import { PortalSessionProvider } from "../_components/portal-session";
+import { SessionIdentitySync } from "../_components/session-identity-sync";
 import { PortalPrefsProvider } from "../_components/reference/prefs-context";
 import {
   PORTAL_FUNNELS,
@@ -131,6 +132,12 @@ export default async function ReferencePortalLayout({
     <>
       <Sprite />
       <PortalSessionProvider user={user}>
+        {/* the cookie can lag the record (a fresh login, a photo uploaded on
+            another device) — this heals the header on WHATEVER page loads
+            first, not only on My Profile. Renders nothing. */}
+        {user ? (
+          <SessionIdentitySync sessionHasPhoto={Boolean(user.profileImage)} />
+        ) : null}
         <PortalPrefsProvider tier={tier} funnel={funnel}>
           {children}
         </PortalPrefsProvider>
