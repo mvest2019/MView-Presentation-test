@@ -18,6 +18,7 @@ import {
   type Basemap,
 } from "../_lib/map-shared";
 import type { LeaseReport } from "../_lib/lease-report";
+import type { LeaseMapData } from "../_lib/lease-map-from-api";
 import {
   MapHoverTip,
   MapResetButton,
@@ -103,7 +104,21 @@ const MARK = [46, 143, 109] as const;
 /** DE WITT County, Texas — the fallback if a lease has no well on record. */
 const COUNTY: [number, number] = [-97.35, 29.08];
 
-export function WellsMapCard({ report }: { report: LeaseReport }) {
+export function WellsMapCard({
+  report,
+  served,
+}: {
+  report: LeaseReport;
+  /**
+   * The lease's own geometry, when it was read from the service.
+   *
+   * ABSENT ON THE FIXTURE PATH, where the wells come from `wellsForLease` and
+   * the ring counts are measured against the ten local leases. A served lease
+   * has no row in either — the map drew nothing and the pills counted a fixture
+   * that has nothing to do with the lease on screen. See `leaseMapFromApi`.
+   */
+  served?: LeaseMapData;
+}) {
   const { lease } = report;
   const [basemap, setBasemap] = useState<Basemap>("satellite");
   const [ring, setRing] = useState<string>("lease");
@@ -116,15 +131,22 @@ export function WellsMapCard({ report }: { report: LeaseReport }) {
   const graphicRef = useRef<GraphicCtor | null>(null);
   const ringsRef = useRef<GraphicLike[]>([]);
 
-  const wells = useMemo(() => wellsForLease(lease.slug), [lease.slug]);
+  const wells = useMemo(
+    () => served?.wells ?? wellsForLease(lease.slug),
+    [served, lease.slug],
+  );
   const centre: [number, number] = wells[0]?.surface ?? COUNTY;
 
   /* The counts exclude this lease's own holes, so a lease with three wells does
-     not report three neighbours of itself at every radius. */
+     not report three neighbours of itself at every radius. The service applies
+     the same rule and measures against the real record rather than the ten
+     fixture leases, so its answer is taken whole where there is one. */
   const neighbours = useMemo(
-    () => ringCounts(centre, new Set(wells.map((well) => well.api))),
+    () =>
+      served?.rings ??
+      ringCounts(centre, new Set(wells.map((well) => well.api))),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [wells],
+    [served, wells],
   );
 
   const frame = useCallback(
@@ -236,9 +258,16 @@ export function WellsMapCard({ report }: { report: LeaseReport }) {
                 name: `Well ${well.name}`,
                 api: well.api,
                 drilled: well.drilled.toLowerCase(),
-                open: `${well.openTopFt.toLocaleString("en-US")}–${well.openBottomFt.toLocaleString("en-US")} ft`,
+                /* WHERE A HOLE IS OPEN IS A QUESTION ABOUT THE ROCK, and
+                   the lease map payload does not answer it — only the
+                   reservoir call carries perforations. "0–0 ft" would read as
+                   a measurement of zero rather than as an absence. */
+                open:
+                  well.openTopFt > 0 || well.openBottomFt > 0
+                    ? `${well.openTopFt.toLocaleString("en-US")}–${well.openBottomFt.toLocaleString("en-US")} ft`
+                    : "not recorded",
                 depth: `${well.depthFt.toLocaleString("en-US")} ft MD`,
-                field: well.field,
+                field: "field" in well ? well.field : lease.reservoir,
               },
             }),
           );
@@ -333,7 +362,9 @@ export function WellsMapCard({ report }: { report: LeaseReport }) {
     <Card padded={false} className="mt-4 px-[22px] py-[18px]">
       <CardHeader
         title={
-          <h3 className="text-[15px] font-bold">The wells, on the land itself</h3>
+          <h3 className="text-[15px] font-bold">
+            The wells, on the land itself
+          </h3>
         }
         action={
           <Badge tone="quiet" size="xs">
@@ -342,18 +373,35 @@ export function WellsMapCard({ report }: { report: LeaseReport }) {
           </Badge>
         }
       />
+      {/* COUNTED, NOT ASSUMED. This read `{lease.wells} surface · {lease.wells}
+          bottom hole · 0 recorded · {lease.wells} estimated path` — four
+          numbers derived from one, which is true only of a record where every
+          hole is filed at both ends and every path is estimated. The service
+          counts each separately and says 138 surface and ZERO bottom holes on
+          this lease. */}
       <p className="mt-1 text-[12px] text-mv-muted">
-        {formatAcres(lease.acres)} acres filed · {lease.wells} surface ·{" "}
-        {lease.wells} bottom hole · 0 recorded · {lease.wells} estimated path
+        {formatAcres(served?.ground.acres ?? lease.acres)} acres filed ·{" "}
+        {served?.ground.surfaceHoles ?? lease.wells} surface ·{" "}
+        {served?.ground.bottomHoles ?? lease.wells} bottom hole ·{" "}
+        {served?.ground.pathsMeasured ?? 0} recorded ·{" "}
+        {served?.ground.pathsEstimated ?? lease.wells} estimated path
       </p>
 
+      {/* THE SERVICE'S OWN ACCOUNT OF WHY THERE IS NO OUTLINE, per lease. The
+          sentence below was fixed text asserting that no boundary is held —
+          true of the ten fixture leases and not a promise about a record of
+          782. It stands as the fallback for the fixture path. */}
       <p className="mt-3 text-[11.5px] leading-[1.55] text-mv-muted">
-        No traced unit boundary is held for this lease. The operator filed{" "}
-        {formatAcres(lease.acres)} acres and the state records where each well
-        starts and finishes, but the outline of the pooled unit only exists on
-        the operator&apos;s survey plat — a scanned document that has to be
-        georeferenced and traced by hand. Rather than draw a plausible rectangle,
-        the map draws what is filed.
+        {served?.outlineNote ?? (
+          <>
+            No traced unit boundary is held for this lease. The operator filed{" "}
+            {formatAcres(lease.acres)} acres and the state records where each
+            well starts and finishes, but the outline of the pooled unit only
+            exists on the operator&apos;s survey plat — a scanned document that
+            has to be georeferenced and traced by hand. Rather than draw a
+            plausible rectangle, the map draws what is filed.
+          </>
+        )}
       </p>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">

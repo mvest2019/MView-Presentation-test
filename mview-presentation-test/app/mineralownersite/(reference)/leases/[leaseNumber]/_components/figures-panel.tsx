@@ -75,21 +75,35 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
   const [scope, setScope] = useState<FigureScope>("share");
   const [explainer, setExplainer] = useState<Explainer | null>(null);
   const [mode, setMode] = useState<ChartMode>("both");
+  /* WHOSE SERIES THIS PANEL IS DRAWING.
+     A served lease carries its own months — see `LeaseReport.series` — and a
+     fixture lease is a row of the shared table. Everything below reads the
+     window, the seam and the axis off whichever of the two is in hand, so the
+     chart, the brush and the readout cannot end up describing different
+     months. */
+  const served = report.series;
+  const length = served ? served.labels.length : financialsSeries.length;
+  const postedThrough = served
+    ? served.lastPostedIndex
+    : financialsSeries.lastPostedIndex;
+
   const [range, setRange] = useState(() => {
     const behind = Math.round((DEFAULT_WINDOW_MONTHS - 1) * 0.48);
-    const from = Math.max(0, financialsSeries.lastPostedIndex - behind);
+    const from = Math.max(0, postedThrough - behind);
     return {
       from,
-      to: Math.min(
-        from + DEFAULT_WINDOW_MONTHS - 1,
-        financialsSeries.length - 1,
-      ),
+      to: Math.min(from + DEFAULT_WINDOW_MONTHS - 1, length - 1),
     };
   });
 
   const factor = scope === "share" ? lease.decimalInterest : 1;
 
   const streams = useMemo(() => {
+    /* THE SERVICE SENDS BOTH SCOPES, so the toggle picks one rather than
+       multiplying the other by the decimal: its own arithmetic and ours round
+       differently, and this panel prints the result to the dollar. */
+    if (served) return scope === "share" ? served.share : served.gross;
+
     const series = financialsSeries.byLease.find(
       (entry) => entry.slug === lease.slug,
     );
@@ -105,11 +119,13 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
       }),
     );
     return { gas, oil, cash };
-  }, [lease.slug, factor]);
+  }, [served, scope, lease.slug, factor]);
 
   const { left, right } = seriesFor(mode, streams);
   const labelFor = (index: number) =>
-    shortMonthLabel(financialsSeries.firstMonth + index);
+    served
+      ? (served.labels[index] ?? "")
+      : shortMonthLabel(financialsSeries.firstMonth + index);
 
   return (
     <div>
@@ -226,6 +242,8 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
           right={right}
           from={range.from}
           to={range.to}
+          postedThrough={postedThrough}
+          labelAt={labelFor}
           summary={`${CHART_MODE_COPY[mode].title} for ${lease.name}, ${labelFor(range.from)} to ${labelFor(range.to)}. Filed through ${report.lastPosting}; modelled after that.`}
         />
 

@@ -1,11 +1,11 @@
 /**
- * MY LEASES' SAME-ORIGIN FORWARDER — `/api/leases/{financials}`.
+ * MY LEASES' SAME-ORIGIN FORWARDER — `/api/leases/{financials|leases|picker}`.
  *
  * ONE FILE FOR EVERY MY LEASES CALL, the arrangement the claim flow and the
  * invite flow already use (`app/api/claim/[endpoint]`, `app/api/invite/
- * [endpoint]`). Today it forwards one endpoint; a second is a line in
- * `GET_PARAMS` and nothing else, which is the reason for the `[endpoint]`
- * segment rather than a folder per call.
+ * [endpoint]`). Another backend call is a line in `GET_PARAMS` and nothing
+ * else, which is the reason for the `[endpoint]` segment rather than a folder
+ * per call.
  *
  * ── WHY THE PAGE CANNOT CALL THE BACKEND DIRECTLY ──
  *
@@ -45,15 +45,21 @@ import { getSessionUser } from "@/lib/session";
 
 /** Never cached and never prerendered: the answer depends on the session. */
 export const dynamic = "force-dynamic";
-/** The financials read walks the whole filing history — it is slow warm, and
- *  this is the same ceiling the dashboard and invite reads take. */
-export const maxDuration = 60;
+/**
+ * The slow reads here walk a whole filing history. `financials` is slow warm;
+ * `lease` on a cold lease has been measured at over two minutes, and a ceiling
+ * under that turns a working call into "could not load" every time the
+ * service's cache has gone cold.
+ */
+export const maxDuration = 300;
 
 const BASE =
   process.env.MINERALVIEW_API_BASE_URL ||
   "https://mview-dev-api.mineralview.com";
 
-const TIMEOUT_MS = 60_000;
+/** Just inside `maxDuration`, so the upstream read is what gives up first and
+ *  the caller gets our own 502 rather than a severed connection. */
+const TIMEOUT_MS = 290_000;
 
 /**
  * The endpoints this route will forward, and the query parameters each may
@@ -76,6 +82,53 @@ const GET_PARAMS = {
    * against the dev service on 2026-09-17.
    */
   leases: ["page", "page_size", "q", "sort"],
+  /**
+   * `GET /api/v1/leases/picker?member_id=` — every lease on the record as a
+   * name, a number, a county and a figure: the report header's jump list.
+   *
+   * NOT PAGED, and that is the service's answer rather than an assumption —
+   * this member's 782 leases arrive in one 97KB body, `total` agreeing with the
+   * array's length. It takes no parameters, so the list is empty and anything a
+   * caller appends is dropped. Verified against the dev service on 2026-09-17.
+   */
+  picker: [],
+  /**
+   * `GET /api/v1/leases/lease?member_id=&id=` — one lease's whole report.
+   *
+   * `id` IS THE SERVICE'S OWN KEY, `02_269507` — the district code and the
+   * lease number. The number alone is not unique across districts, and this
+   * record holds four leases all named BETTY KENNEDY UNIT A, told apart only by
+   * it. It is CASE-SENSITIVE upstream: `7C_201743` answers where `7c_201743`
+   * comes back "not on this owner's record".
+   *
+   * A lease that is not on the caller's record is a 404 `LEASES_LEASE_NOT_HELD`
+   * — the service enforcing the boundary this route cannot.
+   */
+  lease: ["id"],
+  /**
+   * `GET /api/v1/leases/reservoirs?member_id=&id=&reservoir_key=` — the rock
+   * one lease produces from: its wells, its depths, its monthly series and the
+   * map of where the holes are.
+   *
+   * `reservoir_key` IS OPTIONAL AND NARROWS THE ANSWER. Without it the service
+   * returns every reservoir on the lease (three on `08_04406`, at 19KB);
+   * with it, just that one (7KB). The key is the reservoir's name as the
+   * service spells it back — `GLORIETA` — matched case-insensitively, and
+   * `__unknown` for a reservoir the filings do not name.
+   */
+  reservoirs: ["id", "reservoir_key"],
+  /**
+   * `GET /api/v1/leases/lease/map?member_id=&id=` — where one lease's wells sit
+   * on the ground: every hole's surface and bottom, the survey grade behind
+   * each path, what the operator filed for acreage, and how many wells sit
+   * within one, three and five miles.
+   *
+   * THE KEY IS HYPHENATED BECAUSE THE PATH IS NOT. This route's segment is a
+   * single `[endpoint]`, so `/api/leases/lease/map` would be two segments and
+   * match nothing. `lease-map` is the name the browser asks for and
+   * `UPSTREAM_PATH` turns it back into `lease/map` on the way out.
+   */
+  "lease-map": ["id"],
 } as const satisfies Record<string, readonly string[]>;
 
 /**
@@ -88,12 +141,18 @@ const GET_PARAMS = {
  */
 const UPSTREAM_PATH: Partial<Record<string, string>> = {
   leases: "",
+  /* One endpoint, two path segments — see the note on `lease-map` above. */
+  "lease-map": "lease/map",
 };
 
 /** What a signed-out caller is told, in the words of the thing they asked for. */
 const SIGN_IN_COPY: Record<Endpoint, string> = {
   financials: "Sign in to see your lease financials.",
   leases: "Sign in to see your leases.",
+  picker: "Sign in to see your leases.",
+  lease: "Sign in to see this lease report.",
+  reservoirs: "Sign in to see this reservoir report.",
+  "lease-map": "Sign in to see where these wells are.",
 };
 
 type Endpoint = keyof typeof GET_PARAMS;

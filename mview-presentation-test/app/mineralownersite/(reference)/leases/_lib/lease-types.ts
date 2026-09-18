@@ -26,8 +26,28 @@ export interface LeaseLastPosting {
 }
 
 export interface LeaseRecord {
+  /**
+   * THE SERVICE'S OWN KEY — `08_46924`: the district code and the lease number.
+   *
+   * OPTIONAL, because the ten fixture records have none and never will. It is
+   * here because the NUMBER IS NOT UNIQUE: districts number their leases
+   * independently, so one record can hold `02_269507` and `08_269507`, and a
+   * route or a lookup keyed on `269507` alone would answer for whichever it met
+   * first. Everything that must name one exact lease to the service — the
+   * report call, and therefore the report's URL — uses this.
+   */
+  id?: string;
   /** The filing's lease number, or null for an unnumbered unit. */
   number: string | null;
+  /**
+   * How many of the lease's wells are on production right now.
+   *
+   * OPTIONAL: the service sends it per lease and the fixture does not carry it.
+   * The band used to print `wells of wells producing` — every well on every
+   * lease, always — which is true of ten hand-written records and is not true
+   * of a real one: this lease has 138 wells and none of them posted last month.
+   */
+  producingWells?: number;
   /** The route segment the lease report opens on. */
   slug: string;
   name: string;

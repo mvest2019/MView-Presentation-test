@@ -176,8 +176,12 @@ export function ReportBand({ report }: { report: LeaseReport }) {
             className="inline-block h-2 w-2 rounded-full bg-mv-green"
           />
           <strong>Lease status: {lease.status}</strong>
+          {/* HOW MANY ARE ACTUALLY PRODUCING, when the record says. `wells of
+              wells` was the fixture's assumption that every well on a lease is
+              on production; this lease has 138 and none of them posted last
+              month. A lease with no count of its own keeps the old reading. */}
           <span className="text-mv-portal-band-sub">
-            · {lease.wells} of {lease.wells} well
+            · {lease.producingWells ?? lease.wells} of {lease.wells} well
             {lease.wells === 1 ? "" : "s"} producing
           </span>
         </p>

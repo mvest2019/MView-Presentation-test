@@ -7,6 +7,7 @@ import { Badge } from "../../../../../_components/ui/badge";
 import { Card, CardHeader } from "../../../../../_components/ui/card";
 import { SegmentedControl } from "../../../../../_components/ui/segmented-control";
 import { loadArcgisModules } from "../../../../../_lib/arcgis-loader";
+import { LegendsPanel } from "../../../../map/_components/legends-panel";
 import { formatCompactVolume } from "../../../_lib/lease-format";
 import {
   BASEMAPS,
@@ -377,6 +378,32 @@ export function ReservoirMapCard({ report }: { report: ReservoirReport }) {
               }`.trim()}
             />
             {tip && <MapHoverTip tip={tip} />}
+
+            {/* THE WELL-SYMBOL LEGEND, from `GET /api/v1/map/legends`.
+                THE MAP PAGE'S OWN PANEL, not a copy of it. Ninety symbols, each
+                one a PNG the map itself draws — a legend that redrew them from
+                local SVGs would be a legend that can disagree with the map, and
+                two copies of it would be two legends to keep in step with an
+                endpoint that grows.
+
+                CLOSED BY DEFAULT HERE, where the map page opens it on a wide
+                screen. That map is the whole page and has room; this one is
+                520px inside a report, and ninety rows opened over it would
+                cover the wells it is explaining. The header alone sits in the
+                corner until a reader asks.
+
+                TOP LEFT, AND IT OPENS DOWNWARDS. From the bottom corner the
+                list had to grow up the screen, away from its own header —
+                opened, the thing you had just clicked ended up at the bottom of
+                a 328px panel. The reset button holds the bottom right and the
+                basemap strip sits above the map, so this corner is the one
+                nothing else wants. */}
+            <LegendsPanel
+              mode="wells"
+              defaultOpen={false}
+              className="absolute top-3 left-3 z-10"
+            />
+
             <MapResetButton
               onClick={() => {
                 setRing("lease");

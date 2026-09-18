@@ -99,6 +99,41 @@ export interface ReservoirReport {
   from: number;
   to: number;
   wells: ReservoirWell[];
+
+  /**
+   * THE MONTH-BY-MONTH SERIES, WHEN THE SERVICE SENT ONE.
+   *
+   * ABSENT ON THE FIXTURE PATH, where the chart reads `financialsSeries` by
+   * slug as it always has. A served reservoir is in no such shared table, and
+   * its series is its OWN — every well in that one rock summed, which is not
+   * the same series as the lease's, because a lease can produce from more than
+   * one reservoir. Drawing the lease's series under a reservoir heading would
+   * be the wrong number in the right place.
+   *
+   * EMPTY IS A REAL ANSWER, not a failure: a reservoir identified from the
+   * roster column rather than from an allocation has wells and depths but no
+   * attributed months. `length` of 0 is what the card branches on.
+   *
+   * Volumes are whole-reservoir and cash is the reader's own share — the same
+   * split the fixture chart makes, and the reason cash is the only mode that
+   * switches scope.
+   */
+  series?: {
+    /** `"May 2015"` — one per index, the axis labels. */
+    labels: string[];
+    gas: number[];
+    oil: number[];
+    cash: number[];
+    /** Where the filed record ends and the model begins; -1 when nothing filed. */
+    lastPostedIndex: number;
+  };
+
+  /** Why the service believes this rock is the one — `basis_note`. */
+  basisNote?: string;
+  /** The service's own sentences about this reservoir. */
+  insights?: string[];
+  /** What the map makes of the well positions. */
+  mapNote?: string;
 }
 
 export function buildReservoirReport(lease: LeaseRecord): ReservoirReport {

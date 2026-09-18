@@ -108,6 +108,7 @@ export function SeriesChart({
   lastPostedIndex,
   firstMonth,
   summary,
+  labelAt,
 }: {
   left: ChartSeries;
   /** The second axis. Only the combined oil-and-gas view has one. */
@@ -118,7 +119,18 @@ export function SeriesChart({
   firstMonth: number;
   /** The sentence a screen reader is given in place of the picture. */
   summary: string;
+  /**
+   * How an index is named on the axis.
+   *
+   * OPTIONAL, and `firstMonth` plus the shared calendar is the default. A
+   * served series carries its OWN month names and starts on its own month, so
+   * counting forward from the fixture's first month would label every point
+   * with a different month than it holds.
+   */
+  labelAt?: (index: number) => string;
 }) {
+  const nameOf =
+    labelAt ?? ((index: number) => shortMonthLabel(firstMonth + index));
   const leftMax = axisMax(peakIn(left.values, from, to));
   const rightMax = right ? axisMax(peakIn(right.values, from, to)) : 0;
 
@@ -164,7 +176,7 @@ export function SeriesChart({
 
     setReadout({
       index,
-      month: shortMonthLabel(firstMonth + index),
+      month: nameOf(index),
       posted: index <= lastPostedIndex,
       pointDepth: Math.min(...depths),
       rows: plotted.map(({ series }) => ({
@@ -337,7 +349,7 @@ export function SeriesChart({
               textAnchor="middle"
               className="fill-mv-muted text-[14px] sm:text-[10px]"
             >
-              {shortMonthLabel(firstMonth + index)}
+              {nameOf(index)}
             </text>
           ))}
 

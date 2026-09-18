@@ -84,14 +84,31 @@ export function LeaseChart({
   from,
   to,
   summary,
+  postedThrough,
+  labelAt,
 }: {
   left: LeaseChartSeries;
   right?: LeaseChartSeries;
   from: number;
   to: number;
   summary: string;
+  /**
+   * Where the filed record ends — the index the chart draws its seam at.
+   *
+   * OPTIONAL, and the fixture's shared series is the default. A served lease
+   * has no row in that table: its months arrive with it and end on their own
+   * month, so a chart drawn against the fixture's seam would put the line
+   * between filed and modelled in the wrong place — the one mark on this chart
+   * a reader is entitled to trust absolutely.
+   */
+  postedThrough?: number;
+  /** How an index is named on the axis. Defaults to the fixture's calendar. */
+  labelAt?: (index: number) => string;
 }) {
-  const { firstMonth, lastPostedIndex } = financialsSeries;
+  const lastPostedIndex = postedThrough ?? financialsSeries.lastPostedIndex;
+  const nameOf =
+    labelAt ??
+    ((index: number) => shortMonthLabel(financialsSeries.firstMonth + index));
 
   const leftMax = axisMax(peakIn(left.values, from, to));
   const rightMax = right ? axisMax(peakIn(right.values, from, to)) : 0;
@@ -119,7 +136,7 @@ export function LeaseChart({
 
     setReadout({
       index,
-      month: shortMonthLabel(firstMonth + index),
+      month: nameOf(index),
       posted: index <= lastPostedIndex,
       pointDepth: Math.min(
         ...plotted.map(
@@ -289,7 +306,7 @@ export function LeaseChart({
             textAnchor="middle"
             className="fill-mv-muted text-[10px]"
           >
-            {shortMonthLabel(firstMonth + index)}
+            {nameOf(index)}
           </text>
         ))}
 

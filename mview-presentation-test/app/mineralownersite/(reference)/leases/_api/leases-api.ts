@@ -1,4 +1,4 @@
-import { leaseSlug } from "../_lib/lease-routes";
+import { leaseRouteSlug } from "../_lib/lease-routes";
 import type { LeaseRecord } from "../_lib/lease-types";
 import { monthNumber } from "../_lib/months";
 
@@ -118,6 +118,22 @@ export interface LeaseFinancials {
 
 /** 60s, matching the forwarder's own ceiling on the upstream call. */
 const TIMEOUT_MS = 60_000;
+
+/**
+ * FOUR MINUTES, FOR THE LEASE REPORT ALONE.
+ *
+ * Every other call here answers in seconds. This one assembles a lease's whole
+ * filing history and the model past it, and on a lease the service has nothing
+ * built for that has been measured at OVER TWO MINUTES — after which it is
+ * sub-second until the cache goes cold again.
+ *
+ * At the shared 60s ceiling the read was cut off mid-flight and the page said
+ * "could not load this lease report. Check your connection" — which is a lie
+ * about the reader's connection and about the service, and it invites a retry
+ * that gets cut off in exactly the same place. A long wait with a card that
+ * says it may be a long wait is the honest version.
+ */
+const REPORT_TIMEOUT_MS = 240_000;
 
 /**
  * The whole filing history and the model past it, at both scopes.
@@ -363,8 +379,9 @@ interface WireLeaseList {
  *
  * THREE FIELDS NEED MORE THAN A RENAME:
  *
- *   `slug` is BUILT, because the service identifies a lease by `lease_id`
- *   (`"08_46924"`) and this app's URLs are `<number>-<name>`. See `leaseSlug`.
+ *   `slug` is CHOSEN, because a lease the service identifies by `lease_id`
+ *   (`"08_46924"`) opens on that id, while a lease with only a number opens on
+ *   `<number>-<name>`. See `leaseRouteSlug`.
  *
  *   `decimalInterest` is PARSED off `interest_label`, which carries the decimal
  *   and its percentage in one string. The leading number is the decimal the
@@ -382,8 +399,13 @@ function toLeaseRecord(wire: WireLease): LeaseRecord {
   const number = wire.lease_number ? String(wire.lease_number) : null;
 
   return {
+    id: wire.lease_id,
     number,
-    slug: leaseSlug(number, name),
+    /* THE SLUG IS THE ID WHEN THERE IS ONE — `08_46924`. The number alone
+       cannot address a lease on the service (see `LeaseRecord.id`), and a row
+       whose URL cannot name what it opened is a row that opens somebody else's
+       lease. */
+    slug: leaseRouteSlug(wire.lease_id, number, name),
     name,
     status: wire.lease_status ?? "",
     acres: num(wire.acres),
@@ -555,6 +577,526 @@ function toFinancials(wire: WireFinancials): LeaseFinancials {
 }
 
 /* ============================================================================
+   THE JUMP LIST
+   ============================================================================ */
+
+/** One lease as the report header's "jump to a lease" list prints it. */
+export interface LeasePickerEntry {
+  /**
+   * The service's own identifier — `08_46924`. It is NOT a URL segment: the
+   * module's routes are `46924-howard-glasscock-east-unit`, built by
+   * `leaseSlug`. Kept because it is the only stable key on a row (two leases
+   * can share a name, and an unnumbered unit has no number to key on) and
+   * because it is what the lease-report call will want when that is wired.
+   */
+  id: string;
+  name: string;
+  /** Null for a unit filed without one, the same rule as `LeaseRecord`. */
+  number: string | null;
+  county: string;
+  /** The owner's share of this lease, dollars. */
+  value: number;
+}
+
+export interface LeasePickerList {
+  /** Whose record it is — "Apache Corporation". */
+  owner: string;
+  /** How many leases the record holds: the "of 782" in "Lease 3 of 782". */
+  total: number;
+  leases: LeasePickerEntry[];
+}
+
+interface WirePickerEntry {
+  lease_id?: string;
+  lease_name?: string;
+  lease_number?: string | number | null;
+  county?: string;
+  owner_value?: number;
+}
+
+interface WirePicker {
+  owner?: string;
+  total?: number;
+  picker?: WirePickerEntry[];
+}
+
+/**
+ * EVERY LEASE ON THE RECORD, AS A LIST OF NAMES — what the report header's
+ * dropdown drops and what its "Lease n of m" counts.
+ *
+ * ── ONE CALL, NO PAGING ──
+ *
+ * Unlike `/leases`, this endpoint is not paged: the whole record comes back in
+ * one body, `total` agreeing with the array's length (782 leases, 97KB, checked
+ * against the dev service). So there is no `fetchPages` here and no cap — the
+ * service decides how much a record is, not this function.
+ *
+ * ── IT IS A SEPARATE CALL FROM `fetchLeaseList` ON PURPOSE ──
+ *
+ * The two answer the same question at different weights. The list carries
+ * eighteen fields per lease because the table sorts and filters on them, and it
+ * costs 79 requests to assemble. The dropdown needs five fields and needs them
+ * before a reader has finished reading the heading. Opening a header dropdown
+ * should not pay for a table that is not on the page.
+ *
+ * `total` IS TAKEN FROM THE SERVICE, NOT FROM THE ARRAY. They agree today; if
+ * the endpoint ever starts truncating, a count that silently followed the array
+ * would report the truncation as the size of the record. The array falls back
+ * to its own length only when `total` is missing altogether.
+ */
+export async function fetchLeasePicker(
+  signal?: AbortSignal,
+): Promise<LeasePickerList> {
+  const wire = await request<WirePicker>(
+    "/api/leases/picker",
+    "your leases",
+    signal,
+  );
+
+  const leases = (Array.isArray(wire.picker) ? wire.picker : []).map(
+    (entry): LeasePickerEntry => ({
+      id: entry.lease_id ?? "",
+      name: entry.lease_name ?? "",
+      /* An empty string is not a lease number — the fixture's own rule for its
+         two unnumbered units, and the row prints the name alone for them. */
+      number: entry.lease_number ? String(entry.lease_number) : null,
+      county: entry.county ?? "",
+      value: num(entry.owner_value),
+    }),
+  );
+
+  return {
+    owner: wire.owner ?? "",
+    total: typeof wire.total === "number" ? wire.total : leases.length,
+    leases,
+  };
+}
+
+/* ============================================================================
+   ONE LEASE'S REPORT
+   ============================================================================ */
+
+/** One month on the lease's filed-and-modelled series. */
+export interface WireReportMonth {
+  short?: string;
+  label?: string;
+  gas_share?: number;
+  oil_share?: number;
+  cash_share?: number;
+  /** The same three at the whole lease, for the panel's "lease" scope. */
+  gas_net?: number;
+  oil_net?: number;
+  cash_gross?: number;
+  forecast?: boolean;
+}
+
+/** One month of the twelve the model puts ahead of the last filing. */
+export interface WireReportAhead {
+  label?: string;
+  gas?: number;
+  oil?: number;
+  cash?: number;
+  low?: number;
+  high?: number;
+}
+
+/** A running total, filed against modelled, for the cumulative curve. */
+export interface WireReportCumulative {
+  short?: string;
+  filed_gas?: number;
+  proj_gas?: number;
+  forecast?: boolean;
+}
+
+/**
+ * THE LEASE REPORT AS THE SERVICE SENDS IT.
+ *
+ * Only the fields the report actually prints are declared, and every one is
+ * optional: this is a 163KB document assembled from several records, any of
+ * which can be thin for a given lease, and a required field here would turn a
+ * missing ratio into a page that does not render. `degraded_sources` is the
+ * service saying so itself.
+ */
+export interface WireLeaseReport {
+  owner?: string;
+  history_end_label?: string;
+  lease?: {
+    lease_id?: string;
+    lease_name?: string;
+    label?: string;
+    lease_number?: string | null;
+    county?: string;
+    operator_name?: string;
+    acres?: number;
+    lease_status?: string;
+    interest?: number;
+    interest_label?: string;
+    owner_value?: number;
+    owner_value_low?: number;
+    owner_value_high?: number;
+    gross_value?: number;
+    appraised_value?: number;
+    next_month_label?: string;
+    next_month_low?: number;
+    next_month_high?: number;
+    quarter_low?: number;
+    quarter_high?: number;
+    reservoirs?: { name?: string }[];
+    well_count?: number;
+    producing_wells?: number;
+    well_types?: string[];
+    first_prod_label?: string;
+    last_posted_label?: string;
+    last_posted_gas?: number;
+    months_posted?: number;
+    gas_to_date?: number;
+    oil_to_date?: number;
+    gas_to_date_share?: number;
+    oil_to_date_share?: number;
+    reserves_gas_share?: number;
+    reserves_oil_share?: number;
+    months?: WireReportMonth[];
+    seam?: number;
+    year?: {
+      from_label?: string;
+      to_label?: string;
+      gas_avg_d?: number;
+      gas_lo_d?: number;
+      gas_hi_d?: number;
+      oil_avg_d?: number;
+      oil_lo_d?: number;
+      oil_hi_d?: number;
+      peak_label?: string;
+      trough_label?: string;
+      rev_hi_label?: string;
+      rev_hi?: number;
+      rev_lo_label?: string;
+      rev_lo?: number;
+      yield_bbl_per_mmcf?: number | null;
+      decline_pct?: number | null;
+      gas_total?: number;
+      oil_total?: number;
+      cash_total?: number;
+    };
+    ratios?: {
+      season?: { month?: string; pct?: number; percent?: number }[];
+      per_acre_share?: number;
+      realised_gas?: number | null;
+      realised_oil?: number | null;
+      half_label?: string | null;
+      half_months?: number | null;
+      lag_months?: number;
+      acres_per_well?: number;
+      oil_share_pct?: number;
+    };
+    price_test?: { at_deck?: number; down20?: number; up20?: number };
+    cumulative?: WireReportCumulative[];
+    /**
+     * What the model wanted against what the state filed, for the last posted
+     * month. AT THE OWNER'S SHARE in `posted`/`expected`, and at the whole
+     * lease in the `_gross` pair.
+     *
+     * THERE IS NO PERCENTAGE HERE. The miss is the ratio of the two, worked out
+     * where it is printed — see `modelMissPercent`.
+     */
+    vs_model?: {
+      short?: string;
+      posted?: number;
+      expected?: number;
+      posted_gross?: number;
+      expected_gross?: number;
+    }[];
+    vs_model_note?: string;
+    standing?: {
+      rank_value?: number;
+      of?: number;
+      share_value_pct?: number;
+      rank_gas?: number;
+      share_gas_pct?: number;
+      rank_month?: number;
+      share_month_pct?: number;
+    };
+    ahead?: WireReportAhead[];
+  };
+}
+
+/**
+ * ONE LEASE'S WHOLE REPORT — the figures, the series, the twelve months ahead,
+ * the ratios and where it stands on the record. 163KB on a long-lived lease.
+ *
+ * `id` IS THE SERVICE'S KEY, `02_269507`, which is also the lease's whole URL
+ * segment — see `leaseRouteSlug`. The report page reads it straight back off
+ * the route.
+ *
+ * ── IT IS CALLED FROM THE BROWSER, DELIBERATELY ──
+ *
+ * This read was on the server for a while, which made the page arrive complete
+ * but put the one call the module exists for outside DevTools entirely: the
+ * Network tab showed a 265KB document and no lease request at all, so there was
+ * no way to see its status, its size or its timing without reading a terminal.
+ * A call you cannot watch is a call you cannot debug. It goes through the
+ * forwarder like every other call here, so `member_id` still comes off the
+ * session cookie and never off the page.
+ *
+ * ── THE FIRST READ OF A COLD LEASE IS SLOW ──
+ *
+ * Over two minutes when the service has nothing built for it, and under a
+ * second on every read after — which is the other half of the argument for
+ * fetching it here: a reader watches a loading state rather than a blank tab.
+ *
+ * A LEASE NOT ON THE RECORD COMES BACK 404 `LEASES_LEASE_NOT_HELD`, which the
+ * caller turns into `notFound()` rather than an error card: the service is
+ * answering correctly, and "could not load" would invite a retry that can never
+ * succeed.
+ */
+export async function fetchLeaseReport(
+  id: string,
+  signal?: AbortSignal,
+): Promise<WireLeaseReport> {
+  return request<WireLeaseReport>(
+    `/api/leases/lease?id=${encodeURIComponent(id)}`,
+    "this lease report",
+    signal,
+    REPORT_TIMEOUT_MS,
+  );
+}
+
+/* ============================================================================
+   THE ROCK ONE LEASE PRODUCES FROM
+   ============================================================================ */
+
+/** One month on a reservoir's filed-and-modelled series. */
+export interface WireReservoirMonth {
+  label?: string;
+  short?: string;
+  /** Whole-reservoir volumes — a volume is a fact about the rock, not a share. */
+  gas?: number;
+  oil?: number;
+  cash_gross?: number;
+  /** The owner's own cash, which is the one figure that IS a share. */
+  cash_share?: number;
+  forecast?: boolean;
+}
+
+/** One well as the reservoir's table and map read it. */
+export interface WireReservoirWell {
+  api10?: string;
+  well_number?: string;
+  lease_id?: string;
+  lease_label?: string;
+  profile?: string | null;
+  depth_ft?: number | null;
+  perf_top_ft?: number | null;
+  perf_bottom_ft?: number | null;
+  gas_filed?: number;
+  oil_filed?: number;
+  cash_filed?: number;
+  gas_projected?: number;
+  share_pct?: number | null;
+  active?: boolean;
+  first_prod_label?: string | null;
+}
+
+/** The same well again, with where the hole actually is. */
+export interface WireReservoirMapWell {
+  api10?: string;
+  well_number?: string;
+  label?: string;
+  profile?: string | null;
+  lat?: number | null;
+  lon?: number | null;
+  bh_lat?: number | null;
+  bh_lon?: number | null;
+  deviated?: boolean;
+  lateral_ft?: number | null;
+  bearing_compass?: string | null;
+  depth_ft?: number | null;
+}
+
+export interface WireReservoir {
+  reservoir_key?: string;
+  name?: string | null;
+  basis?: string | null;
+  basis_note?: string | null;
+  lease_count?: number;
+  well_count?: number;
+  operators?: string[];
+  gas_to_date?: number;
+  oil_to_date?: number;
+  gas_forecast?: number;
+  oil_forecast?: number;
+  cash_filed?: number;
+  cash_projected?: number;
+  first_cycle_label?: string | null;
+  last_cycle_label?: string | null;
+  depth_min?: number | null;
+  depth_max?: number | null;
+  depth_avg?: number | null;
+  perf_top_ft?: number | null;
+  perf_bottom_ft?: number | null;
+  open_ft_total?: number | null;
+  gas_per_open_ft?: number | null;
+  yield_bbl_per_mmcf?: number | null;
+  decline_pct?: number | null;
+  depleted_pct?: number | null;
+  peak_label?: string | null;
+  peak_gas?: number | null;
+  recent_avg_gas?: number | null;
+  first_well_label?: string | null;
+  last_well_label?: string | null;
+  deviated_count?: number;
+  avg_lateral_ft?: number | null;
+  profiles?: { name?: string; wells?: number }[];
+  share_of_portfolio_gas?: number;
+  /** `seam` is the COUNT of filed months, so the last of them is `seam - 1`. */
+  seam?: number;
+  series?: WireReservoirMonth[];
+  wells?: WireReservoirWell[];
+  insights?: string[];
+  stats?: { label?: string; value?: string; sub?: string }[];
+  map?: {
+    wells?: WireReservoirMapWell[];
+    deviated_count?: number;
+    note?: string | null;
+  };
+}
+
+export interface WireReservoirs {
+  owner?: string;
+  lease?: {
+    lease_id?: string;
+    lease_name?: string;
+    label?: string;
+    lease_no?: string | null;
+    district_code?: string | null;
+    county?: string;
+    operator_name?: string;
+    acres?: number;
+    lease_status?: string;
+    interest?: number;
+    interest_label?: string;
+    owner_value?: number;
+    appraised_value?: number;
+    well_count?: number;
+    producing_wells?: number;
+    first_prod_label?: string;
+    last_posted_label?: string;
+    reservoirs?: { name?: string | null; wells?: number }[];
+  };
+  reservoirs?: WireReservoir[];
+}
+
+/**
+ * THE RESERVOIR REPORT — one lease's rock, its wells and its monthly series.
+ *
+ * ── `reservoir_key` NARROWS IT, AND IS WORTH PASSING ──
+ *
+ * Omitted, the service returns every reservoir the lease produces from. Passed,
+ * it returns the one — a third of the bytes on a three-reservoir lease. The key
+ * is the reservoir's own name as the service spells it (`TREND AREA`,
+ * `GLORIETA`), matched without regard to case, and `__unknown` where the
+ * filings name no reservoir at all.
+ *
+ * THE TAB PASSES THE KEY IT WAS GIVEN AND FALLS BACK TO THE FIRST RESERVOIR
+ * RETURNED. A lease whose reservoir the lease report could not name — its own
+ * `reservoirs[0].name` is null on some leases — would otherwise have no key to
+ * ask with, and asking for everything is a correct answer to "which rock is
+ * this", where guessing a key is not.
+ *
+ * ── THE SERIES CAN BE EMPTY, AND THAT IS AN ANSWER ──
+ *
+ * `series` and `months` come back `[]` with `seam: -1` whenever the reservoir
+ * is a roster-column guess rather than an allocated one — `CONSOLIDATED` on
+ * `08_46924` has 138 wells, real depths, and not one allocated month. The rock
+ * is real; its production is not attributed. A chart drawn from that is a chart
+ * of nothing, so the card says so instead.
+ */
+export async function fetchLeaseReservoirs(
+  id: string,
+  reservoirKey?: string | null,
+  signal?: AbortSignal,
+): Promise<WireReservoirs> {
+  const params = new URLSearchParams({ id });
+  if (reservoirKey) params.set("reservoir_key", reservoirKey);
+
+  return request<WireReservoirs>(
+    `/api/leases/reservoirs?${params}`,
+    "this reservoir report",
+    signal,
+    REPORT_TIMEOUT_MS,
+  );
+}
+
+/* ============================================================================
+   WHERE ONE LEASE'S WELLS ARE
+   ============================================================================ */
+
+/** What the lease's own ground summary counts. */
+export interface WireLeaseGround {
+  acres?: number;
+  wells?: number;
+  surface_holes?: number;
+  bottom_holes?: number;
+  paths_measured?: number;
+  paths_estimated?: number;
+  neighbours?: number;
+  outline_note?: string | null;
+}
+
+/** Wells within a radius of this lease's own wells. */
+export interface WireNeighbourBand {
+  /** Miles — 1, 3 or 5. */
+  band?: number;
+  wells?: number;
+  operators?: number;
+  producing?: number;
+  nearest_mi?: number | null;
+}
+
+export interface WireLeaseMap {
+  owner?: string;
+  lease_id?: string;
+  map?: {
+    wells?: WireReservoirMapWell[];
+    deviated_count?: number;
+    note?: string | null;
+  };
+  ground?: WireLeaseGround;
+  neighbour_bands?: WireNeighbourBand[];
+  neighbour_note?: string | null;
+}
+
+/**
+ * WHERE THIS LEASE'S WELLS SIT ON THE GROUND.
+ *
+ * ── A SEPARATE CALL FROM THE LEASE REPORT, AND ONLY THE LEASE TAB MAKES IT ──
+ *
+ * The report payload carries the figures; this carries the geometry — 138 holes
+ * with their surface and bottom coordinates, the survey grade behind each path,
+ * and the neighbour counts the ring pills show. It is 112KB on this lease and
+ * nothing above the map needs it, so it is fetched by the lease tab alone. A
+ * reader on the reservoir or well tab never pays for it.
+ *
+ * ── THE WELLS ARE THE SAME SHAPE THE RESERVOIR MAP USES ──
+ *
+ * `WireReservoirMapWell`, deliberately: both endpoints describe a hole the same
+ * way, and one type means one mapping and one chance to get the `[lon, lat]`
+ * order right. What this one does NOT carry is where each well is perforated —
+ * that is the reservoir's question, and the reservoir call answers it.
+ */
+export async function fetchLeaseMap(
+  id: string,
+  signal?: AbortSignal,
+): Promise<WireLeaseMap> {
+  return request<WireLeaseMap>(
+    `/api/leases/lease-map?id=${encodeURIComponent(id)}`,
+    "where these wells are",
+    signal,
+    REPORT_TIMEOUT_MS,
+  );
+}
+
+/* ============================================================================
    TRANSPORT
    ============================================================================ */
 
@@ -562,8 +1104,9 @@ async function request<T>(
   url: string,
   what: string,
   signal?: AbortSignal,
+  timeoutMs: number = TIMEOUT_MS,
 ): Promise<T> {
-  const timeout = AbortSignal.timeout(TIMEOUT_MS);
+  const timeout = AbortSignal.timeout(timeoutMs);
   let res: Response;
   try {
     res = await fetch(url, {

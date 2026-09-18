@@ -3,7 +3,11 @@ import { leaseRecords } from "../../_lib/lease-records";
 import type { LeaseRecord } from "../../_lib/lease-types";
 import { monthLabel } from "../../_lib/months";
 import { cashAt } from "../../_lib/price-deck";
-import { wellRecords, wellsForLease, type WellRecord } from "../../_lib/well-records";
+import {
+  wellRecords,
+  wellsForLease,
+  type WellRecord,
+} from "../../_lib/well-records";
 
 /**
  * THE WELL REPORT'S FIGURES — one hole in the ground.
@@ -266,12 +270,14 @@ export function buildWellReport(lease: LeaseRecord): WellReport {
     trailingGas += series.gas[index] * allocation;
     trailingMonths += 1;
   }
-  const trailingAverageGas = trailingMonths > 0 ? trailingGas / trailingMonths : 0;
+  const trailingAverageGas =
+    trailingMonths > 0 ? trailingGas / trailingMonths : 0;
 
   const spanMonths = filedThrough - from;
   const decline =
     spanMonths > 11 && series.gas[from] > 0
-      ? (1 - (series.gas[filedThrough] / series.gas[from]) ** (1 / spanMonths)) *
+      ? (1 -
+          (series.gas[filedThrough] / series.gas[from]) ** (1 / spanMonths)) *
         100
       : null;
 
@@ -283,7 +289,9 @@ export function buildWellReport(lease: LeaseRecord): WellReport {
   /* ── the peer set: your wells in the same reservoir, whatever lease ──── */
   const peers = wellRecords
     .map((entry) => {
-      const peerLease = leaseRecords.find((row) => row.slug === entry.leaseSlug);
+      const peerLease = leaseRecords.find(
+        (row) => row.slug === entry.leaseSlug,
+      );
       return { well: entry, lease: peerLease };
     })
     .filter(
@@ -297,7 +305,10 @@ export function buildWellReport(lease: LeaseRecord): WellReport {
     }));
 
   const peerGas = peers.reduce((total, entry) => total + entry.gas, 0);
-  const peerOpenFeet = peers.reduce((total, entry) => total + entry.openFeet, 0);
+  const peerOpenFeet = peers.reduce(
+    (total, entry) => total + entry.openFeet,
+    0,
+  );
   const peerGasPerFoot = peerOpenFeet > 0 ? peerGas / peerOpenFeet : 0;
   const gasPerFootOpen = openFeet > 0 ? gasFiled / openFeet : 0;
 
@@ -348,9 +359,7 @@ export function buildWellReport(lease: LeaseRecord): WellReport {
     extraHoleFt: measuredFt - well.depthFt,
     bottomAngle:
       well.lateralFt && well.lateralFt > 0
-        ? Math.round(
-            (Math.atan(well.lateralFt / well.depthFt) * 180) / Math.PI,
-          )
+        ? Math.round((Math.atan(well.lateralFt / well.depthFt) * 180) / Math.PI)
         : null,
     spudded: formatDay(well.spudded),
     ageYears:

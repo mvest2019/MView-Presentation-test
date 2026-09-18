@@ -10,10 +10,11 @@ import Link from "next/link";
 
 import { LeasePicker } from "./lease-picker";
 import { leaseReportTab, type LeaseReportTab } from "./report-tabs";
+import type { LeaseStep } from "../_lib/lease-report";
 import { gates } from "../../../../_components/ui/portal-gating";
 import { PrototypeButton } from "../../../../_components/ui/prototype-button";
 import { formatDecimalInterest } from "../../_lib/lease-format";
-import { leaseRecordsFor, routeSlugFor } from "../../_lib/sample-leases";
+import { routeSlugFor } from "../../_lib/sample-leases";
 import { leaseNeighbours, leaseReportPath } from "../../_lib/lease-routes";
 import type { LeaseRecord } from "../../_lib/lease-types";
 
@@ -43,16 +44,36 @@ import type { LeaseRecord } from "../../_lib/lease-types";
 export function LeaseReportHeader({
   lease,
   tab,
+  neighbours,
 }: {
   lease: LeaseRecord;
   /** Which of the three reports is open — see `LEASE_REPORT_TABS`. */
   tab: LeaseReportTab;
+  /**
+   * The lease either side of this one, when the record came from the service.
+   *
+   * `leaseNeighbours` answers only for the ten fixture leases, and it answers
+   * for a served lease too — wrongly and silently, with whatever sits either
+   * side of index -1. So the served pair is passed in, and the fixture's own is
+   * used only when there is none. See `LeaseReport.neighbours`.
+   */
+  neighbours?: { previous: LeaseStep; next: LeaseStep };
 }) {
   const current = leaseReportTab(tab);
-  /* The set this lease belongs to — see `leaseRecordsFor`. */
-  const records = leaseRecordsFor(lease.slug);
-  const { previous, next } = leaseNeighbours(lease.slug);
-  const position = records.findIndex((entry) => entry.slug === lease.slug) + 1;
+
+  const fixture = leaseNeighbours(lease.slug);
+  const steps = neighbours ?? {
+    previous: {
+      href: leaseReportPath(routeSlugFor(fixture.previous)),
+      name: fixture.previous.name,
+      number: fixture.previous.number,
+    },
+    next: {
+      href: leaseReportPath(routeSlugFor(fixture.next)),
+      name: fixture.next.name,
+      number: fixture.next.number,
+    },
+  };
 
   return (
     <div>
@@ -131,8 +152,15 @@ export function LeaseReportHeader({
             <h1 className="text-[26px] leading-tight font-bold">
               {lease.name}
             </h1>
+            {/* THE DISTRICT IS READ OFF THE LEASE, NOT TYPED HERE. It was
+                the literal "02", which was true of all ten fixture leases and
+                is a plain falsehood on a record that spans districts — this
+                page printed "RRC district 02" over lease `08_46924`. The id
+                carries it; a lease without one keeps the fixture's 02, which
+                is what those ten are. */}
             <p className="mt-1 text-[12.5px] text-mv-muted">
-              {lease.county} County · RRC district 02
+              {lease.county} County · RRC district{" "}
+              {lease.id?.split("_")[0] ?? "02"}
               {lease.number ? ` · lease no. ${lease.number}` : ""} ·{" "}
               {lease.operator}
             </p>
@@ -141,16 +169,16 @@ export function LeaseReportHeader({
 
         <div className="flex flex-none items-center gap-2">
           <StepLink
-            href={leaseReportPath(routeSlugFor(previous))}
+            href={steps.previous.href}
             direction="previous"
-            name={previous.name}
-            number={previous.number}
+            name={steps.previous.name}
+            number={steps.previous.number}
           />
           <StepLink
-            href={leaseReportPath(routeSlugFor(next))}
+            href={steps.next.href}
             direction="next"
-            name={next.name}
-            number={next.number}
+            name={steps.next.name}
+            number={steps.next.number}
           />
         </div>
       </div>
@@ -167,11 +195,14 @@ export function LeaseReportHeader({
       <hr className="mt-4 border-t border-mv-line-strong" />
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <span className="text-[11px] font-bold tracking-[0.08em] text-mv-muted uppercase">
-          Lease {position} of {records.length}
-        </span>
-
-        <LeasePicker slug={lease.slug} />
+        {/* THE COUNTER AND THE DROPDOWN ARE ONE COMPONENT, because they are one
+            answer: how many leases there are and which of them this is. They
+            were two reads here — a fixture lookup for the count, the picker's
+            own list for the dropdown — and when the lease being read was not in
+            the fixture the count printed "Lease 0 of 10" beside a dropdown
+            naming somebody else's lease. `LeasePicker` renders both from the
+            list it fetches, so they cannot disagree again. */}
+        <LeasePicker lease={lease} />
 
         {/* GONE AT ULTRA — `hide-u`. The calm density keeps three things on
             this page: which lease, what it is worth, and one reading of it.

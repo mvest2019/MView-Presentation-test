@@ -71,10 +71,7 @@ const EARTH_MILES = 3958.8;
  * Small enough distances that the curvature barely matters, but the formula is
  * three lines and gets the counts right rather than nearly right.
  */
-export function milesBetween(
-  a: [number, number],
-  b: [number, number],
-): number {
+export function milesBetween(a: [number, number], b: [number, number]): number {
   const rad = Math.PI / 180;
   const dLat = (b[1] - a[1]) * rad;
   const dLng = (a[0] - b[0]) * rad;

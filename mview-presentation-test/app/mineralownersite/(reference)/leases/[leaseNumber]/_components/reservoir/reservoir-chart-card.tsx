@@ -15,7 +15,10 @@ import { financialsSeries } from "../../../_lib/financials-series";
 import { shortMonthLabel } from "../../../_lib/months";
 import { cashAt } from "../../../_lib/price-deck";
 import type { ReservoirReport } from "../../_lib/reservoir-report";
-import { SeriesChart, type ChartSeries } from "../../../_components/financials/series-chart";
+import {
+  SeriesChart,
+  type ChartSeries,
+} from "../../../_components/financials/series-chart";
 
 /**
  * THE RESERVOIR'S OWN PRODUCTION, every well in it summed.
@@ -38,7 +41,14 @@ export function ReservoirChartCard({ report }: { report: ReservoirReport }) {
   const [mode, setMode] = useState<ChartMode>("both");
   const [range, setRange] = useState({ from: report.from, to: report.to });
 
+  /* WHOSE SERIES THIS IS. A served reservoir carries its own months — every
+     well in that one rock summed — and a fixture lease is a row of the shared
+     table. See `ReservoirReport.series`. */
+  const served = report.series;
+
   const streams = useMemo(() => {
+    if (served) return { gas: served.gas, oil: served.oil, cash: served.cash };
+
     const series = financialsSeries.byLease.find(
       (entry) => entry.slug === report.lease.slug,
     );
@@ -54,13 +64,42 @@ export function ReservoirChartCard({ report }: { report: ReservoirReport }) {
       }),
     );
     return { gas, oil, cash };
-  }, [report.lease.slug, report.lease.decimalInterest]);
+  }, [served, report.lease.slug, report.lease.decimalInterest]);
 
   const { left, right } = seriesFor(mode, streams);
   const labelFor = (index: number) =>
-    shortMonthLabel(financialsSeries.firstMonth + index);
+    served
+      ? (served.labels[index] ?? "")
+      : shortMonthLabel(financialsSeries.firstMonth + index);
+  const postedThrough = served
+    ? served.lastPostedIndex
+    : financialsSeries.lastPostedIndex;
+  const length = served ? served.labels.length : financialsSeries.length;
   const months = range.to - range.from + 1;
   const wholeRecord = report.to - report.from + 1;
+
+  /* NOTHING TO PLOT IS AN ANSWER, NOT AN ERROR. A reservoir the service
+     identified from the well roster rather than from an allocation has wells,
+     depths and operators but not one attributed month — `CONSOLIDATED` on
+     `08_46924` has 138 wells and an empty series. An axis with no line on it
+     reads as a broken chart, so the card says which of the two it is. */
+  if (served && length === 0) {
+    return (
+      <Card padded={false} className="mt-4 px-[22px] py-[18px]">
+        <h3 className="text-[15px] font-bold">
+          {report.name} — no month-by-month record
+        </h3>
+        <p className="mt-1.5 text-[12.5px] leading-[1.6] text-mv-muted">
+          The state files production against this lease, but none of it is
+          allocated to {report.name} month by month — this rock was identified
+          from the well roster, not from an allocation. The wells, their depths
+          and where they sit are all below and are real; what is missing is the
+          split of the volumes between this reservoir and the others on the
+          lease.
+        </p>
+      </Card>
+    );
+  }
 
   return (
     <Card padded={false} className="mt-4 px-[18px] py-4">
@@ -97,20 +136,21 @@ export function ReservoirChartCard({ report }: { report: ReservoirReport }) {
         right={right}
         from={range.from}
         to={range.to}
-        lastPostedIndex={financialsSeries.lastPostedIndex}
+        lastPostedIndex={postedThrough}
         firstMonth={financialsSeries.firstMonth}
+        labelAt={served ? labelFor : undefined}
         summary={`${report.name}, ${CHART_MODE_COPY[mode].title.toLowerCase()}, ${labelFor(range.from)} to ${labelFor(range.to)}. Filed through ${report.filedTo}; modelled after that.`}
       />
 
       <div className="mt-3 mb-2 flex flex-wrap items-center justify-between gap-3">
         <p className="text-[11.5px] text-mv-muted tabular-nums">
-          Showing {labelFor(range.from)} to {labelFor(range.to)} · {months} months
-          of {wholeRecord}
+          Showing {labelFor(range.from)} to {labelFor(range.to)} · {months}{" "}
+          months of {wholeRecord}
         </p>
         <RangePresets
           months={months}
-          lastPostedIndex={financialsSeries.lastPostedIndex}
-          length={financialsSeries.length}
+          lastPostedIndex={postedThrough}
+          length={length}
           onChange={setRange}
         />
       </div>
