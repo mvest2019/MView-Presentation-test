@@ -5,6 +5,7 @@ import { useRef, useState, type ChangeEvent } from "react";
 import { PortalAvatar } from "../../../_components/portal-avatar";
 import { PortalButton } from "../../../_components/ui/button";
 import { Card } from "../../../_components/ui/card";
+import { avatarProxyUrl } from "../_lib/avatar-url";
 import { uploadProfileImageAction } from "../_lib/profile-actions";
 import { identityStrip } from "../_lib/profile-data";
 import { useProfileLive } from "./profile-live";
@@ -81,9 +82,7 @@ export function IdentityStrip({
   }>({});
 
   /* the server-built URL rides through the proxy UNTOUCHED — `v` included */
-  const photo = profile?.profile_image_url
-    ? `/api/profile-image?src=${encodeURIComponent(profile.profile_image_url)}`
-    : sessionPhoto;
+  const photo = avatarProxyUrl(profile?.profile_image_url) ?? sessionPhoto;
 
   const email = profile ? profile.email : (fallback?.email ?? "");
   const name = profile

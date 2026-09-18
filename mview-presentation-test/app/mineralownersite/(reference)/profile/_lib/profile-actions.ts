@@ -3,6 +3,8 @@
 import { changePasswordSchema, codeSchema } from "@/app/_components/auth-schema";
 import { getSessionUser, startSession } from "@/lib/session";
 
+import { avatarProxyUrl } from "./avatar-url";
+
 import { OwnerApiError } from "../../../_lib/reference/owner-api";
 import {
   changeEmail,
@@ -74,12 +76,15 @@ async function requireMember(): Promise<number | null> {
  * REWRITE THE SESSION COOKIE FROM A FRESH PROFILE, after a successful write.
  *
  * The portal chrome — the top-right avatar, the account menu, the drawer —
- * reads the SESSION's name and email, written at sign-in. Without this, a
- * member who changes their name or email watches the profile page update and
- * the bar above it keep the old identity until their next sign-in (user,
- * 2026-09-17: "same for mail"). Only the fields the profile owns move; the id,
- * member type and photo ride along unchanged. `remember: true` matches what
- * every sign-in path passes since 2026-08-19.
+ * reads the SESSION's name, email and picture, written at sign-in. Without
+ * this, a member who changes their name, email or photo watches the profile
+ * page update and every OTHER page's bar keep the old identity until their
+ * next sign-in (user, 2026-09-17/18). Only the fields the profile owns move;
+ * the id and member type ride along unchanged. The picture becomes the
+ * uploaded photo's proxy URL when the record has one — a browser-usable,
+ * same-origin address, which is what the chrome's `<img>` needs — and keeps
+ * the sign-in copy (a Google picture, usually) when it does not.
+ * `remember: true` matches what every sign-in path passes since 2026-08-19.
  *
  * BEST-EFFORT by design: the write itself has already succeeded, and a save
  * must not be reported as failed over a cookie.
@@ -95,7 +100,8 @@ async function syncSession(profile: UserProfile): Promise<void> {
         l_name: profile.last_name ?? user.lastName,
         email_id: profile.email,
         member_type: user.memberType,
-        profile_pic: user.profileImage,
+        profile_pic:
+          avatarProxyUrl(profile.profile_image_url) ?? user.profileImage,
       },
       true,
     );
@@ -199,6 +205,32 @@ function failure(e: unknown, doing: string): ProfileActionFailure {
   }
 }
 
+/**
+ * BRING THE SESSION COOKIE UP TO THE RECORD — called once when the profile
+ * page mounts.
+ *
+ * The record can be AHEAD of the cookie: a photo uploaded or a name saved
+ * before the sync existed, or from another device, leaves the chrome printing
+ * the sign-in-era identity on every page until the next save here (user,
+ * 2026-09-18: the strip showed the uploaded photo while the bar still showed
+ * initials). This re-reads the record and rewrites the cookie from it, so
+ * every LATER page's header is right; the page's own chrome is patched
+ * client-side by `ProfileLive` in the same moment. Best-effort and silent —
+ * a page load must not grow a failure state over a cookie nicety.
+ */
+export async function syncSessionFromRecordAction(): Promise<void> {
+  const memberId = await requireMember();
+  if (memberId == null) return;
+  const base = profileApiBase();
+  if (!base) return;
+  try {
+    const profile = await fetchProfile(base, memberId);
+    await syncSession(profile);
+  } catch {
+    /* the next visit or the next save will try again */
+  }
+}
+
 /* ---------------------------------------------------------------- the photo */
 
 /**
@@ -236,6 +268,8 @@ export async function uploadProfileImageAction(
 
   try {
     const profile = await fetchProfile(base, memberId);
+    /* the chrome's avatar reads the session — carry the new photo there too */
+    await syncSession(profile);
     return { ok: true, changed: ["profile_image_url"], profile };
   } catch {
     return {

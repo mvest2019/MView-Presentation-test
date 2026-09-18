@@ -1,6 +1,12 @@
 "use client";
 
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { portalMember, type PortalMember } from "../_lib/portal-member";
 import type { SessionUser } from "@/lib/session";
@@ -32,6 +38,26 @@ import type { SessionUser } from "@/lib/session";
  */
 const PortalSessionContext = createContext<PortalMember | null>(null);
 
+/**
+ * THE LIVE PATCH — how a page updates the chrome WITHOUT a server round trip.
+ *
+ * The profile page writes a new name, email or photo and the reader expects
+ * the bar's avatar and account menu to follow at once (user, 2026-09-18:
+ * "when we change profile then reflect that on header also"). The server side
+ * is already handled — `profile-actions.ts` rewrites the session cookie, so
+ * the NEXT render of any layout carries the change — but the chrome already
+ * on screen was built from the cookie as it stood at page load, and
+ * re-rendering the route to refresh it would wait on the chrome's own owner
+ * scan. So the provider accepts a client-side patch over the server value.
+ *
+ * A separate context from the member itself, so the thirty-odd read-only
+ * consumers do not re-render when the (stable) setter is created, and none of
+ * them can patch by accident.
+ */
+const PortalSessionUpdateContext = createContext<
+  ((patch: Partial<PortalMember>) => void) | null
+>(null);
+
 export function PortalSessionProvider({
   user,
   children,
@@ -44,17 +70,49 @@ export function PortalSessionProvider({
      the drawer's initials cannot come out differently — see `portal-member.ts`.
      Memoised on the four fields and not on `user`, because the layout builds a
      fresh object every render and the identity alone would change each time. */
-  const member = useMemo(
+  const serverMember = useMemo(
     () => portalMember(user),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [user?.id, user?.firstName, user?.lastName, user?.email, user?.profileImage],
   );
 
+  const [patch, setPatch] = useState<Partial<PortalMember> | null>(null);
+
+  /* A FRESH SERVER VALUE CLEARS THE PATCH — adjusted during render, React's
+     own pattern for state that derives from a changed prop. By the time a new
+     server render arrives, the cookie it read already carries what the patch
+     was papering over (the actions sync it), so the server value is never
+     older than the patch it replaces. */
+  const [seenServerMember, setSeenServerMember] = useState(serverMember);
+  if (serverMember !== seenServerMember) {
+    setSeenServerMember(serverMember);
+    setPatch(null);
+  }
+
+  /* signed out stays signed out — a patch cannot invent a member */
+  const member =
+    serverMember && patch ? { ...serverMember, ...patch } : serverMember;
+
+  const applyPatch = (next: Partial<PortalMember>) =>
+    setPatch((current) => ({ ...current, ...next }));
+
   return (
     <PortalSessionContext.Provider value={member}>
-      {children}
+      <PortalSessionUpdateContext.Provider value={applyPatch}>
+        {children}
+      </PortalSessionUpdateContext.Provider>
     </PortalSessionContext.Provider>
   );
+}
+
+/**
+ * The chrome patcher, or null outside a provider — a caller in a bare test or
+ * preview shell simply has no chrome to update, which is not an error.
+ */
+export function usePortalMemberUpdate(): ((
+  patch: Partial<PortalMember>,
+) => void) | null {
+  return useContext(PortalSessionUpdateContext);
 }
 
 /**
