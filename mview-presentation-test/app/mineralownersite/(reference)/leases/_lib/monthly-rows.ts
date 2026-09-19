@@ -25,10 +25,15 @@ import { shortMonthLabel } from "./months";
  * table is read top down because the reader came for the most recent month.
  */
 
-/** How far past the last filing the table runs. */
-const MONTHS_AHEAD = 12;
+/** How far past the last filing the table runs.
+ *
+ *  EXPORTED because `financials-rows.ts` builds the same window over the
+ *  service's answer. The window is a design decision about how much of the
+ *  record is worth printing, and two tables that disagree about it would be two
+ *  different answers to one question. */
+export const MONTHS_AHEAD = 12;
 /** And how far behind it. */
-const MONTHS_BEHIND = 48;
+export const MONTHS_BEHIND = 48;
 
 /**
  * A fall this steep is worth a second look — a shut-in, a workover, or a month

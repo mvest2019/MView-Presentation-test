@@ -3,7 +3,11 @@ import { leaseRecords } from "../../_lib/lease-records";
 import type { LeaseRecord } from "../../_lib/lease-types";
 import { monthLabel } from "../../_lib/months";
 import { cashAt } from "../../_lib/price-deck";
-import { wellRecords, wellsForLease, type WellRecord } from "../../_lib/well-records";
+import {
+  wellRecords,
+  wellsForLease,
+  type WellRecord,
+} from "../../_lib/well-records";
 
 /**
  * THE WELL REPORT'S FIGURES — one hole in the ground.
@@ -40,6 +44,16 @@ export interface FilingDocument {
   tracking: string;
   /** The day the work the packet covers was done. */
   filedOn: string;
+  /**
+   * WHERE THE SCAN ACTUALLY IS — the Commission's packet, as the service
+   * hands it over.
+   *
+   * `packet_url` was already being read off every completion, but only to
+   * decide whether a row appeared at all; the link itself was dropped on the
+   * floor and the button beside it was a prototype. Null where the fixture
+   * builds a row, which has no scan behind it to open.
+   */
+  url: string | null;
 }
 
 export interface WellFiling {
@@ -117,6 +131,32 @@ export interface WellReport {
   to: number;
   /** How many other wells sit within each ring. */
   neighbours: { label: string; count: number }[];
+
+  /**
+   * THIS WELL'S OWN MONTHS, WHEN THE SERVICE SENT THEM.
+   *
+   * ABSENT ON THE FIXTURE PATH, where the chart reads `financialsSeries` by
+   * lease slug and splits the lease's months across its wells. A served well is
+   * in no such table: its allocation arrives with it, and it is the WELL's
+   * record rather than the lease's — which is the whole point of a well report.
+   * Falling back to the lease lookup drew an empty chart on a 228-month axis
+   * that had nothing to do with the well.
+   *
+   * EMPTY IS A REAL ANSWER. A wellbore the allocation store holds no row for
+   * has filings, depths and perforations and no attributed months; the card
+   * says so rather than drawing an axis with no line on it.
+   */
+  series?: {
+    /** `"May 2015"` — one per index, the axis labels. */
+    labels: string[];
+    /** The well's own volumes. */
+    gas: number[];
+    oil: number[];
+    /** The reader's share of its cash. */
+    cash: number[];
+    /** Where the filed record ends; -1 when nothing is filed. */
+    lastPostedIndex: number;
+  };
 }
 
 function seriesFor(slug: string) {
@@ -191,6 +231,10 @@ function buildFilings(well: WellRecord): WellFiling[] {
         permitType: "Permit to Drill, Plug Back or Re-enter",
         tracking,
         filedOn: formatDay(well.spudded),
+        /* THE FIXTURE HAS NO SCAN. These ten leases are invented, so there is
+           no packet on file to open and a made-up URL would be worse than
+           none — the card renders the row without a link. */
+        url: null,
       },
     },
     {
@@ -266,12 +310,14 @@ export function buildWellReport(lease: LeaseRecord): WellReport {
     trailingGas += series.gas[index] * allocation;
     trailingMonths += 1;
   }
-  const trailingAverageGas = trailingMonths > 0 ? trailingGas / trailingMonths : 0;
+  const trailingAverageGas =
+    trailingMonths > 0 ? trailingGas / trailingMonths : 0;
 
   const spanMonths = filedThrough - from;
   const decline =
     spanMonths > 11 && series.gas[from] > 0
-      ? (1 - (series.gas[filedThrough] / series.gas[from]) ** (1 / spanMonths)) *
+      ? (1 -
+          (series.gas[filedThrough] / series.gas[from]) ** (1 / spanMonths)) *
         100
       : null;
 
@@ -283,7 +329,9 @@ export function buildWellReport(lease: LeaseRecord): WellReport {
   /* ── the peer set: your wells in the same reservoir, whatever lease ──── */
   const peers = wellRecords
     .map((entry) => {
-      const peerLease = leaseRecords.find((row) => row.slug === entry.leaseSlug);
+      const peerLease = leaseRecords.find(
+        (row) => row.slug === entry.leaseSlug,
+      );
       return { well: entry, lease: peerLease };
     })
     .filter(
@@ -297,7 +345,10 @@ export function buildWellReport(lease: LeaseRecord): WellReport {
     }));
 
   const peerGas = peers.reduce((total, entry) => total + entry.gas, 0);
-  const peerOpenFeet = peers.reduce((total, entry) => total + entry.openFeet, 0);
+  const peerOpenFeet = peers.reduce(
+    (total, entry) => total + entry.openFeet,
+    0,
+  );
   const peerGasPerFoot = peerOpenFeet > 0 ? peerGas / peerOpenFeet : 0;
   const gasPerFootOpen = openFeet > 0 ? gasFiled / openFeet : 0;
 
@@ -348,9 +399,7 @@ export function buildWellReport(lease: LeaseRecord): WellReport {
     extraHoleFt: measuredFt - well.depthFt,
     bottomAngle:
       well.lateralFt && well.lateralFt > 0
-        ? Math.round(
-            (Math.atan(well.lateralFt / well.depthFt) * 180) / Math.PI,
-          )
+        ? Math.round((Math.atan(well.lateralFt / well.depthFt) * 180) / Math.PI)
         : null,
     spudded: formatDay(well.spudded),
     ageYears:

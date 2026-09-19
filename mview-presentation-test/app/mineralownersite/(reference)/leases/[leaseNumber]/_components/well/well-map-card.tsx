@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Card, CardHeader } from "../../../../../_components/ui/card";
 import { SegmentedControl } from "../../../../../_components/ui/segmented-control";
 import { loadArcgisModules } from "../../../../../_lib/arcgis-loader";
+import { LegendsPanel } from "../../../../map/_components/legends-panel";
 import {
   BASEMAPS,
   RING_MILES,
@@ -12,6 +13,7 @@ import {
   ringSymbols,
   type Basemap,
 } from "../../_lib/map-shared";
+import { useLegendIcons } from "../../_lib/map-legend-icons";
 import type { WellReport } from "../../_lib/well-report";
 import {
   MapHoverTip,
@@ -75,6 +77,21 @@ import {
 
 const MARK = [46, 143, 109] as const;
 
+/*
+ * THE BORE LINE, IN THE LEGEND'S OWN COLOUR.
+ *
+ * The panel has a row for this — "Horizontal/Directional Lines" — and its
+ * image is a flat grey rule, rgb(109,109,109). The line was drawn in the
+ * card's green, so the legend named a mark the map did not draw and the map
+ * drew one the legend had no row for. Sampled from the PNG rather than
+ * eyeballed, so the two cannot drift.
+ *
+ * Full opacity and two pixels where the legend's is one: this sits on
+ * satellite imagery of west Texas farmland, which is grey-brown, and a
+ * hairline at half alpha disappeared into it.
+ */
+const LINE = [109, 109, 109] as const;
+
 interface GraphicLike {
   geometry: unknown;
 }
@@ -116,6 +133,7 @@ type GraphicCtor = new (options: {
 
 export function WellMapCard({ report }: { report: WellReport }) {
   const { well, lease } = report;
+  const { statusIcon, collarIcon, legendSettled } = useLegendIcons();
   const [basemap, setBasemap] = useState<Basemap>("satellite");
   const [ring, setRing] = useState<string>("lease");
   /**
@@ -150,6 +168,11 @@ export function WellMapCard({ report }: { report: WellReport }) {
     async function draw(): Promise<void> {
       const node = container.current;
       if (!node) return;
+      /* THE LEGEND'S SYMBOLS HAVE TO BE IN HAND BEFORE THE HOLE IS DRAWN.
+         It is drawn once and the reader's pan and zoom are kept after that, so
+         this waits rather than redrawing later. A failed read settles it too,
+         and then the plain markers below are what gets drawn. */
+      if (!legendSettled) return;
 
       try {
         const [EsriMap, MapView, Graphic] = await loadArcgisModules<
@@ -242,15 +265,27 @@ export function WellMapCard({ report }: { report: WellReport }) {
 
         const graphics: GraphicLike[] = [];
         const deviated =
-          well.surface[0] !== well.bottom[0] || well.surface[1] !== well.bottom[1];
+          well.surface[0] !== well.bottom[0] ||
+          well.surface[1] !== well.bottom[1];
 
         if (deviated) {
           graphics.push(
             new Graphic({
-              geometry: { type: "polyline", paths: [[well.surface, well.bottom]] },
+              geometry: {
+                type: "polyline",
+                paths: [[well.surface, well.bottom]],
+                /* DEGREES, SAID OUT LOUD. Without `spatialReference` the autocast
+                   reads these numbers in the view's own reference — Web
+                   Mercator metres — and -98.4 metres east of Greenwich puts
+                   the bore in the Atlantic, off screen. The point geometries
+                   are safe because `longitude`/`latitude` name their units;
+                   `paths` does not. Found and documented on the explorer's
+                   map, see `well-graphics.ts`. */
+                spatialReference: { wkid: 4326 },
+              },
               symbol: {
                 type: "simple-line",
-                color: [...MARK, 0.9],
+                color: [...LINE, 1],
                 width: 2,
                 style: "dash",
               },
@@ -260,34 +295,68 @@ export function WellMapCard({ report }: { report: WellReport }) {
             new Graphic({
               geometry: {
                 type: "point",
-                longitude: well.bottom[0],
-                latitude: well.bottom[1],
+                longitude: well.surface[0],
+                latitude: well.surface[1],
               },
-              symbol: {
-                type: "simple-marker",
-                style: "diamond",
-                size: 11,
-                color: [255, 255, 255, 0.95],
-                outline: { color: [...MARK, 1], width: 2 },
-              },
+              /* THE COLLAR, at the top of the bore: the small "Horizontal" or
+                 "Directional" mark for how the hole was drilled. ONLY WHERE
+                 THERE IS A BORE TO MARK THE TOP OF — a hole that starts and
+                 finishes in one place has no top distinct from its bottom, and
+                 a second mark on the same point would just obscure the status
+                 symbol underneath it. */
+              symbol: collarIcon(well)
+                ? {
+                    type: "picture-marker",
+                    url: collarIcon(well),
+                    width: 13,
+                    height: 13,
+                  }
+                : {
+                    type: "simple-marker",
+                    style: "circle",
+                    size: 9,
+                    color: [255, 255, 255, 0.95],
+                    outline: { color: [...MARK, 1], width: 2 },
+                  },
             }),
           );
         }
 
+        /*
+         * THE WELL'S OWN STATUS SYMBOL, AT THE END THAT PRODUCES.
+         *
+         * The bottom hole where there is one and the single location where
+         * there is not — `well.bottom` is the surface again when nothing was
+         * filed, so this one geometry covers both. It is the rule the
+         * explorer's map follows, and worth stating: on a well with no filed
+         * bottom hole, hanging the status symbol off the bottom draws it
+         * nowhere at all.
+         *
+         * It carries the tooltip for the same reason: a hit-test hands back a
+         * graphic, and on a two-mile lateral the surface hole is nowhere near
+         * the symbol somebody pointed at.
+         */
         graphics.push(
           new Graphic({
             geometry: {
               type: "point",
-              longitude: well.surface[0],
-              latitude: well.surface[1],
+              longitude: well.bottom[0],
+              latitude: well.bottom[1],
             },
-            symbol: {
-              type: "simple-marker",
-              style: "circle",
-              size: 13,
-              color: [255, 255, 255, 0.95],
-              outline: { color: [...MARK, 1], width: 3 },
-            },
+            symbol: statusIcon(well)
+              ? {
+                  type: "picture-marker",
+                  url: statusIcon(well),
+                  width: 16,
+                  height: 16,
+                }
+              : {
+                  type: "simple-marker",
+                  style: deviated ? "diamond" : "circle",
+                  size: 13,
+                  color: [255, 255, 255, 0.95],
+                  outline: { color: [...MARK, 1], width: 3 },
+                },
             /* `attributes` STAYS, `popupTemplate` GOES. The attribute is
                what `hitTest` reads to know the click landed on the well
                rather than on the basemap; the template was the thing drawing
@@ -312,7 +381,7 @@ export function WellMapCard({ report }: { report: WellReport }) {
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [well.api]);
+  }, [well.api, legendSettled]);
 
   useEffect(() => {
     if (mapRef.current) mapRef.current.basemap = basemap;
@@ -348,7 +417,6 @@ export function WellMapCard({ report }: { report: WellReport }) {
     ringsRef.current = drawn;
   }, [ring, well.surface]);
 
-
   return (
     <Card padded={false} className="mt-4 px-[22px] py-[18px]">
       {/* No chip beside the heading. It read "surface hole, bottom hole and the
@@ -359,7 +427,11 @@ export function WellMapCard({ report }: { report: WellReport }) {
       />
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-        <div role="group" aria-label="How far to look" className="flex flex-wrap gap-1.5">
+        <div
+          role="group"
+          aria-label="How far to look"
+          className="flex flex-wrap gap-1.5"
+        >
           <RingPill
             label="This lease"
             selected={ring === "lease"}
@@ -426,6 +498,23 @@ export function WellMapCard({ report }: { report: WellReport }) {
               reads and `title` is what a mouse reader gets on hover, so
               dropping the word from the face loses the affordance to neither.
             */}
+            {/* THE WELL-SYMBOL LEGEND, from `GET /api/v1/map/legends` — the
+                map page's own panel, not a copy of it. Ninety symbols, each the
+                PNG the map itself draws, so the legend cannot disagree with
+                what is on the tiles.
+
+                CLOSED, AND IN THE SAME CORNER ON ALL THREE MAPS. This one is a
+                card inside a report rather than a page-sized map, and ninety
+                rows opened over it would cover the wells it explains; the
+                header alone sits there until a reader asks. Top left because
+                the reset button holds the bottom right and the list opens
+                downwards from its own header. */}
+            <LegendsPanel
+              mode="wells"
+              defaultOpen={false}
+              className="absolute top-3 left-3 z-10"
+            />
+
             <MapResetButton
               onClick={() => {
                 setRing("lease");
@@ -450,7 +539,6 @@ export function WellMapCard({ report }: { report: WellReport }) {
           ○ surface · ◇ bottom hole · – – surface-to-bottom line
         </span>
       </div>
-
     </Card>
   );
 }

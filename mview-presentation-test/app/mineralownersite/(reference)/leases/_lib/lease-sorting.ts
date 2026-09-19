@@ -101,10 +101,15 @@ export const defaultLeaseSort: LeaseSort = {
  *
  * FIVE IS ON THE LIST because the pager has to be reachable: a ten-lease record
  * at twenty-five a page is one page, and a control nobody can ever see is a
- * control nobody has tested. The default is the design's own.
+ * control nobody has tested.
+ *
+ * TEN IS THE DEFAULT (asked for 2026-09-17; it was 25, the design's own). It is
+ * also what the list asks the service for per request — see `PAGE_SIZE` in
+ * `_api/leases-api.ts` — so a page of the table is a page of the record, which
+ * is one fewer number for a reader to hold.
  */
 export const leasePageSizes = [5, 10, 25, 50, 100] as const;
-export const defaultLeasePageSize = 25;
+export const defaultLeasePageSize = 10;
 
 /** "June 2026" -> a sortable number. Unparseable months sort last. */
 function postedOrder(month: string): number {

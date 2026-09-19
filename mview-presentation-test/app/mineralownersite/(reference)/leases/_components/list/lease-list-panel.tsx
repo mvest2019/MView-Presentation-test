@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import {
   emptyLeaseFilters,
+  leaseFilterOptionsFor,
   type LeaseFilters,
 } from "../../_lib/lease-filters";
 import {
@@ -48,6 +49,12 @@ export function LeaseListPanel({ leases }: { leases: LeaseRecord[] }) {
   /* Open by default: the design shows the row, and a reader who can see the
      dropdowns knows the list can be narrowed without discovering a button. */
   const [page, setPage] = useState(1);
+
+  /* THE DROPDOWNS DESCRIBE THE SET THEY FILTER, so they are derived from the
+     same `leases` the table draws rather than from a fixture. Memoised because
+     it walks every lease five times and this component re-renders on every
+     keystroke in the search box. */
+  const options = useMemo(() => leaseFilterOptionsFor(leases), [leases]);
 
   const matched = useMemo(
     () => selectLeases(leases, { sort, filters, query }),
@@ -95,6 +102,7 @@ export function LeaseListPanel({ leases }: { leases: LeaseRecord[] }) {
           onViewChange={setView}
           filters={filters}
           onFiltersChange={reset(setFilters)}
+          options={options}
         />
 
         {view === "list" && (
@@ -120,16 +128,23 @@ export function LeaseListPanel({ leases }: { leases: LeaseRecord[] }) {
           <div className="mt-3.5">
             <LeaseGrid leases={visible} />
           </div>
-          <Card padded={false} className="mt-3.5 overflow-hidden">
-            <LeasePagination
-              divided={false}
-              page={safePage}
-              pageCount={pageCount}
-              pageSize={pageSize}
-              total={matched.length}
-              onPageChange={setPage}
-            />
-          </Card>
+          {/* THE CARD IS THE PAGER'S, so it only exists when the pager does.
+              `LeasePagination` returns nothing on a single page, and this
+              wrapper went on rendering around it — an empty bordered box under
+              the cards with nothing in it. A component that can render nothing
+              cannot be wrapped unconditionally. */}
+          {pageCount > 1 && (
+            <Card padded={false} className="mt-3.5 overflow-hidden">
+              <LeasePagination
+                divided={false}
+                page={safePage}
+                pageCount={pageCount}
+                pageSize={pageSize}
+                total={matched.length}
+                onPageChange={setPage}
+              />
+            </Card>
+          )}
         </>
       )}
 

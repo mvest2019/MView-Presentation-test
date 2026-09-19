@@ -42,6 +42,13 @@ const VALUE_SPREAD = 0.25;
 /** What a fifth of price movement does to a year — the sensitivity row. */
 export const DECK_SHOCK = 0.2;
 
+/** One end of the previous/next pair in the report header. */
+export interface LeaseStep {
+  href: string;
+  name: string;
+  number: string | null;
+}
+
 export interface MonthCell {
   label: string;
   gas: number;
@@ -85,6 +92,12 @@ export interface LeaseReport {
   /** Running total of your gas, month by month, across the whole record. */
   cumulativeGas: number[];
   cumulativeFiledIndex: number;
+  /**
+   * The month names under the cumulative curve, when they came from the
+   * service. Absent on the fixture path, where the curve is one row of the
+   * shared series and `financialsSeries.firstMonth` names every point.
+   */
+  cumulativeLabels?: string[];
   gasProduced: number;
   gasReserves: number;
   oilProduced: number;
@@ -136,6 +149,17 @@ export interface LeaseReport {
   modelWanted: number;
   statePosted: number;
   modelMissPercent: number;
+  /**
+   * WHY THERE IS NO COMPARISON, when there is none.
+   *
+   * The model does not always hold an expectation for the month a lease last
+   * filed, and the service says so in a sentence of its own. Zeroes in the
+   * three fields above would draw two empty bars under "+0.0% against what the
+   * model wanted", which is a claim — that the lease came in exactly on
+   * model — rather than the absence of one. Set only on that path; the fixture
+   * builder always has both figures and never sets it.
+   */
+  modelNote?: string;
 
   /* ── ratios ─────────────────────────────────────────────────────────── */
   valuePerAcre: number;
@@ -148,6 +172,42 @@ export interface LeaseReport {
   stateBehindMonths: number;
   projectedGasPercent: number;
   projectedOilPercent: number;
+
+  /**
+   * THE MONTH-BY-MONTH RECORD, WHEN THE SERVICE SENT IT.
+   *
+   * ABSENT ON THE FIXTURE PATH, and that is what it means: the ten fixture
+   * leases are rows of `financialsSeries`, which every chart on this page can
+   * already reach by slug, so repeating them here would be two copies of one
+   * array. A served lease is in no such shared table — its months arrive with
+   * it — so the chart is handed them instead of looking them up and finding
+   * nothing. Each reader takes this when it is here and the fixture when it is
+   * not; see `figures-panel.tsx`.
+   *
+   * BOTH SCOPES, because the Figures panel toggles between the owner's share
+   * and the whole lease, and deriving one from the other by multiplying by the
+   * decimal would round differently from the service's own arithmetic.
+   */
+  /**
+   * THE LEASE EITHER SIDE OF THIS ONE, when the record came from the service.
+   *
+   * ABSENT ON THE FIXTURE PATH, where `leaseNeighbours` already answers from
+   * the ten local records. It is here because that function CANNOT answer for a
+   * served lease and does not say so: it looks the slug up in the fixture,
+   * finds nothing, and returns the records either side of index -1 — so the
+   * arrows on a real lease pointed at two fixture leases with no sign anything
+   * was wrong.
+   */
+  neighbours?: { previous: LeaseStep; next: LeaseStep };
+
+  series?: {
+    /** `"Dec 2011"` — one per index, the chart's own axis labels. */
+    labels: string[];
+    share: { gas: number[]; oil: number[]; cash: number[] };
+    gross: { gas: number[]; oil: number[]; cash: number[] };
+    /** Where the filed record ends and the model begins. */
+    lastPostedIndex: number;
+  };
 }
 
 function seriesFor(slug: string) {
@@ -168,7 +228,20 @@ function cashFor(slug: string, index: number, interest: number): number {
   });
 }
 
-const MONTH_INITIALS = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
+const MONTH_INITIALS = [
+  "J",
+  "F",
+  "M",
+  "A",
+  "M",
+  "J",
+  "J",
+  "A",
+  "S",
+  "O",
+  "N",
+  "D",
+];
 
 export function buildLeaseReport(lease: LeaseRecord): LeaseReport {
   const series = seriesFor(lease.slug);
@@ -356,7 +429,10 @@ export function buildLeaseReport(lease: LeaseRecord): LeaseReport {
         ),
     0,
   );
-  const oilRevenue = forward.reduce((total, cell) => total + cell.oil * OIL_PRICE, 0);
+  const oilRevenue = forward.reduce(
+    (total, cell) => total + cell.oil * OIL_PRICE,
+    0,
+  );
   const projectedRevenue = gasRevenue + oilRevenue;
 
   const yourValue = lease.mvestimate;
@@ -409,10 +485,12 @@ export function buildLeaseReport(lease: LeaseRecord): LeaseReport {
     trailingTo: monthLabel(firstMonth + trailingEnd),
     gasPerDayLow: (gasLow === Infinity ? 0 : gasLow) / DAYS_PER_MONTH,
     gasPerDayHigh: gasHigh / DAYS_PER_MONTH,
-    gasPerDayAvg: months > 0 ? trailingGas / interest / months / DAYS_PER_MONTH : 0,
+    gasPerDayAvg:
+      months > 0 ? trailingGas / interest / months / DAYS_PER_MONTH : 0,
     oilPerDayLow: (oilLow === Infinity ? 0 : oilLow) / DAYS_PER_MONTH,
     oilPerDayHigh: oilHigh / DAYS_PER_MONTH,
-    oilPerDayAvg: months > 0 ? trailingOil / interest / months / DAYS_PER_MONTH : 0,
+    oilPerDayAvg:
+      months > 0 ? trailingOil / interest / months / DAYS_PER_MONTH : 0,
     strongestMonth,
     thinnestMonth,
     bestMonthForYou,

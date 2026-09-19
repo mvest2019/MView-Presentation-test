@@ -30,6 +30,27 @@ import type { LeaseRecord } from "../../_lib/lease-types";
  * heading, so "$1.36M" alone is a number with no unit and no period — hence
  * "Estimated revenue" directly under it.
  *
+ * ── `[display:grid]` AND `[display:flex]`, NOT `grid` AND `flex` ──
+ *
+ * `dashboard-reference.css` styles `.grid` and `.flex` as its OWN layout
+ * helpers, and under 768px it carries two rules that between them took this
+ * card apart on a phone:
+ *
+ *   .mv-ref-app .app-body .grid { grid-template-columns: minmax(0,1fr)
+ *                                 !important }
+ *   .mv-ref-app .app-body .flex { flex-wrap: wrap; align-items: flex-start }
+ *
+ * Tailwind's utilities are the same two class names. So `grid-cols-2` on the
+ * facts lost to the first — six facts in one column with the divider still
+ * ruled down the middle of nothing — and the header row lost to the second,
+ * which wrapped the status chip onto its own line under the title.
+ *
+ * The arbitrary properties emit the same `display` under class names the
+ * reference sheet does not know, so the card's own layout decides again. The
+ * alternative is `!important` from an earlier cascade layer, and that cannot
+ * work here: it would have to know each element's intended template, which is
+ * exactly what the utility already says.
+ *
  * ── THE WHOLE CARD IS ONE LINK AND "VIEW DETAILS" IS NOT A SECOND ONE ──
  *
  * The card is the target: there is no row to scroll sideways and no second
@@ -48,15 +69,31 @@ export function LeaseGrid({ leases }: { leases: LeaseRecord[] }) {
   }
 
   return (
-    <ul className="grid gap-[18px] sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <ul className="[display:grid] gap-[18px] sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {leases.map((lease) => (
         <li key={lease.slug}>
           <Link
             href={leaseReportPath(lease.slug)}
-            className="group flex h-full flex-col rounded-mv border border-mv-line bg-mv-card p-[18px] text-mv-ink no-underline shadow-mv transition-shadow hover:shadow-[0_4px_16px_rgba(4,35,26,.12)]"
+            className="group [display:flex] h-full flex-col rounded-mv border border-mv-line bg-mv-card p-[18px] text-mv-ink no-underline shadow-mv transition-shadow hover:shadow-[0_4px_16px_rgba(4,35,26,.12)]"
           >
-            <span className="flex items-start justify-between gap-2">
-              <strong className="text-[13px] tracking-[0.01em]">
+            {/* ── THE TITLE IS ALWAYS TWO LINES TALL ──
+
+                It was as tall as the name made it, so a one-line name and a
+                two-line name put every figure below them at a different height
+                — and a row of cards whose money, facts and footers each sit at
+                their own level is the thing that reads as broken, even when
+                nothing is wrong with any single card.
+
+                `line-clamp-2` caps it and `min-h` reserves it, so the block is
+                the same height whether the name needs one line or three. The
+                `title` attribute carries the full name for the rare one that is
+                clipped — a truncated lease name must still be readable
+                somewhere. */}
+            <span className="[display:flex] items-start justify-between gap-2">
+              <strong
+                title={lease.name}
+                className="line-clamp-2 min-h-[36px] text-[13px] leading-[18px] tracking-[0.01em]"
+              >
                 {lease.name}
               </strong>
               <Badge tone="mint" size="xs" className="flex-none">
@@ -103,7 +140,7 @@ export function LeaseGrid({ leases }: { leases: LeaseRecord[] }) {
                 The rule between them is drawn rather than bordered for the
                 same reason a per-cell border was wrong: it would break at
                 every row gap. */}
-            <span className="relative mt-3.5 grid grid-cols-2 gap-x-7 gap-y-2.5 border-t border-mv-portal-hairline pt-3">
+            <span className="relative mt-3.5 [display:grid] grid-cols-2 gap-x-7 gap-y-2.5 border-t border-mv-portal-hairline pt-3">
               <span
                 aria-hidden="true"
                 className="absolute inset-y-2 left-1/2 w-px bg-mv-portal-hairline"
@@ -124,7 +161,7 @@ export function LeaseGrid({ leases }: { leases: LeaseRecord[] }) {
 
             {/* `mt-auto` pins this to the bottom however tall the card's
                 neighbours make it, so the footers line up across a row. */}
-            <span className="mt-auto flex items-center justify-between gap-2 border-t border-mv-portal-hairline pt-3 text-[12px] font-bold text-mv-green-deep">
+            <span className="mt-auto [display:flex] items-center justify-between gap-2 border-t border-mv-portal-hairline pt-3 text-[12px] font-bold text-mv-green-deep">
               View Details
               <ArrowRight
                 aria-hidden="true"
@@ -138,18 +175,30 @@ export function LeaseGrid({ leases }: { leases: LeaseRecord[] }) {
   );
 }
 
-/** One label-over-value pair. Muted caption, ink figure — the card's unit. */
-function Fact({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
+/**
+ * One label-over-value pair. Muted caption, ink figure — the card's unit.
+ *
+ * ── EVERY VALUE RESERVES TWO LINES ──
+ *
+ * One operator is "Burlington Resources O&G Co, LP" and wraps; the next is
+ * "Hilcorp" and does not. Left to size themselves, the pair sharing a row came
+ * out at different heights, the next pair started lower in one card than in its
+ * neighbour, and the three fact rows drifted further apart down the card. Two
+ * lines is what the longest of these fields actually needs, so reserving it
+ * costs one line of white space on the short ones and buys every card the same
+ * internal grid.
+ *
+ * CLAMPED AS WELL AS RESERVED, with the full text on `title`: a third line
+ * would put the height back where it started.
+ */
+function Fact({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <span className="block">
       <span className="block text-[10px] text-mv-muted">{label}</span>
-      <span className="mt-[1px] block text-[11.5px] font-semibold tabular-nums">
+      <span
+        title={typeof value === "string" ? value : undefined}
+        className="mt-[1px] line-clamp-2 block min-h-[30px] text-[11.5px] leading-[15px] font-semibold tabular-nums"
+      >
         {value}
       </span>
     </span>

@@ -44,23 +44,58 @@ export const emptyLeaseFilters: LeaseFilters = {
   type: "",
 };
 
-/** The types the wells on one lease are approved to produce. */
+/**
+ * The types the wells on one lease are approved to produce.
+ *
+ * THE RECORD'S OWN FIELD FIRST, the well roster second. A lease from the
+ * service carries `types`; a fixture lease does not, and its wells are keyed by
+ * slug in `well-records.ts`, which answers the same question. Neither source is
+ * more correct than the other — they are the same fact reaching the page by two
+ * routes, and a lease knows which one it arrived by.
+ */
 function leaseTypes(lease: LeaseRecord): string[] {
+  if (lease.types) return lease.types;
   return [...new Set(wellsForLease(lease.slug).map((well) => well.type))];
 }
 
 function distinct(values: string[]): string[] {
-  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+  return [...new Set(values)]
+    .filter((value) => value !== "")
+    .sort((a, b) => a.localeCompare(b));
 }
 
-/** What each dropdown offers, derived once from the record. */
-export const leaseFilterOptions = {
-  county: distinct(leaseRecords.map((lease) => lease.county)),
-  operator: distinct(leaseRecords.map((lease) => lease.operator)),
-  reservoir: distinct(leaseRecords.map((lease) => lease.reservoir)),
-  status: distinct(leaseRecords.map((lease) => lease.status)),
-  type: distinct(leaseRecords.flatMap(leaseTypes)),
-} as const;
+export interface LeaseFilterOptions {
+  county: string[];
+  operator: string[];
+  reservoir: string[];
+  status: string[];
+  type: string[];
+}
+
+/**
+ * What each dropdown offers, derived FROM THE LEASES ON SCREEN.
+ *
+ * IT USED TO BE A MODULE CONSTANT built from the fixture, which was correct for
+ * exactly as long as the fixture was the only set anyone saw. It no longer is:
+ * the list shows the member's own leases when the record is claimed and the
+ * sample set when it is not, and a dropdown offering counties from a third set
+ * is a filter that can return nothing for a value it just offered.
+ *
+ * EMPTY VALUES ARE DROPPED rather than offered as a blank row — a lease with no
+ * reservoir named on its filing should not put an unselectable gap in the list.
+ */
+export function leaseFilterOptionsFor(leases: LeaseRecord[]): LeaseFilterOptions {
+  return {
+    county: distinct(leases.map((lease) => lease.county)),
+    operator: distinct(leases.map((lease) => lease.operator)),
+    reservoir: distinct(leases.map((lease) => lease.reservoir)),
+    status: distinct(leases.map((lease) => lease.status)),
+    type: distinct(leases.flatMap(leaseTypes)),
+  };
+}
+
+/** The fixture's own options, for a caller that still shows the fixture. */
+export const leaseFilterOptions = leaseFilterOptionsFor(leaseRecords);
 
 export function applyLeaseFilters(
   leases: LeaseRecord[],

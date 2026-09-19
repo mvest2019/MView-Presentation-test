@@ -12,22 +12,43 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
  * an unknown number of leases cannot tell whether they have seen most of their
  * record or a tenth of it.
  *
- * It is also the only place that count appears now — the toolbar's own tally
- * was removed with the Filters button — so it carries the `aria-live` that
- * tells a screen reader a filter has changed what is on screen, and it says
- * "1 lease" rather than "1 leases" when a filter narrows that far.
+ * It carries the `aria-live` that tells a screen reader a filter has changed
+ * what is on screen, and it says "1 lease" rather than "1 leases" when a filter
+ * narrows that far. It is no longer the only place the count appears — the
+ * subtitle under the page title carries the record's own totals — which is what
+ * lets the whole bar go on a single page; see below.
  *
- * ── IT RENDERS EVEN WHEN THERE IS ONLY ONE PAGE ──
+ * ── NOTHING AT ALL ON A SINGLE PAGE ──
  *
- * It used to hide itself there, on the argument that a pager with one button
- * cannot do anything. That was wrong for this table: ten leases at twenty-five
- * a page is the NORMAL state, so the bar was missing almost always, and its
- * left half is not a control — "Showing 1–10 of 10 leases" is the answer to
- * "have I seen all of them", which a reader wants most when the list is short
- * enough to look complete and might not be.
+ * This went back and forth, so the whole of it: the bar hid itself on one page;
+ * then it stayed, on the argument that its left half is not a control and
+ * "Showing 1–10 of 10 leases" answers "have I seen all of them"; then the
+ * buttons were dropped and the sentence kept; and now the bar goes too.
  *
- * The buttons come with it and sit disabled at both ends, which is the ordinary
- * shape of a pager on its only page.
+ * WHAT CHANGED IS THAT THE SENTENCE STOPPED BEING THE ONLY PLACE THE COUNT
+ * APPEARS. The argument for keeping it rested on that, and it no longer holds:
+ * the subtitle under the page title reads "4 leases on your record · 4
+ * wells · 2 reservoirs", from the record's own totals. So a bar that says
+ * "Showing 1–4 of 4 leases" under four cards is repeating, in a full-width
+ * strip of its own, something the page said at the top and the reader can see
+ * by counting to four.
+ *
+ * In Grid it was worse than redundant: `divided={false}` there, so it is not
+ * the foot of a card but a detached grey band under the cards with one short
+ * sentence adrift in it.
+ *
+ * THE TEST IS `pageCount`, NOT A ROW COUNT. It was asked for as "more than ten"
+ * — which is what one page holds at the size the list asks the service for —
+ * but a fixed number is the wrong rule for a table whose page size the reader
+ * can change: at twenty-five a page, a twenty-lease record is more than ten and
+ * still has nowhere to page to. "Is there a second page" answers the same
+ * question at every setting of that control.
+ *
+ * THE COUNT IS STILL ANNOUNCED. `aria-live` on the sentence is what tells a
+ * screen reader a filter changed what is on screen, and a removed element
+ * announces nothing — so when the bar is gone the empty-state copy and the
+ * subtitle carry that, and a filter that narrows to one page is a filter whose
+ * result is short enough to be read directly.
  *
  * ── THE WINDOW, FOR RECORDS THAT ARE NOT TEN LEASES ──
  *
@@ -54,6 +75,10 @@ export function LeasePagination({
   /** A rule above it. False where it opens a card of its own — the grid view. */
   divided?: boolean;
 }) {
+  /* ONE PAGE MEANS NO PAGER — see the note above. Returned before anything is
+     computed, so there is no bar, no border and no gap where one used to be. */
+  if (pageCount <= 1) return null;
+
   const first = (page - 1) * pageSize + 1;
   const last = Math.min(page * pageSize, total);
 
@@ -62,7 +87,10 @@ export function LeasePagination({
       aria-label="Lease pages"
       className={`flex flex-wrap items-center justify-between gap-3 bg-mv-bg px-4 py-2.5 ${divided ? "border-t border-mv-line" : ""}`}
     >
-      <p aria-live="polite" className="text-[12.5px] text-mv-green-deep tabular-nums">
+      <p
+        aria-live="polite"
+        className="text-[12.5px] text-mv-green-deep tabular-nums"
+      >
         Showing {first}–{last} of {total} lease{total === 1 ? "" : "s"}
       </p>
 

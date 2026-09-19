@@ -6,7 +6,7 @@ import { notFound } from "next/navigation";
 import Portal from "../../../_components/reference/Portal";
 import { portalGate } from "../../../_components/ui/portal-gating";
 import { LeasesPortalRoot } from "../_components/leases-portal-root";
-import { findLeaseBySlug } from "../_lib/lease-routes";
+import { findLeaseBySlug, leaseIdFromSlug } from "../_lib/lease-routes";
 import { sampleTwinOf } from "../_lib/sample-leases";
 import { loadShellPayload } from "../_lib/shell-payload";
 import { funnelStateFromCookie } from "../../../_lib/funnel-state-store";
@@ -15,21 +15,11 @@ import {
   STORAGE_KEYS,
   toFunnelState,
 } from "../../../_lib/portal-state";
-import { CumulativeCard } from "./_components/cumulative-card";
-import { FiguresPanel } from "./_components/figures-panel";
-import { FindingsCard } from "./_components/findings-card";
-import { LeaseFactsStrip } from "./_components/lease-facts-strip";
-import { LeaseReportHeader } from "./_components/report-header";
-import { MeasuresCard } from "./_components/measures-card";
-import { PrecisionCard } from "./_components/precision-card";
-import { ReportBand } from "./_components/report-band";
-import { ReportTabs, type LeaseReportTab } from "./_components/report-tabs";
-import { UltraNote } from "./_components/ultra-note";
+import { LeaseReportBody } from "./_components/report-body";
+import { ServedLeaseReport } from "./_components/served-lease-report";
+import { type LeaseReportTab } from "./_components/report-tabs";
 import { ReservoirReportView } from "./_components/reservoir/reservoir-report-view";
 import { WellReportView } from "./_components/well/well-report-view";
-import { ReservesCard } from "./_components/reserves-card";
-import { TwelveMonthsCard } from "./_components/twelve-months-card";
-import { WellsMapCard } from "./_components/wells-map-card";
 import { buildLeaseReport } from "./_lib/lease-report";
 
 /**
@@ -54,14 +44,19 @@ import { buildLeaseReport } from "./_lib/lease-report";
  *   band          what it is worth and what it is about to pay
  *   facts strip   the seven fields every figure below is read against
  *   tabs          lease · reservoir · wells
- *   figures       the tiles and the production chart, at either scope
+ *   figures       the tiles, then the record unrounded, then the chart
  *   cumulative    how much has come out and how much is left
  *   reserves      the same thing as a proportion
  *   findings      the page summarising itself, AFTER the evidence
  *   twelve        filed on the left, projected on the right
  *   measures      against the record, and against itself
- *   precision     the fields unrounded, for quoting — Professional only
  *   map           where the wells actually are
+ *
+ * PRECISION MOVED UP, out of the second-to-last slot and INSIDE the figures
+ * panel, between its tiles and its chart. "Money first, method last" is the
+ * rule below and it still holds — that card is not method. It is the unrounded
+ * FIELDS, and the first thing a reader does with the tiles directly above it is
+ * check one of those figures against a statement.
  *
  * `?report=reservoir` and `?report=wells` swap the whole body for those two
  * reports — same header, same band, same facts strip, because those describe
@@ -122,12 +117,6 @@ export default async function LeaseReportPage({
   const { leaseNumber } = await params;
   const { report: reportParam, state: stateParam } = await searchParams;
 
-  const found = findLeaseBySlug(leaseNumber);
-  /* A 404 rather than a guess: an unknown lease number in this URL means the
-     link is wrong or the record changed, and either way showing somebody
-     else's lease would be worse than showing nothing. */
-  if (!found) notFound();
-
   /*
    * ── AN UNCLAIMED VISITOR READS THE SAMPLE OF THIS LEASE, AT THIS URL ──
    *
@@ -157,10 +146,53 @@ export default async function LeaseReportPage({
     ? toFunnelState(normaliseStateParam(firstParam(stateParam)))
     : funnelStateFromCookie(store.get(STORAGE_KEYS.funnelState)?.value);
   const unclaimed = state === "unclaimed";
-  const lease = unclaimed ? sampleTwinOf(found) : found;
-
   const tab = resolveTab(reportParam);
-  const report = buildLeaseReport(lease);
+
+  /*
+   * ── WHERE THIS LEASE'S FIGURES COME FROM ──
+   *
+   * The URL decides, because the URL already carries the answer. A slug that
+   * leads with the service's id — `08_46924-howard-glasscock-east-unit` — came
+   * off the list or the picker and names a lease on the member's own record; a
+   * slug that leads with a bare number is one of the ten fixture leases. See
+   * `leaseIdFromSlug`.
+   *
+   * AN UNCLAIMED VISITOR IS NEVER SENT TO THE SERVICE. Their table and their
+   * dropdown are the sample set, so they never hold a served slug; if one
+   * reaches them by hand it resolves against the fixture like any other, and
+   * failing that it is a 404. Reading a real owner's lease to decorate a sample
+   * page would put the record in front of someone who has not claimed it.
+   */
+  const servedId = unclaimed ? null : leaseIdFromSlug(leaseNumber);
+
+  /* ── A LEASE ON THE RECORD: FETCHED IN THE BROWSER ──
+     The shell is server-rendered and the report arrives inside it, so the call
+     shows up in the Network tab as `lease?id=02_269507` with its own status,
+     size and timing. See `served-lease-report.tsx` for why that was worth a
+     loading state. */
+  if (servedId) {
+    return (
+      <Portal route="leases" initial={initial} shellClass="mv-leases-shell">
+        <LeasesPortalRoot serverFunnelState={state}>
+          <div
+            className={`${portalGate.pageRoot} ${portalGate.reportRoot} ${portalGate.wideColumn}`}
+          >
+            <ServedLeaseReport id={servedId} tab={tab} />
+          </div>
+        </LeasesPortalRoot>
+      </Portal>
+    );
+  }
+
+  /* ── A FIXTURE LEASE: BUILT HERE, AS IT ALWAYS WAS ──
+     A 404 rather than a guess: an unknown lease in this URL means the link is
+     wrong or the record changed, and either way showing somebody else's lease
+     would be worse than showing nothing. */
+  const found = findLeaseBySlug(leaseNumber);
+  if (!found) notFound();
+
+  const report = buildLeaseReport(unclaimed ? sampleTwinOf(found) : found);
+  const lease = report.lease;
 
   return (
     <Portal route="leases" initial={initial} shellClass="mv-leases-shell">
@@ -168,48 +200,17 @@ export default async function LeaseReportPage({
         <div
           className={`${portalGate.pageRoot} ${portalGate.reportRoot} ${portalGate.wideColumn}`}
         >
-          {/* THREE THINGS SURVIVE ULTRA, and each earns it: which lease, what it
-              is worth, and one sentence in place of the body. Strip the first
-              two and the remaining sentence is about an unnamed lease.
-              `ultraKeep` is the portal's own exemption — see the rule in
-              `portal.css`. */}
-          <div className={portalGate.ultraKeep}>
-            <LeaseReportHeader lease={lease} tab={tab} />
-          </div>
-          <div className={portalGate.ultraKeep}>
-            <ReportBand report={report} />
-          </div>
-          <UltraNote report={report} />
-
-          <LeaseFactsStrip report={report} />
-          <ReportTabs
-            slug={lease.slug}
-            active={tab}
-            reservoir={lease.reservoir}
-            firstPosting={report.firstPosting}
-            lastPosting={report.lastPosting}
+          <LeaseReportBody
+            report={report}
+            tab={tab}
+            otherReport={
+              tab === "reservoir" ? (
+                <ReservoirReportView lease={lease} />
+              ) : (
+                <WellReportView lease={lease} />
+              )
+            }
           />
-
-          {tab === "lease" && (
-            <>
-              <FiguresPanel report={report} />
-              <CumulativeCard report={report} />
-              <ReservesCard report={report} />
-              <FindingsCard report={report} />
-              {/* NO DENSITY GATES ON THESE THREE. The twelve-month panel and the
-                  ranking were hidden at Essentials, and the full-precision
-                  record was Professional-only. All three are on the page at
-                  every tier now — see the note in `leases/page.tsx`. */}
-              <TwelveMonthsCard report={report} />
-              <MeasuresCard report={report} />
-              <PrecisionCard report={report} />
-              <WellsMapCard report={report} />
-            </>
-          )}
-
-          {tab === "reservoir" && <ReservoirReportView lease={lease} />}
-
-          {tab === "wells" && <WellReportView lease={lease} />}
         </div>
       </LeasesPortalRoot>
     </Portal>

@@ -7,14 +7,10 @@ import {
   TableRow,
   TableScroll,
 } from "../../../../_components/ui/table";
-import {
-  formatCount,
-  formatDecimalInterest,
-  formatDollars,
-} from "../../_lib/lease-format";
 import type { MonthlyReport } from "../../_lib/monthly-report";
 import { STEEP_DROP_PERCENT } from "../../_lib/monthly-rows";
 import { ReportFootnote, ReportPageCard } from "./report-page";
+import { useReport } from "./report-context";
 
 /**
  * PAGE 5 · EVERY LEASE, SIDE BY SIDE — the same month across the whole record.
@@ -34,6 +30,7 @@ import { ReportFootnote, ReportPageCard } from "./report-page";
  * totals row counts ten leases and sums nine, which is the honest arithmetic.
  */
 export function PageSideBySide({ report }: { report: MonthlyReport }) {
+  const { fmt } = useReport();
   return (
     <ReportPageCard
       number={5}
@@ -72,19 +69,19 @@ export function PageSideBySide({ report }: { report: MonthlyReport }) {
                   {lease.reservoir}
                 </TableCell>
                 <TableCell className="tabular-nums whitespace-nowrap">
-                  {formatDecimalInterest(lease.decimalInterest)}
+                  {fmt.decimalInterest(lease.decimalInterest)}
                 </TableCell>
 
                 {lease.filed ? (
                   <>
                     <TableCell numeric>
-                      {formatCount(Math.round(lease.wholeGas))} MCF
+                      {fmt.count(Math.round(lease.wholeGas))} MCF
                     </TableCell>
                     <TableCell numeric>
-                      {formatCount(Math.round(lease.yourGas))} MCF
+                      {fmt.count(Math.round(lease.yourGas))} MCF
                     </TableCell>
                     <TableCell numeric>
-                      {formatCount(Math.round(lease.yourOil))} BBL
+                      {fmt.count(Math.round(lease.yourOil))} BBL
                     </TableCell>
                   </>
                 ) : (
@@ -96,7 +93,7 @@ export function PageSideBySide({ report }: { report: MonthlyReport }) {
                   </TableCell>
                 )}
 
-                <TableCell numeric>{formatDollars(lease.yourShare)}</TableCell>
+                <TableCell numeric>{fmt.dollars(lease.yourShare)}</TableCell>
                 <TableCell numeric>
                   <ChangeFigure percent={lease.changePercent} />
                 </TableCell>
@@ -104,19 +101,19 @@ export function PageSideBySide({ report }: { report: MonthlyReport }) {
             ))}
 
             <TableRow tone="total">
-              <TableCell>Total — {report.leaseCount} leases</TableCell>
+              <TableCell>Total — {fmt.num(report.leaseCount)} leases</TableCell>
               <TableCell />
               <TableCell />
               <TableCell numeric>
-                {formatCount(Math.round(report.wholeGas))} MCF
+                {fmt.count(Math.round(report.wholeGas))} MCF
               </TableCell>
               <TableCell numeric>
-                {formatCount(Math.round(report.yourGas))} MCF
+                {fmt.count(Math.round(report.yourGas))} MCF
               </TableCell>
               <TableCell numeric>
-                {formatCount(Math.round(report.yourOil))} BBL
+                {fmt.count(Math.round(report.yourOil))} BBL
               </TableCell>
-              <TableCell numeric>{formatDollars(report.yourShare)}</TableCell>
+              <TableCell numeric>{fmt.dollars(report.yourShare)}</TableCell>
               <TableCell />
             </TableRow>
           </TableBody>

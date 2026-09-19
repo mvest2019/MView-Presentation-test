@@ -93,7 +93,8 @@ export function ChartBrush({
   const last = values.length - 1;
   const peak = Math.max(...values, 1);
   const x = (index: number) => (index / last) * STRIP.width;
-  const y = (value: number) => STRIP.height - (value / peak) * (STRIP.height - 4);
+  const y = (value: number) =>
+    STRIP.height - (value / peak) * (STRIP.height - 4);
 
   /* An open path — the series and nothing else. It was a closed area filled
      mint, which drew the whole record as one solid pale shape and left the
@@ -119,14 +120,20 @@ export function ChartBrush({
   }
 
   function move(edge: "from" | "to", index: number): void {
-    if (edge === "from") onChange({ from: Math.min(index, to - MIN_MONTHS), to });
+    if (edge === "from")
+      onChange({ from: Math.min(index, to - MIN_MONTHS), to });
     else onChange({ from, to: Math.max(index, from + MIN_MONTHS) });
   }
 
   return (
     <div
       ref={trackRef}
-      className="relative h-8 w-full touch-none overflow-hidden rounded-[10px] border border-mv-line bg-mv-card"
+      /* SHORTER ON A PHONE. The strip is a sparkline of the whole record and a
+         drag target, not a chart to read values off — 24px is enough to show
+         the shape and still take a thumb, and the eight pixels saved are eight
+         a small screen needs for the chart above it. `preserveAspectRatio` is
+         `none`, so the drawing simply squashes to whatever height it is given. */
+      className="relative h-6 w-full touch-none overflow-hidden rounded-[10px] border border-mv-line bg-mv-card sm:h-8"
     >
       {/* The window itself, pinned to the two handle centres so the tint and
           the handles can never disagree about where the window starts. It is
@@ -182,12 +189,30 @@ export function ChartBrush({
             }}
             onKeyDown={(event) => {
               const step =
-                event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+                event.key === "ArrowLeft"
+                  ? -1
+                  : event.key === "ArrowRight"
+                    ? 1
+                    : 0;
               if (!step) return;
               event.preventDefault();
               move(edge, index + (event.shiftKey ? step * 12 : step));
             }}
-            className="absolute top-1/2 h-6 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize rounded-full border-[1.5px] border-mv-green-deep bg-mv-card p-0 shadow-[0_1px_3px_rgba(15,23,42,.14)] transition-colors hover:bg-mv-mint focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+            /* ── THE 44px TOUCH FLOOR HAD TO BE ANSWERED, NOT INHERITED ──
+
+               `dashboard-reference.css` sets `min-width: 44px; min-height: 44px`
+               on every button in `.app-main` below 640px. A handle is 12px wide
+               by design — the geometry in `offset()` is built on it — so the
+               floor did not nudge it, it replaced it: two 44px capsules
+               straddling a 24px strip, which is the shape in the report.
+
+               `min-w-0 min-h-0` takes the floor off, and the reason that is not
+               a regression for touch is the `before:` box underneath: an
+               invisible -8px inset on all four sides, which gives the thumb a
+               28x34 target while the drawn handle stays 12px. The hit area and
+               the mark are different things, and only one of them should be in
+               the layout. */
+            className="absolute top-1/2 h-[18px] min-h-0 w-3 min-w-0 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize rounded-full border-[1.5px] border-mv-green-deep bg-mv-card p-0 shadow-[0_1px_3px_rgba(15,23,42,.14)] transition-colors before:absolute before:-inset-2 before:content-[''] hover:bg-mv-mint focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep sm:h-6"
           />
         );
       })}

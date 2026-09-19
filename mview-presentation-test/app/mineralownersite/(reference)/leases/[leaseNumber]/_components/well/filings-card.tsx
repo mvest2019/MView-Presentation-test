@@ -35,7 +35,8 @@ export function FilingsCard({ report }: { report: WellReport }) {
       <CardHeader
         title={
           <h3 className="text-[15px] font-bold">
-            Every filing on this wellbore — {report.filings.length} filings
+            Every filing on this wellbore — {report.filings.length} filing
+            {report.filings.length === 1 ? "" : "s"}
           </h3>
         }
       />
@@ -79,9 +80,9 @@ export function FilingsCard({ report }: { report: WellReport }) {
 
       <p className="mt-3 text-[11.5px] leading-[1.55] text-mv-muted">
         Each row is a separate filing rather than a duplicate of the one above
-        it: a recompletion is a new document on the same hole. The newest is what
-        the wellbore is today, and the ones behind it are what was done to get
-        there.
+        it: a recompletion is a new document on the same hole. The newest is
+        what the wellbore is today, and the ones behind it are what was done to
+        get there.
       </p>
     </Card>
   );
@@ -137,8 +138,14 @@ export function AttachmentsCard({ report }: { report: WellReport }) {
         </p>
       ) : (
         <ul className="mt-3 space-y-2.5">
+          {/* KEYED ON THE TRACKING NUMBER, NOT THE TITLE. A wellbore commonly
+              files "Well Record Only" more than once — this well has it twice,
+              at 107861 and 64583 — and two children under one key let React
+              reuse the wrong row, which on a card of links means a row can end
+              up opening another filing's document. The tracking number is the
+              Commission's own identifier for the packet. */}
           {withDocument.map((filing) => (
-            <li key={filing.name}>
+            <li key={filing.document?.tracking ?? filing.name}>
               <DocumentRow filing={filing} />
             </li>
           ))}
@@ -192,13 +199,38 @@ function DocumentRow({ filing }: { filing: WellFiling }) {
         <RowFact label="Drilled" value={document.filedOn} />
       </dl>
 
-      <PrototypeButton
-        icon={<ExternalLink aria-hidden="true" className="h-4 w-4" />}
-        acknowledgement="Opened ✓ (prototype)"
-        title="Opens the Commission's scan of this filing. Not connected yet."
-      >
-        Open document
-      </PrototypeButton>
+      {/* A REAL LINK WHERE THERE IS A REAL SCAN. `packet_url` was already
+          being read to decide whether this row appeared at all, and then
+          discarded — so the card knew the document existed and still could not
+          open it. The fixture rows have no packet behind them and keep the
+          prototype, because a dead `href` is the one thing a card about
+          documents must not have: it makes a reader doubt the document rather
+          than the build.
+
+          `noreferrer` as well as `noopener`: the packets are held on a third
+          party's drive, and which lease a reader is looking at is not that
+          party's business. */}
+      {document.url ? (
+        <a
+          href={document.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Opens the Commission's scan of this filing in a new tab."
+          className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-lg border border-mv-line bg-mv-card px-3.5 py-2 text-[12.5px] font-semibold text-mv-slate transition-colors hover:bg-mv-bg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-green-deep"
+        >
+          <ExternalLink aria-hidden="true" className="h-4 w-4" />
+          Open document
+          <span className="sr-only"> (opens in a new tab)</span>
+        </a>
+      ) : (
+        <PrototypeButton
+          icon={<ExternalLink aria-hidden="true" className="h-4 w-4" />}
+          acknowledgement="Opened ✓ (prototype)"
+          title="Opens the Commission's scan of this filing. Not connected yet."
+        >
+          Open document
+        </PrototypeButton>
+      )}
     </div>
   );
 }
@@ -216,4 +248,3 @@ function RowFact({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-

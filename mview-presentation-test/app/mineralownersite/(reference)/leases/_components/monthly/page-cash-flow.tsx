@@ -1,6 +1,6 @@
-import { formatCount, formatDollars } from "../../_lib/lease-format";
 import type { MonthlyReport, ReportLeaseRow } from "../../_lib/monthly-report";
 import { ReportList, ReportPageCard } from "./report-page";
+import { useReport } from "./report-context";
 
 /**
  * PAGE 9 · WHAT THIS MEANS FOR YOUR CASH FLOW — lease by lease, in plain terms.
@@ -45,6 +45,7 @@ export function PageCashFlow({ report }: { report: MonthlyReport }) {
 }
 
 function LeaseSentence({ lease }: { lease: ReportLeaseRow }) {
+  const { fmt } = useReport();
   if (!lease.filed) {
     return (
       <>
@@ -60,9 +61,9 @@ function LeaseSentence({ lease }: { lease: ReportLeaseRow }) {
 
   return (
     <>
-      {lease.title}: filed {formatCount(Math.round(lease.yourGas))} MCF and{" "}
-      {formatCount(Math.round(lease.yourOil))} BBL to you this month, worth{" "}
-      {formatDollars(lease.yourShare)}.{" "}
+      {lease.title}: filed {fmt.count(Math.round(lease.yourGas))} MCF and{" "}
+      {fmt.count(Math.round(lease.yourOil))} BBL to you this month, worth{" "}
+      {fmt.dollars(lease.yourShare)}.{" "}
       {steady ? (
         <>
           It is sitting close to its own twelve-month average, so the next
@@ -71,8 +72,8 @@ function LeaseSentence({ lease }: { lease: ReportLeaseRow }) {
       ) : gap < 0 ? (
         <>
           It is running {Math.abs(gap).toFixed(1)}% below its own twelve-month
-          average, so expect the next statements to be thinner than the last year
-          has been.
+          average, so expect the next statements to be thinner than the last
+          year has been.
         </>
       ) : (
         <>

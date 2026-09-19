@@ -8,15 +8,14 @@ import { STORAGE_KEYS } from "../../_lib/portal-state";
 import { ChangesSinceCard } from "./_components/changes-since-card";
 import { EstimateExplainer } from "./_components/estimate-explainer";
 import { LeasesHeader } from "./_components/leases-header";
+import { LeaseListSection } from "./_components/lease-list-section";
+import { LeasesDataProvider } from "./_components/leases-data";
 import { LeasesPortalRoot } from "./_components/leases-portal-root";
-import { LeasesTabs, type LeaseTab } from "./_components/leases-tabs";
-import { PlainEnglishList } from "./_components/plain-english-list";
+import { type LeaseTab } from "./_components/leases-tabs";
 import { PortfolioValueBand } from "./_components/portfolio-value-band";
 import { UltraSummary } from "./_components/ultra-summary";
 import { FinancialsPanel } from "./_components/financials/financials-panel";
-import { LeaseListPanel } from "./_components/list/lease-list-panel";
 import { MonthlyPanel } from "./_components/monthly/monthly-panel";
-import { leaseRecords } from "./_lib/lease-records";
 import { loadShellPayload } from "./_lib/shell-payload";
 
 /**
@@ -132,40 +131,40 @@ export default async function MyLeasesPage({
     <Portal route="leases" initial={initial} shellClass="mv-leases-shell">
       <LeasesPortalRoot serverFunnelState={serverFunnelState}>
         <div className={`${portalGate.pageRoot} ${portalGate.wideColumn}`}>
-          <UltraSummary />
+          {/* ONE READ OF THE RECORD, SHARED BY EVERY BLOCK THAT PRINTS IT — the
+              subtitle's counts, the band's five figures, the plain-English list
+              and the table. A context provider renders no DOM node, so all of
+              them are still DIRECT children of this root and the density gates
+              above still reach them. See `leases-data.tsx`. */}
+          <LeasesDataProvider>
+            <UltraSummary />
 
-          <LeasesHeader />
-          <PortfolioValueBand />
-          <EstimateExplainer />
-          <ChangesSinceCard />
+            <LeasesHeader />
+            <PortfolioValueBand />
+            <EstimateExplainer />
+            <ChangesSinceCard />
 
-          <PlainEnglishList />
+            {/* THE LEASES, ONCE, DRAWN TWICE — the plain-English list at
+              Essentials and the table above it, from one read of the member's
+              record. They were two siblings here reading the same fixture;
+              they are one client boundary now because the answer comes off the
+              network and both have to be given the same one. It renders a
+              FRAGMENT, so both blocks are still direct children of this root
+              and the density gates below still reach them. See
+              `lease-list-section.tsx`.
 
-          {/* HIDDEN AT ESSENTIALS, because at Essentials it is the SECOND list
-              of the same leases on one screen.
-
-              `PlainEnglishList` above is the Essentials view of this table —
-              the same ten leases, one sentence each, no columns to compare. It
-              renders at Essentials and only at Essentials (`tier-s`), so from
-              Detailed up nothing here changes: the strip, the table, the
-              financials and the statements are all present exactly as before.
-
-              WHAT THIS COSTS AT ESSENTIALS is the Financials and the Monthly
-              Reports along with the table, because the three share one strip
-              and hiding the table alone would leave the strip opening on an
-              empty panel. If those two should stay, the fix is to drop the
-              "My Leases" tab from the strip at this tier rather than the strip
-              itself — say the word.
-
-              Ultra is unaffected either way: it replaces the page. */}
-          <div className={portalGate.hideInEssentials}>
-            <LeasesTabs
+              WHAT THE TAB STRIP COSTS AT ESSENTIALS: the Financials and the
+              Monthly Reports go with the table, because the three share one
+              strip and hiding the table alone would leave the strip opening on
+              an empty panel. If those two should stay, the fix is to drop the
+              "My Leases" tab from the strip at that tier rather than the strip
+              itself. Ultra is unaffected either way: it replaces the page. */}
+            <LeaseListSection
               defaultTab={resolveTab(ltab)}
-              leases={<LeaseListPanel leases={leaseRecords} />}
               financials={<FinancialsPanel />}
               statements={<MonthlyPanel />}
             />
-          </div>
+          </LeasesDataProvider>
         </div>
       </LeasesPortalRoot>
     </Portal>

@@ -1,5 +1,11 @@
 import { financialsSeries, type LeaseSeries } from "./financials-series";
 import { leaseRecords } from "./lease-records";
+import type {
+  DevelopmentRing,
+  PressItem,
+  PriceSettlement,
+} from "./report-fixtures";
+import type { ThreeYearOutlook } from "./report-outlook";
 import { monthLabel } from "./months";
 import { cashAt } from "./price-deck";
 import type { LeaseRecord } from "./lease-types";
@@ -91,6 +97,20 @@ export interface ReportLeaseRow {
   modelMissPercent: number;
   /** "HURD ENTERPRISES, LTD. (June 2020–June 2026)". */
   operatorRange: string;
+
+  /**
+   * SENTENCES THE SERVICE WRITES ABOUT THE LEASE, not figures to format.
+   *
+   * `wellNote` is "4 wells, 4 drilled sideways" — how the holes were put down,
+   * which no count on this row states. `completionSpan` is "2020–2025", the
+   * years the wells came on. `pastOperators` is every company that has run it
+   * with the dates, of which `operatorRange` is only the first.
+   *
+   * Empty on the fixture path, which has none of the three.
+   */
+  wellNote: string;
+  completionSpan: string;
+  pastOperators: string[];
 }
 
 export interface ReportYear {
@@ -127,6 +147,119 @@ export interface MonthlyReport {
   /** Filed leases first, ordered by what they paid; the non-filers last. */
   leases: ReportLeaseRow[];
   years: ReportYear[];
+
+  /**
+   * EVERYTHING THE SERVICE SENDS THAT THE FIXTURE HAS NO EQUIVALENT FOR.
+   *
+   * ABSENT ON THE FIXTURE PATH. Seven of the twelve pages are built from the
+   * fields above and work either way; the other five — the revenue band, the
+   * three-year outlook, the development rings, the prices and the press — were
+   * hand-written constants in `report-fixtures.ts` and `report-outlook.ts` with
+   * nothing behind them. They read this when it is here.
+   *
+   * IT IS ONE CALL FOR ALL TWELVE PAGES, so nothing below can disagree with
+   * anything above it: page 5's column total IS page 2's headline because both
+   * are `totals.cash_share`, not two sums that happen to agree.
+   *
+   * THE PRE-FORMATTED STRINGS ARE RENDERED VERBATIM. `stats[].value`,
+   * `commodities[].display` and the sentence arrays arrive formatted to the
+   * precision each figure deserves — gas quotes to a tenth of a cent and
+   * propane to three decimals, and re-rounding either to two turns a real move
+   * into no move.
+   */
+  served?: ServedMonthly;
+}
+
+/** One tile on page 2, already formatted. */
+export interface ServedStat {
+  label: string;
+  value: string;
+  sub: string;
+  /** Drives the tile's accent. Absent on a neutral tile. */
+  tone?: "up" | "down" | "warn";
+}
+
+/** One month on the revenue band — page 3. */
+export interface ServedRevenueMonth {
+  cycle: string;
+  label: string;
+  gasCash: number;
+  oilCash: number;
+  /** Where the filed record ends and the model begins. */
+  forecast: boolean;
+}
+
+/** One operator block — page 8. */
+export interface ServedOperator {
+  name: string;
+  number: string;
+  leases: number;
+  leaseNames: string[];
+  counties: string[];
+  tenureLabel: string;
+  cumGas: number;
+  cumOil: number;
+  ownerValue: number;
+  sharePercent: number;
+  overview: string;
+  insight: string;
+  monthGas: number;
+  monthOil: number;
+  wells: number;
+}
+
+export interface ServedMonthly {
+  owner: string;
+  builtAt: string;
+  cycle: string;
+  /** Was this month filed at all? */
+  filed: boolean;
+
+  /** The picker — 24 months, newest first. Sort on `cycle`, show `label`. */
+  months: { cycle: string; label: string; filed: boolean }[];
+  /** Each page's own heading and sub-line. Not hard-coded. */
+  pages: { no: number; title: string; lead: string }[];
+
+  /* page 1 */
+  summary: { heading: string; bullets: string[] }[];
+
+  /* page 2 */
+  stats: ServedStat[];
+  insights: string[];
+  note: string;
+
+  /* page 3 */
+  revenue: ServedRevenueMonth[];
+  revenueNote: string;
+
+  /* page 6 */
+  outlook: ThreeYearOutlook & { bullets: string[]; note: string };
+
+  /* page 7 */
+  development: {
+    probability: number;
+    /** Ordered BEST first — the chip prints it worst first. */
+    probabilityLabel: string;
+    verdict: string;
+    rings: DevelopmentRing[];
+    bullets: string[];
+    note: string;
+  };
+
+  /* page 8 */
+  operators: ServedOperator[];
+
+  /* page 10 */
+  commodities: PriceSettlement[];
+  commodityNote: string;
+
+  /* page 11 */
+  news: (PressItem & { mine: boolean })[];
+  newsNote: string;
+
+  /* page 12 */
+  method: { no: number; title: string; text: string }[];
+  disclaimer: string[];
 }
 
 function seriesFor(slug: string): LeaseSeries {
@@ -254,6 +387,10 @@ function buildLeaseRow(lease: LeaseRecord, index: number): ReportLeaseRow {
     modelMissPercent:
       modelGas > 0 ? ((series.gas[lastFiled] - modelGas) / modelGas) * 100 : 0,
     operatorRange: `${lease.operator.toUpperCase()} (${lease.firstPosting}–${lease.lastPosted.month})`,
+    /* The fixture has no equivalent for these three — see the field notes. */
+    wellNote: "",
+    completionSpan: "",
+    pastOperators: [],
   };
 }
 
@@ -298,8 +435,18 @@ function buildYears(): ReportYear[] {
 
 const YEARS = buildYears();
 
-export function buildMonthlyReport(index: number): MonthlyReport {
-  const rows = leaseRecords.map((lease) => buildLeaseRow(lease, index));
+/**
+ * `leases` DEFAULTS TO THE RECORD AND IS PASSED THE SAMPLE WHEN NOTHING IS
+ * CLAIMED, so the report names the same ten leases the list and the value band
+ * are showing in that state rather than a third set. Everything below reads the
+ * parameter; `seriesFor` resolves a sample slug to its own series, which is
+ * what `sample-leases.ts` gives them their own slugs for.
+ */
+export function buildMonthlyReport(
+  index: number,
+  leases: LeaseRecord[] = leaseRecords,
+): MonthlyReport {
+  const rows = leases.map((lease) => buildLeaseRow(lease, index));
   const filed = rows.filter((row) => row.filed);
 
   const yourGas = filed.reduce((total, row) => total + row.yourGas, 0);
@@ -313,7 +460,7 @@ export function buildMonthlyReport(index: number): MonthlyReport {
   const yearAgo = index - 12;
   const yearAgoShare =
     yearAgo >= 0
-      ? leaseRecords.reduce((total, lease) => {
+      ? leases.reduce((total, lease) => {
           const series = seriesFor(lease.slug);
           return yearAgo <= series.filedThroughIndex
             ? total + cashFor(series, yearAgo, lease.decimalInterest)
@@ -346,7 +493,8 @@ export function buildMonthlyReport(index: number): MonthlyReport {
     topLease: {
       title: top?.title ?? "",
       gasPercent: yourGas > 0 ? ((top?.yourGas ?? 0) / yourGas) * 100 : 0,
-      sharePercent: yourShare > 0 ? ((top?.yourShare ?? 0) / yourShare) * 100 : 0,
+      sharePercent:
+        yourShare > 0 ? ((top?.yourShare ?? 0) / yourShare) * 100 : 0,
     },
     steepestFall: byChange[0] ?? null,
     steepestRise: byChange[byChange.length - 1] ?? null,

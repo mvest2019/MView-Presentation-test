@@ -191,6 +191,16 @@
 .mv-portal.no-claim [data-mv-card] {
   border-color: var(--mv-sample, #b8892f);
   border-style: dashed;
+  /* 2px, WHICH IS THE WEIGHT THE OTHER PAGES USE. The reference dashes its
+     cards at their own 1px, but the edge a reader actually reads the state
+     from on the Dashboard and Alerts is the 2px one — `.smp-badge` is
+     `2px dashed #d9a441`. At 1px the dashes are so short they read as a
+     hairline rather than as a deliberate placeholder edge.
+
+     NOTHING MOVES. `.mv-ref-app *` sets `box-sizing: border-box`, so the extra
+     pixel comes out of the card's padding rather than its outer size: the card
+     occupies the same box and its neighbours keep their spacing. */
+  border-width: 2px;
 }
 
 /* A KPI TILE IS THE SAME RULE ON THREE EDGES, NOT FOUR.
@@ -208,6 +218,11 @@
   border-right-style: dashed;
   border-bottom-style: dashed;
   border-left-style: dashed;
+  /* The same 2px as the cards, on the three edges that are edges. The top is
+     left at its 3px green accent — see above. */
+  border-right-width: 2px;
+  border-bottom-width: 2px;
+  border-left-width: 2px;
 }
 
 /* ONE WIDTH FOR EVERY MODE WHILE NOTHING IS CLAIMED — the DETAILED width.
@@ -389,4 +404,96 @@ body .mv-ref-app.mv-leases-shell.no-claim .app-body {
   filter: blur(2.4px);
   opacity: 0.42;
   user-select: none;
+}
+
+/* ============================================================================
+   NOT CLAIMED IS ONE PAGE, WHATEVER THE DENSITY SAYS
+   ============================================================================
+
+   `LeasesPortalRoot` already renders DETAILED in this state whatever the avatar
+   menu says, so in principle none of these can fire. This states it in CSS as
+   well, because the cost of the two disagreeing is not a slightly different
+   page — it is NO LEASE LIST AT ALL, and that is worth making impossible rather
+   than unlikely.
+
+   ── HOW THAT HAPPENS, AND WHY IT IS NOT OBVIOUS ──
+
+   Two stylesheets gate on the same five class names off two different roots.
+   `Portal` forces the SHELL to Professional while nothing is claimed; the
+   module renders its own density on the wrapper. Let those two disagree — the
+   shell at `view-pro`, the wrapper at `view-simple` — and:
+
+     `.mv-ref-app:not(.view-simple) .tier-s`  hides the plain-English list,
+        because the SHELL is not Essentials;
+     `.mv-portal.view-simple .hide-s`         hides the tab strip and table,
+        because the WRAPPER is.
+
+   Each rule is doing exactly its job, and between them every lease on the page
+   disappears — the header, the band and the change feed render, and the page
+   simply stops. Reported from Essentials, unclaimed.
+
+   ── WHY `base`, AND WHY `!important` ──
+
+   The reference sheet's gates are `!important`, and important declarations
+   invert the layer order: an important rule in an EARLIER layer beats one in a
+   later layer and beats every unlayered rule. `base` is earlier than
+   `mv-reference`, which makes it the only place an answer can be written. See
+   the same reasoning, at more length, in the `mv-map-reset` block above.
+
+   THE THREE RULES ARE THE STATE'S OWN ANSWER, not a density's: while nothing is
+   claimed this page has ONE shape, so the Essentials list is off, the Ultra
+   card is off, and the table is on — at Ultra, Essentials, Detailed and
+   Professional alike.
+   ============================================================================ */
+@layer base {
+  .mv-ref-app .mv-portal.no-claim .tier-s,
+  .mv-ref-app .mv-portal.no-claim .tier-u {
+    display: none !important;
+  }
+
+  /* Every element that carries `hide-s` in this module is a bare wrapper
+     `<div>` whose only job is to be gated — the module's own convention, and
+     the reason `block` is the right value. See the note on the same choice in
+     the `mv-map-reset` block. */
+  .mv-ref-app .mv-portal.no-claim .hide-s {
+    display: block !important;
+  }
+}
+
+/* ============================================================================
+   ROOM UNDER THE BAR
+   ============================================================================
+
+   `.app-body` opens with 26px of top padding on a desktop and 18px on a phone,
+   and the top bar above it is STICKY — so the first thing on the page sits that
+   far below a black edge it will later scroll underneath. On the Dashboard the
+   first block is a card, and a card's own padding carries the gap. My Leases
+   opens with bare type — an `<h1>` on the list, a breadcrumb on the report —
+   which has no padding of its own, so the title met the bar almost flush.
+
+   Reported twice: once against the report's breadcrumb, once against the list's
+   title.
+
+   SCOPED BY `mv-leases-shell`, the class `Portal`'s `shellClass` puts on the
+   shell root for these two pages and no others, so the Dashboard, Alerts, the
+   Weekly Report, Production and the Map keep the spacing they were designed
+   with. Unlayered, so it beats the reference sheet's own value without needing
+   `!important`.
+
+   TRIMMED FROM 40px TO 24px. Forty cleared the bar and then some: on the
+   report it read as a band of empty page above the breadcrumb rather than as
+   breathing room, which is what it was reported as. Twenty-four still keeps the
+   first line off the black edge — which is the whole point of the rule and why
+   this is not simply deleted — without the gap reading as a missing element.
+   ============================================================================ */
+body .mv-ref-app.mv-leases-shell .app-body {
+  padding-top: 24px;
+}
+
+/* A phone gives the column 18px and needs the extra less — the bar is shorter
+   and the title is smaller — but flush is still flush. */
+@media (max-width: 767px) {
+  body .mv-ref-app.mv-leases-shell .app-body {
+    padding-top: 18px;
+  }
 }

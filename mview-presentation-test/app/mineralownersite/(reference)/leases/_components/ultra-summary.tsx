@@ -1,8 +1,9 @@
+"use client";
+
 import { gates } from "../../../_components/ui/portal-gating";
 import { UltraHero } from "../../../_components/ui/ultra-hero";
 import { formatCompactDollars } from "../_lib/lease-format";
-import { leaseRecords } from "../_lib/lease-records";
-import { portfolioSummary } from "../_lib/lease-totals";
+import { useLeasesData } from "./leases-data";
 import { PortfolioValueBand } from "./portfolio-value-band";
 
 /**
@@ -35,35 +36,63 @@ import { PortfolioValueBand } from "./portfolio-value-band";
  * quiet come from the records, so a month where one stops saying so is a month
  * where this sentence changes. A calm tier that reports calm through a real
  * change is not calm, it is wrong.
+ *
+ * ── THE THREE FIGURES IN THIS SENTENCE ARE THE RECORD'S, NOT A FIXTURE'S ──
+ *
+ * The count, the money and the earning tally read `leaseRecords` and
+ * `portfolioSummary` until now, which is how Ultra came to say "All 10 leases"
+ * and "$4.44M" over a band already showing the member's own 4 leases and $6K.
+ * A tier whose whole promise is ONE headline cannot have that headline be the
+ * one wrong thing on the page. They come from the same read every other block
+ * on this page uses — see `leases-data.tsx`.
+ *
+ * THE COUNT COMES FROM `totals` AND THE TALLY FROM THE LEASES, which is not an
+ * inconsistency: `totals.leaseCount` is the whole record, while "how many are
+ * earning" can only be counted from leases actually in hand. They agree
+ * whenever the record fits inside the page cap, and when it does not, the
+ * headline is still right about the record and the tally is still right about
+ * what it counted.
  */
 export function UltraSummary() {
-  const earning = leaseRecords.filter((lease) => lease.mvestimate > 0).length;
-  const quiet = leaseRecords.length - earning;
+  const data = useLeasesData();
+  const totals = data?.totals ?? null;
+  const leases = data?.leases ?? null;
+
+  const earning = leases?.filter((lease) => lease.mvestimate > 0).length ?? 0;
+  const quiet = (leases?.length ?? 0) - earning;
 
   return (
     <div className={gates("ultraOnly")}>
       <UltraHero
         kicker="My leases"
+        /* UNTIL THE RECORD ARRIVES the headline names no number rather than
+           naming a wrong one — a count that corrects itself a second later is
+           the one thing a reader takes away from this tier. */
         headline={
-          <>
-            All{" "}
-            <strong>
-              {portfolioSummary.leaseCount} lease
-              {portfolioSummary.leaseCount === 1 ? "" : "s"}
-            </strong>{" "}
-            are watched
-          </>
+          totals ? (
+            <>
+              All{" "}
+              <strong>
+                {totals.leaseCount} lease{totals.leaseCount === 1 ? "" : "s"}
+              </strong>{" "}
+              are watched
+            </>
+          ) : (
+            <>Your leases are watched</>
+          )
         }
         status={
-          <>
-            Together they are worth{" "}
-            <strong>{formatCompactDollars(portfolioSummary.mvestimate)}</strong>{" "}
-            to you over the projection.{" "}
-            {quiet > 0
-              ? `${earning} are earning; the rest are quiet, which is normal for them.`
-              : `All ${earning} are earning.`}{" "}
-            Nothing needs you today.
-          </>
+          totals && leases ? (
+            <>
+              Together they are worth{" "}
+              <strong>{formatCompactDollars(totals.ownerValue)}</strong> to you
+              over the projection.{" "}
+              {quiet > 0
+                ? `${earning} ${earning === 1 ? "is" : "are"} earning; the rest are quiet, which is normal for them.`
+                : `All ${earning} are earning.`}{" "}
+              Nothing needs you today.
+            </>
+          ) : null
         }
         note="We check every lease against the public record and will tell you if anything changes."
         /* THE BAND IS THE CARD'S FOOT, not a second block under it. `rounded-none`

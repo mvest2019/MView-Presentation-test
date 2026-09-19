@@ -26,12 +26,42 @@ export interface LeaseLastPosting {
 }
 
 export interface LeaseRecord {
+  /**
+   * THE SERVICE'S OWN KEY — `08_46924`: the district code and the lease number.
+   *
+   * OPTIONAL, because the ten fixture records have none and never will. It is
+   * here because the NUMBER IS NOT UNIQUE: districts number their leases
+   * independently, so one record can hold `02_269507` and `08_269507`, and a
+   * route or a lookup keyed on `269507` alone would answer for whichever it met
+   * first. Everything that must name one exact lease to the service — the
+   * report call, and therefore the report's URL — uses this.
+   */
+  id?: string;
   /** The filing's lease number, or null for an unnumbered unit. */
   number: string | null;
+  /**
+   * How many of the lease's wells are on production right now.
+   *
+   * OPTIONAL: the service sends it per lease and the fixture does not carry it.
+   * The band used to print `wells of wells producing` — every well on every
+   * lease, always — which is true of ten hand-written records and is not true
+   * of a real one: this lease has 138 wells and none of them posted last month.
+   */
+  producingWells?: number;
   /** The route segment the lease report opens on. */
   slug: string;
   name: string;
-  status: "Producing";
+  /**
+   * `"Producing"` on every lease the fixture and the service have shown so far
+   * — but a STRING, not that one literal.
+   *
+   * It was the literal, which was true of ten hand-written records and is not a
+   * promise the service makes: `lease_status` is whatever the filing says, and
+   * the status filter builds its dropdown from the values actually present. A
+   * literal here would mean a lease the state has marked shut-in could not be
+   * represented at all.
+   */
+  status: string;
   acres: number;
   /** "June 2020" — the month this lease first appeared on a production filing. */
   firstPosting: string;
@@ -45,6 +75,18 @@ export interface LeaseRecord {
   wells: number;
   /** The decimal interest as filed — 0.05138 is 5.138%. */
   decimalInterest: number;
+  /**
+   * What the wells on this lease are approved to produce — `["Gas", "Oil"]`.
+   *
+   * OPTIONAL, AND THAT IS THE POINT. The service sends it per lease; the
+   * fixture does not carry it, and for a fixture lease the same answer is
+   * already derivable from the well records keyed by slug. So the type filter
+   * reads this field when it is here and falls back to the wells when it is
+   * not — see `leaseTypes` in `lease-filters.ts`. Making it required would mean
+   * writing the same fact onto ten records that can already answer for
+   * themselves.
+   */
+  types?: string[];
   production: LeaseProduction;
   lastPosted: LeaseLastPosting;
 }

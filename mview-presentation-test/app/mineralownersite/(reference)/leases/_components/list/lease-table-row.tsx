@@ -94,8 +94,15 @@ export function LeaseTableRow({ lease }: { lease: LeaseRecord }) {
       <TableCell className="whitespace-nowrap">
         {lease.lastPosted.month}
         {/* The volume on that filing, under the month it was filed for — the
-            two only mean anything together. */}
-        <span className="mt-0.5 block text-right text-[10.5px] text-mv-muted tabular-nums">
+            two only mean anything together.
+
+            IT SHARES THE MONTH'S EDGE. This carried `text-right` while the cell
+            and the "Last posted" header above it are both left-aligned, so the
+            two lines of one fact hung off opposite sides of the column: "May
+            2026" against the left edge and "21 MCF" against the right, with a
+            ragged gap between them that got wider the shorter the volume was.
+            A stacked pair reads as one thing only when it lines up. */}
+        <span className="mt-0.5 block text-[10.5px] text-mv-muted tabular-nums">
           {formatCount(lease.lastPosted.gasMcf)} MCF
         </span>
       </TableCell>

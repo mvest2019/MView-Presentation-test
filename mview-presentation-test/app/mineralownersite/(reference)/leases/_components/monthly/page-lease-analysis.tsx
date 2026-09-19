@@ -1,14 +1,9 @@
 import Link from "next/link";
 
-import {
-  formatAcres,
-  formatDecimalInterest,
-  formatDollars,
-} from "../../_lib/lease-format";
 import { leaseReportPath } from "../../_lib/lease-routes";
 import type { MonthlyReport, ReportLeaseRow } from "../../_lib/monthly-report";
-import { portfolioSummary } from "../../_lib/lease-totals";
 import { ReportFacts, ReportList, ReportPageCard } from "./report-page";
+import { useReport } from "./report-context";
 
 /**
  * PAGE 4 · LEASE ANALYSIS — each lease against its own last twelve filed months.
@@ -31,12 +26,17 @@ import { ReportFacts, ReportList, ReportPageCard } from "./report-page";
  * same way: where the two disagree, the filing is the fact.
  */
 export function PageLeaseAnalysis({ report }: { report: MonthlyReport }) {
+  /* THE LEASES ON THIS REPORT, not the portfolio fixture's count. The chip read
+     `summary.leaseCount` — the static figure — and said "10 leases" over a list
+     of 782. */
+  const leaseCount = report.leases.length || 0;
+  const { fmt } = useReport();
   return (
     <ReportPageCard
       number={4}
       id="lease-analysis"
       title="Lease analysis"
-      chip={`${portfolioSummary.leaseCount} leases`}
+      chip={`${fmt.num(leaseCount)} leases`}
       lead="Each lease against its own last twelve filed months."
     >
       <div className="mt-2 divide-y divide-mv-line">
@@ -55,6 +55,7 @@ function LeaseBlock({
   lease: ReportLeaseRow;
   report: MonthlyReport;
 }) {
+  const { fmt } = useReport();
   return (
     <section className="py-5 first:pt-3">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
@@ -70,7 +71,7 @@ function LeaseBlock({
           </span>
         </div>
         <span className="text-[16px] font-bold tabular-nums">
-          {formatDollars(lease.yourShare)}
+          {fmt.dollars(lease.yourShare)}
         </span>
       </div>
 
@@ -79,7 +80,14 @@ function LeaseBlock({
           rows={[
             {
               label: "Acreage and wells",
-              value: `${formatAcres(lease.acres)} acres, ${lease.wells} well${lease.wells === 1 ? "" : "s"}; first production ${lease.firstPosting}`,
+              /* THE SERVICE'S `well_note` AND `completion_span` WHEN IT SENT
+                 THEM — "4 wells, 4 drilled sideways" and "2020–2025". How the
+                 holes were drilled and the years they came on are facts the
+                 well count cannot carry, and this row was stating the count
+                 twice instead. The composed version is the fixture's. */
+              value: lease.wellNote
+                ? `${fmt.acres(lease.acres)} acres, ${lease.wellNote}${lease.completionSpan ? `; completed ${lease.completionSpan}` : ""}`
+                : `${fmt.acres(lease.acres)} acres, ${lease.wells} well${lease.wells === 1 ? "" : "s"}; first production ${lease.firstPosting}`,
             },
             { label: "Reservoir", value: lease.reservoir },
             {
@@ -90,18 +98,25 @@ function LeaseBlock({
             },
             {
               label: "Lease revenue",
-              value: formatDollars(lease.leaseRevenue),
+              value: fmt.dollars(lease.leaseRevenue),
             },
             {
               label: "Your revenue",
               value: (
                 <>
-                  <strong>{formatDollars(lease.yourShare)}</strong> at{" "}
-                  {formatDecimalInterest(lease.decimalInterest)}
+                  <strong>{fmt.dollars(lease.yourShare)}</strong> at{" "}
+                  {fmt.decimalInterest(lease.decimalInterest)}
                 </>
               ),
             },
-            { label: "Operators", value: lease.operatorRange },
+            {
+              label: "Operators",
+              /* EVERY company that has run it, with its dates — the service
+                 sends the whole history and the row printed only the first. */
+              value: lease.pastOperators.length
+                ? lease.pastOperators.join(" · ")
+                : lease.operatorRange,
+            },
           ]}
         />
 
@@ -116,24 +131,23 @@ function LeaseBlock({
             </>,
             <>
               Its strongest month was {lease.trailing.bestMonth} at{" "}
-              {lease.trailing.highGasPerDay.toFixed(1)} MCF a day; its weakest was{" "}
-              {lease.trailing.worstMonth} at{" "}
+              {lease.trailing.highGasPerDay.toFixed(1)} MCF a day; its weakest
+              was {lease.trailing.worstMonth} at{" "}
               {lease.trailing.lowGasPerDay.toFixed(1)}.
             </>,
             <>
               Your best month on it was {lease.trailing.bestCashMonth} at{" "}
-              {formatDollars(lease.trailing.bestCash)}, your thinnest{" "}
+              {fmt.dollars(lease.trailing.bestCash)}, your thinnest{" "}
               {lease.trailing.thinCashMonth} at{" "}
-              {formatDollars(lease.trailing.thinCash)}.
+              {fmt.dollars(lease.trailing.thinCash)}.
             </>,
             <>
               The stream yields {lease.barrelsPerMmcf.toFixed(1)} BBL of oil for
-              every thousand MCF of gas — which product carries your money depends
-              on that ratio and on where the two prices sit.
+              every thousand MCF of gas — which product carries your money
+              depends on that ratio and on where the two prices sit.
             </>,
             <>
-              Its last filing came in{" "}
-              {lease.modelMissPercent >= 0 ? "+" : ""}
+              Its last filing came in {lease.modelMissPercent >= 0 ? "+" : ""}
               {lease.modelMissPercent.toFixed(1)}% against what the model
               expected. Where the two disagree the filing is the fact.
             </>,

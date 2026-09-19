@@ -8,6 +8,7 @@ import {
   TableScroll,
 } from "../../../../_components/ui/table";
 import { DEVELOPMENT_RINGS, NEW_WELL_ODDS } from "../../_lib/report-fixtures";
+import type { MonthlyReport } from "../../_lib/monthly-report";
 import { ReportFootnote, ReportList, ReportPageCard } from "./report-page";
 
 /**
@@ -27,17 +28,33 @@ import { ReportFootnote, ReportList, ReportPageCard } from "./report-page";
  * the spread and the text names both ends. An average here would be the most
  * confidently wrong figure in the report.
  */
-export function PageDevelopment() {
+export function PageDevelopment({ report }: { report: MonthlyReport }) {
+  const served = report.served?.development;
+  const rings = served?.rings ?? DEVELOPMENT_RINGS;
+
   const { bands, best, worst } = NEW_WELL_ODDS;
-  const inner = DEVELOPMENT_RINGS[0];
-  const outer = DEVELOPMENT_RINGS[DEVELOPMENT_RINGS.length - 1];
+
+  /* THE SERVICE COUNTS THE BANDS, and it orders them BEST first —
+     "254 very good, 177 good, 158 average, 86 poor, 63 very poor" — while this
+     chip has always read worst first. Reversed rather than re-ordered by name,
+     because the service decides how many bands there are; the fixture's four
+     are not a promise that there will not be five. */
+  const oddsChip = served?.probabilityLabel
+    ? served.probabilityLabel
+        .split(",")
+        .map((band) => band.trim())
+        .reverse()
+        .join(", ")
+    : `${bands.veryPoor} very poor, ${bands.average} average, ${bands.good} good, ${bands.veryGood} very good`;
+  const inner = rings[0];
+  const outer = rings[rings.length - 1];
 
   return (
     <ReportPageCard
       number={7}
       id="development-outlook"
       title="Development outlook"
-      chip={`${bands.veryPoor} very poor, ${bands.average} average, ${bands.good} good, ${bands.veryGood} very good`}
+      chip={oddsChip}
       lead="What is being drilled around this acreage, and what it implies."
     >
       <div className="mt-4 grid gap-6 lg:grid-cols-2">
@@ -53,7 +70,7 @@ export function PageDevelopment() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {DEVELOPMENT_RINGS.map((ring) => (
+              {rings.map((ring) => (
                 <TableRow key={ring.ring}>
                   <TableCell className="font-bold">{ring.ring}</TableCell>
                   <TableCell numeric>{ring.permits}</TableCell>
@@ -71,37 +88,48 @@ export function PageDevelopment() {
             There is drilling interest on your doorstep.
           </h4>
           <ReportList
-            items={[
-              <>
-                The model&apos;s chance of a new well is not one number across
-                these leases: {best.lease} scores {best.percent.toFixed(1)}% and{" "}
-                {worst.lease} scores {worst.percent.toFixed(1)}% —{" "}
-                {bands.veryPoor} very poor, {bands.average} average, {bands.good}{" "}
-                good, {bands.veryGood} very good. Treating the portfolio as one
-                score would describe none of them.
-              </>,
-              <>
-                {inner.permits} standing permits and {inner.leases} neighbouring
-                leases sit within {inner.ring.replace("s", "")} of your wells. A
-                permit is an intention, not a well: many are never drilled, and
-                the ones that are take a year or more to reach first production.
-              </>,
-              <>
-                Widen to {outer.ring} and it is {outer.permits} permits across{" "}
-                {outer.leases} leases run by {outer.operators} operators,{" "}
-                {outer.producing} of them producing. That is the area&apos;s
-                appetite for drilling — it is not activity on your acreage.
-              </>,
-            ]}
+            items={
+              served?.bullets ?? [
+                <>
+                  The model&apos;s chance of a new well is not one number across
+                  these leases: {best.lease} scores {best.percent.toFixed(1)}%
+                  and {worst.lease} scores {worst.percent.toFixed(1)}% —{" "}
+                  {bands.veryPoor} very poor, {bands.average} average,{" "}
+                  {bands.good} good, {bands.veryGood} very good. Treating the
+                  portfolio as one score would describe none of them.
+                </>,
+                <>
+                  {inner.permits} standing permits and {inner.leases}{" "}
+                  neighbouring leases sit within {inner.ring.replace("s", "")}{" "}
+                  of your wells. A permit is an intention, not a well: many are
+                  never drilled, and the ones that are take a year or more to
+                  reach first production.
+                </>,
+                <>
+                  Widen to {outer.ring} and it is {outer.permits} permits across{" "}
+                  {outer.leases} leases run by {outer.operators} operators,{" "}
+                  {outer.producing} of them producing. That is the area&apos;s
+                  appetite for drilling — it is not activity on your acreage.
+                </>,
+              ]
+            }
           />
         </div>
       </div>
 
+      {/* THE SERVICE'S OWN CAPTION when it sent one — it explains what the
+          block above means for THIS record, where the sentence below is a
+          general statement written once. The fixture path keeps the general
+          one, which is all it has. */}
       <ReportFootnote>
-        Counted once each across the whole portfolio, not once per lease — ten
-        leases in one county share their neighbours, and summing each
-        lease&apos;s own survey would count the same neighbouring lease many
-        times over. These are the same ring figures the dashboard shows.
+        {served?.note || (
+          <>
+            Counted once each across the whole portfolio, not once per lease —
+            ten leases in one county share their neighbours, and summing each
+            lease&apos;s own survey would count the same neighbouring lease many
+            times over. These are the same ring figures the dashboard shows.
+          </>
+        )}
       </ReportFootnote>
     </ReportPageCard>
   );

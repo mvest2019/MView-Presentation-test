@@ -7,6 +7,7 @@ import { Badge } from "../../../../../_components/ui/badge";
 import { Card, CardHeader } from "../../../../../_components/ui/card";
 import { SegmentedControl } from "../../../../../_components/ui/segmented-control";
 import { loadArcgisModules } from "../../../../../_lib/arcgis-loader";
+import { LegendsPanel } from "../../../../map/_components/legends-panel";
 import { formatCompactVolume } from "../../../_lib/lease-format";
 import {
   BASEMAPS,
@@ -16,6 +17,7 @@ import {
   ringSymbols,
   type Basemap,
 } from "../../_lib/map-shared";
+import { useLegendIcons } from "../../_lib/map-legend-icons";
 import type { ReservoirReport } from "../../_lib/reservoir-report";
 import {
   MapHoverTip,
@@ -32,7 +34,7 @@ import {
  *
  * A circle at the filed surface hole and a diamond at the filed bottom hole are
  * both in the state's record. The dashed line between them is NOT: where no
- * directional survey is on file, a straight line is the only thing the record
+ * directional survey is on file, a deviated line is the only thing the record
  * supports, and it is dashed and labelled "surface-to-bottom line" rather than
  * "well path" so nobody measures a lateral off it.
  *
@@ -44,6 +46,21 @@ import {
 
 /* The portal's mint, as the SDK wants it: RGBA, not a CSS variable. */
 const MARK = [46, 143, 109] as const;
+
+/*
+ * THE BORE LINE, IN THE LEGEND'S OWN COLOUR.
+ *
+ * The panel has a row for this — "Horizontal/Directional Lines" — and its
+ * image is a flat grey rule, rgb(109,109,109). The line was drawn in the
+ * card's green, so the legend named a mark the map did not draw and the map
+ * drew one the legend had no row for. Sampled from the PNG rather than
+ * eyeballed, so the two cannot drift.
+ *
+ * Full opacity and two pixels where the legend's is one: this sits on
+ * satellite imagery of west Texas farmland, which is grey-brown, and a
+ * hairline at half alpha disappeared into it.
+ */
+const LINE = [109, 109, 109] as const;
 
 interface GraphicLike {
   geometry: unknown;
@@ -98,6 +115,8 @@ export function ReservoirMapCard({ report }: { report: ReservoirReport }) {
   const graphicRef = useRef<GraphicCtor | null>(null);
   const ringsRef = useRef<GraphicLike[]>([]);
 
+  const { statusIcon, collarIcon, legendSettled } = useLegendIcons();
+
   const wells = report.wells;
   const centre: [number, number] = wells[0]?.surface ?? [-97.35, 29.08];
 
@@ -126,6 +145,11 @@ export function ReservoirMapCard({ report }: { report: ReservoirReport }) {
     async function draw(): Promise<void> {
       const node = container.current;
       if (!node) return;
+      /* THE LEGEND'S SYMBOLS HAVE TO BE IN HAND BEFORE THE HOLES ARE DRAWN.
+         The wells are drawn once and the reader's pan and zoom are kept after
+         that, so this waits rather than redrawing later. It settles on a failed
+         read too, and then the plain markers below are what gets drawn. */
+      if (!legendSettled) return;
 
       try {
         const [EsriMap, MapView, Graphic] = await loadArcgisModules<
@@ -195,20 +219,30 @@ export function ReservoirMapCard({ report }: { report: ReservoirReport }) {
 
         const graphics: GraphicLike[] = [];
         for (const well of wells) {
-          const straight =
+          /* True when the two ends are in different places — the hole is
+             deviated. */
+          const deviated =
             well.surface[0] !== well.bottom[0] ||
             well.surface[1] !== well.bottom[1];
 
-          if (straight) {
+          if (deviated) {
             graphics.push(
               new Graphic({
                 geometry: {
                   type: "polyline",
                   paths: [[well.surface, well.bottom]],
+                  /* DEGREES, SAID OUT LOUD. Without `spatialReference` the autocast
+                     reads these numbers in the view's own reference — Web
+                     Mercator metres — and -98.4 metres east of Greenwich puts
+                     the bore in the Atlantic, off screen. The point geometries
+                     are safe because `longitude`/`latitude` name their units;
+                     `paths` does not. Found and documented on the explorer's
+                     map, see `well-graphics.ts`. */
+                  spatialReference: { wkid: 4326 },
                 },
                 symbol: {
                   type: "simple-line",
-                  color: [...MARK, 0.9],
+                  color: [...LINE, 1],
                   width: 2,
                   style: "dash",
                 },
@@ -216,28 +250,70 @@ export function ReservoirMapCard({ report }: { report: ReservoirReport }) {
             );
             graphics.push(
               new Graphic({
-                geometry: { type: "point", longitude: well.bottom[0], latitude: well.bottom[1] },
-                symbol: {
-                  type: "simple-marker",
-                  style: "diamond",
-                  size: 11,
-                  color: [255, 255, 255, 0.95],
-                  outline: { color: [...MARK, 1], width: 2 },
+                geometry: {
+                  type: "point",
+                  longitude: well.surface[0],
+                  latitude: well.surface[1],
                 },
+                /* THE COLLAR, at the top of the bore: the small "Horizontal" or
+                   "Directional" mark for how the hole was drilled. ONLY WHERE
+                   THERE IS A BORE TO MARK THE TOP OF — a hole that starts and
+                   finishes in one place has no top distinct from its bottom,
+                   and a second mark on the same point would just obscure the
+                   status symbol underneath it. */
+                symbol: collarIcon(well)
+                  ? {
+                      type: "picture-marker",
+                      url: collarIcon(well),
+                      width: 13,
+                      height: 13,
+                    }
+                  : {
+                      type: "simple-marker",
+                      style: "circle",
+                      size: 9,
+                      color: [255, 255, 255, 0.95],
+                      outline: { color: [...MARK, 1], width: 2 },
+                    },
               }),
             );
           }
 
+          /*
+           * THE WELL'S OWN STATUS SYMBOL, AT THE END THAT PRODUCES.
+           *
+           * The bottom hole where there is one and the single location where
+           * there is not — `well.bottom` is the surface again when nothing was
+           * filed, so this one geometry covers both. It is the rule the
+           * explorer's map follows, and worth stating: on a lease where NOTHING
+           * is deviated, hanging the status symbol off the bottom hole draws it
+           * nowhere at all.
+           *
+           * It carries the tooltip for the same reason: a hit-test hands back a
+           * graphic, and on a two-mile lateral the surface hole is nowhere near
+           * the symbol somebody pointed at.
+           */
           graphics.push(
             new Graphic({
-              geometry: { type: "point", longitude: well.surface[0], latitude: well.surface[1] },
-              symbol: {
-                type: "simple-marker",
-                style: "circle",
-                size: 12,
-                color: [255, 255, 255, 0.95],
-                outline: { color: [...MARK, 1], width: 3 },
+              geometry: {
+                type: "point",
+                longitude: well.bottom[0],
+                latitude: well.bottom[1],
               },
+              symbol: statusIcon(well)
+                ? {
+                    type: "picture-marker",
+                    url: statusIcon(well),
+                    width: 16,
+                    height: 16,
+                  }
+                : {
+                    type: "simple-marker",
+                    style: deviated ? "diamond" : "circle",
+                    size: 12,
+                    color: [255, 255, 255, 0.95],
+                    outline: { color: [...MARK, 1], width: 3 },
+                  },
               /* EVERY FIELD THE TOOLTIP PRINTS RIDES ON THE MARKER, because
                  a hit-test hands back the graphic and nothing else — there is
                  no index to look the well up in from a pointer position. No
@@ -279,7 +355,7 @@ export function ReservoirMapCard({ report }: { report: ReservoirReport }) {
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wells]);
+  }, [wells, legendSettled]);
 
   useEffect(() => {
     if (mapRef.current) mapRef.current.basemap = basemap;
@@ -300,9 +376,7 @@ export function ReservoirMapCard({ report }: { report: ReservoirReport }) {
     const outer = RING_MILES[ring];
     if (!outer) return;
 
-    const drawn = ringSymbols(centre, outer).map(
-      (shape) => new Graphic(shape),
-    );
+    const drawn = ringSymbols(centre, outer).map((shape) => new Graphic(shape));
     view.graphics.addMany(drawn);
     ringsRef.current = drawn;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -319,8 +393,8 @@ export function ReservoirMapCard({ report }: { report: ReservoirReport }) {
         action={
           <Badge tone="quiet" size="xs">
             <MapPin aria-hidden="true" className="h-3 w-3" />
-            {report.wellCount} well{report.wellCount === 1 ? "" : "s"} · coloured
-            by lease
+            {report.wellCount} well{report.wellCount === 1 ? "" : "s"} ·
+            coloured by lease
           </Badge>
         }
       />
@@ -377,6 +451,32 @@ export function ReservoirMapCard({ report }: { report: ReservoirReport }) {
               }`.trim()}
             />
             {tip && <MapHoverTip tip={tip} />}
+
+            {/* THE WELL-SYMBOL LEGEND, from `GET /api/v1/map/legends`.
+                THE MAP PAGE'S OWN PANEL, not a copy of it. Ninety symbols, each
+                one a PNG the map itself draws — a legend that redrew them from
+                local SVGs would be a legend that can disagree with the map, and
+                two copies of it would be two legends to keep in step with an
+                endpoint that grows.
+
+                CLOSED BY DEFAULT HERE, where the map page opens it on a wide
+                screen. That map is the whole page and has room; this one is
+                520px inside a report, and ninety rows opened over it would
+                cover the wells it is explaining. The header alone sits in the
+                corner until a reader asks.
+
+                TOP LEFT, AND IT OPENS DOWNWARDS. From the bottom corner the
+                list had to grow up the screen, away from its own header —
+                opened, the thing you had just clicked ended up at the bottom of
+                a 328px panel. The reset button holds the bottom right and the
+                basemap strip sits above the map, so this corner is the one
+                nothing else wants. */}
+            <LegendsPanel
+              mode="wells"
+              defaultOpen={false}
+              className="absolute top-3 left-3 z-10"
+            />
+
             <MapResetButton
               onClick={() => {
                 setRing("lease");
@@ -401,7 +501,6 @@ export function ReservoirMapCard({ report }: { report: ReservoirReport }) {
           ○ surface · ◇ bottom hole · – – surface-to-bottom line
         </span>
       </div>
-
     </Card>
   );
 }

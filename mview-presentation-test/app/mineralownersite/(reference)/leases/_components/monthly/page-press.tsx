@@ -1,5 +1,6 @@
 import { Badge } from "../../../../_components/ui/badge";
 import { NOT_YOURS_LABEL, PRESS_ITEMS } from "../../_lib/report-fixtures";
+import type { MonthlyReport } from "../../_lib/monthly-report";
 import { ReportFootnote, ReportPageCard } from "./report-page";
 
 /**
@@ -19,17 +20,24 @@ import { ReportFootnote, ReportPageCard } from "./report-page";
  * so nothing here is evidence about the reader's neighbourhood — page 7 is where
  * that lives.
  */
-export function PagePress() {
+export function PagePress({ report }: { report: MonthlyReport }) {
+  /* The service's own items when it sent them. `mine: false` is what earns the
+     "not one of yours" badge — an operator working the same rock the reader
+     does not hold a lease with. The fixture marks the same thing by position,
+     which is why the badge test differs between the two. */
+  const served = report.served?.news;
+  const items = served ?? PRESS_ITEMS;
+
   return (
     <ReportPageCard
       number={11}
       id="press"
       title="Around your operators"
-      chip={`${PRESS_ITEMS.length} recorded`}
+      chip={`${items.length} recorded`}
       lead="Your operators published nothing this period, so this is the wider Texas record."
     >
       <div className="mt-2 divide-y divide-mv-line">
-        {PRESS_ITEMS.map((item) => (
+        {items.map((item) => (
           <article key={item.title} className="py-4 first:pt-2">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[11px] font-bold tracking-[0.06em] text-mv-green-deep uppercase">
@@ -48,11 +56,20 @@ export function PagePress() {
         ))}
       </div>
 
+      {/* THE SERVICE'S OWN CAPTION when it sent one — it explains what the
+          block above means for THIS record, where the sentence below is a
+          general statement written once. The fixture path keeps the general
+          one, which is all it has. */}
       <ReportFootnote>
-        Nothing was published by your own operators this period — they are small
-        private companies and most months they publish nothing at all. These are
-        the newest items from the wider Texas record instead, marked as not
-        yours. They are not chosen by your area: these rows carry no county.
+        {report.served?.newsNote || (
+          <>
+            Nothing was published by your own operators this period — they are
+            small private companies and most months they publish nothing at all.
+            These are the newest items from the wider Texas record instead,
+            marked as not yours. They are not chosen by your area: these rows
+            carry no county.
+          </>
+        )}
       </ReportFootnote>
     </ReportPageCard>
   );

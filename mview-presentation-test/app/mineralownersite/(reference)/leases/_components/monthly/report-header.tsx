@@ -5,6 +5,13 @@ import { Card } from "../../../../_components/ui/card";
 import { SelectField } from "../../../../_components/ui/form-controls";
 import { PrototypeButton } from "../../../../_components/ui/prototype-button";
 import { formatDollars } from "../../_lib/lease-format";
+import { useEffect, useState } from "react";
+
+import {
+  fetchMonthlyEmailState,
+  LeasesApiError,
+  sendMonthlyReport,
+} from "../../_api/leases-api";
 import type { MonthlyReport } from "../../_lib/monthly-report";
 import { ReportNav } from "./report-nav";
 
@@ -49,6 +56,53 @@ export function ReportHeader({
   monthOptions: { index: number; label: string }[];
   onMonthChange: (index: number) => void;
 }) {
+  /* ── WHETHER THIS DEPLOYMENT CAN SEND AT ALL ──
+     Asked once on render. A server with no SMTP behind it answers
+     `can_send: false` with a note saying so, and the button says that instead
+     of offering a send it cannot make. Unanswered, the button stays enabled —
+     a settings read that failed is not a reason to refuse the action. */
+  const [canSend, setCanSend] = useState(true);
+  const [why, setWhy] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchMonthlyEmailState(controller.signal)
+      .then((state) => {
+        if (controller.signal.aborted) return;
+        setCanSend(state.can_send);
+        setWhy(state.can_send ? null : state.note);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
+
+  /* `idle` → `sending` → `sent` or a message. It does not return to `idle`:
+     a reader who has sent it should see that it went, not a button inviting
+     them to send it again by reflex. */
+  const [send, setSend] = useState<
+    | { state: "idle" }
+    | { state: "sending" }
+    | { state: "sent" }
+    | { state: "failed"; message: string }
+  >({ state: "idle" });
+
+  const emailThis = () => {
+    if (send.state === "sending" || send.state === "sent") return;
+    setSend({ state: "sending" });
+
+    sendMonthlyReport(report.served?.cycle ?? null)
+      .then(() => setSend({ state: "sent" }))
+      .catch((error: unknown) =>
+        setSend({
+          state: "failed",
+          message:
+            error instanceof LeasesApiError
+              ? error.message
+              : "The report could not be sent.",
+        }),
+      );
+  };
+
   return (
     <Card padded={false} className="overflow-hidden">
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4 p-[22px] text-white bg-[linear-gradient(160deg,var(--color-mv-ink),var(--color-mv-portal-band-end))]">
@@ -105,12 +159,40 @@ export function ReportHeader({
             Download CSV
           </PrototypeButton>
           {/* The one filled control on the row: it is the only action that
-              involves somebody else's inbox. */}
-          <PortalButton variant="primary" size="sm">
-            Email me this
+              involves somebody else's inbox — and the only one on this page
+              that leaves the browser and cannot be taken back, which is why it
+              reports what happened rather than acknowledging a click.
+
+              IT DOES NOT ASK WHERE TO SEND. "Me" is the signed-in address, and
+              the page never names a recipient — see the POST handler. */}
+          <PortalButton
+            variant="primary"
+            size="sm"
+            disabled={
+              !canSend || send.state === "sending" || send.state === "sent"
+            }
+            title={
+              why ??
+              (send.state === "sent"
+                ? "Sent to the address on your account."
+                : "Emails this month's twelve pages to the address on your account.")
+            }
+            onClick={emailThis}
+          >
+            {send.state === "sending"
+              ? "Sending…"
+              : send.state === "sent"
+                ? "Sent ✓"
+                : "Email me this"}
           </PortalButton>
         </div>
       </div>
+
+      {(send.state === "failed" || why) && (
+        <p className="border-t border-mv-line px-4 py-2 text-[11.5px] text-mv-muted">
+          {send.state === "failed" ? send.message : why}
+        </p>
+      )}
 
       <ReportNav />
     </Card>

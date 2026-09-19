@@ -7,9 +7,9 @@ import {
   TableRow,
   TableScroll,
 } from "../../../../_components/ui/table";
-import { formatCount, formatDollars } from "../../_lib/lease-format";
 import type { MonthlyReport } from "../../_lib/monthly-report";
 import { ReportList, ReportPageCard } from "./report-page";
+import { useReport } from "./report-context";
 
 /**
  * PAGE 12 · THE YEAR SO FAR, AND WHERE THIS COMES FROM.
@@ -39,6 +39,7 @@ import { ReportList, ReportPageCard } from "./report-page";
 const YEARS_SHOWN = 6;
 
 export function PageYear({ report }: { report: MonthlyReport }) {
+  const { fmt } = useReport();
   const years = report.years.slice(0, YEARS_SHOWN);
 
   return (
@@ -75,12 +76,12 @@ export function PageYear({ report }: { report: MonthlyReport }) {
                       )}
                     </TableCell>
                     <TableCell numeric>
-                      {formatCount(Math.round(year.gas))}
+                      {fmt.count(Math.round(year.gas))}
                     </TableCell>
                     <TableCell numeric>
-                      {formatCount(Math.round(year.oil))}
+                      {fmt.count(Math.round(year.oil))}
                     </TableCell>
-                    <TableCell numeric>{formatDollars(year.share)}</TableCell>
+                    <TableCell numeric>{fmt.dollars(year.share)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -89,38 +90,57 @@ export function PageYear({ report }: { report: MonthlyReport }) {
         </div>
 
         <div>
+          {/* THE SERVICE NUMBERS AND WRITES THESE THREE, and it knows which
+              month the filed record actually ends at for this record. The
+              written version below says the same thing in general terms and is
+              what the fixture path has. */}
           <h4 className="mb-2 text-[14px] font-bold">Where this comes from</h4>
-          <ol className="list-decimal space-y-2.5 pl-5 text-[13px] leading-[1.6] text-mv-slate">
-            <li>
-              <strong>Sourced from the public record.</strong> Every well, lease
-              and volume here comes from Texas Railroad Commission filings and
-              the county appraisal roll. Nothing is entered by hand and nothing
-              is estimated where a filing exists.
-            </li>
-            <li>
-              <strong>Joined to your own interest.</strong> The roll gives your
-              decimal interest on each lease. Every &ldquo;your share&rdquo;
-              figure is that lease&apos;s own filing at that lease&apos;s own
-              interest — never a blended rate applied across the portfolio.
-            </li>
-            <li>
-              <strong>Projected past the boundary.</strong> The state runs two to
-              three months behind, so the filed record ends at {report.month}.
-              Past that the decline model carries each lease forward at a fixed
-              price deck, and every projected figure in this report is marked as
-              one.
-            </li>
-          </ol>
+          {report.served?.method.length ? (
+            <ol className="list-decimal space-y-2.5 pl-5 text-[13px] leading-[1.6] text-mv-slate">
+              {report.served.method.map((step) => (
+                <li key={step.no}>
+                  <strong>{step.title}.</strong> {step.text}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <ol className="list-decimal space-y-2.5 pl-5 text-[13px] leading-[1.6] text-mv-slate">
+              <li>
+                <strong>Sourced from the public record.</strong> Every well,
+                lease and volume here comes from Texas Railroad Commission
+                filings and the county appraisal roll. Nothing is entered by
+                hand and nothing is estimated where a filing exists.
+              </li>
+              <li>
+                <strong>Joined to your own interest.</strong> The roll gives
+                your decimal interest on each lease. Every &ldquo;your
+                share&rdquo; figure is that lease&apos;s own filing at that
+                lease&apos;s own interest — never a blended rate applied across
+                the portfolio.
+              </li>
+              <li>
+                <strong>Projected past the boundary.</strong> The state runs two
+                to three months behind, so the filed record ends at{" "}
+                {report.month}. Past that the decline model carries each lease
+                forward at a fixed price deck, and every projected figure in
+                this report is marked as one.
+              </li>
+            </ol>
+          )}
         </div>
       </div>
 
       <h4 className="mt-5 text-[14px] font-bold">What this report is not</h4>
       <ReportList
-        items={[
-          "Figures are drawn from Texas Railroad Commission filings and county appraisal records. Both are revised: operators amend filings and the roll is restated each year, so a month can change after it is first published.",
-          "Projections are produced by a decline model at a fixed price deck. They are estimates of what the filed months imply, not a forecast of the market and not a guarantee of future production.",
-          "This report is not a statement of account and Mineral View is not a financial, legal or investment adviser. It carries no deductions, no differential and no post-production cost, because none of those are public. Where it disagrees with a cheque, the cheque is the document that governs.",
-        ]}
+        items={
+          report.served?.disclaimer.length
+            ? report.served.disclaimer
+            : [
+                "Figures are drawn from Texas Railroad Commission filings and county appraisal records. Both are revised: operators amend filings and the roll is restated each year, so a month can change after it is first published.",
+                "Projections are produced by a decline model at a fixed price deck. They are estimates of what the filed months imply, not a forecast of the market and not a guarantee of future production.",
+                "This report is not a statement of account and Mineral View is not a financial, legal or investment adviser. It carries no deductions, no differential and no post-production cost, because none of those are public. Where it disagrees with a cheque, the cheque is the document that governs.",
+              ]
+        }
       />
     </ReportPageCard>
   );

@@ -44,6 +44,77 @@ export function leaseReportPath(slug: string): string {
 }
 
 /**
+ * The slug for a lease that did not come out of the fixture.
+ *
+ * THE FIXTURE'S OWN CONVENTION, WRITTEN DOWN. Its ten records carry hand-typed
+ * slugs — `290271-mccabe-etal-gu` — and this is that shape as a function, so a
+ * lease arriving from the service gets a URL of the same form rather than a
+ * second scheme living beside the first. `findLeaseBySlug` already reads the
+ * leading digits as the identity and tolerates a drifted name half, which is
+ * what makes one shape enough for both.
+ *
+ * AN UNNUMBERED UNIT FALLS BACK TO ITS NAME, the way KAISER GAS UNIT and COOK
+ * GAS UNIT do in the fixture: the identifier is the identity when there is one,
+ * and the name is all there is when there is not.
+ *
+ * WHAT LEADS IS THE SERVICE'S ID WHEN THE LEASE HAS ONE — `08_46924` rather
+ * than `46924`. See `LeaseRecord.id`: the number alone does not name a lease to
+ * the service, so a URL built on it cannot fetch the report it opens.
+ */
+export function leaseSlug(
+  identifier: string | null | undefined,
+  name: string,
+): string {
+  const kebab = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return identifier ? `${identifier}-${kebab}` : kebab;
+}
+
+/**
+ * THE SEGMENT A LEASE'S REPORT OPENS ON.
+ *
+ * ── A SERVED LEASE IS ITS ID, AND NOTHING ELSE ──
+ *
+ * `/mineralownersite/leases/02_269507`. It carried the name as well —
+ * `02_269507-betty-kennedy-unit-a` — on the reasoning written above: a URL you
+ * can read is a URL that survives being pasted into an email. That reasoning
+ * was written for a bare lease NUMBER, which names nothing on its own. An id
+ * already carries the district, and the four leases on this record that share
+ * the name BETTY KENNEDY UNIT A are told apart by the id and never by the name,
+ * so the name half was decoration that made the segment three times longer and
+ * disagreed with the heading whenever the service relabelled a lease.
+ *
+ * A FIXTURE LEASE KEEPS BOTH, because there the number IS all there is and the
+ * name is what makes `290271-mccabe-etal-gu` legible.
+ */
+export function leaseRouteSlug(
+  id: string | null | undefined,
+  number: string | null,
+  name: string,
+): string {
+  return id ?? leaseSlug(number, name);
+}
+
+/**
+ * THE SERVICE'S LEASE ID OUT OF A URL SEGMENT — `08_46924`, or null.
+ *
+ * A served lease's slug IS its id and a fixture lease's leads with a bare
+ * number, so the underscore is what tells the two apart: `08_46924` has an id
+ * and `290271-mccabe-etal-gu` has not. That is the whole branch the report page
+ * turns on — an id means ask the service, no id means the fixture.
+ *
+ * UPPERCASED, because the service is case-sensitive about it: district `7C`
+ * answers and `7c` comes back "not on this owner's record". Districts are
+ * digits and uppercase letters only, so raising the whole id is safe.
+ */
+export function leaseIdFromSlug(slug: string): string | null {
+  const match = /^([A-Za-z0-9]{1,3}_\d+)/.exec(decodeURIComponent(slug));
+  return match ? match[1].toUpperCase() : null;
+}
+
+/**
  * Resolve a URL segment back to a lease.
  *
  * TOLERANT ON PURPOSE. It accepts the full slug, the bare lease number, and a

@@ -7,6 +7,7 @@ import { Badge } from "../../../../_components/ui/badge";
 import { Card, CardHeader } from "../../../../_components/ui/card";
 import { SegmentedControl } from "../../../../_components/ui/segmented-control";
 import { loadArcgisModules } from "../../../../_lib/arcgis-loader";
+import { LegendsPanel } from "../../../map/_components/legends-panel";
 import { formatAcres } from "../../_lib/lease-format";
 import { wellsForLease } from "../../_lib/well-records";
 import {
@@ -18,6 +19,8 @@ import {
   type Basemap,
 } from "../_lib/map-shared";
 import type { LeaseReport } from "../_lib/lease-report";
+import type { LeaseMapData } from "../_lib/lease-map-from-api";
+import { useLegendIcons } from "../_lib/map-legend-icons";
 import {
   MapHoverTip,
   MapResetButton,
@@ -100,10 +103,39 @@ type GraphicCtor = new (options: {
 /** The portal's mint, as the SDK wants it: RGBA, not a CSS variable. */
 const MARK = [46, 143, 109] as const;
 
+/*
+ * THE BORE LINE, IN THE LEGEND'S OWN COLOUR.
+ *
+ * The panel has a row for this — "Horizontal/Directional Lines" — and its
+ * image is a flat grey rule, rgb(109,109,109). The line was drawn in the
+ * card's green, so the legend named a mark the map did not draw and the map
+ * drew one the legend had no row for. Sampled from the PNG rather than
+ * eyeballed, so the two cannot drift.
+ *
+ * Full opacity and two pixels where the legend's is one: this sits on
+ * satellite imagery of west Texas farmland, which is grey-brown, and a
+ * hairline at half alpha disappeared into it.
+ */
+const LINE = [109, 109, 109] as const;
+
 /** DE WITT County, Texas — the fallback if a lease has no well on record. */
 const COUNTY: [number, number] = [-97.35, 29.08];
 
-export function WellsMapCard({ report }: { report: LeaseReport }) {
+export function WellsMapCard({
+  report,
+  served,
+}: {
+  report: LeaseReport;
+  /**
+   * The lease's own geometry, when it was read from the service.
+   *
+   * ABSENT ON THE FIXTURE PATH, where the wells come from `wellsForLease` and
+   * the ring counts are measured against the ten local leases. A served lease
+   * has no row in either — the map drew nothing and the pills counted a fixture
+   * that has nothing to do with the lease on screen. See `leaseMapFromApi`.
+   */
+  served?: LeaseMapData;
+}) {
   const { lease } = report;
   const [basemap, setBasemap] = useState<Basemap>("satellite");
   const [ring, setRing] = useState<string>("lease");
@@ -116,15 +148,24 @@ export function WellsMapCard({ report }: { report: LeaseReport }) {
   const graphicRef = useRef<GraphicCtor | null>(null);
   const ringsRef = useRef<GraphicLike[]>([]);
 
-  const wells = useMemo(() => wellsForLease(lease.slug), [lease.slug]);
+  const { statusIcon, collarIcon, legendSettled } = useLegendIcons();
+
+  const wells = useMemo(
+    () => served?.wells ?? wellsForLease(lease.slug),
+    [served, lease.slug],
+  );
   const centre: [number, number] = wells[0]?.surface ?? COUNTY;
 
   /* The counts exclude this lease's own holes, so a lease with three wells does
-     not report three neighbours of itself at every radius. */
+     not report three neighbours of itself at every radius. The service applies
+     the same rule and measures against the real record rather than the ten
+     fixture leases, so its answer is taken whole where there is one. */
   const neighbours = useMemo(
-    () => ringCounts(centre, new Set(wells.map((well) => well.api))),
+    () =>
+      served?.rings ??
+      ringCounts(centre, new Set(wells.map((well) => well.api))),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [wells],
+    [served, wells],
   );
 
   const frame = useCallback(
@@ -143,6 +184,9 @@ export function WellsMapCard({ report }: { report: LeaseReport }) {
     async function draw(): Promise<void> {
       const node = container.current;
       if (!node) return;
+      /* Wait for the symbols. See the dependency note at the foot of this
+         effect — this returns on the first pass and runs on the second. */
+      if (!legendSettled) return;
 
       try {
         const [EsriMap, MapView, Graphic] = await loadArcgisModules<
@@ -188,13 +232,21 @@ export function WellsMapCard({ report }: { report: LeaseReport }) {
                 geometry: {
                   type: "polyline",
                   paths: [[well.surface, well.bottom]],
+                  /* DEGREES, SAID OUT LOUD. Without `spatialReference` the autocast
+                     reads these numbers in the view's own reference — Web
+                     Mercator metres — and -98.4 metres east of Greenwich puts
+                     the bore in the Atlantic, off screen. The point geometries
+                     are safe because `longitude`/`latitude` name their units;
+                     `paths` does not. Found and documented on the explorer's
+                     map, see `well-graphics.ts`. */
+                  spatialReference: { wkid: 4326 },
                 },
                 /* Dashed, and the legend calls it a surface-to-bottom LINE:
                    where no directional survey is filed this is the only thing
                    the record supports, and it is not the path the bit took. */
                 symbol: {
                   type: "simple-line",
-                  color: [...MARK, 0.9],
+                  color: [...LINE, 1],
                   width: 2,
                   style: "dash",
                 },
@@ -204,41 +256,83 @@ export function WellsMapCard({ report }: { report: LeaseReport }) {
               new Graphic({
                 geometry: {
                   type: "point",
-                  longitude: well.bottom[0],
-                  latitude: well.bottom[1],
+                  longitude: well.surface[0],
+                  latitude: well.surface[1],
                 },
-                symbol: {
-                  type: "simple-marker",
-                  style: "diamond",
-                  size: 11,
-                  color: [255, 255, 255, 0.95],
-                  outline: { color: [...MARK, 1], width: 2 },
-                },
+                /* THE COLLAR, at the top of the bore: the small "Horizontal" or
+                   "Directional" mark for how the hole was drilled. ONLY WHERE
+                   THERE IS A BORE TO MARK THE TOP OF — a hole that starts and
+                   finishes in one place has no top distinct from its bottom,
+                   and a second mark on the same point would just obscure the
+                   status symbol underneath it. */
+                symbol: collarIcon(well)
+                  ? {
+                      type: "picture-marker",
+                      url: collarIcon(well),
+                      width: 13,
+                      height: 13,
+                    }
+                  : {
+                      type: "simple-marker",
+                      style: "circle",
+                      size: 9,
+                      color: [255, 255, 255, 0.95],
+                      outline: { color: [...MARK, 1], width: 2 },
+                    },
               }),
             );
           }
 
+          /*
+           * THE WELL'S OWN STATUS SYMBOL, AT THE END THAT PRODUCES.
+           *
+           * The bottom hole where there is one and the single location where
+           * there is not — which is the rule the explorer's map follows, and
+           * the reason it is stated as a rule: on a lease where NOTHING is
+           * deviated, hanging the status symbol off the bottom hole draws it
+           * nowhere at all. Lease 08_46924 names a status for sixteen of its
+           * 138 wells and files not one bottom hole, so that mistake is not
+           * hypothetical.
+           *
+           * It carries the tooltip for the same reason: a hit-test hands back
+           * a graphic, and on a two-mile lateral the surface hole is nowhere
+           * near the symbol somebody pointed at.
+           */
           graphics.push(
             new Graphic({
               geometry: {
                 type: "point",
-                longitude: well.surface[0],
-                latitude: well.surface[1],
+                longitude: well.bottom[0],
+                latitude: well.bottom[1],
               },
-              symbol: {
-                type: "simple-marker",
-                style: "circle",
-                size: 13,
-                color: [255, 255, 255, 0.95],
-                outline: { color: [...MARK, 1], width: 3 },
-              },
+              symbol: statusIcon(well)
+                ? {
+                    type: "picture-marker",
+                    url: statusIcon(well),
+                    width: 16,
+                    height: 16,
+                  }
+                : {
+                    type: "simple-marker",
+                    style: deviated ? "diamond" : "circle",
+                    size: 13,
+                    color: [255, 255, 255, 0.95],
+                    outline: { color: [...MARK, 1], width: 3 },
+                  },
               attributes: {
                 name: `Well ${well.name}`,
                 api: well.api,
                 drilled: well.drilled.toLowerCase(),
-                open: `${well.openTopFt.toLocaleString("en-US")}–${well.openBottomFt.toLocaleString("en-US")} ft`,
+                /* WHERE A HOLE IS OPEN IS A QUESTION ABOUT THE ROCK, and
+                   the lease map payload does not answer it — only the
+                   reservoir call carries perforations. "0–0 ft" would read as
+                   a measurement of zero rather than as an absence. */
+                open:
+                  well.openTopFt > 0 || well.openBottomFt > 0
+                    ? `${well.openTopFt.toLocaleString("en-US")}–${well.openBottomFt.toLocaleString("en-US")} ft`
+                    : "not recorded",
                 depth: `${well.depthFt.toLocaleString("en-US")} ft MD`,
-                field: well.field,
+                field: "field" in well ? well.field : lease.reservoir,
               },
             }),
           );
@@ -300,10 +394,12 @@ export function WellsMapCard({ report }: { report: LeaseReport }) {
       viewRef.current = null;
       mapRef.current = null;
     };
-    /* The basemap is swapped on the live map below rather than rebuilt here —
-       this effect runs once. */
+    /* The basemap is swapped on the live map below rather than rebuilt here.
+       This runs once the legend has settled, which is the only thing it waits
+       on — the symbols have to be in hand before the holes are drawn, because
+       redrawing them later would throw away the reader's pan and zoom. */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [legendSettled]);
 
   /* Swapping the basemap is a property set, not a new view: rebuilding would
      drop the reader's pan and zoom every time they changed the imagery. */
@@ -333,7 +429,9 @@ export function WellsMapCard({ report }: { report: LeaseReport }) {
     <Card padded={false} className="mt-4 px-[22px] py-[18px]">
       <CardHeader
         title={
-          <h3 className="text-[15px] font-bold">The wells, on the land itself</h3>
+          <h3 className="text-[15px] font-bold">
+            The wells, on the land itself
+          </h3>
         }
         action={
           <Badge tone="quiet" size="xs">
@@ -342,18 +440,35 @@ export function WellsMapCard({ report }: { report: LeaseReport }) {
           </Badge>
         }
       />
+      {/* COUNTED, NOT ASSUMED. This read `{lease.wells} surface · {lease.wells}
+          bottom hole · 0 recorded · {lease.wells} estimated path` — four
+          numbers derived from one, which is true only of a record where every
+          hole is filed at both ends and every path is estimated. The service
+          counts each separately and says 138 surface and ZERO bottom holes on
+          this lease. */}
       <p className="mt-1 text-[12px] text-mv-muted">
-        {formatAcres(lease.acres)} acres filed · {lease.wells} surface ·{" "}
-        {lease.wells} bottom hole · 0 recorded · {lease.wells} estimated path
+        {formatAcres(served?.ground.acres ?? lease.acres)} acres filed ·{" "}
+        {served?.ground.surfaceHoles ?? lease.wells} surface ·{" "}
+        {served?.ground.bottomHoles ?? lease.wells} bottom hole ·{" "}
+        {served?.ground.pathsMeasured ?? 0} recorded ·{" "}
+        {served?.ground.pathsEstimated ?? lease.wells} estimated path
       </p>
 
+      {/* THE SERVICE'S OWN ACCOUNT OF WHY THERE IS NO OUTLINE, per lease. The
+          sentence below was fixed text asserting that no boundary is held —
+          true of the ten fixture leases and not a promise about a record of
+          782. It stands as the fallback for the fixture path. */}
       <p className="mt-3 text-[11.5px] leading-[1.55] text-mv-muted">
-        No traced unit boundary is held for this lease. The operator filed{" "}
-        {formatAcres(lease.acres)} acres and the state records where each well
-        starts and finishes, but the outline of the pooled unit only exists on
-        the operator&apos;s survey plat — a scanned document that has to be
-        georeferenced and traced by hand. Rather than draw a plausible rectangle,
-        the map draws what is filed.
+        {served?.outlineNote ?? (
+          <>
+            No traced unit boundary is held for this lease. The operator filed{" "}
+            {formatAcres(lease.acres)} acres and the state records where each
+            well starts and finishes, but the outline of the pooled unit only
+            exists on the operator&apos;s survey plat — a scanned document that
+            has to be georeferenced and traced by hand. Rather than draw a
+            plausible rectangle, the map draws what is filed.
+          </>
+        )}
       </p>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
@@ -407,6 +522,23 @@ export function WellsMapCard({ report }: { report: LeaseReport }) {
                 tip ? "[&_.esri-view-surface]:cursor-pointer!" : ""
               }`.trim()}
             />
+            {/* THE WELL-SYMBOL LEGEND, from `GET /api/v1/map/legends` — the
+                map page's own panel, not a copy of it. Ninety symbols, each the
+                PNG the map itself draws, so the legend cannot disagree with
+                what is on the tiles.
+
+                CLOSED, AND IN THE SAME CORNER ON ALL THREE MAPS. This one is a
+                card inside a report rather than a page-sized map, and ninety
+                rows opened over it would cover the wells it explains; the
+                header alone sits there until a reader asks. Top left because
+                the reset button holds the bottom right and the list opens
+                downwards from its own header. */}
+            <LegendsPanel
+              mode="wells"
+              defaultOpen={false}
+              className="absolute top-3 left-3 z-10"
+            />
+
             <MapResetButton
               onClick={() => {
                 setRing("lease");

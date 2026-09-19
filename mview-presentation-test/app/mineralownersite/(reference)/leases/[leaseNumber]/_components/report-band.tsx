@@ -176,8 +176,12 @@ export function ReportBand({ report }: { report: LeaseReport }) {
             className="inline-block h-2 w-2 rounded-full bg-mv-green"
           />
           <strong>Lease status: {lease.status}</strong>
+          {/* HOW MANY ARE ACTUALLY PRODUCING, when the record says. `wells of
+              wells` was the fixture's assumption that every well on a lease is
+              on production; this lease has 138 and none of them posted last
+              month. A lease with no count of its own keeps the old reading. */}
           <span className="text-mv-portal-band-sub">
-            · {lease.wells} of {lease.wells} well
+            · {lease.producingWells ?? lease.wells} of {lease.wells} well
             {lease.wells === 1 ? "" : "s"} producing
           </span>
         </p>
@@ -230,16 +234,15 @@ function Figure({
       )}
 
       <div className="min-w-0">
-        {/* THE ⓘ SITS WITH THE LABEL, not at the end of the column. It marks
-            that the figure is qualified and the caption underneath is the
-            qualification; `inline-flex` with a gap keeps it against the last
-            word rather than floating to the far right of the cell, which is
-            what made it read as a control the first time round. */}
-        <p className="inline-flex items-center gap-1.5 text-[10.5px] font-bold tracking-[0.09em] text-mv-on-head-soft uppercase">
+        {/* NO ⓘ BESIDE THE LABEL. It was there to mark that the figure is
+            qualified, with the caption underneath as the qualification — but
+            the caption is already there, in plain words, directly below. A
+            glyph that points at visible text earns nothing, and every reading
+            of it was wrong: it is not a control, nothing opens, and beside a
+            dollar figure it invites a click. The band's one real explainer is
+            the "How it is built" pill, which looks like the control it is. */}
+        <p className="text-[10.5px] font-bold tracking-[0.09em] text-mv-on-head-soft uppercase">
           {label}
-          {caption && (
-            <Info aria-hidden="true" className="h-[11px] w-[11px] flex-none" />
-          )}
         </p>
         {/*
           `data-mv-portfolio-figure` IS THE LAPSED GATE AND IT STAYS. What went

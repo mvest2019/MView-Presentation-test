@@ -62,43 +62,108 @@ export function LeaseTable({
                 hands the widest column the least space — every other cell is a
                 short number or a single word, so the table's own layout
                 algorithm squeezed "MCCABE ETAL GU · Lease 290271" into four
-                lines and left the number columns half empty. */}
+                lines and left the number columns half empty.
+
+                A LOWER FLOOR ON A PHONE, because this column is FROZEN. It does
+                not scroll away, so whatever it takes is taken from the window
+                onto the other ten columns for good: at 270px on a 375px screen
+                the table had 77px left to scroll in — a slot too narrow to read
+                one figure in, which is what makes the scrolling feel broken
+                rather than merely long.
+
+                PINNED, NOT FLOORED, AND THAT IS THE PART A `min-w` GOT WRONG.
+                The table is `table-layout: auto` at a 1240px minimum, so the
+                browser distributes the surplus by content — and this column has
+                the most content by a distance, so it took far more than the
+                floor it was given and the window never actually widened. Three
+                widths together are what pin it: `w` proposes, `min-w` stops the
+                browser going under, `max-w` stops it going over.
+
+                170px leaves about 177px of window — more than twice what 270px
+                left — and still fits "BETTY KENNEDY UNIT A" on one line: the
+                cell's own padding takes 28 of it, and the name measures about
+                142px at this size. The full 270px floor returns at `sm`, where
+                the screen can afford it and auto layout can have its way. */}
             <SortableHeader
               column="name"
               sort={sort}
               onSortChange={onSortChange}
-              className="min-w-[270px]"
+              className="w-[170px] max-w-[170px] min-w-[170px] sm:w-auto sm:max-w-none sm:min-w-[270px]"
             >
               Lease (no.)
             </SortableHeader>
-            <SortableHeader numeric column="mvestimate" sort={sort} onSortChange={onSortChange}>
+            <SortableHeader
+              numeric
+              column="mvestimate"
+              sort={sort}
+              onSortChange={onSortChange}
+            >
               MVestimate
             </SortableHeader>
-            <SortableHeader numeric column="county-value" sort={sort} onSortChange={onSortChange}>
+            <SortableHeader
+              numeric
+              column="county-value"
+              sort={sort}
+              onSortChange={onSortChange}
+            >
               County appraised
             </SortableHeader>
-            <SortableHeader column="county" sort={sort} onSortChange={onSortChange}>
+            <SortableHeader
+              column="county"
+              sort={sort}
+              onSortChange={onSortChange}
+            >
               County
             </SortableHeader>
-            <SortableHeader column="operator" sort={sort} onSortChange={onSortChange}>
+            <SortableHeader
+              column="operator"
+              sort={sort}
+              onSortChange={onSortChange}
+            >
               Operator
             </SortableHeader>
-            <SortableHeader column="reservoir" sort={sort} onSortChange={onSortChange}>
+            <SortableHeader
+              column="reservoir"
+              sort={sort}
+              onSortChange={onSortChange}
+            >
               Reservoir
             </SortableHeader>
-            <SortableHeader column="wells" sort={sort} onSortChange={onSortChange}>
+            <SortableHeader
+              column="wells"
+              sort={sort}
+              onSortChange={onSortChange}
+            >
               Wells
             </SortableHeader>
-            <SortableHeader column="interest" sort={sort} onSortChange={onSortChange}>
+            <SortableHeader
+              column="interest"
+              sort={sort}
+              onSortChange={onSortChange}
+            >
               Decimal interest
             </SortableHeader>
-            <SortableHeader numeric column="gas" sort={sort} onSortChange={onSortChange}>
+            <SortableHeader
+              numeric
+              column="gas"
+              sort={sort}
+              onSortChange={onSortChange}
+            >
               Gas (MCF)
             </SortableHeader>
-            <SortableHeader numeric column="oil" sort={sort} onSortChange={onSortChange}>
+            <SortableHeader
+              numeric
+              column="oil"
+              sort={sort}
+              onSortChange={onSortChange}
+            >
               Oil (BBL)
             </SortableHeader>
-            <SortableHeader column="posted" sort={sort} onSortChange={onSortChange}>
+            <SortableHeader
+              column="posted"
+              sort={sort}
+              onSortChange={onSortChange}
+            >
               Last posted
             </SortableHeader>
           </TableRow>
@@ -108,7 +173,6 @@ export function LeaseTable({
           {leases.map((lease) => (
             <LeaseTableRow key={lease.slug} lease={lease} />
           ))}
-
         </TableBody>
       </Table>
     </TableScroll>

@@ -1,13 +1,9 @@
 import { Card, CardHeader } from "../../../../../_components/ui/card";
-import {
-  formatAcres,
-  formatCount,
-  formatDollars,
-} from "../../../_lib/lease-format";
+import { formatCount } from "../../../_lib/lease-format";
 import type { ReservoirReport } from "../../_lib/reservoir-report";
 
 /**
- * "THE ROCK ITSELF" — the record on the left, the reading on the right.
+ * "THE ROCK ITSELF" — the record on the left, what it says on the right.
  *
  * ── THE SPLIT IS THE POINT OF THE CARD ──
  *
@@ -28,25 +24,36 @@ import type { ReservoirReport } from "../../_lib/reservoir-report";
  * somebody with true numbers.
  */
 export function RockItselfCard({ report }: { report: ReservoirReport }) {
-  const { lease } = report;
-
   return (
     <Card padded={false} className="mt-4 px-[22px] py-[18px]">
       <CardHeader
         title={
-          <h3 className="text-[15px] font-bold">{report.name} — the rock itself</h3>
+          <h3 className="text-[15px] font-bold">
+            {report.name} — the rock itself
+          </h3>
         }
       />
 
       {/* `divide-x` draws the rule on the FIRST column's own right border, so
           the air before it is that column's `pr` and not the grid's `gap-x` —
           see the same note in `well/wellbore-card.tsx`. */}
+      {/* TWO COLUMNS, THE RECORD AND WHAT IT SAYS — but the right-hand side is
+          the SERVICE'S sentences now, not ones composed here. See the note by
+          the list itself.
+
+          The air before the second column is that column's own `pl` and not the
+          grid's `gap-x`, so the divider sits midway between the two rather than
+          hard against the right-hand one. */}
       <div className="mt-4 grid gap-y-8 lg:grid-cols-2 lg:gap-x-0 lg:divide-x lg:divide-mv-line">
         <section className="lg:pr-[14px]">
           <h4 className="text-[13.5px] font-bold">On the record</h4>
 
           <dl className="mt-2 grid gap-2 sm:grid-cols-2">
-            <Fact label="Reservoir" value={report.name} sub="as the state files it" />
+            <Fact
+              label="Reservoir"
+              value={report.name}
+              sub="as the state files it"
+            />
             <Fact
               label="Your wells in it"
               value={formatCount(report.wellCount)}
@@ -118,95 +125,64 @@ export function RockItselfCard({ report }: { report: ReservoirReport }) {
             <Fact
               label="Wells came on"
               value={report.wellsCameOn}
-              sub={report.wellCount === 1 ? "the only well here" : "all in the same month"}
+              sub={
+                report.wellCount === 1
+                  ? "the only well here"
+                  : "all in the same month"
+              }
             />
           </dl>
 
+          {/* HOW THE SERVICE KNOWS WHICH ROCK THIS IS, in its own words.
+              This was a fixed sentence — "read from the bracket in the field
+              name, because the reservoir field itself is blank" — which is one
+              of several ways the rock gets identified and was simply untrue on
+              a lease identified another way. The service names its own basis
+              per reservoir, and on this lease it says the opposite: "named
+              outright in the lease well roster's own reservoir field". A
+              provenance line that states the wrong provenance is worse than
+              none.
+
+              The fixed sentence survives as the fallback, for the fixture path,
+              where the bracket IS how those ten leases were read. */}
           <p className="mt-3 text-[11.5px] leading-[1.55] text-mv-muted">
-            Read from the bracket in the field name — because the reservoir field
-            itself is blank on these records. Measured on this record: where both
-            a field and a bracket exist they agree exactly, and the roster and the
-            well master agree with each other, which is what makes the bracket
-            safe to read.
+            {report.basisNote ??
+              "Read from the bracket in the field name — because the reservoir field itself is blank on these records. Measured on this record: where both a field and a bracket exist they agree exactly, and the roster and the well master agree with each other, which is what makes the bracket safe to read."}
           </p>
         </section>
 
-        <section className="lg:pl-7">
-          <h4 className="text-[13.5px] font-bold">What only this page can say</h4>
+        {/* ── THE PROSE COLUMN THAT USED TO SIT HERE IS GONE ──
+            "What only this page can say" composed seven sentences in the
+            browser out of the fields on the left. The service now sends its own
+            — `reservoirs[].insights`, rendered by `ServedReservoirReport` — and
+            they were the SAME SENTENCES, near enough word for word, printed
+            twice on one screen four inches apart.
 
-          <ul className="mt-2 divide-y divide-mv-line">
-            {[
-              <>
-                {report.oilProducedPercent.toFixed(1)}% of the oil is already
-                filed against {report.gasProducedPercent.toFixed(1)}% of the gas,
-                so what is left in this rock is gassier than what has come out of
-                it — the gas price matters more to the remainder than the history
-                suggests.
-              </>,
-              <>
-                At the rate of the last twelve filed months the gas the model
-                still expects would take about{" "}
-                {report.yearsLeftAtRecentRate.toFixed(1)} years to come out. That
-                is the model&apos;s own remainder divided by the recent rate, not
-                a second forecast — and a decline means the real tail is longer
-                and thinner than a flat division suggests.
-              </>,
-              <>
-                Its best month was {report.bestMonth} at{" "}
-                {formatCount(Math.round(report.bestMonthGas))} MCF; the last
-                twelve average {formatCount(Math.round(report.trailingAverageGas))},
-                which is {report.bestMonthGapPercent.toFixed(1)}% of that peak.{" "}
-                {report.declinePerMonth === null
-                  ? "Its filed record does not fall cleanly enough to state a rate."
-                  : `It is falling about ${report.declinePerMonth.toFixed(1)}% a month across the filed record.`}
-              </>,
-              <>
-                Over the {formatAcres(lease.acres)} acres of yours that sit in it,
-                this rock is worth {formatDollars(report.valuePerAcre)} an acre to
-                you, filed and projected together. That is the figure that
-                compares one reservoir with another: unlike a total it does not
-                reward whichever rock happens to have more of your acreage, and
-                unlike a rate per foot it does not depend on how the wells were
-                drilled.
-              </>,
-              <>
-                It has paid you {formatDollars(report.paidYouFiled)} on the filed
-                months and the model has {formatDollars(report.stillAheadCash)}{" "}
-                still ahead of it. Both are this reservoir&apos;s share of each
-                lease&apos;s cash, split by what its wells&apos; volumes are worth
-                — a lease with wells in two reservoirs cannot hand all of its
-                money to one of them.
-              </>,
-              <>
-                Across {formatCount(report.openFeet)} ft of open interval in{" "}
-                {report.wellCount} well{report.wellCount === 1 ? "" : "s"} it has
-                filed {formatCount(Math.round(report.gasPerFootOpen))} MCF of gas
-                for every foot the wells are open. It compares wells drilled the
-                same way as each other. A horizontal open over thousands of feet
-                and a vertical open over tens are not comparable per foot, so it
-                is not a figure to hold a differently drilled reservoir against.
-              </>,
-              <>
-                The {report.wellCount === 1 ? "one well" : `${report.wellCount} wells`}{" "}
-                here {report.wellCount === 1 ? "is" : "are"} open from{" "}
-                {formatCount(report.openTopFt)} to {formatCount(report.openBottomFt)}{" "}
-                ft of measured depth — {formatCount(report.openFeet)} ft of hole,
-                which is what this reservoir is being drained through.
-              </>,
-              report.otherLeasesInRock > 0 && (
-                <>
-                  Beyond this lease you hold {report.otherWellsInRock} more well
-                  {report.otherWellsInRock === 1 ? "" : "s"} in {report.name}, on{" "}
-                  {report.otherLeasesInRock} other lease
-                  {report.otherLeasesInRock === 1 ? "" : "s"}. This report is
-                  about this lease&apos;s wells in it; open another lease to see
-                  its own. What an operator learns in this rock on one lease
-                  usually shows up on the others.
-                </>
-              ),
-            ]
-              .filter(Boolean)
-              .map((item, position) => (
+            Running both cost more than the repetition. The two disagreed: this
+            column divided only the FILED cash by the acreage and printed $120
+            an acre beside the service's $128, and it wrote "63.9% of that peak"
+            for a figure that is the FALL from the peak, not the proportion of
+            it — the proportion was 36.1%. Two texts saying one thing is two
+            chances to say it wrong.
+
+            The service's list is also the fuller one: twelve bullets against
+            seven on a lease with several wells, including the spread between
+            the best and weakest well, the interval every well shares, how
+            concentrated the filing is, and how many wells in the same rock the
+            reader holds on OTHER leases. None of those are fields, so this
+            column could never have said them.
+
+            WHAT STAYS IS THE COLUMN ON THE LEFT. The tile grid is not
+            duplicated anywhere and is the only place the depths, the
+            perforated interval, the operators and the filed range are stated
+            as figures. Recoverable from git history if the prose is wanted
+            back. */}
+        {report.insights && report.insights.length > 0 && (
+          <section className="lg:pl-7">
+            <h4 className="text-[13.5px] font-bold">What the record says</h4>
+
+            <ul className="mt-2 divide-y divide-mv-line">
+              {report.insights.map((line, position) => (
                 <li
                   key={position}
                   className="flex items-start gap-3 py-2.5 text-[13px] leading-[1.6] text-mv-slate"
@@ -215,11 +191,12 @@ export function RockItselfCard({ report }: { report: ReservoirReport }) {
                     aria-hidden="true"
                     className="mt-[7px] h-1.5 w-1.5 flex-none rounded-full bg-mv-green"
                   />
-                  <span className="min-w-0">{item}</span>
+                  <span className="min-w-0">{line}</span>
                 </li>
               ))}
-          </ul>
-        </section>
+            </ul>
+          </section>
+        )}
       </div>
     </Card>
   );

@@ -146,10 +146,21 @@ export function MeasuresCard({ report }: { report: LeaseReport }) {
                     >
                       {bar.label}
                     </span>
+                    {/* `mv-muted` AND NOT `mv-line-strong` FOR THE REST.
+                        The fill was #d5dae0 on a #e8ecf3 track — nineteen
+                        points apart across all three channels, a contrast
+                        ratio of about 1.15 to 1. The widths were right the
+                        whole time and no reader could see them: every bar but
+                        this lease's read as an empty track. A bar you cannot
+                        measure by eye is not a bar chart.
+
+                        The lease being read stays `mv-ink`, so it is still the
+                        one that carries. The others are now legible against
+                        the track without competing with it. */}
                     <span className="h-2.5 min-w-0 flex-1 rounded-full bg-mv-portal-wash">
                       <span
                         className={`block h-full rounded-full ${
-                          self ? "bg-mv-ink" : "bg-mv-line-strong"
+                          self ? "bg-mv-ink" : "bg-mv-muted"
                         }`}
                         style={{ width: `${width}%` }}
                       />
@@ -175,33 +186,48 @@ export function MeasuresCard({ report }: { report: LeaseReport }) {
             {(100 - topThreeShare).toFixed(1)}%.
           </Note>
 
+          {/* NO EXPECTATION ON FILE IS NOT A MISS OF ZERO. The model does not
+              always hold a figure for the month a lease last filed, and two
+              empty bars under "+0.0% against what the model wanted" would read
+              as the lease having come in exactly on model — a claim, where the
+              truth is that there is nothing to compare. The service says why in
+              a sentence of its own and that sentence is what goes here. See
+              `LeaseReport.modelNote`. */}
           <Panel>
             <PanelHeading
               icon={<Flag />}
               text="Filed against what the model expected"
             />
-            <div className="mt-3 space-y-2">
-              <CompareBar
-                label="The model wanted"
-                value={report.modelWanted}
-                peak={Math.max(report.modelWanted, report.statePosted)}
-                tone="pale"
-              />
-              <CompareBar
-                label="The state posted"
-                value={report.statePosted}
-                peak={Math.max(report.modelWanted, report.statePosted)}
-                tone="dark"
-              />
-            </div>
+            {report.modelNote ? (
+              <p className="mt-3 text-[12.5px] leading-[1.55] text-mv-slate">
+                {report.modelNote}
+              </p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                <CompareBar
+                  label="The model wanted"
+                  value={report.modelWanted}
+                  peak={Math.max(report.modelWanted, report.statePosted)}
+                  tone="pale"
+                />
+                <CompareBar
+                  label="The state posted"
+                  value={report.statePosted}
+                  peak={Math.max(report.modelWanted, report.statePosted)}
+                  tone="dark"
+                />
+              </div>
+            )}
           </Panel>
 
-          <Note>
-            {report.lastPosting} · MCF at your interest, and the filing is{" "}
-            {report.modelMissPercent >= 0 ? "+" : ""}
-            {report.modelMissPercent.toFixed(1)}% against what the model wanted.
-            The filing is the fact.
-          </Note>
+          {!report.modelNote && (
+            <Note>
+              {report.lastPosting} · MCF at your interest, and the filing is{" "}
+              {report.modelMissPercent >= 0 ? "+" : ""}
+              {report.modelMissPercent.toFixed(1)}% against what the model
+              wanted. The filing is the fact.
+            </Note>
+          )}
         </section>
 
         <section>
@@ -457,16 +483,30 @@ function CompareBar({
   return (
     <div className="flex items-center gap-2.5 text-[11.5px]">
       <span className="w-[110px] flex-none text-mv-muted">{label}</span>
+      {/* The same contrast fix as the ranking bars above: `pale` was all but
+          invisible against the track, so "the model wanted" — usually the
+          LONGER of the two — looked like the empty one. */}
       <span className="h-2.5 min-w-0 flex-1 rounded-full bg-mv-portal-wash">
         <span
           className={`block h-full rounded-full ${
-            tone === "dark" ? "bg-mv-ink" : "bg-mv-line-strong"
+            tone === "dark" ? "bg-mv-ink" : "bg-mv-muted"
           }`}
           style={{ width: `${peak > 0 ? (value / peak) * 100 : 0}%` }}
         />
       </span>
+      {/* A FIGURE THAT IS NOT ZERO DOES NOT PRINT AS ZERO. `Math.round` turned
+          a real filing of a fraction of an MCF into "0" while the bar beside it
+          still drew a pixel and the sentence underneath still said the miss was
+          -99.9% rather than -100%. Three parts of one row disagreeing about
+          whether anything was filed at all.
+
+          A small interest is the ordinary case for this, not an edge one: at
+          0.2983% of a lease, a month the state posted in the hundreds of MCF is
+          well under one MCF to the reader. */}
       <span className="w-[56px] flex-none text-right font-bold tabular-nums">
-        {formatCount(Math.round(value))}
+        {value > 0 && Math.round(value) === 0
+          ? "<1"
+          : formatCount(Math.round(value))}
       </span>
     </div>
   );
