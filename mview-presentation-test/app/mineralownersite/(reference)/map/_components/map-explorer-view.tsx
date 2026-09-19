@@ -14,7 +14,11 @@ import { loadArcgisModules } from "../../../_lib/arcgis-loader";
 import { ClusterTooltip } from "./cluster-tooltip";
 import { SampleBanner } from "./sample-banner";
 import type { Entitlements } from "@/lib/entitlements";
-import { useClaimedDismiss, useClaimedFrame } from "./claimed-context";
+import {
+  useClaimedDismiss,
+  useClaimedFrame,
+  useClaimedWells,
+} from "./claimed-context";
 import {
   MapEntitlementsProvider,
   tierFromPortalDensity,
@@ -817,6 +821,8 @@ export function MapExplorerView({
    */
   const claimed = useClaimedFrame();
   const { dismissed: claimDismissed } = useClaimedDismiss();
+  /* The wells of the ticked leases — every tick in the rail changes this. */
+  const claimedWells = useClaimedWells();
 
   /* Applied once. The claim arriving must not re-frame a map the reader has
      since panned, filtered or zoomed away from. */
@@ -4027,6 +4033,8 @@ export function MapExplorerView({
    */
   useEffect(() => {
     if (status !== "ready") return;
+    /* Closed by the reader: the map is theirs until they ask for it back. */
+    if (claimDismissed) return;
     if (!claimed || claimFramedRef.current) return;
 
     const view = viewRef.current;
@@ -4054,36 +4062,12 @@ export function MapExplorerView({
        still before paint, so nothing renders the statewide view first. */
     queueMicrotask(() => {
       setClustersLoading(false);
-      setWells(claimed.wells);
-      setWellsLoading(false);
-      setWellError(null);
       setNoMatches(false);
     });
 
-    /*
-     * AND DRAWN ONTO THE MAP, which `setWells` does not do.
-     *
-     * That state feeds the table, the Insights picker and the readout; the
-     * graphics layer is separate and is what `loadWells` fills with
-     * `buildWellGraphics`. Setting the state alone framed the right ground and
-     * left it empty — the bug this comment exists to stop recurring.
-     *
-     * After the legend symbols, for the reason the opening load waits for
-     * them: `buildWellGraphics` reads the icon map as it draws, and drawing
-     * first plots every well as the fallback dot with nothing to replace it.
-     */
-    let drawn = false;
-    void (wellIconsReadyRef.current ?? Promise.resolve()).then(() => {
-      if (drawn) return;
-      const ctors = ctorsRef.current;
-      const layer = wellLayerRef.current;
-      if (!ctors || !layer) return;
-
-      layer.removeAll();
-      layer.addMany(
-        buildWellGraphics(ctors.Graphic, claimed.wells, wellIconsRef.current),
-      );
-    });
+    /* The wells themselves are drawn by the effect below, which also runs
+       every time the reader ticks a lease. Framing happens once; drawing
+       happens whenever the selection changes. */
 
     const box = claimed.extent;
     if (!box) return;
@@ -4126,11 +4110,56 @@ export function MapExplorerView({
       )
       .catch(ignoreInterrupted);
 
+  }, [status, claimed, claimDismissed, openingFilters, clearClusters]);
+
+  /*
+   * ── DRAWING THE TICKED LEASES ──
+   *
+   * Runs on arrival and on every tick in the rail. Unticking a lease takes its
+   * wells off the map and leaves the camera where it is: re-framing on each
+   * tick would walk the reader around the state while they are trying to
+   * narrow what they are looking at.
+   *
+   * `setWells` alone does NOT put anything on the map — it feeds the table,
+   * the Insights picker and the readout. The graphics layer is separate, and
+   * filling it is what `loadWells` does with `buildWellGraphics`. Setting only
+   * the state framed the right ground and left it empty, which is the bug this
+   * comment exists to stop recurring.
+   *
+   * After the legend symbols, for the reason the opening load waits for them:
+   * `buildWellGraphics` reads the icon map as it draws, so drawing first plots
+   * every well as the fallback dot with nothing to replace it.
+   */
+  useEffect(() => {
+    if (!claimFramedRef.current || claimDismissed) return;
+
+    const wells = claimedWells;
+
+    wellsRef.current = wells;
+    queueMicrotask(() => {
+      setWells(wells);
+      setWellsLoading(false);
+      setWellError(null);
+    });
+
+    let stale = false;
+    void (wellIconsReadyRef.current ?? Promise.resolve()).then(() => {
+      if (stale) return;
+      const ctors = ctorsRef.current;
+      const layer = wellLayerRef.current;
+      if (!ctors || !layer) return;
+
+      layer.removeAll();
+      layer.addMany(
+        buildWellGraphics(ctors.Graphic, wells, wellIconsRef.current),
+      );
+    });
+
     return () => {
-      /* Unmounted, or the claim changed, before the symbols landed. */
-      drawn = true;
+      /* A newer selection, or unmount, before the symbols landed. */
+      stale = true;
     };
-  }, [status, claimed, openingFilters, clearClusters]);
+  }, [claimedWells, claimDismissed, status]);
 
   /*
    * ── CLOSING THE CLAIMED VIEW ──
