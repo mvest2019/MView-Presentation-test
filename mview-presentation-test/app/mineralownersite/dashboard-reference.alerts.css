@@ -185,3 +185,449 @@ body .mv-ref-app .al-ell:focus-visible {
   border-radius: 2px;
 }
 
+
+/* ===========================================================================
+   P · THE THREE PILL ROWS ON ALERTS, AS ONE RECIPE
+   ---------------------------------------------------------------------------
+   PORTED FROM the reference's `app.css`, which reconciled them. Measured
+   there, and it is what made the page read as three products stacked:
+
+     .al-scope    8px 15px  12px/700   active = solid #12513c, white
+     .al-filter   6px 12px  12px/600   active = mint fill, green text
+     .alog-kinds  7px 12px  11.5px/600 active = solid #2e8f6d, white
+
+   Three sizes, three weights and three different ideas of what "selected"
+   looks like, in three rows that sit on top of one another. A reader scanning
+   them cannot tell whether the difference means anything, so they read the
+   whole block as complicated rather than as three choices.
+
+   ONE SHAPE AND ONE SELECTED STATE for all three. Hierarchy is carried by
+   ORDER — whose ground, then what kind, then which sort — which is what a
+   reader actually uses, not by three inventions of green.
+
+   This overrides `.al-filter button` from `dashboard-reference.css`, which is
+   the prototype's own sheet, and that is deliberate rather than the accidental
+   drift that file's header warns about: the prototype's pill is one of the
+   three being reconciled, and leaving it alone is what kept them apart. This
+   sheet loads after it in the same layer, so source order decides.
+   ======================================================================== */
+.mv-ref-app .al-scope > button,
+.mv-ref-app .al-filter button,
+.mv-ref-app .alog-kinds > button {
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--slate);
+  cursor: pointer;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid var(--line);
+  transition: border-color .12s, background .12s, color .12s;
+}
+.mv-ref-app .al-scope > button:hover,
+.mv-ref-app .al-filter button:hover,
+.mv-ref-app .alog-kinds > button:hover {
+  border-color: var(--green);
+  color: var(--green-deep);
+}
+.mv-ref-app .al-scope > button.on,
+.mv-ref-app .al-filter button.on,
+.mv-ref-app .alog-kinds > button.on {
+  background: var(--green-deep, #1f6d52);
+  border-color: var(--green-deep, #1f6d52);
+  color: #fff;
+}
+.mv-ref-app .al-scope > button:focus-visible,
+.mv-ref-app .al-filter button:focus-visible,
+.mv-ref-app .alog-kinds > button:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+.mv-ref-app .al-filter button[disabled] { opacity: .5; cursor: default; }
+
+/* THE COUNT IS THE SAME OBJECT IN ALL THREE ROWS. It used to be a bold
+   number in two of them and "· 12" in the third. */
+.mv-ref-app .al-scope > button b,
+.mv-ref-app .al-filter .alf-n,
+.mv-ref-app .alog-kinds > button b {
+  font-weight: 800;
+  margin-left: 5px;
+  opacity: .72;
+}
+.mv-ref-app .al-scope > button.on b,
+.mv-ref-app .al-filter button.on .alf-n,
+.mv-ref-app .alog-kinds > button.on b { opacity: .8; }
+
+/* the rows themselves: the same gap and rhythm, stacked tightest to widest */
+.mv-ref-app .al-scope {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: 14px 0 0;
+}
+.mv-ref-app .al-filter { display: flex; flex-wrap: wrap; gap: 7px; margin: 9px 0 0; }
+.mv-ref-app .al-scope-note {
+  flex: 1 1 100%; min-width: 0; margin: 1px 0 0;
+  font-size: 11px; line-height: 1.55; color: var(--muted);
+}
+
+/* ===========================================================================
+   L · THE ALERTS TAB — the alerts opened out
+   ---------------------------------------------------------------------------
+   PORTED FROM the reference's `app.css`. One row per filing, production month
+   and operator change. THE ROWS THEMSELVES HAVE NO STYLES HERE: they emit
+   `al-row`, `al-ico` and `alx-stats`, the alert card's own classes, so a row
+   on this tab and a card on the next are the same object in the same clothes.
+   A hand-rolled card drifted from them inside a day — its own radius, its own
+   padding, its own type scale. All that is left is the filter bar.
+   ======================================================================== */
+.mv-ref-app .alog { margin: 10px 0 0; }
+
+.mv-ref-app .alog-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 7px 9px;
+  margin: 9px 0 10px;
+}
+.mv-ref-app .alog-kinds { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+/* the pill itself is the shared recipe above — these three rows are one
+   control repeated, and three private copies of it is what made the block
+   read as complicated. Only the row's own layout lives here. */
+
+/* ---- AND THE ONE CONTROL THAT IS NOT A PILL stays not a pill.
+   "On my leases" is a checkbox: it combines with whatever is selected rather
+   than replacing it, and dressing it as a fourth pill in the same row would
+   say it is another one of them. */
+.mv-ref-app .alog-mine {
+  display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+  font-size: 11.5px; font-weight: 600; padding: 7px 13px;
+  color: var(--slate); border-radius: 999px;
+  background: #fff; border: 1px solid var(--line);
+}
+.mv-ref-app .alog-mine.on { border-color: #bfd9cc; background: #f5faf8; color: #1f6d52; }
+.mv-ref-app .alog-mine input {
+  width: 13px; height: 13px; margin: 0; accent-color: #2e8f6d;
+}
+
+.mv-ref-app .alog-range {
+  display: inline-flex; align-items: stretch; flex-wrap: wrap;
+  margin-left: auto; min-width: 0;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: #fff; overflow: hidden;
+}
+.mv-ref-app .alog-rk {
+  display: flex; align-items: center; padding: 0 11px;
+  font-size: 9.5px; font-weight: 600; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--slate); background: #f8faf9;
+  border-right: 1px solid var(--line);
+}
+.mv-ref-app .alog-rk-mid { border-left: 1px solid var(--line); }
+.mv-ref-app .alog-range input {
+  border: 0; background: transparent; font-size: 11.5px;
+  color: var(--ink); padding: 7px 10px; min-width: 0;
+}
+.mv-ref-app .alog-range input:focus-visible { outline: 2px solid #0f766e; outline-offset: -2px; }
+.mv-ref-app .alog-range:focus-within {
+  border-color: #2e8f6d; box-shadow: 0 0 0 3px rgba(46, 143, 109, .14);
+}
+.mv-ref-app .alog-clear {
+  padding: 0 13px; font-size: 11px; color: var(--slate); background: #f8faf9;
+  border: 0; border-left: 1px solid var(--line); cursor: pointer;
+}
+.mv-ref-app .alog-clear:hover { color: var(--ink); }
+
+.mv-ref-app .alog-count { margin: 0 0 10px; font-size: 11.5px; color: var(--muted); }
+.mv-ref-app .alog-count strong { color: var(--ink); font-weight: 700; }
+
+.mv-ref-app .alog-more {
+  display: block; width: 100%; margin: 12px 0 0; padding: 12px;
+  font-size: 12px; font-weight: 700; color: #1f6d52; cursor: pointer;
+  background: #f5faf8; border: 1px solid #bfd9cc; border-radius: 12px;
+}
+.mv-ref-app .alog-more:hover { background: #eaf5f0; }
+.mv-ref-app .alog-end { margin: 12px 2px 0; font-size: 11.5px; color: var(--muted); }
+.mv-ref-app .alog-empty {
+  margin: 4px 0 0; padding: 16px; border-radius: 13px;
+  background: #fbfdfc; border: 1px solid var(--line);
+  font-size: 12.5px; line-height: 1.6; color: var(--slate);
+}
+.mv-ref-app .alog-empty strong { color: var(--ink); font-weight: 700; }
+
+/* ---- THE DATE RANGE TAKES THE WHOLE ROW ONCE IT NO LONGER FITS BESIDE THE
+   PILLS. The reference uses `@container (max-width: 620px)`, which needs the
+   route section to be a container; this app's shell does not declare one, so
+   the same rule is expressed as a viewport query against the width at which
+   the main column reaches that size. Below it the range stops being pushed
+   to the right by `margin-left: auto` and sits full-width under the kinds. */
+@media (max-width: 900px) {
+  .mv-ref-app .alog-range { margin-left: 0; width: 100%; }
+}
+@media (max-width: 560px) {
+  .mv-ref-app .alog-mine { width: 100%; justify-content: flex-start; }
+  .mv-ref-app .alog-kinds { width: 100%; }
+  .mv-ref-app .al-scope > button,
+  .mv-ref-app .al-filter button { flex: 1 1 auto; }
+}
+
+/* the log's rows print alongside the alert list, but its filter bar is
+   chrome — the same rule the reference applies to `.al-filter` */
+@media print {
+  .mv-ref-app .alog-bar,
+  .mv-ref-app .al-scope,
+  .mv-ref-app .alog-more { display: none !important; }
+}
+
+/* ===========================================================================
+   S · THE RULES THAT FOUND NOTHING
+   ---------------------------------------------------------------------------
+   `alerts.silent` — the other nine of the fourteen rules the surface runs.
+   See the block in `AlertsView`. It is a FOOTNOTE, so it is dressed like the
+   notes band beside it rather than like a card: same `#f7faf9`, same hairline,
+   same 11.5px caption type. What it must not do is compete with the findings
+   above it, which is the whole reason it is closed by default.
+
+   The marker is the browser's own. A custom triangle here would be a third
+   disclosure affordance on a page that already has `expand →` and the drawer,
+   and the native one is the only one that comes with the keyboard and the
+   announced open/closed state for free.
+   ======================================================================== */
+.mv-ref-app .al-silent {
+  margin: 12px 0 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f7faf9;
+}
+.mv-ref-app .al-silent > summary {
+  cursor: pointer;
+  list-style-position: outside;
+  padding: 9px 13px;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.45;
+  color: var(--slate);
+}
+.mv-ref-app .al-silent > summary:hover { color: var(--green-deep); }
+.mv-ref-app .al-silent > summary:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+.mv-ref-app .al-silent[open] > summary {
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+}
+.mv-ref-app .al-silent > ul {
+  margin: 0;
+  padding: 9px 13px 11px 29px;
+  display: grid;
+  gap: 5px;
+}
+.mv-ref-app .al-silent > ul > li {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+/* the rule's NAME is the thing being scanned; its reason is the explanation */
+.mv-ref-app .al-silent > ul > li > b { color: var(--slate); font-weight: 700; }
+
+/* ===========================================================================
+   M · THE DRAWER'S RECORD AND ITS MAP
+   ---------------------------------------------------------------------------
+   PORTED VERBATIM from the reference's `app.css` — the `.dx-facts` paperwork
+   grid, the `.dx-map` block and every `.ml-*` rule `WellMap` draws with.
+
+   EVERY RULE IS SCOPED UNDER `.mv-ref-app`, which the reference does not need
+   and this app does: `/mineralownersite/map` is a whole route with its own
+   map stack, and a bare `.ml-map` or `.dx-pick` here would reach into it.
+   The reference has one map and no such neighbour.
+   ======================================================================== */
+.mv-ref-app .dx-note { margin-left: auto; font-size: 10px; color: var(--muted); }
+.mv-ref-app .dx-facts {
+  margin: 0 0 12px; padding: 12px 14px; border-radius: 11px;
+  background: #fbfdfc; border: 1px solid var(--line);
+}
+.mv-ref-app .dx-facts-h { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; margin: 0 0 9px; }
+.mv-ref-app .dx-facts-h h4 {
+  margin: 0; font-size: 11px; font-weight: 800; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--slate);
+}
+.mv-ref-app .dx-facts-g {
+  display: grid; gap: 9px 14px;
+  grid-template-columns: repeat(auto-fit, minmax(min(128px, 100%), 1fr));
+}
+.mv-ref-app .dx-f {
+  min-width: 0; display: flex; flex-direction: column; gap: 1px;
+  padding: 7px 10px; border-radius: 9px;
+  background: #fff; border: 1px solid #eef2f1;
+}
+.mv-ref-app .dx-fk {
+  font-size: 8.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--muted); line-height: 1.3;
+}
+.mv-ref-app .dx-fv {
+  font-size: 12.5px; font-weight: 700; line-height: 1.4; color: var(--ink);
+  font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+}
+.mv-ref-app .dx-fs { font-size: 9.5px; line-height: 1.4; color: var(--muted); overflow-wrap: anywhere; }
+.mv-ref-app .ml-segs[hidden] { display: none; }
+.mv-ref-app .ml-mapwrap { position: relative; }
+.mv-ref-app .ml-mapsvg { cursor: grab; touch-action: none; }
+.mv-ref-app .ml-mapsvg.dragging { cursor: grabbing; }
+.mv-ref-app .ml-loading { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 2;
+              font-size: 10.5px; font-weight: 700; color: #fff; background: rgba(13, 14, 23, .78);
+              border-radius: 999px; padding: 4px 12px; pointer-events: none; }
+.mv-ref-app .ml-reset { position: absolute; left: 12px; top: 12px; z-index: 2; font: inherit; font-size: 11px;
+            font-weight: 700; color: var(--ink); background: rgba(255, 255, 255, .92);
+            border: 1px solid var(--line); border-radius: 9px; padding: 5px 10px;
+            cursor: pointer; }
+.mv-ref-app .ml-reset:hover { background: #fff; }
+.mv-ref-app .ml-zoom { position: absolute; right: 12px; bottom: 12px; z-index: 2; display: flex;
+           flex-direction: column; border: 1px solid var(--line); border-radius: 9px;
+           overflow: hidden; background: rgba(255, 255, 255, .92); }
+.mv-ref-app .ml-zoom button { font: inherit; font-size: 15px; font-weight: 800; line-height: 1;
+                  color: var(--ink); background: none; border: 0; padding: 6px 9px;
+                  cursor: pointer; }
+.ml-zoom button + button { border-top: 1px solid var(--line); }
+.mv-ref-app .ml-zoom button:hover { background: #f2f5f6; }
+.mv-ref-app .ml-nb { cursor: help; }
+.mv-ref-app .ml-mapctl { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center;
+             padding: 0 0 10px; }
+.mv-ref-app .ml-bases { margin-left: auto; }
+.mv-ref-app .ml-mapctl-l { font-size: 10px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
+               color: var(--slate); }
+.mv-ref-app .ml-segs { display: inline-flex; border: 1px solid #dde4ea; border-radius: 10px;
+           overflow: hidden; }
+.mv-ref-app .ml-segs button { font: inherit; font-size: 12px; font-weight: 700; color: var(--slate);
+                  background: #fff; border: 0; border-left: 1px solid #eef2f1; padding: 7px 13px;
+                  cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.mv-ref-app .ml-segs button:first-child { border-left: 0; }
+.mv-ref-app .ml-segs button.on { background: var(--ink); color: #fff; }
+.mv-ref-app .ml-segs button.on i { background: rgba(255, 255, 255, .16); color: #fff; }
+.mv-ref-app .ml-segs button:disabled { color: #cbd5e1; cursor: not-allowed; }
+.mv-ref-app .ml-segs button i { font-style: normal; font-size: 10px; font-weight: 800; background: #eef1f4;
+                    color: var(--slate); border-radius: 999px; padding: 1px 6px; }
+.ml-segs button:hover:not(.on):not(:disabled) { background: #f6f8f9; color: var(--ink); }
+.mv-ref-app .ml-segs button:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
+.mv-ref-app .ml-sat { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700;
+          color: var(--slate); margin-left: auto; cursor: pointer; }
+.mv-ref-app .ml-sat input { accent-color: var(--green-deep); }
+.mv-ref-app .ml-nb { cursor: default; }
+.mv-ref-app .ml-map { padding: 2px 0 0; }
+.mv-ref-app .ml-mapsvg { display: block; width: 100%; height: auto; border-radius: 12px; }
+.mv-ref-app .ml-map { min-width: 0; max-width: 100%; }
+.mv-ref-app .ml-pin { cursor: pointer; }
+.mv-ref-app .ml-pin:focus-visible { outline: 2px solid var(--green-deep); outline-offset: 2px; }
+.mv-ref-app .ml-maplegend { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center;
+                justify-content: center; padding: 10px 2px 0; font-size: 11.5px;
+                font-weight: 700; color: var(--ink); }
+.mv-ref-app .ml-maplegend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px;
+                  margin-right: 6px; vertical-align: -1px; }
+.mv-ref-app .ml-maplegend .ml-mapkey { font-weight: 600; color: var(--slate);
+                           border-left: 1px solid #e2e8f0; padding-left: 16px; }
+.mv-ref-app .ml-maplegend .ml-mapkey b { color: var(--ink); }
+.mv-ref-app .ml-mapnote { font-size: 11.5px; color: var(--slate); line-height: 1.65; text-align: center;
+              max-width: 760px; margin: 8px auto 0; padding: 0 2px; }
+.mv-ref-app .ml-mapnote strong { color: var(--ink); }
+.mv-ref-app .dx-map { margin: 0 0 14px; padding: 12px; border: 1px solid var(--line);
+          border-radius: 14px; background: #fff; }
+.mv-ref-app .dx-map-h { font-size: 11px; font-weight: 800; letter-spacing: .06em;
+            text-transform: uppercase; color: var(--slate); margin: 0 0 4px; }
+.mv-ref-app .dx-map-cap { margin: 0 0 10px; line-height: 1.6; }
+.mv-ref-app .dx-map-hint { margin: 8px 2px 0; }
+.mv-ref-app .dx-map-empty { background: #f8faf9; }
+.mv-ref-app .dx-pick { margin-top: 10px; padding: 10px 12px; border-radius: 11px;
+           background: #f6f9f8; border: 1px solid #e8efec; }
+.mv-ref-app .dx-pick-t { font-size: 12.5px; line-height: 1.5; color: var(--ink);
+             display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.mv-ref-app .dx-pick-t p, .mv-ref-app .dx-pick p { margin: 4px 0 0; line-height: 1.6; }
+.mv-ref-app .dx-pick-none { font-style: normal; }
+.mv-ref-app .dx-pick-k { font-size: 9.5px; font-weight: 800; letter-spacing: .06em;
+             text-transform: uppercase; padding: 3px 7px; border-radius: 999px;
+             border: 1px solid transparent; white-space: nowrap; }
+.mv-ref-app .dx-pick-permit { background: #eef4ff; color: #2d4a9e; border-color: #d9e4fb; }
+.mv-ref-app .dx-pick-completion { background: #eef8f3; color: #1f6d52; border-color: #d6ebe1; }
+.mv-ref-app .dx-pick-wellbore { background: #f3f4f6; color: #475569; border-color: #e5e7eb; }
+.mv-ref-app .dx-see { margin-top: 9px; font-size: 11.5px; font-weight: 800;
+          padding: 7px 13px; border-radius: 999px; cursor: pointer;
+          color: #fff; background: #2e8f6d; border: 1px solid #2e8f6d;
+          transition: background .12s, border-color .12s; }
+.mv-ref-app .dx-see:hover { background: #27795c; border-color: #27795c; }
+.mv-ref-app .dx-see:focus-visible { outline: 2px solid #0f766e; outline-offset: 2px; }
+.mv-ref-app .dx-map svg { width: 100%; height: auto; display: block; }
+.mv-ref-app .dx-map svg.ml-mapsvg { min-height: 300px; }
+
+/* ===========================================================================
+   T · THE ALERTS PAGE KEEPS THE REFERENCE'S OWN TYPE SCALE
+   ---------------------------------------------------------------------------
+   `dashboard-reference.onebar.css` remaps every sub-12px size in the reference
+   copy up one tier — 173 declarations, portal-wide, "capped so nothing
+   overtakes the portal shell's 13.5px body size". That decision stands for
+   every other module. Alerts is exempted here, by request: it is the page
+   being compared against `mineral-owner-site-2.0` line for line, and a label
+   two points larger than the reference's is the difference a side-by-side
+   shows first.
+
+   EVERY NUMBER BELOW WAS MEASURED, not read off the sheet — `getComputedStyle`
+   on the reference build running at :8787 with a completion panel open, and
+   again on this app, for all 91 classes the route and its drawer emit. Only
+   the ones that actually differed are here; the other 70-odd already matched
+   and are deliberately not re-declared.
+
+   TWO SCOPES, because the page and the panel are different elements:
+
+     section[data-route="app-alerts"]   the route only, so Activities,
+                                        Production and the Dashboard keep the
+                                        stepped-up scale they were given
+
+     .ctx-drawer                        the detail panel, which is a sibling of
+                                        the route section and shared by every
+                                        module — there is no "opened from
+                                        Alerts" marker to scope to, so this
+                                        half necessarily reaches the panel
+                                        wherever it is opened from. Said out
+                                        loud because it is the one place this
+                                        block is wider than its heading claims.
+
+   SPECIFICITY AND ORDER both favour these: `.mv-ref-app .x` in the remap is
+   (0,2,0), these are (0,2,1) and (0,3,0), and this sheet is imported after it
+   in the same layer. See `dashboard-reference.layer.css`.
+   ======================================================================== */
+
+/* ---- the route ------------------------------------------------------- */
+.mv-ref-app section[data-route="app-alerts"] .act-band { font-size: 9.5px; }
+.mv-ref-app section[data-route="app-alerts"] .al-note { font-size: 11.5px; }
+.mv-ref-app section[data-route="app-alerts"] .al-sev,
+.mv-ref-app section[data-route="app-alerts"] .al-sev.s-imp,
+.mv-ref-app section[data-route="app-alerts"] .al-sev.s-act { font-size: 9.5px; }
+.mv-ref-app section[data-route="app-alerts"] .alx-k { font-size: 9px; }
+/* the ledger's two carry `.mv-alwatch` in BOTH the copy and the remap, so the
+   override has to name it too or it loses on specificity rather than order */
+.mv-ref-app section[data-route="app-alerts"] .mv-alwatch .aw-cap { font-size: 11.5px; }
+.mv-ref-app section[data-route="app-alerts"] .mv-alwatch .aw-kicker { font-size: 10px; }
+.mv-ref-app section[data-route="app-alerts"] .ctx-hint { font-size: 11px; }
+.mv-ref-app section[data-route="app-alerts"] .chip { font-size: 11.5px; }
+
+/* ---- AND THE ALERT'S OWN SENTENCE GOES BACK TO 12px.
+   This sheet's own rule 23 raised it to 13.5px, on the argument that the body
+   is the thing being read and sat a size below the title above it. That was a
+   local decision about this page and this page is now matching the reference,
+   so the reference's 12px wins. Rule 23's colour is kept: it is a contrast
+   fix, not a size one. */
+.mv-ref-app section[data-route="app-alerts"] .al-row > div > p.tiny {
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* ---- the detail panel ------------------------------------------------ */
+.mv-ref-app .ctx-drawer .ctx-head .ctx-sub { font-size: 11px; }
+.mv-ref-app .ctx-drawer .ctx-foot { font-size: 12px; }
+.mv-ref-app .ctx-drawer .dx-k { font-size: 9px; }
+.mv-ref-app .ctx-drawer .dx-kind { font-size: 9px; }
+.mv-ref-app .ctx-drawer .dx-s { font-size: 10.5px; }
+.mv-ref-app .ctx-drawer .dx-n { font-size: 11px; }
+.mv-ref-app .ctx-drawer .dx-note { font-size: 10px; }
+.mv-ref-app .ctx-drawer .dx-do-k { font-size: 9.5px; }
+.mv-ref-app .ctx-drawer .dx-do-t { font-size: 13px; }
+.mv-ref-app .ctx-drawer .dx-bullet { font-size: 12.5px; }
+.mv-ref-app .ctx-drawer .dx-map-cap { font-size: 12px; }
+.mv-ref-app .ctx-drawer .ctx-chips .chip { font-size: 11.5px; }
+.mv-ref-app .ctx-drawer .ml-mapkey,
+.mv-ref-app .ctx-drawer .ml-maplegend,
+.mv-ref-app .ctx-drawer .ml-mapnote { font-size: 11.5px; }

@@ -49,23 +49,51 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import type { Alert, AlertCategory, Payload } from '../../_lib/reference/payload';
+import type {
+  Alert, AlertCategory, AlertScope, Drawer, Payload,
+} from '../../_lib/reference/payload';
 import { n0, plural } from '../../_lib/reference/fmt';
 import { Band } from './bits';
 import type { ViewProps } from './Dashboard';
+import AlertLog from './AlertLog';
 
-const CATS: { key: AlertCategory | 'all'; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'money', label: 'Money' },
-  { key: 'activity', label: 'Activity' },
+/* ---- SIX TABS, AND THE FIRST IS THE SAME ALERTS IN A DIFFERENT SHAPE.
+   The cards carry figures, evidence and prose — right when you are READING an
+   alert, wrong when you are LOOKING for one, because twelve of them is a page
+   and a half of scrolling.
+
+   `log` is every one of those alerts as a single line, newest first, with a
+   date range. Nothing summarised away, nothing added. It is the default
+   because "what happened lately" is the question a reader arrives with; the
+   cards are one press away. */
+type Tab = AlertCategory | 'all' | 'log';
+
+const CATS: { key: Tab; label: string }[] = [
+  { key: 'log', label: 'Alerts' },
+  { key: 'all', label: 'Alert cards' },
+  { key: 'money', label: 'Money & payment' },
+  { key: 'activity', label: 'Around your leases' },
   { key: 'models', label: 'Models & forecasts' },
-  { key: 'community', label: 'Community' },
+  { key: 'community', label: 'Operator news' },
 ];
 
+/**
+ * THE SPRITE KEY PER `alert.icon`.
+ *
+ * `rig` IS AN ALIAS, NOT A GLYPH. Two of the ring findings — `completion-ring`
+ * and `filing-mine` — carry `icon: "rig"`, and there is no `mvi-rig` in the
+ * sprite to point at: the reference build has the same gap, so there is
+ * nothing to copy either. Unmapped, `ICON[a.icon]` was `undefined` and those
+ * two rows rendered the fallback bell, which is the icon every unknown kind
+ * gets and therefore says nothing about them. `mvi-activity` is the drilling
+ * mark the completion rows on Activities already wear, so the two surfaces
+ * agree until a real rig glyph is drawn.
+ */
 const ICON: Record<string, string> = {
   audit: 'mvi-audit', check: 'mvi-check', flag: 'mvi-flag', map: 'mvi-map',
   claim: 'mvi-claim', trend: 'mvi-trend', activity: 'mvi-activity', price: 'mvi-price',
   chat: 'mvi-chat', doc: 'mvi-leases', bell: 'mvi-bell',
+  rig: 'mvi-activity',
 };
 
 /* gold for money, blue for a model, mint for the rest — the tile colour is the
@@ -381,17 +409,24 @@ function FoldCounties({ text }: { text: string | null | undefined }): React.Reac
 }
 
 /**
- * Is this label a date still ahead of us?
+ * Is this finding's own date still ahead of us?
  *
  * Only the forecast alerts answer yes — a filing cannot be filed in the
- * future — so this is the test for "this is a horizon, not an event". It
- * reuses `alertTime`'s parse so the two cannot disagree about what a label
- * means, and an unparseable or missing label is NOT ahead: a row with no
- * readable date should be left exactly as it is rather than labelled on a
- * guess.
+ * future — so this is the test for "this is a horizon, not an event".
+ *
+ * `event_iso` LEADS NOW. The payload carries the machine-readable half of the
+ * date beside the label, and it is the field the server itself orders on, so
+ * reading it here means the row's "forecast ·" marker and the row's position
+ * in the list cannot disagree about when a finding is. The label is the
+ * fallback for a response that predates the field; both go through one parse
+ * so the two cannot mean different things.
+ *
+ * AN UNREADABLE OR MISSING DATE IS NOT AHEAD. A finding with no date of its
+ * own — the data-gap row, the new-well model, the quiet-rings row — is left
+ * exactly as it is rather than labelled on a guess.
  */
-function isAhead(label: string | null): boolean {
-  const t = alertTime(label);
+function isAhead(iso: string | null, label: string | null): boolean {
+  const t = alertTime(iso) || alertTime(label);
   return t > 0 && t > Date.now();
 }
 
@@ -416,24 +451,46 @@ export interface AlertsProps extends ViewProps {
    * honest; a wrong one is not.
    */
   readReady: boolean;
+  /**
+   * THE PER-EVENT DETAIL PANEL, for the log tab's rows.
+   *
+   * The reference's `AlertLog` opens a row with `open(e.ctx)`, which is the
+   * KIND-level explainer — one panel for "all permits". This app's Activities
+   * route already replaced that with a panel built from the clicked row
+   * (defects #12-#14, #17), and the log renders the same `timeline.events`,
+   * so it opens them the same way through the same builder. Optional: without
+   * it the log falls back to the reference's own `open(e.ctx)`.
+   */
+  openEvent?: (d: Drawer) => void;
 }
 
 export default function AlertsView(
-  { p, tier, funnel, sample, open, go, readIds, markRead, readReady }: AlertsProps,
+  { p, tier, funnel, sample, open, go, readIds, markRead, readReady, openEvent }: AlertsProps,
 ) {
   const al = p.alerts;
   const lg = useMemo(() => watchLedger(p), [p]);
 
-  /* NEWEST FIRST — the payload's own order is the builder's, which groups by
-     finding type and so interleaves a 2025 completion between two June 2026
-     rows. An inbox is read top-down and the top is where today belongs. */
-  const items = useMemo(
-    () => [...al.items].sort((x, y) => (
-      alertTime(y.detected_label) - alertTime(x.detected_label)
-      || alertTime(y.event_label) - alertTime(x.event_label)
-    )),
-    [al.items],
-  );
+  /**
+   * THE ORDER IS THE SERVER'S. DO NOT SORT THIS LIST.
+   *
+   * The API now serves the findings ACTION FIRST, THEN NEWEST FIRST on
+   * `event_iso`, with an undated finding last because a missing date is not a
+   * recent one. Everything that asks something of the owner keeps the top;
+   * everything else is in date order.
+   *
+   * THIS USED TO RE-SORT HERE, on `detected_label` then `event_label`, and
+   * that was right against the old payload: it arrived grouped by finding
+   * type, so a 2025 completion sat between two June 2026 rows. It is wrong
+   * against this one. Sorting on the two LABELS throws away the ordering the
+   * server computed from a field the labels cannot express — a finding with no
+   * date of its own has no parsable label either, so `alertTime` returned 0
+   * and floated it wherever the comparator happened to leave it, and the
+   * action rows lost their guaranteed top.
+   *
+   * If a sort reappears here it will undo the fix. The right place to change
+   * the order is the server, where `event_iso` is.
+   */
+  const items = al.items;
 
   /* WHAT THE RECENT FEED HOLDS — `timeline.events`, the matched feed across
      the reader's own leases, their rings and their counties before any filter
@@ -455,10 +512,19 @@ export default function AlertsView(
      the recent feed and 80,922 really is all time. Neither is a subset of the
      other, and both now say which window they are. */
   const feedCount = p.timeline.events.length;
-  const [cat, setCat] = useState<AlertCategory | 'all'>('all');
+  /* the itemised total — every row the timeline holds, across all six kinds.
+     Built from the activity feed it silently omitted the production months,
+     which are the only rows about the reader's own leases. It is the same
+     array `feedCount` counts, and the log tab's own count. */
+  const logCount = feedCount;
+  const [cat, setCat] = useState<Tab>('log');
+  /* ---- WHOSE GROUND, kept apart from WHAT KIND.
+     A category tab answers "money or activity"; this answers "my leases or
+     around them", and they are different questions a reader asks at different
+     moments. Holding both in one row of tabs meant a reader who wanted only
+     their own leases had to read every card to find out which were theirs. */
+  const [scope, setScope] = useState<'all' | AlertScope>('all');
   const [q, setQ] = useState('');
-  /* THE UNREAD PILL IS A FILTER, NOT A BUTTON — see the filter row below. */
-  const [unreadOnly, setUnreadOnly] = useState(false);
 
   /**
    * THE CATEGORY CAN ARRIVE IN THE QUERY STRING.
@@ -485,7 +551,7 @@ export default function AlertsView(
     try {
       const want = new URLSearchParams(window.location.search).get('cat');
       if (want && CATS.some((c) => c.key === want)) {
-        setCat(want as AlertCategory | 'all');
+        setCat(want as Tab);
       }
     } catch { /* no URL to read — the default is correct */ }
   }, []);
@@ -514,30 +580,23 @@ export default function AlertsView(
      the reader can see rather than a hidden index */
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
+    /* the log tab is not a filter of the CARDS — it is the events those cards
+       were drawn from, and `AlertLog` holds its own list */
+    if (cat === 'log') return [];
     return items.filter((a) => {
+      if (scope !== 'all' && a.scope !== scope) return false;
       if (cat !== 'all' && a.category !== cat) return false;
-      if (unreadOnly && !(a.unread && !readIds.has(a.id))) return false;
       if (!needle) return true;
       return [a.title, a.body, a.lead_lease, a.klass, a.event_label, ...a.evidence]
         .filter(Boolean).join(' ').toLowerCase().includes(needle);
     });
-  }, [items, cat, q, unreadOnly, readIds]);
+  }, [items, cat, q, scope]);
 
-  /* WHAT AN EMPTY PAGE MEANS, asked once. `quiet` is the only state that is a
-     RESULT — nothing is filtered and there is nothing to show — and it is the
-     one the retention copy is written for. Everything else is a filter the
-     reader set and can clear, so the card names which one. `catLabel` is null
-     on `all` precisely because "All" is not a category a sentence can name. */
-  const needle = q.trim();
-  const quiet = cat === 'all' && !needle && !unreadOnly;
-  const catLabel = cat === 'all'
-    ? null
-    : CATS.find((c) => c.key === cat)?.label.toLowerCase();
-
-  /* every control that empties the page, cleared together — the "show all N"
-     button in the empty card has to undo the Unread pill too, or it offers to
-     show nine alerts and shows none */
-  const clearFilters = () => { setCat('all'); setQ(''); setUnreadOnly(false); };
+  /* the pool the tab counts and the "Alert cards" tab are drawn from */
+  const inScope = useMemo(
+    () => (scope === 'all' ? items : items.filter((a) => a.scope === scope)),
+    [items, scope],
+  );
 
   return (
     <section data-route="app-alerts" className="active">
@@ -711,44 +770,37 @@ export default function AlertsView(
               opens the evidence behind it
             </p>
           </div>
-          {/* NEITHER CONTROL EXISTS FOR A SAMPLE.
-              Nothing in this list is the reader's, so "Mark all 6 read" marks
-              a stranger's inbox read in this browser, and "Alert preferences"
-              offers to tune the delivery of alerts that are not being
-              delivered. On the not-claimed page there is exactly one thing to
-              do, and the rail above it is already asking. */}
-          {unclaimed
-            ? null
-            : (
-              <div className="flex" style={{ flexWrap: 'wrap', gap: 6 }}>
-                {/* THE COUNT WAITS FOR THE BROWSER'S OWN READ-STATE.
-                    `mv.alertsRead` is client-side by contract, so the server
-                    renders this button from `unread` alone and used to print
-                    "Mark all 6 read" on a page the reader had already cleared,
-                    correcting itself once hydration landed. Held back until
-                    `readReady`, the button appears once and says one thing. */}
-                {readReady
-                  ? (
-                    <button
-                      className="btn btn-ghost btn-sm" type="button"
-                      disabled={!unreadCount}
-                      onClick={() => markRead(items.filter(isUnread).map((a) => a.id))}
-                    >
-                      {unreadCount ? `Mark all ${unreadCount} read` : 'All read'}
-                    </button>
-                  )
-                  : null}
-                {/* THE REAL SETTINGS PAGE, not the coming-soon card.
-                    `/mineralownersite/settings` ships an Alert preferences
-                    card — per type, per channel — and the account menu has
-                    pointed at it all along. These three links were still on
-                    the reference's `/soon/settings`, which has no `settings`
-                    section of its own and so answered with the generic "this
-                    part of the portal has not opened yet" over a page that
-                    had. */}
-                <Link className="btn btn-ghost btn-sm" href={PREFS_HREF}>Alert preferences</Link>
-              </div>
-            )}
+          {/* BOTH CONTROLS, ON EVERY FUNNEL STATE — the reference's header
+              carries them whether or not the record is claimed, and so does
+              this one. */}
+          <div className="flex" style={{ flexWrap: 'wrap', gap: 6 }}>
+            {/* THE COUNT WAITS FOR THE BROWSER'S OWN READ-STATE.
+                `mv.alertsRead` is client-side by contract, so the server
+                renders this button from `unread` alone and used to print
+                "Mark all 6 read" on a page the reader had already cleared,
+                correcting itself once hydration landed. Held back until
+                `readReady`, the button appears once and says one thing. */}
+            {readReady
+              ? (
+                <button
+                  className="btn btn-ghost btn-sm" type="button"
+                  disabled={!unreadCount}
+                  onClick={() => markRead(items.filter(isUnread).map((a) => a.id))}
+                >
+                  {unreadCount ? `Mark all ${unreadCount} read` : 'All read'}
+                </button>
+              )
+              : null}
+            {/* THE REAL SETTINGS PAGE, not the coming-soon card.
+                The reference points its three preference links at
+                `/soon/settings`, which this app answers with the generic "this
+                part of the portal has not opened yet" — it has no `settings`
+                slug. `/mineralownersite/settings` ships the Alert preferences
+                card the link is offering, per type and per channel, and the
+                account menu has pointed at it all along. Same button, same
+                label, same place; a destination that exists. */}
+            <Link className="btn btn-ghost btn-sm" href={PREFS_HREF}>Alert preferences</Link>
+          </div>
         </div>
 
         {/* ---------- the sample badge ---------- */}
@@ -808,13 +860,13 @@ export default function AlertsView(
                   day — including the days it says nothing.
                 </strong>
               </div>
-              {/* NO SECOND PREFERENCES CONTROL (defect, Alerts sheet).
-                  This was "Choose what reaches you", pointing at the same
-                  `PREFS_HREF` as "Alert preferences" in the header a few
-                  hundred pixels above it. Two buttons, one destination, one
-                  offer — and this one sat inside the panel arguing what the
-                  subscription buys, where a control that navigates away is the
-                  last thing the panel wants. The header keeps the link. */}
+              {/* THE LEDGER'S OWN PREFERENCES CONTROL — the reference has it and
+                  it is restored. It shares `PREFS_HREF` with "Alert
+                  preferences" in the header, which is the point: the panel
+                  arguing what the daily watch buys is exactly where a reader
+                  decides how much of it should reach them, and the header is a
+                  screen away by the time they have read it. */}
+              <Link className="btn btn-ghost btn-sm" href={PREFS_HREF}>Choose what reaches you</Link>
             </div>
 
             <div className="aw-grid">
@@ -826,64 +878,30 @@ export default function AlertsView(
                   {lg.last_read_label ? <> Last read {lg.last_read_label}.</> : null}
                 </span>
               </div>
-              {/* THE VOLUME LEADS, because the volume is the argument.
-                  This cell used to open on the lease count — 54 — which is the
-                  SMALLEST true figure the panel holds, and it set the scale a
-                  reader judged the rest by. The sweep reads far more than it
-                  reports: every filing in the county feed is matched against
-                  the record before anything is discarded, and that total is
-                  `timeline.events.length`. The lease and county counts are not
-                  lost; they move into the caption, and the headline above
-                  already opens "on your {'{'}leases{'}'} leases every day".
-
-                  NOTHING IS SCALED OR ROUNDED UP. This is a different TRUE
-                  figure, not the same one inflated — 897 filings really were
-                  read, and `mine_count` says how many landed on the reader's
-                  own leases, so the caption cannot overstate what is theirs. */}
-              {feedCount
-                ? (
+              {/* ---- THE REFERENCE'S SECOND CELL, RESTORED.
+                  The lease and county counts lead again, exactly as the
+                  reference's ledger opens them. This app had replaced the cell
+                  with `timeline.events.length` under the label "filings read
+                  in the recent feed", which is a true figure but not this
+                  panel's: the reference's four cells are the sweep, the
+                  ground, the filings and the findings, and the ground is what
+                  the headline above has just named. */}
               <div>
                 <span className="aw-n num">
-                  {n0(feedCount)}{' '}
-                  {/* THE WINDOW IS PART OF THE FIGURE (defects #21 and #33).
-                      This cell and the production cell two blocks down both
-                      read "filings read" and they count different things over
-                      different windows: this one is `timeline.events`, the
-                      RECENT feed, and that one is every production filing on
-                      the record. Side by side and identically labelled they
-                      looked like one number reported twice and disagreeing —
-                      "323 filings read" beside "80,922 production filings
-                      read", on a member whose every other ledger figure had
-                      scaled with the record. QA read the small one as a
-                      leftover constant from the 10-lease sample, which is
-                      exactly what a smaller-than-its-own-subset figure looks
-                      like.
-
-                      Neither number was wrong; neither said which window it
-                      was for. Both now do, in the label rather than in the
-                      caption, because the label is what is read beside the
-                      figure.
-
-                      The unit tail rides inside `.aw-n`, so it has to be a
-                      class rather than an inline font-size. */}
-                  <span className="aw-unit">filings read in the recent feed</span>
+                  {lg.leases}{' '}
+                  <span style={{ fontSize: 13, color: 'var(--slate)' }}>
+                    {plural(lg.leases, 'lease')} · {lg.counties}{' '}
+                    {lg.counties === 1 ? 'county' : 'counties'}
+                  </span>
                 </span>
                 <span className="aw-cap">
-                  Matched against your <strong className="num">{n0(lg.leases)}</strong>{' '}
-                  {plural(lg.leases, 'lease')} in{' '}
-                  <strong className="num">{n0(lg.counties)}</strong>{' '}
-                  {lg.counties === 1 ? 'county' : 'counties'}
-                  {p.timeline.mine_count
-                    ? (
-                      <>
-                        {' '}— <strong className="num">{n0(p.timeline.mine_count)}</strong> of them
-                        landed on a lease you hold
-                      </>
-                    )
-                    : null}. Plus the <strong className="num">{n0(lg.adjacent_leases)}</strong>{' '}
+                  Yours, plus the <strong className="num">{n0(lg.adjacent_leases)}</strong>{' '}
                   neighboring {plural(lg.adjacent_leases, 'lease')}
-                  {/* the permit count has no source outside the ledger, so the
-                      clause goes rather than printing "and 0 standing permits" */}
+                  {/* the only guard kept from this app's version: the permit
+                      count has no source outside the ledger, and "and 0
+                      standing permits" is a claim rather than a reading. With
+                      a populated ledger the clause prints exactly as the
+                      reference prints it. */}
                   {lg.standing_permits
                     ? (
                       <>
@@ -894,19 +912,12 @@ export default function AlertsView(
                     : null} within about a mile of them.
                 </span>
               </div>
-                )
-                : null}
               <div>
-                {/* the other half of #33 — this is the WHOLE record, not the
-                    recent feed, and the two cells now say so */}
-                <span className="aw-n num">
-                  {n0(lg.production_filings)}{' '}
-                  <span className="aw-unit">production filings, all time</span>
-                </span>
+                <span className="aw-n num">{n0(lg.production_filings)}</span>
                 <span className="aw-cap">
-                  Read across your leases since the record begins, each one checked against
-                  what your record&rsquo;s own model expected. {n0(lg.nearby_filings)} permit and
-                  completion filings read next door.
+                  Production filings read on your leases, each checked against what your
+                  record&rsquo;s own model expected. {n0(lg.nearby_filings)} permit and completion{' '}
+                  filings read next door.
                 </span>
               </div>
               <div>
@@ -972,51 +983,125 @@ export default function AlertsView(
               aria-label="Search alerts" style={{ width: '100%' }}
             />
           </div>
-          {/* NO SECOND EMPTY STATE HERE, and that is the fix.
-              This slot used to carry "No alerts match that search — clear it
-              and show all 9", which fires on exactly the condition the card
-              below the filter row already answers. An empty search therefore
-              printed BOTH, one above the pills and one under them, saying the
-              same thing in different words and offering two buttons that do
-              the same two setState calls. The card is the one in the reading
-              flow — it stands where the rows would have been — so it is the
-              one that survives, and it now names the search term rather than
-              the category. */}
+          {/* THE SEARCH'S OWN MISS LINE, restored — it sits with the box it is
+              about, so a reader who has just typed does not have to look past
+              the two pill rows to learn there was no hit. The card below the
+              rows answers the same condition in the reading flow; the
+              reference carries both and so does this. */}
+          {q.trim() && !rows.length
+            ? (
+              <p className="tiny muted" style={{ margin: '8px 0 0' }}>
+                No alerts match that search —{' '}
+                <button type="button" className="linklike" style={{ fontWeight: 700 }}
+                  onClick={() => { setQ(''); setCat('all'); }}>
+                  clear it and show all {al.count}
+                </button>.
+              </p>
+            )
+            : null}
         </Band>
+
+        {/* ---- WHOSE GROUND FIRST, THEN WHAT KIND.
+            Its own row above the category tabs, because it changes what those
+            tabs contain. Production and an operator handover are facts about
+            the reader's own leases and are absent from Around me by
+            construction — there is no such thing as a neighbor's royalty.
+
+            ALWAYS RENDERED, exactly as the reference renders it. The counts
+            come from `scope` on each item; a response that does not carry the
+            field simply shows them as zero, and they fill in on their own the
+            moment it does. */}
+            <div className="al-scope" role="group" aria-label="Whose leases">
+              {([
+                { k: 'all', label: 'Everything' },
+                { k: 'mine', label: 'My leases' },
+                { k: 'neighbours', label: 'Around me' },
+              ] as const).map((o) => {
+                const n = o.k === 'all'
+                  ? items.length : items.filter((a) => a.scope === o.k).length;
+                return (
+                  <button key={o.k} type="button" className={scope === o.k ? 'on' : ''}
+                    aria-pressed={scope === o.k}
+                    onClick={() => { setScope(o.k); if (cat === 'log') setCat('all'); }}
+                  >
+                    {o.label} <b>{n}</b>
+                  </button>
+                );
+              })}
+              <span className="al-scope-note">
+                {scope === 'mine'
+                  ? 'Your production, your operators and anything filed against a lease you hold.'
+                  : scope === 'neighbours'
+                    ? 'What is happening around you — permits and completions within five miles, '
+                      + 'and the county digests. Nothing here pays you.'
+                    : 'Everything, both your own leases and the ground around them.'}
+              </span>
+            </div>
 
         <div className="al-filter" role="group" aria-label="Filter alerts">
           {CATS.map((c) => {
-            const n = c.key === 'all' ? al.count : (al.counts[c.key] ?? 0);
-            if (!n && c.key !== 'all') return null;
+            /* THE COUNT ON A TAB IS WHAT THAT TAB WILL SHOW.
+               `al.counts` is the server's roll-up of the WHOLE set, so reading
+               it here meant "Money & payment 3" opened empty under Around me —
+               none of the three is a neighbor's, and the backend guarantees
+               that it never can be (a money finding is always `mine`). Counted
+               off `inScope` the tab cannot promise rows the tab will not show,
+               whichever scope is selected. */
+            const n = c.key === 'log' ? logCount
+              : c.key === 'all' ? inScope.length
+                : inScope.filter((a) => a.category === c.key).length;
+            if (!n && c.key !== 'all' && c.key !== 'log') return null;
             return (
               <button
                 key={c.key} type="button" className={cat === c.key ? 'on' : ''}
                 onClick={() => setCat(c.key)} aria-pressed={cat === c.key}
               >
-                {c.label} · <span className="alf-n">{n}</span>
+                {/* THE SPACE IS FOR A SCREEN READER, not for the eye — the gap
+                    on screen is `.alf-n`'s margin, and without this the label
+                    is announced as "Alerts985". */}
+                {c.label}{' '}<span className="alf-n">{n}</span>
               </button>
             );
           })}
-          {/* THE UNREAD PILL IS A PILL, so it filters like the five beside it.
-              It used to MARK ALL SIX READ instead — the one control in a row of
-              filters that changed the data rather than the view, sitting next
-              to "Mark all N read" in the header which does exactly that and
-              says so. Pressing "Unread · 6" to see the six unread alerts
-              emptied the chip and left the same nine rows on screen, with no
-              way back. Now it narrows to them and presses again to come out. */}
+          {/* THE UNREAD PILL, as the reference has it: pressing it MARKS THE
+              UNREAD READ. It is never the selected pill — the reference's own
+              `cat === 'all' && false` says so in as many words — because it
+              acts on the data rather than narrowing the view.
+
+              It goes through `markRead`, which `Portal` owns, so the chip, the
+              sidebar rail and the bell all clear together; the reference's
+              local `setAllRead` would have cleared this row only. `readReady`
+              still gates it, because the count comes from the browser's own
+              read-state and printing it before that set arrives paints a
+              figure the reader has already cleared. */}
           {readReady && items.some(isUnread)
             ? (
               <button
-                type="button" className={unreadOnly ? 'on' : ''}
-                onClick={() => setUnreadOnly((v) => !v)} aria-pressed={unreadOnly}
+                type="button"
+                onClick={() => markRead(items.filter(isUnread).map((a) => a.id))}
                 title="Unread means the event is newer than the last time notifications went out"
                 style={{ marginLeft: 'auto' }}
               >
-                Unread · <span className="alf-n">{unreadCount}</span>
+                Unread{' '}<span className="alf-n">{unreadCount}</span>
               </button>
             )
             : null}
         </div>
+
+        {/* ---- THE SAME ALERTS AS A LOG, when that tab is on.
+            One row per filing, production month and operator change — the
+            events the cards were drawn from, with nothing summarised away.
+            It brings its own filter bar, its own count line and its own empty
+            state, which is why the card-side empty state below is held back
+            while this tab is showing. */}
+        {cat === 'log'
+          ? (
+            <AlertLog
+              events={p.timeline.events} open={open} cards={al.count}
+              openEvent={openEvent} drawers={p.drawers ?? null}
+            />
+          )
+          : null}
 
         {/* the class taxonomy is METHOD, so Pro only */}
         <Band tier={tier} from="pro">
@@ -1101,7 +1186,7 @@ export default function AlertsView(
                             happened in 2030. Anything at or before today is
                             untouched, so the normal case reads exactly as it
                             did. */}
-                        {isAhead(a.event_label) ? 'forecast · ' : ''}
+                        {isAhead(a.event_iso, a.event_label) ? 'forecast · ' : ''}
                         {a.event_label ?? a.detected_label ?? '—'} · {a.channels}
                       </span>
                     </div>
@@ -1188,40 +1273,19 @@ export default function AlertsView(
               style={{ marginTop: 14, border: '2px dashed var(--line)', textAlign: 'center' }}
             >
               <strong className="small">
-                {quiet ? 'What a quiet week looks like' : 'Nothing matches these filters'}
+                {cat === 'all' && !q.trim() ? 'What a quiet week looks like' : 'Nothing in that filter'}
               </strong>
               <p className="tiny muted" style={{ margin: '6px auto 0', maxWidth: 560 }}>
-                {quiet
+                {cat === 'all' && !q.trim()
                   ? (al.quiet_reason
                     ?? `Nothing new on or near these leases ${al.window_label}. We checked production `
                       + 'filings, permits, completions, status changes and the model flags. Quiet is a '
                       + 'result, not a failure — we never invent activity to look busy.')
                   : (
                     <>
-                      {/* THE REASON, NOT THE CATEGORY. This read "No {label}
-                          alert matches", and `CATS` carries `all` with the
-                          label "All" — so the commonest empty case of all, a
-                          search with no hits and no category chosen, printed
-                          "No all alert matches." Naming the term instead is
-                          both grammatical and more use: it tells the reader
-                          WHICH of the two controls emptied the page, the way
-                          the Activities feed's empty state already does. */}
-                      {needle
-                        ? (
-                          <>
-                            No alert matches &ldquo;{q.trim()}&rdquo;
-                            {catLabel ? <> in {catLabel}</> : null}
-                            {unreadOnly ? <> among the unread</> : null}.{' '}
-                          </>
-                        )
-                        : unreadOnly && !catLabel
-                          ? <>Nothing is unread.{' '}</>
-                          : (
-                            <>
-                              No {unreadOnly ? 'unread ' : ''}{catLabel} alert matches.{' '}
-                            </>
-                          )}
-                      <button type="button" className="linklike" onClick={clearFilters}>
+                      No {CATS.find((c) => c.key === cat)?.label.toLowerCase()} alert matches.{' '}
+                      <button type="button" className="linklike"
+                        onClick={() => { setCat('all'); setQ(''); }}>
                         show all {al.count} →
                       </button>
                     </>
@@ -1264,6 +1328,39 @@ export default function AlertsView(
                 are different answers.
               </p>
             </section>
+          )
+          : null}
+
+        {/* ---------- the rules that found nothing ----------
+            THE OTHER NINE. The surface runs fourteen rules and the list above
+            is however many fired; a reader counting five is owed the rest
+            rather than left wondering whether the feature is broken. It is
+            `quiet_reason`'s argument applied per rule instead of to the whole
+            page, which is why it sits with the notes band rather than in the
+            list: both say what the watch could NOT tell you, and both are
+            stated rather than hidden.
+
+            CLOSED BY DEFAULT, and a `<details>` rather than a card. Nine rules
+            that found nothing is a footnote on a page whose subject is the
+            findings that did — open it and it is nine lines, leave it and it
+            is one. No `open` attribute, so the browser's own disclosure
+            handles the keyboard, the arrow and the announced state.
+
+            Not gated on a tier: a reader on any density who can see the list
+            can see what is missing from it. */}
+        {al.silent.length
+          ? (
+            <details className="al-silent">
+              <summary>
+                {al.silent.length}{' '}
+                {al.silent.length === 1 ? 'rule' : 'rules'} found nothing this week
+              </summary>
+              <ul>
+                {al.silent.map((r) => (
+                  <li key={r.id}><b>{r.label}</b> — {r.reason}</li>
+                ))}
+              </ul>
+            </details>
           )
           : null}
 

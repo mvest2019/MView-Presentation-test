@@ -293,6 +293,24 @@ export function volWords(gas: number, oil: number): string {
   return bits.join(' and ');
 }
 
+/**
+ * An API as a reader quotes it — ten digits, not fourteen.
+ *
+ * "42-123-35543-0000" and "42-123-35543" are the same well: the last four are
+ * the wellbore suffix, and they are noise on screen. The state's own forms, a
+ * title search and every operator's paperwork use the ten.
+ */
+export function api10(v: string | null | undefined): string | null {
+  const s = String(v ?? '').trim();
+  if (!s) return null;
+  const m = /^(\d{2}-\d{3}-\d{5})/.exec(s);
+  if (m) return m[1];
+  /* undashed forms turn up too — "4212335543" */
+  const d = s.replace(/\D/g, '');
+  if (d.length >= 10) return `${d.slice(0, 2)}-${d.slice(2, 5)}-${d.slice(5, 10)}`;
+  return s;
+}
+
 export function plural(k: number, one: string, many?: string): string {
   return k === 1 ? one : (many ?? one + 's');
 }

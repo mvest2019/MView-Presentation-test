@@ -43,6 +43,7 @@ import { Band, ProductPair } from './bits';
 import { Charts } from './LineChart';
 import { type ChartSpec } from '../../_lib/reference/chart';
 import type { ViewProps } from './Dashboard';
+import { eventDrawer as refEventDrawer } from '../../_lib/reference/event-drawer';
 
 const KIND_ICON: Record<EventKind, string> = {
   permit: 'mvi-flag',
@@ -161,7 +162,73 @@ function shortMonth(cycle: string): string {
  * every event of the kind. No chart is attached: the event is one filing, and
  * the kind panel's full-range chart is exactly what contradicted the card.
  */
-function eventDrawer(e: TimelineEvent, base: Drawer | null): Drawer {
+/**
+ * THE REFERENCE'S OWN PANEL, with this app's two fallbacks kept.
+ *
+ * `refEventDrawer` in `_lib/reference/event-drawer.ts` is the reference build's
+ * builder, ported whole. It is what produces the pieces this app's version
+ * never had: the PERMIT/COMPLETION RECORD grid (`facts`) and the WHERE THIS IS
+ * map (`map`), plus per-kind prose written against the filing rather than
+ * against its kind.
+ *
+ * WHAT THIS WRAPPER STILL DOES — and what it no longer does.
+ *
+ * IT USED TO LET THE KIND EXPLAINER WIN ON `means` AND `next`, on the argument
+ * that `payload.drawers[e.ctx]` is the service's own words for this reader.
+ * MEASURED, that argument is backwards: the kind panel is one panel for ALL
+ * permits, so `base.means` is always present and always the same, and every
+ * one of the 1,099 permit rows opened on the identical "what it means for you"
+ * and "what to do" — while a production row, which `refEventDrawer` answers
+ * null on, opened on prose written against the row and read as a different,
+ * better product. The reference's own copy is per-row (`is_mine` decides it:
+ * "this filing is against a lease you hold" against "this is a neighbour's
+ * filing"), and that copy was being thrown away every time.
+ *
+ * THE REFERENCE NEVER MERGES FIELDS. `Portal.tsx` there reads
+ * `eventDrawer(e) ?? drawers[key]` — the row's own panel whole, or the kind
+ * panel whole, never half of each. So the row's own prose wins here, and the
+ * kind explainer stands in only where the reference builder has nothing, which
+ * is the same fallback in the same direction as `map` and `facts` below.
+ *
+ * EXPORTED because the Alerts log opens the same rows. A second copy of this
+ * in `AlertLog` would drift the first time either was corrected — the two
+ * surfaces have to open the SAME panel for the same filing.
+ */
+export function eventDrawer(e: TimelineEvent, base: Drawer | null): Drawer {
+  const ref = refEventDrawer(e);
+  if (ref) {
+    return {
+      ...ref,
+      /* the row's own, with the kind explainer only as a fallback — see the
+         note above. This is the line that made every permit read alike. */
+      means: ref.means ?? base?.means ?? '',
+      next: ref.next ?? base?.next ?? '',
+      /* ---- THE KIND PANEL'S RING MAP, WHERE THE ROW HAS NO POINT OF ITS OWN.
+         A permit or a completion the state located gets `Where this is` — one
+         well, from `ref.map.focus`. A row with no coordinates gets the kind
+         panel's own map instead: `The permits on the ground`, every filing
+         within five miles drawn over the reader's own wells. That is what the
+         reference shows on a Neighbour row, and without this fallback the
+         panel simply had no map at all.
+
+         Same rule for `facts`: the per-filing record wins, and the kind
+         panel's own grid stands in where the row is not a filing. */
+      map: ref.map ?? base?.map ?? null,
+      facts: ref.facts ?? base?.facts ?? null,
+    };
+  }
+  return legacyEventDrawer(e, base);
+}
+
+/**
+ * THE PANEL THIS APP BUILT BEFORE THE REFERENCE'S WAS PORTED.
+ *
+ * Kept as the fallback for the one case `refEventDrawer` answers null on — a
+ * row it cannot read — so a click never opens an empty drawer. It carries no
+ * `facts` and no `map`, which is correct: both are built from filing fields a
+ * row that reaches here does not have.
+ */
+function legacyEventDrawer(e: TimelineEvent, base: Drawer | null): Drawer {
   const facts: string[] = [];
   facts.push(e.when_label ? `Recorded ${e.when_label}` : 'No date recorded in the feed');
   if (e.lease_name || e.lease_id) facts.push(`Lease: ${e.lease_name ?? e.lease_id}`);
@@ -198,6 +265,15 @@ function eventDrawer(e: TimelineEvent, base: Drawer | null): Drawer {
     tone: 'activity',
     spark: null,
     charts: [],
+    /* ---- THE KIND PANEL'S OWN MAP AND RECORD COME THROUGH HERE TOO.
+       `refEventDrawer` answers null for every kind that is not a permit, a
+       completion or a status change, so a NEIGHBOUR row — which is built from
+       the well record rather than from a filing — lands in this builder. Its
+       `ctx` is `permits`, whose panel carries "The permits on the ground", and
+       without these two lines that map was dropped on exactly the rows the
+       reference draws it for. */
+    map: base?.map ?? null,
+    facts: base?.facts ?? null,
   };
 }
 

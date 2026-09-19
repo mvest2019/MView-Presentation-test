@@ -46,6 +46,38 @@ import type { ChartSpec } from './chart';
 /* ---------------------------------------------------------------- alerts.ts */
 export type AlertCategory = 'money' | 'activity' | 'models' | 'community';
 export type AlertSeverity = 'action' | 'important' | 'context';
+/**
+ * WHOSE GROUND A FINDING IS ABOUT — the reference's `AlertScope`.
+ *
+ * Not the same question as `category`. A category says what KIND of fact it is
+ * (money, activity, a model); a scope says whose acreage it happened on, and
+ * that is what a reader is choosing between when they ask "what is happening
+ * on MY leases" versus "what is happening around me".
+ *
+ *   'mine'       on a lease this owner holds: their production, their
+ *                operator, a permit or completion filed against their own
+ *                lease number
+ *   'neighbours' on somebody else's: the rings, the county digests, operator
+ *                news from the companies working around them
+ *
+ * SPELLED `neighbours`, WITH THE BRITISH U, and that is not a slip. It is a
+ * WIRE IDENTIFIER, not rendered copy: `GET /api/v1/alerts` sends that exact
+ * string and its `?scope=` parameter filters on it, so respelling it here
+ * would break the contract without making one word of user-facing text more
+ * readable. Every rendered string the API returns is en-US — "neighboring",
+ * "modeled", "labeled" — and the backend fails its own build if one is not.
+ *
+ * REQUIRED, because the API now sends it on every item. The one payload that
+ * can still arrive without it is the committed capture this app's seam serves
+ * as a preview, which predates the field; `AlertsView` shows the scope row
+ * only once the items actually carry scopes, so that path degrades to the
+ * single-axis page it already was rather than to three buttons of which two
+ * are permanently empty.
+ *
+ * THE RULE THE BACKEND ENFORCES, which the tab counts depend on: a money
+ * finding is always `mine`. There is no such thing as a neighbor's royalty.
+ */
+export type AlertScope = 'mine' | 'neighbours';
 /** The delivery class, which is a METHOD taxonomy — Professional view only. */
 export type AlertClass = 'Urgent' | 'Important digest' | 'Educational' | 'Community';
 
@@ -87,6 +119,96 @@ export type EventScope =
   | 'county';
 
 /* --------------------------------------------------------------- drawers.ts */
+/* ======================================================= the drawer's map */
+/**
+ * THE PAPERWORK, VERBATIM — a filing's own record, field by field.
+ *
+ * Copied from the reference's `DrawerFacts`. Not more `stats`: the metric band
+ * is the two-to-four figures a panel is ABOUT, set in serif. A filing's record
+ * is eight to eleven short facts — three dates, two reference numbers, a
+ * status, a purpose, a depth — and putting those through the band would make
+ * every one of them look like a headline.
+ */
+export interface DrawerFacts {
+  head: string;
+  /** the one line that says where these came from */
+  note?: string;
+  rows: { k: string; v: string; sub?: string }[];
+}
+
+/** One point an alert's map draws, carried BY the alert. */
+export interface MapPoint {
+  id: string;
+  kind: 'permit' | 'completion' | 'wellbore';
+  label: string;
+  well_number: string | null;
+  lease_name: string | null;
+  operator_name: string | null;
+  api: string | null;
+  lat: number;
+  lon: number;
+  when_label: string | null;
+  /** the ring it fell in, on a ring alert; null on a county-wide one */
+  band: '1' | '3' | '5' | null;
+  is_mine: boolean;
+}
+
+/** The single well a per-filing panel is about. */
+export interface FocusPoint {
+  id: string;
+  kind: 'permit' | 'completion' | 'status';
+  label: string;
+  /** labels the point on the map; "?" is what it drew without this */
+  well_number: string | null;
+  lat: number;
+  lon: number;
+  /** so a well the reader actually holds can offer "See this well" */
+  api14: string | null;
+  /* ---- HOW WELL THIS POSITION IS KNOWN.
+     `abstract` is the centre of other filings in the same land grid, so the
+     map frames that whole grid rather than zooming to a pad it cannot
+     actually locate. */
+  basis: 'surveyed' | 'abstract';
+  /** for an abstract point: how far apart the anchors it came from were */
+  spread_mi: number | null;
+  lease_name: string | null;
+  operator_name: string | null;
+  when_label: string | null;
+  distance_mi: number | null;
+  is_mine: boolean;
+}
+
+/**
+ * WHAT A PANEL'S MAP IS ABOUT.
+ *
+ * Three ways of saying it, in order of precedence: `focus` is ONE well carried
+ * outright (a per-filing panel, which may be forty miles away in the same
+ * county and not a neighbour at all); `points` are exact rows carried
+ * outright; `kinds` + `band` are a SELECTION over `payload.nearby.rows`, which
+ * are already on the client for the neighbour lists so the map and the list
+ * read one copy.
+ */
+export interface DrawerMap {
+  focus?: FocusPoint | null;
+  kinds?: ('permit' | 'completion' | 'wellbore')[];
+  /** the widest ring to include */
+  band?: 1 | 3 | 5 | 10;
+  /** exact rows, carried outright — overrides `kinds`/`band` entirely */
+  points?: MapPoint[] | null;
+  /** draw the mile circles, so "within 3 miles" has a picture. FALSE on a
+   *  county-wide panel: a mile ring under "414 permits in DE WITT" draws a
+   *  boundary the headline is not about. */
+  rings?: boolean;
+  /** the county this is about, where the panel is county-wide. There is no
+   *  county polygon in this data, so the map frames every filing in it and
+   *  names the county rather than pretending to outline it. */
+  county_label?: string | null;
+  /** draw the reader's own wells underneath, for somewhere to measure from */
+  own?: boolean;
+  title: string;
+  caption: string;
+}
+
 export interface Drawer {
   title: string;
   sub: string;
@@ -108,6 +230,14 @@ export interface Drawer {
    *  numbers as the prose beside it, so the two cannot disagree the way a
    *  second client-side fetch could. */
   charts?: ChartSpec[];
+  /** THE WELLS THIS PANEL IS ABOUT, ON THE GROUND. A selection over
+   *  `payload.nearby.rows`, not a copy of them — see `DrawerMap`. */
+  map?: DrawerMap | null;
+  /** the filing's own record, field by field — see `DrawerFacts` */
+  facts?: DrawerFacts | null;
+  /** where THIS panel's figures came from, in one line; null falls back to
+   *  the global source note */
+  source?: string | null;
 }
 
 export type { WeeklyReport, ForecastPayload };
@@ -433,7 +563,9 @@ export interface Payload {
   nearby: {
     rows: ({
       id: string;
-      kind: string;
+      /** narrowed to the reference's `NearbyKind`, which is what the drawer's
+       *  map selects on — `kinds: ['permit', 'completion', 'wellbore']` */
+      kind: 'permit' | 'completion' | 'wellbore';
       api14: string | null;
       api: string | null;
       lease_id: string | null;
@@ -447,6 +579,15 @@ export interface Payload {
       band: 1 | 3 | 5;
       dx_mi: number;
       dy_mi: number;
+      /* ---- THE SURFACE HOLE ITSELF, which the drawer's map draws from.
+         `dx_mi`/`dy_mi` are offsets from the centre of this owner's whole
+         record — the right origin for the portfolio rings, the wrong one for a
+         panel about ONE filing, which may be forty miles away in the same
+         county. Optional because the capture this app's seam serves predates
+         them; `DrawerMapBlock` drops a row with no position rather than
+         placing it at the origin. */
+      lat?: number | null;
+      lon?: number | null;
       direction: string | null;
       is_own: boolean;
       status: string | null;
@@ -751,6 +892,8 @@ export interface Payload {
     items: ({
       id: string;
       category: AlertCategory;
+      /** whose ground the finding is about — see `AlertScope` */
+      scope: AlertScope;
       severity: AlertSeverity;
       klass: AlertClass;
       icon: string;
@@ -762,6 +905,16 @@ export interface Payload {
       metric: number | null;
       metric_unit: string | null;
       event_label: string | null;
+      /**
+       * THE SAME MOMENT AS AN ISO DAY, and what the server orders on.
+       *
+       * Null on a finding that has no date of its own — the data-gap row, the
+       * new-well model, the quiet-rings row. That is deliberate and it is what
+       * puts them last: a missing date is not a recent one. DO NOT COALESCE IT
+       * TO TODAY, which would float three undated findings to the top of an
+       * inbox read newest-first.
+       */
+      event_iso: string | null;
       detected_label: string | null;
       evidence: string[];
       action_label: string | null;
@@ -809,6 +962,23 @@ export interface Payload {
     window_label: string;
     window_note: string;
     notes: string[];
+    /**
+     * THE RULES THAT DID NOT FIRE.
+     *
+     * The alert surface describes fourteen rules and returns however many
+     * found something. A reader counting five is owed the other nine rather
+     * than left wondering whether the feature is broken — this is
+     * `quiet_reason`'s idea applied per rule instead of to the whole page.
+     *
+     * No id in here is also an item id: a rule either fired or it is listed
+     * here. Also served by `GET /alerts/summary`, so a dashboard strip can say
+     * "five findings, nine rules quiet" without fetching the rows.
+     */
+    silent: {
+      id: string;
+      label: string;
+      reason: string;
+    }[];
     quiet: boolean;
     quiet_reason: string | null;
   };
@@ -956,6 +1126,35 @@ export interface Payload {
       stats: EventStat[];
       ring_stats: Record<RingKey, EventStat[]> | null;
       ctx: string;
+      /* ---- THE FILING'S OWN PAPERWORK, and the well it names.
+         The reference's `TimelineEvent` carries both; this app's seam still
+         serves a capture taken before they existed, so both are optional and
+         every reader guards them. `AlertLog` prints the API, the permit
+         number and the tracking number as stat cells when they arrive and
+         omits the cell when they do not — a missing cell is honest where an
+         invented one is not. */
+      /** the API number the filing carries, or the one its name resolved to */
+      api?: string | null;
+      /** null on a row that is not a filing */
+      filing?: FilingDetail | null;
+      /** the well this row is about, where it names one — the map labels the
+       *  point with it, and "?" is what it drew without this */
+      well_number?: string | null;
+      /* ---- HOW WELL THE POSITION IS KNOWN.
+         `surveyed` is the well's own filed position; `abstract` is the centre
+         of other filings in the same land grid, which is a part of the county
+         rather than a pad. Anything that draws it has to say which. */
+      location_basis?: 'surveyed' | 'abstract' | null;
+      location_spread_mi?: number | null;
+      /** "Abstract #190, FULCHER, B Survey" — what the state filed it against */
+      legal_description?: string | null;
+      /* ---- WHERE IT IS, WHERE THE RECORD SAYS SO.
+         Null on a row the state filed without a locatable API — those keep the
+         county-scope badge they already carry, which is the honest answer, and
+         the panel says there is nothing to put on a map rather than drawing a
+         guess. */
+      lat?: number | null;
+      lon?: number | null;
       /** THE EVENT'S OWN DETAIL PANEL (defect sheet #12-#14). `ctx` is a
        *  KIND-level explainer key, identical on every row of a kind, which is
        *  why one panel once described them all. The API now sends each row's
@@ -1373,5 +1572,51 @@ export interface Payload {
  * there is exactly one shape, the views cannot drift from what the payload
  * actually carries, and a field renamed above is a compile error below.
  */
+/**
+ * THE PAPERWORK BEHIND A PERMIT, A COMPLETION OR A STATUS CHANGE.
+ *
+ * Copied from the reference's `FilingDetail` in `timeline.ts`. A field left
+ * null is a field the KIND does not have, which is why the row's `of` says
+ * which document it is rather than a panel printing a union of three and
+ * showing "—" for the absences it invented.
+ */
+export interface FilingDetail {
+  of: 'permit' | 'completion' | 'status' | 'well';
+
+  /* -- permit only ------------------------------------------------------- */
+  permit_no: string | null;
+  permit_suffix: string | null;
+  permit_action: string | null;
+  total_depth: number | null;
+
+  /* -- completion only --------------------------------------------------- */
+  tracking_no: string | null;
+  completion_type: string | null;
+  completion_action: string | null;
+  well_type: string | null;
+
+  /* -- status change only ------------------------------------------------ */
+  prev_well_status: string | null;
+  new_well_status: string | null;
+  prev_operator_name: string | null;
+  new_operator_name: string | null;
+  prev_completion_label: string | null;
+  new_completion_label: string | null;
+  changed: { status: boolean; operator: boolean; lease: boolean } | null;
+
+  /* -- shared ------------------------------------------------------------ */
+  status: string | null;
+  submit_label: string | null;
+  approved_label: string | null;
+  completion_label: string | null;
+  /** which of the three dates the row is dated and sorted by */
+  date_basis: 'completion' | 'approved' | 'submitted' | 'published' | null;
+  purpose: string | null;
+  profile: string | null;
+  field_name: string | null;
+  api_source: 'filed' | 'resolved' | null;
+  seen_label: string | null;
+}
+
 export type Alert = Payload['alerts']['items'][number];
 export type TimelineEvent = Payload['timeline']['events'][number];

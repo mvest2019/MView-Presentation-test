@@ -33,8 +33,9 @@
  * out of, leaving focus on a page they cannot see, is worse than no drawer.
  */
 import React, { useEffect, useRef } from 'react';
-import type { Drawer } from '../../_lib/reference/payload';
+import type { Drawer, Payload } from '../../_lib/reference/payload';
 import { Html } from './bits';
+import DrawerMapBlock from './DrawerMapBlock';
 import { serviceText, spanLabel } from '../../_lib/reference/fmt';
 import { Charts } from './LineChart';
 
@@ -230,7 +231,8 @@ const TONE_LABEL: Record<string, string> = {
 };
 
 export default function DrawerPanel(
-  { copy, onClose, sample, sourceNote, evidenceTotal, panelKey }:
+  { copy, onClose, sample, sourceNote, evidenceTotal, panelKey,
+    nearby = [], onOpen, canOpen }:
   {
     copy: Drawer | null; onClose: () => void; sample: boolean; sourceNote: string | null;
     /**
@@ -262,6 +264,15 @@ export default function DrawerPanel(
      * number here is computed — it is a field the service already sends.
      */
     evidenceTotal?: number | null;
+    /* ---- THE POINTS THE MAP DRAWS FROM.
+       The drawer carries a SELECTION, not the points — see `DrawerMapBlock`.
+       These are `payload.nearby.rows`, already on the client for the neighbor
+       lists, and both read the one copy. */
+    nearby?: Payload['nearby']['rows'];
+    /** open another panel — the "See this well" button */
+    onOpen?: (key: string) => void;
+    /** whether that panel exists, so a dead button is never offered */
+    canOpen?: (key: string) => boolean;
   },
 ) {
   const panel = useRef<HTMLDivElement | null>(null);
@@ -443,6 +454,34 @@ export default function DrawerPanel(
                   )
                   : null}
 
+                {/* ---------------------------------------------- the record
+                    THE FACTS BEFORE THE EXPLANATION OF THEM. A reader who
+                    opened one permit wants its numbers and its dates, and they
+                    used to be spread through three prose blocks. Unnumbered,
+                    because it is not one of the four questions — it is the
+                    record the four answers are about. */}
+                {copy.facts?.rows.length
+                  ? (
+                    <section className="dx-facts">
+                      <div className="dx-facts-h">
+                        <h4>{copy.facts.head}</h4>
+                        {copy.facts.note
+                          ? <span className="dx-note">{copy.facts.note}</span>
+                          : null}
+                      </div>
+                      <div className="dx-facts-g">
+                        {copy.facts.rows.map((f) => (
+                          <div className="dx-f" key={f.k}>
+                            <span className="dx-fk">{f.k}</span>
+                            <span className="dx-fv cl-fig">{f.v}</span>
+                            {f.sub ? <span className="dx-fs">{f.sub}</span> : null}
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )
+                  : null}
+
                 {/* ------------------------------------------ the four steps */}
                 {/* THE PROSE IS COVERED ON THE SAME TERMS AS THE BAND.
                     Marked and left alone at first, and it undid the cover: the
@@ -455,6 +494,18 @@ export default function DrawerPanel(
                 <Step n={1} head="What this is">
                   <Html html={lockFigures(copy.what)} className="small" />
                 </Step>
+
+                {/* ---- AND WHERE IT IS.
+                    Directly after "what this is", because a permit near your
+                    acreage is a fact about a PLACE, and the sentence above has
+                    just said which permits. Before "what it means", because
+                    the meaning is easier to read once the reader has seen how
+                    close the thing actually is. */}
+                {copy.map && onOpen && canOpen ? (
+                  <DrawerMapBlock
+                    spec={copy.map} rows={nearby} onOpen={onOpen} canOpen={canOpen}
+                  />
+                ) : null}
 
                 <Step n={2} head="What it means for you">
                   <Html html={lockFigures(copy.means)} className="small" />
@@ -515,8 +566,14 @@ export default function DrawerPanel(
                   )
                   : null}
 
-                {sourceNote
-                  ? <p className="tiny muted ctx-foot">{sourceNote}</p>
+                {/* ---- THE PANEL'S OWN SOURCE LINE, WHERE IT HAS ONE.
+                    The reference prefers `copy.source` and falls back to the
+                    global note. This used to print only the global note, so
+                    every alert panel closed on the same sentence about how the
+                    OWNER was matched on the appraisal roll — correct, and
+                    nothing to do with the finding the reader had opened. */}
+                {copy.source ?? sourceNote
+                  ? <p className="tiny muted ctx-foot">{copy.source ?? sourceNote}</p>
                   : null}
               </>
             )

@@ -1,6 +1,9 @@
 import { americanize } from './american';
 import type { Alert, Drawer, Payload } from './payload';
 import raw from './owner-payload.json';
+/* TEMPORARY — see the header of that file, and `docs/ALERTS-BACKEND-NEEDED.md`.
+   Delete this import and the two `uiPlaceholder(...)` calls below to remove it. */
+import { uiPlaceholder } from './alerts-ui-placeholder';
 import { apiBase, fetchOwnerLiveBlocks, OwnerApiError } from './owner-api';
 import { getSessionUser } from '@/lib/session';
 
@@ -106,6 +109,14 @@ export interface OwnerSelection {
  * import and every request reads the result.
  */
 const FIXTURE = americanize(raw as unknown as Payload);
+/* `alerts.silent` — the rules that found nothing — is newer than this capture,
+   and the capture is served whole on three paths (no `member_id`, live off,
+   the anonymous preview). The contract says the block is always there, so it
+   is made true here rather than guarded at every reader: an empty list is the
+   honest answer for a capture that never ran the rules. Same argument as
+   `EMPTY_LEDGER` below, and the assignment is a no-op once the capture is
+   retaken against the current API. */
+FIXTURE.alerts.silent ??= [];
 repairForecastNets(FIXTURE.forecast);
 
 /**
@@ -288,13 +299,13 @@ export async function getOwnerPayload(
      be back-filled from a capture taken on a different day. `series` lands
      here by the spread like the rest — it is a whole block by the time
      `owner-api.ts` hands it over. */
-  return {
+  return uiPlaceholder({
     ...FIXTURE,
     ...live,
-    alerts: withLedger(live.alerts),
+    alerts: withSilent(withLedger(live.alerts)),
     activities: { ...live.activities, nearby: trimNearby(live.activities.nearby) },
     drawers: withAlertDrawers(FIXTURE.drawers, live.alerts.items),
-  };
+  });
 }
 
 /**
@@ -502,13 +513,13 @@ async function buildMemberPayload(base: string, member: string): Promise<Payload
     }),
   ]);
 
-  return {
+  return uiPlaceholder({
     /* explicit rather than `...FIXTURE, ...dash`: if `Payload` ever gains a
        block, this has to fail to compile rather than silently serve a capture
        of somebody else's minerals for it */
     ...dash,
     owner: { ...dash.owner, ...OWNER_GAPS },
-    alerts: { ...dash.alerts, ledger: dash.alerts.ledger ?? EMPTY_LEDGER },
+    alerts: withSilent({ ...dash.alerts, ledger: dash.alerts.ledger ?? EMPTY_LEDGER }),
     weekly: { ...weekly, archive },
     nearby: NO_NEARBY,
     /* the four Activity blocks come from the owner-keyed API — one snapshot,
@@ -535,7 +546,7 @@ async function buildMemberPayload(base: string, member: string): Promise<Payload
        the chart. No mapper, for the same reason `/dashboard` needs none. */
     forecast,
     my_leases: FIXTURE.my_leases,
-  };
+  });
 }
 
 /**
@@ -674,6 +685,22 @@ function band(n: 1 | 3 | 5): Payload['nearby']['bands']['1'] {
  * plan row for returns them blank while the counts are fine. So they fall back
  * on their own, independently of the counts.
  */
+/**
+ * THE SILENT RULES ARE A LIST, NEVER AN ABSENCE.
+ *
+ * `alerts.silent` says which of the fourteen rules ran and found nothing, and
+ * the page renders it as a count. An API response predating the field — or a
+ * capture — would otherwise reach `al.silent.length` as `undefined`, so the
+ * block is normalised once here instead of being guarded at the reader.
+ *
+ * AN EMPTY LIST IS NOT A CLAIM. It renders nothing at all, which is the right
+ * answer for a response that cannot say which rules were quiet; it is not the
+ * same as "no rules were quiet", and nothing on the page says that it is.
+ */
+function withSilent(live: Payload['alerts']): Payload['alerts'] {
+  return live.silent ? live : { ...live, silent: [] };
+}
+
 function withLedger(live: Payload['alerts']): Payload['alerts'] {
   const cap = FIXTURE.alerts.ledger;
   const lg = live.ledger?.leases ? live.ledger : cap;
@@ -750,6 +777,45 @@ function trimNearby(
  * `well:<api14>` — are NOT derivable from an alert and are left exactly as the
  * capture has them.
  */
+/* ---- WHERE EACH ALERT'S FIGURES CAME FROM, BY NAME — the reference's own
+   `SOURCE` table, verbatim. One line per rule, naming the collections and the
+   columns behind it, printed at the foot of that alert's panel.
+
+   It is keyed on the rule rather than the id because two of the ten ids are
+   dated or keyed on a lease: a trailing '-' matches by prefix, so
+   `filed-202607` and `trend-02_259558` find their own line however the service
+   anchors them. An id with no rule here gets `null`, and `DrawerPanel` falls
+   back to the global note exactly as the reference does. */
+const ALERT_SOURCE: Record<string, string> = {
+  'filed-': 'ProdMvestPortal.MonthlyProductionVolumes — lease_oil_prod_vol + '
+    + 'lease_cond_prod_vol and lease_gas_prod_vol + lease_csgd_prod_vol, by cycle.',
+  'permits-filed': 'ProdMvestPortal.Activity, activity_type "New Permit", filtered to your '
+    + 'counties. Dated by approved_date; located from GeoMapPortal.WellGeoData by '
+    + 'status_number.',
+  completions: 'ProdMvestPortal.Activity, activity_type "New Completion", filtered to your '
+    + 'counties. Dated by completion_date; located from GeoMapPortal.WellGeoData by api.',
+  'permit-ring': 'GeoMapPortal.LeaseRadiusData.Near_Permit_List at 1, 3 and 5 miles, joined '
+    + 'to ProdMvestPortal.Activity on status_number.',
+  'completion-ring': 'GeoMapPortal.LeaseRadiusData.Near_Leases_List at 1, 3 and 5 miles, '
+    + 'joined to ProdMvestPortal.Activity on district_code + lease_number, and again on api.',
+  'filing-mine': 'The same two joins, kept where the filing names a lease you hold.',
+  'handover-': 'Operator_Directory.Operators_Filter_Data_Final — operator_no and operator_name '
+    + 'across Start/End_Month and Year.',
+  'trend-': 'ProdMvestPortal.MonthlyProductionVolumes — this filed month against the one '
+    + 'before it, on the same four volume columns.',
+  newwell: 'Decline_data_to_web.Data_to_web — "NEW WELL PROBABILITY" and its category.',
+  pricedeck: 'ProdMvestPortal.MVestimateCalculations — mvestimates[].oilprice and .gasprice.',
+  opnews: 'ProdMvestPortal.Activity, activity_type "Operators" — title, summary and '
+    + 'published_date, matched to the operators that run your leases.',
+};
+
+function sourceForAlert(id: string): string | null {
+  for (const k of Object.keys(ALERT_SOURCE)) {
+    if (k.endsWith('-') ? id.startsWith(k) : id === k) return ALERT_SOURCE[k];
+  }
+  return null;
+}
+
 function withAlertDrawers(
   base: Record<string, Drawer>, items: Alert[],
 ): Record<string, Drawer> {
@@ -777,6 +843,8 @@ function withAlertDrawers(
       tone: a.category === 'community' ? 'record' : a.category,
       spark: a.spark,
       spark_label: a.spark_label,
+      /* the rule's own line, not the global owner-identification note */
+      source: sourceForAlert(a.id),
     };
   }
   return out;

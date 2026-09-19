@@ -1061,6 +1061,9 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
             <AlertsView
               p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go}
               readIds={readIds} markRead={markRead} readReady={readReady}
+              /* the log tab renders `timeline.events`, the same rows
+                 Activities renders, so it opens the same per-event panel */
+              openEvent={openEventDrawer}
             />
           )
           : route === 'activities'
@@ -1131,6 +1134,14 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
         sample={sample} sourceNote={data?.owner.identity_note ?? null}
         evidenceTotal={evidenceTotal}
         panelKey={typeof drawer === 'string' ? drawer : null}
+        /* ---- THE GROUND UNDER AN EXPLAINER.
+           `nearby.rows` are already on the client for the neighbor lists, and
+           the map SELECTS over them rather than carrying its own copy — see
+           `DrawerMapBlock`. `canOpen` is asked before the "See this well"
+           button is drawn, so a dead control is never offered. */
+        nearby={data?.nearby.rows ?? []}
+        onOpen={openDrawer}
+        canOpen={(k) => Boolean(data?.drawers?.[k])}
       />
     </div>
   );
