@@ -18,6 +18,7 @@ import type {
   OwnerRecord,
 } from "../_lib/claim-types";
 import { ClaimShell } from "./claim-shell";
+import { FlowLoading } from "./flow-state";
 import {
   SEARCH_DEBOUNCE_MS,
   emptyQuery,
@@ -104,6 +105,164 @@ function message(error: unknown): string {
 /** `?step=3` — the flow's position, and the only thing it puts in the URL. */
 const stepUrl = (step: number) => `${window.location.pathname}?step=${step}`;
 
+/** Where the flow's restorable state is parked between page loads. */
+const SESSION_KEY = "mv-claim-session";
+
+/** The two pieces of this flow a reload can put back. */
+interface StoredSession {
+  query: ClaimQuery;
+  picked: OwnerRecord[];
+}
+
+/**
+ * A RELOAD KEEPS ITS PLACE NOW — UP TO STEP 4.
+ *
+ * ── WHAT CHANGED, AND WHY IT COULD ──
+ *
+ * Every reload used to land on step 1, on the reasoning that `?step=3` names a
+ * position and not the state behind it. That reasoning was sound and the
+ * conclusion was too broad: it treated all four screens of state as one thing,
+ * when only the LAST of them is unrecoverable.
+ *
+ *   step 2   needs `results`   — `searchOwners(query)`, re-runnable
+ *   step 3   needs `claimSet`  — `fetchClaimSet(picked)`, re-runnable
+ *   step 4   needs the leases  — the same `claimSet`, re-runnable
+ *   step 5   needs the receipt — the answer to a POST, NOT re-runnable
+ *
+ * So the two INPUTS are stored — the four fields, and the rows ticked on step
+ * 2 — and the answers are fetched again from them on mount. Step 3 reopens on
+ * its own spinner and fills in, which is exactly what it does when reached by
+ * the Continue button.
+ *
+ * ── WHAT IS DELIBERATELY NOT STORED ──
+ *
+ * `attested` — step 3's good-faith statement. It is a legal assertion, and the
+ * flow already goes out of its way to drop it whenever the records it was made
+ * about change (see `resolveSelection`). Restoring it from disk would let a
+ * reload carry a promise across a page load nobody watched being made. It
+ * starts false, and `confirmed` is re-seeded by `leadAddressPerOwner` from the
+ * refetched answer, so the reader ticks and attests on this page load.
+ *
+ * ── `sessionStorage`, NOT THE URL ──
+ *
+ * It dies with the tab, which is the right lifetime for a half-finished claim
+ * about who somebody is: a shared or bookmarked link should not carry the name
+ * and mailing address the last person searched for. The address bar keeps
+ * saying what it already said — the step, and nothing else.
+ *
+ * ── AND IT IS READ DEFENSIVELY ──
+ *
+ * Anything can be in that key: an older shape of this flow, a hand-edited
+ * value, a half-written entry. Every field is taken only if it has the right
+ * type and dropped otherwise, so a malformed entry degrades to an empty form
+ * rather than putting `undefined` into a search request. `sessionStorage`
+ * itself raises in a private window and where site data is blocked, so both
+ * directions are wrapped: a failure means the old land-on-step-1 behaviour.
+ */
+function readSession(): StoredSession | null {
+  try {
+    const raw = window.sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const held = parsed as Record<string, unknown>;
+
+    const query = toStoredQuery(held.query);
+    const picked = Array.isArray(held.picked)
+      ? held.picked
+          .map(toStoredRecord)
+          .filter((record): record is OwnerRecord => record !== null)
+      : [];
+
+    /* Nothing worth restoring is the same as nothing stored, and returning it
+       would schedule a state update that changes nothing on every mount. */
+    const anyQuery = Object.values(query).some((value) => value !== "");
+    return anyQuery || picked.length > 0 ? { query, picked } : null;
+  } catch {
+    return null;
+  }
+}
+
+const text = (value: unknown) => (typeof value === "string" ? value : "");
+const num = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) ? value : 0;
+
+function toStoredQuery(value: unknown): ClaimQuery {
+  const held = (value ?? {}) as Record<string, unknown>;
+  return {
+    name: text(held.name),
+    lease: text(held.lease),
+    county: text(held.county),
+    address: text(held.address),
+  };
+}
+
+/**
+ * NAME AND COUNTY ARE REQUIRED, the rest degrade. Those two are what
+ * `fetchSameName` is called with, so a record missing either cannot be
+ * re-resolved and is dropped rather than sent as an empty query string.
+ */
+function toStoredRecord(value: unknown): OwnerRecord | null {
+  if (!value || typeof value !== "object") return null;
+  const held = value as Record<string, unknown>;
+
+  const name = text(held.name);
+  const county = text(held.county);
+  if (!name || !county) return null;
+
+  return {
+    name,
+    county,
+    address: text(held.address),
+    leaseCount: num(held.leaseCount),
+    appraisedValue: num(held.appraisedValue),
+    operatorCount: num(held.operatorCount),
+    leases: Array.isArray(held.leases)
+      ? held.leases.map((lease) => {
+          const row = (lease ?? {}) as Record<string, unknown>;
+          const value = num(row.value);
+          return {
+            name: text(row.name),
+            number: typeof row.number === "string" ? row.number : null,
+            operator: typeof row.operator === "string" ? row.operator : null,
+            county: text(row.county) || county,
+            value,
+            decimal: typeof row.decimal === "number" ? row.decimal : null,
+            producing: value > 0,
+          };
+        })
+      : [],
+  };
+}
+
+function writeSession(session: StoredSession) {
+  try {
+    window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  } catch {
+    /* Blocked or full. The flow works exactly as it did before this existed. */
+  }
+}
+
+/**
+ * HOW FAR A RELOAD MAY LAND — the same clamp `furthest` applies to Back and
+ * Forward, asked at mount against what storage can rebuild rather than against
+ * state that does not exist yet.
+ */
+function restorableStep(asked: number, stored: StoredSession | null): number {
+  if (!stored) return 1;
+
+  /* STEP 5 IS NOT RESTORABLE, AND DOES NOT DEGRADE TO STEP 4. The receipt
+     exists only as the answer to a POST, and the only way to obtain another is
+     to file the claim a second time — so reloading on the receipt starts
+     again rather than reopening the button that writes. */
+  if (asked > 4) return 1;
+
+  if (asked >= 3 && stored.picked.length > 0) return asked;
+  if (asked >= 2 && isSearchable(stored.query)) return 2;
+  return 1;
+}
+
 /**
  * STEP 3 OPENS WITH ONE ADDRESS TICKED PER OWNER — every row is SHOWN, one is
  * CHOSEN (requested).
@@ -149,8 +308,33 @@ function leadAddressPerOwner(records: OwnerRecord[]): string[] {
   return [...lead.values()].map(recordKey);
 }
 
-export function ClaimWizard({ memberId }: { memberId: number | null }) {
-  const [step, setStep] = useState(1);
+/**
+ * `0` IS A REAL STEP VALUE HERE: "not decided yet".
+ *
+ * It is what the wizard opens on when the URL asks for anything above step 1,
+ * for exactly as long as it takes the mount effect to find out whether the
+ * state behind that request can be rebuilt. Without it the server paints step
+ * 1 — it has no `sessionStorage` to consult — and a reload on `?step=3`
+ * showed the search form, held it through hydration, and then swapped to step
+ * 3. The work was right and the first frame was a lie.
+ *
+ * A visitor with no `?step`, or with `?step=1`, never sees this: they open on
+ * step 1 directly, painted by the server, with no placeholder in between.
+ */
+const DECIDING = 0;
+
+export function ClaimWizard({
+  memberId,
+  initialStep = 1,
+}: {
+  memberId: number | null;
+  /** `?step` as the SERVER read it — see `askedStep` in `page.tsx`. */
+  initialStep?: number;
+}) {
+  /* Server and client agree on this first render — both compute it from the
+     same parameter — which is the whole reason the decision is deferred rather
+     than read from storage during render, where they could not agree. */
+  const [step, setStep] = useState(initialStep > 1 ? DECIDING : 1);
 
   const [counties, setCounties] = useState<Async<CountyIndex>>({
     data: null,
@@ -225,17 +409,96 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
    * this — updating the URL without a navigation — and it leaves the mounted
    * component, and therefore the whole claim in progress, alone.
    *
-   * ── A RELOAD ALWAYS LANDS ON STEP 1 ──
+   * ── A RELOAD KEEPS ITS STEP, UP TO 4 ──
    *
-   * `?step=4` in a bookmark or a reload describes a position, not the four
-   * screens of state behind it, and none of that state survives a reload. So
-   * the mount `replaceState`s back to step 1 rather than reading the parameter:
-   * honouring it would open a lease table with no leases and a Claim button
-   * with nothing to file.
+   * It always landed on step 1, because `?step=4` describes a position and not
+   * the state behind it. Two of those three screens can now rebuild their own
+   * state from what `readSession` stored — see it for the full reasoning — so
+   * the parameter is honoured as far as `restorableStep` allows and corrected
+   * in place when it asks for more than that.
+   *
+   * THE BACK STACK IS NOT REBUILT, and does not need to be: a reload keeps the
+   * session history, so the `?step=1` and `?step=2` entries pushed on the way
+   * here are still behind this one and `onPop` below picks them up. Pushing
+   * replacements would leave two copies of the flow in the stack, where Back
+   * from step 1 walks FORWARD into the older step 3.
+   */
+  /**
+   * RE-RESOLVE THE PICK — the half of `resolveSelection` a reload needs.
+   *
+   * Same call, same merge, same seeded ticks. What it deliberately leaves out
+   * is the rest of that function: it does not touch the attestation signature
+   * and it does not move the step, because the mount effect has already
+   * decided where the reader lands and `attested` starts false on a fresh page
+   * load by design.
+   *
+   * A failure here is the ordinary step 3 failure — the step renders
+   * `claimSet.error` with a retry — so a reload with a dead network lands on a
+   * screen that explains itself rather than an empty one.
+   */
+  const resumeClaimSet = useCallback(async (records: OwnerRecord[]) => {
+    setClaimSet({ data: null, loading: true, error: null });
+    try {
+      const set = await fetchClaimSet(records);
+      setClaimSet({ data: set, loading: false, error: null });
+      setConfirmed(leadAddressPerOwner(set.records));
+    } catch (error) {
+      setClaimSet({ data: null, loading: false, error: message(error) });
+    }
+  }, []);
+
+  /** False until the restore below has run, so nothing overwrites it first. */
+  const hydrated = useRef(false);
+
+  useEffect(() => {
+    const stored = readSession();
+    const asked =
+      Number(new URLSearchParams(window.location.search).get("step")) || 1;
+    const target = restorableStep(asked, stored);
+
+    window.history.replaceState(null, "", stepUrl(target));
+
+    /* DEFERRED BY A TICK, for two separate reasons. A synchronous setState in
+       an effect body is what `react-hooks/set-state-in-effect` refuses; and
+       seeding `useState` from `sessionStorage` instead — the obvious
+       alternative — runs during render, where the server has no storage and
+       would send an empty form for the client to hydrate as a filled one. */
+    const timer = setTimeout(() => {
+      if (stored) {
+        setQuery(stored.query);
+        setPicked(stored.picked);
+        /* Step 2 needs no kick: its own debounce sees a searchable query it
+           has not sent and runs it. Steps 3 and 4 have no such watcher, so the
+           resolve that Continue would have done is done here instead. */
+        if (target >= 3) void resumeClaimSet(stored.picked);
+      }
+      /* Unconditionally, because `DECIDING` has to resolve even when the
+         answer is step 1 — a reload with nothing left in storage. */
+      setStep(target);
+      hydrated.current = true;
+    }, 0);
+
+    return () => clearTimeout(timer);
+    /* `resumeClaimSet` is a stable `useCallback` and this must run once. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * THE FLOW'S INPUTS, KEPT IN STEP WITH STORAGE.
+   *
+   * An effect rather than a wrapper around the setters, because `picked` is
+   * set through updater functions in three places — the toggle, the post-
+   * search prune and the clear — and a wrapper would have to thread all of
+   * them. Watching the result covers every path including ones added later.
+   *
+   * `hydrated` is what makes an effect safe here: without it the first run
+   * fires with the empty initial state and wipes the entry before the restore
+   * above has read it.
    */
   useEffect(() => {
-    window.history.replaceState(null, "", stepUrl(1));
-  }, []);
+    if (!hydrated.current) return;
+    writeSession({ query, picked });
+  }, [query, picked]);
 
   /** Forward: a new entry, so the one behind it is the step just left. */
   function goStep(next: number) {
@@ -725,6 +988,20 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
     }
     return [...byLease.values()];
   })();
+
+  /* THE PLACEHOLDER, AND WHY IT SITS IN THE SHELL. The stepper and the caption
+     bar are the two things the reader recognises as "the claim flow, where I
+     left it"; drawing them around the spinner means the page they reload into
+     is the page they left, filling in — not a bare card that becomes it. The
+     stepper is lit at the step being restored, so nothing jumps when the real
+     screen arrives. */
+  if (step === DECIDING) {
+    return (
+      <ClaimShell current={initialStep}>
+        <FlowLoading label="Picking up where you left off…" />
+      </ClaimShell>
+    );
+  }
 
   return (
     <ClaimShell current={step}>

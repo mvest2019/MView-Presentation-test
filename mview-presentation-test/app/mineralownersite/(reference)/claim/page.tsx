@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { getSessionUser } from "@/lib/session";
 
 import Portal from "../../_components/reference/Portal";
+import { TOTAL_STEPS } from "./_lib/claim-steps";
 import {
   getOwnerPayload,
   type OwnerSelection,
@@ -88,13 +89,43 @@ export default async function PortalClaimPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const user = await getSessionUser();
-  const initial = await loadInitial(searchParams);
+  const q = await searchParams;
+  const initial = await loadInitial(q);
 
   return (
     <Portal route={null} initial={initial}>
-      <ClaimWizard memberId={user?.id ?? null} />
+      <ClaimWizard memberId={user?.id ?? null} initialStep={askedStep(q)} />
     </Portal>
   );
+}
+
+/**
+ * `?step` AS THE SERVER SEES IT — so the first paint does not show the wrong
+ * screen.
+ *
+ * The flow restores its step on the client, because only the client can see
+ * the `sessionStorage` the restore is rebuilt from. But the server had already
+ * painted step 1 by then: the HTML arrives and is on screen long before any
+ * JavaScript runs, so a reload on `?step=2` showed step 1, sat there through
+ * hydration, and then swapped. The restore was working; the flash was the
+ * server answering a question it had enough information to answer.
+ *
+ * It cannot answer it fully — whether the state behind `?step=2` is still
+ * there is a client question — but it can tell "step 1" from "somewhere else",
+ * which is all that is needed to stop painting a definite wrong answer. The
+ * wizard opens on a restoring placeholder for anything above 1 and settles it
+ * a tick later.
+ *
+ * Out-of-range and non-numeric values fall to 1, which is also what a visitor
+ * with no parameter gets: the ordinary opening of the flow, painted directly
+ * with no placeholder at all.
+ */
+function askedStep(q: Record<string, string | string[] | undefined>): number {
+  const raw = q.step;
+  const asked = Number(Array.isArray(raw) ? raw[0] : raw);
+  return Number.isInteger(asked) && asked >= 1 && asked <= TOTAL_STEPS
+    ? asked
+    : 1;
 }
 
 /**
@@ -106,9 +137,8 @@ export default async function PortalClaimPage({
  * either way.
  */
 async function loadInitial(
-  searchParams: Promise<Record<string, string | string[] | undefined>>,
+  q: Record<string, string | string[] | undefined>,
 ): Promise<Payload | null> {
-  const q = await searchParams;
   const one = (k: string): string | undefined => {
     const v = q[k];
     return Array.isArray(v) ? v[0] : v;

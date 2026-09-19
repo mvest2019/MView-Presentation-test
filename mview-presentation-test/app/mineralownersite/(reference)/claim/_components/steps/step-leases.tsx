@@ -1,7 +1,10 @@
 "use client";
 
 import {
+  ArrowDown,
   ArrowRight,
+  ArrowUp,
+  ChevronsUpDown,
   CircleCheck,
   FileText,
   ListTree,
@@ -73,16 +76,26 @@ function compare(a: FlowLease, b: FlowLease, key: SortKey): number {
 /**
  * A COLUMN HEADING THAT SORTS.
  *
- * ── NO GLYPH (requested) ──
+ * ── ONE GLYPH AT REST, NOT FIVE (requested, twice) ──
  *
- * It carried two facing chevrons at rest and a single arrow when active. Both
- * are gone, so the state is carried by WEIGHT AND COLOUR instead: the column
- * being sorted is near-black, the others are slate. That is a weaker signal
- * than an arrow and it is the trade that was asked for — five glyphs across a
- * header band is a lot of furniture for a table of six rows.
+ * This started with two facing chevrons on every heading and a single arrow on
+ * the active one. That was taken out — five glyphs across a header band is a
+ * lot of furniture for a short table — leaving weight and colour to carry the
+ * state, which turned out to be too quiet: a header row with no affordance at
+ * all does not look sortable.
  *
- * `aria-sort` is unaffected and still names the column and its direction, so a
- * screen reader is told exactly what the arrow used to say.
+ * So the arrow is back for the column ACTUALLY SORTED, and only that one. The
+ * other four keep a faint up-down chevron that appears on hover or keyboard
+ * focus, which is where a reader is when the question "can I sort by this?" is
+ * live. At rest the band carries exactly one glyph, which was the objection.
+ *
+ * THE SLOT IS ALWAYS THERE, hidden with `opacity-0` rather than by not being
+ * rendered: at 12px either way, the heading does not shuffle sideways when the
+ * pointer crosses it.
+ *
+ * `aria-sort` was never affected by any of this and still names the column and
+ * its direction, so a screen reader has been told throughout what the arrow
+ * says now.
  *
  * The button fills the cell rather than sitting inside it, so the whole heading
  * is the target and the cursor change covers the width of the column.
@@ -114,11 +127,34 @@ function SortHeader({
         type="button"
         onClick={() => onSort(column)}
         title={`Sort by ${label.toLowerCase()}`}
-        className={`flex w-full cursor-pointer items-center gap-[5px] border-0 bg-transparent px-[14px] py-[9px] text-[11px] font-bold tracking-[0.06em] uppercase transition-colors hover:text-mv-green-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-mv-green-deep ${
+        className={`group flex w-full cursor-pointer items-center gap-[5px] border-0 bg-transparent px-[14px] py-[9px] text-[11px] font-bold tracking-[0.06em] uppercase transition-colors hover:text-mv-green-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-mv-green-deep ${
           numeric ? "justify-end" : "justify-start"
         } ${active ? "text-mv-green-ink" : "text-mv-slate"}`}
       >
         {label}
+        {/* The arrow points the way the rows run: up for A–Z and smallest
+            first, down for the reverse — the direction `compare` is applied in,
+            not a suggestion of what clicking will do next. */}
+        {active ? (
+          sort.dir === "asc" ? (
+            <ArrowUp
+              aria-hidden="true"
+              className="h-[12px] w-[12px] flex-none"
+              strokeWidth={2.6}
+            />
+          ) : (
+            <ArrowDown
+              aria-hidden="true"
+              className="h-[12px] w-[12px] flex-none"
+              strokeWidth={2.6}
+            />
+          )
+        ) : (
+          <ChevronsUpDown
+            aria-hidden="true"
+            className="h-[12px] w-[12px] flex-none opacity-0 transition-opacity group-hover:opacity-55 group-focus-visible:opacity-55"
+          />
+        )}
       </button>
     </TableHeaderCell>
   );
