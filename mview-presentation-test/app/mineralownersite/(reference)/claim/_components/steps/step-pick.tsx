@@ -401,39 +401,22 @@ export function StepPick({
              `toLocaleString` on both halves, because the narrow-down box beside
              it already prints "1,153" — the same number in two spellings on one
              screen reads as two different numbers. */
-          /*
-            THE SPINNER IS ON THE HEADING, and that is the correction to an
-            indicator that was only ever on the rows.
-
-            The floating pill below is right for a reader who has scrolled INTO
-            a list of a thousand candidates — it follows them down. It is the
-            wrong one for a reader who has not moved: they are looking at
-            "Searching the public record…" at the top of the card, and a badge
-            parked a third of the way down the viewport is not where that
-            sentence is. The two together cover both positions, and they are not
-            the duplicate that was removed earlier — that was two separate
-            notices each saying a search was running. This is the heading's own
-            glyph turning while the heading says it.
-
-            It costs no height: the glyph is smaller than the line it sits
-            on, and it is gone the moment the heading turns into a count.
-          */
+          /* NO GLYPH ON THE HEADING (requested). It carried a spinning
+             `LoaderCircle` for a while, added when the badge over the rows was
+             not rendering and the dim was the only sign a search was running.
+             The badge works now, so the heading is back to being a sentence:
+             two spinners four lines apart on one card read as two things
+             loading, which is the duplicate this screen has removed once
+             already. The words still say it — "Searching the public record…"
+             — and the moving part is on the rows, where the staleness is. */
           title={
-            results.loading ? (
-              <span className="flex items-center gap-[10px]">
-                <LoaderCircle
-                  aria-hidden="true"
-                  className="h-[18px] w-[18px] flex-none animate-spin text-mv-green-deep"
-                />
-                Searching the public record…
-              </span>
-            ) : results.error || records.length === 0 ? (
-              "Pick your record"
-            ) : narrowed ? (
-              `${shown.length.toLocaleString("en-US")} of ${records.length.toLocaleString("en-US")} owner record${records.length === 1 ? "" : "s"}`
-            ) : (
-              `${records.length.toLocaleString("en-US")} candidate owner record${records.length === 1 ? "" : "s"}`
-            )
+            results.loading
+              ? "Searching the public record…"
+              : results.error || records.length === 0
+                ? "Pick your record"
+                : narrowed
+                  ? `${shown.length.toLocaleString("en-US")} of ${records.length.toLocaleString("en-US")} owner record${records.length === 1 ? "" : "s"}`
+                  : `${records.length.toLocaleString("en-US")} candidate owner record${records.length === 1 ? "" : "s"}`
           }
           /* The instruction has to match the view too. "Tick every record that
              is you" is advice for browsing a thousand candidates; over the two
@@ -606,43 +589,67 @@ export function StepPick({
               ))}
             </div>
 
-            {/* THE ONLY REFRESH INDICATOR, AND IT IS ON THE ROWS.
-                This list runs to 1,153 rows, and a notice at the top of the
-                card is off screen for most of it — a reader scrolled into the
-                list would see the rows go pale with nothing saying why. This
-                floats over them, and it carries `role="status"` because it is
-                now the one thing announcing the refresh.
+            {/* THE REFRESH INDICATOR, ON THE ROWS.
+
+                The rows going pale says they are STALE. It does not say a
+                request is in flight, and on a list this long the heading that
+                does say it is off screen for most of the scroll. So the grid
+                gets a wash and a badge of its own.
 
                 ── IT COSTS NO LAYOUT ──
 
                 Absolute over the grid, so nothing below it moves when it
-                appears and nothing shifts back when it goes.
+                appears and nothing shifts back when it goes. The whole overlay
+                is `pointer-events-none`; the rows underneath are already inert.
 
-                ── AND IT FOLLOWS THE SCROLL ──
+                ── WHITE, ON THE WASH (requested) ──
 
-                `sticky` inside a wrapper that covers the whole grid keeps it in
-                view for as long as any part of the list is, and clamps it
-                inside the grid rather than letting it wander off the end. The
-                whole overlay is `pointer-events-none`; the rows underneath are
-                already inert while this is up.
+                It was dark for one round — `bg-mv-deep`, borrowed from the
+                selection bar — on the theory that a white pill over white cards
+                on a white card was too quiet to see. That theory was wrong: the
+                badge was not being drawn at all, for the reason below, and the
+                colour was never what was failing. On screen it reads perfectly
+                well in white, because what separates it from the rows is the
+                shadow and the hairline rather than the fill.
 
-                ── NEAR THE TOP OF THE LIST, NOT AT `38vh` ──
+                The wash under it is doing the other half of the work: it makes
+                the boundary of "this part is reloading" visible as a region,
+                which a badge alone cannot do on a list this long.
 
-                At 38vh the pill was pinned a third of the way down the screen,
-                which put it below the fold of anyone reading the top of the
-                card and made a running search look like nothing was happening.
-                Unscrolled it now sits at the first row; scrolled it pins just
-                under the portal's top bar, which is why the offset is 72px and
-                not zero. */}
+                ── WHY IT IS NOT `sticky` ANY MORE ──
+
+                It was, twice — first at `38vh`, then at `72px` — so that it
+                would follow a reader down a thousand rows. Neither one painted
+                on the real page, while the overlay around it did: the wash is
+                visibly there and the badge is not.
+
+                THE CAUSE IS NOT RECORDED HERE BECAUSE IT IS NOT KNOWN. An
+                isolated reproduction of this exact structure — sticky span in
+                an absolute flex overlay, over a dimmed grid, inside a
+                `container-type: inline-size` box — paints correctly, so sticky
+                is not broken by the shape of this markup. Something further up
+                the live page is responsible and it has not been inspected.
+
+                So the choice is not "sticky is wrong", it is that absolute
+                placement does not depend on a scrollport at all and therefore
+                cannot be defeated by whatever that ancestor turns out to be.
+                It lands where the list starts, which is where a reader looking
+                at a re-running search already is.
+
+                THE TRADE, NAMED: scrolled deep into 1,153 rows the badge is
+                above you. What remains there is the wash and the dim — the
+                whole region visibly held — plus the spinner on the step heading
+                for anyone who scrolls back up. That is a weaker signal than a
+                badge that follows, and it is the one that actually renders. */}
             {refreshing && (
-              <div className="pointer-events-none absolute inset-0 z-20 flex justify-center">
+              <div className="pointer-events-none absolute inset-0 z-20 rounded-lg bg-mv-card/55">
                 <span
                   role="status"
-                  className="sticky top-[72px] flex h-fit items-center gap-2 rounded-full border border-mv-mint-edge bg-mv-card px-4 py-[9px] text-[12.5px] font-bold text-mv-green-deep shadow-mv-lg"
+                  className="absolute top-4 left-1/2 flex -translate-x-1/2 items-center gap-[9px] rounded-full border border-mv-mint-edge bg-mv-card px-[18px] py-[11px] text-[12.5px] font-bold whitespace-nowrap text-mv-green-deep shadow-mv-lg"
                 >
                   <LoaderCircle
                     aria-hidden="true"
-                    className="h-[14px] w-[14px] animate-spin"
+                    className="h-[15px] w-[15px] animate-spin"
                   />
                   Searching…
                 </span>

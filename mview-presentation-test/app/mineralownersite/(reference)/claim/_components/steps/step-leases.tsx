@@ -76,26 +76,30 @@ function compare(a: FlowLease, b: FlowLease, key: SortKey): number {
 /**
  * A COLUMN HEADING THAT SORTS.
  *
- * ── ONE GLYPH AT REST, NOT FIVE (requested, twice) ──
+ * ── EVERY COLUMN SHOWS ITS GLYPH (requested) ──
  *
- * This started with two facing chevrons on every heading and a single arrow on
- * the active one. That was taken out — five glyphs across a header band is a
- * lot of furniture for a short table — leaving weight and colour to carry the
- * state, which turned out to be too quiet: a header row with no affordance at
- * all does not look sortable.
+ * This has been round the houses, so the shape is written down. It began with
+ * a chevron pair on all five headings; those came out, because five glyphs in
+ * one header band is a lot of furniture; weight and colour alone then turned
+ * out too quiet to read as sortable at all; the arrow came back on the ACTIVE
+ * column with the other four revealed on hover. That last one still failed the
+ * only test that matters — a reader not already moving the pointer across the
+ * header cannot see which columns sort, and three of the five looked inert.
  *
- * So the arrow is back for the column ACTUALLY SORTED, and only that one. The
- * other four keep a faint up-down chevron that appears on hover or keyboard
- * focus, which is where a reader is when the question "can I sort by this?" is
- * live. At rest the band carries exactly one glyph, which was the objection.
+ * So all five are drawn, all the time:
  *
- * THE SLOT IS ALWAYS THERE, hidden with `opacity-0` rather than by not being
- * rendered: at 12px either way, the heading does not shuffle sideways when the
- * pointer crosses it.
+ *   sorted column   a solid arrow, up or down, in the active colour
+ *   the other four  a dimmed up-down chevron, brightening on hover and focus
  *
- * `aria-sort` was never affected by any of this and still names the column and
- * its direction, so a screen reader has been told throughout what the arrow
- * says now.
+ * The contrast between the two is what carries the state now — shape and
+ * weight rather than presence — and it survives a reader who never hovers.
+ *
+ * THE SLOT WAS ALWAYS RENDERED, dimmed rather than removed, so none of these
+ * rounds has ever made a heading shuffle sideways as the pointer crosses it.
+ *
+ * `aria-sort` was never affected by any of it and still names the column and
+ * its direction, so a screen reader has been told throughout exactly what the
+ * arrow says.
  *
  * The button fills the cell rather than sitting inside it, so the whole heading
  * is the target and the cursor change covers the width of the column.
@@ -152,7 +156,7 @@ function SortHeader({
         ) : (
           <ChevronsUpDown
             aria-hidden="true"
-            className="h-[12px] w-[12px] flex-none opacity-0 transition-opacity group-hover:opacity-55 group-focus-visible:opacity-55"
+            className="h-[12px] w-[12px] flex-none opacity-45 transition-opacity group-hover:opacity-80 group-focus-visible:opacity-80"
           />
         )}
       </button>

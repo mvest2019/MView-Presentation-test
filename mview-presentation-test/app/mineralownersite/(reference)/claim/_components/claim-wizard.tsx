@@ -245,6 +245,35 @@ function writeSession(session: StoredSession) {
 }
 
 /**
+ * FILING THE CLAIM SPENDS THE INPUTS.
+ *
+ * ── THE BUG THIS FIXES ──
+ *
+ * The entry was written whenever the fields or the ticks changed and removed
+ * never. So a reader who searched "Luna unit", ticked 40 records, filed the
+ * claim, walked Back to step 2 and reloaded was handed all 40 ticks again,
+ * under a Review addresses button, for records that were claimed a minute
+ * earlier. The flow offered to file a claim it had already filed — the
+ * backend would have refused each one with OWNER_ALREADY_CLAIMED, which is the
+ * right answer to a question that should never have been asked.
+ *
+ * A claim is the end of the search that produced it. The receipt cannot be
+ * restored — see `restorableStep` — so leaving its inputs behind could only
+ * ever rebuild the part of the flow that writes.
+ *
+ * ON ANY ANSWER FROM THE POST, including a partial refusal: the request was
+ * made and step 5 reports exactly what came back. A thrown call clears
+ * nothing, because nothing was filed and the reader may want to try again.
+ */
+function clearSession() {
+  try {
+    window.sessionStorage.removeItem(SESSION_KEY);
+  } catch {
+    /* Blocked. Nothing was stored either, so there is nothing to strand. */
+  }
+}
+
+/**
  * HOW FAR A RELOAD MAY LAND — the same clamp `furthest` applies to Back and
  * Forward, asked at mount against what storage can rebuild rather than against
  * state that does not exist yet.
@@ -463,7 +492,11 @@ export function ClaimWizard({
     const timer = setTimeout(() => {
       if (stored) {
         setQuery(stored.query);
-        setPicked(stored.picked);
+        /* THE TICKS ONLY COME BACK IF THERE IS A STEP FOR THEM. At step 1 no
+           list is drawn, and restoring them anyway would push `furthest` to 3
+           — which is Forward walking into a claim set the reader never
+           assembled on this page load. */
+        if (target >= 2) setPicked(stored.picked);
         /* Step 2 needs no kick: its own debounce sees a searchable query it
            has not sent and runs it. Steps 3 and 4 have no such watcher, so the
            resolve that Continue would have done is done here instead. */
@@ -931,6 +964,11 @@ export function ClaimWizard({
     try {
       const result = await postClaim(memberId, claimOwners);
       setClaim({ data: result, loading: false, error: null });
+      /* The search and the ticks are spent — see `clearSession`. In memory
+         they stay exactly as they are, because step 5 and the Back button
+         behind it still describe this claim; it is the next PAGE LOAD that
+         must not find them and offer to file again. */
+      clearSession();
       /* Step 5 reads the response — including a partial refusal, which is the
          one thing it must not round up into "successfully claimed". */
       goStep(5);
