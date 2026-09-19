@@ -140,7 +140,7 @@ interface StoredSession {
  * flow already goes out of its way to drop it whenever the records it was made
  * about change (see `resolveSelection`). Restoring it from disk would let a
  * reload carry a promise across a page load nobody watched being made. It
- * starts false, and `confirmed` is re-seeded by `leadAddressPerOwner` from the
+ * starts false, and `confirmed` is re-seeded by `pickedAddresses` from the
  * refetched answer, so the reader ticks and attests on this page load.
  *
  * ── `sessionStorage`, NOT THE URL ──
@@ -264,48 +264,45 @@ function restorableStep(asked: number, stored: StoredSession | null): number {
 }
 
 /**
- * STEP 3 OPENS WITH ONE ADDRESS TICKED PER OWNER — every row is SHOWN, one is
- * CHOSEN (requested).
+ * STEP 3 OPENS WITH THE READER'S OWN PICKS TICKED — every row is SHOWN, the
+ * ticked ones are the ones they ticked on step 2.
  *
- * ── WHY NOT ALL OF THEM ──
+ * ── THE TWO LISTS, AND WHY ONLY ONE OF THEM IS TICKED ──
  *
- * It used to tick every record in the set, so a name the roll spells five ways
- * arrived with five ticks and a header reading "5 addresses are yours — 5
- * selected". That is the flow answering its own question: the whole point of
- * the screen is which doorsteps are actually the reader's, and a page that has
- * already said "all of them" invites a glance and a Continue.
+ * `/same-name` answers in two parts and `fetchClaimSet` keeps them apart:
  *
- * Attesting is the next thing it asks for. Pre-ticking the maximum and then
- * asking for a good-faith statement about it puts the reader's name to a claim
- * they did not assemble.
+ *   `records`  one row per card the reader ticked on step 2 (the `selected`
+ *              of each call), deduplicated by doorstep
+ *   `others`   the same name at addresses the ENDPOINT volunteered, which
+ *              nobody has said anything about yet
  *
- * ── WHICH ONE IS "THE IMPORTANT ONE" ──
+ * Every row is drawn, because the whole point of the screen is to show what
+ * else carries this name. Only `records` arrives ticked — those are answers
+ * the reader already gave. `others` stay unticked (requested): pre-ticking
+ * them and then asking for a good-faith statement puts the reader's name to a
+ * claim they did not assemble.
  *
- * The address holding the most leases, and the higher appraised value where two
- * tie. It is the row the reader is most likely to recognise as theirs and the
- * one that carries most of what a claim is for, so it is the least surprising
- * thing to find already ticked — and the rest are one click away, right there
- * on the same card.
+ * ── THE BUG THIS FIXES ──
  *
- * Grouped by NAME because the cards are: one card per owner name, one tick in
- * each. `others` — the addresses the endpoint volunteered rather than the
- * reader picking them — stay untouched and unticked, as before.
+ * This used to collapse `records` to ONE tick per owner NAME — the address
+ * with the most leases, higher appraised value breaking a tie. That was aimed
+ * at the right target and hit the wrong one: `others` was never in this list
+ * to begin with, so the only thing the grouping could discard was the reader's
+ * own selection.
+ *
+ * Tick "Hindes William R" at 350 CR 348 JOURDANTON (Atascosa, 3 leases) AND at
+ * 615 W ASHBY PL SAN ANTONIO (Frio, 5 leases), press Review addresses, and
+ * step 3 opened with the Atascosa address silently unticked and a header
+ * reading "2 addresses are yours — 1 selected". One name, two doorsteps, two
+ * deliberate ticks, and the flow quietly dropped one of them — and with it
+ * three leases and $140,376 from the claim, on a screen whose next control is
+ * a legal attestation.
+ *
+ * A name is not a doorstep. Two addresses under one name are two answers, and
+ * this hands back exactly the ones that were given.
  */
-function leadAddressPerOwner(records: OwnerRecord[]): string[] {
-  const lead = new Map<string, OwnerRecord>();
-
-  for (const record of records) {
-    const held = lead.get(record.name);
-    const better =
-      !held ||
-      record.leaseCount > held.leaseCount ||
-      (record.leaseCount === held.leaseCount &&
-        record.appraisedValue > held.appraisedValue);
-
-    if (better) lead.set(record.name, record);
-  }
-
-  return [...lead.values()].map(recordKey);
+function pickedAddresses(records: OwnerRecord[]): string[] {
+  return records.map(recordKey);
 }
 
 /**
@@ -441,7 +438,7 @@ export function ClaimWizard({
     try {
       const set = await fetchClaimSet(records);
       setClaimSet({ data: set, loading: false, error: null });
-      setConfirmed(leadAddressPerOwner(set.records));
+      setConfirmed(pickedAddresses(set.records));
     } catch (error) {
       setClaimSet({ data: null, loading: false, error: message(error) });
     }
@@ -806,7 +803,7 @@ export function ClaimWizard({
     try {
       const set = await fetchClaimSet(picked);
       setClaimSet({ data: set, loading: false, error: null });
-      setConfirmed(leadAddressPerOwner(set.records));
+      setConfirmed(pickedAddresses(set.records));
     } catch (error) {
       setClaimSet({ data: null, loading: false, error: message(error) });
     }
