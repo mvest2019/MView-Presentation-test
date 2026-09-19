@@ -41,6 +41,34 @@ import { FIELD_BASE, FieldClear, FieldFrame } from "./claim-field";
  * "Andrews (0)" would read as an empty county, so on a pending index the names
  * are shown alone — the same rule the select used.
  */
+/**
+ * HOW MUCH OF THE TOP OF THE WINDOW THE PORTAL IS SITTING ON.
+ *
+ * The bottom edge of the lowest bar currently pinned near the top, so the
+ * combobox can treat "scrolled under the chrome" as "gone". Both bars are
+ * `position: sticky`, so their boxes report where they are right now — pinned
+ * at the top while the page is scrolled, back in the flow when it is not, at
+ * which point this returns 0 and the test is the plain viewport again.
+ *
+ * `160` is a sanity bound, not a layout constant: it only has to be larger
+ * than the two bars stacked (58 + 48) and small enough that a bar which has
+ * scrolled away with the page is not mistaken for a pinned one.
+ */
+function pinnedChromeHeight(field: HTMLElement): number {
+  if (typeof document === "undefined") return 0;
+  /* A dialog paints over the chrome, so there is nothing to hide behind. */
+  if (field.closest("dialog")) return 0;
+
+  let lowest = 0;
+  for (const selector of [".mv-ref-app .app-top", "#mvPinBar"]) {
+    const bar = document.querySelector(selector);
+    if (!bar) continue;
+    const box = bar.getBoundingClientRect();
+    if (box.top >= 0 && box.top < 160) lowest = Math.max(lowest, box.bottom);
+  }
+  return Math.round(lowest);
+}
+
 export function CountyCombobox({
   counties,
   value,
@@ -101,6 +129,66 @@ export function CountyCombobox({
     };
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
+  }, [open]);
+
+  /*
+   * SCROLLING THE FIELD OUT OF VIEW CLOSES IT.
+   *
+   * ── THE BUG THIS FIXES ──
+   *
+   * The panel is `absolute` against the field, so it travels with the page —
+   * and it carries `z-50`, which is above the portal's sticky top bar. Open the
+   * county list and scroll: the field leaves the viewport, the panel follows it
+   * up, and the last few rows come to rest ON TOP of the ticker bar, cut off at
+   * the browser chrome, anchored to a control nobody can see. It reads as a
+   * menu that has come loose from the page.
+   *
+   * ── WHY AN OBSERVER AND NOT A `scroll` LISTENER ──
+   *
+   * A scroll listener is the obvious reach and it fights this component. The
+   * list is itself a scroll container, and the highlight-following effect above
+   * calls `scrollIntoView`, which scrolls ancestors when the panel does not
+   * fully fit — so opening the list near the bottom of the window can scroll
+   * the PAGE, and a naive listener would close the panel on the very frame it
+   * opened. Watching the field instead asks the question that actually matters:
+   * is the thing this menu belongs to still on screen?
+   *
+   * Nothing is needed for the opposite edge. The panel opens downward from the
+   * field, so while the field is visible the panel is below it and below the
+   * bar; it can only reach the bar by taking the field with it.
+   *
+   * ── "OUT OF VIEW" MEANS BEHIND THE CHROME, NOT PAST THE WINDOW ──
+   *
+   * A plain viewport test was not enough and left half the bug in place. The
+   * portal pins two bars to the top — `.app-top` at 58px and `#mvPinBar`
+   * beneath it — so a field scrolled INTO that band is still intersecting the
+   * viewport and is not visible to anybody. The panel stayed open for the
+   * band's worth of scrolling with its upper rows behind the bars: partly
+   * overlapping, partly hidden, which is exactly how it looked.
+   *
+   * `rootMargin` shrinks the observed area by the height those bars actually
+   * occupy right now, measured rather than hard-coded: `#mvPinBar` is not on
+   * every page, and a fixed 106 would close the list 48px early where it is
+   * absent. Inside a `<dialog>` — the sample walkthrough renders these same
+   * fields — the chrome is behind the backdrop and irrelevant, so the offset
+   * is dropped there.
+   */
+  useEffect(() => {
+    if (!open) return;
+    const field = rootRef.current;
+    if (!field) return;
+
+    const watcher = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) setOpen(false);
+      },
+      {
+        threshold: 0,
+        rootMargin: `-${pinnedChromeHeight(field)}px 0px 0px 0px`,
+      },
+    );
+    watcher.observe(field);
+    return () => watcher.disconnect();
   }, [open]);
 
   function show() {
@@ -234,20 +322,23 @@ export function CountyCombobox({
             ref={listRef}
             role="listbox"
             aria-label="Texas counties"
-            /* NARROWER THAN THE FIELD, and capped rather than fixed. The
-               longest row is "San Augustine" against a five-digit count, which
-               is nowhere near the width of a half-card form field — stretching
-               to the input's full width left the counts marooned on the far
-               right, a whole column of empty space away from the names they
-               belong to.
+            /* THE FULL WIDTH OF THE FIELD (requested).
+               It was capped at 280px, on the reasoning that the longest row —
+               "San Augustine" against a five-digit count — is nowhere near the
+               width of a half-card form field, and that stretching leaves the
+               counts marooned a column of empty space away from the names.
+               That is true of the counts and it was the wrong thing to
+               optimise: a panel narrower than the control it drops out of
+               reads as a menu belonging to something else, and the misalignment
+               is visible every time it opens where the gap is not.
 
-               `w-full max-w-[280px]` and NOT `w-[min(100%,280px)]`: the comma
-               stops Tailwind extracting the candidate, so no rule is emitted
-               and the panel silently falls back to shrink-to-fit — 191px, and
-               narrower still on a short list. These two utilities mean the
-               same thing and actually compile. The cap is what keeps it inside
-               the field on a narrow viewport. */
-            className="absolute top-[calc(100%+4px)] left-0 z-50 max-h-[264px] w-full max-w-[280px] overflow-y-auto overscroll-contain rounded-[9px] border border-mv-line bg-mv-card py-1 shadow-mv-lg"
+               `w-full` alone now, so the panel is exactly as wide as the
+               trigger at every viewport. The old note about `max-w-[280px]`
+               over `w-[min(100%,280px)]` is kept here because the trap is
+               real and outlives this rule: a comma inside an arbitrary value
+               stops Tailwind extracting the candidate, no rule is emitted, and
+               the panel silently falls back to shrink-to-fit. */
+            className="absolute top-[calc(100%+4px)] left-0 z-50 max-h-[264px] w-full overflow-y-auto overscroll-contain rounded-[9px] border border-mv-line bg-mv-card py-1 shadow-mv-lg"
           >
             {options.map((option, i) => {
               const isActive = i === activeIndex;
