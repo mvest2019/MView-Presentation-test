@@ -25,6 +25,7 @@ import {
 
 import type { Facet } from "@/lib/entitlements";
 
+import { ClaimedLeases } from "./claimed-leases";
 import { useEntitlements } from "./entitlements-context";
 
 /*
@@ -1471,52 +1472,15 @@ export function FiltersPanel({
         </div>
 
         {/* ---------------- my leases ----------------
-            Commented out rather than deleted — the section is expected back,
-            so it stays here with its markup intact. Its state and helpers are
-            left in place above for the same reason.
+            The reader's own claimed leases, above the facets, because they are
+            a different kind of thing: everything below this is a slice of the
+            whole public record, and this is what they own.
 
-        <SectionShell
-          label="My leases"
-          count={MY_LEASES.length}
-          open={leasesOpen}
-          onToggle={() => setLeasesOpen((open) => !open)}
-        >
-          <div className="flex justify-end pb-1">
-            <BulkAction onClick={() => setSelectedLease(null)}>
-              Clear all
-            </BulkAction>
-          </div>
-
-          {MY_LEASES.map((lease, index) => (
-            <label
-              key={lease.id}
-              className={`flex cursor-pointer items-start gap-[10px] py-[9px] ${
-                index > 0 ? "border-t border-mv-line" : ""
-              }`}
-            >
-              <input
-                type="radio"
-                name="my-lease"
-                className="sr-only"
-                checked={selectedLease === lease.id}
-                onChange={() => setSelectedLease(lease.id)}
-              />
-              <Radio checked={selectedLease === lease.id} />
-              <span className="min-w-0">
-                <span className="text-[11.5px] lg:text-[12.5px] font-bold text-mv-ink">
-                  {lease.name}
-                </span>{" "}
-                <span className="text-[11px] lg:text-[12px] text-mv-muted">
-                  ({lease.number})
-                </span>
-                <span className="mt-[2px] block text-[10.5px] lg:text-[11.5px] leading-tight text-mv-muted">
-                  {lease.location}
-                </span>
-              </span>
-            </label>
-          ))}
-        </SectionShell>
-        */}
+            It was a commented-out block of static rows waiting for an endpoint.
+            The endpoint exists now — `GET /api/v1/map/claimed-wells` — so the
+            section is a component of its own with the three states that come
+            with a request. See `claimed-leases.tsx`. */}
+        <ClaimedLeases />
 
         {/* ---------------- the checkbox sections ----------------
 
