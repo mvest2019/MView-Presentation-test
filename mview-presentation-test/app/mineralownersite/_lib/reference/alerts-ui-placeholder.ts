@@ -422,6 +422,52 @@ function backDated(iso: string | null, days: number): string | null {
 const STATUS_WAS = ['Shut-In Producer', 'Permitted', 'Drilling', 'Shut-In Producer', 'Inactive'];
 const STATUS_NOW = ['Producing', 'Drilling', 'Completed', 'Producing', 'Producing'];
 
+/* ═══════════════ WHAT THE ROW ALREADY KNOWS — read it, do not invent it ════
+   MEASURED across the capture's 893 timeline rows, `stats` carries real values
+   the detail panel was inventing two clicks later:
+
+     permit      Operator · County · Field · Depth · Distance · Status · Purpose
+     completion  Operator · County · Field · Wellbore · Distance · Status · Purpose
+     status      County
+     operator    Now operated by · Previously · Changed · Your share
+
+   So "14,000 ft" was printed on the log row and the panel beneath it invented
+   a depth; "Approved" was on the row and the panel invented a filing status.
+   Everything below is lifted from the row instead. These are DERIVED values —
+   they are the record, and they stay correct when the placeholder is deleted. */
+
+/** one of the row's own stats, by label */
+function statOf(
+  e: Payload['timeline']['events'][number], re: RegExp,
+): string | null {
+  const hit = e.stats?.find((x) => re.test(x.label));
+  const v = hit == null ? null : String(hit.value).trim();
+  /* the feed writes an em dash and the word for "nothing filed"; both are an
+     absence and neither is a value the grid should print */
+  return !v || v === '—' || /^none$/i.test(v) ? null : v;
+}
+
+/** "14,000 ft" -> 14000 */
+function feet(v: string | null): number | null {
+  if (!v) return null;
+  const n = Number(v.replace(/[^0-9]/g, ''));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/* ---- "June 2026" / "Aug 11, 2026" -> an ISO date.
+   `event_iso` is what the list sorts on, and it was filled as null — so the
+   ordering fell back to whatever order the service returned. The label the
+   service DOES send is unambiguous in both its shapes, so the date is read off
+   it rather than invented. A month-only label resolves to the first of the
+   month, which is what a monthly finding means. */
+function isoFromLabel(label: string | null | undefined): string | null {
+  const t = (label ?? '').trim();
+  if (!t) return null;
+  const d = new Date(`${t} UTC`);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
 /** Fill only what the service has not sent. See the header. */
 export function uiPlaceholder(p: Payload): Payload {
   if (!UI_PLACEHOLDER_ON) return p;
@@ -432,7 +478,8 @@ export function uiPlaceholder(p: Payload): Payload {
     return {
       ...a,
       scope: a.scope ?? scopeOf(a.id, a.category),
-      event_iso: a.event_iso ?? null,
+      /* read off the label the service already sends — see `isoFromLabel` */
+      event_iso: a.event_iso ?? isoFromLabel(a.event_label),
     };
   });
 
@@ -444,8 +491,13 @@ export function uiPlaceholder(p: Payload): Payload {
     const isCompletion = e.kind === 'completion';
     const isStatus = e.kind === 'status';
     const isFiling = isPermit || isCompletion || isStatus;
-    /* one draw for the pair the permit grid prints on two rows */
-    const act = s % 3 === 0 ? 'Recompletion' : 'New Drill';
+    /* ---- THE ROW'S OWN VALUES, for the fields it actually carries.
+       Everything here is the record. What stays invented below is only what
+       no stat on any row supplies. */
+    const sPurpose = statOf(e, /^purpose$/i);
+    const sStatus = statOf(e, /^status$/i);
+    const sDepth = feet(statOf(e, /^depth$/i));
+    const sBore = statOf(e, /^wellbore$/i);
 
     return {
       ...e,
@@ -500,8 +552,15 @@ export function uiPlaceholder(p: Payload): Payload {
              same record contradicting each other on screen is a worse
              placeholder than a blank, because it reads as a data bug in the
              state's own filing. */
-          permit_action: isPermit ? act : null,
-          total_depth: isPermit ? 9000 + (s % 8000) : null,
+          /* ---- NO SOURCE, SO NO VALUE. No stat on any row carries the
+             permit action, and the grid omits the row when it is null.
+             It used to be invented alongside `purpose`; now that `purpose`
+             is the record's, inventing a second field to sit beside it
+             would be the only made-up cell in a grid of real ones. */
+          permit_action: null,
+          /* the row's own Depth stat — "14,000 ft". Real on 93% of permits;
+             the rest fall back so the grid keeps its cell. */
+          total_depth: isPermit ? sDepth ?? 9000 + (s % 8000) : null,
           tracking_no: isCompletion ? String(300000 + (s % 99999)) : null,
           completion_type: isCompletion ? (s % 3 === 0 ? 'Recompletion' : 'New Well') : null,
           completion_action: null,
@@ -513,11 +572,19 @@ export function uiPlaceholder(p: Payload): Payload {
              that grid is "the pair IS the record". */
           prev_well_status: isStatus ? STATUS_WAS[s % STATUS_WAS.length] : null,
           new_well_status: isStatus ? STATUS_NOW[s % STATUS_NOW.length]
-            : isCompletion ? 'Producing' : null,
+            /* the completion row's own Status stat — the well's condition
+               as filed on the completion, which is what the grid labels it */
+            : isCompletion ? sStatus ?? 'Producing' : null,
           prev_operator_name: null, new_operator_name: null,
           prev_completion_label: null, new_completion_label: null,
           changed: isStatus ? { status: true, operator: false, lease: false } : null,
-          status: isPermit ? 'Approved' : 'Submitted',
+          /* ---- THE STAT IS A FILING STATUS ON A PERMIT AND A WELL STATUS
+             ON A COMPLETION, and the grid has a separate row for each. A
+             permit's "Approved" is `status`; a completion's "Shut-In
+             Producer" is `new_well_status` below. Putting the completion's
+             into `status` would print a well's condition under "Filing
+             status", which is a different fact. */
+          status: isPermit ? sStatus ?? 'Approved' : null,
           /* ---- SUBMITTED IS NOT APPROVED, AND THE PANEL SAYS SO.
              Both used to be `when_label`, so every permit was lodged and
              cleared on the same day — while the evidence line beneath the grid
@@ -530,8 +597,12 @@ export function uiPlaceholder(p: Payload): Payload {
           approved_label: isPermit ? e.when_label ?? null : null,
           completion_label: isCompletion ? e.when_label ?? null : null,
           date_basis: (isCompletion ? 'completion' : 'approved') as 'completion' | 'approved',
-          purpose: isPermit ? act : null,
-          profile: s % 4 === 0 ? 'VERTICAL' : 'HORIZONTAL',
+          /* the row's own Purpose stat — "New Drill", "Well Record Only".
+             Only 7% of rows carry it, so the rest fall back. */
+          purpose: sPurpose ?? (isPermit ? 'New Drill' : null),
+          /* the row's own Wellbore stat — "HORIZONTAL". Real on 92% of
+             completions; nothing carries it on a permit, so those fall back. */
+          profile: sBore ?? (s % 4 === 0 ? 'VERTICAL' : 'HORIZONTAL'),
           /* ---- THE FIELD THE ROW ALREADY PRINTS, LIFTED OFF ITS OWN STATS.
              The log row shows "FIELD · ANWAC (900 WILCOX)" and the drawer's
              record grid reads `filing.field_name`, which was null — so the
