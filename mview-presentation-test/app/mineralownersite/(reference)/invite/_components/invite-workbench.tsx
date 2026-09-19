@@ -61,8 +61,9 @@ import { PeopleStep } from "./people-step";
  *   invites — the part that can change — are re-fetched.
  *
  *   ONLY TYPING IS DEBOUNCED. A greeting is a click with intent and re-renders
- *   at once; the 600ms wait belongs to the textarea, where every keystroke
- *   would otherwise be a request.
+ *   at once; the 600ms wait belongs to the custom-greeting box, where every
+ *   keystroke would otherwise be a request. (It belonged to the letter's
+ *   textarea until row 14 took that away; the box is the only typing left.)
  *
  * ── THE LETTER ON SCREEN IS ADDRESSED BY KEY, NOT BY INDEX ──
  *
@@ -81,8 +82,8 @@ import { PeopleStep } from "./people-step";
 /** The contract's page ceiling for one roll read. */
 const ROSTER_LIMIT = 500;
 
-/** How long the letter editor may go quiet before the emails re-render. */
-const BODY_DEBOUNCE_MS = 600;
+/** How long the custom-greeting box may go quiet before the emails re-render. */
+const TYPING_DEBOUNCE_MS = 600;
 /** A greeting click, by contrast, is intent — only a beat, to coalesce two. */
 const CLICK_DEBOUNCE_MS = 120;
 /** The lease search box — a type-ahead against all 3,529, not a local filter. */
@@ -161,18 +162,15 @@ export function InviteWorkbench({
   const [showAll, setShowAll] = useState(false);
   const [greeting, setGreeting] = useState<GreetingStyle>("first");
   const [custom, setCustom] = useState("");
-  /* NULL, NOT A LOCAL TEMPLATE. The letter's wording is the service's own —
-     `wordingParams` sends no `body` when this is null, so the email arrives in
-     the backend's default words. A string only appears here once the reader
-     edits, and "start again" hands it back to null (the service default). */
-  const [body, setBody] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
   const [atKey, setAtKey] = useState<string | null>(null);
   const [rewording, setRewording] = useState(false);
 
+  /* THE LETTER'S WORDS ARE THE SERVICE'S, and there is no longer a way to
+     change them from here — the editor that set a `body` was removed for
+     defect sheet row 14. What travels is the greeting and nothing else. */
   const wording: InviteWording = useMemo(
-    () => ({ greeting, custom, body }),
-    [greeting, custom, body],
+    () => ({ greeting, custom }),
+    [greeting, custom],
   );
   const wordingRef = useRef(wording);
   const leaseIdRef = useRef(lease?.leaseId ?? null);
@@ -375,21 +373,44 @@ export function InviteWorkbench({
    *
    * A custom greeting is written FOR somebody — "Hi cousin" is addressed to
    * the family on one lease, and carrying it onto the next lease's roll opened
-   * a stranger's letter with it. The custom body is worse: it names the lease
-   * in its own words. Both survived a lease switch, and QA saw the greeting
-   * they had typed for one lease still sitting over a different lease's
-   * co-owners. Defect sheet row 20.
+   * a stranger's letter with it. It survived a lease switch, and QA saw the
+   * greeting they had typed for one lease still sitting over a different
+   * lease's co-owners. Defect sheet row 20.
    *
-   * SO THE LEASE SWITCH RESETS ALL THREE, in the event with the rest of the
-   * reset — see the module header on why this is not an effect. It does NOT
-   * reset when the reader steps between letters on the SAME lease: those are
-   * the people the wording was written for.
+   * SO THE LEASE SWITCH RESETS IT, in the event with the rest of the reset —
+   * see the module header on why this is not an effect. It does NOT reset when
+   * the reader steps between letters on the SAME lease: those are the people
+   * the greeting was written for.
+   *
+   * ── AND THE PICKER GOES BACK TO THE FULL LIST ──
+   *
+   * `leaseQuery` used to survive the pick. So a reader who found their second
+   * lease by typing its name was left with that search still running the next
+   * time they opened the picker: the panel held only THAT lease's matches,
+   * the one they had come from was not among them, and there was no way back
+   * to it short of noticing the search box and clearing it by hand. Worse, a
+   * lease outside the current matches could not be chosen at all — the lookup
+   * below found nothing and the click did nothing. That is QA's "the selected
+   * lease state is not refreshed when switching back". Defect sheet row 32.
+   *
+   * A PICK IS THE END OF A SEARCH, so the search is cleared with it and the
+   * panel reopens on the browsable list with the chosen lease pinned to the
+   * top — which is the state `lease-step.tsx` documents for "no search".
+   *
+   * THE LOOKUP READS BOTH LISTS, AND THE CURRENT SELECTION. A pick can arrive
+   * from the matches or from the page-one list, and the chosen lease is
+   * rendered as a row of its own when the list has lost it; resolving against
+   * only one of the three is how a click silently did nothing.
    */
   const chooseLease = (nextLeaseId: string) => {
     if (nextLeaseId === leaseId) return;
-    const options = leaseResults ?? (leasesState.phase === "ready" ? leasesState.leases : []);
+    const pool = [
+      ...(leaseResults ?? []),
+      ...(leasesState.phase === "ready" ? leasesState.leases : []),
+      ...(lease ? [lease] : []),
+    ];
     const next =
-      options.find((candidate) => candidate.leaseId === nextLeaseId) ?? null;
+      pool.find((candidate) => candidate.leaseId === nextLeaseId) ?? null;
     if (!next) return;
     setLease(next);
     setRoster(rosterCache.current.get(nextLeaseId) ?? null);
@@ -403,20 +424,46 @@ export function InviteWorkbench({
     setAtKey(null);
     setGreeting("first");
     setCustom("");
-    setBody(null);
-    setEditing(false);
+    /* The search is spent — see above. */
+    setLeaseQuery("");
+    setLeaseResults(null);
+    setSearchingLeases(false);
   };
 
   /* ---- wording changed → re-render the recorded emails -------------------- */
+  /*
+   * IT ALSO RUNS ON A LEASE CHANGE, and that is not housekeeping.
+   *
+   * Stepping back onto a lease restores the letters that were ticked on it
+   * from memory — while `chooseLease` resets the greeting to the service's
+   * default, because row 20 says a greeting written for one lease must not
+   * follow the reader onto the next one. Those two together left the page
+   * disagreeing with itself: letters still opening "Hi cousin" under a
+   * greeting strip reading "First Name", with no way to get them back in step
+   * short of touching the strip. Defect sheet row 32.
+   *
+   * So the restored letters are re-rendered in the wording the page is now
+   * SHOWING. Nothing is fetched for a lease with no letters on it —
+   * `emailCountRef` is 0 and this returns — so the ordinary switch to a fresh
+   * lease still costs one round trip, the roll.
+   */
   /* Its own ref, written INSIDE this effect: `wordingRef` is synced by an
      earlier effect in the same commit, so by the time this one runs it can no
      longer say which field moved. */
-  const previousBodyRef = useRef(body);
+  const previousCustomRef = useRef(custom);
+  const previousLeaseRef = useRef(leaseId);
   useEffect(() => {
-    /* Only the textarea earns the long wait — see the constants. */
+    /* ONLY TYPING EARNS THE LONG WAIT — see the constants. A lease change
+       empties the custom box on its way past, and that is not the reader
+       typing: waiting 600ms to redraw letters they can already see would be
+       the debounce charging for somebody else's keystrokes. */
+    const leaseMoved = leaseId !== previousLeaseRef.current;
     const delay =
-      body !== previousBodyRef.current ? BODY_DEBOUNCE_MS : CLICK_DEBOUNCE_MS;
-    previousBodyRef.current = body;
+      !leaseMoved && custom !== previousCustomRef.current
+        ? TYPING_DEBOUNCE_MS
+        : CLICK_DEBOUNCE_MS;
+    previousCustomRef.current = custom;
+    previousLeaseRef.current = leaseId;
     const currentLease = leaseIdRef.current;
     if (!currentLease || emailCountRef.current === 0) return;
     const controller = new AbortController();
@@ -425,7 +472,7 @@ export function InviteWorkbench({
       try {
         const snapshot = await fetchInvites(
           currentLease,
-          { greeting, custom, body },
+          { greeting, custom },
           controller.signal,
         );
         if (controller.signal.aborted) return;
@@ -442,7 +489,7 @@ export function InviteWorkbench({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [greeting, custom, body]);
+  }, [greeting, custom, leaseId]);
 
   /* ---- tick and untick — one round trip, box first ------------------------ */
 
@@ -692,10 +739,6 @@ export function InviteWorkbench({
           onGreeting={setGreeting}
           custom={custom}
           onCustom={setCustom}
-          body={body}
-          onBody={setBody}
-          editing={editing}
-          onEditing={setEditing}
           sendNote={inviteSender.sendNote}
         />
       </div>

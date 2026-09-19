@@ -2,21 +2,12 @@
 
 import { Fragment } from "react";
 
-import { templateFrom, type InviteEmailView } from "../_api/invite-api";
-import { DEFAULT_BODY } from "../_lib/invite-letters";
+import type { InviteEmailView } from "../_api/invite-api";
 import { preparedOn, printDocument } from "../_lib/print-document";
 import { renderInviteEmails } from "../_lib/invite-render";
 import type { GreetingStyle } from "../_lib/invite-types";
 import { CopyButton } from "./copy-button";
 import { StepCard } from "./step-card";
-
-/**
- * THE BODY HAS A CEILING — the contract's own: POST and GET both cap `body` at
- * 2,000 characters, and a letter that runs past that has stopped being a note
- * from a relative anyway. The counter stays out of sight until the reader is
- * near it.
- */
-const BODY_MAX = 2000;
 
 const GREETINGS: { value: GreetingStyle; label: string }[] = [
   { value: "first", label: "First Name" },
@@ -47,6 +38,21 @@ const GREETINGS: { value: GreetingStyle; label: string }[] = [
  * A code identifies ONE owner. The only places one appears are the letter
  * addressed to the person it names and the per-person row beside that name.
  *
+ * ── AND THE LETTER IS NO LONGER EDITABLE HERE ──
+ *
+ * There was a "Customize invitation" link under the preview that opened the
+ * body in a textarea, with buttons for the `{name}` / `{code}` / `{url}` /
+ * `{lease}` tokens. It came back twice: first for opening a DIFFERENT letter
+ * than the one on screen, then — once it was seeded from the letter itself and
+ * moved into its place — with "Need to remove customize". Defect sheet row 14.
+ *
+ * SO THE WORDING IS THE SERVICE'S, FULL STOP. What the reader still chooses is
+ * who it goes to and how it opens (the greeting strip above), and the letter
+ * they read is the letter that reaches the clipboard — there is no second
+ * version of it to fall out of step. `body` is gone from the wording the page
+ * sends, so every render takes the backend's default; the editor's seeding
+ * helper went with it (`templateFrom`, in `_api/invite-api.ts`).
+ *
  * ── THE PAPER ROW LOST ITS PRINT AND DOWNLOAD LINKS, for now ──
  *
  * They rendered through `/api/invite`, which still reads the demo fixture and
@@ -71,10 +77,6 @@ export function EmailStep({
   onGreeting,
   custom,
   onCustom,
-  body,
-  onBody,
-  editing,
-  onEditing,
   sendNote,
 }: {
   emails: InviteEmailView[];
@@ -90,33 +92,10 @@ export function EmailStep({
   onGreeting: (next: GreetingStyle) => void;
   custom: string;
   onCustom: (next: string) => void;
-  /** The reader's own wording, or NULL for the service's default letter. */
-  body: string | null;
-  onBody: (next: string | null) => void;
-  editing: boolean;
-  onEditing: (next: boolean) => void;
   sendNote: string;
 }) {
   const index = Math.min(at, Math.max(0, emails.length - 1));
   const one = emails[index] ?? null;
-  /*
-   * WHAT THE EDITOR SHOWS: THE READER'S EDIT, OR THE LETTER ON SCREEN.
-   *
-   * It was the reader's edit or `DEFAULT_BODY` — a template kept in this repo
-   * — and that template had drifted from the service's own wording. Pressing
-   * "Customize invitation" under a preview therefore opened a DIFFERENT letter
-   * to edit, which is what QA saw as "a new email template instead of the one
-   * already displayed". Defect sheet row 14.
-   *
-   * `templateFrom` walks the shown letter's own paragraphs back to the
-   * template that produced them, so the textarea opens on the words above it
-   * with the per-person parts back in their braces. The local default survives
-   * as the last resort for a letter the service sent no paragraphs for.
-   *
-   * Only an actual edit travels to the service — `body` stays null until the
-   * reader types, and null is what keeps the wording the service's own.
-   */
-  const draft = body ?? (one ? templateFrom(one) : null) ?? DEFAULT_BODY;
   const cautions = emails.filter((email) => email.caution).length;
   const notPeople = emails.filter((email) => email.kind !== "person").length;
 
@@ -220,79 +199,9 @@ export function EmailStep({
               <span>Subject</span>
               <b>{one.subject}</b>
             </div>
-            {/*
-              THE EDITOR TAKES THE LETTER'S OWN PLACE.
-              Seeding the textarea from the displayed letter closed half of row
-              14; the other half was that it opened as a SECOND block under the
-              preview, so there were two letters on screen and the reader was
-              still not editing the one they had been reading. It replaces the
-              preview now, inside the same framed card, under the same To and
-              Subject rows — one letter, either being read or being written.
-            */}
-            {editing ? (
-              <div className="iv-edit">
-                <p className="iv-editnote">
-                  It is your letter — change as much as you like. Each person
-                  gets their own name and their own code filled in when you
-                  copy it.
-                </p>
-                <textarea
-                  value={draft}
-                  maxLength={BODY_MAX}
-                  rows={14}
-                  onChange={(event) => onBody(event.target.value)}
-                  aria-label="The wording of the invitation"
-                />
-                {/*
-                  THE INSERT BUTTONS SAY WHAT THEY ADD, IN WORDS. The tokens are
-                  the contract's own — the service substitutes them per
-                  recipient.
-                */}
-                <div className="iv-chips">
-                  <span className="iv-chipk">Add</span>
-                  {(
-                    [
-                      ["{name}", "their name"],
-                      ["{code}", "their code"],
-                      ["{url}", "the claim link"],
-                      ["{lease}", "the lease name"],
-                    ] as const
-                  ).map(([token, what]) => (
-                    <button
-                      key={token}
-                      type="button"
-                      className="iv-tok"
-                      onClick={() =>
-                        onBody(
-                          `${draft}${draft.endsWith(" ") ? "" : " "}${token}`,
-                        )
-                      }
-                    >
-                      {what}
-                    </button>
-                  ))}
-                  {body !== null ? (
-                    /* Back to NULL, not to a local template — the service's own
-                       default letter returns on the next render. */
-                    <button
-                      type="button"
-                      className="iv-link"
-                      style={{ marginLeft: "auto" }}
-                      onClick={() => onBody(null)}
-                    >
-                      Start again from the standard letter
-                    </button>
-                  ) : null}
-                  {draft.length > BODY_MAX * 0.8 ? (
-                    <span className="tiny muted">
-                      {BODY_MAX - draft.length} characters left
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-            ) : (
-              <MailBody text={one.bodyText} code={one.codeLabel} />
-            )}
+            {/* ONE LETTER, AND IT IS THE ONE THAT GETS COPIED. The textarea
+                that used to replace this is gone — see the header. */}
+            <MailBody text={one.bodyText} code={one.codeLabel} />
           </div>
 
           <div className="iv-do">
@@ -328,13 +237,6 @@ export function EmailStep({
                 title="Every chosen letter as one block, each with its own heading and code"
               />
             ) : null}
-            <button
-              type="button"
-              className="iv-link"
-              onClick={() => onEditing(!editing)}
-            >
-              {editing ? "Done customizing" : "Customize invitation"}
-            </button>
           </div>
 
 

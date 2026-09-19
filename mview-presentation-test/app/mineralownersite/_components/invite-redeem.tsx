@@ -78,24 +78,68 @@ const RELOAD_AFTER_MS = 1_600;
 const doneKey = (code: string) => `mv-invite-redeemed:${code}`;
 
 /**
- * THE CORNER CARD, shared by the two states that leave the portal usable.
+ * THE MESSAGE, shared by the two states that leave the portal usable.
+ *
+ * ── IT IS IN THE MIDDLE OF THE PAGE, AND IT USED TO BE IN THE CORNER ──
+ *
+ * 13px of dark card pinned to the bottom right, over a dashboard full of
+ * figures. Both states it carries are things the reader has to read and act
+ * on — "this invitation is for somebody else's record, do you want it too"
+ * and "your invitation could not be redeemed" — and in the corner of a busy
+ * page it read as a toast that had already gone. QA asked for it centred.
+ * Defect sheet row 33.
+ *
+ * SO IT IS CENTRED ON A SCRIM, at a size that can be read. The scrim is what
+ * makes "the middle of the page" look deliberate rather than like a card that
+ * came loose; the dashboard is still legible behind it.
+ *
+ * IT IS NOT A TRAP, which is the rule the corner card existed to keep — the
+ * invitation is a shortcut, never a gate. Every state below carries a link
+ * that leaves, so there is always a way past it to the portal underneath.
+ * Focus is not trapped and `aria-modal` is not claimed, because neither is
+ * true: this is a message in the middle of the page, announced politely, and
+ * a screen reader is told exactly that.
  *
  * Fixed and self-styled: this renders BESIDE the portal shell, not inside it,
  * and must not depend on which route group's sheet happens to be loaded.
  */
-const CORNER: React.CSSProperties = {
+const SCRIM: React.CSSProperties = {
   position: "fixed",
-  right: 18,
-  bottom: 18,
+  inset: 0,
   zIndex: 80,
-  maxWidth: 420,
-  padding: "14px 16px",
-  borderRadius: 10,
+  display: "grid",
+  placeItems: "center",
+  padding: 24,
+  background: "rgba(9, 14, 24, .38)",
+};
+
+const PANEL: React.CSSProperties = {
+  width: "min(520px, 100%)",
+  padding: "22px 24px",
+  borderRadius: 14,
   background: "#101828",
   color: "#f4f6fa",
-  boxShadow: "0 12px 32px rgba(9, 14, 24, .45)",
-  fontSize: 13,
-  lineHeight: 1.5,
+  boxShadow: "0 24px 60px rgba(9, 14, 24, .5)",
+  fontSize: 14,
+  lineHeight: 1.6,
+};
+
+/** The links along the foot of the panel — the way out is always one of them. */
+const EXIT: React.CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 16,
+  marginTop: 14,
+};
+
+const GO: React.CSSProperties = {
+  color: "#9fd3ff",
+  textDecoration: "underline",
+};
+
+const AWAY: React.CSSProperties = {
+  color: "#c7d1e0",
+  textDecoration: "underline",
 };
 
 type Phase =
@@ -340,56 +384,56 @@ export function InviteRedeem({
      invitation, with the decision left to the reader ---------------------- */
   if (phase.step === "hasRecord") {
     return (
-      <div role="status" aria-live="polite" style={CORNER}>
-        <strong>You already have a Mineral View account.</strong> It is signed
-        in and{" "}
-        {phase.yours.length === 1 ? (
-          <>
-            <em>{phase.yours[0]}</em> is claimed on it
-          </>
-        ) : (
-          <>
-            {phase.yours.length} owner records are claimed on it, including{" "}
-            <em>{phase.yours[0]}</em>
-          </>
-        )}
-        , so nothing has been changed. This invitation is for{" "}
-        <em>{phase.ownerName}</em> — if that record is yours as well, claim it
-        and its leases come across too.
-        <div style={{ marginTop: 10 }}>
-          <Link
-            href="/mineralownersite/claim"
-            style={{ color: "#9fd3ff", textDecoration: "underline" }}
-          >
-            Claim mineral owner record
-          </Link>
-          <Link
-            href={PORTAL_HOME}
-            style={{
-              color: "#c7d1e0",
-              textDecoration: "underline",
-              marginLeft: 16,
-            }}
-          >
-            Not mine — go to my minerals
-          </Link>
+      <div style={SCRIM}>
+        <div role="status" aria-live="polite" style={PANEL}>
+          <strong>You already have a Mineral View account.</strong> It is
+          signed in and{" "}
+          {phase.yours.length === 1 ? (
+            <>
+              <em>{phase.yours[0]}</em> is claimed on it
+            </>
+          ) : (
+            <>
+              {phase.yours.length} owner records are claimed on it, including{" "}
+              <em>{phase.yours[0]}</em>
+            </>
+          )}
+          , so nothing has been changed. This invitation is for{" "}
+          <em>{phase.ownerName}</em> — if that record is yours as well, claim
+          it and its leases come across too.
+          <div style={EXIT}>
+            <Link href="/mineralownersite/claim" style={GO}>
+              Claim mineral owner record
+            </Link>
+            <Link href={PORTAL_HOME} style={AWAY}>
+              Not mine — go to my minerals
+            </Link>
+          </div>
         </div>
       </div>
     );
   }
 
-  /* ---- failed: the dashboard shows through, a corner card explains ------- */
+  /* ---- failed: the dashboard shows through behind the scrim -------------- */
   if (phase.step === "failed") {
     return (
-      <div role="status" aria-live="polite" style={CORNER}>
-        <strong>Your invitation could not be redeemed.</strong> {phase.message}{" "}
-        <Link
-          href="/mineralownersite/claim"
-          style={{ color: "#9fd3ff", textDecoration: "underline" }}
-        >
-          Claim your record yourself
-        </Link>{" "}
-        — it takes a couple of minutes.
+      <div style={SCRIM}>
+        <div role="status" aria-live="polite" style={PANEL}>
+          <strong>Your invitation could not be redeemed.</strong>{" "}
+          {phase.message}
+          <div style={EXIT}>
+            <Link href="/mineralownersite/claim" style={GO}>
+              Claim your record yourself — it takes a couple of minutes
+            </Link>
+            {/* THE WAY PAST IT. The corner card had none: it was small and out
+                of the way, so the portal behind it was simply usable. Centred
+                on a scrim it is not, and a message with no exit would turn the
+                invitation into the gate it is not meant to be. */}
+            <Link href={PORTAL_HOME} style={AWAY}>
+              Go to my minerals
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }

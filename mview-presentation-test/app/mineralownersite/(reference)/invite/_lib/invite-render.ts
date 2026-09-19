@@ -37,6 +37,35 @@ function esc(value: unknown): string {
     .replace(/'/g, "&#39;");
 }
 
+/**
+ * A PARAGRAPH OF THE LETTER, with any link in it kept whole.
+ *
+ * The body's last line is "Access your Mineral View account: {url}", and the
+ * sheet was breaking that URL wherever the line ran out — `code=90760463` sat
+ * alone on the next line, which is a thing a recipient has to retype by hand
+ * and now cannot read in one go. Defect sheet row 29.
+ *
+ * SPLIT BEFORE ESCAPING, NEVER AFTER. Running the URL pattern over escaped
+ * text means matching against `&amp;` and `&#39;` — entities whose own
+ * characters belong to the URL grammar — and the span then closes in the
+ * middle of one. The raw text is split on the link, each piece is escaped on
+ * its own, and the link alone is wrapped.
+ *
+ * TRAILING PUNCTUATION IS NOT PART OF THE LINK. "…at {url}." would otherwise
+ * tie the full stop to the address and print it as though it were typed.
+ */
+function escBody(text: string): string {
+  return String(text ?? "")
+    .split(/(https?:\/\/\S+)/g)
+    .map((piece, index) => {
+      if (index % 2 === 0) return esc(piece);
+      const tail = /[.,;:!?)\]]+$/.exec(piece)?.[0] ?? "";
+      const link = tail ? piece.slice(0, -tail.length) : piece;
+      return `<span class="url">${esc(link)}</span>${esc(tail)}`;
+    })
+    .join("");
+}
+
 const CSS = `
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:#f4f6f6;
@@ -46,33 +75,67 @@ html,body{margin:0;padding:0;background:#f4f6f6;
   flex-direction:column}
 .brand{font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;
   color:#2e8f6d}
-.head{font-size:11px;color:#64748b;margin:2px 0 34px;padding-bottom:10px;
+.head{font-size:11px;color:#64748b;margin:2px 0 24px;padding-bottom:9px;
   border-bottom:1px solid #e6ebea}
-.to{margin:0 0 30px}
+.to{margin:0 0 22px}
 .to .line{display:block;font-size:14px;line-height:1.5}
 .to .name{font-weight:700}
-.date{font-size:12px;color:#64748b;margin:0 0 22px}
-.greet{font-size:15px;font-weight:700;margin:0 0 14px}
-p.body{margin:0 0 13px;font-size:13.5px;line-height:1.75}
-.codebox{margin:26px 0 22px;border:1px solid #cfd8d5;border-radius:10px;padding:16px 18px;
+.date{font-size:12px;color:#64748b;margin:0 0 16px}
+.greet{font-size:15px;font-weight:700;margin:0 0 12px}
+p.body{margin:0 0 11px;font-size:13.5px;line-height:1.72}
+/* A LINK IS NEVER BROKEN ACROSS TWO LINES. The letter ends on "Access your
+   Mineral View account: https://…/register?code=90760463", and the sheet was
+   splitting it after "…vercel.app/reg" with "code=90760463" left dangling on
+   a line of its own — a printed address somebody has to type is only usable
+   whole. Defect sheet row 29. The slightly smaller size is what buys the room
+   for it on one line rather than pushing the whole link onto the next. */
+.url{white-space:nowrap;font-size:.92em}
+.codebox{margin:16px 0 15px;border:1px solid #cfd8d5;border-radius:10px;padding:11px 14px;
   background:#fafbfb;text-align:center}
 .codebox .k{font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
   color:#64748b}
-.codebox .v{font-size:34px;font-weight:800;letter-spacing:.09em;margin:6px 0 4px;
+/* 34px WAS A POSTER. It is the one number on the sheet that has to be read
+   across a kitchen table and typed without a mistake, and it was set nearly
+   three times the body — a banner in the middle of a letter, and a third of
+   the reason this ran onto a second sheet of paper. Row 29. */
+.codebox .v{font-size:23px;font-weight:800;letter-spacing:.09em;margin:4px 0 3px;
   font-variant-numeric:tabular-nums}
-.codebox .u{font-size:12.5px;color:#334155}
-.codebox .u b{font-weight:700}
-.sign{margin-top:auto;padding-top:26px}
+.codebox .u{font-size:12px;color:#334155}
+.codebox .u b{font-weight:700;white-space:nowrap}
+.sign{margin-top:auto;padding-top:18px}
 .sign .from{font-size:13.5px;font-weight:700}
 .foot{margin-top:16px;padding-top:10px;border-top:1px solid #e6ebea;font-size:10px;
   line-height:1.6;color:#94a3b8}
 .warn{margin:0 0 18px;border-left:3px solid #b8892f;background:#fdfaf3;padding:9px 12px;
   font-size:11px;color:#7a5b18}
+/*
+ * ── ON PAPER: ONE OWNER, ONE SHEET, AND NO BAND OF NOTHING AT THE TOP ──
+ *
+ * The sheet carried 0.85in of its own padding on top of whatever margin the
+ * browser was printing with, so the letterhead began roughly an inch and a
+ * quarter down the page — a white band between the browser's print header and
+ * the word "Mineral View", which is what QA circled. Defect sheet row 29.
+ *
+ * @page IS DECLARED RATHER THAN INHERITED, so the total no longer depends on
+ * which browser is printing: 0.4in of page margin plus 0.32in of sheet padding
+ * is a shade under three quarters of an inch to the letterhead, an ordinary
+ * letter margin instead of a gap.
+ *
+ * AND IT FITS ON ONE SHEET AGAIN. It did not: the print dialog said "2 sheets
+ * of paper" and the signature and the foot were alone on the second one, both
+ * because the content ran past min-height:9.3in and because that min-height
+ * plus 1.7in of padding could not fit a page in the first place. The measure
+ * is a little wider, the spacing a little tighter, the code box no longer a
+ * poster — and the min-height is now what is actually left of the page, so it
+ * holds the signature at the foot without being able to push it off.
+ */
+@page{size:letter;margin:0.4in}
 @media print{
   html,body{background:#fff}
-  .sheet{width:auto;min-height:auto;margin:0;padding:0.85in 0.9in;box-shadow:none;
-    page-break-after:always;min-height:9.3in}
+  .sheet{width:auto;margin:0;padding:0.32in 0.55in 0.4in;box-shadow:none;
+    page-break-after:always;min-height:9.4in}
   .sheet:last-child{page-break-after:auto}
+  p.body{font-size:12.75px}
   .noprint{display:none!important}
   .warn{display:none}
 }
@@ -140,7 +203,7 @@ export function renderLetters(
   <p class="date">Prepared ${esc(madeOn)}</p>
   <p class="greet">${esc(letter.greeting)}</p>
   ${letter.paragraphs
-    .map((p) => (p === letter.codeLabel ? codebox(letter) : `<p class="body">${esc(p)}</p>`))
+    .map((p) => (p === letter.codeLabel ? codebox(letter) : `<p class="body">${escBody(p)}</p>`))
     .join("\n  ")}
   ${letter.paragraphs.includes(letter.codeLabel) ? "" : codebox(letter)}
   <div class="sign">
@@ -246,7 +309,7 @@ export function renderInviteEmails(
   <p class="greet">${esc(greeting)}</p>
   ${body
     .map((block) =>
-      block === email.codeLabel ? codebox : `<p class="body">${esc(block)}</p>`,
+      block === email.codeLabel ? codebox : `<p class="body">${escBody(block)}</p>`,
     )
     .join("\n  ")}
   ${hasCode ? "" : codebox}

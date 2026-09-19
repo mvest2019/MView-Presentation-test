@@ -223,17 +223,6 @@ export interface InviteEmailView {
   sender: string;
   /** Greeting through signature, for the on-screen preview. */
   bodyText: string;
-  /**
-   * THE BODY ALONE, PARAGRAPH BY PARAGRAPH — what `body` renders into.
-   *
-   * `bodyText` is the whole letter: greeting, body, link, signature and the
-   * closing note. Only the middle is editable, and "Customize invitation" was
-   * opening a LOCAL template that had drifted from the words on screen — the
-   * reader saw one letter and edited another. These are the service's own
-   * paragraphs, which `templateFrom` turns back into the template that
-   * produced them. Defect sheet row 14.
-   */
-  paragraphs: string[];
   /** Subject + blank line + body. THE COPY BUTTON'S PAYLOAD, verbatim. */
   copyText: string;
   /** Why this one wants a second look before it goes out, or null. */
@@ -252,12 +241,19 @@ export interface InviteSnapshot {
   emails: InviteEmailView[];
 }
 
-/** The three wording choices every render of the emails depends on. */
+/**
+ * The wording choices every render of the emails depends on.
+ *
+ * THERE IS NO `body` ANY MORE. The contract takes one — a letter template the
+ * page could send in place of the service's own words — and the editor that
+ * produced it was removed for defect sheet row 14 ("Need to remove
+ * customize"). Nothing can set one now, so the field is gone rather than left
+ * as a null nobody writes: the letter's words are the service's, and the
+ * greeting is what this page still chooses.
+ */
 export interface InviteWording {
   greeting: GreetingStyle;
   custom: string;
-  /** The letter template. Null sends nothing and takes the service's default. */
-  body: string | null;
 }
 
 /* ============================================================================
@@ -328,7 +324,6 @@ interface WireEmail {
   invite_url?: string;
   sender?: string;
   body_text?: string;
-  paragraphs?: string[];
   copy_text?: string;
   caution?: string | null;
 }
@@ -374,7 +369,6 @@ function toEmailView(wire: WireEmail): InviteEmailView | null {
     inviteUrl: wire.invite_url ?? "",
     sender: wire.sender ?? "",
     bodyText: wire.body_text ?? "",
-    paragraphs: wire.paragraphs ?? [],
     copyText: wire.copy_text,
     caution: wire.caution ?? null,
   };
@@ -385,7 +379,6 @@ function wordingParams(params: URLSearchParams, wording: InviteWording): void {
   if (wording.greeting !== "first") params.set("greeting", wording.greeting);
   if (wording.greeting === "custom" && wording.custom.trim())
     params.set("custom", wording.custom.trim());
-  if (wording.body !== null) params.set("body", wording.body);
 }
 
 /**
@@ -411,58 +404,6 @@ export function buildCopyAll(emails: InviteEmailView[]): string | null {
       ].join("\n"),
     )
     .join("\n\n\n");
-}
-
-/** Every regex metacharacter in a name or a URL, made literal. */
-function literal(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/**
- * THE LETTER ON SCREEN, TURNED BACK INTO THE TEMPLATE THAT PRODUCED IT.
- *
- * "Customize invitation" used to open a template held in this repo, and that
- * template had drifted from the service's own wording — the reader saw one
- * letter in the preview, pressed edit, and was handed a different one to
- * change. Defect sheet row 14.
- *
- * SO THE EDITOR IS SEEDED FROM THE LETTER ITSELF. The service returns the body
- * it rendered as `paragraphs`; this walks the four substitutions backwards —
- * the code, the claim link, the recipient and the lease — so what opens in the
- * textarea is the words on screen with the per-person parts back in their
- * braces. Edit it and every recipient still gets their own name and their own
- * code, which is the whole reason the tokens exist.
- *
- * IT RETURNS NULL WHEN THERE IS NOTHING TO SEED FROM. A letter with no
- * paragraphs means the service sent a shape this cannot read, and the caller
- * falls back to the standard letter rather than opening an empty box.
- */
-export function templateFrom(email: InviteEmailView): string | null {
-  if (!email.paragraphs.length) return null;
-  let body = email.paragraphs.join("\n\n");
-
-  /* THE LINK BEFORE THE CODE. `invite_url` is the claim link WITH the code
-     hung off it, and `{url}` renders as the same link WITHOUT — so the base
-     has to go first or the code inside the longer one is replaced separately
-     and leaves a broken half-link behind. */
-  const base = email.inviteUrl.split("?")[0];
-  /* `JOE HINDES 'D' UNIT · Lease 16743 · ATASCOSA County` — the service's own
-     heading, and its first part is the lease name `{lease}` renders as. It was
-     the one substitution this did not reverse, so the lease was left written
-     into the template in longhand: edit it and every recipient on every other
-     lease would have been told they own a share of that one. */
-  const leaseName = email.heading.split(" · ")[0]?.trim() ?? "";
-  for (const [text, token] of [
-    [email.inviteUrl, "{url}"],
-    [base, "{url}"],
-    [email.codeLabel, "{code}"],
-    [email.code, "{code}"],
-    [email.to, "{name}"],
-    [leaseName, "{lease}"],
-  ] as [string, string][]) {
-    if (text) body = body.replace(new RegExp(literal(text), "g"), token);
-  }
-  return body;
 }
 
 /* ============================================================================
@@ -637,7 +578,6 @@ export async function recordInvites(
   };
   if (wording.greeting === "custom" && wording.custom.trim())
     body.custom = wording.custom.trim();
-  if (wording.body !== null) body.body = wording.body;
 
   const data = await request<WirePostResponse>(
     "/api/invite/co-owners",

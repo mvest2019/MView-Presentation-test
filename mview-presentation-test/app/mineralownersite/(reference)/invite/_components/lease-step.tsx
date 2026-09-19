@@ -71,13 +71,27 @@ import { StepCard } from "./step-card";
  * showed "0 of 6 leases match" over a row holding a lease. Row 26.
  */
 
-/** `0.05138` → `5.138%` — a decimal in, never a percentage in. */
+/**
+ * The reader's own share, AS THE ROLL FILES IT — `0.014714`, not `1.47%`.
+ *
+ * IT USED TO CONVERT. Nothing was wrong with the arithmetic; it was the wrong
+ * figure to print, and this is the same complaint step 2's column already
+ * answered for the co-owners' shares — a reader checking this page against
+ * their own roll extract, a deed, a division order or Mineral View's OWN claim
+ * screen (which prints `0.014714` under "Decimal interest") is reading
+ * decimals everywhere else and had to convert this one back before it could be
+ * compared. Defect sheet rows 4 and 30.
+ *
+ * SIX PLACES, TRAILING ZEROES AND ALL, for the reason `formatShare` gives in
+ * `people-step.tsx`: the roll files to six, a small royalty share lives in the
+ * last two of them, and a fixed width is what makes a column of them readable.
+ *
+ * A NULL SHARE SAYS "not filed", NEVER 0 — the roll filing no interest is a
+ * fact about the roll, not an interest of nothing.
+ */
 function formatInterest(decimal: number | null): string {
   if (decimal === null) return "not filed";
-  const percent = decimal * 100;
-  /* Small royalty shares live in the third and fourth decimal place; a large
-     working share does not need them. */
-  return `${Number(percent.toFixed(percent < 1 ? 4 : 2))}%`;
+  return decimal.toFixed(6);
 }
 
 /** `4461` → `4,461`. Four digits of leases are hard to read unbroken. */
