@@ -147,7 +147,23 @@ function servedRow(entry: LeasePickerEntry): PickerRow {
   };
 }
 
-export function LeasePicker({ lease }: { lease: LeaseRecord }) {
+export function LeasePicker({
+  lease,
+  onSelect,
+}: {
+  lease: LeaseRecord;
+  /**
+   * SWAP THE LEASE IN PLACE INSTEAD OF NAVIGATING.
+   *
+   * Given, a choice is handed back and the URL corrected with `pushState`;
+   * omitted, this pushes the route and the server answers. The served report
+   * passes it because it reads its own lease in the browser anyway — the route
+   * change bought nothing but a twenty-second re-read of the chrome's payload,
+   * during which the PREVIOUS lease stayed on screen with no sign that
+   * anything had been clicked.
+   */
+  onSelect?: (slug: string) => void;
+}) {
   const router = useRouter();
   const listId = useId();
 
@@ -241,7 +257,16 @@ export function LeasePicker({ lease }: { lease: LeaseRecord }) {
   function choose(index: number): void {
     setOpen(false);
     const next = rows[index];
-    if (next && next.slug !== lease.slug) router.push(next.href);
+    if (!next || next.slug === lease.slug) return;
+
+    if (onSelect) {
+      onSelect(next.slug);
+      /* The address bar follows the choice, so the lease on screen is the one
+         a copied link opens and Back steps to the previous lease. */
+      window.history.pushState(null, "", next.href);
+      return;
+    }
+    router.push(next.href);
   }
 
   function onKeyDown(event: React.KeyboardEvent): void {

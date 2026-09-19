@@ -479,15 +479,21 @@ body .mv-ref-app.mv-leases-shell.no-claim .app-body {
    Weekly Report, Production and the Map keep the spacing they were designed
    with. Unlayered, so it beats the reference sheet's own value without needing
    `!important`.
+
+   TRIMMED FROM 40px TO 24px. Forty cleared the bar and then some: on the
+   report it read as a band of empty page above the breadcrumb rather than as
+   breathing room, which is what it was reported as. Twenty-four still keeps the
+   first line off the black edge — which is the whole point of the rule and why
+   this is not simply deleted — without the gap reading as a missing element.
    ============================================================================ */
 body .mv-ref-app.mv-leases-shell .app-body {
-  padding-top: 40px;
+  padding-top: 24px;
 }
 
 /* A phone gives the column 18px and needs the extra less — the bar is shorter
    and the title is smaller — but flush is still flush. */
 @media (max-width: 767px) {
   body .mv-ref-app.mv-leases-shell .app-body {
-    padding-top: 26px;
+    padding-top: 18px;
   }
 }

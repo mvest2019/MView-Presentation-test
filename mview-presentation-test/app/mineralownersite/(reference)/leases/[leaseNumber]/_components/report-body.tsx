@@ -50,6 +50,7 @@ export function LeaseReportBody({
   otherReport,
   leaseMap,
   onSelectTab,
+  onSelectLease,
 }: {
   report: LeaseReport;
   tab: LeaseReportTab;
@@ -64,6 +65,8 @@ export function LeaseReportBody({
   leaseMap?: LeaseMapData;
   /** Switch tabs in place rather than navigating; see `ReportTabs`. */
   onSelectTab?: (tab: LeaseReportTab) => void;
+  /** Swap the lease in place rather than navigating; see `LeasePicker`. */
+  onSelectLease?: (slug: string) => void;
 }) {
   const { lease } = report;
 
@@ -78,6 +81,7 @@ export function LeaseReportBody({
           lease={lease}
           tab={tab}
           neighbours={report.neighbours}
+          onSelectLease={onSelectLease}
         />
       </div>
       <div className={portalGate.ultraKeep}>

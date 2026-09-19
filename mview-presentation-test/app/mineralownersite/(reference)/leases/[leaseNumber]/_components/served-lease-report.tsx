@@ -15,6 +15,7 @@ import {
   type WireLeaseReport,
   type WireReservoirs,
 } from "../../_api/leases-api";
+import { leaseIdFromSlug } from "../../_lib/lease-routes";
 import { leaseMapFromApi, type LeaseMapData } from "../_lib/lease-map-from-api";
 import { leaseReportFromApi } from "../_lib/lease-report-from-api";
 import { recordContext } from "../_lib/record-context";
@@ -58,7 +59,7 @@ import type { LeaseReportTab } from "./report-tabs";
  */
 
 export function ServedLeaseReport({
-  id,
+  id: initialId,
   tab: initialTab,
 }: {
   /** The service's key, straight off the route — `02_269507`. */
@@ -87,6 +88,21 @@ export function ServedLeaseReport({
    */
   const [tab, setTab] = useState(initialTab);
 
+  /*
+   * ── AND WHICH LEASE, FOR THE SAME REASON ──
+   *
+   * The dropdown used to push the new lease's route. That re-ran the whole
+   * page — including the twenty-one seconds of owner payload the chrome needs
+   * and neither lease changes — and showed NOTHING while it ran: the previous
+   * lease's report sat on screen, complete and wrong, with no sign that a
+   * choice had registered.
+   *
+   * Every figure on this page is already read in the browser from this one id.
+   * Setting it here starts that read immediately, and the skeleton below
+   * covers it, so choosing a lease behaves like every other read on the page.
+   */
+  const [id, setId] = useState(initialId);
+
   /* THE URL IS THE OTHER HALF OF THE STRIP. `ReportTabs` pushes an entry when
      it switches, so Back and Forward move between the three reports without
      touching the server either — and this is what hears them. It also catches
@@ -95,6 +111,11 @@ export function ServedLeaseReport({
     const sync = () => {
       const asked = new URLSearchParams(window.location.search).get("report");
       setTab(asked === "reservoir" || asked === "wells" ? asked : "lease");
+      /* Back out of a lease the dropdown chose, too — the path carries which
+         lease, the query carries which report, and both were pushed. */
+      const slug = window.location.pathname.split("/").pop() ?? "";
+      const asId = leaseIdFromSlug(slug);
+      if (asId) setId(asId);
     };
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
@@ -106,10 +127,14 @@ export function ServedLeaseReport({
      on before. Adjusted during render rather than in an effect: React's own
      pattern for state that has to follow a prop, and it re-renders before
      anything is painted instead of showing the wrong tab for a frame. */
-  const [lastAsked, setLastAsked] = useState(initialTab);
-  if (initialTab !== lastAsked) {
-    setLastAsked(initialTab);
+  const [lastAsked, setLastAsked] = useState({
+    tab: initialTab,
+    id: initialId,
+  });
+  if (initialTab !== lastAsked.tab || initialId !== lastAsked.id) {
+    setLastAsked({ tab: initialTab, id: initialId });
     setTab(initialTab);
+    setId(initialId);
   }
   const [state, setState] = useState<
     | { status: "loading" }
@@ -264,7 +289,12 @@ export function ServedLeaseReport({
       .catch(() => {});
 
     return () => controller.abort();
-  }, [id]);
+    /* ONCE, NOT PER LEASE. This is the member's whole list — every lease on the
+       record, the same answer whichever one is open — and only which row is
+       current changes when the dropdown moves. Keyed on `id` it re-read the
+       list on every change of lease, which is a call the module's own note
+       records taking up to a minute, for an answer already in hand. */
+  }, []);
 
   /* The report, once both are in hand — and once the LEASE is in hand, with
      whatever the picker has managed so far. Re-derived rather than stored, so
@@ -295,6 +325,23 @@ export function ServedLeaseReport({
 
     return built;
   }, [state, picker, id]);
+
+  /* THE SKELETON HAS TO BE ON SCREEN BEFORE THE READ STARTS, not when it
+     answers. Clearing the report here is what does that: without it the effect
+     below would fetch the new lease while the previous one's figures stayed
+     up, which is the state a reader reads as "my click did nothing". */
+  function chooseLease(slug: string): void {
+    const next = leaseIdFromSlug(slug);
+    if (!next || next === id) return;
+    setState({ status: "loading" });
+    /* The map's pins belong to the lease being left. The PICKER is not
+       cleared: it is the member's whole list and is the same on every lease,
+       so the only thing that changes is which row is current — and blanking
+       the dropdown a reader has just used, to refetch a list already correct,
+       would be a flicker bought with a slow call. */
+    setLeaseMap(null);
+    setId(next);
+  }
 
   if (state.status === "loading") return <ReportLoading id={id} />;
 
@@ -328,6 +375,7 @@ export function ServedLeaseReport({
       report={report}
       tab={tab}
       onSelectTab={setTab}
+      onSelectLease={chooseLease}
       leaseMap={leaseMap ?? undefined}
       otherReport={
         tab === "wells" ? (

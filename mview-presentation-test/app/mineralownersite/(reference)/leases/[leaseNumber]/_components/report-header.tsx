@@ -45,6 +45,7 @@ export function LeaseReportHeader({
   lease,
   tab,
   neighbours,
+  onSelectLease,
 }: {
   lease: LeaseRecord;
   /** Which of the three reports is open — see `LEASE_REPORT_TABS`. */
@@ -58,6 +59,8 @@ export function LeaseReportHeader({
    * used only when there is none. See `LeaseReport.neighbours`.
    */
   neighbours?: { previous: LeaseStep; next: LeaseStep };
+  /** Swap the lease in place rather than navigating; see `LeasePicker`. */
+  onSelectLease?: (slug: string) => void;
 }) {
   const current = leaseReportTab(tab);
 
@@ -202,7 +205,7 @@ export function LeaseReportHeader({
             the fixture the count printed "Lease 0 of 10" beside a dropdown
             naming somebody else's lease. `LeasePicker` renders both from the
             list it fetches, so they cannot disagree again. */}
-        <LeasePicker lease={lease} />
+        <LeasePicker lease={lease} onSelect={onSelectLease} />
 
         {/* GONE AT ULTRA — `hide-u`. The calm density keeps three things on
             this page: which lease, what it is worth, and one reading of it.
