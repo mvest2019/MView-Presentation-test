@@ -40,7 +40,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { PortalAvatar } from '../portal-avatar';
 import { PortalLogout } from '../portal-logout';
 import { usePortalMember } from '../portal-session';
@@ -51,6 +51,7 @@ import {
 } from './Portal';
 import type { Tier } from './bits';
 import { FunnelBar } from './funnel';
+import { showsAccountState } from '../../_lib/portal-page-furniture';
 
 const PLAN: Record<FunnelKey, string> = {
   unclaimed: 'Not claimed', claimed: 'Free', trial: 'Trial', lapsed: 'Lapsed', paid: 'Premium plan',
@@ -207,6 +208,11 @@ export interface ChromeProps {
 }
 
 export default function Chrome(c: ChromeProps) {
+  /* WHICH ROUTE THIS IS, FOR THE PLAN BANNER BELOW — read from the path rather
+     than from `c.route`, which cannot answer it: the claim flow passes
+     `route={null}`, and so do the coming-soon pages, so the two are
+     indistinguishable through the prop. See `showsAccountState`. */
+  const pathname = usePathname();
   /* WHO IS SIGNED IN — the member, which is NOT the owner record.
      `c.p.owner` is the mineral owner record on screen (its name, its initials,
      its owner number); this is the person logged in. The avatar and the menu
@@ -837,7 +843,17 @@ export default function Chrome(c: ChromeProps) {
             buttons to come off that page — the feed is the content there, and
             the same plan message still meets the reader on every other route
             and on the dashboard state card. */}
-        {c.route === 'activities'
+        {/* AND NOT ON THE CLAIM FLOW, which is the same kind of exclusion as
+            Activities above and a sharper one: that page merely has better
+            things to say, while this band actively contradicts the page under
+            it — a trial upsell, or "your record is claimed", over a form whose
+            whole job is to claim a record. The route list and the full argument
+            are in `portal-page-furniture`.
+
+            SKIPPED RATHER THAN HIDDEN, for the reason `PortalShell` records at
+            its own call: `display:none` would leave the contradictory sentence
+            sitting in the page source. */}
+        {c.route === 'activities' || !showsAccountState(pathname)
           ? null
           : (
             <FunnelBar

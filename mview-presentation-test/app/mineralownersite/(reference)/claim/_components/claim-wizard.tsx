@@ -10,7 +10,7 @@ import {
   type ClaimOwner,
   type ClaimResult,
 } from "../_api/claim-api";
-import { recordKey } from "../_lib/claim-format";
+import { leaseDedupeKey, recordKey } from "../_lib/claim-format";
 import type {
   ClaimSet,
   CountyIndex,
@@ -537,6 +537,45 @@ export function ClaimWizard({
   }
 
   /*
+   * THE STEPPER'S OWN JUMP — AND GOING BACK TO STEP 1 EMPTIES THE SELECTION
+   * (requested).
+   *
+   * ── WHY STEP 1 AND NOTHING ELSE ──
+   *
+   * Step 1 is the question and step 2 is the answer to it. Walking the rail
+   * back to step 1 is the reader saying they want to ask again — and the ticks
+   * belong to the answer they are leaving, so they go with it. Without this,
+   * re-running the same search returned the same rows and the post-search prune
+   * kept every tick, so step 2 re-opened with four records already claimed-for
+   * and a bar reading "4 selected" over a search the reader had just gone back
+   * to reconsider.
+   *
+   * It is the argument `changeQuery` already makes one field at a time — "a
+   * change to these four fields is a new question" — applied to the gesture
+   * that goes back to ALL four of them at once.
+   *
+   * Clicking step 2 or step 3 clears nothing, obviously: step 2 IS the pick
+   * screen, and arriving at it to change a tick must not throw the other ticks
+   * away first.
+   *
+   * ── WHY IT IS NOT IN `goStep`, AND NOT ON THE BROWSER'S BACK ──
+   *
+   * `goStep` is the plain move and three other callers use it, two of which
+   * clear this themselves — folding a state wipe into the navigation helper
+   * would hide it from all of them.
+   *
+   * Back is deliberately left alone. It is an UNDO: it should hand the reader
+   * back the screen they left, in the state they left it, and a Back that
+   * quietly deleted four ticks on the way would be the one gesture in the flow
+   * that destroys something instead of retracing it. The rail is a jump to a
+   * named screen, which is a different intention and gets a different rule.
+   */
+  function goBackTo(next: number) {
+    if (next === 1) setPicked([]);
+    goStep(next);
+  }
+
+  /*
    * IN-APP BACK IS THE BROWSER'S BACK.
    *
    * "Back to the records" used to push a THIRD entry, which left the two
@@ -1023,19 +1062,17 @@ export function ClaimWizard({
    * which is the case this needs to catch: one lease reached through two ticked
    * addresses in the same county, listed once rather than twice. Two rows the
    * reader could not tell apart become one; anything distinguishable survives.
+   *
+   * THE KEY ITSELF LIVES IN `claim-format`, because step 4 needs the same one:
+   * it splits this union back out into a table per owner record, and the two
+   * have to agree on what a duplicate is or the tables stop summing to the
+   * count the claim is filed for.
    */
   const leases: FlowLease[] = (() => {
     const byLease = new Map<string, FlowLease>();
     for (const record of confirmedRecords) {
       for (const lease of record.leases) {
-        const key = [
-          lease.county,
-          lease.name,
-          lease.number,
-          lease.operator,
-          lease.value,
-          lease.decimal,
-        ].join("|");
+        const key = leaseDedupeKey(lease);
         if (!byLease.has(key)) byLease.set(key, lease);
       }
     }
@@ -1057,7 +1094,25 @@ export function ClaimWizard({
   }
 
   return (
-    <ClaimShell current={step}>
+    <ClaimShell
+      current={step}
+      /*
+       * THE RAIL STEERS — UNTIL THE CLAIM IS FILED, AND THEN IT STOPS.
+       *
+       * `claim.data` is the receipt, and it is the one piece of state nothing
+       * clears except `startOver`. Step 4 reads it to decide whether its button
+       * FILES or merely shows what was already filed, so a reader who walked
+       * the rail back to step 1 with a receipt still in memory, searched a
+       * different name and came forward again would arrive at the commit step
+       * holding out the PREVIOUS claim's receipt — the hazard written up over
+       * `startOver` above, reached in one click instead of several.
+       *
+       * Step 5 has its own way out and it is the right one: "Claim another
+       * record" goes through `startOver`, which clears the receipt with
+       * everything else. The rail does not compete with it.
+       */
+      onGo={claim.data ? undefined : goBackTo}
+    >
       {step === 1 && (
         <StepFind
           query={query}

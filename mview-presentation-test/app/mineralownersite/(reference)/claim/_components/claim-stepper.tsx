@@ -38,7 +38,21 @@ import { claimSteps } from "../_lib/claim-steps";
  * screen reader that announces "list, 5 items, item 3 of 5" has conveyed the
  * progress bar's entire meaning without seeing it.
  */
-export function ClaimStepper({ current }: { current: number }) {
+export function ClaimStepper({
+  current,
+  onGo,
+}: {
+  current: number;
+  /**
+   * CLICK A STEP TO GO BACK TO IT (requested).
+   *
+   * Optional, and absent means the rail is a read-out rather than a control —
+   * which is what the sample walkthrough wants: it mounts this shell inside a
+   * dialog that drives itself, and a reader who could steer it would be
+   * fighting the clock advancing underneath them.
+   */
+  onGo?: (step: number) => void;
+}) {
   return (
     <ol
       data-claim="stepper"
@@ -54,6 +68,25 @@ export function ClaimStepper({ current }: { current: number }) {
       {claimSteps.map((step) => {
         const done = step.n < current;
         const active = step.n === current;
+
+        /*
+         * BACKWARD ONLY, AND THAT IS A RULE ABOUT STEP 3 RATHER THAN A
+         * SIMPLIFICATION.
+         *
+         * Step 3's Continue is the only thing in the flow enforcing the
+         * good-faith statement — step 4 files without re-checking it, and the
+         * wizard deliberately drops the tick whenever the picked records
+         * change. A rail that jumped FORWARD would walk straight round that
+         * assertion in one click, so it does not.
+         *
+         * Backward is always safe by contrast: every earlier step rebuilds
+         * itself from state that is still there, and arriving at one asks the
+         * reader for nothing they have not already been asked.
+         *
+         * Narrowed into a value rather than tested as a boolean, so the click
+         * handler below is reaching for something TypeScript knows is defined.
+         */
+        const back = onGo && done ? onGo : undefined;
 
         /* How much of the segment BEFORE this node is green. See the note
            above — the 50% case is the segment the reader is currently on. */
@@ -75,8 +108,8 @@ export function ClaimStepper({ current }: { current: number }) {
                screen, so the rail wrapped to two rows — discs 1-2-3 above
                4-5, with the connector crossing back under them. The floor only
                applies once there is a label that needs the room. */
-            className={`relative flex min-w-0 flex-1 flex-col items-center gap-2 rounded-t-[10px] pt-[2px] sm:min-w-[92px] ${
-              active ? "sm:bg-mv-mint/45" : ""
+            className={`relative flex min-w-0 flex-1 flex-col items-center gap-2 rounded-t-[10px] pt-[2px] transition-colors sm:min-w-[92px] ${
+              active ? "sm:bg-mv-mint/45" : back ? "sm:hover:bg-mv-mint/25" : ""
             }`}
             aria-current={active ? "step" : undefined}
           >
@@ -159,6 +192,34 @@ export function ClaimStepper({ current }: { current: number }) {
                 />
               )}
             </span>
+
+            {/* THE WHOLE CELL IS THE TARGET, AS AN OVERLAY RATHER THAN A
+                WRAPPER.
+
+                Putting a `<button>` around the disc and the label would insert
+                a containing block between this `<li>` and its two absolutely
+                positioned children, and the connector is drawn at
+                `left-[-50%]` — deliberately OUTSIDE the cell, so it can reach
+                the middle of the node before it. Re-parented, it would resolve
+                against the button and be cut off at the cell's own edge.
+
+                An overlay changes no layout at all. It sits above the disc's
+                `z-[1]`, so a click anywhere in the cell — disc, label or the
+                gap between them — lands on it.
+
+                IT IS NOT DRAWN ON THE STEP YOU ARE ON, nor on the ones ahead:
+                a control that does nothing, on a rail where the other cells
+                move you, reads as a step you are not allowed into rather than
+                as the one you are standing on. */}
+            {back && (
+              <button
+                type="button"
+                onClick={() => back(step.n)}
+                aria-label={`Go back to step ${step.n}: ${step.label}`}
+                title={`Back to step ${step.n} — ${step.label}`}
+                className="absolute inset-0 z-[2] cursor-pointer rounded-t-[10px] border-0 bg-transparent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-mv-green-deep"
+              />
+            )}
           </li>
         );
       })}

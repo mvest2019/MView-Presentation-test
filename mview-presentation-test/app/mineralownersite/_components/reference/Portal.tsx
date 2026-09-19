@@ -61,12 +61,13 @@
  *      returns distinguishes them.
  */
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 import type { Payload } from '../../_lib/reference/payload';
 import type { Drawer as DrawerCopy } from '../../_lib/reference/payload';
 import { sampleize } from '../../_lib/reference/sample';
+import { showsAccountState } from '../../_lib/portal-page-furniture';
 import { type Tier } from './bits';
 import Chrome from './Chrome';
 import Dashboard from './Dashboard';
@@ -313,6 +314,10 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
    */
   shellClass?: string;
 }) {
+  /* WHICH ROUTE THIS IS, FOR THE NO-CLAIM CARD BELOW. Read from the path and
+     not from `route`, which cannot answer it: the claim flow passes
+     `route={null}` and so do the coming-soon pages. See `showsAccountState`. */
+  const pathname = usePathname();
   const [route, setRoute] = useState<Route | null>(initialRoute);
   const [live, setLive] = useState<Payload | null>(initial);
   const [busy, setBusy] = useState(false);
@@ -1080,9 +1085,18 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
         open={openDrawer} spot={spot}
         sampleNote={shown?.note ?? null} trialStarted={trialStarted}
       >
+        {/* THE NO-CLAIM CARD IS ACCOUNT-STATE FURNITURE, so the claim flow
+            does not get it: "Nothing is claimed on this account yet", over a
+            button reading "Claim your record — free →", is an instruction to
+            go and do the thing the reader is already doing, and the button
+            links to the page it is sitting on.
+
+            ONLY THAT ONE CODE. A genuine failure still draws `ErrorCard`
+            everywhere — this suppresses a message about where the ACCOUNT
+            stands, not the shell's ability to report that something broke. */}
         {error
           ? (errorCode === 'DASHBOARD_NO_CLAIM'
-            ? <NoClaimCard detail={error} />
+            ? (showsAccountState(pathname) ? <NoClaimCard detail={error} /> : null)
             : <ErrorCard detail={error} />)
           : null}
         {view}
