@@ -44,14 +44,19 @@ import { buildLeaseReport } from "./_lib/lease-report";
  *   band          what it is worth and what it is about to pay
  *   facts strip   the seven fields every figure below is read against
  *   tabs          lease · reservoir · wells
- *   figures       the tiles and the production chart, at either scope
+ *   figures       the tiles, then the record unrounded, then the chart
  *   cumulative    how much has come out and how much is left
  *   reserves      the same thing as a proportion
  *   findings      the page summarising itself, AFTER the evidence
  *   twelve        filed on the left, projected on the right
  *   measures      against the record, and against itself
- *   precision     the fields unrounded, for quoting — Professional only
  *   map           where the wells actually are
+ *
+ * PRECISION MOVED UP, out of the second-to-last slot and INSIDE the figures
+ * panel, between its tiles and its chart. "Money first, method last" is the
+ * rule below and it still holds — that card is not method. It is the unrounded
+ * FIELDS, and the first thing a reader does with the tiles directly above it is
+ * check one of those figures against a statement.
  *
  * `?report=reservoir` and `?report=wells` swap the whole body for those two
  * reports — same header, same band, same facts strip, because those describe

@@ -1659,3 +1659,125 @@ async function request<T>(
 
   return body as T;
 }
+
+/**
+ * `GET /leases/explainers` — THE DRAWER BEHIND EVERY TILE.
+ *
+ * ── ONE ENDPOINT, THREE REPORTS ──
+ *
+ * `tab` picks which set comes back: seven for the lease report, six for the
+ * reservoir, six for the well. Each entry is keyed — `lease_value`,
+ * `reservoir_open`, `well_best_month` — and a tile opens the entry whose key it
+ * names.
+ *
+ * ONLY THE TILES READ FROM HERE. The value band's own "How it is built" pill
+ * keeps the panel `explainers-lease.ts` composes, by request: the band is the
+ * same on all three reports and its explanation was not the thing being
+ * changed. The service's seventh lease key, `lease_value_built`, is therefore
+ * fetched and not opened by anything — left in place rather than filtered out,
+ * because the pill is where it belongs the day that changes.
+ *
+ * ── THE SHAPE IS THE DRAWER'S OWN ──
+ *
+ * `tone`, `title`, `subtitle`, `stats`, `sections`, `whatToDo`, `tags`,
+ * `footnote` are the fields `ExplainerDrawer` already renders, under the same
+ * names. That is not a coincidence to rely on blindly — `tone` is still checked
+ * against the four the drawer knows, because an unknown one would colour the
+ * rule with a class that does not exist — but it does mean the mapping is a
+ * transcription rather than a translation.
+ *
+ * `charts` is sent too, on the entries that have a trend behind them — the
+ * valuation panel carries two. Its fields are `ExplainerChart`'s, down to the
+ * `gas` / `oil` / `cash` tone.
+ */
+export interface WireExplainerStat {
+  label?: string;
+  value?: string;
+  sub?: string;
+}
+
+/**
+ * A bullet under "what this is built on".
+ *
+ * BOTH FORMS ARE SENT. Most are plain strings; a handful arrive as
+ * `{lead, text, tail}` — the rows that quote the record itself, where the name
+ * at the front and the figure at the end are what a reader scans for. That is
+ * `ExplainerBullet` exactly, which is why it is carried rather than flattened.
+ */
+export type WireExplainerBullet =
+  string | { lead?: string; text?: string; tail?: string };
+
+export interface WireExplainerSection {
+  heading?: string;
+  /** A paragraph. The third section sends `bullets` instead. */
+  body?: string;
+  bullets?: WireExplainerBullet[];
+  /** The small right-hand note on the heading — "154 posted months". */
+  aside?: string;
+}
+
+/** A trend under "what it means for you". Only some entries carry any. */
+export interface WireExplainerChart {
+  title?: string;
+  window?: string;
+  labels?: string[];
+  values?: number[];
+  unit?: string;
+  /** "gas" | "oil" | "cash" — checked, not trusted. */
+  tone?: string;
+  footnote?: string;
+}
+
+export interface WireExplainer {
+  /** What a tile names to open this one — `lease_value`, `well_open`. */
+  key?: string;
+  /** "money" | "activity" | "models" | "record" — checked, not trusted. */
+  tone?: string;
+  title?: string;
+  subtitle?: string;
+  stats?: WireExplainerStat[];
+  sections?: WireExplainerSection[];
+  charts?: WireExplainerChart[];
+  whatToDo?: string;
+  tags?: string[];
+  footnote?: string;
+}
+
+export interface WireExplainers {
+  owner?: string;
+  lease_id?: string;
+  tab?: string;
+  scope?: string;
+  reservoir_key?: string | null;
+  api10?: string | null;
+  explainers?: WireExplainer[];
+}
+
+/** Which report's drawers to read, and what the tab needs to name its subject. */
+export interface ExplainerQuery {
+  /** The service's lease key — `08_46924`. */
+  id: string;
+  tab: "lease" | "reservoir" | "well";
+  /** Lease tab only: "share" reads at the owner's decimal, "lease" whole. */
+  scope?: "share" | "lease";
+  /** Reservoir tab: which rock. */
+  reservoirKey?: string | null;
+  /** Well tab: which hole. */
+  api10?: string | null;
+}
+
+export async function fetchLeaseExplainers(
+  query: ExplainerQuery,
+  signal?: AbortSignal,
+): Promise<WireExplainers> {
+  const params = new URLSearchParams({ id: query.id, tab: query.tab });
+  if (query.scope) params.set("scope", query.scope);
+  if (query.reservoirKey) params.set("reservoir_key", query.reservoirKey);
+  if (query.api10) params.set("api10", query.api10);
+
+  return request<WireExplainers>(
+    `/api/leases/explainers?${params}`,
+    "how these figures are built",
+    signal,
+  );
+}

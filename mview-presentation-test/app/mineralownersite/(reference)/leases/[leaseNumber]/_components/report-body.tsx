@@ -101,7 +101,17 @@ export function LeaseReportBody({
 
       {tab === "lease" && (
         <>
-          <FiguresPanel report={report} />
+          {/* THE RECORD ITSELF, BETWEEN THE FIGURES AND THE CHART.
+              It sat second-to-last, after the comparisons and before the map,
+              on the "money first, method last" order in `page.tsx` — right for
+              the working and wrong for this card: it is not working, it is the
+              unrounded FIELDS, and the tiles directly above it are the first
+              place a reader wants to check one against a statement. It goes in
+              through a slot so this file still says what follows what. */}
+          <FiguresPanel
+            report={report}
+            afterTiles={<PrecisionCard report={report} />}
+          />
           <CumulativeCard report={report} />
           <ReservesCard report={report} />
           <FindingsCard report={report} />
@@ -111,7 +121,6 @@ export function LeaseReportBody({
               now — see the note in `leases/page.tsx`. */}
           <TwelveMonthsCard report={report} />
           <MeasuresCard report={report} />
-          <PrecisionCard report={report} />
           <WellsMapCard report={report} served={leaseMap} />
         </>
       )}

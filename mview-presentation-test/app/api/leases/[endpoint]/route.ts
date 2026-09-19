@@ -159,6 +159,21 @@ const GET_PARAMS = {
    * list is paged — because that is how a well on another page is reached.
    */
   wells: ["id", "api10", "page", "page_size"],
+
+  /**
+   * THE DRAWERS BEHIND THE TILES — one endpoint for all three reports, told
+   * apart by `tab`.
+   *
+   * `scope` is "share" or "lease" and only the lease tab reads it; the other
+   * two are always whole-rock and whole-well figures. `reservoir_key` names
+   * which rock and `api10` which hole, so the drawer on a tile is about the
+   * thing the tab is actually showing.
+   *
+   * Every one of them is passed through rather than assumed, because the same
+   * key — `reservoir_gas`, say — answers differently for two rocks on one
+   * lease.
+   */
+  explainers: ["id", "tab", "scope", "reservoir_key", "api10"],
 } as const satisfies Record<string, readonly string[]>;
 
 /**
@@ -187,6 +202,7 @@ const SIGN_IN_COPY: Record<Endpoint, string> = {
   monthly: "Sign in to see your monthly report.",
   "monthly-email": "Sign in to email yourself this report.",
   wells: "Sign in to see this well report.",
+  explainers: "Sign in to see how these figures are built.",
 };
 
 type Endpoint = keyof typeof GET_PARAMS;

@@ -26,6 +26,7 @@ import {
   reservoirPaidExplainer,
   reservoirWellsExplainer,
 } from "../../_lib/explainers-reservoir";
+import { useServedExplainers } from "../../_lib/use-served-explainers";
 import { ExplainerDrawer, type Explainer } from "../explainer-drawer";
 
 /**
@@ -55,6 +56,27 @@ import { ExplainerDrawer, type Explainer } from "../explainer-drawer";
 export function ReservoirTiles({ report }: { report: ReservoirReport }) {
   const [explainer, setExplainer] = useState<Explainer | null>(null);
 
+  /* ── THE DRAWERS COME FROM THE SERVICE ──
+     One read for the whole tab; every tile below opens the panel whose key it
+     names. The rock's own key is what makes the answer about the thing on screen
+     rather than about the lease in general. Absent on the ten fixture leases,
+     and then every tile falls through to its local panel. */
+  const servedDrawers = useServedExplainers(
+    report.lease.id
+      ? {
+          id: report.lease.id,
+          tab: "reservoir" as const,
+          reservoirKey: report.name || report.lease.reservoir || null,
+        }
+      : null,
+  );
+
+  /* The service's panel where there is one, ours where there is not. Written
+     once so a tile cannot be wired to the served drawer and left with the local
+     title, or the other way round. */
+  const explain = (key: string, fallback: () => Explainer) => () =>
+    setExplainer(servedDrawers.get(key) ?? fallback());
+
   return (
     <>
       <div className="mt-4 grid gap-[18px] sm:grid-cols-2 xl:grid-cols-3">
@@ -62,7 +84,9 @@ export function ReservoirTiles({ report }: { report: ReservoirReport }) {
           size="sm"
           flat
           icon={<Layers className="h-[18px] w-[18px]" />}
-          onExplain={() => setExplainer(reservoirWellsExplainer(report))}
+          onExplain={explain("reservoir_wells", () =>
+            reservoirWellsExplainer(report),
+          )}
           label="Wells in this rock"
           value={formatCount(report.wellCount)}
           basis={`on ${report.leasesWithWells} of your ${portfolioSummary.leaseCount} leases`}
@@ -71,7 +95,9 @@ export function ReservoirTiles({ report }: { report: ReservoirReport }) {
           size="sm"
           flat
           icon={<Flame className="h-[18px] w-[18px]" />}
-          onExplain={() => setExplainer(reservoirGasExplainer(report))}
+          onExplain={explain("reservoir_gas", () =>
+            reservoirGasExplainer(report),
+          )}
           label="Gas filed from it"
           value={`${formatCompactVolume(report.gasFiled)} MCF`}
           basis={`${report.gasFiledPercentOfRecord.toFixed(1)}% of all your allocated gas`}
@@ -80,7 +106,9 @@ export function ReservoirTiles({ report }: { report: ReservoirReport }) {
           size="sm"
           flat
           icon={<Droplet className="h-[18px] w-[18px]" />}
-          onExplain={() => setExplainer(reservoirOilExplainer(report))}
+          onExplain={explain("reservoir_oil", () =>
+            reservoirOilExplainer(report),
+          )}
           label="Oil filed from it"
           value={`${formatCompactVolume(report.oilFiled)} BBL`}
           basis={`newest filed month ${report.newestFiledMonth}`}
@@ -90,7 +118,9 @@ export function ReservoirTiles({ report }: { report: ReservoirReport }) {
           size="sm"
           flat
           icon={<Receipt className="h-[18px] w-[18px]" />}
-          onExplain={() => setExplainer(reservoirPaidExplainer(report))}
+          onExplain={explain("reservoir_paid", () =>
+            reservoirPaidExplainer(report),
+          )}
           label="Paid to you, filed"
           value={formatCompactDollars(report.paidYouFiled)}
           basis="this rock's share of each lease's cash"
@@ -100,7 +130,9 @@ export function ReservoirTiles({ report }: { report: ReservoirReport }) {
           size="sm"
           flat
           icon={<TrendingUp className="h-[18px] w-[18px]" />}
-          onExplain={() => setExplainer(reservoirAheadExplainer(report))}
+          onExplain={explain("reservoir_ahead", () =>
+            reservoirAheadExplainer(report),
+          )}
           label="Still ahead of it"
           value={formatCompactDollars(report.stillAheadCash)}
           basis={`${formatCompactVolume(report.stillAheadGas)} MCF the model still expects`}
@@ -109,7 +141,9 @@ export function ReservoirTiles({ report }: { report: ReservoirReport }) {
           size="sm"
           flat
           icon={<CalendarRange className="h-[18px] w-[18px]" />}
-          onExplain={() => setExplainer(reservoirOpenExplainer(report))}
+          onExplain={explain("reservoir_open", () =>
+            reservoirOpenExplainer(report),
+          )}
           label="Open between"
           value={`${formatCount(report.openTopFt)}–${formatCount(report.openBottomFt)} ft`}
           basis="measured depth · where the wells are perforated"

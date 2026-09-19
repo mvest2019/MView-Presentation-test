@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { Card } from "../../../../_components/ui/card";
 import {
@@ -14,6 +14,7 @@ import {
 
 import { KpiTile } from "../../../../_components/ui/kpi-tile";
 import { LeaseOverviewHeader } from "./lease-overview-header";
+import { useServedExplainers } from "../_lib/use-served-explainers";
 import { RangePresets } from "../../_components/financials/range-presets";
 import { ChartBrush } from "../../_components/financials/chart-brush";
 import { SegmentedControl } from "../../../../_components/ui/segmented-control";
@@ -71,10 +72,34 @@ type FigureScope = "share" | "lease";
 
 const DEFAULT_WINDOW_MONTHS = 49;
 
-export function FiguresPanel({ report }: { report: LeaseReport }) {
+export function FiguresPanel({
+  report,
+  afterTiles,
+}: {
+  report: LeaseReport;
+  /** Rendered between the tiles and the chart. See the slot below. */
+  afterTiles?: ReactNode;
+}) {
   const { lease } = report;
   const [scope, setScope] = useState<FigureScope>("share");
+
+  /* ── THE DRAWERS COME FROM THE SERVICE ──
+     One read for the whole tab, re-read when the scope changes because the
+     panels are written at the scope they explain: "your share" and "the whole
+     lease" are different sentences about different figures, not the same
+     sentence with a multiplier. `lease.id` is absent on the ten fixture
+     leases, and then every tile below falls through to its local panel. */
+  const servedDrawers = useServedExplainers(
+    lease.id ? { id: lease.id, tab: "lease", scope } : null,
+  );
+
   const [explainer, setExplainer] = useState<Explainer | null>(null);
+
+  /* The service's panel where there is one, ours where there is not. Written
+     once so a tile cannot be wired to the served drawer and left with the local
+     title, or the other way round. */
+  const explain = (key: string, fallback: () => Explainer) => () =>
+    setExplainer(servedDrawers.get(key) ?? fallback());
   const [mode, setMode] = useState<ChartMode>("both");
   /* WHOSE SERIES THIS PANEL IS DRAWING.
      A served lease carries its own months — see `LeaseReport.series` — and a
@@ -165,7 +190,9 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
           size="sm"
           flat
           icon={<CalendarDays className="h-[18px] w-[18px]" />}
-          onExplain={() => setExplainer(leaseLastMonthExplainer(report, scope))}
+          onExplain={explain("lease_last_month", () =>
+            leaseLastMonthExplainer(report, scope),
+          )}
           label={`${scopeWord(scope)} · last posted month`}
           value={formatDollars(
             report.lastMonthShare * scale(scope, lease.decimalInterest),
@@ -177,7 +204,9 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
           size="sm"
           flat
           icon={<Banknote className="h-[18px] w-[18px]" />}
-          onExplain={() => setExplainer(leaseYearExplainer(report, scope))}
+          onExplain={explain("lease_year", () =>
+            leaseYearExplainer(report, scope),
+          )}
           label={`${scopeWord(scope)} · this year so far`}
           value={formatDollars(
             report.yearToDateShare * scale(scope, lease.decimalInterest),
@@ -188,7 +217,9 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
           size="sm"
           flat
           icon={<Flame className="h-[18px] w-[18px]" />}
-          onExplain={() => setExplainer(leaseGasExplainer(report, scope))}
+          onExplain={explain("lease_gas", () =>
+            leaseGasExplainer(report, scope),
+          )}
           label={`Gas filed to date · ${scopeWord(scope).toLowerCase()}`}
           value={`${formatCompactVolume(report.gasFiled * scale(scope, lease.decimalInterest))} MCF`}
           basis={`${formatCompactVolume(report.oilFiled * scale(scope, lease.decimalInterest))} BBL of oil · ${report.postedMonths} posted months`}
@@ -198,7 +229,9 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
           size="sm"
           flat
           icon={<TrendingUp className="h-[18px] w-[18px]" />}
-          onExplain={() => setExplainer(leaseValueExplainer(report, scope))}
+          onExplain={explain("lease_value", () =>
+            leaseValueExplainer(report, scope),
+          )}
           label={`Value · ${scopeWord(scope).toLowerCase()}`}
           value={formatCompactDollars(
             report.yourValue * scale(scope, lease.decimalInterest),
@@ -209,7 +242,9 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
           size="sm"
           flat
           icon={<Landmark className="h-[18px] w-[18px]" />}
-          onExplain={() => setExplainer(leaseCountyExplainer(report, scope))}
+          onExplain={explain("lease_county", () =>
+            leaseCountyExplainer(report, scope),
+          )}
           label="County appraised · your interest"
           value={formatCompactDollars(report.countyYourInterest)}
           basis={`${report.countyAgreementPercent.toFixed(1)}% of the model's figure`}
@@ -218,12 +253,20 @@ export function FiguresPanel({ report }: { report: LeaseReport }) {
           size="sm"
           flat
           icon={<Layers className="h-[18px] w-[18px]" />}
-          onExplain={() => setExplainer(leaseShapeExplainer(report, scope))}
+          onExplain={explain("lease_shape", () =>
+            leaseShapeExplainer(report, scope),
+          )}
           label="Wells · acres · reservoir"
           value={`${lease.wells} / ${lease.wells}`}
           basis={`${formatAcres(lease.acres)} acres · ${lease.reservoir}`}
         />
       </div>
+
+      {/* ANYTHING THE PAGE WANTS BETWEEN THE FIGURES AND THE CHART.
+          A slot rather than an import, so `report-body.tsx` keeps being the one
+          file that says what order this report's cards come in — the panel
+          decides where the seam is, not what goes in it. */}
+      {afterTiles}
 
       <Card padded={false} className="mt-4 px-[18px] py-4">
         <div className="mb-4 flex flex-wrap items-center gap-3">
