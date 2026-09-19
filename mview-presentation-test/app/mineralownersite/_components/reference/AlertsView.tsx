@@ -258,24 +258,33 @@ function liveValue(value: string): string | null {
   return parts.length ? parts.join(' · ') : null;
 }
 
-/** the published plan, identical for every reader — the only constant here */
-const PLAN_PRICE = {
-  price_month: '$99.99', price_annual: '$999.90',
-  price_weekly: '$23', price_weekly_annual: '$19',
-} as const;
-
+/**
+ * THE PRICES ARE NOT A CONSTANT HERE ANY MORE, AND THAT WAS THE WHOLE DEFECT.
+ *
+ * This file held `PLAN_PRICE` — `$99.99` / `$999.90` — as a fallback for a
+ * ledger that arrived unpriced. Measured on the deployed API, the ledger has
+ * never arrived unpriced on either path: `/dashboard` and `/alerts` both send
+ * `$99.95` / `$999.50`. So the constant was dead code that had never rendered,
+ * and it disagreed with the wire by four cents and ten cents — two copies of
+ * one number, in two files, neither able to fail a test because each was
+ * internally consistent with itself.
+ *
+ * The backend reads the four strings from one place now and the seam no longer
+ * copies them either. The ledger arrives priced; this reads what it says.
+ *
+ * WHAT IS STILL REBUILT BELOW IS COUNTS, not prices. A ledger that knows of no
+ * leases knows of nothing, and this panel is built entirely out of counts —
+ * so they come off the payload's own blocks, which are the same numbers the
+ * rest of the page is printing.
+ */
 function watchLedger(p: Payload): Payload['alerts']['ledger'] {
   const real = p.alerts.ledger;
-
-  const priced = (l: Payload['alerts']['ledger']): Payload['alerts']['ledger'] =>
-    l.price_month ? l : { ...l, ...PLAN_PRICE };
-
-  if (real.leases) return priced(real);
+  if (real.leases) return real;
 
   const items = p.alerts.items;
   const action = items.filter((a) => a.severity === 'action').length;
 
-  return priced({
+  return {
     ...real,
     leases: p.totals.lease_count,
     counties: p.totals.county_count,
@@ -287,7 +296,7 @@ function watchLedger(p: Payload): Payload['alerts']['ledger'] {
     alerts: items.length,
     action_count: action,
     rest_count: items.length - action,
-  });
+  };
 }
 
 /**
@@ -440,6 +449,18 @@ export interface AlertsProps extends ViewProps {
   readIds: Set<string>;
   markRead: (ids: string[]) => void;
   /**
+   * MARK EVERY UNREAD FINDING READ — and NOT the same thing as `markRead` over
+   * the list this page is holding.
+   *
+   * The service resolves "all" against the CURRENT sweep rather than against
+   * the ids sent, which matters because two of them are dated or keyed on a
+   * lease (`filed-<YYYYMM>`, `handover-<lease_id>`): a page left open across a
+   * month roll would otherwise send an id the sweep no longer carries, and a
+   * kept row can mark a NEW finding read before anybody has seen it. The ids
+   * are still passed so the rows go grey on the press.
+   */
+  markAllRead: (ids: string[]) => void;
+  /**
    * HAS THE BROWSER'S OWN READ-STATE BEEN READ YET?
    *
    * `false` on the server and on the first client render, `true` once
@@ -465,7 +486,7 @@ export interface AlertsProps extends ViewProps {
 }
 
 export default function AlertsView(
-  { p, tier, funnel, sample, open, go, readIds, markRead, readReady, openEvent }: AlertsProps,
+  { p, tier, funnel, sample, open, go, readIds, markRead, markAllRead, readReady, openEvent }: AlertsProps,
 ) {
   const al = p.alerts;
   const lg = useMemo(() => watchLedger(p), [p]);
@@ -785,7 +806,7 @@ export default function AlertsView(
                 <button
                   className="btn btn-ghost btn-sm" type="button"
                   disabled={!unreadCount}
-                  onClick={() => markRead(items.filter(isUnread).map((a) => a.id))}
+                  onClick={() => markAllRead(items.filter(isUnread).map((a) => a.id))}
                 >
                   {unreadCount ? `Mark all ${unreadCount} read` : 'All read'}
                 </button>
@@ -1078,7 +1099,7 @@ export default function AlertsView(
             ? (
               <button
                 type="button"
-                onClick={() => markRead(items.filter(isUnread).map((a) => a.id))}
+                onClick={() => markAllRead(items.filter(isUnread).map((a) => a.id))}
                 title="Unread means the event is newer than the last time notifications went out"
                 style={{ marginLeft: 'auto' }}
               >

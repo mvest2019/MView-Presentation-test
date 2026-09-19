@@ -251,11 +251,45 @@ export interface OwnerRef {
   districtcode: string | null; year: number | null;
 }
 
-/** where the reader's own read-state lives — see `markRead` in `Portal` */
-const READ_KEY = 'mv.alertsRead';
-
-function persistRead(ids: Set<string>): void {
-  try { localStorage.setItem(READ_KEY, JSON.stringify([...ids])); } catch { /* private mode */ }
+/**
+ * RECORD A READ WITH THE SERVICE — see `markRead` in `Portal`.
+ *
+ * This used to be `localStorage.setItem('mv.alertsRead', …)` and nothing else,
+ * so a read did not follow the reader to a second device, was lost with site
+ * data, and never reached the service — `unread` went on saying what it said
+ * before. `POST /alerts/read` stores it per member per owner, and
+ * `items[].unread` reflects it on the next snapshot.
+ *
+ * `all` RATHER THAN A LIST, WHERE THE CALLER MEANS ALL. The service resolves it
+ * against the CURRENT sweep, which is strictly better than a list assembled
+ * from a page that may be minutes old: two of the ids are dated or keyed on a
+ * lease (`filed-<YYYYMM>`, `handover-<lease_id>`), so an id stops existing when
+ * the month rolls, and a stale one could otherwise mark a NEW finding read
+ * before anybody saw it.
+ *
+ * IT DOES NOT THROW AT THE CALLER. The mark is applied optimistically so the
+ * row responds to the press; a failure leaves it read for this page and unread
+ * on the next load, which is the old behaviour rather than a new fault. It is
+ * logged, because a write that silently did not stick is exactly the thing
+ * nobody reports.
+ */
+async function persistRead(
+  owner: string | null, what: { ids: string[] } | { all: true },
+): Promise<void> {
+  if (!owner) return;
+  try {
+    const res = await fetch('/api/alerts/read', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ owner, ...what }),
+    });
+    if (!res.ok && res.status !== 401) {
+      console.warn('[alerts] read state was not recorded:', res.status,
+        await res.text().catch(() => ''));
+    }
+  } catch (e) {
+    console.warn('[alerts] read state could not be sent:', e);
+  }
 }
 
 /* the loader names its step, because the first read of a new owner is seconds
@@ -375,6 +409,8 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
   /* WHICH ALERTS THIS READER HAS OPENED — see `markRead` below for why it
      lives up here rather than inside `AlertsView`. */
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  /* the owner these marks belong to — see the effect that fills it */
+  const readOwnerRef = useRef<string | null>(null);
   /**
    * HAS `mv.alertsRead` BEEN READ YET? — the flash this closes.
    *
@@ -467,8 +503,12 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
         writePortalPref(PORTAL_FUNNEL_COOKIE, f);
       }
       setTrialStarted(localStorage.getItem('mv.trialStart'));
-      const r = JSON.parse(localStorage.getItem(READ_KEY) ?? '[]') as unknown;
-      if (Array.isArray(r)) setReadIds(new Set(r.filter((x): x is string => typeof x === 'string')));
+      /* READ STATE IS NOT SEEDED FROM THE BROWSER ANY MORE. It used to be
+         restored from `mv.alertsRead` here; the service stores it now and
+         `items[].unread` arrives already reflecting it, so the set below is
+         only the marks made since this page rendered. Nothing to restore, and
+         nothing to go stale in a browser that has not been opened for a
+         month. */
     } catch { /* private mode — nothing read yet is the correct default */ }
     /* OUTSIDE THE `try`. A browser that throws on `localStorage` still has a
        read-state — the empty one — and holding `readReady` at false there would
@@ -509,13 +549,31 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
    */
   const markRead = useCallback((ids: string[]) => {
     if (!ids.length) return;
+    let changed = false;
     setReadIds((prev) => {
       const next = new Set(prev);
       for (const id of ids) next.add(id);
       if (next.size === prev.size) return prev;
-      persistRead(next);
+      changed = true;
       return next;
     });
+    if (!changed) return;
+    /* THE OWNER COMES OFF A REF RATHER THAN THE CLOSURE, so this callback stays
+       stable across snapshots — `AlertsView` and `AlertLog` take it as a prop
+       and a new identity per payload would re-render both for nothing. The ref
+       is written by the effect beside it, from the owner `/dashboard`
+       resolved. */
+    void persistRead(readOwnerRef.current, { ids });
+  }, []);
+
+  /** mark every unread finding in the CURRENT sweep, resolved by the service */
+  const markAllRead = useCallback((ids: string[]) => {
+    setReadIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.add(id);
+      return next.size === prev.size ? prev : next;
+    });
+    void persistRead(readOwnerRef.current, { all: true });
   }, []);
   /* BOTH STORES, ALWAYS TOGETHER — see `prefs-context.tsx`. `localStorage`
      stays the reader's record of the choice; the cookie is the copy the SERVER
@@ -810,12 +868,18 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
     const live = new Set(items.map((a) => a.id));
     setReadIds((prev) => {
       const kept = [...prev].filter((id) => live.has(id));
-      if (kept.length === prev.size) return prev;
-      const next = new Set(kept);
-      persistRead(next);
-      return next;
+      return kept.length === prev.size ? prev : new Set(kept);
     });
   }, [data?.alerts.items]);
+
+  /* WHOSE INBOX THESE MARKS BELONG TO. Read state is scoped per member AND per
+     owner by the service, because a member may hold several claimed roll
+     identities and marking one inbox read must not silence another's. This is
+     the owner `/dashboard` resolved for this member, which is the same owner
+     the findings on screen were built for. */
+  useEffect(() => {
+    readOwnerRef.current = data?.owner.ownername ?? null;
+  }, [data?.owner.ownername]);
 
   const openDrawer = useCallback((key: string) => setDrawer(key), []);
 
@@ -1065,7 +1129,7 @@ export default function Portal({ route: initialRoute, initial, children, shellCl
           ? (
             <AlertsView
               p={data} tier={effTier} funnel={funnel} sample={sample} open={openDrawer} go={go}
-              readIds={readIds} markRead={markRead} readReady={readReady}
+              readIds={readIds} markRead={markRead} markAllRead={markAllRead} readReady={readReady}
               /* the log tab renders `timeline.events`, the same rows
                  Activities renders, so it opens the same per-event panel */
               openEvent={openEventDrawer}
