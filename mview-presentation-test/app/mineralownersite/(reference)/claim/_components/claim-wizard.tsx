@@ -597,7 +597,18 @@ export function ClaimWizard({
    * and re-fetching them would make starting over slower than arriving.
    */
   /*
-   * RESET ON STEP 2 — empty the fields AND drop the answer they produced.
+   * RESET ON STEP 2 — empty the fields, drop the answer they produced, AND GO
+   * BACK TO STEP 1 (requested).
+   *
+   * WHY IT NAVIGATES. A reset leaves step 2 with nothing to pick: no fields, no
+   * rows, no ticks. That is step 1's job description drawn on step 2's screen —
+   * the reader is told to "Pick the record that's yours" over an empty page,
+   * while the form that would produce one sits in the step behind them. Each
+   * screen holds one state instead: step 1 asks the question, step 2 answers
+   * it, and Reset steps back rather than blanking the answer in place.
+   *
+   * `goStep`, not `setStep`, so the URL and the browser's Back button come
+   * along — the same path `startOver` takes to step 1.
    *
    * A named function rather than an inline arrow in the JSX. It makes the same
    * ref writes `startOver` does, but `react-hooks/immutability` rejects them
@@ -607,6 +618,7 @@ export function ClaimWizard({
   function resetSearch() {
     searchRef.current?.abort();
     searchedRef.current = "";
+    goStep(1);
     setQuery(emptyQuery);
     setResults(idle());
     /* The rows are gone, so the ticks on them go too — a count in the bar over
@@ -633,9 +645,15 @@ export function ClaimWizard({
    * field. Watching `query` from an effect would mean a synchronous setState in
    * an effect body, which `react-hooks/set-state-in-effect` rejects, and
    * deferring it in a timer would leave a frame where the stale rows are still
-   * there. `resetSearch` does exactly this for the Reset button — the two paths
-   * now agree, which is the point: reaching the empty state one field at a time
-   * has to land where reaching it in one click does.
+   * there. `resetSearch` clears the same state for the Reset button, so reaching
+   * the empty state one field at a time leaves the flow holding exactly what
+   * reaching it in one click does.
+   *
+   * THE STEP IS THE ONE DELIBERATE DIFFERENCE. Reset also returns to step 1;
+   * emptying the last field does not. Reset is a decision to start the search
+   * over, taken in one click. Clearing a field is usually the middle of editing
+   * one — retyping a name pauses on empty between the delete and the first new
+   * character, and that must not throw the reader back a screen mid-keystroke.
    *
    * Not gated on `step === 2`. Step 1 shows no results, so clearing a field
    * there drops an `idle()` that is already idle — and a guard would be a rule

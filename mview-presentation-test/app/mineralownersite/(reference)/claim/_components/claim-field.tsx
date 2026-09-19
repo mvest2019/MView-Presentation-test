@@ -94,10 +94,10 @@ export function FieldFrame({
  *
  * ── WHY PER FIELD, WHEN THERE IS ALREADY A RESET ──
  *
- * "Reset filters" clears all four and drops the results with them. That is the
- * wrong tool for the common case: someone searches a name, adds a county to
- * narrow it, and then wants the county gone and the name kept. Reset means
- * retyping the name; the only alternative was select-all-and-delete inside a
+ * "Reset filters" clears all four, drops the results with them and returns to
+ * step 1. That is the wrong tool for the common case: someone searches a name,
+ * adds a county to narrow it, and then wants the county gone and the name kept.
+ * Reset means retyping the name a screen back; the only alternative was select-all-and-delete inside a
  * box, which is a fiddly thing to ask for on a phone.
  *
  * ── IT ONLY EXISTS WHEN THERE IS SOMETHING TO CLEAR ──

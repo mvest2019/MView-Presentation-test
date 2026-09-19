@@ -358,8 +358,9 @@ export function StepPick({
               /* RESET CLEARS THE ANSWER TOO, not just the question. Emptying
                  the fields while leaving 1,153 rows underneath is a page that
                  says it is not searching for anything and then lists what it
-                 found — `onReset` drops the results in the wizard, so the step
-                 goes back to the state it opens in. */
+                 found — `onReset` drops the results in the wizard and takes the
+                 reader back to step 1 with them, where an empty form is what
+                 the screen is for. See `resetSearch`. */
               onClick={() => {
                 onReset();
                 setFilter("");
