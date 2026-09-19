@@ -10,6 +10,7 @@ import {
 import type { Payload } from "../../_lib/reference/payload";
 import "../../reference-flex-reset.css";
 import "../../page-gutters.css";
+import "./profile.css";
 
 import { IdentityCard } from "./_components/identity-card";
 import { IdentityStrip } from "./_components/identity-strip";
@@ -284,8 +285,15 @@ export default async function ProfilePage({
       (clamp(18px, 2.6vw, 42px)) — the same measure the Dashboard reads at —
       which the two-column grid spends comfortably. Invite, Billing and
       Settings keep their wide gutters; see `page-gutters.css`.
+
+      `mv-profile-page` IS A DIFFERENT JOB and is not a gutter class: it is
+      what `profile.css` hooks onto to stop the column resizing every time the
+      reader tries a density mode (QA, my profile #12). The page has no
+      tier-gated content — see the `pageRoot` note above — so the four modes
+      differed only in width, by up to 290px. The class pins all four to the
+      1360px this grid was measured against; the sheet carries the reasoning.
     */
-    <Portal route={null} initial={initial}>
+    <Portal route={null} initial={initial} shellClass="mv-profile-page">
       <section data-route="app-profile" className="active">
         <ProfileHeader />
 

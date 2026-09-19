@@ -1,0 +1,49 @@
+/*
+ * MY PROFILE — the page's own sheet, and it holds exactly one rule.
+ *
+ * UNLAYERED, like every page-imported sheet in this group: it is imported by
+ * `page.tsx`, so it sits outside `@layer mv-reference` and beats
+ * `dashboard-reference.css` outright with no specificity contest and no
+ * `!important`.
+ *
+ * ── THE COLUMN STOPS RESIZING WITH THE DENSITY SWITCH ──
+ *
+ * `dashboard-reference.css` gives each density its own reading measure:
+ *
+ *   view-ultra   860px      view-simple (Essentials)  1120px
+ *   (Detailed)  1360px      view-pro                  1440px
+ *
+ * That is right for the Dashboard, where the density IS how much there is to
+ * read and each mode shows a different amount of it. It is wrong here. This
+ * page has NO tier-gated content — `page.tsx` says so at length: identity and
+ * sign-in are the same at every tier and in both claim states, so there is no
+ * `nc-swap` panel and no `tier-*` card on the route. All four modes therefore
+ * showed the IDENTICAL two cards at four different widths, the grid reflowing
+ * and the side gutters jumping by up to 290px each time the reader tried a
+ * mode. QA read the page as unstable, which is what it was.
+ * Defect sheet · my profile row 12.
+ *
+ * SO THE COLUMN IS PINNED TO THE GROUP'S OWN 1360px IN EVERY MODE — the width
+ * Detailed already gave it, and the one the two-column grid was measured
+ * against (see the grid note in `page.tsx`). Scoped to `.mv-profile-page`, the
+ * class `page.tsx` passes as `shellClass`, so no other page on this shell
+ * loses its densities.
+ *
+ * INVITE DID THIS FIRST, for the same defect and by the same mechanism —
+ * `invite.css` §1, defect sheet · Invite co-owners row 17. Two pages now share
+ * the reasoning; a third should read both before adding a copy.
+ *
+ * ── AND ONLY ABOVE 900px ──
+ *
+ * Below that the shell's own narrow-viewport rules take the body to
+ * `max-width: none` and a 14px gutter. That width is about the DEVICE, not
+ * about the mode, and it is not what QA was switching between.
+ */
+
+@media (min-width: 900px) {
+  .mv-ref-app.mv-profile-page.view-simple .app-body,
+  .mv-ref-app.mv-profile-page.view-ultra .app-body,
+  .mv-ref-app.mv-profile-page.view-pro .app-body {
+    max-width: 1360px;
+  }
+}

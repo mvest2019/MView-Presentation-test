@@ -4,6 +4,7 @@ import { useState, type ChangeEvent, type FormEvent } from "react";
 
 import { formatPhoneNumber } from "@/lib/phone";
 
+import { registerSchema } from "../../../../_components/auth-schema";
 import { PortalButton } from "../../../_components/ui/button";
 import { saveProfileAction } from "../_lib/profile-actions";
 import type { ProfilePatch, UserProfile } from "../_lib/profile-api";
@@ -13,7 +14,7 @@ import {
   type ProfileField,
 } from "../_lib/profile-data";
 import { useProfileLive } from "./profile-live";
-import { PROFILE_INPUT_CLASS, ProfileCardShell } from "./profile-shell";
+import { ProfileCardShell, profileInputClass } from "./profile-shell";
 
 /**
  * WHO YOU ARE — the page's only real form, and IT SAVES NOW.
@@ -103,6 +104,41 @@ type Status =
   | { kind: "saved"; message: string }
   | { kind: "error"; message: string; requestId?: string };
 
+/**
+ * ONE SENTENCE PER BOX THAT IS WRONG — keyed by input id.
+ *
+ * ── WHY THE SUMMARY LINE WAS NOT ENOUGH (QA, my profile #1) ──
+ *
+ * Emptying the name and pressing save DID refuse the write and DID say
+ * "Please fill in the required fields marked *" — in muted grey, at the
+ * bottom of a card whose form is eight boxes tall, naming none of them. QA
+ * read that as no error at all, which is the correct reading: a refusal the
+ * reader cannot see, beside a field the reader cannot find, is a form that
+ * silently did nothing.
+ *
+ * So the fault is now stated ON the box that carries it — red border, red
+ * sentence under the label, `aria-invalid` — the first one takes focus, and
+ * the summary line turns red with the rest. The summary stays because a
+ * screen-reader user who has not yet reached the field needs to be told
+ * something happened; it is no longer the ONLY thing that speaks.
+ */
+type FieldErrors = Partial<Record<keyof BoxValues, string>>;
+
+/**
+ * THE PHONE RULE IS THE REGISTER FORM'S, NOT A SECOND ONE (QA, my profile #9).
+ *
+ * `(865) 424-54` saved without complaint — the box formatted as you typed and
+ * validated nothing, so eight digits reached `PATCH /users/me` as a phone
+ * number. The register form has refused exactly that since August, through
+ * four rules (characters, exactly ten digits, no repdigit, NANP structure),
+ * and the formatter under this box is already that form's own. Borrowing the
+ * schema rather than restating the rules is the same decision `lib/phone.ts`
+ * records: two boxes that ask one question must not answer it differently.
+ *
+ * Empty passes — the field is optional here as it is there.
+ */
+const phoneRule = registerSchema.shape.phone;
+
 export function IdentityCard({
   profile,
   seed,
@@ -118,6 +154,7 @@ export function IdentityCard({
      multi-minute owner scan along, and the reader watched the old name stand) */
   const { update: publishProfile } = useProfileLive();
   const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [savedValues, setSavedValues] = useState<BoxValues | null>(() =>
     profile
       ? boxesFrom(profile)
@@ -167,16 +204,48 @@ export function IdentityCard({
      * "clear this stored value" — exactly what a required field must not let
      * happen.
      */
-    const requiredIds = identityForm.groups.flatMap((group) =>
-      group.fields.filter((f) => f.required).map((f) => f.id),
-    ) as (keyof BoxValues)[];
-    const emptiedRequired = requiredIds.some(
-      (id) => box(id).trim() === "" && box(id) !== savedValues[id],
+    /* `ProfileField[]` written out: `groups` is a readonly tuple of readonly
+       tuples, so an un-annotated `flatMap` infers the tuple rather than the
+       union and every `field.id` below reads as `unknown`. */
+    const allFields: ProfileField[] = identityForm.groups.flatMap(
+      (group) => [...group.fields],
     );
-    if (emptiedRequired) {
+    const errors: FieldErrors = {};
+
+    for (const field of allFields) {
+      const id = field.id as keyof BoxValues;
+      const value = box(id);
+      if (field.locked) continue;
+
+      if (field.required && value.trim() === "" && value !== savedValues[id]) {
+        /* names the box, because "the required fields" names none of them */
+        errors[id] = `${field.label} is required.`;
+        continue;
+      }
+
+      /* THE PHONE IS CHECKED WHENEVER IT IS DIRTY AND NOT EMPTY. Clearing it
+         is legitimate (the field is optional), so "" skips the rule — but a
+         half-typed number does not, which is the whole of QA #9. */
+      if (field.type === "tel" && value.trim() !== "" && value !== savedValues[id]) {
+        const parsed = phoneRule.safeParse(value);
+        if (!parsed.success) errors[id] = parsed.error.issues[0].message;
+      }
+    }
+
+    if (Object.keys(errors).length) {
+      setFieldErrors(errors);
       setStatus({ kind: "invalid" });
+      /* THE FIRST BAD BOX TAKES FOCUS. On a form this tall the fault can be
+         off-screen under the fold, and a message about a field you cannot see
+         is the defect this fix exists for — the browser scrolls to it. */
+      const firstBad = allFields.find((f) => errors[f.id as keyof BoxValues]);
+      if (firstBad) {
+        const el = form.elements.namedItem(firstBad.id);
+        if (el instanceof HTMLInputElement) el.focus();
+      }
       return;
     }
+    setFieldErrors({});
 
     if (!Object.keys(patch).length) {
       setStatus({ kind: "noChanges" });
@@ -223,9 +292,19 @@ export function IdentityCard({
            assistive tech and the submit's own emptied-required check. */
         noValidate
         onSubmit={onSubmit}
-        onInput={() =>
-          setStatus((s) => (s.kind === "saving" ? s : { kind: "idle" }))
-        }
+        onInput={(event) => {
+          setStatus((s) => (s.kind === "saving" ? s : { kind: "idle" }));
+          /* THE SENTENCE GOES WHEN THE BOX IS TOUCHED, not when the next
+             submit re-checks it: a red border standing under a field the
+             reader has just fixed reads as "still wrong". Only that box's
+             error clears — the others are still true. */
+          const target = event.target;
+          if (!(target instanceof HTMLInputElement)) return;
+          const id = target.id as keyof BoxValues;
+          setFieldErrors((current) =>
+            current[id] ? { ...current, [id]: undefined } : current,
+          );
+        }}
       >
         {identityForm.groups.map((group) => (
           <fieldset
@@ -247,6 +326,7 @@ export function IdentityCard({
                   savedValues ? savedValues[field.id as keyof BoxValues] : ""
                 }
                 disabled={!savedValues || Boolean(field.locked)}
+                error={fieldErrors[field.id as keyof BoxValues]}
               />
             ))}
           </fieldset>
@@ -266,8 +346,14 @@ export function IdentityCard({
         <div className="mt-auto flex items-end justify-between gap-2 pt-1">
           <span
             aria-live="polite"
+            /* RED FOR `invalid` AS WELL AS `error` (QA, my profile #1). A
+               refusal printed in the same muted grey as "Changes apply
+               immediately after you save." is a refusal nobody reads — it was
+               there, and QA logged the save as silently doing nothing. */
             className={`min-w-0 flex-1 self-center text-[11px] leading-[1.5] ${
-              status.kind === "error" ? "text-mv-required" : "text-mv-muted"
+              status.kind === "error" || status.kind === "invalid"
+                ? "text-mv-required"
+                : "text-mv-muted"
             }`}
           >
             {message}
@@ -306,11 +392,15 @@ function ProfileInput({
   field,
   value,
   disabled,
+  error,
 }: {
   field: ProfileField;
   value: string;
   disabled?: boolean;
+  /** What is wrong with this box right now — see `FieldErrors` above. */
+  error?: string;
 }) {
+  const errorId = `${field.id}-error`;
   return (
     <div className="mb-3.5 flex flex-col gap-1.5">
       <label
@@ -347,9 +437,23 @@ function ProfileInput({
               },
             }
           : null)}
-        aria-describedby={field.hint ? `${field.id}-hint` : undefined}
-        className={PROFILE_INPUT_CLASS}
+        aria-invalid={error ? true : undefined}
+        /* the error FIRST, so it is the thing read on arrival at the box —
+           the hint still follows for a reader who needs the rule as well */
+        aria-describedby={
+          [error ? errorId : null, field.hint ? `${field.id}-hint` : null]
+            .filter(Boolean)
+            .join(" ") || undefined
+        }
+        className={profileInputClass(Boolean(error))}
       />
+      {/* `role="alert"` — the reader has just pressed save and is waiting to
+          be told. Same treatment as the change-password panel's messages. */}
+      {error ? (
+        <span id={errorId} role="alert" className="text-xs text-mv-required">
+          {error}
+        </span>
+      ) : null}
       {field.hint ? (
         <span id={`${field.id}-hint`} className="text-xs text-mv-muted">
           {field.hint}

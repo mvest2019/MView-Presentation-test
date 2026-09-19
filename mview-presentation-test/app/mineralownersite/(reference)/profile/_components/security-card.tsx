@@ -1,9 +1,15 @@
 "use client";
 
-import { Fragment, useCallback, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { z } from "zod";
 
 import { changePasswordSchema } from "../../../../_components/auth-schema";
+import { PasswordInput } from "../../../../_components/auth-shell";
 import { PortalButton } from "../../../_components/ui/button";
 import { Notice } from "../../../_components/ui/notice";
 import { FutureTag, SettingRow } from "../../settings/_components/setting-row";
@@ -28,7 +34,7 @@ import {
   type SecurityRow,
 } from "../_lib/profile-data";
 import { useProfileLive } from "./profile-live";
-import { PROFILE_INPUT_CLASS, ProfileCardShell } from "./profile-shell";
+import { ProfileCardShell, profileInputClass } from "./profile-shell";
 
 /**
  * SECURITY & SIGN-IN — password, two-factor, passkeys, and the device list.
@@ -186,7 +192,15 @@ export function SecurityCard({
   const canChangePassword = passwordInfo?.set !== false;
 
   return (
-    <ProfileCardShell section={PROFILE_SECTIONS.security}>
+    /* `flex flex-col` FOR THE SAME REASON `IdentityCard` HAS IT, and now for
+       the opposite case. The grid stretches both columns, and whichever card
+       is shorter inherits the row's spare height — the note in `page.tsx`
+       assumed that was always this one (950px against 687px, measured with
+       three device rows). With ONE device signed in it is the other way
+       round, and this card ended in a field of white a third of its height
+       tall, which is what QA photographed (my profile #11). So this card
+       SPENDS the height too: see the notice at the bottom. */
+    <ProfileCardShell section={PROFILE_SECTIONS.security} className="flex flex-col">
       <div className="mt-1.5">
         {securityRows.map((row) => (
           /* THE PANEL IS RENDERED INSIDE THE MAP, not after it, so it opens
@@ -308,9 +322,20 @@ export function SecurityCard({
         {announcement}
       </p>
 
-      <Notice tone="slate" glyph={securityNote.glyph} className="mt-4">
-        <strong>{securityNote.lead}</strong> {securityNote.body}
-      </Notice>
+      {/* THE NOTICE SITS ON THE CARD'S BOTTOM EDGE, and the spare height goes
+          above it rather than below it (QA, my profile #11).
+
+          `flex-1` on the wrapper takes whatever the row is taller than this
+          card and `justify-end` spends it, which is the same move the identity
+          card's save row makes. `mt-4` stays on the WRAPPER, so the gap above
+          the notice is the 16px it always was when there is nothing spare to
+          distribute — with three device rows this card is the tall one again
+          and the layout is unchanged to the pixel. */}
+      <div className="mt-4 flex flex-1 flex-col justify-end">
+        <Notice tone="slate" glyph={securityNote.glyph}>
+          <strong>{securityNote.lead}</strong> {securityNote.body}
+        </Notice>
+      </div>
     </ProfileCardShell>
   );
 }
@@ -433,14 +458,29 @@ function ChangePasswordPanel({
             >
               {field.label}
             </label>
-            <input
+            {/*
+              `PasswordInput`, NOT A BARE `type="password"` (QA, my profile #4).
+
+              All three boxes were unmaskable, on the one form where a typo is
+              most expensive: you cannot see what you typed, and getting the
+              new password wrong twice in agreement locks you out of your own
+              account at the next sign-in. The sign-in and register forms have
+              had a reveal toggle since August.
+
+              It is THAT component rather than a fourth copy of the eye: it
+              carries the 15-second auto-re-mask (Ryan, 2026-08-19) and the
+              "reveal, do not hide on a failed submit" behaviour those two
+              forms already argued out, and a local toggle here would have
+              neither. It takes this route's own input class, so the boxes
+              still look like every other box on the page.
+            */}
+            <PasswordInput
               id={field.id}
               name={field.key}
-              type="password"
               autoComplete={field.autoComplete}
               aria-invalid={message ? true : undefined}
               aria-describedby={message ? `${field.id}-error` : undefined}
-              className={PROFILE_INPUT_CLASS}
+              className={profileInputClass(Boolean(message))}
             />
             {/* The message is the schema's, verbatim. `role="alert"` so it is
                 read on arrival rather than only on a deliberate re-read — the
@@ -567,6 +607,45 @@ function SecurityControlRow({
 /** `busy` when the "sign out everywhere else" request is in flight. */
 const ALL = "__all__";
 
+const SIGN_OUT_ALL_PANEL_ID = "profile-sign-out-all-confirm";
+
+/* `useSyncExternalStore` needs a subscribe, and this store never changes —
+   the return value goes from `false` to `true` exactly once, at hydration,
+   which React does on its own. Declared at module scope so the reference is
+   stable across renders. */
+const NEVER_CHANGES = () => () => {};
+
+/**
+ * FALSE ON THE SERVER AND THROUGH HYDRATION, TRUE AFTER — and that is the fix
+ * for the session times (QA, my profile #8).
+ *
+ * `lastActiveLabel` phrases an ISO instant with `toLocaleTimeString`, which
+ * reads the RUNTIME's timezone. This card is a client component but it is
+ * still server-RENDERED, and the server's timezone is UTC — so the first paint
+ * said "Today, 12:10 AM", hydration replaced it with "Today, 5:40 AM" for an
+ * IST reader, and React threw #418 (hydration mismatch, uncaught) on every
+ * load of the page. Near midnight the two disagreed about the DAY, so the
+ * first paint could label yesterday's session "Today".
+ *
+ * The timezone cannot be known on the server — a member's stored address is
+ * where their minerals are, not where they are sitting — so the honest server
+ * output is NO TIME AT ALL. This hook is how the row renders that: a dash
+ * until hydration, the real phrase immediately after. Both passes agree, the
+ * mismatch is gone with the console error, and no reader is ever shown an
+ * hour that is five and a half hours wrong.
+ *
+ * `suppressHydrationWarning` was the smaller change and the wrong one: it
+ * silences the warning and keeps the wrong first paint, which is the half of
+ * the defect QA actually saw.
+ */
+function useHydrated(): boolean {
+  return useSyncExternalStore(
+    NEVER_CHANGES,
+    () => true,
+    () => false,
+  );
+}
+
 /**
  * THIS DEVICE HAS BEEN SIGNED OUT — leave, properly.
  *
@@ -643,6 +722,15 @@ function SessionList({
      hidden: a control that disappears once used leaves the reader wondering
      whether they imagined it. Disabled mid-request for the same reason. */
   const others = openSessions.filter((session) => !session.current).length;
+  /* The sign-out-everywhere question, standing between the press and the
+     irreversible act — see `sessionsBlock.confirmAll*`. */
+  const [confirmingAll, setConfirmingAll] = useState(false);
+
+  /* The panel must not outlive the thing it is asking about: a sign-out that
+     lands from another row while it is open would leave a question about
+     devices that are already gone. `others === 0` closes it, and so does a
+     request going out — both are rendered below rather than tracked. */
+  const askingAll = confirmingAll && others > 0 && busy === null;
 
   return (
     <section aria-labelledby="profile-sessions" className="mt-4">
@@ -655,8 +743,14 @@ function SessionList({
         </h4>
         <PortalButton
           size="sm"
+          /* `aria-expanded`/`aria-controls` for the same reason the
+             change-password button carries them: the panel opens BELOW this
+             control, so without them a screen-reader user presses a button
+             and hears nothing happen. */
+          aria-expanded={askingAll}
+          aria-controls={askingAll ? SIGN_OUT_ALL_PANEL_ID : undefined}
           disabled={others === 0 || busy !== null}
-          onClick={onSignOutAll}
+          onClick={() => setConfirmingAll((open) => !open)}
         >
           {sessionsBlock.signOutAll}
         </PortalButton>
@@ -664,6 +758,49 @@ function SessionList({
       <p className="mt-0.5 text-xs leading-[1.5] text-mv-muted">
         {sessionsBlock.hint}
       </p>
+
+      {askingAll ? (
+        <div
+          id={SIGN_OUT_ALL_PANEL_ID}
+          /* `role="group"` and not `alertdialog`: nothing has gone wrong and
+             nothing is trapped — this is a question with two answers, sitting
+             in the flow under the control that asked it. */
+          role="group"
+          aria-labelledby={`${SIGN_OUT_ALL_PANEL_ID}-heading`}
+          className="mt-2 rounded-xl border border-mv-line bg-mv-portal-explain px-3.5 py-3"
+        >
+          <p
+            id={`${SIGN_OUT_ALL_PANEL_ID}-heading`}
+            className="m-0 text-[13px] leading-[1.4] font-bold"
+          >
+            {sessionsBlock.confirmAllHeading}
+          </p>
+          <p className="mt-1 text-xs leading-[1.5] text-mv-muted">
+            {/* THE COUNT IS THE POINT — "sign out everywhere else" does not
+                say whether that is one stale tab or five live devices, and
+                the answer changes whether the reader goes ahead. */}
+            {others === 1
+              ? "1 other device is signed in. "
+              : `${others} other devices are signed in. `}
+            {sessionsBlock.confirmAllBody}
+          </p>
+          <div className="mt-2.5 flex flex-wrap items-center justify-end gap-2">
+            <PortalButton size="sm" onClick={() => setConfirmingAll(false)}>
+              {sessionsBlock.confirmAllCancel}
+            </PortalButton>
+            <PortalButton
+              size="sm"
+              variant="primary"
+              onClick={() => {
+                setConfirmingAll(false);
+                onSignOutAll();
+              }}
+            >
+              {sessionsBlock.confirmAllConfirm}
+            </PortalButton>
+          </div>
+        </div>
+      ) : null}
 
       <ul className="mt-1.5 list-none p-0">
         {openSessions.map((session) => (
@@ -719,7 +856,10 @@ function SessionItem({
    * the API sends an ISO instant and the phrase belongs in the reader's own
    * timezone.
    */
-  const when = lastActiveLabel(session.lastActive);
+  const hydrated = useHydrated();
+  /* "—" until the browser's timezone is the one doing the phrasing — see
+     `useHydrated`. It holds the line's height so the row does not jump. */
+  const when = hydrated ? lastActiveLabel(session.lastActive) : "—";
   const detail = session.place ? `${session.place} · ${when}` : when;
 
   return (

@@ -4,6 +4,7 @@ import { avatarProxyUrl } from "@/app/mineralownersite/(reference)/profile/_lib/
 import {
   fetchProfile,
   profileApiBase,
+  signOutSession,
 } from "@/app/mineralownersite/(reference)/profile/_lib/profile-api";
 import {
   loginUser,
@@ -22,7 +23,7 @@ import {
   clearLoginFailures,
   recordLoginFailure,
 } from "@/lib/login-throttle";
-import { endSession, startSession } from "@/lib/session";
+import { endSession, getSessionUser, startSession } from "@/lib/session";
 
 import { normalizeInviteCode } from "@/lib/invite-code";
 
@@ -365,8 +366,63 @@ export async function signInWithGoogleAction(
   return { ok: true };
 }
 
+/**
+ * SIGN OUT — AND END THE SESSION ROW, NOT JUST THE COOKIE.
+ *
+ * ── WHAT THIS WAS, AND WHY IT WAS NOT ENOUGH ──
+ *
+ * `await endSession()` and nothing else: it deleted the `mv_user` cookie, this
+ * browser forgot the member, and the SERVER never heard about it. The session
+ * row the login created stayed live in the store for its full lifetime, so
+ * every other signed-in browser kept listing that device under "Where you are
+ * signed in" — signed out, logged out, browser closed, it made no difference.
+ * QA signed in from a second Chrome, signed it out again, and the first one
+ * still showed two devices (defect sheet · my profile row 10). It is also half
+ * of the phantom-row pile in row 7.
+ *
+ * So the sign-out now tells the API first. `POST /users/me/sessions/sign-out`
+ * with this browser's own `session_id` is the same call the device panel's
+ * per-row button makes — the API re-checks the row against the token's member
+ * id in SQL, so a cookie naming somebody else's session ends nothing.
+ *
+ * ── IT IS BEST-EFFORT, AND THE ORDER IS THE POINT ──
+ *
+ * The revoke runs BEFORE `endSession` because it needs the token the cookie
+ * carries, and its failure is swallowed because the local sign-out must happen
+ * either way: a reader who pressed "Log out" and was left signed in because an
+ * API was down would be the worse bug by a distance. A failure is logged where
+ * server work is visible and the cookie goes regardless.
+ *
+ * ⚠ ON THIS DEPLOYMENT THE CALL CURRENTLY 503s. The API has no revocation
+ * store configured (`SESSIONS_REVOCATION_UNAVAILABLE` — the same switch behind
+ * rows 2 and 7 of the sheet), so the row survives anyway and row 10 will keep
+ * reproducing until an operator turns it on. The frontend half is right and is
+ * wired; nothing here can finish the job alone.
+ *
+ * ── NO `session_id` IN THE COOKIE IS A NO-OP, NOT AN ERROR ──
+ *
+ * A login the API could not record stores no `sessionId` (see `startSession`),
+ * and a token minted before the session store existed names no device. Both
+ * have nothing to revoke, so both fall straight through to the cookie delete.
+ */
 export async function signOutAction(): Promise<void> {
+  await revokeCurrentSession();
   await endSession();
+}
+
+/** The API half of `signOutAction` — see the note above. Never throws. */
+async function revokeCurrentSession(): Promise<void> {
+  const user = await getSessionUser();
+  const base = profileApiBase();
+  if (!user?.sessionId || !user.token || !base) return;
+  try {
+    await signOutSession(base, user.token, user.sessionId);
+  } catch (e) {
+    console.error(
+      `[auth] sign-out could not end session ${user.sessionId} for member ${user.id}:`,
+      e instanceof Error ? e.message : e,
+    );
+  }
 }
 
 /**

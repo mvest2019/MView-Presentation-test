@@ -401,6 +401,36 @@ export const sessionsBlock = {
   signOutOne: "Sign out",
   signOutAll: "Sign out everywhere else",
   /**
+   * THE CONFIRMATION "SIGN OUT EVERYWHERE ELSE" DID NOT HAVE (QA, my
+   * profile #6).
+   *
+   * One press ended every other session with nothing in between — and the
+   * button sits inches from the per-row "Sign out", at the end of a heading
+   * row, where a mis-aimed click is ordinary. What it destroys is not the
+   * account but everyone's afternoon: a phone, a work laptop and a tablet all
+   * asking for the password again, with no undo, because sessions cannot be
+   * un-revoked.
+   *
+   * ── AN INLINE PANEL, NOT A `window.confirm` AND NOT A MODAL ──
+   *
+   * `window.confirm` is the browser's chrome rather than the product's, cannot
+   * carry the device COUNT in a form anyone reads, and is blocked outright in
+   * some embedded contexts. A modal dialog is the other extreme: focus
+   * trapping, an escape route and a scroll lock, for a two-button question
+   * that has room to stand where the button that asked it is. So the panel
+   * unfolds under the heading, directly below the control — the same shape
+   * the change-password panel takes under ITS row.
+   *
+   * The per-row "Sign out" keeps its single press on purpose: it ends ONE
+   * named device the reader picked out of a list, which is a different act
+   * from ending all of them at once.
+   */
+  confirmAllHeading: "Sign out every other device?",
+  confirmAllBody:
+    "They will each need your email and password to sign in again. This device stays signed in.",
+  confirmAllCancel: "Cancel",
+  confirmAllConfirm: "Yes, sign them out",
+  /**
    * A SUCCESSFUL read that came back with nothing — reassurance, not an error.
    *
    * There is no matching "we could not look" string here on purpose: that
