@@ -5,6 +5,7 @@ import { entitlementsForUser } from "@/lib/entitlements-server";
 import { getSessionUser } from "@/lib/session";
 
 import Portal from "../../_components/reference/Portal";
+import { ClaimedLeasesProvider } from "./_components/claimed-context";
 import {
   getOwnerPayload,
   type OwnerSelection,
@@ -99,7 +100,18 @@ export default async function OwnerMap({
       {/* The slot `map-shell.css` sizes. The map fills whatever it is given and
           has no height of its own, so something has to be the box. */}
       <div className="mv-map-slot">
-        <MapExplorerView entitlements={entitlements} />
+        {/*
+          THE CLAIM IS FETCHED ABOVE THE MAP, not inside it, because two very
+          different parts of the map need the same answer: the rail lists the
+          leases, and the view frames its opening extent on their wells. One
+          request, read from both.
+
+          `user.id` IS the member id — `lib/session.ts` builds the session from
+          the login response's `member_id`. Same source the claim wizard uses.
+        */}
+        <ClaimedLeasesProvider memberId={user.id}>
+          <MapExplorerView entitlements={entitlements} />
+        </ClaimedLeasesProvider>
       </div>
     </Portal>
   );

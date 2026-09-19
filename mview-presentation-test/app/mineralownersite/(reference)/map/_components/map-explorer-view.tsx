@@ -14,10 +14,12 @@ import { loadArcgisModules } from "../../../_lib/arcgis-loader";
 import { ClusterTooltip } from "./cluster-tooltip";
 import { SampleBanner } from "./sample-banner";
 import type { Entitlements } from "@/lib/entitlements";
+import { useClaimedDismiss, useClaimedFrame } from "./claimed-context";
 import {
   MapEntitlementsProvider,
   tierFromPortalDensity,
 } from "./entitlements-context";
+import { centreAndScaleFor } from "./fit-box";
 import { WellInsightsPanel, type SelectedWell } from "./well-insights-panel";
 import { MapChrome, type ViewTab } from "./map-chrome";
 import { usePortalViewState } from "../../../_components/reference/view-state";
@@ -690,6 +692,16 @@ export function MapExplorerView({
   const wellLayerRef = useRef<EsriGraphicsLayer | null>(null);
   /* Legend description -> icon URL, so a well draws its legend's symbol. */
   const wellIconsRef = useRef<Map<string, string>>(new Map());
+  /**
+   * Resolves when the legend symbols are in hand.
+   *
+   * `buildWellGraphics` reads `wellIconsRef` as it draws, so anything drawing
+   * wells outside the opening load has to wait for the same fetch the opening
+   * load waits for — otherwise it plots the fallback dot and the real symbols
+   * never replace it. The init effect fills this in; it is null until then,
+   * which callers read as "nothing to wait for".
+   */
+  const wellIconsReadyRef = useRef<Promise<void> | null>(null);
   const wellRequestRef = useRef(0);
   /* The wells last loaded, for the export — the layer holds graphics, not rows. */
   const wellsRef = useRef<MapWell[]>([]);
@@ -798,6 +810,18 @@ export function MapExplorerView({
    * product defaults rather than an error — the map is perfectly renderable
    * without an account, and this is the shape it takes.
    */
+  /*
+   * The reader's claimed wells, or `null` while they load, when they fail, and
+   * for anyone who has claimed nothing. Every one of those falls through to
+   * the map's existing behaviour.
+   */
+  const claimed = useClaimedFrame();
+  const { dismissed: claimDismissed } = useClaimedDismiss();
+
+  /* Applied once. The claim arriving must not re-frame a map the reader has
+     since panned, filtered or zoomed away from. */
+  const claimFramedRef = useRef(false);
+
   const shellView = usePortalViewState();
 
   /* Which tier the chrome's picker is showing, in the spec's vocabulary. Null
@@ -833,6 +857,7 @@ export function MapExplorerView({
    * Ultra is limited by HOW MUCH it draws (250 wells per extent) and how much
    * each well carries, never by whether the map can be read.
    */
+
 
   /* What is on screen, readable from a callback — the tab is set from half a
      dozen places and only one of them should leave a history step. */
@@ -3404,6 +3429,10 @@ export function MapExplorerView({
           })
           .catch(() => {});
 
+        /* Shared with the claimed-view effect, which draws its own wells and
+           needs the same symbols. */
+        wellIconsReadyRef.current = icons;
+
         /*
          * A shared link, applied once the symbols are in hand.
          *
@@ -3968,6 +3997,186 @@ export function MapExplorerView({
       console.error("Could not capture the map for printing.", error);
     }
   }, []);
+
+  /*
+   * ── THE CLAIMED VIEW ──
+   *
+   * A reader who has claimed leases opens on THEIR wells, not on Texas.
+   *
+   * WHY IT IS AN EFFECT AND NOT PART OF THE OPENING LOAD. The claim is fetched
+   * above this component and arrives whenever it arrives — typically after the
+   * map has laid itself out and started its first request. So the opening load
+   * runs as it always did, and this corrects the view the moment the answer
+   * lands. The alternative, holding the map blank until the claim resolves,
+   * trades a brief statewide frame for a brief empty one.
+   *
+   * WHY `filteredRef`. It is the flag the zoom watcher already reads to mean
+   * "the wells on screen are an answer, leave them alone" — set, the watcher
+   * loads no bubbles at any zoom and discards any cluster request already in
+   * flight. That is precisely what was asked for: claimed wells are drawn as
+   * wells, and if the box is too wide to reach well-zoom, it still shows wells
+   * rather than falling back to clusters.
+   *
+   * WHAT IT DOES NOT DO:
+   *
+   *   · override a shared link. `openingFilters` is a deliberate request from
+   *     whoever sent the link, and it wins — `appliedFilters` is non-empty by
+   *     the time this could run.
+   *   · run twice. `claimFramedRef` latches, so a re-render, a tab switch or a
+   *     resize cannot yank a reader back to their claim after they have moved.
+   */
+  useEffect(() => {
+    if (status !== "ready") return;
+    if (!claimed || claimFramedRef.current) return;
+
+    const view = viewRef.current;
+    if (!view) return;
+
+    /* A link that arrived with a filter has already been applied, or is about
+       to be. Do not fight it. */
+    if (Object.keys(openingFilters).length > 0) {
+      claimFramedRef.current = true;
+      return;
+    }
+
+    claimFramedRef.current = true;
+
+    /* Bubbles off, and no more of them: the wells below are the answer now.
+       The refs and the layer are external state and belong in the effect
+       body; they also have to be set before any render sees them. */
+    filteredRef.current = true;
+    clearClusters();
+    wellsRef.current = claimed.wells;
+
+    /* IN A MICROTASK, not in the effect body — the project's
+       `set-state-in-effect` rule forbids the latter outright, and the filters
+       panel takes the same way out for the same reason. One tick later is
+       still before paint, so nothing renders the statewide view first. */
+    queueMicrotask(() => {
+      setClustersLoading(false);
+      setWells(claimed.wells);
+      setWellsLoading(false);
+      setWellError(null);
+      setNoMatches(false);
+    });
+
+    /*
+     * AND DRAWN ONTO THE MAP, which `setWells` does not do.
+     *
+     * That state feeds the table, the Insights picker and the readout; the
+     * graphics layer is separate and is what `loadWells` fills with
+     * `buildWellGraphics`. Setting the state alone framed the right ground and
+     * left it empty — the bug this comment exists to stop recurring.
+     *
+     * After the legend symbols, for the reason the opening load waits for
+     * them: `buildWellGraphics` reads the icon map as it draws, and drawing
+     * first plots every well as the fallback dot with nothing to replace it.
+     */
+    let drawn = false;
+    void (wellIconsReadyRef.current ?? Promise.resolve()).then(() => {
+      if (drawn) return;
+      const ctors = ctorsRef.current;
+      const layer = wellLayerRef.current;
+      if (!ctors || !layer) return;
+
+      layer.removeAll();
+      layer.addMany(
+        buildWellGraphics(ctors.Graphic, claimed.wells, wellIconsRef.current),
+      );
+    });
+
+    const box = claimed.extent;
+    if (!box) return;
+
+    /*
+     * Framed from the service's own extent rather than from the wells, since
+     * it sends one and it is the same measurement.
+     *
+     * NO MAXIMUM SCALE. The filter path caps how far out a match may push the
+     * map, because a county's worth of wells framed statewide has shown the
+     * reader nothing. A claim is different: every well in it belongs to them,
+     * and a claim spread across two ends of Texas has to be shown across two
+     * ends of Texas. Zoomed out that far the wells are specks — which is the
+     * stated expectation, and better than hiding half of what they own.
+     */
+    view
+      .goTo(
+        centreAndScaleFor(
+          {
+            north: box.maxLat,
+            south: box.minLat,
+            east: box.maxLon,
+            west: box.minLon,
+          },
+          { width: view.width, height: view.height },
+          {
+            covered:
+              view.width >= 1024
+                ? Math.min(FILTERS_RAIL_WIDTH, view.width / 3)
+                : 0,
+            /* One lease in one county should not fill the screen at street
+               level; this is about the tightest the map is useful at. */
+            minScale: SINGLE_WELL_SCALE,
+          },
+        ),
+        /* Set outright, not flown. An animated `goTo` is cancelled by anything
+           else that moves the view, `ignoreInterrupted` swallows the rejection
+           and the frame silently never happens. */
+        { animate: false },
+      )
+      .catch(ignoreInterrupted);
+
+    return () => {
+      /* Unmounted, or the claim changed, before the symbols landed. */
+      drawn = true;
+    };
+  }, [status, claimed, openingFilters, clearClusters]);
+
+  /*
+   * ── CLOSING THE CLAIMED VIEW ──
+   *
+   * The reader has pressed Close in the rail. The map is theirs again: the
+   * whole state, the count bubbles, and no trace of the claim.
+   *
+   * The same five steps the Clear-filters path takes, and for the same
+   * reasons — `filteredRef` down so the zoom watcher resumes owning the map,
+   * the record closed because the well it described is about to be undrawn,
+   * the wells and their ring cleared, the tier reset so the next load is a
+   * fresh decision, and the camera home BEFORE the clusters are asked for,
+   * since they are requested for the extent and asking mid-flight asks about
+   * the wrong one.
+   *
+   * Only ever undoes something this component did: `claimFramedRef` is the
+   * record of that, and without it a reader who never had a claimed view
+   * would have their map thrown home by a flag they never set.
+   */
+  useEffect(() => {
+    if (!claimDismissed || !claimFramedRef.current) return;
+
+    claimFramedRef.current = false;
+    filteredRef.current = false;
+    clusterTierRef.current = -1;
+
+    clearWells();
+    closeSummary();
+
+    queueMicrotask(() => {
+      setNoMatches(false);
+      setWellError(null);
+      setWellsLoading(false);
+    });
+
+    /* SET OUTRIGHT, NOT FLOWN, and for the reason this file already records
+       about the filter fit: an animated `goTo` is a camera the map can be
+       argued out of — anything else that moves the view cancels it,
+       `ignoreInterrupted` swallows the rejection, and everything chained
+       behind it silently never happens. Here that would be the clusters,
+       leaving the reader on an empty map with no bubbles and no wells. */
+    viewRef.current
+      ?.goTo({ center: HOME_CENTER, scale: homeScale() }, { animate: false })
+      .then(loadClusters)
+      .catch(ignoreInterrupted);
+  }, [claimDismissed, clearWells, closeSummary, loadClusters]);
 
   return (
     /* Everything below reads its tier from here rather than being handed a

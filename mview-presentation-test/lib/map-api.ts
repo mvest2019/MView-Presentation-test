@@ -996,3 +996,212 @@ export const saveLeaseWatch = async (watch: LeaseWatch): Promise<void> => {
 
   throw new Error(reason);
 };
+
+/* ==========================================================================
+   CLAIMED LEASES
+   ========================================================================== */
+
+/**
+ * One claimed lease, as the map rail lists it.
+ *
+ * ONLY THE LEASE-LEVEL FIELDS ARE TYPED. The endpoint nests every well of
+ * every lease inside this object — 1,624 of them for member 4785 — and the
+ * list does not read one of them, so they are counted and dropped rather than
+ * modelled. `wellCount` is that count, taken at parse time.
+ *
+ * `leaseKey` is the identity, not `name`: 782 leases came back under 483
+ * distinct names, so a name is not unique and a React key made from one would
+ * collide.
+ */
+export type MapClaimedLease = {
+  /** `district-number`, e.g. `03-01173`. Unique. */
+  leaseKey: string;
+  /** The owner's own name for the lease. */
+  name: string;
+  /** The RRC's name for the same lease, where it differs. */
+  rrcName: string;
+  districtCode: string;
+  leaseNumber: string;
+  county: string;
+  /** Decimal interest, as the service reports it. Not a percentage. */
+  interest: number | null;
+  wellCount: number;
+};
+
+/** Who the claim belongs to. */
+export type MapClaimedOwner = {
+  name: string;
+  number: string;
+  active: boolean;
+};
+
+/** The box the claimed wells fall inside, as the service measured it. */
+export type MapClaimedExtent = {
+  minLat: number;
+  maxLat: number;
+  minLon: number;
+  maxLon: number;
+};
+
+export type MapClaimedLeases = {
+  owner: MapClaimedOwner | null;
+  leases: MapClaimedLease[];
+  /**
+   * Every claimed well, flattened out of the leases and deduplicated.
+   *
+   * The service draws a well under EVERY claimed lease it files under — its
+   * own `meta.grain` says so — which is why `counts.pins` (1,624 for member
+   * 4785) runs ahead of `counts.wells` (1,608). Drawn as sent, those 16 would
+   * be plotted twice, and a duplicate `api` is a duplicate React key and a
+   * doubled graphic on the map. Deduped here, once, rather than in each of the
+   * places that draws them.
+   */
+  wells: MapWell[];
+  /** Where to frame the map, when there is anything to frame. */
+  extent: MapClaimedExtent | null;
+  /** The service's own totals, which are not derivable from `leases`. */
+  counts: { leases: number; wells: number; counties: number } | null;
+};
+
+/**
+ * GET /api/v1/map/claimed-wells?member_id= -> the leases this member claimed.
+ *
+ * ⚠️ THIS RESPONSE IS LARGE — 831KB for member 4785, because every lease
+ * carries its full `wells` array and the rail needs none of them. Worth asking
+ * the service for a lease-only mode (`?include=leases`, say) before this ships
+ * to anyone on a phone. It is parsed and thinned here so nothing downstream
+ * holds the whole payload.
+ */
+export const getClaimedLeasesMap = async (
+  memberId: number,
+): Promise<MapClaimedLeases> => {
+  try {
+    const response = await fetch(
+      `${process.env.MAP_BASE_URL}/api/v1/map/claimed-wells?member_id=${encodeURIComponent(
+        memberId,
+      )}`,
+    );
+    const data = await response.json();
+
+    /*
+     * A MEMBER WITH NO CLAIM IS NOT A FAILURE, and the service reports it as
+     * one: `404` with `error.code = "MAP_NO_CLAIM"`. Treated as an error, a
+     * reader who simply has not claimed anything yet is told the service is
+     * broken — the one reading that would make them doubt a claim they had
+     * just made. It is an empty result, so it returns one.
+     *
+     * Matched on the CODE, not the status: a 404 from a typo'd path is a real
+     * failure and must keep looking like one.
+     */
+    if (response.status === 404 && data?.error?.code === "MAP_NO_CLAIM") {
+      return {
+        owner: null,
+        leases: [],
+        wells: [],
+        extent: null,
+        counts: null,
+      };
+    }
+
+    if (!response.ok || !Array.isArray(data?.leases)) {
+      throw new Error("Failed to fetch claimed leases");
+    }
+
+    return {
+      owner: shapeOwner(data?.owner),
+      leases: (data.leases as unknown[]).map(shapeClaimedLease),
+      wells: claimedWells(data.leases as unknown[]),
+      extent: shapeClaimedExtent(data?.extent),
+      counts: shapeClaimedCounts(data?.counts),
+    };
+  } catch (error) {
+    throw new Error(String(error) || "Failed to fetch claimed leases");
+  }
+};
+
+/** A string field, or "" — the service sends `null` for some names. */
+const text = (value: unknown): string =>
+  typeof value === "string" ? value : "";
+
+function shapeOwner(value: unknown): MapClaimedOwner | null {
+  const owner = value as Record<string, unknown> | null | undefined;
+  if (!owner || typeof owner !== "object") return null;
+
+  return {
+    name: text(owner.name),
+    number: text(owner.number),
+    active: owner.active === true,
+  };
+}
+
+function shapeClaimedLease(value: unknown): MapClaimedLease {
+  const lease = (value ?? {}) as Record<string, unknown>;
+  const name = text(lease.lease_name);
+  const rrcName = text(lease.rrc_lease_name);
+
+  return {
+    leaseKey: text(lease.lease_key),
+    /* The RRC's name stands in where the owner's is missing, so a row is never
+       blank — a lease with no label reads as a data failure. */
+    name: name || rrcName || text(lease.lease_key),
+    rrcName,
+    districtCode: text(lease.district_code),
+    leaseNumber: text(lease.lease_number),
+    county: text(lease.county),
+    interest: typeof lease.interest === "number" ? lease.interest : null,
+    wellCount: Array.isArray(lease.wells) ? lease.wells.length : 0,
+  };
+}
+
+/**
+ * Every well under every claimed lease, once each.
+ *
+ * Keyed on `api`, which is the well's identity here — the same hole filed
+ * under two leases arrives twice with the same number.
+ */
+function claimedWells(leases: unknown[]): MapWell[] {
+  const seen = new Map<string, MapWell>();
+
+  for (const value of leases) {
+    const lease = (value ?? {}) as Record<string, unknown>;
+    if (!Array.isArray(lease.wells)) continue;
+
+    for (const raw of lease.wells as unknown[]) {
+      const well = raw as MapWell | null;
+      /* No number, or no location: nothing that can be drawn or identified. */
+      if (!well || typeof well.api !== "string") continue;
+      if (typeof well.lon !== "number" || typeof well.lat !== "number") continue;
+      if (!seen.has(well.api)) seen.set(well.api, well);
+    }
+  }
+
+  return [...seen.values()];
+}
+
+function shapeClaimedExtent(value: unknown): MapClaimedExtent | null {
+  const extent = value as Record<string, unknown> | null | undefined;
+  if (!extent || typeof extent !== "object") return null;
+
+  const { minLat, maxLat, minLon, maxLon } = extent;
+  const ok = (v: unknown): v is number =>
+    typeof v === "number" && Number.isFinite(v);
+
+  if (!ok(minLat) || !ok(maxLat) || !ok(minLon) || !ok(maxLon)) return null;
+
+  return { minLat, maxLat, minLon, maxLon };
+}
+
+function shapeClaimedCounts(
+  value: unknown,
+): MapClaimedLeases["counts"] {
+  const counts = value as Record<string, unknown> | null | undefined;
+  if (!counts || typeof counts !== "object") return null;
+
+  const number = (v: unknown) => (typeof v === "number" ? v : 0);
+
+  return {
+    leases: number(counts.leases),
+    wells: number(counts.wells),
+    counties: number(counts.counties),
+  };
+}
