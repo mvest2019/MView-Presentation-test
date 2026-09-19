@@ -1,6 +1,6 @@
 import 'server-only';
 
-import type { Drawer, ForecastPayload, Payload } from './payload';
+import type { Drawer, ForecastPayload, Payload, RingKey } from './payload';
 import type { WeeklyReport } from './weekly';
 import { apiBase, OwnerApiError, type ApiErrorBody } from './owner-api';
 
@@ -139,20 +139,22 @@ async function getJson<T>(
 /* ------------------------------------------------------------ the contract */
 
 /**
- * `/dashboard` IS `Payload`, less the seven blocks it does not carry.
+ * `/dashboard` IS `Payload`, less the six blocks it does not carry.
  *
  * Writing it as an `Omit` rather than a fresh interface is the contract test:
  * the response is assigned straight into the payload with no mapper, so a
  * renamed or newly-nullable field on either side stops `tsc` instead of
- * reaching a card. The seven it omits are not oversights —
+ * reaching a card. The six it omits are not oversights —
  *
  *   drawers                 served per key, by the endpoint below
  *   weekly                  served by `/weekly`
- *   nearby                  NO ENDPOINT — see the seam
  *   rings, timeline         the owner-keyed half, for Alerts and Activities
  *   forecast, my_leases     Production & Forecast and My Leases
  *
- * — and the two it adds are the service's own report on itself.
+ * `nearby` USED TO BE THE SEVENTH and is served now, so it is added back below
+ * as an optional field rather than dropped from the `Omit`: optional is what
+ * keeps the seam's "no rows, and here is why" branch compiling for a
+ * deployment that predates it.
  */
 export type DashboardResponse = Omit<
   Payload,
@@ -163,7 +165,96 @@ export type DashboardResponse = Omit<
   /** every explainer key the service believes it has — see the seam for the
    *  three families this splits into and why only one of them is fetched */
   drawer_keys: string[];
+
+  /**
+   * THE FIVE-MILE MAP'S ROWS — SERVED NOW, AND MEASURED.
+   *
+   * `nearby` used to be one of the seven blocks this endpoint omitted, and the
+   * seam answered with `NO_NEARBY` and a sentence saying no endpoint carried
+   * it. It does: measured on member 4785, 1,266 rows and 1,266 of them
+   * carrying a finite `lat`/`lon`, byte-identical to what
+   * `GET /dashboard/rings` returns in its own `nearby`. So the block rides the
+   * read the page already makes and costs no second request.
+   *
+   * OPTIONAL, AND THAT IS NOT HEDGING. A deployment older than the change
+   * answers without it, and the seam's `NO_NEARBY` is still the correct thing
+   * to render there — an empty map that says why beats a crash. Declaring it
+   * optional is what makes `tsc` insist the seam keeps that branch.
+   */
+  nearby?: Payload['nearby'];
+
+  /** the rows behind the ring alerts — see `RingDetail` */
+  ring_detail?: RingDetail;
 };
+
+/**
+ * THE FILINGS THE RADIUS SURVEY PLACED INSIDE THE READER'S RINGS.
+ *
+ * This is the block the ring alerts are counted off, and it is the ONLY source
+ * for what those alerts are about: `nearby.rows` is the neighbouring LEASES
+ * the survey found, which is a different population — measured, 364 rows of
+ * `kind: 'permit'` against `ring_detail`'s 1,085 permits in the same five
+ * miles. A map drawn from the wrong one of those two draws a different number
+ * from the card above it.
+ *
+ * `band` IS THE TIGHTEST RING THE FILING FALLS IN, not a cumulative label:
+ * measured 191 permits at band 1 and 367 at band 3, against `counts` of 191
+ * and 558. So "within three miles" is bands 1 and 3 together, and `counts` is
+ * already the running total.
+ *
+ * `listed` IS WHAT THE ALERT COUNTED and `counts` is what could be resolved to
+ * a filing — 1,063 permit ids listed inside one mile, 191 of them resolving to
+ * a row here. Both are true and they are different facts, so a caption that
+ * quotes one has to name the other.
+ *
+ * NOT PART OF `Payload`. Nothing the components read declares it, and the
+ * events are 1.4 MB — an unread block that size in the payload is 1.4 MB in
+ * the RSC flight data of every portal page. The seam reads it, draws the
+ * points it needs out of it, and drops the rest.
+ */
+export interface RingDetailEvent {
+  id: string;
+  kind: 'permit' | 'completion';
+  lease_name: string | null;
+  well_number: string | null;
+  operator_name: string | null;
+  api: string | null;
+  county: string | null;
+  district_code: string | null;
+  ref: string | null;
+  ref_label: string | null;
+  purpose: string | null;
+  status: string | null;
+  total_depth: number | null;
+  well_type: string | null;
+  profile: string | null;
+  field_name: string | null;
+  event_iso: string | null;
+  event_label: string | null;
+  date_basis: string | null;
+  submit_label: string | null;
+  approved_label: string | null;
+  completion_label: string | null;
+  /** '1' | '3' | '5' — the tightest ring this filing falls in */
+  band: RingKey;
+  via: string | null;
+  near_lease_id: string | null;
+  lease_id: string | null;
+  is_mine: boolean;
+  lat: number | null;
+  lon: number | null;
+}
+
+export interface RingDetail {
+  events: RingDetailEvent[];
+  /** resolved filings per band, RUNNING TOTAL outwards */
+  counts: Record<RingKey, { permits: number; completions: number }>;
+  /** what the survey listed per band — the figure the alert headline quotes */
+  listed: Record<RingKey, { permit_ids: number; neighbour_leases: number }>;
+  leases_covered: number;
+  placed: number;
+  unavailable: boolean;
+}
 
 /** `{key, drawer}` — the envelope one explainer arrives in */
 interface DrawerResponse {
@@ -434,6 +525,115 @@ export function searchRoll(
   return getJson<OwnerSearchResponse>(base, '/owners/search', {
     q, limit: String(limit),
   });
+}
+
+/* ------------------------------------------------------- alerts: read state */
+
+/**
+ * WHICH FINDINGS THIS READER HAS ALREADY OPENED.
+ *
+ * Read state used to live in `localStorage` and nowhere else, which meant it
+ * did not follow the reader to a second device, was lost with site data, and
+ * never reached the service — so `unread` went on saying what it said before.
+ * It is stored now, and `items[].unread` reflects it on both alert endpoints.
+ *
+ * SCOPED PER MEMBER **AND** PER OWNER, which is the service's own rule and the
+ * reason `owner` is not optional here: a member may hold several claimed roll
+ * identities, and marking one inbox read must not silence another's.
+ *
+ * `all: true` IS NOT A SHORTCUT FOR "every id I can see". The service resolves
+ * it against the CURRENT sweep and narrows an explicit `ids` list to that same
+ * sweep before writing, so a client holding a stale page cannot mark a finding
+ * read that the sweep no longer carries. That matters because two of the ids
+ * are dated or keyed on a lease — `filed-<YYYYMM>`, `handover-<lease_id>` — so
+ * an id stops existing when the month rolls, and a kept row could otherwise
+ * mark a NEW finding read before anybody saw it.
+ */
+export interface AlertsReadResponse {
+  ids: string[];
+}
+
+export function fetchAlertsRead(
+  base: string, member: string, owner: string,
+): Promise<AlertsReadResponse> {
+  return getJson<AlertsReadResponse>(base, '/alerts/read', {
+    member_id: member, owner,
+  });
+}
+
+/**
+ * Record a read. Throws on anything but a 2xx — see the note in the route
+ * handler for why a write that cannot persist must not answer as though it did.
+ */
+export async function postAlertsRead(
+  base: string, member: string, owner: string,
+  what: { ids: string[] } | { all: true },
+): Promise<void> {
+  const res = await req(base, '/alerts/read', {}, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ member_id: Number(member), owner, ...what }),
+  });
+  if (!res.ok) await fail('/alerts/read', res);
+}
+
+/* ----------------------------------------------------- alerts: preferences */
+
+/**
+ * HOW EACH RULE REACHES THIS READER — email, push, in-app.
+ *
+ * KEYED ON THE RULE ID the findings themselves use (`permit-ring`, `filed`,
+ * `pricedeck`), not on a UI key of its own. A preference stored under a key no
+ * finding will ever match looks saved and governs nothing, which is the defect
+ * this replaces rather than a variation on it.
+ *
+ * EVERY RULE COMES BACK, ALWAYS — the member's own row where they have one and
+ * the service's default where they have not, with `customised` saying which.
+ * A card rendering only the stored rows would show a member who has changed
+ * nothing an empty page.
+ */
+export interface AlertChannels {
+  email: boolean;
+  push: boolean;
+  in_app: boolean;
+}
+
+export interface AlertPreferenceRow {
+  id: string;
+  label: string;
+  hint?: string | null;
+  channels: AlertChannels;
+  /** false where this is the service's default rather than the member's choice */
+  customised: boolean;
+  recommended?: boolean;
+  /** an aside about the MODEL behind the rule, where there is one */
+  annotation?: string | null;
+}
+
+export interface AlertPreferencesResponse {
+  rows: AlertPreferenceRow[];
+}
+
+export function fetchAlertPreferences(
+  base: string, member: string,
+): Promise<AlertPreferencesResponse> {
+  return getJson<AlertPreferencesResponse>(base, '/alerts/preferences', {
+    member_id: member,
+  });
+}
+
+/** One row, changed. The service answers with the row it stored. */
+export async function putAlertPreference(
+  base: string, member: string, id: string, channels: AlertChannels,
+): Promise<AlertPreferenceRow> {
+  const res = await req(base, '/alerts/preferences', {}, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ member_id: Number(member), id, channels }),
+  });
+  if (!res.ok) await fail('/alerts/preferences', res);
+  const body = (await res.json()) as AlertPreferenceRow | { row: AlertPreferenceRow };
+  return 'row' in body ? body.row : body;
 }
 
 /** `POST /weekly/email {member_id, to}` */

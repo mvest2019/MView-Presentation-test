@@ -915,6 +915,22 @@ export interface Payload {
        * inbox read newest-first.
        */
       event_iso: string | null;
+      /**
+       * WHICH RING A RING FINDING IS ABOUT — `'1' | '3' | '5'`, null otherwise.
+       *
+       * Null is the normal case: only `permit-ring`, `completion-ring` and
+       * `ring-quiet` are about a radius. `filing-mine` comes out of the same
+       * ring join and is deliberately null, because it is about the reader's
+       * own acreage rather than a distance from it.
+       *
+       * NOTHING READS IT TODAY, and it is declared anyway. The panel's map is
+       * served with the panel now, so no reader has to work out which band a
+       * finding counted — this app used to recover it by matching the alert's
+       * `metric` against `ring_detail.listed[band].permit_ids`, which worked
+       * and was a join on two numbers nobody had declared to be the same
+       * number. The field exists so that inference is never written again.
+       */
+      band?: RingKey | null;
       detected_label: string | null;
       evidence: string[];
       action_label: string | null;

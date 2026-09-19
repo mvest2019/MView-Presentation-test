@@ -1,9 +1,6 @@
 import { americanize } from './american';
 import type { Alert, Drawer, Payload } from './payload';
 import raw from './owner-payload.json';
-/* TEMPORARY — see the header of that file, and `docs/ALERTS-BACKEND-NEEDED.md`.
-   Delete this import and the two `uiPlaceholder(...)` calls below to remove it. */
-import { uiPlaceholder } from './alerts-ui-placeholder';
 import { apiBase, fetchOwnerLiveBlocks, OwnerApiError } from './owner-api';
 import { getSessionUser } from '@/lib/session';
 
@@ -291,7 +288,7 @@ export async function getOwnerPayload(
     num: sel?.num ?? (isDefault ? FIXTURE.owner.ownernumber : null),
     dist: sel?.dist ?? (isDefault ? FIXTURE.owner.districtcode : null),
     year: sel?.year ?? null,
-  }));
+  }, { nearbyLimit: NEARBY_ROWS }));
 
   /* `live` is five whole blocks, each already checked against its `Payload`
      member by `owner-api.ts`, so this is a replace and not a deep merge. A
@@ -299,13 +296,21 @@ export async function getOwnerPayload(
      be back-filled from a capture taken on a different day. `series` lands
      here by the spread like the rest — it is a whole block by the time
      `owner-api.ts` hands it over. */
-  return uiPlaceholder({
+  /* THE ALERT PANELS ON THIS PATH CARRY NO MAP, and that is the honest state.
+     A panel's geometry is served with it now — `/dashboard/drawers/{key}`
+     carries `map` — and that endpoint is member-keyed. There is no owner-keyed
+     equivalent and the backend's note says there will not be one: the
+     anonymous `?owner=` path is a development and QA affordance, not a product
+     surface. So these panels are rebuilt from the finding, which reproduces
+     everything the service sends EXCEPT `source` and `map`, and `DrawerPanel`
+     already renders correctly without either. */
+  return {
     ...FIXTURE,
     ...live,
     alerts: withSilent(withLedger(live.alerts)),
-    activities: { ...live.activities, nearby: trimNearby(live.activities.nearby) },
+    activities: live.activities,
     drawers: withAlertDrawers(FIXTURE.drawers, live.alerts.items),
-  });
+  };
 }
 
 /**
@@ -462,14 +467,22 @@ async function buildMemberPayload(base: string, member: string): Promise<Payload
       }))
     : weekly.archive;
 
-  /* THE THREE FAMILIES OF EXPLAINER, and only one of them is fetched.
-     `drawer_keys` advertises 205 keys; the endpoint serves the eleven flat ones
-     and five of the nine `alert:*`. `lease:*` and `well:*` — 89 keys — all
-     answer DASHBOARD_DRAWER_NOT_FOUND. Asking for a key that is known to 404
-     costs a request to be told nothing, so the flat keys are read and the other
-     two families are built from the rows they describe, which is what the
-     reference does with them anyway. */
+  /* THE FOUR FAMILIES OF EXPLAINER, and two of them are fetched.
+     `drawer_keys` advertises 2,308 keys: eleven flat, twelve or so `alert:*`,
+     and `lease:*` + `well:*`, which are the other 2,287. The last two are built
+     from the rows they describe rather than read, because the endpoint takes
+     ONE key and 2,287 requests is not a page load.
+
+     THE `alert:*` FAMILY IS READ NOW, and that is a change. It used to be
+     rebuilt here from the live finding, for two reasons that have both expired:
+     four of the nine 404'd, and the rebuild was provably identical to what the
+     service sends — checked field for field across all ten, 0 differed. It is
+     no longer identical, because the served panel now carries two things this
+     app cannot produce: `source`, the line naming the collections behind the
+     rule, and `map`, the panel's own geometry with the points it counted.
+     Reading them is what deletes `ALERT_SOURCE` and `alert-maps.ts`. */
   const flatKeys = dash.drawer_keys.filter((k) => !k.includes(':'));
+  const alertKeys = dash.drawer_keys.filter((k) => k.startsWith('alert:'));
   /* ALL ELEVEN, ON EVERY SURFACE, AND THAT IS DELIBERATE — it was measured the
      other way round first. The Weekly Report opens exactly one of them
      (`identity`, from the claim button on its cover), so fetching one instead
@@ -499,7 +512,7 @@ async function buildMemberPayload(base: string, member: string): Promise<Payload
      reference that reads "What this is →" is `pf_blind`. Serving one and not
      the other eleven would leave eleven dead controls. */
   const [served, pfServed, live] = await Promise.all([
-    fetchDrawers(base, member, dash.owner.ownername, flatKeys),
+    fetchDrawers(base, member, dash.owner.ownername, [...flatKeys, ...alertKeys]),
     fetchForecastDrawers(base, member, forecast.drawer_keys),
     /* THE OWNER-KEYED ACTIVITY BLOCKS, for the owner `/dashboard` resolved.
        `num` and `dist` ride along where the dashboard carries them — §2 rule 2:
@@ -510,30 +523,60 @@ async function buildMemberPayload(base: string, member: string): Promise<Payload
       owner: dash.owner.ownername,
       num: dash.owner.ownernumber ?? null,
       dist: dash.owner.districtcode ?? null,
-    }),
+    }, { nearbyLimit: NEARBY_ROWS }),
   ]);
 
-  return uiPlaceholder({
+  /* `ring_detail` IS DROPPED, AND NO LONGER READ AT ALL.
+     It used to be read here to build the ring alerts' maps, because it is the
+     only source for what those alerts counted. The service carries `map` on
+     the panel now, with the same points and the band each was counted in, so
+     there is nothing left to derive from it.
+
+     It is still discarded rather than passed through: 1.4 MB that nothing under
+     `Payload` declares, which carried along by `...dash` would be 1.4 MB of
+     unread RSC flight data on every portal page — the shell holds ONE snapshot
+     for all five owned routes. */
+  const dashBlocks = { ...dash };
+  delete dashBlocks.ring_detail;
+
+  /* THE FIVE-MILE MAP HAS A SOURCE NOW. `/dashboard` carries `nearby` itself —
+     measured on member 4785, 1,266 rows and every one of them with a finite
+     lat/lon, byte-identical to `/dashboard/rings`'s own copy — so it rides the
+     read the page already makes rather than costing a second request.
+     `NO_NEARBY` stays for the deployment that predates the block, and its
+     sentence is still the honest thing to render there. */
+  const nearby = dash.nearby ?? NO_NEARBY;
+
+  const alerts = withSilent({ ...dash.alerts, ledger: dash.alerts.ledger ?? EMPTY_LEDGER });
+
+  return {
     /* explicit rather than `...FIXTURE, ...dash`: if `Payload` ever gains a
        block, this has to fail to compile rather than silently serve a capture
        of somebody else's minerals for it */
-    ...dash,
-    owner: { ...dash.owner, ...OWNER_GAPS },
-    alerts: withSilent({ ...dash.alerts, ledger: dash.alerts.ledger ?? EMPTY_LEDGER }),
+    ...dashBlocks,
+    alerts,
     weekly: { ...weekly, archive },
-    nearby: NO_NEARBY,
+    nearby,
     /* the four Activity blocks come from the owner-keyed API — one snapshot,
-       the same one the anonymous owner path reads (see the header note) */
-    activities: { ...live.activities, nearby: trimNearby(live.activities.nearby) },
+       the same one the anonymous owner path reads (see the header note).
+       `activities.nearby` is paged by the endpoint itself now (`nearby_limit`),
+       so the county feed is never put on the wire to be sliced here. */
+    activities: live.activities,
     drawers: {
+      /* ---- THE BUILT ALERT PANELS COME FIRST, SO THE SERVED ONES WIN.
+         `withAlertDrawers` reproduces the service's own builder out of the
+         finding, and it is kept for exactly one case: a finding whose key the
+         endpoint does not serve. Every id measured today answers 200, so this
+         fills nothing — but a rule added on the service before its drawer is
+         wired would otherwise be a row whose "expand →" does nothing at all,
+         silently, because `DrawerPanel` hides itself when its copy is null.
+         A gap-filled panel has no `source` and no `map`; a served one has
+         both, which is why it must be the one that wins. */
+      ...withAlertDrawers({}, dash.alerts.items),
       ...served,
       /* the twelve Production & Forecast panels, from their own endpoint */
       ...pfServed,
       ...leaseAndWellDrawers(dash.leases, dash.totals, dash.as_of),
-      /* all nine, from the live findings — the same argument as the
-         owner-keyed path below, and here it also covers the four the endpoint
-         404s: filed-<YYYYMM>, handover-<lease>, trend-<lease> */
-      ...withAlertDrawers({}, dash.alerts.items),
     },
     timeline: live.timeline,
     rings: live.rings,
@@ -546,51 +589,49 @@ async function buildMemberPayload(base: string, member: string): Promise<Payload
        the chart. No mapper, for the same reason `/dashboard` needs none. */
     forecast,
     my_leases: FIXTURE.my_leases,
-  });
+  };
 }
 
 /**
- * THE SEVEN FIELDS `/dashboard` OMITS, and why each one is filled here.
+ * THE FIELDS `/dashboard` USED TO OMIT — and what is left of them.
  *
- * `tsc` cannot catch these. The response is parsed as JSON and cast, so the
- * `Omit<Payload, …>` on `DashboardResponse` checks that the BLOCKS line up and
- * says nothing about a field missing inside one of them. Two of these were
- * found the only way they can be — by running the pages and reading the
- * exception:
+ * `tsc` cannot catch a missing field here. The response is parsed as JSON and
+ * cast, so the `Omit<Payload, …>` on `DashboardResponse` checks that the
+ * BLOCKS line up and says nothing about a field missing inside one of them.
+ * These were found the only way they can be — by running the pages and reading
+ * the exception.
  *
- *   activities.kpis_mine        `sample.ts` lines 479, 482 and 497 map over all
- *   activities.kpis_nearby      three, so the not-claimed state threw
- *   activities.production       "Cannot read properties of undefined (reading
- *                               'map')" the moment the funnel was set to
- *                               "Not claimed" — on EVERY route, because the
- *                               transform runs before any of them render.
- *   alerts.ledger               `AlertsView` line 83 does `const lg =
- *                               al.ledger` and then reads `lg.leases`, so the
- *                               Alerts route threw "reading 'leases'".
+ * SIX OF THE SEVEN ARE SERVED NOW, measured on member 4785:
  *
- * The other three are quieter. `owner.districtcode` is read by `Chrome`'s owner
- * picker, `Portal` and the Weekly Report's own query string, and is
- * `string | null` in the contract — so `null` is not a stand-in, it is the
- * declared way to say the roll district is not known. `identities_matched` and
- * `activities.counts.production` have no reader in this build at all.
+ *   owner.districtcode          `null` — and that is an ANSWER, not a gap: the
+ *                               backend returns null where the owner's leases
+ *                               straddle more than one district, because
+ *                               quoting "02" for such an owner is wrong on
+ *                               half their record. The contract already types
+ *                               it `string | null`.
+ *   owner.identities_matched    1 — distinct owner-name spellings the roll
+ *                               matched, not a row count. Filling this with a
+ *                               constant 0 was the live defect this removal
+ *                               fixes: the field arrives correct and was being
+ *                               overwritten with a zero on its way to the page.
+ *   activities.kpis_mine        all three arrive on `/activity/summary`, which
+ *   activities.kpis_nearby      is the block `activities` is assigned from on
+ *   activities.production       both paths, so `sample.ts` has its arrays.
+ *   alerts.ledger               arrives populated, prices included — see
+ *                               `withLedger`.
  *
- * WHY EMPTIES AND NOT THE CAPTURE. Every one of these belongs to a block that
- * is otherwise LIVE, so borrowing the capture's value would put one owner's
- * ledger figures inside another owner's alert block — the mixing this seam
- * refuses everywhere else, and harder to spot here because it would be a
- * plausible number in a real panel. An empty says "not served", which is true.
+ * `EMPTY_LEDGER` below is therefore the one thing kept, and only as a
+ * STRUCTURAL guard: `AlertsView` does `const lg = al.ledger` and then reads
+ * `lg.leases`, so a response that somehow omitted the block would throw the
+ * route rather than render a thin panel. It is not reached on any measured
+ * response.
  *
- * WHAT IS AFFECTED, precisely: the Alerts page's watch-ledger panel reads zero,
- * and the not-claimed demo's activity KPI cards and production feed are empty.
- * Both are outside the Dashboard and the Weekly Report, and neither reads any
- * of these fields in a claimed state. If Alerts is brought onto this endpoint,
- * these are the fields to ask the service for.
+ * WHY EMPTIES AND NOT THE CAPTURE, still. Every one of these belongs to a
+ * block that is otherwise LIVE, so borrowing the capture's value would put one
+ * owner's figures inside another owner's block — the mixing this seam refuses
+ * everywhere else, and harder to spot here because it would be a plausible
+ * number in a real panel. An empty says "not served", which is true.
  */
-const OWNER_GAPS = {
-  districtcode: null,
-  identities_matched: 0,
-} satisfies Partial<Payload['owner']>;
-
 const EMPTY_LEDGER: Payload['alerts']['ledger'] = {
   leases: 0, counties: 0, adjacent_leases: 0, standing_permits: 0,
   production_filings: 0, lease_months_read: 0, alerts: 0, action_count: 0,
@@ -600,15 +641,20 @@ const EMPTY_LEDGER: Payload['alerts']['ledger'] = {
 };
 
 /**
- * THE FIVE-MILE MAP HAS NO SOURCE, AND SAYS SO IN THE REFERENCE'S OWN WORDS.
+ * THE FIVE-MILE MAP WHEN THE DEPLOYMENT PREDATES ITS BLOCK.
  *
- * `nearby` is the one block the Weekly Report reads that nothing serves.
- * Searched for, not assumed: `dashboard/nearby`, `nearby`, `weekly/nearby` and
- * `activity/nearby` all 404; `/dashboard` carries `activities.nearby`, which is
- * 232 rows of the county filing feed with no coordinates on them, and `radius`,
- * which is counts per band; `/activity/rings` carries `neighbours` with no
- * coordinates either. The map plots `dx_mi`/`dy_mi` per row, and no endpoint
- * returns them.
+ * `nearby` used to be the one block the Weekly Report reads that nothing
+ * served, and it is served now: `/dashboard` carries it outright — measured on
+ * member 4785, 1,266 rows with a finite `lat`/`lon` on every one, and
+ * `/dashboard/rings` returns a byte-identical copy beside `rings`. So this
+ * constant is no longer the member path's normal answer; it is what that path
+ * falls to when the response arrives WITHOUT the block, which an API older
+ * than the change does.
+ *
+ * IT IS ALSO STILL THE ANONYMOUS PATH'S ANSWER in effect: that path serves the
+ * capture's own `nearby`, whose 149 rows carry no coordinates, so the map
+ * draws nothing there either. There is no owner-keyed endpoint for it and the
+ * backend's own note says there will not be one.
  *
  * `NearMap` already has a path for exactly this: with no rows it renders a
  * `notice` carrying `nearby.unavailable`, and falls back to its own sentence
@@ -627,10 +673,9 @@ const NO_NEARBY: Payload['nearby'] = {
     '1': band(1), '3': band(3), '5': band(5),
   },
   anchors: 0,
-  unavailable: 'The five-mile map is not available for this account yet: the service that '
-    + 'serves this dashboard has no endpoint carrying the well coordinates the map is drawn '
-    + 'from. Every figure elsewhere in this report is live; this one panel is the only thing '
-    + 'waiting on a source.',
+  unavailable: 'The five-mile map is not available for this account: the response that '
+    + 'built this page carried no well coordinates for the wells around you. Every figure '
+    + 'elsewhere in this report is live; this one panel is the only thing without a source.',
   note: 'Distance is measured from the nearest of your own well surface locations to the row '
     + 'itself, as a straight line.',
   read_rows: 0,
@@ -701,46 +746,74 @@ function withSilent(live: Payload['alerts']): Payload['alerts'] {
   return live.silent ? live : { ...live, silent: [] };
 }
 
+/**
+ * THE PRICES ARE THE SERVICE'S, AND THERE IS NO SECOND COPY OF THEM HERE.
+ *
+ * This function used to back-fill the four price strings from the capture when
+ * the live ledger arrived without them, and `AlertsView` held a third table of
+ * its own on top of that. Three copies of one constant, in three files,
+ * already disagreeing — `$99.99` in the component against `$99.95` on the
+ * wire — and nothing could fail, because each copy was internally consistent.
+ *
+ * The backend now reads them from one place (`plan-prices.ts`, overridable per
+ * deployment) and sends them on both paths: measured, `price_month "$99.95"`
+ * and `price_annual "$999.50"` on `/dashboard` AND on `/alerts`. A fallback
+ * that has never fired is a second price table that can only ever be wrong, so
+ * it is gone from both files.
+ *
+ * THE COUNT FALLBACK STAYS, and it is a different argument. `alerts.ledger`
+ * feeds one panel — "What you are actually paying for" — built entirely out of
+ * counts, and empty it renders "We read the public record on your 0 leases
+ * every day" on the one page whose job is to say what subscribing buys. Seen
+ * in the field. `leases` is the headline and the gate: if the service knows of
+ * no leases it knows of nothing, so the counts are swapped WHOLE and stay
+ * internally consistent. If `leases` is set the live block is trusted
+ * entirely — a zero inside a populated ledger is a FACT, and back-filling that
+ * one would invent a permit that does not exist.
+ *
+ * THE CAPTURE'S COUNTS, THE SERVICE'S PRICES. `getOwnerPayload` refuses any
+ * owner but the captured one a few hundred lines above (409
+ * `OWNER_NOT_AVAILABLE`), so the substituted counts are the same person, read
+ * on the day the capture was taken. Its PRICES are a different matter — they
+ * are as old as the file — so they are not taken with it.
+ */
 function withLedger(live: Payload['alerts']): Payload['alerts'] {
-  const cap = FIXTURE.alerts.ledger;
-  const lg = live.ledger?.leases ? live.ledger : cap;
-  if (lg.price_month) return lg === live.ledger ? live : { ...live, ledger: lg };
+  const lg = live.ledger ?? EMPTY_LEDGER;
+  if (lg.leases) return live;
   return {
     ...live,
     ledger: {
-      ...lg,
-      price_month: cap.price_month,
-      price_annual: cap.price_annual,
-      price_weekly: cap.price_weekly,
-      price_weekly_annual: cap.price_weekly_annual,
+      ...FIXTURE.alerts.ledger,
+      price_month: lg.price_month,
+      price_annual: lg.price_annual,
+      price_weekly: lg.price_weekly,
+      price_weekly_annual: lg.price_weekly_annual,
     },
   };
 }
 
 /**
- * 709 ROWS TO RENDER AT MOST EIGHT.
+ * 218 ROWS TO RENDER AT MOST EIGHT — PAGED AT THE ENDPOINT NOW.
  *
- * `activities.nearby` is the county's raw filing feed and the service returns
- * all of it — 720 KB on this owner. Exactly one thing reads it: the dashboard's
- * "what is going on around you" card, which does
- * `ac.nearby.slice(0, tier === 'pro' ? 8 : 5)`. The figure printed beside that
- * list is `activities.counts.nearby`, a field of its own, so it still says 709
- * however few rows are kept.
+ * `activities.nearby` is the county's raw filing feed and the service used to
+ * return all of it, 388 KB on this owner. Exactly one thing reads it: the
+ * dashboard's "what is going on around you" card, which does
+ * `ac.nearby.slice(0, tier === 'pro' ? 8 : 5)`. Every other row would
+ * otherwise be serialised into the RSC payload of every portal page, because
+ * the shell holds one snapshot for all four surfaces.
  *
- * Every one of those rows would otherwise be serialised into the RSC payload of
- * every portal page, because the shell holds one snapshot for all four
- * surfaces. Twelve is the capture's own trim, kept so the two sources produce
- * the same record — see the note at the top of this file.
+ * It used to be sliced HERE, after the whole array had crossed the wire.
+ * `/activity/summary` takes `nearby_limit` now, so the rows are never sent —
+ * measured, 33 KB against 411 KB for the same response. `counts.nearby` is a
+ * field of its own and stays the true total either way (218 both ways,
+ * measured), so capping the rows moves no figure on screen.
  *
- * The API has no parameter for this, which is why it is done here and not in
- * the query. If `nearby` ever gains a real consumer — a "see all filings" page
- * — this is the line to remove, and the endpoint is the place to page it.
+ * TWELVE, because that is the capture's own trim and the two sources have to
+ * produce the same record — see the note at the top of this file. If `nearby`
+ * ever gains a real consumer — a "see all filings" page — this is the number
+ * to raise, and it is now the only place it is written down.
  */
-function trimNearby(
-  rows: Payload['activities']['nearby'],
-): Payload['activities']['nearby'] {
-  return rows.length > 12 ? rows.slice(0, 12) : rows;
-}
+const NEARBY_ROWS = 12;
 
 /**
  * THE EXPLAINER FOR A FINDING THE CAPTURE HAS NEVER SEEN.
@@ -777,45 +850,6 @@ function trimNearby(
  * `well:<api14>` — are NOT derivable from an alert and are left exactly as the
  * capture has them.
  */
-/* ---- WHERE EACH ALERT'S FIGURES CAME FROM, BY NAME — the reference's own
-   `SOURCE` table, verbatim. One line per rule, naming the collections and the
-   columns behind it, printed at the foot of that alert's panel.
-
-   It is keyed on the rule rather than the id because two of the ten ids are
-   dated or keyed on a lease: a trailing '-' matches by prefix, so
-   `filed-202607` and `trend-02_259558` find their own line however the service
-   anchors them. An id with no rule here gets `null`, and `DrawerPanel` falls
-   back to the global note exactly as the reference does. */
-const ALERT_SOURCE: Record<string, string> = {
-  'filed-': 'ProdMvestPortal.MonthlyProductionVolumes — lease_oil_prod_vol + '
-    + 'lease_cond_prod_vol and lease_gas_prod_vol + lease_csgd_prod_vol, by cycle.',
-  'permits-filed': 'ProdMvestPortal.Activity, activity_type "New Permit", filtered to your '
-    + 'counties. Dated by approved_date; located from GeoMapPortal.WellGeoData by '
-    + 'status_number.',
-  completions: 'ProdMvestPortal.Activity, activity_type "New Completion", filtered to your '
-    + 'counties. Dated by completion_date; located from GeoMapPortal.WellGeoData by api.',
-  'permit-ring': 'GeoMapPortal.LeaseRadiusData.Near_Permit_List at 1, 3 and 5 miles, joined '
-    + 'to ProdMvestPortal.Activity on status_number.',
-  'completion-ring': 'GeoMapPortal.LeaseRadiusData.Near_Leases_List at 1, 3 and 5 miles, '
-    + 'joined to ProdMvestPortal.Activity on district_code + lease_number, and again on api.',
-  'filing-mine': 'The same two joins, kept where the filing names a lease you hold.',
-  'handover-': 'Operator_Directory.Operators_Filter_Data_Final — operator_no and operator_name '
-    + 'across Start/End_Month and Year.',
-  'trend-': 'ProdMvestPortal.MonthlyProductionVolumes — this filed month against the one '
-    + 'before it, on the same four volume columns.',
-  newwell: 'Decline_data_to_web.Data_to_web — "NEW WELL PROBABILITY" and its category.',
-  pricedeck: 'ProdMvestPortal.MVestimateCalculations — mvestimates[].oilprice and .gasprice.',
-  opnews: 'ProdMvestPortal.Activity, activity_type "Operators" — title, summary and '
-    + 'published_date, matched to the operators that run your leases.',
-};
-
-function sourceForAlert(id: string): string | null {
-  for (const k of Object.keys(ALERT_SOURCE)) {
-    if (k.endsWith('-') ? id.startsWith(k) : id === k) return ALERT_SOURCE[k];
-  }
-  return null;
-}
-
 function withAlertDrawers(
   base: Record<string, Drawer>, items: Alert[],
 ): Record<string, Drawer> {
@@ -843,8 +877,14 @@ function withAlertDrawers(
       tone: a.category === 'community' ? 'record' : a.category,
       spark: a.spark,
       spark_label: a.spark_label,
-      /* the rule's own line, not the global owner-identification note */
-      source: sourceForAlert(a.id),
+      /* ---- NO `source`, AND THAT IS THE POINT OF THE CHANGE.
+         This used to be filled from `ALERT_SOURCE`, a ten-rule table naming
+         the service's own collections and columns — in a browser bundle, where
+         a renamed collection would go on being printed to customers with
+         nothing failing. The service stamps `source` on every drawer it serves
+         now, so the table is deleted and a panel rebuilt here simply has none.
+         `DrawerPanel` falls back to the global source note, which is exactly
+         what it does for every other panel without one. */
     };
   }
   return out;

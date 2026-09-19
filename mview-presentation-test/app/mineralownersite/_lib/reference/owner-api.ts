@@ -160,8 +160,22 @@ function ownerParams(q: OwnerQuery): URLSearchParams {
   return p;
 }
 
-async function get<T>(base: string, route: string, q: OwnerQuery): Promise<T> {
-  const url = `${base}/api/v1${route}?${ownerParams(q).toString()}`;
+/**
+ * `extra` IS PER-ROUTE, AND THAT IS WHY IT IS NOT ON `OwnerQuery`.
+ *
+ * `nearby_limit` is `/activity/summary`'s parameter and no other route's.
+ * Putting it on the shared query object would send it to `/alerts`,
+ * `/activity` and `/activity/rings` as well — three requests carrying a
+ * parameter their handlers never declared, which is a 400 waiting for the day
+ * the contract starts validating unknown keys. It rides the one call that
+ * owns it.
+ */
+async function get<T>(
+  base: string, route: string, q: OwnerQuery, extra?: Record<string, string>,
+): Promise<T> {
+  const params = ownerParams(q);
+  for (const [k, v] of Object.entries(extra ?? {})) params.set(k, v);
+  const url = `${base}/api/v1${route}?${params.toString()}`;
   let res: Response;
   try {
     res = await fetch(url, {
@@ -322,17 +336,29 @@ export interface OwnerLiveBlocks {
  * go together against a warm snapshot, which is 0.2 to 0.6 seconds each.
  * Firing all four at once would start four cold builds of the same thing.
  *
+ * `nearbyLimit` PAGES `activities.nearby` AT THE ENDPOINT. That array is the
+ * county's raw filing feed — 218 rows and 388 KB on this owner, measured —
+ * and exactly one card renders at most eight of them. The seam used to slice
+ * it after the fact; the endpoint takes `nearby_limit` now, so the rows are
+ * never put on the wire at all. `counts.nearby` is a field of its own and
+ * stays the true total either way (218 both ways, measured), so capping the
+ * rows moves no figure on screen.
+ *
+ * OMITTING IT MEANS EVERYTHING, which is the endpoint's own default and the
+ * reason it is a parameter here rather than a constant.
+ *
  * Throws `OwnerApiError`. It does NOT fall back to anything — see the seam in
  * `owner-data.ts` for why a partial answer is refused rather than patched.
  */
 export async function fetchOwnerLiveBlocks(
-  base: string, q: OwnerQuery,
+  base: string, q: OwnerQuery, opts?: { nearbyLimit?: number },
 ): Promise<OwnerLiveBlocks> {
   const alerts = await get<AlertsResponse>(base, '/alerts', q);
 
   const [timeline, activities, rings] = await Promise.all([
     get<ActivityResponse>(base, '/activity', q),
-    get<ActivitySummaryResponse>(base, '/activity/summary', q),
+    get<ActivitySummaryResponse>(base, '/activity/summary', q,
+      opts?.nearbyLimit ? { nearby_limit: String(opts.nearbyLimit) } : undefined),
     get<RingsResponse>(base, '/activity/rings', q),
   ]);
 

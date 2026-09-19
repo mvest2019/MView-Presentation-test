@@ -130,9 +130,24 @@ export function americanizeText(value: string): string {
  * `key`, `id`, `slug` and `code` address things; `href`, `url` and `src` are
  * addresses. Matched on the whole key and on a trailing `_`-segment, so
  * `lease_key` and `owner_id` are covered too.
+ *
+ * `scope` IS HERE BECAUSE IT WAS THE ONE FIELD THIS BROKE. It is an identifier
+ * in both places it appears — `'mine' | 'neighbours'` on an alert,
+ * `'yours' | 'ring' | 'county'` on a timeline event — and the alert one is the
+ * only identifier in this payload that a stem above actually matches. Measured
+ * on the live owner path before the fix: the API sent `scope: 'neighbours'`,
+ * this walk rewrote it to `'neighbors'`, and `AlertsView` filters on the
+ * literal `'neighbours'` — so the "Around me" tab counted 0 and selecting it
+ * emptied the list, on a page where the findings themselves were correct.
+ *
+ * It is also the backend's own instruction: `'neighbours'` keeps the British
+ * spelling deliberately, because it is a WIRE identifier the portal filters on,
+ * while every rendered string stays en-US. Checked across `/dashboard`,
+ * `/alerts`, `/activity` and the committed capture — every `scope` value in all
+ * four is one of those five identifiers and not one is prose.
  */
 const SKIP =
-  /^(kind|type|status|key|id|slug|code|href|url|src|icon|colour|color|tone|state|route|nav|cycle|iso)$|_(kind|type|status|key|id|slug|code|href|url|src|icon|iso)$/i;
+  /^(kind|type|status|key|id|slug|code|href|url|src|icon|colour|color|tone|state|route|nav|cycle|iso|scope)$|_(kind|type|status|key|id|slug|code|href|url|src|icon|iso|scope)$/i;
 
 /**
  * A payload with every prose string Americanized.

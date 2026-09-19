@@ -205,8 +205,20 @@ export function eventDrawer(e: TimelineEvent | null | undefined): Drawer | null 
         : rough
           ? ['No surface location has been filed for this one yet. The map shows the '
             + '<strong>abstract it was filed against</strong>, placed from other wells in the '
-            + `same survey — they sit ${e.location_spread_mi ?? 0} miles apart, so read it `
-            + 'as which part of the county rather than as a well pad.']
+            + 'same survey'
+            /* ---- "THEY SIT 0 MILES APART" IS NOT A SENTENCE TO PRINT.
+               `location_spread_mi` is how far apart the anchors this point was
+               averaged from actually sat, and the backend files 0 when they
+               all resolved to one place — measured on this owner, 19 of the 28
+               abstract-placed rows. Printed unconditionally that reads as a
+               contradiction of the caption it sits under: nothing is
+               approximate about wells zero miles apart, so the reader is told
+               the position is rough and then shown a figure saying it is not.
+               The clause is dropped where there is no spread to quote; the
+               sentence's actual point — this is a survey, not a pad — is in
+               the half that always prints. */
+            + (e.location_spread_mi ? ` — they sit ${e.location_spread_mi} miles apart` : '')
+            + ', so read it as which part of the county rather than as a well pad.']
           : placed
             ? ['The state filed this against a county rather than a measured position, so the '
               + 'map shows the surface location its well record resolves to rather than a '
