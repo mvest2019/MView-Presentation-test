@@ -19,22 +19,38 @@ function formatShare(decimal: number | null, percent: number | null): string | n
      it is only un-converted when the decimal itself is missing. */
   const value = decimal ?? (percent === null ? null : percent / 100);
   if (value === null) return null;
-  return String(Number(value.toFixed(6)));
+  /*
+   * ALWAYS SIX PLACES, TRAILING ZEROES AND ALL. It used to trim them, so
+   * 0.750000 printed as `0.75` and sat four characters short of `0.010838` in
+   * the row above — right-aligned, but with the decimal points out of line,
+   * which is what "the numbers are not in right align" describes. Padded to a
+   * fixed width they form one column under one another. Defect sheet row 25.
+   */
+  return value.toFixed(6);
 }
 
 /**
- * Where the roll posts to, in as few words as it has.
+ * Where the roll posts to — THE POSTING BLOCK, for every row alike.
  *
- * The parsed town when the service could split one out, the posting block when
- * it could not, and null only when the roll filed no address at all — which is
- * the one case the row is allowed to say so. See the header.
+ * IT USED TO PREFER THE PARSED TOWN and fall back to the block, which made the
+ * column two different things at once: "Guntown, MS" on the rows the service
+ * could split, and "CHEMIN DE LA TUYERE, 83440 FAYENCE FRANCE, NONUS" on the
+ * rows it could not — in the same table, under one heading. QA read that as
+ * the column showing the whole address in some places and only a city in
+ * others. Defect sheet row 28.
+ *
+ * SO THE BLOCK IS THE ANSWER EVERYWHERE. It is what the roll actually holds,
+ * it is present on every row the service returns, and it is the thing a reader
+ * would put on an envelope. The parsed town only stands in when there is no
+ * block at all, and null — the one case the row may say "no address on the
+ * roll" — means the roll filed nothing.
  */
 function placeOf(owner: RollCoOwner): string | null {
+  const block = owner.addressLines.map((line) => line.trim()).filter(Boolean);
+  if (block.length) return block.join(", ");
   if (owner.city) {
     return `${owner.city}${owner.state ? `, ${owner.state}` : ""}`;
   }
-  const block = owner.addressLines.map((line) => line.trim()).filter(Boolean);
-  if (block.length) return block.join(", ");
   if (owner.state) return `${owner.state}${owner.zip ? ` ${owner.zip}` : ""}`;
   return null;
 }
@@ -194,112 +210,116 @@ export function PeopleStep({
         ) : null}
       </div>
 
-      <div className="iv-list">
-        <table className="rep-mini iv-tbl">
-          <thead>
-            <tr>
-              {/* The header cell is empty on screen and never to a screen
-                  reader: a column of checkboxes with an unnamed header is a
-                  column nobody can be told the purpose of. */}
-              <th className="iv-cb">
-                <span className="iv-sr">Chosen</span>
-              </th>
-              <th>Owner of record</th>
-              {/* THE ROLL'S OWN WORD FOR THE FIGURE, so a reader comparing
-                  this against a division order is comparing like with like —
-                  see the header on why it is no longer a percentage. */}
-              <th className="right">Decimal interest</th>
-              <th>Address on the roll</th>
-            </tr>
-          </thead>
-          <tbody>
-            {roster === null ? (
-              <tr>
-                <td
-                  colSpan={4}
-                  className="tiny muted"
-                  style={{ padding: "14px 10px" }}
-                >
-                  {rosterError ??
-                    (hasLease
-                      ? "Reading the appraisal roll…"
-                      : "Select a lease in step 1 and the other owners of record are listed here.")}
-                </td>
-              </tr>
-            ) : (
-              <>
-                {shown.map((owner) => (
-                  <OwnerRow
-                    key={owner.ownerKey}
-                    owner={owner}
-                    on={picked.has(owner.ownerKey)}
-                    pending={busy.has(owner.ownerKey)}
-                    onToggle={onToggle}
-                  />
-                ))}
-                {shown.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={4}
-                      className="tiny muted"
-                      style={{ padding: "14px 10px" }}
-                    >
-                      {/*
-                        "NOTHING MATCHES THAT" IS AN ANSWER TO A SEARCH, and it
-                        was being given to readers who had not made one: a lease
-                        whose roll holds no individuals at all opened on it,
-                        which reads as the page having lost the list rather than
-                        as the lease having no people on it. The empty row now
-                        says WHY it is empty. Defect sheet row 9.
-                      */}
-                      <EmptyReason
-                        searched={query.trim().length > 0}
-                        others={others}
-                        showAll={showAll}
-                        owners={owners.length}
-                      />
-                    </td>
-                  </tr>
-                ) : null}
-              </>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {/*
+        NO TABLE WHEN THERE ARE NO ROWS. A column header over one left-aligned
+        sentence is a table pretending to have lost its contents — and on
+        arrival, before a lease is even chosen, it was the first thing on the
+        card. QA asked for the table gone and the message centred in that
+        state. Defect sheet rows 9 and 24.
 
-      <div className="iv-more">
-        {/* EVERY LOADED OWNER IS IN THAT CARD, and the card is a fixed height —
-            so this is a fact rather than a button that grows the page. */}
-        <span className="iv-count">
-          {matching.length}{" "}
-          {showAll
-            ? matching.length === 1
-              ? "owner"
-              : "owners"
-            : matching.length === 1
-              ? "individual owner"
-              : "individual owners"}
-          {query.trim() ? " matching" : ""} · scroll to view
-        </span>
-        {others ? (
-          <button
-            type="button"
-            className="iv-link"
-            onClick={() => onShowAll(!showAll)}
-          >
-            {showAll
-              ? "Show individual owners only"
-              : `Also show ${others} ${
-                  others === 1
-                    ? "company or trust"
-                    : "companies, trusts, and the operator"
-                }`}
-          </button>
-        ) : null}
-        <span className="tiny muted" style={{ marginLeft: "auto" }}>
-          Largest ownership share first
-        </span>
-      </div>
+        The three empty states share one panel and differ only in the sentence:
+        waiting on step 1, reading the roll, and a roll with nothing to list.
+      */}
+      {shown.length === 0 ? (
+        <p className="iv-blank">
+          {roster === null ? (
+            (rosterError ??
+            (hasLease
+              ? "Reading the appraisal roll…"
+              : "Select a lease in step 1 and the other owners of record are listed here."))
+          ) : (
+            <EmptyReason
+              searched={query.trim().length > 0}
+              others={others}
+              showAll={showAll}
+              owners={owners.length}
+            />
+          )}
+        </p>
+      ) : (
+        <div className="iv-list">
+          <table className="rep-mini iv-tbl">
+            <thead>
+              <tr>
+                {/* The header cell is empty on screen and never to a screen
+                    reader: a column of checkboxes with an unnamed header is a
+                    column nobody can be told the purpose of. */}
+                <th className="iv-cb">
+                  <span className="iv-sr">Chosen</span>
+                </th>
+                <th>Owner of record</th>
+                {/*
+                  "DECIMAL INTEREST" DID NOT FIT. The column is sized for eight
+                  characters of tabular figures and the header is `nowrap`, so
+                  the longer label was clipped mid-word — "DECIMAL INT" — and a
+                  clipped heading over right-aligned numbers reads as a column
+                  that has come unaligned. Defect sheet row 25. "Interest" fits,
+                  and `title` carries the full term for anyone who needs it.
+                */}
+                <th className="right" title="Decimal interest, as the appraisal roll files it">
+                  Interest
+                </th>
+                <th>Address on the roll</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((owner) => (
+                <OwnerRow
+                  key={owner.ownerKey}
+                  owner={owner}
+                  on={picked.has(owner.ownerKey)}
+                  pending={busy.has(owner.ownerKey)}
+                  onToggle={onToggle}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* THE FOOT DESCRIBES A LIST, so it only appears when there is one — the
+          toggle excepted, because "show them below" is the way out of an empty
+          list and has to be reachable from it. */}
+      {shown.length || others ? (
+        <div className="iv-more">
+          {shown.length ? (
+            /* EVERY LOADED OWNER IS IN THAT CARD, and the card is a fixed
+               height — so this is a fact rather than a button that grows the
+               page. */
+            <span className="iv-count">
+              {matching.length}{" "}
+              {showAll
+                ? matching.length === 1
+                  ? "owner"
+                  : "owners"
+                : matching.length === 1
+                  ? "individual owner"
+                  : "individual owners"}
+              {query.trim() ? " matching" : ""} · scroll to view
+            </span>
+          ) : null}
+          {others ? (
+            <button
+              type="button"
+              className="iv-link"
+              onClick={() => onShowAll(!showAll)}
+            >
+              {showAll
+                ? "Show individual owners only"
+                : `Also show ${others} ${
+                    others === 1
+                      ? "company or trust"
+                      : "companies, trusts, and the operator"
+                  }`}
+            </button>
+          ) : null}
+          {shown.length ? (
+            <span className="tiny muted" style={{ marginLeft: "auto" }}>
+              Largest ownership share first
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* THE SERVICE'S OWN SENTENCE about the roll read — how many rows, which
           year, what was collapsed or left out. It already accounts for the

@@ -19,33 +19,47 @@
  * space. Matching the group matters more here than the extra column.
  *
  * So there is no width rule of this page's own, and `page.tsx` passes only the
- * group's wide gutters. The page inherits `.mv-ref-app .app-body` —
- * `padding: 26px`, `max-width: 1180px` and the group's own narrow rules below
- * 900px — exactly as its neighbors do.
+ * group's wide gutters and the marker below. The page takes
+ * `.mv-ref-app .app-body` — the group's own column and padding, and its narrow
+ * rules below 900px — exactly as its neighbors do.
  *
  * ── EXCEPT THAT IT NO LONGER RESIZES WITH THE DENSITY SWITCH ──
  *
- * `dashboard-reference.css` gives each density its own reading measure: 920px
- * at Essentials, 1180 at Detailed, 1340 at Pro and 860 at Ultra. That is right
- * for a page of prose and charts, where the density IS how much there is to
- * read. This page is a three-step form over a roll of ninety owners, and the
- * density switch changes nothing about what it shows — so all four modes
- * showed the identical page at four different widths, the cards reflowing and
- * the gutters jumping each time. QA read the page as unstable, which is
- * exactly what it was. Defect sheet · Invite co-owners row 17.
+ * `dashboard-reference.css` gives each density its own reading measure, and
+ * the authoritative set is the one at line 1179 of that sheet (an earlier,
+ * overridden set sits at 293/487/495 — reading those instead is what made the
+ * first attempt at this fix pick the wrong number):
  *
- * SO THE COLUMN IS PINNED TO THE GROUP'S OWN 1180px IN EVERY MODE. The sheet
- * is page-imported and unlayered, so this beats the four tier rules without an
- * `!important`, and it is scoped to `.mv-invite-page` — the class `page.tsx`
- * passes as `shellClass` — so no other page on this shell loses its densities.
- * The narrow-viewport rules below 900px are untouched: that width is about the
- * device, not about the mode.
+ *     Detailed   1360px   `.mv-ref-app .app-body`
+ *     Essentials 1120px   `body .mv-ref-app.view-simple .app-body`
+ *     Ultra       860px   `body .mv-ref-app.view-ultra  .app-body`
+ *     Pro        1440px   `body .mv-ref-app.view-pro    .app-body`
+ *
+ * That is right for a page of prose and charts, where the density IS how much
+ * there is to read. This page is a three-step form over a roll of ninety
+ * owners, and the density switch changes nothing about what it shows — so all
+ * four modes drew the identical page at four different widths, the cards
+ * reflowing and the gutters jumping each time. QA read the page as unstable,
+ * which is exactly what it was. Defect sheet · Invite co-owners row 17.
+ *
+ * SO THE COLUMN IS PINNED TO THE GROUP'S OWN 1360px IN EVERY MODE, the
+ * Detailed measure and the one the page already wore. ALL FOUR selectors are
+ * written out, the bare one included: pinning only the three tier rules left
+ * Detailed on its own value, which is the same defect with a different set of
+ * widths — and is what QA reopened this row for.
+ *
+ * The sheet is page-imported and therefore UNLAYERED, so it beats every rule
+ * in `@layer mv-reference` whatever their specificity, and it is scoped to
+ * `.mv-invite-page` — the class `page.tsx` passes as `shellClass` — so no
+ * other page on this shell loses its densities. The narrow-viewport rules
+ * below 900px are untouched: that width is about the device, not the mode.
  */
 @media (min-width: 900px) {
+  .mv-ref-app.mv-invite-page .app-body,
   .mv-ref-app.mv-invite-page.view-simple .app-body,
   .mv-ref-app.mv-invite-page.view-pro .app-body,
   .mv-ref-app.mv-invite-page.view-ultra .app-body {
-    max-width: 1180px;
+    max-width: 1360px;
   }
 }
 
@@ -588,10 +602,15 @@
    takes the rest. Re-cut for the 14px cell padding: the tick column is the
    checkbox plus both gutters. */
 .mv-ref-app .iv-tbl th:nth-child(1) { width: 44px; }
-.mv-ref-app .iv-tbl th:nth-child(3) { width: 78px; }
+/* RE-CUT FOR THE FIGURE AND ITS HEADING. The column carries six decimal places
+   — `0.010838`, eight tabular characters, ~60px at 13px — under an uppercase
+   heading with .06em of tracking, and the heading is `nowrap`, so a column
+   narrower than the wider of the two clips it rather than wrapping it. 78px
+   was cut for `2.5109%`. Defect sheet row 25. */
+.mv-ref-app .iv-tbl th:nth-child(3) { width: 90px; }
 .mv-ref-app .iv-tbl th:nth-child(4) { width: 30%; }
 @container (min-width: 560px) {
-  .mv-ref-app .iv-tbl th:nth-child(3) { width: 96px; }
+  .mv-ref-app .iv-tbl th:nth-child(3) { width: 104px; }
 }
 /* THE SMALLEST PHONE. MEASURED at a 292px container: "OWNER OF RECORD" wants
    113px in a 106px cell — uppercase with .05em of tracking is wider than the
@@ -601,8 +620,31 @@
   .mv-ref-app .iv-tbl thead th { letter-spacing: 0; font-size: 10px; }
   .mv-ref-app .iv-tbl th, .mv-ref-app .iv-tbl td { padding: 10px 9px; }
   .mv-ref-app .iv-tbl th:nth-child(1) { width: 34px; }
-  .mv-ref-app .iv-tbl th:nth-child(3) { width: 62px; }
+  .mv-ref-app .iv-tbl th:nth-child(3) { width: 74px; }
 }
+/*
+ * NOTHING TO LIST — AND THEREFORE NO TABLE.
+ *
+ * The four states this card can be empty in (waiting on step 1, reading the
+ * roll, a search that matched nothing, a lease with no individuals) all used
+ * to render as a single left-aligned cell under a live column header, which
+ * reads as a table that has lost its rows. It replaces the table now, and it
+ * is centred in the space the table would have taken. Defect sheet rows 9
+ * and 24.
+ *
+ * THE MIN-HEIGHT IS WHAT KEEPS THE CARD STILL. Without it the card collapses
+ * to the height of one sentence and step 3 jumps up the page the moment a
+ * search matches nothing; 120px is roughly three rows of the table it stands
+ * in for.
+ */
+.mv-ref-app .iv-blank {
+  display: flex; align-items: center; justify-content: center;
+  text-align: center; text-wrap: balance;
+  min-height: 120px; margin: 0; padding: 20px 24px;
+  border: 1px solid var(--line); border-radius: 12px; background: #fbfcfc;
+  font-size: 12.5px; line-height: 1.6; color: var(--slate);
+}
+
 .mv-ref-app .iv-cb { width: 44px; padding-right: 0; }
 .mv-ref-app .iv-cb input {
   width: 16px; height: 16px; accent-color: var(--bar-on, #223040); cursor: pointer;
@@ -752,14 +794,25 @@
 
 /* the wording lives behind a link: the standard letter is finished, and the
    textarea was taking half the card from the thing a reader came to copy */
-.mv-ref-app .iv-edit { margin: 12px 0 0; padding: 13px 0 0; border-top: 1px solid #f1f4f4; }
+/* THE EDITOR LIVES INSIDE THE LETTER CARD NOW, in the place the preview
+   occupies — see `EmailStep`. So no top rule and no outer margin: the To and
+   Subject rows above it already carry their own hairline, and a second one
+   under them drew a line across the middle of one card. The padding matches
+   `.iv-mailbody`'s, so the text starts where the letter's text started. */
+.mv-ref-app .iv-edit { margin: 0; padding: 14px 16px 15px; }
+/* AND THE TEXTAREA IS THE PAGE INSIDE THAT CARD, not a box within a box. A
+   border here put a second frame 16px inside the first one. */
 .mv-ref-app .iv-edit textarea {
-  font: inherit; font-size: 12.5px; line-height: 1.7; width: 100%;
-  border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px;
-  background: #fff; color: var(--ink); resize: vertical;
+  font: inherit; font-size: 12.5px; line-height: 1.75; width: 100%;
+  border: 0; border-radius: 0; padding: 0; display: block;
+  background: transparent; color: var(--ink); resize: vertical;
 }
 .mv-ref-app .iv-edit textarea:focus-visible {
-  outline: 2px solid var(--bar-on, #223040); outline-offset: 1px;
+  outline: 2px solid var(--bar-on, #223040); outline-offset: 4px;
+}
+/* The tokens sit under the letter with a hairline between, inside the card. */
+.mv-ref-app .iv-edit .iv-chips {
+  margin: 13px 0 0; padding: 11px 0 0; border-top: 1px solid #f1f4f4;
 }
 .mv-ref-app .iv-editnote {
   font-size: 11.5px; line-height: 1.6; color: var(--slate);
@@ -810,9 +863,15 @@
  * THE FIX IS TO STOP CLIPPING AND LET THE ENDS CARRY THE RADIUS THEMSELVES,
  * below. A radius inherited by the element that actually paints is round; a
  * radius enforced by cutting the parent is a crop.
+ *
+ * `overflow: visible` IS WRITTEN OUT, and it has to be. `dashboard-reference
+ * .alerts.css` declares this same class with `overflow: hidden`; dropping the
+ * declaration here left that one standing, so the corners stayed clipped and
+ * QA reopened the row. An override only overrides what it names.
  */
 .mv-ref-app .ml-segs {
   display: inline-flex; border: 1px solid #dde4ea; border-radius: 10px;
+  overflow: visible;
 }
 .mv-ref-app .ml-segs button {
   font: inherit; font-size: 12px; font-weight: 600; color: var(--slate);

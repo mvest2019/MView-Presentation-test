@@ -140,6 +140,8 @@ export function InviteWorkbench({
   const [leaseQuery, setLeaseQuery] = useState("");
   const [leaseResults, setLeaseResults] = useState<LeaseChoice[] | null>(null);
   const [searchingLeases, setSearchingLeases] = useState(false);
+  /** True while the next page of leases is on its way — see `loadMoreLeases`. */
+  const [loadingMoreLeases, setLoadingMoreLeases] = useState(false);
 
   const [roster, setRoster] = useState<LeaseRoster | null>(null);
   const [rosterError, setRosterError] = useState<string | null>(null);
@@ -237,6 +239,47 @@ export function InviteWorkbench({
       setSearchingLeases(false);
     }
   }, []);
+
+  /*
+   * ── THE REST OF THE LEASES, A PAGE AT A TIME, AS THE LIST IS SCROLLED ──
+   *
+   * The picker held the first hundred and reached the other four thousand only
+   * through the search box. That is fine for a reader who knows the name they
+   * want and no use at all to one who is browsing — and the panel's own foot
+   * saying "the first 100 of 782" was QA's note on the dropdown. Defect sheet
+   * row 27.
+   *
+   * SO THE LIST GROWS. `offset` is the contract's own paging, the rows are
+   * appended, and `lease_id` de-duplicates in case a page boundary moves
+   * between reads. A failure is silent and retried by the next scroll: a
+   * half-loaded list that still holds everything the reader has seen is better
+   * than an error in place of it.
+   *
+   * IT DOES NOT PAGE A SEARCH. A search already answers across every claimed
+   * lease, and its result is what the reader asked for rather than a window
+   * onto a longer list.
+   */
+  const loadMoreLeases = useCallback(async () => {
+    if (leasesState.phase !== "ready" || loadingMoreLeases) return;
+    const { leases, total, owner } = leasesState;
+    if (leases.length >= total) return;
+    setLoadingMoreLeases(true);
+    try {
+      const next = await fetchInviteLeases({ owner, offset: leases.length });
+      setLeasesState((current) => {
+        if (current.phase !== "ready") return current;
+        const have = new Set(current.leases.map((one) => one.leaseId));
+        const fresh = next.leases.filter((one) => !have.has(one.leaseId));
+        return fresh.length
+          ? { ...current, leases: [...current.leases, ...fresh] }
+          : current;
+      });
+    } catch {
+      /* the next scroll asks again */
+    } finally {
+      setLoadingMoreLeases(false);
+    }
+  }, [leasesState, loadingMoreLeases]);
 
   /* ---- the lease type-ahead — every claimed lease, not just page one ------ */
   useEffect(() => {
@@ -512,21 +555,21 @@ export function InviteWorkbench({
   const addresses = useMemo(() => {
     const byOwner = new Map<string, string | null>();
     for (const owner of roster?.owners ?? []) {
-      /* THE POSTING BLOCK WHEN THERE IS NO PARSED TOWN. The roll files the
-         town inside the street line in some districts and the service returns
-         `city: null` rather than guess where it ends — a printed sheet was
-         then going out with no address at all for owners whose address was
-         right there. Same fallback the on-screen row takes; see
-         `people-step.tsx`. */
+      /* THE POSTING BLOCK, for the same reason the on-screen column uses it:
+         it is what the roll holds, it is on every row, and a sheet going into
+         an envelope needs the whole address rather than the town the service
+         managed to parse out of it. Same order as `placeOf` in
+         `people-step.tsx` — the printed sheet and the row must not disagree.
+         Defect sheet rows 8 and 28. */
       const block = owner.addressLines
         .map((line) => line.trim())
         .filter(Boolean);
       byOwner.set(
         owner.ownerKey,
-        owner.city
-          ? `${owner.city}${owner.state ? `, ${owner.state}` : ""}`
-          : block.length
-            ? block.join(", ")
+        block.length
+          ? block.join(", ")
+          : owner.city
+            ? `${owner.city}${owner.state ? `, ${owner.state}` : ""}`
             : null,
       );
     }
@@ -609,6 +652,8 @@ export function InviteWorkbench({
           leases={leaseResults ?? leases}
           total={total}
           lease={lease}
+          onLoadMore={leaseResults ? null : loadMoreLeases}
+          loadingMore={loadingMoreLeases}
           peopleCount={roster?.counts.people ?? null}
           leaseQuery={leaseQuery}
           onLeaseQuery={handleLeaseQuery}

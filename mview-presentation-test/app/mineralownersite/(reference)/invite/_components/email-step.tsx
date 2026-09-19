@@ -220,7 +220,79 @@ export function EmailStep({
               <span>Subject</span>
               <b>{one.subject}</b>
             </div>
-            <MailBody text={one.bodyText} code={one.codeLabel} />
+            {/*
+              THE EDITOR TAKES THE LETTER'S OWN PLACE.
+              Seeding the textarea from the displayed letter closed half of row
+              14; the other half was that it opened as a SECOND block under the
+              preview, so there were two letters on screen and the reader was
+              still not editing the one they had been reading. It replaces the
+              preview now, inside the same framed card, under the same To and
+              Subject rows — one letter, either being read or being written.
+            */}
+            {editing ? (
+              <div className="iv-edit">
+                <p className="iv-editnote">
+                  It is your letter — change as much as you like. Each person
+                  gets their own name and their own code filled in when you
+                  copy it.
+                </p>
+                <textarea
+                  value={draft}
+                  maxLength={BODY_MAX}
+                  rows={14}
+                  onChange={(event) => onBody(event.target.value)}
+                  aria-label="The wording of the invitation"
+                />
+                {/*
+                  THE INSERT BUTTONS SAY WHAT THEY ADD, IN WORDS. The tokens are
+                  the contract's own — the service substitutes them per
+                  recipient.
+                */}
+                <div className="iv-chips">
+                  <span className="iv-chipk">Add</span>
+                  {(
+                    [
+                      ["{name}", "their name"],
+                      ["{code}", "their code"],
+                      ["{url}", "the claim link"],
+                      ["{lease}", "the lease name"],
+                    ] as const
+                  ).map(([token, what]) => (
+                    <button
+                      key={token}
+                      type="button"
+                      className="iv-tok"
+                      onClick={() =>
+                        onBody(
+                          `${draft}${draft.endsWith(" ") ? "" : " "}${token}`,
+                        )
+                      }
+                    >
+                      {what}
+                    </button>
+                  ))}
+                  {body !== null ? (
+                    /* Back to NULL, not to a local template — the service's own
+                       default letter returns on the next render. */
+                    <button
+                      type="button"
+                      className="iv-link"
+                      style={{ marginLeft: "auto" }}
+                      onClick={() => onBody(null)}
+                    >
+                      Start again from the standard letter
+                    </button>
+                  ) : null}
+                  {draft.length > BODY_MAX * 0.8 ? (
+                    <span className="tiny muted">
+                      {BODY_MAX - draft.length} characters left
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <MailBody text={one.bodyText} code={one.codeLabel} />
+            )}
           </div>
 
           <div className="iv-do">
@@ -265,65 +337,6 @@ export function EmailStep({
             </button>
           </div>
 
-          {editing ? (
-            <div className="iv-edit">
-              <span className="iv-lbl">What it says</span>
-              <p className="iv-editnote">
-                It is your letter — change as much as you like. Each person gets
-                their own name and their own code filled in when you copy it.
-              </p>
-              <textarea
-                value={draft}
-                maxLength={BODY_MAX}
-                rows={9}
-                onChange={(event) => onBody(event.target.value)}
-                aria-label="The wording of the invitation"
-              />
-              {/*
-                THE INSERT BUTTONS SAY WHAT THEY ADD, IN WORDS. The tokens are
-                the contract's own — the service substitutes them per recipient.
-              */}
-              <div className="iv-chips">
-                <span className="iv-chipk">Add</span>
-                {(
-                  [
-                    ["{name}", "their name"],
-                    ["{code}", "their code"],
-                    ["{url}", "the claim link"],
-                    ["{lease}", "the lease name"],
-                  ] as const
-                ).map(([token, what]) => (
-                  <button
-                    key={token}
-                    type="button"
-                    className="iv-tok"
-                    onClick={() =>
-                      onBody(`${draft}${draft.endsWith(" ") ? "" : " "}${token}`)
-                    }
-                  >
-                    {what}
-                  </button>
-                ))}
-                {body !== null ? (
-                  /* Back to NULL, not to the local template — the service's own
-                     default letter returns on the next render. */
-                  <button
-                    type="button"
-                    className="iv-link"
-                    style={{ marginLeft: "auto" }}
-                    onClick={() => onBody(null)}
-                  >
-                    Start again from the standard letter
-                  </button>
-                ) : null}
-                {draft.length > BODY_MAX * 0.8 ? (
-                  <span className="tiny muted">
-                    {BODY_MAX - draft.length} characters left
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
 
           {/*
             EACH PERSON'S CODE, BESIDE THE NAME IT BELONGS TO — the second of

@@ -446,12 +446,19 @@ export function templateFrom(email: InviteEmailView): string | null {
      has to go first or the code inside the longer one is replaced separately
      and leaves a broken half-link behind. */
   const base = email.inviteUrl.split("?")[0];
+  /* `JOE HINDES 'D' UNIT · Lease 16743 · ATASCOSA County` — the service's own
+     heading, and its first part is the lease name `{lease}` renders as. It was
+     the one substitution this did not reverse, so the lease was left written
+     into the template in longhand: edit it and every recipient on every other
+     lease would have been told they own a share of that one. */
+  const leaseName = email.heading.split(" · ")[0]?.trim() ?? "";
   for (const [text, token] of [
     [email.inviteUrl, "{url}"],
     [base, "{url}"],
     [email.codeLabel, "{code}"],
     [email.code, "{code}"],
     [email.to, "{name}"],
+    [leaseName, "{lease}"],
   ] as [string, string][]) {
     if (text) body = body.replace(new RegExp(literal(text), "g"), token);
   }
