@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Check,
   ChevronDown,
   ChevronLeft,
   ChevronUp,
@@ -25,6 +24,7 @@ import {
 
 import type { Facet } from "@/lib/entitlements";
 
+import { Checkbox } from "./checkbox";
 import { ClaimedLeases } from "./claimed-leases";
 import { useEntitlements } from "./entitlements-context";
 
@@ -1882,21 +1882,6 @@ function Radio({ checked }: { checked: boolean }) {
       {checked && (
         <span className="h-[7px] w-[7px] rounded-full bg-mv-green-deep" />
       )}
-    </span>
-  );
-}
-
-function Checkbox({ checked }: { checked: boolean }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={`grid h-[15px] w-[15px] shrink-0 place-items-center rounded-[4px] border ${
-        checked
-          ? "border-mv-green-deep bg-mv-green-deep text-white"
-          : "border-[#c7cbd1] bg-white"
-      }`}
-    >
-      {checked && <Check size={11} strokeWidth={3.5} />}
     </span>
   );
 }

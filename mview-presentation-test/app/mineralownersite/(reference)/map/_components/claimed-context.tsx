@@ -26,6 +26,7 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -36,7 +37,11 @@ import {
 import {
   getClaimedLeasesMap,
   type MapClaimedLeases,
+  type MapWell,
 } from "@/lib/map-api";
+
+/** One shared empty array, so "nothing to draw" has a stable identity. */
+const EMPTY_WELLS: MapWell[] = [];
 
 export type ClaimedState =
   | { status: "idle" }
@@ -55,12 +60,28 @@ type ClaimedContext = {
    */
   dismissed: boolean;
   dismiss: () => void;
+  /** Puts the claimed view back: frames the wells and draws them again. */
+  restore: () => void;
+  /**
+   * The lease keys currently ticked, or `null` meaning "all of them".
+   *
+   * `null` RATHER THAN A FULL SET, and the difference matters: the claim can
+   * be 782 leases, and seeding a Set with all of them means the untouched
+   * default allocates and compares 782 strings on every render for a state
+   * nobody has expressed. `null` is the honest value for "the reader has not
+   * chosen", and it survives the leases arriving late without a sync effect.
+   */
+  selected: Set<string> | null;
+  toggleLease: (leaseKey: string) => void;
 };
 
 const Ctx = createContext<ClaimedContext>({
   state: { status: "idle" },
   dismissed: false,
   dismiss: () => {},
+  restore: () => {},
+  selected: null,
+  toggleLease: () => {},
 });
 
 export function ClaimedLeasesProvider({
@@ -128,9 +149,45 @@ export function ClaimedLeasesProvider({
      over — the render-time reset above is where the member change is noticed. */
   if (memberId !== lastMember && dismissed) setDismissed(false);
 
+  const [selected, setSelected] = useState<Set<string> | null>(null);
+
+  /* A new member is a new claim, so their choice does not carry over either. */
+  if (memberId !== lastMember && selected !== null) setSelected(null);
+
+  const toggleLease = useCallback(
+    (leaseKey: string) => {
+      setSelected((current) => {
+        /* First touch: everything was on, so the set starts as every lease
+           the claim holds, minus the one just turned off. Built here rather
+           than up front because until now there was nothing to build it from
+           and nothing to compare it against. */
+        const base =
+          current ??
+          new Set(
+            state.status === "ready"
+              ? state.data.leases.map((lease) => lease.leaseKey)
+              : [],
+          );
+
+        const next = new Set(base);
+        if (next.has(leaseKey)) next.delete(leaseKey);
+        else next.add(leaseKey);
+        return next;
+      });
+    },
+    [state],
+  );
+
   const value = useMemo<ClaimedContext>(
-    () => ({ state, dismissed, dismiss: () => setDismissed(true) }),
-    [state, dismissed],
+    () => ({
+      state,
+      dismissed,
+      dismiss: () => setDismissed(true),
+      restore: () => setDismissed(false),
+      selected,
+      toggleLease,
+    }),
+    [state, dismissed, selected, toggleLease],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
@@ -144,9 +201,10 @@ export function useClaimed(): ClaimedState {
 export function useClaimedDismiss(): {
   dismissed: boolean;
   dismiss: () => void;
+  restore: () => void;
 } {
-  const { dismissed, dismiss } = useContext(Ctx);
-  return { dismissed, dismiss };
+  const { dismissed, dismiss, restore } = useContext(Ctx);
+  return { dismissed, dismiss, restore };
 }
 
 /**
@@ -169,6 +227,46 @@ export function useHasClaim(): boolean {
  * Memoised on the state object so the view's effects do not re-run on every
  * render of the tree above them.
  */
+/** Which leases are ticked, and how to tick one. */
+export function useClaimedSelection(): {
+  isSelected: (leaseKey: string) => boolean;
+  toggleLease: (leaseKey: string) => void;
+} {
+  const { selected, toggleLease } = useContext(Ctx);
+  return {
+    /* `null` is "all", so an untouched list reads as fully ticked without a
+       set having been built for it. */
+    isSelected: (leaseKey: string) =>
+      selected === null || selected.has(leaseKey),
+    toggleLease,
+  };
+}
+
+/**
+ * The wells of the ticked leases.
+ *
+ * Unticking a lease takes its wells off the map; it does not move the camera.
+ * Re-framing on every tick would walk the reader around the state while they
+ * are trying to narrow what they are looking at.
+ */
+export function useClaimedWells(): MapWell[] {
+  const { state, selected, dismissed } = useContext(Ctx);
+
+  return useMemo(() => {
+    if (dismissed || state.status !== "ready") return EMPTY_WELLS;
+    if (selected === null) return state.data.wells;
+
+    /* Deduplicated on the way out, not on the way in: a well filed under two
+       ticked leases appears in both lists. */
+    const seen = new Map<string, MapWell>();
+    for (const [leaseKey, wells] of Object.entries(state.data.wellsByLease)) {
+      if (!selected.has(leaseKey)) continue;
+      for (const well of wells) if (!seen.has(well.api)) seen.set(well.api, well);
+    }
+    return [...seen.values()];
+  }, [state, selected, dismissed]);
+}
+
 export function useClaimedFrame(): {
   wells: MapClaimedLeases["wells"];
   extent: MapClaimedLeases["extent"];

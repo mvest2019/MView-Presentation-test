@@ -29,7 +29,12 @@ import { useMemo, useState } from "react";
 
 import { type MapClaimedLease } from "@/lib/map-api";
 
-import { useClaimed, useClaimedDismiss } from "./claimed-context";
+import { Checkbox } from "./checkbox";
+import {
+  useClaimed,
+  useClaimedDismiss,
+  useClaimedSelection,
+} from "./claimed-context";
 
 /** How many rows show before the list scrolls inside itself. */
 const VISIBLE_ROWS = 6;
@@ -52,7 +57,8 @@ export function ClaimedLeases() {
    * provider has.
    */
   const load = useClaimed();
-  const { dismissed, dismiss } = useClaimedDismiss();
+  const { dismissed, dismiss, restore } = useClaimedDismiss();
+  const { isSelected, toggleLease } = useClaimedSelection();
 
   /* Memoised on `load` rather than on a `leases` array derived above it: the
      `: []` branch builds a new array on every render, so a dependency on it
@@ -112,8 +118,45 @@ export function ClaimedLeases() {
    * here. Failure is deliberately silent for the same reason — the rail still
    * filters, and the map behind it still works.
    */
-  if (dismissed) return null;
+  /*
+   * NOTHING AT ALL unless there is a claim to show — see the note below. This
+   * comes before the closed state, because a reader with no claim must not see
+   * a "Show on map" row for leases they do not have.
+   */
   if (load.status !== "ready" || leases.length === 0) return null;
+
+  /*
+   * CLOSED, BUT STILL HERE.
+   *
+   * Closing hands the map back; it does not make the section vanish. Removed
+   * outright, the only way to see your own wells again was a page reload —
+   * there was no control left to press, and nothing on screen said the feature
+   * existed. It keeps its place in the rail as one row that says what it is
+   * and offers it back.
+   */
+  if (dismissed) {
+    return (
+      <section className="mt-[14px] border-t border-mv-line pt-[14px]">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-extrabold uppercase tracking-[.1em] text-mv-ink lg:text-[12px]">
+            My leases
+          </span>
+          {/* The rail's own count pill — mint, green, tabular — so this
+              reads as the same kind of fact as `WICHITA 27,612` below it. */}
+          <span className="shrink-0 rounded-full bg-mv-mint px-[7px] py-[2px] text-[10px] font-semibold tabular-nums leading-none text-mv-green-deep lg:text-[11px]">
+            {leases.length.toLocaleString("en-US")}
+          </span>
+          <button
+            type="button"
+            onClick={restore}
+            className="ml-auto shrink-0 cursor-pointer rounded px-[6px] py-[2px] text-[10.5px] font-semibold text-mv-green-deep hover:bg-[#f2f8f5] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-mv-green-deep lg:text-[11.5px]"
+          >
+            Show on map
+          </button>
+        </div>
+      </section>
+    );
+  }
 
   return (
     /*
@@ -160,7 +203,7 @@ export function ClaimedLeases() {
           <span className="text-[11px] lg:text-[12px] font-extrabold uppercase tracking-[.1em] text-mv-ink">
             My leases
           </span>
-          <span className="text-[10px] lg:text-[11px] font-semibold text-mv-muted">
+          <span className="shrink-0 rounded-full bg-mv-mint px-[7px] py-[2px] text-[10px] font-semibold tabular-nums leading-none text-mv-green-deep lg:text-[11px]">
             {leases.length.toLocaleString("en-US")}
           </span>
           {open ? (
@@ -272,6 +315,8 @@ export function ClaimedLeases() {
                     key={lease.leaseKey}
                     lease={lease}
                     divided={index > 0}
+                    checked={isSelected(lease.leaseKey)}
+                    onToggle={() => toggleLease(lease.leaseKey)}
                   />
                 ))}
               </ul>
@@ -306,45 +351,71 @@ export function ClaimedLeases() {
 function LeaseRow({
   lease,
   divided,
+  checked,
+  onToggle,
 }: {
   lease: MapClaimedLease;
   divided: boolean;
+  checked: boolean;
+  /** Ticks this lease's wells on or off the map. */
+  onToggle: () => void;
 }) {
   const place = [lease.county, lease.leaseKey].filter(Boolean).join(" · ");
 
   return (
     <li className={`py-[7px] ${divided ? "border-t border-mv-line" : ""}`}>
-      {/* NO WELL COUNT. It was a mint pill on the right of this line, matching
+      <label className="flex cursor-pointer items-start gap-[10px]">
+        {/*
+         * The same box the county facet uses, from the same component: a
+         * transparent real `<input>` laid over the picture of one, so the
+         * keyboard, the focus ring and the accessibility tree all stay the
+         * browser's. `mt-[2px]` sits it on the first line of text rather than
+         * centring it against a two-line row.
+         */}
+        <span className="relative mt-[2px] grid h-[15px] w-[15px] shrink-0 place-items-center">
+          <input
+            type="checkbox"
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            checked={checked}
+            onChange={onToggle}
+          />
+          <Checkbox checked={checked} />
+        </span>
+
+        <span className="min-w-0 flex-1">
+          {/* NO WELL COUNT. It was a mint pill on the right of this line, matching
           the county facet's counts — dropped on request. The number is still
           parsed (`wellCount`) and still available the moment it is wanted. */}
-      {/* `title` because the name is the one field long enough to truncate,
+          {/* `title` because the name is the one field long enough to truncate,
           and a truncated lease name is unidentifiable. */}
-      <span
-        title={lease.name}
-        /* THE SAME TYPE AS A COUNTY ROW, which is what the rail's other
-         * lists use: `text-[11.5px] lg:text-[12.5px] text-mv-ink`, regular
-         * weight. It went bold-on-ink first, then semibold-on-slate; both were
-         * a third treatment invented for this one list. Matching the facets
-         * means a lease name and a county name read as the same kind of thing,
-         * which they are — a row you scan for the one you want. */
-        className="block truncate text-[11.5px] leading-tight text-mv-ink lg:text-[12.5px]"
-      >
-        {lease.name}
-      </span>
-
-      <div className="mt-[3px] flex items-baseline gap-2 text-[10.5px] leading-tight text-mv-muted lg:text-[11.5px]">
-        <span title={place} className="min-w-0 flex-1 truncate">
-          {place}
-        </span>
-        {lease.interest !== null && (
           <span
-            className="shrink-0 tabular-nums"
-            title="Your decimal interest in this lease"
+            title={lease.name}
+            /* THE SAME TYPE AS A COUNTY ROW, which is what the rail's other
+             * lists use: `text-[11.5px] lg:text-[12.5px] text-mv-ink`, regular
+             * weight. It went bold-on-ink first, then semibold-on-slate; both were
+             * a third treatment invented for this one list. Matching the facets
+             * means a lease name and a county name read as the same kind of thing,
+             * which they are — a row you scan for the one you want. */
+            className="block truncate text-[11.5px] leading-tight text-mv-ink lg:text-[12.5px]"
           >
-            {formatInterest(lease.interest)}
+            {lease.name}
           </span>
-        )}
-      </div>
+
+          <div className="mt-[3px] flex items-baseline gap-2 text-[10.5px] leading-tight text-mv-muted lg:text-[11.5px]">
+            <span title={place} className="min-w-0 flex-1 truncate">
+              {place}
+            </span>
+            {lease.interest !== null && (
+              <span
+                className="shrink-0 tabular-nums"
+                title="Your decimal interest in this lease"
+              >
+                {formatInterest(lease.interest)}
+              </span>
+            )}
+          </div>
+        </span>
+      </label>
     </li>
   );
 }

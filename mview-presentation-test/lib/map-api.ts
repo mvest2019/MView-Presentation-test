@@ -1057,6 +1057,16 @@ export type MapClaimedLeases = {
    * places that draws them.
    */
   wells: MapWell[];
+  /**
+   * The same wells, still grouped by the lease they were filed under.
+   *
+   * Kept beside the flat list rather than derived from it: `wells` is
+   * deduplicated, and a well filed under two claimed leases keeps only the
+   * first lease's key there. Picking leases off the flat list would drop such
+   * a well whenever its OTHER lease was the one ticked. These are the same
+   * objects, not copies — a lookup table, not a second payload.
+   */
+  wellsByLease: Record<string, MapWell[]>;
   /** Where to frame the map, when there is anything to frame. */
   extent: MapClaimedExtent | null;
   /** The service's own totals, which are not derivable from `leases`. */
@@ -1098,6 +1108,7 @@ export const getClaimedLeasesMap = async (
         owner: null,
         leases: [],
         wells: [],
+        wellsByLease: {},
         extent: null,
         counts: null,
       };
@@ -1111,6 +1122,7 @@ export const getClaimedLeasesMap = async (
       owner: shapeOwner(data?.owner),
       leases: (data.leases as unknown[]).map(shapeClaimedLease),
       wells: claimedWells(data.leases as unknown[]),
+      wellsByLease: claimedWellsByLease(data.leases as unknown[]),
       extent: shapeClaimedExtent(data?.extent),
       counts: shapeClaimedCounts(data?.counts),
     };
@@ -1176,6 +1188,33 @@ function claimedWells(leases: unknown[]): MapWell[] {
   }
 
   return [...seen.values()];
+}
+
+/** Each lease's drawable wells, keyed by `lease_key`. */
+function claimedWellsByLease(leases: unknown[]): Record<string, MapWell[]> {
+  const byLease: Record<string, MapWell[]> = {};
+
+  for (const value of leases) {
+    const lease = (value ?? {}) as Record<string, unknown>;
+    const key = text(lease.lease_key);
+    if (!key || !Array.isArray(lease.wells)) continue;
+
+    const drawable = (lease.wells as unknown[]).filter((raw): raw is MapWell => {
+      const well = raw as MapWell | null;
+      return (
+        !!well &&
+        typeof well.api === "string" &&
+        typeof well.lon === "number" &&
+        typeof well.lat === "number"
+      );
+    });
+
+    /* A lease key can repeat across rows the service folded; its wells add up
+       rather than replacing each other. */
+    byLease[key] = byLease[key] ? [...byLease[key], ...drawable] : drawable;
+  }
+
+  return byLease;
 }
 
 function shapeClaimedExtent(value: unknown): MapClaimedExtent | null {
