@@ -91,7 +91,17 @@ const LEASE_SEARCH_DEBOUNCE_MS = 350;
 type LeasesState =
   | { phase: "loading" }
   | { phase: "error"; code: string; message: string }
-  | { phase: "ready"; leases: LeaseChoice[]; total: number };
+  | {
+      phase: "ready";
+      leases: LeaseChoice[];
+      total: number;
+      /**
+       * The claimed identity this list is scoped to, or null for every claim.
+       * Sent back on the type-ahead so a search cannot reach past the owner
+       * the top bar is showing. See `prefetchInviteLeases`.
+       */
+      owner: string | null;
+    };
 
 export function InviteWorkbench({
   initialLeases,
@@ -105,18 +115,28 @@ export function InviteWorkbench({
           phase: "ready",
           leases: initialLeases.leases,
           total: initialLeases.total,
+          owner: initialLeases.owner,
         }
       : { phase: "loading" },
   );
   /** Bumped by the retry button — the load effect depends on it. */
   const [loadAttempt, setLoadAttempt] = useState(0);
 
-  /* THE SELECTED LEASE IS AN OBJECT, NOT A LOOKUP. The dropdown's option list
-     changes under the reader as they search, and the selection must survive
-     matching none of the current options. */
-  const [lease, setLease] = useState<LeaseChoice | null>(
-    initialLeases?.leases[0] ?? null,
-  );
+  /*
+   * THE SELECTED LEASE IS AN OBJECT, NOT A LOOKUP. The picker's option list
+   * changes under the reader as they search, and the selection must survive
+   * matching none of the current options.
+   *
+   * AND IT STARTS AS NULL. It used to open on `leases[0]` — the first row of
+   * the first page of a list the reader had not looked at — so the page
+   * arrived having answered step 1 on their behalf, read a stranger's roll and
+   * printed a count for a lease nobody had chosen. Defect sheet row 6.
+   */
+  const [lease, setLease] = useState<LeaseChoice | null>(null);
+  /** The claimed identity the list is narrowed to, or null for every claim. */
+  const scopedOwner =
+    leasesState.phase === "ready" ? leasesState.owner : null;
+
   const [leaseQuery, setLeaseQuery] = useState("");
   const [leaseResults, setLeaseResults] = useState<LeaseChoice[] | null>(null);
   const [searchingLeases, setSearchingLeases] = useState(false);
@@ -172,12 +192,27 @@ export function InviteWorkbench({
     const controller = new AbortController();
     (async () => {
       try {
-        const { leases, total } = await fetchInviteLeases({
-          signal: controller.signal,
-        });
+        /* The same two-step the server prefetch makes: the unscoped read names
+           the claimed identities, and the active one narrows the list to the
+           owner the top bar is showing. See `prefetchInviteLeases`. */
+        const all = await fetchInviteLeases({ signal: controller.signal });
         if (controller.signal.aborted) return;
-        setLeasesState({ phase: "ready", leases, total });
-        setLease((current) => current ?? leases[0] ?? null);
+        let { leases, total } = all;
+        let owner: string | null = null;
+        if (all.owners.length > 1 && all.activeOwner) {
+          const scoped = await fetchInviteLeases({
+            owner: all.activeOwner,
+            signal: controller.signal,
+          });
+          if (controller.signal.aborted) return;
+          if (scoped.leases.length) {
+            leases = scoped.leases;
+            total = scoped.total;
+            owner = all.activeOwner;
+          }
+        }
+        setLeasesState({ phase: "ready", leases, total, owner });
+        /* NOTHING IS SELECTED HERE. See the state's own note. */
       } catch (error) {
         if (controller.signal.aborted) return;
         setLeasesState({
@@ -213,6 +248,7 @@ export function InviteWorkbench({
       try {
         const { leases } = await fetchInviteLeases({
           q: needle,
+          owner: scopedOwner,
           signal: controller.signal,
         });
         if (controller.signal.aborted) return;
@@ -228,7 +264,7 @@ export function InviteWorkbench({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [leaseQuery]);
+  }, [leaseQuery, scopedOwner]);
 
   /* ---- a new lease is a new roll ----------------------------------------- */
   /*
@@ -291,6 +327,21 @@ export function InviteWorkbench({
    * is one, goes up in the same event for the same reason: rendering the new
    * lease with the OLD roll for a frame is the exact flash the reset avoids.
    */
+  /*
+   * THE WORDING GOES BACK TO THE SERVICE'S OWN WITH THE LEASE.
+   *
+   * A custom greeting is written FOR somebody — "Hi cousin" is addressed to
+   * the family on one lease, and carrying it onto the next lease's roll opened
+   * a stranger's letter with it. The custom body is worse: it names the lease
+   * in its own words. Both survived a lease switch, and QA saw the greeting
+   * they had typed for one lease still sitting over a different lease's
+   * co-owners. Defect sheet row 20.
+   *
+   * SO THE LEASE SWITCH RESETS ALL THREE, in the event with the rest of the
+   * reset — see the module header on why this is not an effect. It does NOT
+   * reset when the reader steps between letters on the SAME lease: those are
+   * the people the wording was written for.
+   */
   const chooseLease = (nextLeaseId: string) => {
     if (nextLeaseId === leaseId) return;
     const options = leaseResults ?? (leasesState.phase === "ready" ? leasesState.leases : []);
@@ -307,6 +358,10 @@ export function InviteWorkbench({
     setQuery("");
     setShowAll(false);
     setAtKey(null);
+    setGreeting("first");
+    setCustom("");
+    setBody(null);
+    setEditing(false);
   };
 
   /* ---- wording changed → re-render the recorded emails -------------------- */
@@ -457,11 +512,22 @@ export function InviteWorkbench({
   const addresses = useMemo(() => {
     const byOwner = new Map<string, string | null>();
     for (const owner of roster?.owners ?? []) {
+      /* THE POSTING BLOCK WHEN THERE IS NO PARSED TOWN. The roll files the
+         town inside the street line in some districts and the service returns
+         `city: null` rather than guess where it ends — a printed sheet was
+         then going out with no address at all for owners whose address was
+         right there. Same fallback the on-screen row takes; see
+         `people-step.tsx`. */
+      const block = owner.addressLines
+        .map((line) => line.trim())
+        .filter(Boolean);
       byOwner.set(
         owner.ownerKey,
         owner.city
           ? `${owner.city}${owner.state ? `, ${owner.state}` : ""}`
-          : null,
+          : block.length
+            ? block.join(", ")
+            : null,
       );
     }
     return byOwner;
@@ -531,9 +597,9 @@ export function InviteWorkbench({
   }
 
   const { leases, total } = leasesState;
-  if (leases.length === 0 && !lease) return <UnclaimedInviteNotice />;
-
-  const shownLease = lease ?? leases[0];
+  /* No claimed lease at all is the claim-first notice; no lease CHOSEN is the
+     page's opening state and renders the three cards empty. */
+  if (leases.length === 0 && total === 0) return <UnclaimedInviteNotice />;
 
   return (
     /* `.iv-body` AND `.iv-main`, NOT A TAILWIND GRID — see `invite.css`. */
@@ -542,7 +608,7 @@ export function InviteWorkbench({
         <LeaseStep
           leases={leaseResults ?? leases}
           total={total}
-          lease={shownLease}
+          lease={lease}
           peopleCount={roster?.counts.people ?? null}
           leaseQuery={leaseQuery}
           onLeaseQuery={handleLeaseQuery}
@@ -551,6 +617,7 @@ export function InviteWorkbench({
         />
 
         <PeopleStep
+          hasLease={lease !== null}
           roster={roster}
           rosterError={rosterError}
           picked={picked}

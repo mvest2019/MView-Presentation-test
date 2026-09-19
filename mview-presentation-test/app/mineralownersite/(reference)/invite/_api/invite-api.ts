@@ -125,11 +125,28 @@ async function request<T>(
    VIEW SHAPES — what the components read
    ============================================================================ */
 
+/** One claimed owner identity on this member's record — see `activeOwner`. */
+export interface ClaimedOwner {
+  name: string;
+  ownerNumber: string | null;
+  /** True for the identity the account is currently looking through. */
+  active: boolean;
+}
+
 /** One lease the member has claimed — the step 1 dropdown's row. */
 export interface LeaseChoice {
   /** `02_290271` — passed straight back on every later call. */
   leaseId: string;
-  /** Ready to render in the dropdown as-is, per the contract. */
+  /**
+   * THE DROPDOWN ROW, WRITTEN HERE AND NOT TAKEN FROM THE SERVICE.
+   *
+   * The contract's own `label` is `NAME · Lease 15203`, and QA asked for the
+   * word "Lease" out and the number in brackets — `NAME (15203)`. The service
+   * keeps sending its form (other clients read it); this composes the one this
+   * page shows, from the same two fields the service composed its own from.
+   * A lease filed with no number is its name alone rather than an empty pair
+   * of brackets. Defect sheet · Invite co-owners row 2.
+   */
   label: string;
   leaseName: string;
   leaseNumber: string | null;
@@ -150,8 +167,28 @@ export interface RollCoOwner {
   kind: OwnerKind;
   city: string | null;
   state: string | null;
+  zip: string | null;
+  /**
+   * THE POSTING BLOCK AS THE ROLL FILED IT, one or two lines.
+   *
+   * Kept because `city` is frequently NULL while the address is perfectly
+   * present: the roll files the town inside the street line in some counties
+   * and the service will not guess where it ends (`address.whole`). The row
+   * showed "no address on the roll" for every one of those owners, which is a
+   * statement about the roll that was not true. Defect sheet row 8.
+   */
+  addressLines: string[];
   /** Percent (`0.1777` = 0.1777%), or null when the roll filed no interest. */
   sharePct: number | null;
+  /**
+   * THE ROLL'S OWN `Interest_Value` — a decimal, not a percentage.
+   *
+   * This is what the Share column prints. The percentage is a conversion this
+   * page was doing to a figure the appraisal roll files as a decimal, and a
+   * reader checking the page against their own roll extract had to undo it.
+   * Defect sheet row 4.
+   */
+  shareDecimal: number | null;
 }
 
 /** The step 2 list plus the whole-lease tallies the card prints. */
@@ -186,6 +223,17 @@ export interface InviteEmailView {
   sender: string;
   /** Greeting through signature, for the on-screen preview. */
   bodyText: string;
+  /**
+   * THE BODY ALONE, PARAGRAPH BY PARAGRAPH — what `body` renders into.
+   *
+   * `bodyText` is the whole letter: greeting, body, link, signature and the
+   * closing note. Only the middle is editable, and "Customize invitation" was
+   * opening a LOCAL template that had drifted from the words on screen — the
+   * reader saw one letter and edited another. These are the service's own
+   * paragraphs, which `templateFrom` turns back into the template that
+   * produced them. Defect sheet row 14.
+   */
+  paragraphs: string[];
   /** Subject + blank line + body. THE COPY BUTTON'S PAYLOAD, verbatim. */
   copyText: string;
   /** Why this one wants a second look before it goes out, or null. */
@@ -227,8 +275,16 @@ interface WireLease {
   decimal_interest?: number | null;
 }
 
+interface WireClaimedOwner {
+  name?: string;
+  owner_number?: string | null;
+  active?: boolean;
+}
+
 interface WireLeasesResponse {
   leases?: WireLease[];
+  owners?: WireClaimedOwner[];
+  owner_filter?: string | null;
   page?: { total?: number };
 }
 
@@ -238,8 +294,13 @@ interface WireOwner {
   name?: string;
   kind?: string;
   city?: string | null;
-  address?: { city?: string | null; state?: string | null } | null;
-  share?: { percent?: number | null } | null;
+  address?: {
+    city?: string | null;
+    state?: string | null;
+    zip?: string | null;
+    lines?: string[];
+  } | null;
+  share?: { percent?: number | null; decimal?: number | null } | null;
 }
 
 interface WireOwnersResponse {
@@ -267,6 +328,7 @@ interface WireEmail {
   invite_url?: string;
   sender?: string;
   body_text?: string;
+  paragraphs?: string[];
   copy_text?: string;
   caution?: string | null;
 }
@@ -312,6 +374,7 @@ function toEmailView(wire: WireEmail): InviteEmailView | null {
     inviteUrl: wire.invite_url ?? "",
     sender: wire.sender ?? "",
     bodyText: wire.body_text ?? "",
+    paragraphs: wire.paragraphs ?? [],
     copyText: wire.copy_text,
     caution: wire.caution ?? null,
   };
@@ -350,6 +413,51 @@ export function buildCopyAll(emails: InviteEmailView[]): string | null {
     .join("\n\n\n");
 }
 
+/** Every regex metacharacter in a name or a URL, made literal. */
+function literal(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * THE LETTER ON SCREEN, TURNED BACK INTO THE TEMPLATE THAT PRODUCED IT.
+ *
+ * "Customize invitation" used to open a template held in this repo, and that
+ * template had drifted from the service's own wording — the reader saw one
+ * letter in the preview, pressed edit, and was handed a different one to
+ * change. Defect sheet row 14.
+ *
+ * SO THE EDITOR IS SEEDED FROM THE LETTER ITSELF. The service returns the body
+ * it rendered as `paragraphs`; this walks the four substitutions backwards —
+ * the code, the claim link, the recipient and the lease — so what opens in the
+ * textarea is the words on screen with the per-person parts back in their
+ * braces. Edit it and every recipient still gets their own name and their own
+ * code, which is the whole reason the tokens exist.
+ *
+ * IT RETURNS NULL WHEN THERE IS NOTHING TO SEED FROM. A letter with no
+ * paragraphs means the service sent a shape this cannot read, and the caller
+ * falls back to the standard letter rather than opening an empty box.
+ */
+export function templateFrom(email: InviteEmailView): string | null {
+  if (!email.paragraphs.length) return null;
+  let body = email.paragraphs.join("\n\n");
+
+  /* THE LINK BEFORE THE CODE. `invite_url` is the claim link WITH the code
+     hung off it, and `{url}` renders as the same link WITHOUT — so the base
+     has to go first or the code inside the longer one is replaced separately
+     and leaves a broken half-link behind. */
+  const base = email.inviteUrl.split("?")[0];
+  for (const [text, token] of [
+    [email.inviteUrl, "{url}"],
+    [base, "{url}"],
+    [email.codeLabel, "{code}"],
+    [email.code, "{code}"],
+    [email.to, "{name}"],
+  ] as [string, string][]) {
+    if (text) body = body.replace(new RegExp(literal(text), "g"), token);
+  }
+  return body;
+}
+
 /* ============================================================================
    THE FIVE CALLS
    ============================================================================ */
@@ -362,16 +470,34 @@ export function buildCopyAll(emails: InviteEmailView[]): string | null {
  */
 export const LEASES_PAGE = 100;
 
+/**
+ * `BRISCOE COCHINA EAST RANCH (15203)` — see `LeaseChoice.label`.
+ *
+ * Exported because the picker draws the chosen lease's name in two places and
+ * both have to agree with the option the reader picked.
+ */
+export function leaseLabel(name: string, number: string | null): string {
+  const named = name.trim();
+  if (!named) return number ? `(${number})` : "";
+  return number ? `${named} (${number})` : named;
+}
+
 /** The wire→view mapping, exported so the server-side prefetch shares it. */
 export function mapLeasesResponse(data: WireLeasesResponse): {
   leases: LeaseChoice[];
   total: number;
+  owners: ClaimedOwner[];
+  /** The claimed identity the account is looking through, when it names one. */
+  activeOwner: string | null;
 } {
   const leases = (data.leases ?? [])
     .filter((lease) => typeof lease.lease_id === "string")
     .map((lease) => ({
       leaseId: lease.lease_id as string,
-      label: lease.label ?? lease.lease_name ?? (lease.lease_id as string),
+      label:
+        leaseLabel(lease.lease_name ?? "", lease.lease_number ?? null) ||
+        lease.label ||
+        (lease.lease_id as string),
       leaseName: lease.lease_name ?? "",
       leaseNumber: lease.lease_number ?? null,
       counties: lease.counties?.length
@@ -383,18 +509,47 @@ export function mapLeasesResponse(data: WireLeasesResponse): {
       decimalInterest: lease.decimal_interest ?? null,
     }));
 
-  return { leases, total: data.page?.total ?? leases.length };
+  const owners = (data.owners ?? [])
+    .filter((owner) => typeof owner.name === "string" && owner.name !== "")
+    .map((owner) => ({
+      name: owner.name as string,
+      ownerNumber: owner.owner_number ?? null,
+      active: owner.active === true,
+    }));
+
+  return {
+    leases,
+    total: data.page?.total ?? leases.length,
+    owners,
+    activeOwner: owners.find((owner) => owner.active)?.name ?? null,
+  };
 }
 
-/** Step 1 — GET /invite/leases. One row per claimed lease. */
+/**
+ * Step 1 — GET /invite/leases. One row per claimed lease.
+ *
+ * `owner` NARROWS TO ONE CLAIMED IDENTITY, and it is what makes the picker
+ * agree with the owner the top bar is showing. The contract lists every
+ * identity the member has claimed when the parameter is omitted — "an invite
+ * is sent by the member, not by one of their owner records" — which is why
+ * switching owner in the chrome left the same 4,461 leases on offer. Defect
+ * sheet row 23.
+ */
 export async function fetchInviteLeases(options?: {
   q?: string;
+  owner?: string | null;
   limit?: number;
   offset?: number;
   signal?: AbortSignal;
-}): Promise<{ leases: LeaseChoice[]; total: number }> {
+}): Promise<{
+  leases: LeaseChoice[];
+  total: number;
+  owners: ClaimedOwner[];
+  activeOwner: string | null;
+}> {
   const params = new URLSearchParams();
   if (options?.q?.trim()) params.set("q", options.q.trim());
+  if (options?.owner?.trim()) params.set("owner", options.owner.trim());
   params.set("limit", String(options?.limit ?? LEASES_PAGE));
   if (options?.offset) params.set("offset", String(options.offset));
 
@@ -432,7 +587,10 @@ export async function fetchLeaseRoster(
       kind: kindOf(owner.kind),
       city: owner.city ?? owner.address?.city ?? null,
       state: owner.address?.state ?? null,
+      zip: owner.address?.zip ?? null,
+      addressLines: owner.address?.lines ?? [],
       sharePct: owner.share?.percent ?? null,
+      shareDecimal: owner.share?.decimal ?? null,
     }));
 
   const counts = {

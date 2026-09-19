@@ -77,17 +77,78 @@ const RELOAD_AFTER_MS = 1_600;
 /** sessionStorage key for a code whose claim has already filed. */
 const doneKey = (code: string) => `mv-invite-redeemed:${code}`;
 
+/**
+ * THE CORNER CARD, shared by the two states that leave the portal usable.
+ *
+ * Fixed and self-styled: this renders BESIDE the portal shell, not inside it,
+ * and must not depend on which route group's sheet happens to be loaded.
+ */
+const CORNER: React.CSSProperties = {
+  position: "fixed",
+  right: 18,
+  bottom: 18,
+  zIndex: 80,
+  maxWidth: 420,
+  padding: "14px 16px",
+  borderRadius: 10,
+  background: "#101828",
+  color: "#f4f6fa",
+  boxShadow: "0 12px 32px rgba(9, 14, 24, .45)",
+  fontSize: 13,
+  lineHeight: 1.5,
+};
+
 type Phase =
   | { step: "looking" }
   | { step: "claiming"; ownerName: string }
   | { step: "claimed"; ownerName: string; leases: number }
   | { step: "already"; ownerName: string }
+  /** The reader already has a record of their own — see `HAS A RECORD`. */
+  | { step: "hasRecord"; ownerName: string; yours: string[] }
   | { step: "failed"; message: string };
 
 interface LookupAnswer {
   owner_name?: string;
   owner_address?: string;
   county?: string;
+}
+
+/** One claimed identity on the reader's own account, as `/invite/leases` lists it. */
+interface ClaimedOwnerRow {
+  name?: string;
+  active?: boolean;
+}
+
+/**
+ * WHAT THIS ACCOUNT HAS ALREADY CLAIMED — names only, cheapest read there is.
+ *
+ * `null` MEANS "NOTHING CLAIMED, OR THE QUESTION COULD NOT BE ASKED", and both
+ * of those come out the same way on purpose: the invitation is a shortcut, and
+ * a check that cannot be made must never be the thing that stops it working.
+ * The redeem path then runs exactly as it did before.
+ */
+async function claimedOwners(): Promise<string[] | null> {
+  try {
+    const res = await fetch("/api/invite/leases?limit=1", {
+      cache: "no-store",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    /* 404 is the documented "this member has claimed nothing" — the state the
+       invitation exists for. Anything else unreadable is treated the same. */
+    if (!res.ok) return null;
+    const data = (await res.json()) as { owners?: ClaimedOwnerRow[] };
+    const names = (data.owners ?? [])
+      .map((owner) => owner.name)
+      .filter((name): name is string => typeof name === "string" && name !== "");
+    return names.length ? names : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Case and punctuation folded, so "Kate Marmion Charitable Fndn" matches itself. */
+function fold(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
 interface ClaimAnswer {
@@ -171,6 +232,38 @@ export function InviteRedeem({
         return;
       }
 
+      /* ---- 1b · HAS A RECORD? THEN NOTHING IS FILED WITHOUT ASKING -------
+       *
+       * The flow this component was built for is a member who has JUST
+       * registered off an invitation and owns nothing yet: look the code up,
+       * file the claim, reload onto their own minerals. It ran that way for
+       * anybody who opened the link, including a member already signed in with
+       * a record of their own — so clicking a relative's link silently
+       * attached that relative's owner record to an established account and
+       * announced it as "Welcome — your record is claimed", over somebody
+       * else's name and lease count. Defect sheet · Invite co-owners row 22.
+       *
+       * FILING A CLAIM IS A WRITE AGAINST THE READER'S ACCOUNT, and one they
+       * did not ask for by following a link. So an account that already holds
+       * a claim is SHOWN the invitation and left to decide: which record it is
+       * for, which records are already theirs, and the claim flow one link
+       * away.
+       *
+       * UNLESS IT IS THE SAME RECORD, which is the flow having already worked
+       * — a forwarded letter, a second registration — and is the existing
+       * "nothing to claim twice" path rather than a decision to put to them.
+       */
+      const yours = await claimedOwners();
+      if (yours) {
+        if (yours.some((name) => fold(name) === fold(owner.name))) {
+          setPhase({ step: "already", ownerName: owner.name });
+          setTimeout(() => window.location.replace(PORTAL_HOME), RELOAD_AFTER_MS);
+          return;
+        }
+        setPhase({ step: "hasRecord", ownerName: owner.name, yours });
+        return;
+      }
+
       /* ---- 2 · the owner of record → this member's claim ----------------- */
       setPhase({ step: "claiming", ownerName: owner.name });
       try {
@@ -243,29 +336,52 @@ export function InviteRedeem({
     })();
   }, [code, memberId]);
 
+  /* ---- already has a record: the dashboard shows through, and so does the
+     invitation, with the decision left to the reader ---------------------- */
+  if (phase.step === "hasRecord") {
+    return (
+      <div role="status" aria-live="polite" style={CORNER}>
+        <strong>You already have a Mineral View account.</strong> It is signed
+        in and{" "}
+        {phase.yours.length === 1 ? (
+          <>
+            <em>{phase.yours[0]}</em> is claimed on it
+          </>
+        ) : (
+          <>
+            {phase.yours.length} owner records are claimed on it, including{" "}
+            <em>{phase.yours[0]}</em>
+          </>
+        )}
+        , so nothing has been changed. This invitation is for{" "}
+        <em>{phase.ownerName}</em> — if that record is yours as well, claim it
+        and its leases come across too.
+        <div style={{ marginTop: 10 }}>
+          <Link
+            href="/mineralownersite/claim"
+            style={{ color: "#9fd3ff", textDecoration: "underline" }}
+          >
+            Claim mineral owner record
+          </Link>
+          <Link
+            href={PORTAL_HOME}
+            style={{
+              color: "#c7d1e0",
+              textDecoration: "underline",
+              marginLeft: 16,
+            }}
+          >
+            Not mine — go to my minerals
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   /* ---- failed: the dashboard shows through, a corner card explains ------- */
   if (phase.step === "failed") {
     return (
-      /* Fixed and self-styled: this renders BESIDE the portal shell, not
-         inside it, and must not depend on which route group's sheet loads. */
-      <div
-        role="status"
-        aria-live="polite"
-        style={{
-          position: "fixed",
-          right: 18,
-          bottom: 18,
-          zIndex: 80,
-          maxWidth: 420,
-          padding: "14px 16px",
-          borderRadius: 10,
-          background: "#101828",
-          color: "#f4f6fa",
-          boxShadow: "0 12px 32px rgba(9, 14, 24, .45)",
-          fontSize: 13,
-          lineHeight: 1.5,
-        }}
-      >
+      <div role="status" aria-live="polite" style={CORNER}>
         <strong>Your invitation could not be redeemed.</strong> {phase.message}{" "}
         <Link
           href="/mineralownersite/claim"

@@ -18,11 +18,36 @@
  * reads as the page having come loose from the shell rather than as extra
  * space. Matching the group matters more here than the extra column.
  *
- * So there is no width rule in this file at all now, and `page.tsx` passes no
- * `shellClass`. The page inherits `.mv-ref-app .app-body` — `padding: 26px`,
- * `max-width: 1180px`, `1340px` at the Pro density, and the group's own narrow
- * rules below 900px — exactly as its neighbors do.
+ * So there is no width rule of this page's own, and `page.tsx` passes only the
+ * group's wide gutters. The page inherits `.mv-ref-app .app-body` —
+ * `padding: 26px`, `max-width: 1180px` and the group's own narrow rules below
+ * 900px — exactly as its neighbors do.
+ *
+ * ── EXCEPT THAT IT NO LONGER RESIZES WITH THE DENSITY SWITCH ──
+ *
+ * `dashboard-reference.css` gives each density its own reading measure: 920px
+ * at Essentials, 1180 at Detailed, 1340 at Pro and 860 at Ultra. That is right
+ * for a page of prose and charts, where the density IS how much there is to
+ * read. This page is a three-step form over a roll of ninety owners, and the
+ * density switch changes nothing about what it shows — so all four modes
+ * showed the identical page at four different widths, the cards reflowing and
+ * the gutters jumping each time. QA read the page as unstable, which is
+ * exactly what it was. Defect sheet · Invite co-owners row 17.
+ *
+ * SO THE COLUMN IS PINNED TO THE GROUP'S OWN 1180px IN EVERY MODE. The sheet
+ * is page-imported and unlayered, so this beats the four tier rules without an
+ * `!important`, and it is scoped to `.mv-invite-page` — the class `page.tsx`
+ * passes as `shellClass` — so no other page on this shell loses its densities.
+ * The narrow-viewport rules below 900px are untouched: that width is about the
+ * device, not about the mode.
  */
+@media (min-width: 900px) {
+  .mv-ref-app.mv-invite-page.view-simple .app-body,
+  .mv-ref-app.mv-invite-page.view-pro .app-body,
+  .mv-ref-app.mv-invite-page.view-ultra .app-body {
+    max-width: 1180px;
+  }
+}
 
 /* ===========================================================================
  * 2 · THE REFERENCE'S OWN INVITE STYLES — ported in full, rescoped.
@@ -176,15 +201,88 @@
 .mv-ref-app .iv-stepbody { min-width: 0; }
 
 /* ------------------------------ the lease picker, and what it says */
-.mv-ref-app .iv-sel { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.mv-ref-app .iv-sel > span {
-  font-size: 9.5px; font-weight: 700; letter-spacing: .07em;
-  text-transform: uppercase; color: var(--slate);
-}
-.mv-ref-app .iv-sel select {
+/*
+ * IT WAS A NATIVE `<select>`, AND THE POPUP WAS THE WHOLE PROBLEM.
+ *
+ * A hundred options is taller than the viewport, so the browser drew the list
+ * upward and off the top of the page, and on the way it covered the search box
+ * sitting directly above the control. Neither is something CSS can reach: a
+ * native popup is the platform's window, not the page's. Defect sheet rows 1
+ * and 5 — see `lease-step.tsx` for the rest of the reasoning.
+ *
+ * SO THE PANEL IS THE PAGE'S OWN. `position: absolute` inside a relative
+ * wrapper, its own `max-height` and its own scroll, which is what keeps it
+ * inside the card however many leases the record holds.
+ */
+.mv-ref-app .iv-combo { position: relative; }
+.mv-ref-app .iv-combo > .iv-lbl { margin: 0 0 6px; }
+.mv-ref-app .iv-combo-btn {
   font: inherit; font-size: 13px; font-weight: 600; color: var(--ink);
   background: #fff; border: 1px solid var(--line); border-radius: 10px;
-  padding: 9px 12px; max-width: 100%; flex: 1 1 320px;
+  padding: 9px 12px; width: 100%; cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  text-align: left;
+}
+.mv-ref-app .iv-combo-btn > span { min-width: 0; overflow-wrap: anywhere; }
+.mv-ref-app .iv-combo-btn > i {
+  font-style: normal; font-size: 10px; color: var(--slate); flex: none;
+}
+/* NOTHING CHOSEN READS AS A PROMPT, not as a value. */
+.mv-ref-app .iv-combo-btn.empty { font-weight: 500; color: var(--slate); }
+.mv-ref-app .iv-combo-btn:hover { border-color: var(--bar-on, #223040); }
+.mv-ref-app .iv-combo-btn:focus-visible {
+  outline: 2px solid var(--bar-on, #223040); outline-offset: 1px;
+}
+
+.mv-ref-app .iv-combo-pop {
+  position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; right: 0;
+  background: #fff; border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 16px 38px rgba(15, 26, 22, .16);
+  overflow: hidden; display: flex; flex-direction: column;
+  /* THE CEILING IS THE POINT. Whatever the record holds, the panel is this
+     tall and the rows inside it scroll. */
+  max-height: min(340px, 60vh);
+}
+/* THE SEARCH IS THE TOP OF THE LIST, so there is no separate box left for the
+   panel to land on. It holds still while the rows under it scroll. */
+.mv-ref-app .iv-combo-find {
+  display: flex; gap: 8px; align-items: center; flex: none;
+  padding: 10px 10px 8px; border-bottom: 1px solid #f1f4f4;
+}
+.mv-ref-app .iv-combo-find input[type="search"] {
+  font: inherit; font-size: 12.5px; padding: 8px 11px; flex: 1 1 auto;
+  border: 1px solid var(--line); border-radius: 9px;
+  background: #fff; color: var(--ink); min-width: 0;
+}
+.mv-ref-app .iv-combo-find input[type="search"]:focus-visible {
+  outline: 2px solid var(--bar-on, #223040); outline-offset: 1px;
+}
+.mv-ref-app .iv-combo-list {
+  list-style: none; margin: 0; padding: 4px; overflow-y: auto; min-height: 0;
+  overscroll-behavior: contain;
+}
+.mv-ref-app .iv-combo-list > li { margin: 0; }
+.mv-ref-app .iv-combo-list button {
+  font: inherit; width: 100%; text-align: left; cursor: pointer;
+  background: none; border: 0; border-radius: 8px; padding: 7px 9px;
+  display: flex; align-items: baseline; gap: 4px 10px; flex-wrap: wrap;
+}
+.mv-ref-app .iv-combo-list button > b {
+  font-size: 12.5px; font-weight: 600; color: var(--ink);
+  min-width: 0; overflow-wrap: anywhere;
+}
+.mv-ref-app .iv-combo-list button > i {
+  font-style: normal; font-size: 10.5px; color: var(--slate);
+  margin-left: auto; white-space: nowrap;
+}
+/* THE POINTER AND THE KEYBOARD LAND ON ONE CLASS, so a reader using both does
+   not see two rows highlighted at once. */
+.mv-ref-app .iv-combo-list button.at { background: #f2f6f5; }
+.mv-ref-app .iv-combo-list button.on > b { color: var(--green-deep); }
+.mv-ref-app .iv-combo-none { padding: 12px 10px; }
+.mv-ref-app .iv-combo-foot {
+  flex: none; margin: 0; padding: 8px 12px;
+  border-top: 1px solid #f1f4f4; background: #fbfcfc;
 }
 /* FOUR COLUMNS FOR FOUR FACTS — two up until there is room for four, and the
    second row then takes its own left edge and a rule above it. */
@@ -597,47 +695,18 @@
   text-transform: uppercase; color: var(--slate); width: 52px; flex: none;
 }
 .mv-ref-app .iv-mailrow > b { font-size: 12.5px; min-width: 0; overflow-wrap: anywhere; }
-/* THE HINT STAYS ON ONE LINE BESIDE THE NAME AND SCROLLS WHEN IT DOES NOT FIT
-   (asked for directly: no second line). It was `flex: 1 1 150px; text-align:
-   right`, which squeezed it into whatever was left over and broke its sentence
-   across two right-aligned lines — the ragged block floating in the corner of
-   the TO row.
-   `flex: 1 1 0` WITH `min-width: 0`: a zero basis means it never pushes the
-   row to wrap, it simply takes what is left after the label and the name, and
-   `overflow: hidden` clips the rest for the marquee to bring round. The
-   measuring and the duplicate copy are `MailHint`'s — see email-step.tsx for
-   why the overflow has to be measured rather than assumed. */
+/* THE HINT SITS STILL AND WRAPS.
+   It was a marquee: one clipped line with two copies of the sentence on an
+   infinite translate, the duration measured off the text so the speed stayed
+   constant. The motion never stopped, and it ran beside a letter preview a
+   reader is trying to proofread — reported as the recipient line
+   "continuously re-triggering in a loop". Defect sheet row 11.
+   `flex: 1 1 200px` with `min-width: 0`: it still takes what is left after the
+   label and the name, but it is allowed to take a second line rather than be
+   clipped, so nothing has to move to become readable. The keyframes, the pause
+   on hover and the reduced-motion branch all went with the animation. */
 .mv-ref-app .iv-mailhint {
-  flex: 1 1 0; min-width: 0; text-align: left;
-  overflow: hidden; white-space: nowrap;
-}
-/* IT ALWAYS RUNS. There is no "only when it overflows" state any more — see
-   `MailHint`: that made the same page scroll for one owner and sit still for
-   the next, because whether it overflowed depended on the recipient's name. */
-.mv-ref-app .iv-mailhint-track {
-  display: inline-flex;
-  animation: iv-hint-scroll var(--iv-hint-dur, 9s) linear infinite;
-  will-change: transform;
-}
-/* THE GAP IS PADDING ON EACH COPY, NOT `gap` ON THE TRACK. The loop travels
-   exactly -50%, which is one whole copy only while each copy carries its own
-   trailing space; with `gap` that translate lands half a gap short and the
-   seam stutters once a cycle. */
-.mv-ref-app .iv-mailhint-track > span { padding-right: 48px; }
-/* Pause under the pointer, so a reader who wants the whole sentence can stop
-   it rather than wait for it to come round. */
-.mv-ref-app .iv-mailhint:hover .iv-mailhint-track { animation-play-state: paused; }
-@keyframes iv-hint-scroll {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
-}
-/* MOTION OFF MEANS A SCROLLBAR, NOT A CLIPPED SENTENCE. With the animation
-   gone the tail would simply be unreachable, so the box hands it back as an
-   ordinary horizontal scroll. The duplicate copy stays out of the way. */
-@media (prefers-reduced-motion: reduce) {
-  .mv-ref-app .iv-mailhint-track { animation: none; }
-  .mv-ref-app .iv-mailhint-track > span + span { display: none; }
-  .mv-ref-app .iv-mailhint { overflow-x: auto; }
+  flex: 1 1 200px; min-width: 0; text-align: left; line-height: 1.5;
 }
 .mv-ref-app .iv-mailbody {
   margin: 0; padding: 15px 17px; background: #fcfdfd;
@@ -732,15 +801,31 @@
 /* `.ml-segs` IS THE REFERENCE'S SEGMENTED CONTROL, and this app's sheet has no
    equivalent either. INK WHEN CHOSEN, NOT GREEN: four green things on one
    screen read as four highlights and therefore as none. */
+/*
+ * THE CORNERS. `overflow: hidden` on a 10px radius clips whatever the end
+ * buttons draw, and the chosen one draws a 1px inset ring — so on the first
+ * and last segment the ring was sliced off at the curve and the button read as
+ * a rectangle with two corners cut away. Defect sheet row 21.
+ *
+ * THE FIX IS TO STOP CLIPPING AND LET THE ENDS CARRY THE RADIUS THEMSELVES,
+ * below. A radius inherited by the element that actually paints is round; a
+ * radius enforced by cutting the parent is a crop.
+ */
 .mv-ref-app .ml-segs {
-  display: inline-flex; border: 1px solid #dde4ea; border-radius: 10px; overflow: hidden;
+  display: inline-flex; border: 1px solid #dde4ea; border-radius: 10px;
 }
 .mv-ref-app .ml-segs button {
   font: inherit; font-size: 12px; font-weight: 600; color: var(--slate);
   background: #fff; border: 0; border-left: 1px solid #eef2f1; padding: 7px 13px;
   cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
 }
-.mv-ref-app .ml-segs button:first-child { border-left: 0; }
+/* 9px inside a 10px border-box: the child sits one border in, so an equal
+   radius would leave a hairline of the parent's corner showing outside it. */
+.mv-ref-app .ml-segs button:first-child {
+  border-left: 0; border-radius: 9px 0 0 9px;
+}
+.mv-ref-app .ml-segs button:last-child { border-radius: 0 9px 9px 0; }
+.mv-ref-app .ml-segs button:only-child { border-radius: 9px; }
 /* CHOSEN IS MINT, exactly as `.al-filter button.on` is on the Alerts page: the
    same kind of control, so the same treatment. The reference sets `--ink` here
    and explains that green is reserved for products in that build. */

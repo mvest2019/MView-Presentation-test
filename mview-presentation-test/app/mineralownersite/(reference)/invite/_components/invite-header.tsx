@@ -31,7 +31,14 @@ import { gates } from "../../../_components/ui/portal-gating";
 export function InviteHeader() {
   return (
     <div className="iv-top">
-      <div className="section-label">Connect with Co-Owners</div>
+      {/*
+        THE EYEBROW IS GONE, AND THE PAGE HAS ONE HEADING AGAIN.
+        "CONNECT WITH CO-OWNERS" sat directly over "Invite Co-Owners" and said
+        the same thing in different words, so the page opened with two titles
+        stacked on each other. Defect sheet · Invite co-owners row 18. The
+        `.section-label` rule stays in `invite.css` — the reference uses it on
+        the surfaces that have something else to say in that slot.
+      */}
       {/* AN `h1`, AND THE REFERENCE'S `h2` IS NOT COPIED HERE. This page brings
           its own view through `Portal`'s `children`, so nothing above it in the
           document is a heading — the title of the page is the document's

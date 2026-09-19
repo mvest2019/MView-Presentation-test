@@ -1,8 +1,8 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment } from "react";
 
-import type { InviteEmailView } from "../_api/invite-api";
+import { templateFrom, type InviteEmailView } from "../_api/invite-api";
 import { DEFAULT_BODY } from "../_lib/invite-letters";
 import { preparedOn, printDocument } from "../_lib/print-document";
 import { renderInviteEmails } from "../_lib/invite-render";
@@ -97,12 +97,26 @@ export function EmailStep({
   onEditing: (next: boolean) => void;
   sendNote: string;
 }) {
-  /* What the editor shows: the reader's edit, or the standard letter as the
-     starting point. Only an actual edit travels to the service — null keeps
-     the wording the service's own. */
-  const draft = body ?? DEFAULT_BODY;
   const index = Math.min(at, Math.max(0, emails.length - 1));
   const one = emails[index] ?? null;
+  /*
+   * WHAT THE EDITOR SHOWS: THE READER'S EDIT, OR THE LETTER ON SCREEN.
+   *
+   * It was the reader's edit or `DEFAULT_BODY` — a template kept in this repo
+   * — and that template had drifted from the service's own wording. Pressing
+   * "Customize invitation" under a preview therefore opened a DIFFERENT letter
+   * to edit, which is what QA saw as "a new email template instead of the one
+   * already displayed". Defect sheet row 14.
+   *
+   * `templateFrom` walks the shown letter's own paragraphs back to the
+   * template that produced them, so the textarea opens on the words above it
+   * with the per-person parts back in their braces. The local default survives
+   * as the last resort for a letter the service sent no paragraphs for.
+   *
+   * Only an actual edit travels to the service — `body` stays null until the
+   * reader types, and null is what keeps the wording the service's own.
+   */
+  const draft = body ?? (one ? templateFrom(one) : null) ?? DEFAULT_BODY;
   const cautions = emails.filter((email) => email.caution).length;
   const notPeople = emails.filter((email) => email.kind !== "person").length;
 
@@ -216,12 +230,23 @@ export function EmailStep({
               /* VERBATIM — the contract's rule. Plain text on purpose; pasting
                  HTML into a mail client is worse than a plain code. */
               text={one.copyText}
-              label={(() => {
-                const given = givenNameOf(one);
-                return given
-                  ? `Copy invitation for ${given}`
-                  : "Copy this invitation";
-              })()}
+              /*
+               * ONE LABEL, WHICHEVER LETTER IS SHOWING.
+               *
+               * It used to carry the recipient's given name — "Copy invitation
+               * for Judy" — and fall back to this sentence whenever the name
+               * could not be had safely. Stepping through twenty letters then
+               * renamed and resized the page's primary button on every arrow
+               * press, and for a roll row the greeting could not shorten it
+               * changed wording as well as width. Defect sheet row 13.
+               *
+               * The name is not lost: it is on the row's own copy button in
+               * the list below, beside the code it belongs to, where it names
+               * one letter among many rather than relabelling the one control
+               * that never changes what it does.
+               */
+              label="Copy this invitation"
+              title={`The invitation for ${one.to}, subject line included`}
             />
             {emails.length > 1 && copyAll ? (
               <CopyButton
@@ -360,96 +385,29 @@ export function EmailStep({
   );
 }
 
-/** How fast the hint travels, in CSS pixels per second. Slow enough to read. */
-const HINT_SPEED = 45;
-
 /**
- * THE TO ROW'S HINT, ON ONE LINE BESIDE THE NAME, SCROLLING CONTINUOUSLY.
+ * THE TO ROW'S HINT — ONE SENTENCE, SITTING STILL.
  *
- * IT ALWAYS RUNS (asked for directly). An earlier pass measured whether the
- * sentence overflowed and only animated when it did, so at a wide enough
- * layout — or beside a short enough name — it simply sat still. That made the
- * behaviour depend on the container and on how long the recipient's name is,
- * which is roll data, so the same page scrolled for one owner and not the
- * next. It is a ticker now: one line, moving, whatever the width.
+ * IT USED TO BE A TICKER. Two copies of the sentence on an infinite CSS
+ * translate, duration measured off the text so the speed stayed constant
+ * whatever the width. It read well for one pass and then never stopped: the
+ * animation restarts every cycle for as long as the letter is on screen, and
+ * beside a preview a reader is trying to proofread it is movement in the
+ * corner of the eye that cannot be dismissed. QA reported it as the recipient
+ * line "continuously re-triggering in a loop", which is exactly what it was.
+ * Defect sheet · Invite co-owners row 11.
  *
- * ── THE DUPLICATE IS WHAT MAKES THE LOOP SEAMLESS ──
- *
- * Two identical copies, each carrying its own trailing gap as padding, and the
- * track travels exactly -50%. That lands copy two precisely where copy one
- * started, so there is no jump at the seam — which is why the gap is padding
- * on the copies rather than `gap` on the track: with `gap`, -50% is half a gap
- * short and the seam stutters once a cycle.
- *
- * The second copy is `aria-hidden`: it is the same sentence twice, and a
- * screen reader should hear it once. The full text is also on `title`, so it
- * is reachable without waiting for the scroll to come round.
- *
- * ── SPEED IS CONSTANT, DURATION IS NOT ──
- *
- * A fixed duration makes a long sentence race and a short one crawl, so the
- * duration is derived from the travel instead. That travel is ONE COPY's
- * width, which does not depend on the container — but it does change when a
- * webfont swaps in under the text, so it is measured on the copy itself rather
- * than assumed, and re-measured if it moves.
- *
- * Hover pauses it, and `prefers-reduced-motion` stops it entirely — the CSS
- * hands those readers a scrollbar instead, since a clipped sentence they
- * cannot move is worse than either.
+ * SO IT WRAPS INSTEAD. The row is a grid with a flexible third column, and the
+ * sentence takes as many lines as it needs there — nothing is clipped, so
+ * nothing has to move to become readable. The `title` stays: it is the same
+ * sentence, and a reader on a very narrow layout gets it as a tooltip.
  */
 function MailHint({ text }: { text: string }) {
-  const copyRef = useRef<HTMLSpanElement | null>(null);
-  const [seconds, setSeconds] = useState<number | null>(null);
-
-  useEffect(() => {
-    const copy = copyRef.current;
-    if (!copy) return;
-
-    const measure = () => {
-      const travel = copy.getBoundingClientRect().width;
-      /* A zero width is a copy that has not been laid out yet — measuring it
-         would pin the duration at nothing and the text would flicker in place. */
-      if (travel > 0) setSeconds(Math.max(6, Math.round(travel / HINT_SPEED)));
-    };
-
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(copy);
-    return () => observer.disconnect();
-  }, [text]);
-
   return (
     <i className="tiny muted iv-mailhint" title={text}>
-      <span
-        className="iv-mailhint-track"
-        style={
-          seconds
-            ? ({ "--iv-hint-dur": `${seconds}s` } as React.CSSProperties)
-            : undefined
-        }
-      >
-        <span ref={copyRef}>{text}</span>
-        <span aria-hidden="true">{text}</span>
-      </span>
+      {text}
     </i>
   );
-}
-
-/**
- * The name for the copy button, read OUT OF THE GREETING the service resolved.
- *
- * The old build re-derived a first name from the roll spelling; the service
- * now owns that logic, and re-implementing it here would let the button
- * promise a letter to one name while the letter opened with another. "Dear
- * Judy," names Judy; "Dear family," and anything too long to fit on a button
- * fall back to the button's plain label.
- */
-function givenNameOf(email: InviteEmailView): string | null {
-  const match = /^Dear (.+),$/.exec(email.greeting.trim());
-  if (!match) return null;
-  const name = match[1];
-  if (name.toLowerCase() === "family" || name.length > 24) return null;
-  return name;
 }
 
 /**

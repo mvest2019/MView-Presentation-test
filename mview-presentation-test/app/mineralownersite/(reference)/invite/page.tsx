@@ -95,7 +95,15 @@ export default async function InviteCoOwnersPage({
        Activities beside it, which on a wide monitor reads as the page having
        come loose from the shell. It takes the group's width now. See
        `invite.css`. */
-    <Portal route={null} initial={initial} shellClass="mv-wide-gutters">
+    /* `mv-invite-page` RIDES ALONGSIDE THE GUTTERS so this page's column can
+       stop resizing with the density switch — Essentials, Detailed, Pro and
+       Ultra each set their own `max-width`, and this page shows the same three
+       cards in all four. See `invite.css` §1. */
+    <Portal
+      route={null}
+      initial={initial}
+      shellClass="mv-wide-gutters mv-invite-page"
+    >
       <InviteView initialLeases={initialLeases} />
     </Portal>
   );

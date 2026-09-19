@@ -6,6 +6,39 @@ import type { LeaseRoster, RollCoOwner } from "../_api/invite-api";
 import type { OwnerKind } from "../_lib/invite-types";
 import { StepCard } from "./step-card";
 
+/**
+ * The roll's decimal share, trimmed of the zeroes it was filed with.
+ *
+ * SIX PLACES, because the roll files to six and a small royalty share lives in
+ * the last two of them — 0.000019 is a real interest and rounding it is
+ * rounding it away. `Number()` then drops the trailing zeroes a large share
+ * does not need, so 0.750000 prints as 0.75.
+ */
+function formatShare(decimal: number | null, percent: number | null): string | null {
+  /* The decimal is the roll's own figure; the percentage is a conversion, so
+     it is only un-converted when the decimal itself is missing. */
+  const value = decimal ?? (percent === null ? null : percent / 100);
+  if (value === null) return null;
+  return String(Number(value.toFixed(6)));
+}
+
+/**
+ * Where the roll posts to, in as few words as it has.
+ *
+ * The parsed town when the service could split one out, the posting block when
+ * it could not, and null only when the roll filed no address at all — which is
+ * the one case the row is allowed to say so. See the header.
+ */
+function placeOf(owner: RollCoOwner): string | null {
+  if (owner.city) {
+    return `${owner.city}${owner.state ? `, ${owner.state}` : ""}`;
+  }
+  const block = owner.addressLines.map((line) => line.trim()).filter(Boolean);
+  if (block.length) return block.join(", ");
+  if (owner.state) return `${owner.state}${owner.zip ? ` ${owner.zip}` : ""}`;
+  return null;
+}
+
 /** What each kind of party is called, when the page has to say it out loud. */
 const KIND_LABEL: Record<OwnerKind, string> = {
   person: "Individual",
@@ -42,10 +75,30 @@ const KIND_LABEL: Record<OwnerKind, string> = {
  * know". The operator's tag is toned as a warning: a working-interest party
  *pays to drill and is not a fellow mineral owner.
  *
- * ── A NULL SHARE SAYS "NOT FILED", NEVER 0% ──
+ * ── THE SHARE IS THE ROLL'S OWN DECIMAL, NOT A PERCENTAGE ──
  *
- * The roll filing no interest is a fact about the roll, and rendering it as a
- * zero would rank a real owner as worthless.
+ * The appraisal roll files `Interest_Value` as a decimal — 0.025109 — and this
+ * column was multiplying it by a hundred and printing 2.5109%. Nothing was
+ * wrong with the arithmetic; it was the wrong figure to print. A reader
+ * checking this list against their own roll extract, a deed or a division
+ * order is reading decimals in all three, and had to convert every row back
+ * before they could compare it. Defect sheet · Invite co-owners row 4.
+ *
+ * A NULL SHARE SAYS "NOT FILED", NEVER 0. The roll filing no interest is a
+ * fact about the roll, and rendering it as a zero would rank a real owner as
+ * worthless.
+ *
+ * ── AND THE ADDRESS COLUMN PRINTS THE ADDRESS THE ROLL HAS ──
+ *
+ * It said "no address on the roll" for every owner of several counties, which
+ * is a statement about the public record that was not true. The service parses
+ * a town out of the posting block where it can and returns `city: null` where
+ * it cannot — some districts file the whole address on one line and there is
+ * nothing to split on, so guessing would invent a town. The column now falls
+ * back to the POSTING BLOCK ITSELF, which is what the roll actually holds, and
+ * keeps the "no address" sentence for the rows that genuinely have none.
+ * Row 8. (The parsed town is the service's to fix; this stops the page
+ * misreporting the roll while that is outstanding.)
  *
  * ── THE COUNTS COME FROM THE SERVICE ──
  *
@@ -54,6 +107,7 @@ const KIND_LABEL: Record<OwnerKind, string> = {
  * was read and what was left out. Both are printed rather than re-derived.
  */
 export function PeopleStep({
+  hasLease,
   roster,
   rosterError,
   picked,
@@ -65,6 +119,13 @@ export function PeopleStep({
   showAll,
   onShowAll,
 }: {
+  /**
+   * FALSE UNTIL STEP 1 IS ANSWERED. `roster === null` used to mean both "no
+   * lease yet" and "reading the roll", and with the picker no longer choosing
+   * a lease for the reader the first of those is now the page's opening state
+   * — which must not be reported as a read in progress.
+   */
+  hasLease: boolean;
   /** Null while the roll is being read. */
   roster: LeaseRoster | null;
   rosterError: string | null;
@@ -88,7 +149,7 @@ export function PeopleStep({
       if (!needle) return true;
       return (
         owner.name.toLowerCase().includes(needle) ||
-        (owner.city ?? "").toLowerCase().includes(needle) ||
+        (placeOf(owner) ?? "").toLowerCase().includes(needle) ||
         (owner.ownerNumber ?? "").includes(needle)
       );
     });
@@ -144,8 +205,11 @@ export function PeopleStep({
                 <span className="iv-sr">Chosen</span>
               </th>
               <th>Owner of record</th>
-              <th className="right">Share</th>
-              <th>Town</th>
+              {/* THE ROLL'S OWN WORD FOR THE FIGURE, so a reader comparing
+                  this against a division order is comparing like with like —
+                  see the header on why it is no longer a percentage. */}
+              <th className="right">Decimal interest</th>
+              <th>Address on the roll</th>
             </tr>
           </thead>
           <tbody>
@@ -156,7 +220,10 @@ export function PeopleStep({
                   className="tiny muted"
                   style={{ padding: "14px 10px" }}
                 >
-                  {rosterError ?? "Reading the appraisal roll…"}
+                  {rosterError ??
+                    (hasLease
+                      ? "Reading the appraisal roll…"
+                      : "Select a lease in step 1 and the other owners of record are listed here.")}
                 </td>
               </tr>
             ) : (
@@ -177,10 +244,20 @@ export function PeopleStep({
                       className="tiny muted"
                       style={{ padding: "14px 10px" }}
                     >
-                      Nothing matches that.
-                      {!showAll && others
-                        ? " Some owners of record are companies or trusts — show them below."
-                        : ""}
+                      {/*
+                        "NOTHING MATCHES THAT" IS AN ANSWER TO A SEARCH, and it
+                        was being given to readers who had not made one: a lease
+                        whose roll holds no individuals at all opened on it,
+                        which reads as the page having lost the list rather than
+                        as the lease having no people on it. The empty row now
+                        says WHY it is empty. Defect sheet row 9.
+                      */}
+                      <EmptyReason
+                        searched={query.trim().length > 0}
+                        others={others}
+                        showAll={showAll}
+                        owners={owners.length}
+                      />
                     </td>
                   </tr>
                 ) : null}
@@ -248,6 +325,56 @@ export function PeopleStep({
   );
 }
 
+/**
+ * Why step 2's list is empty — the four ways it can be, said apart.
+ *
+ * The only one of them that is about a SEARCH is the one where a search was
+ * made. The rest are facts about the lease, and each names what the reader can
+ * do about it: widen to the companies, or accept that this roll carries
+ * nobody else.
+ */
+function EmptyReason({
+  searched,
+  others,
+  showAll,
+  owners,
+}: {
+  searched: boolean;
+  /** Companies, trusts and the operator — the rows the filter is hiding. */
+  others: number;
+  showAll: boolean;
+  /** Every row the roll returned for this lease. */
+  owners: number;
+}) {
+  if (searched) {
+    return (
+      <>
+        Nothing matches that.
+        {!showAll && others
+          ? " Some owners of record are companies or trusts — show them below."
+          : ""}
+      </>
+    );
+  }
+  if (owners === 0) {
+    return <>The appraisal roll lists no other owner of record on this lease.</>;
+  }
+  if (!showAll && others) {
+    return (
+      <>
+        No individual owners on this lease —{" "}
+        {others === 1
+          ? "the one other owner of record is a company, a trust or the operator"
+          : "all " +
+            others +
+            " other owners of record are companies, trusts or the operator"}
+        . Show them below to write to them anyway.
+      </>
+    );
+  }
+  return <>No other owner of record on this lease.</>;
+}
+
 function OwnerRow({
   owner,
   on,
@@ -259,13 +386,8 @@ function OwnerRow({
   pending: boolean;
   onToggle: (ownerKey: string, on: boolean) => void;
 }) {
-  const where = owner.city
-    ? `${owner.city}${owner.state ? `, ${owner.state}` : ""}`
-    : null;
-  const share =
-    owner.sharePct != null
-      ? `${owner.sharePct.toFixed(owner.sharePct < 1 ? 3 : 1)}%`
-      : null;
+  const where = placeOf(owner);
+  const share = formatShare(owner.shareDecimal, owner.sharePct);
 
   return (
     <tr className={on ? "on" : undefined}>
@@ -287,17 +409,17 @@ function OwnerRow({
             {KIND_LABEL[owner.kind]}
           </i>
         ) : null}
-        {/* THE TOWN, FOR A NARROW SCREEN ONLY. CSS shows exactly one of these
-            two at any width. */}
+        {/* THE ADDRESS, FOR A NARROW SCREEN ONLY. CSS shows exactly one of
+            these two at any width. */}
         <i className="iv-where">{where ?? "no address on the roll"}</i>
       </td>
       <td className="right num">
-        {/* "not filed", NEVER 0% — the roll filed no interest for this row. */}
+        {/* "not filed", NEVER 0 — the roll filed no interest for this row. */}
         {share ?? <span className="tiny muted">not filed</span>}
       </td>
       <td>
         {where ? (
-          <span>{where}</span>
+          <span title={where}>{where}</span>
         ) : (
           <span className="tiny muted">no address on the roll</span>
         )}

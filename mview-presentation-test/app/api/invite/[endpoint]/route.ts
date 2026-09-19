@@ -98,6 +98,32 @@ const WRITES: Record<
   },
 };
 
+/**
+ * WHO THE LETTER IS SIGNED BY — the person holding the account.
+ *
+ * The service signs an invitation with the OWNER RECORD the member is looking
+ * through ("Arc Cog Inc"), because that is the name it has. A letter whose
+ * whole advantage is that it comes from a relative cannot be signed by a
+ * corporate roll entry: the recipient is meant to recognise the sender. QA
+ * asked for the account holder's name in that line. Defect sheet · Invite
+ * co-owners row 12.
+ *
+ * IT IS SET HERE FOR THE SAME REASON `member_id` IS. The name comes off the
+ * session cookie rather than from the page, so the browser cannot sign an
+ * invitation as somebody else — a request able to name its own sender is the
+ * companion of the contract's own warning about a request able to name its own
+ * invitee.
+ *
+ * AN EMPTY NAME IS NOT SENT. Cookies written before the profile carried both
+ * halves, and accounts registered with one, would otherwise sign the letter
+ * with a blank line or half a name; the service's own default is the better
+ * answer for those.
+ */
+function senderName(user: { firstName?: string; lastName?: string }): string | null {
+  const name = `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim();
+  return name.length ? name : null;
+}
+
 /** A failure of our own, in the backend's envelope so the page parses one shape. */
 function fail(statusCode: number, code: string, message: string): NextResponse {
   return NextResponse.json(
@@ -160,6 +186,12 @@ export async function GET(
     if (value !== null && value !== "") params.set(key, value);
   }
   params.set("member_id", String(user.id));
+  /* Last, over whatever the caller sent — see `senderName`. */
+  if (endpoint === "co-owners") {
+    const sender = senderName(user);
+    if (sender) params.set("sender", sender);
+    else params.delete("sender");
+  }
 
   return forward(`${BASE}/api/v1/invite/${endpoint}?${params}`);
 }
@@ -204,6 +236,12 @@ async function writeThrough(
     if (incoming[key] !== undefined) body[key] = incoming[key];
   }
   if (write.withMemberId) body.member_id = user.id;
+  /* As on the GET, and for the same reason — see `senderName`. */
+  if (fields.includes("sender")) {
+    const sender = senderName(user);
+    if (sender) body.sender = sender;
+    else delete body.sender;
+  }
 
   const send = (payload: Record<string, unknown>) =>
     forward(`${BASE}/api/v1/invite/${endpoint}`, {

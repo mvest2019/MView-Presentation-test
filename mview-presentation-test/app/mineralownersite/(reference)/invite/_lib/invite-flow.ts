@@ -56,26 +56,39 @@ export const FLOW: FlowStep[] = [
       "Copy the invitation into your preferred email account and send it " +
       "directly to the co-owner.",
   },
+  /*
+   * ── STEPS 5-8 NOW DESCRIBE THE FLOW THAT IS ACTUALLY BUILT ──
+   *
+   * They described a claim-by-code wizard: enter the code, then "confirm a
+   * matching detail, such as their town, to help verify the correct ownership
+   * record", then register. No such confirmation step exists and none is
+   * planned in this flow — `InviteRedeem` looks the code up and files the
+   * claim itself the moment the new member lands on the portal, so the
+   * recipient never confirms anything. A rail that walks a reader through a
+   * step their cousin will never see is a promise the product does not keep,
+   * and QA read the sequence as wrong on the page. Defect sheet · Invite
+   * co-owners row 19.
+   *
+   * WHAT THEY SAY NOW IS WHAT HAPPENS: the link (or the code typed into the
+   * register form) carries them to registration, the account is free, the
+   * record attached to that code is claimed for them on arrival, and every
+   * lease on it comes across — not only the one the letter named.
+   *
+   * THEY KEEP `state: "pending"` AND THE HOLLOW LANE. The rail draws them apart
+   * from the reader's own four because they are somebody else's steps, not
+   * because they are unbuilt.
+   */
   {
     n: 5,
     who: "them",
     state: "pending",
-    title: "Enter the invitation code",
+    title: "Open the invitation",
     detail:
-      "The invitation code identifies the ownership record associated with " +
-      "their invitation.",
+      "They follow the link in your email, or type the invitation code into " +
+      "the Mineral View registration form.",
   },
   {
     n: 6,
-    who: "them",
-    state: "pending",
-    title: "Verify their information",
-    detail:
-      "They confirm a matching detail, such as their town, to help verify " +
-      "the correct ownership record.",
-  },
-  {
-    n: 7,
     who: "them",
     state: "pending",
     title: "Create a free account",
@@ -84,13 +97,22 @@ export const FLOW: FlowStep[] = [
       "not change or transfer legal ownership.",
   },
   {
+    n: 7,
+    who: "them",
+    state: "pending",
+    title: "Their record is claimed for them",
+    detail:
+      "The invitation code identifies the ownership record it was issued " +
+      "for, and Mineral View attaches that record to their new account.",
+  },
+  {
     n: 8,
     who: "them",
     state: "pending",
-    title: "View associated lease records",
+    title: "They see every lease on that record",
     detail:
-      "Mineral View identifies the lease records associated with that owner " +
-      "record, not only the lease referenced in the invitation.",
+      "Mineral View identifies all the lease records associated with that " +
+      "owner record, not only the lease referenced in the invitation.",
   },
   {
     n: 9,

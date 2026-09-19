@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/session";
 import {
   LEASES_PAGE,
   mapLeasesResponse,
+  type ClaimedOwner,
   type LeaseChoice,
 } from "./invite-api";
 
@@ -38,24 +39,65 @@ const BASE =
 export interface PrefetchedLeases {
   leases: LeaseChoice[];
   total: number;
+  /** Every identity this member has claimed, and which one is active. */
+  owners: ClaimedOwner[];
+  /**
+   * The identity this list is SCOPED TO, or null when it is every claim.
+   *
+   * The client sends it back on the search so a type-ahead cannot reach past
+   * the owner the top bar is showing. See `fetchInviteLeases`.
+   */
+  owner: string | null;
 }
 
 export async function prefetchInviteLeases(): Promise<PrefetchedLeases | null> {
   const user = await getSessionUser();
   if (!user) return null;
 
-  try {
+  const read = async (owner: string | null) => {
     const params = new URLSearchParams({
       member_id: String(user.id),
       limit: String(LEASES_PAGE),
     });
+    if (owner) params.set("owner", owner);
     const res = await fetch(`${BASE}/api/v1/invite/leases?${params}`, {
       cache: "no-store",
       signal: AbortSignal.timeout(PREFETCH_TIMEOUT_MS),
     });
     if (!res.ok) return null;
-    const mapped = mapLeasesResponse(await res.json());
-    return mapped.leases.length ? mapped : null;
+    return mapLeasesResponse(await res.json());
+  };
+
+  try {
+    const all = await read(null);
+    if (!all) return null;
+
+    /*
+     * ── THE SECOND READ, AND WHEN IT IS WORTH MAKING ──
+     *
+     * The contract lists every identity the member has claimed unless `owner`
+     * narrows it, on the argument that an invite comes from the MEMBER. But
+     * the top bar names ONE owner record and the page sits under it, so a
+     * picker offering another record's leases reads as the page ignoring the
+     * bar — which is what QA saw: the same 4,461 leases whichever owner was
+     * chosen. Defect sheet row 23.
+     *
+     * SO IT IS SCOPED WHENEVER THERE IS SOMETHING TO SCOPE. One claimed
+     * identity, or none marked active, means the unscoped list is already the
+     * active owner's and the second call would ask the same question twice.
+     * A scoped read that comes back empty or fails is DISCARDED rather than
+     * shown: a picker with nothing in it is worse than one that reaches wider
+     * than the bar.
+     */
+    if (all.owners.length < 2 || !all.activeOwner) {
+      return all.leases.length ? { ...all, owner: null } : null;
+    }
+
+    const scoped = await read(all.activeOwner);
+    if (scoped?.leases.length) {
+      return { ...scoped, owners: all.owners, owner: all.activeOwner };
+    }
+    return all.leases.length ? { ...all, owner: null } : null;
   } catch {
     return null;
   }
