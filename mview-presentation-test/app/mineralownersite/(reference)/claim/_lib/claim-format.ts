@@ -72,6 +72,38 @@ export function leaseKey(lease: FlowLease): string {
 }
 
 /**
+ * THE WHOLE ROW AS A KEY — what the claim's lease union is deduplicated on.
+ *
+ * `leaseKey` above is what the flow calls a LEASE; this is what it calls the
+ * same ROW. They are different questions and the difference is load-bearing:
+ * a roll files genuinely different leases under one name in one county, so
+ * `county|name` would silently merge two of them and under-count the claim.
+ * `ClaimWizard` carries the full argument where the union is built.
+ *
+ * ── WHY IT IS SHARED RATHER THAN WRITTEN TWICE ──
+ *
+ * Two places depend on this exact string. The wizard MERGES the ticked records'
+ * leases into one union with it, and step 4 SPLITS that union back out into a
+ * table per record with it — taking each row under the first record that holds
+ * it, so a lease reached through two ticked addresses is printed once.
+ *
+ * The two only agree if they agree on what "the same row" means. Written out
+ * twice they would drift on the first field anyone added, and the failure is
+ * quiet: the per-owner tables stop summing to the count on the button that
+ * files the claim.
+ */
+export function leaseDedupeKey(lease: FlowLease): string {
+  return [
+    lease.county,
+    lease.name,
+    lease.number,
+    lease.operator,
+    lease.value,
+    lease.decimal,
+  ].join("|");
+}
+
+/**
  * A ROLL RECORD'S IDENTITY — county, name AND address, all three.
  *
  * NOT THE ADDRESS ALONE, which is what step 3's ticks used to be keyed on. Two

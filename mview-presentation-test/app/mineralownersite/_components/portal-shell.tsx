@@ -10,7 +10,7 @@ import { PortalPagePurpose } from "./portal-page-purpose";
 import { PortalSideNav } from "./portal-side-nav";
 import { PortalTabBar } from "./portal-tab-bar";
 import { PortalTopNav } from "./portal-top-nav";
-import { showsFunnelBar } from "../_lib/portal-page-furniture";
+import { showsAccountState } from "../_lib/portal-page-furniture";
 
 /**
  * The portal chrome: sidebar, top bar, the two pinned bars, and the body.
@@ -109,13 +109,13 @@ export function PortalShell({
             pinnedBar={pinnedBar}
             onOpenDrawer={() => setDrawerOpen(true)}
           />
-          {/* Not on the claim flow — see `ROUTES_WITHOUT_FUNNEL_BAR`. Skipped
+          {/* Not on the claim flow — see `ROUTES_WITHOUT_ACCOUNT_STATE`. Skipped
               rather than hidden with CSS so the contradictory sentence is not
               in the document at all: `display:none` would still leave it in the
               page source, and a bar announcing "your record is claimed" is
               exactly the thing that should not be sitting in the markup of the
               page that claims it. */}
-          {showsFunnelBar(pathname) && funnelBar}
+          {showsAccountState(pathname) && funnelBar}
           {/*
             THE PER-ROUTE FURNITURE — the back row, "Why this page?" and the
             action footer. All three are the reference's shell components, and

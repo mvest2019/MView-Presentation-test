@@ -40,7 +40,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { PortalAvatar } from '../portal-avatar';
 import { PortalLogout } from '../portal-logout';
 import { usePortalMember } from '../portal-session';
@@ -51,6 +51,7 @@ import {
 } from './Portal';
 import type { Tier } from './bits';
 import { FunnelBar } from './funnel';
+import { showsAccountState } from '../../_lib/portal-page-furniture';
 
 const PLAN: Record<FunnelKey, string> = {
   unclaimed: 'Not claimed', claimed: 'Free', trial: 'Trial', lapsed: 'Lapsed', paid: 'Premium plan',
@@ -207,6 +208,11 @@ export interface ChromeProps {
 }
 
 export default function Chrome(c: ChromeProps) {
+  /* WHICH ROUTE THIS IS, FOR THE PLAN BANNER BELOW — read from the path rather
+     than from `c.route`, which cannot answer it: the claim flow passes
+     `route={null}`, and so do the coming-soon pages, so the two are
+     indistinguishable through the prop. See `showsAccountState`. */
+  const pathname = usePathname();
   /* WHO IS SIGNED IN — the member, which is NOT the owner record.
      `c.p.owner` is the mineral owner record on screen (its name, its initials,
      its owner number); this is the person logged in. The avatar and the menu
@@ -402,7 +408,29 @@ export default function Chrome(c: ChromeProps) {
         */}
         {c.sample
           ? (
-            <Link className="nav-item" href="/mineralownersite/claim">
+            /* A DASHED OUTLINE, BECAUSE THIS ROW IS NOT A DESTINATION
+               (requested). Every other item in this rail goes to a page that
+               already exists for this account; this one is the one thing the
+               account has not done yet, and while it is unclaimed it is the
+               most important control on the screen. A dashed edge is the
+               convention for "empty, to be filled" and marks it out without
+               giving it a filled button's weight inside a nav.
+
+               `outline` rather than `border`: the sheet sets 9px of padding and
+               a 9px radius on `.nav-item`, and a border would add 2px to a row
+               that has to line up with the ten below it. An outline is drawn
+               outside the box and follows the radius on its own.
+
+               `opacity-100` because the sheet dims every row that is not the
+               current one to `.62`, which would have taken the new outline down
+               with it — a dashed line at 62% on a near-black ground is a line
+               nobody sees. Both beat the sheet without `!important`: it is in
+               the `mv-reference` layer and these are utilities, which come
+               after it. */
+            <Link
+              className="nav-item opacity-100 outline-1 outline-dashed outline-mv-green/70"
+              href="/mineralownersite/claim"
+            >
               <span className="nav-ico"><Icon id="mvi-claim" /></span> Claim Mineral Owner
             </Link>
           )
@@ -815,7 +843,17 @@ export default function Chrome(c: ChromeProps) {
             buttons to come off that page — the feed is the content there, and
             the same plan message still meets the reader on every other route
             and on the dashboard state card. */}
-        {c.route === 'activities'
+        {/* AND NOT ON THE CLAIM FLOW, which is the same kind of exclusion as
+            Activities above and a sharper one: that page merely has better
+            things to say, while this band actively contradicts the page under
+            it — a trial upsell, or "your record is claimed", over a form whose
+            whole job is to claim a record. The route list and the full argument
+            are in `portal-page-furniture`.
+
+            SKIPPED RATHER THAN HIDDEN, for the reason `PortalShell` records at
+            its own call: `display:none` would leave the contradictory sentence
+            sitting in the page source. */}
+        {c.route === 'activities' || !showsAccountState(pathname)
           ? null
           : (
             <FunnelBar

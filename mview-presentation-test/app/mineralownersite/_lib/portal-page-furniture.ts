@@ -241,33 +241,50 @@ export const ACTION_FOOTER_COPY = {
 } as const;
 
 /* ============================================================================
-   4 · ROUTES THAT SUPPRESS THE FUNNEL BAR
+   4 · ROUTES THAT SUPPRESS THE ACCOUNT-STATE FURNITURE
 
-   `#mvFunnelBar` is the green band under the pinned value bar, and it reports
-   the account's FUNNEL STATE: "Your record is claimed — all 10 of your leases
-   are here and stay here… Start my 7-day free trial."
+   TWO PIECES, ONE JOB. The portal says where the ACCOUNT stands in two places
+   above the page, and both are governed from here:
 
-   ON EVERY OTHER ROUTE THAT IS EXACTLY RIGHT — it is the one place the portal
-   says where the account stands and what the next commercial step is. On the
-   claim flow it is a contradiction the reader is entitled to be confused by:
-   the page asks them to claim a record while the band above it announces the
-   record is already claimed, and offers a trial upgrade over the top of a
-   five-step form they have not finished. In the unclaimed state the same band
-   reads "Claim your mineral owner record — Claim now →", which is a link to the
-   page they are standing on.
+     the funnel band    `#mvFunnelBar`, under the pinned value bar — "Your
+                        Premium trial has ended…", "7 days of 7 left…", "Claim
+                        your mineral owner record — Claim now →".
+     the no-claim card  the reference shell's answer to `DASHBOARD_NO_CLAIM` —
+                        "Nothing is claimed on this account yet", over a button
+                        reading "Claim your record — free →".
+
+   ON EVERY OTHER ROUTE BOTH ARE EXACTLY RIGHT — between them they are the one
+   place the portal says where the account stands and what the next commercial
+   step is. On the claim flow both are a contradiction the reader is entitled to
+   be confused by: the page asks them to claim a record while the band above it
+   announces the record is already claimed, and offers a trial upgrade over the
+   top of a five-step form they have not finished. In the unclaimed state the
+   band reads "Claim your mineral owner record — Claim now →" and the card
+   offers "Claim your record — free →" — both of them links to the page the
+   reader is already standing on.
+
+   IT WAS TRUE OF THE BAND ALREADY AND STOPPED BEING ENFORCED. This rule was
+   written for `PortalShell`, the `(portal)` group's shell. The claim flow then
+   moved to `(reference)`, whose shell is `Portal` + `Chrome`, and the exclusion
+   did not move with it — so the band came back, and the no-claim card came with
+   it. Both shells consult this now, which is what stops the next move losing it
+   again.
 
    A LIST RATHER THAN A FLAG ON THE ROUTE, for the same reason the three
    structures above are lists: this is the shell's decision about its own
-   furniture, and `PortalShell` should be able to answer "does this route get
-   the bar?" without importing anything from a page.
+   furniture, and a shell should be able to answer "does this route get it?"
+   without importing anything from a page.
    ============================================================================ */
-export const ROUTES_WITHOUT_FUNNEL_BAR: readonly string[] = [
+export const ROUTES_WITHOUT_ACCOUNT_STATE: readonly string[] = [
   "/mineralownersite/claim",
 ];
 
-/** Does this route show the funnel bar? Prefix-matched, like the nav's rows. */
-export function showsFunnelBar(pathname: string): boolean {
-  return !ROUTES_WITHOUT_FUNNEL_BAR.some(
+/**
+ * Does this route show the account-state band and card? Prefix-matched, like
+ * the nav's rows.
+ */
+export function showsAccountState(pathname: string): boolean {
+  return !ROUTES_WITHOUT_ACCOUNT_STATE.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`),
   );
 }

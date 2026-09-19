@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, EyeOff } from "lucide-react";
+import { EyeOff } from "lucide-react";
 import { memo } from "react";
 
 import { Badge } from "../../../../_components/ui/badge";
@@ -124,16 +124,17 @@ export const CandidateCard = memo(function CandidateCard({
         </p>
       </div>
 
-      {/* The tick is the selected state said a second way — a green border on
-          its own is colour carrying meaning alone. */}
-      {selected && (
-        <span
-          aria-hidden="true"
-          className="flex h-[20px] w-[20px] flex-none items-center justify-center rounded-full bg-mv-green-deep text-white"
-        >
-          <Check className="h-[12px] w-[12px]" strokeWidth={3} />
-        </span>
-      )}
+      {/* NO SECOND TICK IN THE CORNER (requested). A green disc used to sit
+          here whenever the card was selected, which put two checkmarks on one
+          row — the reader's own checkbox at the left and a badge at the right
+          saying the same thing, close enough together to read as two separate
+          controls with one of them broken (the badge is not clickable).
+
+          It was there so the selected state was not carried by the green
+          border alone. It still is not: the checkbox at the left IS the state,
+          it is checked, and a screen reader has read it as such all along —
+          the badge was `aria-hidden` and never announced. So this removes a
+          duplicate, not the non-colour cue. */}
     </label>
   );
 });

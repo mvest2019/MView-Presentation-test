@@ -54,10 +54,16 @@ interface AddressRow {
  * that they were two names with three and two addresses.
  *
  * The name is the unit the CLAIM works in — `/owners/claim` takes owner names,
- * and each name brings every lease it holds statewide — so the name is the
- * heading and the addresses are what gets ticked beneath it. Each group counts
- * its own selection, because "0 of 3 addresses selected" is the question this
- * step is actually asking.
+ * each carrying the addresses ticked under it — so the name is the heading and
+ * the addresses are what gets ticked beneath it. Each group counts its own
+ * selection, because "0 of 3 addresses selected" is the question this step is
+ * actually asking.
+ *
+ * AND THE TICKS DECIDE THE LEASES. Step 4 lists the leases held at exactly
+ * these addresses, so leaving one unticked leaves its leases out of both the
+ * table and the request. That was not true until recently: step 4 printed the
+ * name's statewide set regardless, and the two screens described different
+ * claims.
  *
  * ── THE ENDPOINT DOES THE DISCRIMINATING, NOT A FLAG WE SET ──
  *
@@ -516,11 +522,15 @@ export function StepProve({
         </ClaimCheckbox>
       )}
 
+      {/* THIS USED TO SAY "every lease those names hold statewide", which was
+          the old step 4: it printed the endpoint's `allLeases`, the union over
+          every address under the name — ticked or not. The ticks now decide the
+          list as well as the payload, so the note says what the ticks do. */}
       <GuideNote title="What happens next">
-        These addresses settle WHICH owner names the claim covers. Nothing is
-        filed here — the next step shows every lease those names hold statewide,
-        and the button under that list is what commits. Zero public-record
-        mutation; reversible via Settings — unclaim.
+        The addresses you tick here are the ones the claim takes. Nothing is
+        filed on this screen — the next step lists every lease held at those
+        addresses, and the button under that list is what commits. Zero
+        public-record mutation; reversible via Settings — unclaim.
       </GuideNote>
 
       {/* A HEADS-UP, NOT A BARRIER. Step 4 is where signing in actually stops

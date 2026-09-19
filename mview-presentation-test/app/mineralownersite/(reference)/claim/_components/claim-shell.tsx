@@ -43,12 +43,19 @@ const STICKY_OFFSET = 112;
  */
 export function ClaimShell({
   current,
+  onGo,
   done = false,
   below,
   scrollOnChange = true,
   children,
 }: {
   current: number;
+  /**
+   * Hand the stepper a way to move, and every step BEHIND the current one
+   * becomes a button back to itself. Left off, the rail is a read-out — which
+   * is what the sample walkthrough mounts it as.
+   */
+  onGo?: (step: number) => void;
   /**
    * THE CLAIM IS WRITTEN AND THE FLOW IS OVER. The stepper comes off — five
    * numbered stages with the last one lit would invite a sixth tap on a form
@@ -189,7 +196,7 @@ export function ClaimShell({
         </p>
       </header>
 
-      {!done && <ClaimStepper current={current} />}
+      {!done && <ClaimStepper current={current} onGo={onGo} />}
 
       {/* The caption bar sits CLOSER to the step card than to the stepper above
           it (requested): 10px below, 12px above. It reads as that card's own

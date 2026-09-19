@@ -10,9 +10,15 @@ import {
   type ClaimOwner,
   type ClaimResult,
 } from "../_api/claim-api";
-import { recordKey } from "../_lib/claim-format";
-import type { ClaimSet, CountyIndex, OwnerRecord } from "../_lib/claim-types";
+import { leaseDedupeKey, recordKey } from "../_lib/claim-format";
+import type {
+  ClaimSet,
+  CountyIndex,
+  FlowLease,
+  OwnerRecord,
+} from "../_lib/claim-types";
 import { ClaimShell } from "./claim-shell";
+import { FlowLoading } from "./flow-state";
 import {
   SEARCH_DEBOUNCE_MS,
   emptyQuery,
@@ -99,53 +105,262 @@ function message(error: unknown): string {
 /** `?step=3` — the flow's position, and the only thing it puts in the URL. */
 const stepUrl = (step: number) => `${window.location.pathname}?step=${step}`;
 
-/**
- * STEP 3 OPENS WITH ONE ADDRESS TICKED PER OWNER — every row is SHOWN, one is
- * CHOSEN (requested).
- *
- * ── WHY NOT ALL OF THEM ──
- *
- * It used to tick every record in the set, so a name the roll spells five ways
- * arrived with five ticks and a header reading "5 addresses are yours — 5
- * selected". That is the flow answering its own question: the whole point of
- * the screen is which doorsteps are actually the reader's, and a page that has
- * already said "all of them" invites a glance and a Continue.
- *
- * Attesting is the next thing it asks for. Pre-ticking the maximum and then
- * asking for a good-faith statement about it puts the reader's name to a claim
- * they did not assemble.
- *
- * ── WHICH ONE IS "THE IMPORTANT ONE" ──
- *
- * The address holding the most leases, and the higher appraised value where two
- * tie. It is the row the reader is most likely to recognise as theirs and the
- * one that carries most of what a claim is for, so it is the least surprising
- * thing to find already ticked — and the rest are one click away, right there
- * on the same card.
- *
- * Grouped by NAME because the cards are: one card per owner name, one tick in
- * each. `others` — the addresses the endpoint volunteered rather than the
- * reader picking them — stay untouched and unticked, as before.
- */
-function leadAddressPerOwner(records: OwnerRecord[]): string[] {
-  const lead = new Map<string, OwnerRecord>();
+/** Where the flow's restorable state is parked between page loads. */
+const SESSION_KEY = "mv-claim-session";
 
-  for (const record of records) {
-    const held = lead.get(record.name);
-    const better =
-      !held ||
-      record.leaseCount > held.leaseCount ||
-      (record.leaseCount === held.leaseCount &&
-        record.appraisedValue > held.appraisedValue);
-
-    if (better) lead.set(record.name, record);
-  }
-
-  return [...lead.values()].map(recordKey);
+/** The two pieces of this flow a reload can put back. */
+interface StoredSession {
+  query: ClaimQuery;
+  picked: OwnerRecord[];
 }
 
-export function ClaimWizard({ memberId }: { memberId: number | null }) {
-  const [step, setStep] = useState(1);
+/**
+ * A RELOAD KEEPS ITS PLACE NOW — UP TO STEP 4.
+ *
+ * ── WHAT CHANGED, AND WHY IT COULD ──
+ *
+ * Every reload used to land on step 1, on the reasoning that `?step=3` names a
+ * position and not the state behind it. That reasoning was sound and the
+ * conclusion was too broad: it treated all four screens of state as one thing,
+ * when only the LAST of them is unrecoverable.
+ *
+ *   step 2   needs `results`   — `searchOwners(query)`, re-runnable
+ *   step 3   needs `claimSet`  — `fetchClaimSet(picked)`, re-runnable
+ *   step 4   needs the leases  — the same `claimSet`, re-runnable
+ *   step 5   needs the receipt — the answer to a POST, NOT re-runnable
+ *
+ * So the two INPUTS are stored — the four fields, and the rows ticked on step
+ * 2 — and the answers are fetched again from them on mount. Step 3 reopens on
+ * its own spinner and fills in, which is exactly what it does when reached by
+ * the Continue button.
+ *
+ * ── WHAT IS DELIBERATELY NOT STORED ──
+ *
+ * `attested` — step 3's good-faith statement. It is a legal assertion, and the
+ * flow already goes out of its way to drop it whenever the records it was made
+ * about change (see `resolveSelection`). Restoring it from disk would let a
+ * reload carry a promise across a page load nobody watched being made. It
+ * starts false, and `confirmed` is re-seeded by `pickedAddresses` from the
+ * refetched answer, so the reader ticks and attests on this page load.
+ *
+ * ── `sessionStorage`, NOT THE URL ──
+ *
+ * It dies with the tab, which is the right lifetime for a half-finished claim
+ * about who somebody is: a shared or bookmarked link should not carry the name
+ * and mailing address the last person searched for. The address bar keeps
+ * saying what it already said — the step, and nothing else.
+ *
+ * ── AND IT IS READ DEFENSIVELY ──
+ *
+ * Anything can be in that key: an older shape of this flow, a hand-edited
+ * value, a half-written entry. Every field is taken only if it has the right
+ * type and dropped otherwise, so a malformed entry degrades to an empty form
+ * rather than putting `undefined` into a search request. `sessionStorage`
+ * itself raises in a private window and where site data is blocked, so both
+ * directions are wrapped: a failure means the old land-on-step-1 behaviour.
+ */
+function readSession(): StoredSession | null {
+  try {
+    const raw = window.sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const held = parsed as Record<string, unknown>;
+
+    const query = toStoredQuery(held.query);
+    const picked = Array.isArray(held.picked)
+      ? held.picked
+          .map(toStoredRecord)
+          .filter((record): record is OwnerRecord => record !== null)
+      : [];
+
+    /* Nothing worth restoring is the same as nothing stored, and returning it
+       would schedule a state update that changes nothing on every mount. */
+    const anyQuery = Object.values(query).some((value) => value !== "");
+    return anyQuery || picked.length > 0 ? { query, picked } : null;
+  } catch {
+    return null;
+  }
+}
+
+const text = (value: unknown) => (typeof value === "string" ? value : "");
+const num = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) ? value : 0;
+
+function toStoredQuery(value: unknown): ClaimQuery {
+  const held = (value ?? {}) as Record<string, unknown>;
+  return {
+    name: text(held.name),
+    lease: text(held.lease),
+    county: text(held.county),
+    address: text(held.address),
+  };
+}
+
+/**
+ * NAME AND COUNTY ARE REQUIRED, the rest degrade. Those two are what
+ * `fetchSameName` is called with, so a record missing either cannot be
+ * re-resolved and is dropped rather than sent as an empty query string.
+ */
+function toStoredRecord(value: unknown): OwnerRecord | null {
+  if (!value || typeof value !== "object") return null;
+  const held = value as Record<string, unknown>;
+
+  const name = text(held.name);
+  const county = text(held.county);
+  if (!name || !county) return null;
+
+  return {
+    name,
+    county,
+    address: text(held.address),
+    leaseCount: num(held.leaseCount),
+    appraisedValue: num(held.appraisedValue),
+    operatorCount: num(held.operatorCount),
+    leases: Array.isArray(held.leases)
+      ? held.leases.map((lease) => {
+          const row = (lease ?? {}) as Record<string, unknown>;
+          const value = num(row.value);
+          return {
+            name: text(row.name),
+            number: typeof row.number === "string" ? row.number : null,
+            operator: typeof row.operator === "string" ? row.operator : null,
+            county: text(row.county) || county,
+            value,
+            decimal: typeof row.decimal === "number" ? row.decimal : null,
+            producing: value > 0,
+          };
+        })
+      : [],
+  };
+}
+
+function writeSession(session: StoredSession) {
+  try {
+    window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  } catch {
+    /* Blocked or full. The flow works exactly as it did before this existed. */
+  }
+}
+
+/**
+ * FILING THE CLAIM SPENDS THE INPUTS.
+ *
+ * ── THE BUG THIS FIXES ──
+ *
+ * The entry was written whenever the fields or the ticks changed and removed
+ * never. So a reader who searched "Luna unit", ticked 40 records, filed the
+ * claim, walked Back to step 2 and reloaded was handed all 40 ticks again,
+ * under a Review addresses button, for records that were claimed a minute
+ * earlier. The flow offered to file a claim it had already filed — the
+ * backend would have refused each one with OWNER_ALREADY_CLAIMED, which is the
+ * right answer to a question that should never have been asked.
+ *
+ * A claim is the end of the search that produced it. The receipt cannot be
+ * restored — see `restorableStep` — so leaving its inputs behind could only
+ * ever rebuild the part of the flow that writes.
+ *
+ * ON ANY ANSWER FROM THE POST, including a partial refusal: the request was
+ * made and step 5 reports exactly what came back. A thrown call clears
+ * nothing, because nothing was filed and the reader may want to try again.
+ */
+function clearSession() {
+  try {
+    window.sessionStorage.removeItem(SESSION_KEY);
+  } catch {
+    /* Blocked. Nothing was stored either, so there is nothing to strand. */
+  }
+}
+
+/**
+ * HOW FAR A RELOAD MAY LAND — the same clamp `furthest` applies to Back and
+ * Forward, asked at mount against what storage can rebuild rather than against
+ * state that does not exist yet.
+ */
+function restorableStep(asked: number, stored: StoredSession | null): number {
+  if (!stored) return 1;
+
+  /* STEP 5 IS NOT RESTORABLE, AND DOES NOT DEGRADE TO STEP 4. The receipt
+     exists only as the answer to a POST, and the only way to obtain another is
+     to file the claim a second time — so reloading on the receipt starts
+     again rather than reopening the button that writes. */
+  if (asked > 4) return 1;
+
+  if (asked >= 3 && stored.picked.length > 0) return asked;
+  if (asked >= 2 && isSearchable(stored.query)) return 2;
+  return 1;
+}
+
+/**
+ * STEP 3 OPENS WITH THE READER'S OWN PICKS TICKED — every row is SHOWN, the
+ * ticked ones are the ones they ticked on step 2.
+ *
+ * ── THE TWO LISTS, AND WHY ONLY ONE OF THEM IS TICKED ──
+ *
+ * `/same-name` answers in two parts and `fetchClaimSet` keeps them apart:
+ *
+ *   `records`  one row per card the reader ticked on step 2 (the `selected`
+ *              of each call), deduplicated by doorstep
+ *   `others`   the same name at addresses the ENDPOINT volunteered, which
+ *              nobody has said anything about yet
+ *
+ * Every row is drawn, because the whole point of the screen is to show what
+ * else carries this name. Only `records` arrives ticked — those are answers
+ * the reader already gave. `others` stay unticked (requested): pre-ticking
+ * them and then asking for a good-faith statement puts the reader's name to a
+ * claim they did not assemble.
+ *
+ * ── THE BUG THIS FIXES ──
+ *
+ * This used to collapse `records` to ONE tick per owner NAME — the address
+ * with the most leases, higher appraised value breaking a tie. That was aimed
+ * at the right target and hit the wrong one: `others` was never in this list
+ * to begin with, so the only thing the grouping could discard was the reader's
+ * own selection.
+ *
+ * Tick "Hindes William R" at 350 CR 348 JOURDANTON (Atascosa, 3 leases) AND at
+ * 615 W ASHBY PL SAN ANTONIO (Frio, 5 leases), press Review addresses, and
+ * step 3 opened with the Atascosa address silently unticked and a header
+ * reading "2 addresses are yours — 1 selected". One name, two doorsteps, two
+ * deliberate ticks, and the flow quietly dropped one of them — and with it
+ * three leases and $140,376 from the claim, on a screen whose next control is
+ * a legal attestation.
+ *
+ * A name is not a doorstep. Two addresses under one name are two answers, and
+ * this hands back exactly the ones that were given.
+ */
+function pickedAddresses(records: OwnerRecord[]): string[] {
+  return records.map(recordKey);
+}
+
+/**
+ * `0` IS A REAL STEP VALUE HERE: "not decided yet".
+ *
+ * It is what the wizard opens on when the URL asks for anything above step 1,
+ * for exactly as long as it takes the mount effect to find out whether the
+ * state behind that request can be rebuilt. Without it the server paints step
+ * 1 — it has no `sessionStorage` to consult — and a reload on `?step=3`
+ * showed the search form, held it through hydration, and then swapped to step
+ * 3. The work was right and the first frame was a lie.
+ *
+ * A visitor with no `?step`, or with `?step=1`, never sees this: they open on
+ * step 1 directly, painted by the server, with no placeholder in between.
+ */
+const DECIDING = 0;
+
+export function ClaimWizard({
+  memberId,
+  initialStep = 1,
+}: {
+  memberId: number | null;
+  /** `?step` as the SERVER read it — see `askedStep` in `page.tsx`. */
+  initialStep?: number;
+}) {
+  /* Server and client agree on this first render — both compute it from the
+     same parameter — which is the whole reason the decision is deferred rather
+     than read from storage during render, where they could not agree. */
+  const [step, setStep] = useState(initialStep > 1 ? DECIDING : 1);
 
   const [counties, setCounties] = useState<Async<CountyIndex>>({
     data: null,
@@ -220,22 +435,144 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
    * this — updating the URL without a navigation — and it leaves the mounted
    * component, and therefore the whole claim in progress, alone.
    *
-   * ── A RELOAD ALWAYS LANDS ON STEP 1 ──
+   * ── A RELOAD KEEPS ITS STEP, UP TO 4 ──
    *
-   * `?step=4` in a bookmark or a reload describes a position, not the four
-   * screens of state behind it, and none of that state survives a reload. So
-   * the mount `replaceState`s back to step 1 rather than reading the parameter:
-   * honouring it would open a lease table with no leases and a Claim button
-   * with nothing to file.
+   * It always landed on step 1, because `?step=4` describes a position and not
+   * the state behind it. Two of those three screens can now rebuild their own
+   * state from what `readSession` stored — see it for the full reasoning — so
+   * the parameter is honoured as far as `restorableStep` allows and corrected
+   * in place when it asks for more than that.
+   *
+   * THE BACK STACK IS NOT REBUILT, and does not need to be: a reload keeps the
+   * session history, so the `?step=1` and `?step=2` entries pushed on the way
+   * here are still behind this one and `onPop` below picks them up. Pushing
+   * replacements would leave two copies of the flow in the stack, where Back
+   * from step 1 walks FORWARD into the older step 3.
+   */
+  /**
+   * RE-RESOLVE THE PICK — the half of `resolveSelection` a reload needs.
+   *
+   * Same call, same merge, same seeded ticks. What it deliberately leaves out
+   * is the rest of that function: it does not touch the attestation signature
+   * and it does not move the step, because the mount effect has already
+   * decided where the reader lands and `attested` starts false on a fresh page
+   * load by design.
+   *
+   * A failure here is the ordinary step 3 failure — the step renders
+   * `claimSet.error` with a retry — so a reload with a dead network lands on a
+   * screen that explains itself rather than an empty one.
+   */
+  const resumeClaimSet = useCallback(async (records: OwnerRecord[]) => {
+    setClaimSet({ data: null, loading: true, error: null });
+    try {
+      const set = await fetchClaimSet(records);
+      setClaimSet({ data: set, loading: false, error: null });
+      setConfirmed(pickedAddresses(set.records));
+    } catch (error) {
+      setClaimSet({ data: null, loading: false, error: message(error) });
+    }
+  }, []);
+
+  /** False until the restore below has run, so nothing overwrites it first. */
+  const hydrated = useRef(false);
+
+  useEffect(() => {
+    const stored = readSession();
+    const asked =
+      Number(new URLSearchParams(window.location.search).get("step")) || 1;
+    const target = restorableStep(asked, stored);
+
+    window.history.replaceState(null, "", stepUrl(target));
+
+    /* DEFERRED BY A TICK, for two separate reasons. A synchronous setState in
+       an effect body is what `react-hooks/set-state-in-effect` refuses; and
+       seeding `useState` from `sessionStorage` instead — the obvious
+       alternative — runs during render, where the server has no storage and
+       would send an empty form for the client to hydrate as a filled one. */
+    const timer = setTimeout(() => {
+      if (stored) {
+        setQuery(stored.query);
+        /* THE TICKS ONLY COME BACK IF THERE IS A STEP FOR THEM. At step 1 no
+           list is drawn, and restoring them anyway would push `furthest` to 3
+           — which is Forward walking into a claim set the reader never
+           assembled on this page load. */
+        if (target >= 2) setPicked(stored.picked);
+        /* Step 2 needs no kick: its own debounce sees a searchable query it
+           has not sent and runs it. Steps 3 and 4 have no such watcher, so the
+           resolve that Continue would have done is done here instead. */
+        if (target >= 3) void resumeClaimSet(stored.picked);
+      }
+      /* Unconditionally, because `DECIDING` has to resolve even when the
+         answer is step 1 — a reload with nothing left in storage. */
+      setStep(target);
+      hydrated.current = true;
+    }, 0);
+
+    return () => clearTimeout(timer);
+    /* `resumeClaimSet` is a stable `useCallback` and this must run once. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * THE FLOW'S INPUTS, KEPT IN STEP WITH STORAGE.
+   *
+   * An effect rather than a wrapper around the setters, because `picked` is
+   * set through updater functions in three places — the toggle, the post-
+   * search prune and the clear — and a wrapper would have to thread all of
+   * them. Watching the result covers every path including ones added later.
+   *
+   * `hydrated` is what makes an effect safe here: without it the first run
+   * fires with the empty initial state and wipes the entry before the restore
+   * above has read it.
    */
   useEffect(() => {
-    window.history.replaceState(null, "", stepUrl(1));
-  }, []);
+    if (!hydrated.current) return;
+    writeSession({ query, picked });
+  }, [query, picked]);
 
   /** Forward: a new entry, so the one behind it is the step just left. */
   function goStep(next: number) {
     setStep(next);
     window.history.pushState(null, "", stepUrl(next));
+  }
+
+  /*
+   * THE STEPPER'S OWN JUMP — AND GOING BACK TO STEP 1 EMPTIES THE SELECTION
+   * (requested).
+   *
+   * ── WHY STEP 1 AND NOTHING ELSE ──
+   *
+   * Step 1 is the question and step 2 is the answer to it. Walking the rail
+   * back to step 1 is the reader saying they want to ask again — and the ticks
+   * belong to the answer they are leaving, so they go with it. Without this,
+   * re-running the same search returned the same rows and the post-search prune
+   * kept every tick, so step 2 re-opened with four records already claimed-for
+   * and a bar reading "4 selected" over a search the reader had just gone back
+   * to reconsider.
+   *
+   * It is the argument `changeQuery` already makes one field at a time — "a
+   * change to these four fields is a new question" — applied to the gesture
+   * that goes back to ALL four of them at once.
+   *
+   * Clicking step 2 or step 3 clears nothing, obviously: step 2 IS the pick
+   * screen, and arriving at it to change a tick must not throw the other ticks
+   * away first.
+   *
+   * ── WHY IT IS NOT IN `goStep`, AND NOT ON THE BROWSER'S BACK ──
+   *
+   * `goStep` is the plain move and three other callers use it, two of which
+   * clear this themselves — folding a state wipe into the navigation helper
+   * would hide it from all of them.
+   *
+   * Back is deliberately left alone. It is an UNDO: it should hand the reader
+   * back the screen they left, in the state they left it, and a Back that
+   * quietly deleted four ticks on the way would be the one gesture in the flow
+   * that destroys something instead of retracing it. The rail is a jump to a
+   * named screen, which is a different intention and gets a different rule.
+   */
+  function goBackTo(next: number) {
+    if (next === 1) setPicked([]);
+    goStep(next);
   }
 
   /*
@@ -299,7 +636,18 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
    * and re-fetching them would make starting over slower than arriving.
    */
   /*
-   * RESET ON STEP 2 — empty the fields AND drop the answer they produced.
+   * RESET ON STEP 2 — empty the fields, drop the answer they produced, AND GO
+   * BACK TO STEP 1 (requested).
+   *
+   * WHY IT NAVIGATES. A reset leaves step 2 with nothing to pick: no fields, no
+   * rows, no ticks. That is step 1's job description drawn on step 2's screen —
+   * the reader is told to "Pick the record that's yours" over an empty page,
+   * while the form that would produce one sits in the step behind them. Each
+   * screen holds one state instead: step 1 asks the question, step 2 answers
+   * it, and Reset steps back rather than blanking the answer in place.
+   *
+   * `goStep`, not `setStep`, so the URL and the browser's Back button come
+   * along — the same path `startOver` takes to step 1.
    *
    * A named function rather than an inline arrow in the JSX. It makes the same
    * ref writes `startOver` does, but `react-hooks/immutability` rejects them
@@ -309,6 +657,7 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
   function resetSearch() {
     searchRef.current?.abort();
     searchedRef.current = "";
+    goStep(1);
     setQuery(emptyQuery);
     setResults(idle());
     /* The rows are gone, so the ticks on them go too — a count in the bar over
@@ -335,9 +684,15 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
    * field. Watching `query` from an effect would mean a synchronous setState in
    * an effect body, which `react-hooks/set-state-in-effect` rejects, and
    * deferring it in a timer would leave a frame where the stale rows are still
-   * there. `resetSearch` does exactly this for the Reset button — the two paths
-   * now agree, which is the point: reaching the empty state one field at a time
-   * has to land where reaching it in one click does.
+   * there. `resetSearch` clears the same state for the Reset button, so reaching
+   * the empty state one field at a time leaves the flow holding exactly what
+   * reaching it in one click does.
+   *
+   * THE STEP IS THE ONE DELIBERATE DIFFERENCE. Reset also returns to step 1;
+   * emptying the last field does not. Reset is a decision to start the search
+   * over, taken in one click. Clearing a field is usually the middle of editing
+   * one — retyping a name pauses on empty between the delete and the first new
+   * character, and that must not throw the reader back a screen mid-keystroke.
    *
    * Not gated on `step === 2`. Step 1 shows no results, so clearing a field
    * there drops an `idle()` that is already idle — and a guard would be a rule
@@ -538,7 +893,7 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
     try {
       const set = await fetchClaimSet(picked);
       setClaimSet({ data: set, loading: false, error: null });
-      setConfirmed(leadAddressPerOwner(set.records));
+      setConfirmed(pickedAddresses(set.records));
     } catch (error) {
       setClaimSet({ data: null, loading: false, error: message(error) });
     }
@@ -569,6 +924,42 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
    * A record with no address on file contributes its name and no address, and
    * `postClaim` then omits the key entirely for that owner.
    */
+  /**
+   * THE RECORDS THE READER TICKED ON STEP 3 — and the single list steps 4 and
+   * 5 are now built from.
+   *
+   * ── THE BUG THIS FIXES ──
+   *
+   * `confirmed` used to reach exactly one thing: the claim payload. Steps 4
+   * and 5 read `claimSet.data.records` and `claimSet.data.all.leases`, which
+   * are the WHOLE answer — every address `/same-name` volunteered, ticked or
+   * not. So the page showed one claim and posted another.
+   *
+   * Measured on `Brown Ellen Cochran`: `selected` is 2901 BAMMEL LN, Martin
+   * County, `leaseCount: 12`. The endpoint also returns the same name at 2901
+   * BRAMMEL LANE in Karnes County, 7 leases. `allLeases.leaseCount` is 19 —
+   * 12 + 7, both addresses — and step 4 printed "19 joined leases" over a
+   * table carrying Karnes rows, for a reader who had ticked Martin only and a
+   * request that named Martin only.
+   *
+   * ── WHY THE TICKS WIN AND NOT `allLeases` ──
+   *
+   * Because the ticks are what gets SENT. `claimOwners` below carries one
+   * `addresses` array per name, built from this same list, so the request asks
+   * for the ticked doorsteps and nothing else. A table that disagrees with the
+   * request under a button labelled "this is the step that commits" is the one
+   * screen in the flow that must not be approximate.
+   *
+   * If the backend ever turns out to ignore `addresses` and claim by name
+   * statewide, then `allLeases` is right and this is wrong — but so is the
+   * payload, and the fix then belongs in `claimOwners`, not here. The two are
+   * built from one list precisely so they cannot drift apart again.
+   */
+  const confirmedRecords: OwnerRecord[] = [
+    ...(claimSet.data?.records ?? []),
+    ...(claimSet.data?.others ?? []),
+  ].filter((record) => confirmed.includes(recordKey(record)));
+
   const claimOwners: ClaimOwner[] = (() => {
     /*
      * ONE ENTRY PER OWNER NAME, carrying every address ticked under it.
@@ -580,11 +971,7 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
      * on the second.
      */
     const byName = new Map<string, Set<string>>();
-    for (const record of [
-      ...(claimSet.data?.records ?? []),
-      ...(claimSet.data?.others ?? []),
-    ]) {
-      if (!confirmed.includes(recordKey(record))) continue;
+    for (const record of confirmedRecords) {
       const addresses = byName.get(record.name) ?? new Set<string>();
       if (record.address) addresses.add(record.address);
       byName.set(record.name, addresses);
@@ -634,6 +1021,11 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
     try {
       const result = await postClaim(memberId, claimOwners);
       setClaim({ data: result, loading: false, error: null });
+      /* The search and the ticks are spent — see `clearSession`. In memory
+         they stay exactly as they are, because step 5 and the Back button
+         behind it still describe this claim; it is the next PAGE LOAD that
+         must not find them and offer to file again. */
+      clearSession();
       /* Step 5 reads the response — including a partial refusal, which is the
          one thing it must not round up into "successfully claimed". */
       goStep(5);
@@ -642,10 +1034,85 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
     }
   }
 
-  const leases = claimSet.data?.all.leases ?? [];
+  /**
+   * THE LEASE TABLE — every lease held at a ticked address, deduplicated.
+   *
+   * ── AND EVERY ROW IS NOW A FULL ROW ──
+   *
+   * This used to be `claimSet.data.all.leases`, built by `toLeaseSet` out of
+   * the endpoint's `allLeases`, which carries a lease NAME and VALUE per county
+   * and nothing else. Number, operator and interest could only be filled in for
+   * the selected record's own county, so every other county printed em dashes —
+   * the thing step 4's guide note had to apologise for.
+   *
+   * Each `OwnerRecord` carries its own `leases`, mapped by `toRecord` from that
+   * record's `leaseNumbers`, `operators` and `interestValues`. Taking them from
+   * the records instead answers the ticks AND fills the columns, because the
+   * detail was there per address all along.
+   *
+   * ── THE KEY IS THE WHOLE ROW, NOT `county|name` ──
+   *
+   * `fetchClaimSet` merges `allLeases` on `county|name`, and that is right for
+   * a list carrying nothing else. These rows carry six fields, and a roll puts
+   * genuinely different leases under one name — `Brown Ellen Cochran` holds
+   * `BLAGRAVE I 31-43 (1 of 2)` and `(2 of 2)` in Martin, and a name-keyed map
+   * would silently drop one of them and under-count the claim.
+   *
+   * So a row is dropped only when every column the table prints is identical,
+   * which is the case this needs to catch: one lease reached through two ticked
+   * addresses in the same county, listed once rather than twice. Two rows the
+   * reader could not tell apart become one; anything distinguishable survives.
+   *
+   * THE KEY ITSELF LIVES IN `claim-format`, because step 4 needs the same one:
+   * it splits this union back out into a table per owner record, and the two
+   * have to agree on what a duplicate is or the tables stop summing to the
+   * count the claim is filed for.
+   */
+  const leases: FlowLease[] = (() => {
+    const byLease = new Map<string, FlowLease>();
+    for (const record of confirmedRecords) {
+      for (const lease of record.leases) {
+        const key = leaseDedupeKey(lease);
+        if (!byLease.has(key)) byLease.set(key, lease);
+      }
+    }
+    return [...byLease.values()];
+  })();
+
+  /* THE PLACEHOLDER, AND WHY IT SITS IN THE SHELL. The stepper and the caption
+     bar are the two things the reader recognises as "the claim flow, where I
+     left it"; drawing them around the spinner means the page they reload into
+     is the page they left, filling in — not a bare card that becomes it. The
+     stepper is lit at the step being restored, so nothing jumps when the real
+     screen arrives. */
+  if (step === DECIDING) {
+    return (
+      <ClaimShell current={initialStep}>
+        <FlowLoading label="Picking up where you left off…" />
+      </ClaimShell>
+    );
+  }
 
   return (
-    <ClaimShell current={step}>
+    <ClaimShell
+      current={step}
+      /*
+       * THE RAIL STEERS — UNTIL THE CLAIM IS FILED, AND THEN IT STOPS.
+       *
+       * `claim.data` is the receipt, and it is the one piece of state nothing
+       * clears except `startOver`. Step 4 reads it to decide whether its button
+       * FILES or merely shows what was already filed, so a reader who walked
+       * the rail back to step 1 with a receipt still in memory, searched a
+       * different name and came forward again would arrive at the commit step
+       * holding out the PREVIOUS claim's receipt — the hazard written up over
+       * `startOver` above, reached in one click instead of several.
+       *
+       * Step 5 has its own way out and it is the right one: "Claim another
+       * record" goes through `startOver`, which clears the receipt with
+       * everything else. The rail does not compete with it.
+       */
+      onGo={claim.data ? undefined : goBackTo}
+    >
       {step === 1 && (
         <StepFind
           query={query}
@@ -695,7 +1162,11 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
 
       {step === 4 && (
         <StepLeases
-          records={claimSet.data?.records ?? picked}
+          /* The ticked records, not the whole answer — the heading names the
+             owner this claim covers, and `?? picked` would have named a record
+             the reader unticked. Step 3 refuses to continue on an empty set, so
+             this is never empty here. */
+          records={confirmedRecords}
           leases={leases}
           ownerCount={claimOwners.length}
           memberId={memberId}
@@ -712,8 +1183,9 @@ export function ClaimWizard({ memberId }: { memberId: number | null }) {
           result={claim.data}
           /* The receipt prints an RRC lease number per name, and the claim
              response has none — it answers in counts and statuses, never in
-             lease identity. The confirmed set is where that number lives. */
-          records={claimSet.data?.records ?? []}
+             lease identity. The confirmed set is where that number lives —
+             which is what this comment always said and what it now passes. */
+          records={confirmedRecords}
           onStartOver={startOver}
         />
       )}

@@ -832,7 +832,19 @@ export function SampleFlowButton() {
                  empty space the reader can scroll into for nothing. Sized to
                  its content it hugs a short step and still scrolls a tall one,
                  because the dialog's own `max-h` bounds it either way. */
-              className="relative min-h-0 flex-[0_1_auto] overflow-y-auto overscroll-contain bg-mv-bg px-4 pt-[12px] pb-0"
+              /* NO VISIBLE SCROLLBAR — the stage still scrolls.
+
+                 This walkthrough plays itself: the clock above writes `scrollTop`
+                 for the reader, so the bar was never the affordance here that it
+                 is on a page, only a strip of browser furniture down the side of
+                 something meant to read as a recording. Wheel, trackpad, keyboard
+                 and the animation all still move the stage; only the bar is gone.
+
+                 STYLED TWICE, as in `step-leases`. `scrollbar-width` is the
+                 standard property and is what Firefox and Chromium 121+ read; the
+                 `::-webkit-scrollbar` rule covers older WebKit, where the two
+                 paths are mutually exclusive so nothing is hidden twice. */
+              className="relative min-h-0 flex-[0_1_auto] overflow-y-auto overscroll-contain bg-mv-bg px-4 pt-[12px] pb-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             >
               <div
                 inert
